@@ -7,6 +7,7 @@ import {
   useState,
 } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { invoke } from '@tauri-apps/api/core'
 import { toast } from 'sonner'
 import { formatShortcutDisplay, DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -1150,7 +1151,7 @@ export function ChatWindow() {
   }, [])
 
   // Handle investigate issue - sends prompt to analyze loaded issue(s)
-  const handleInvestigateIssue = useCallback(() => {
+  const handleInvestigateIssue = useCallback(async () => {
     const sessionId = activeSessionIdRef.current
     const worktreeId = activeWorktreeIdRef.current
     const worktreePath = activeWorktreePathRef.current
@@ -1159,10 +1160,13 @@ export function ChatWindow() {
       return
     }
 
-    // Get loaded issues from query cache
-    const loadedIssues = queryClient.getQueryData<LoadedIssueContext[]>(
-      githubQueryKeys.loadedContexts(worktreeId)
-    )
+    // Fetch loaded issues - use fetchQuery to ensure data is available
+    // (getQueryData may return empty during auto-investigate race condition)
+    const loadedIssues = await queryClient.fetchQuery({
+      queryKey: githubQueryKeys.loadedContexts(worktreeId),
+      queryFn: () => invoke<LoadedIssueContext[]>('list_loaded_issue_contexts', { worktreeId }),
+      staleTime: 1000 * 60,
+    })
 
     if (!loadedIssues || loadedIssues.length === 0) {
       toast.error('No issues loaded. Use Load Issue (I) first.')
@@ -1256,7 +1260,7 @@ Begin your investigation now.`
   }, [queryClient, sendMessage, preferences?.magic_prompts?.investigate_issue, preferences?.parallel_execution_prompt_enabled])
 
   // Handle investigate PR - sends prompt to analyze loaded PR(s)
-  const handleInvestigatePR = useCallback(() => {
+  const handleInvestigatePR = useCallback(async () => {
     const sessionId = activeSessionIdRef.current
     const worktreeId = activeWorktreeIdRef.current
     const worktreePath = activeWorktreePathRef.current
@@ -1265,10 +1269,13 @@ Begin your investigation now.`
       return
     }
 
-    // Get loaded PRs from query cache
-    const loadedPRs = queryClient.getQueryData<LoadedPullRequestContext[]>(
-      githubQueryKeys.loadedPrContexts(worktreeId)
-    )
+    // Fetch loaded PRs - use fetchQuery to ensure data is available
+    // (getQueryData may return empty during auto-investigate race condition)
+    const loadedPRs = await queryClient.fetchQuery({
+      queryKey: githubQueryKeys.loadedPrContexts(worktreeId),
+      queryFn: () => invoke<LoadedPullRequestContext[]>('list_loaded_pr_contexts', { worktreeId }),
+      staleTime: 1000 * 60,
+    })
 
     if (!loadedPRs || loadedPRs.length === 0) {
       toast.error('No PRs loaded. Use Load Context (I) and select the PR tab first.')
