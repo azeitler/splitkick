@@ -550,7 +550,7 @@ export function NewWorktreeModal() {
   return (
     <Dialog open={newWorktreeModalOpen} onOpenChange={handleOpenChange}>
       <DialogContent
-        className="sm:max-w-[640px] p-0"
+        className="!max-w-[calc(100vw-4rem)] !w-[calc(100vw-4rem)] h-[calc(100vh-4rem)] p-0 flex flex-col"
         onKeyDown={handleKeyDown}
       >
         <DialogHeader className="px-4 pt-4 pb-2">
@@ -582,7 +582,7 @@ export function NewWorktreeModal() {
         </div>
 
         {/* Tab content */}
-        <div className="min-h-[300px]">
+        <div className="flex-1 min-h-0 flex flex-col">
           {activeTab === 'quick' && (
             <QuickActionsTab
               hasBaseSession={hasBaseSession}
@@ -739,7 +739,7 @@ function GitHubIssuesTab({
   searchInputRef,
 }: GitHubIssuesTabProps) {
   return (
-    <div className="flex flex-col h-[300px]">
+    <div className="flex flex-col flex-1 min-h-0">
       {/* Search and filters */}
       <div className="p-3 space-y-2 border-b border-border">
         <div className="flex gap-2">
@@ -873,7 +873,7 @@ function GitHubPRsTab({
   searchInputRef,
 }: GitHubPRsTabProps) {
   return (
-    <div className="flex flex-col h-[300px]">
+    <div className="flex flex-col flex-1 min-h-0">
       {/* Search and filters */}
       <div className="p-3 space-y-2 border-b border-border">
         <div className="flex gap-2">
