@@ -389,23 +389,23 @@ pub fn get_branches(repo_path: &str) -> Result<Vec<String>, String> {
     Ok(branches)
 }
 
-/// Pull changes from remote origin
-pub fn git_pull(repo_path: &str) -> Result<String, String> {
-    log::trace!("Pulling from origin in {repo_path}");
+/// Pull changes from remote origin for the specified base branch
+pub fn git_pull(repo_path: &str, base_branch: &str) -> Result<String, String> {
+    log::trace!("Pulling from origin/{base_branch} in {repo_path}");
 
     let output = Command::new("git")
-        .args(["pull"])
+        .args(["pull", "origin", base_branch])
         .current_dir(repo_path)
         .output()
         .map_err(|e| format!("Failed to run git pull: {e}"))?;
 
     if output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        log::trace!("Successfully pulled from origin");
+        log::trace!("Successfully pulled from origin/{base_branch}");
         Ok(stdout)
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        log::error!("Failed to pull from origin: {stderr}");
+        log::error!("Failed to pull from origin/{base_branch}: {stderr}");
         Err(stderr)
     }
 }

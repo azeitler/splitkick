@@ -488,16 +488,43 @@ export function useCommandContext(preferences?: AppPreferences): CommandContext 
       return
     }
 
-    const toastId = toast.loading('Pulling changes...')
+    // Get base branch from project's default_branch
+    const { selectedWorktreeId, selectedProjectId } =
+      useProjectsStore.getState()
+    const projects = queryClient.getQueryData<Project[]>(
+      projectsQueryKeys.list()
+    )
+
+    let baseBranch = 'main' // Default fallback
+
+    if (selectedWorktreeId) {
+      // Get worktree to find project_id
+      const worktree = queryClient.getQueryData<{
+        project_id: string
+      }>([...projectsQueryKeys.all, 'worktree', selectedWorktreeId])
+      if (worktree) {
+        const project = projects?.find(p => p.id === worktree.project_id)
+        if (project?.default_branch) {
+          baseBranch = project.default_branch
+        }
+      }
+    } else if (selectedProjectId) {
+      const project = projects?.find(p => p.id === selectedProjectId)
+      if (project?.default_branch) {
+        baseBranch = project.default_branch
+      }
+    }
+
+    const toastId = toast.loading(`Pulling from ${baseBranch}...`)
     try {
-      const result = await gitPull(worktreePath)
+      const result = await gitPull(worktreePath, baseBranch)
       triggerImmediateGitPoll()
       toast.success(result || 'Already up to date', { id: toastId })
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       toast.error(`Pull failed: ${message}`, { id: toastId })
     }
-  }, [getTargetPath])
+  }, [getTargetPath, queryClient])
 
   // Git - Refresh git status immediately
   const refreshGitStatus = useCallback(() => {

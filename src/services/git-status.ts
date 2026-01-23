@@ -124,13 +124,17 @@ export async function triggerImmediateGitPoll(): Promise<void> {
  * Pull changes from remote origin.
  *
  * @param worktreePath - Path to the worktree/repository
+ * @param baseBranch - The base branch to pull from (e.g., 'main')
  * @returns Output from git pull command
  */
-export async function gitPull(worktreePath: string): Promise<string> {
+export async function gitPull(
+  worktreePath: string,
+  baseBranch: string
+): Promise<string> {
   if (!isTauri()) {
     throw new Error('Git pull only available in Tauri')
   }
-  return invoke<string>('git_pull', { worktreePath })
+  return invoke<string>('git_pull', { worktreePath, baseBranch })
 }
 
 /**

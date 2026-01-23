@@ -3794,11 +3794,11 @@ pub async fn run_review_with_ai(
     Ok(response)
 }
 
-/// Pull changes from remote origin
+/// Pull changes from remote origin for the specified base branch
 #[tauri::command]
-pub async fn git_pull(worktree_path: String) -> Result<String, String> {
-    log::trace!("Pulling changes for worktree: {worktree_path}");
-    git::git_pull(&worktree_path)
+pub async fn git_pull(worktree_path: String, base_branch: String) -> Result<String, String> {
+    log::trace!("Pulling changes for worktree: {worktree_path}, base branch: {base_branch}");
+    git::git_pull(&worktree_path, &base_branch)
 }
 
 // =============================================================================
