@@ -32,6 +32,10 @@ Jean (Claude haha) is an AI assistant application that helps you to manage multi
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
+# Philosophy
+
+Learn more about our approach: [Philosophy](https://coolify.io/philosophy/)
+
 ---
 
 Made by [Andras Bacsai](https://x.com/heyandras).
