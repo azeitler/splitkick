@@ -26,6 +26,7 @@
     "rust:test": "cd src-tauri && cargo test",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
+    "tauri:dev:rdp": "bash scripts/tauri-dev-rdp.sh",
     "tauri:build": "npm run tauri build",
     "tauri:build:macos": "tauri build --target universal-apple-darwin --bundles app,dmg",
     "tauri:build:linux": "tauri build --bundles deb,appimage,rpm",
