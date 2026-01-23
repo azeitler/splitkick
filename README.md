@@ -11,6 +11,20 @@ Jean (Claude haha) is an AI assistant application that helps you to manage multi
 - Archive worktrees / branches so you can restore them and continue to work
 - A lot more
 
+# Screenshots
+
+![Main Interface](screenshots/SCR-20260123-oaws.png)
+![Code Review](screenshots/SCR-20260123-oalb.png)
+![Development Mode](screenshots/SCR-20260123-oavf.png)
+![Diff View](screenshots/SCR-20260123-oaxs.png)
+![Plan Mode](screenshots/SCR-20260123-oazz.png)
+
+# Platform Support
+
+- **macOS**: Tested ✓
+- **Windows**: Not tested
+- **Linux**: Not tested
+
 # Roadmap
 - Add [Opencode](https://opencode.ai/) support
 - Add remote access support through an API
