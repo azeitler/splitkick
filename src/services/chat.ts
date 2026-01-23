@@ -1086,8 +1086,8 @@ export function useSendMessage() {
         model,
         executionMode,
         thinkingLevel,
-        disableThinkingForMode,
-        parallelExecutionPromptEnabled,
+        disable_thinking_for_mode: disableThinkingForMode,
+        parallel_execution_prompt_enabled: parallelExecutionPromptEnabled,
         allowedTools,
       })
       logger.info('Chat message sent', { responseId: response.id })
