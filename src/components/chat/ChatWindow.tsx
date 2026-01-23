@@ -277,11 +277,9 @@ export function ChatWindow() {
   const { data: loadedIssueContexts } = useLoadedIssueContexts(
     activeWorktreeId ?? null
   )
-  const loadedIssueCount = loadedIssueContexts?.length ?? 0
 
   // Loaded PR contexts for indicator and investigate PR functionality
   const { data: loadedPRContexts } = useLoadedPRContexts(activeWorktreeId ?? null)
-  const loadedPRCount = loadedPRContexts?.length ?? 0
 
   // Emit readiness event for auto-investigate coordination
   // When a worktree is marked for auto-investigate, projects.ts waits for this event
@@ -318,7 +316,6 @@ export function ChatWindow() {
 
   // Attached saved contexts for indicator
   const { data: attachedSavedContexts } = useAttachedSavedContexts(activeWorktreeId ?? null)
-  const loadedContextCount = attachedSavedContexts?.length ?? 0
   // Use live status if available, otherwise fall back to cached
   const behindCount =
     gitStatus?.behind_count ?? worktree?.cached_behind_count ?? 0
@@ -1985,9 +1982,10 @@ Begin your investigation now.`
                   checkStatus={checkStatus}
                   magicModalShortcut={magicModalShortcut}
                   activeWorktreePath={activeWorktreePath}
-                  loadedIssueCount={loadedIssueCount}
-                  loadedPRCount={loadedPRCount}
-                  loadedContextCount={loadedContextCount}
+                  worktreeId={activeWorktreeId ?? null}
+                  loadedIssueContexts={loadedIssueContexts ?? []}
+                  loadedPRContexts={loadedPRContexts ?? []}
+                  attachedSavedContexts={attachedSavedContexts ?? []}
                   onOpenMagicModal={handleOpenMagicModal}
                   onSaveContext={handleSaveContext}
                   onLoadContext={handleLoadContext}

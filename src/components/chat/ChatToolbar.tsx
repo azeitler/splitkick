@@ -35,6 +35,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
@@ -43,11 +44,28 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import type { ClaudeModel } from '@/store/chat-store'
 import type { ThinkingLevel, ExecutionMode } from '@/types/chat'
 import type { PrDisplayStatus, CheckStatus } from '@/types/pr-status'
 import type { DiffRequest } from '@/types/git-diff'
+import type {
+  LoadedIssueContext,
+  LoadedPullRequestContext,
+  AttachedSavedContext,
+} from '@/types/github'
+import {
+  getIssueContextContent,
+  getPRContextContent,
+  getSavedContextContent,
+} from '@/services/github'
 
 /** Model options with display labels */
 const MODEL_OPTIONS: { value: ClaudeModel; label: string }[] = [
@@ -149,11 +167,12 @@ interface ChatToolbarProps {
 
   // Worktree info
   activeWorktreePath: string | undefined
+  worktreeId: string | null
 
   // Issue/PR/Saved context
-  loadedIssueCount: number
-  loadedPRCount: number
-  loadedContextCount: number
+  loadedIssueContexts: LoadedIssueContext[]
+  loadedPRContexts: LoadedPullRequestContext[]
+  attachedSavedContexts: AttachedSavedContext[]
 
   // Callbacks
   onOpenMagicModal: () => void
@@ -199,9 +218,10 @@ export const ChatToolbar = memo(function ChatToolbar({
   checkStatus,
   magicModalShortcut,
   activeWorktreePath,
-  loadedIssueCount,
-  loadedPRCount,
-  loadedContextCount,
+  worktreeId,
+  loadedIssueContexts,
+  loadedPRContexts,
+  attachedSavedContexts,
   onOpenMagicModal,
   onSaveContext,
   onLoadContext,
@@ -263,6 +283,64 @@ export const ChatToolbar = memo(function ChatToolbar({
       baseBranch,
     })
   }, [activeWorktreePath, baseBranch, onSetDiffRequest])
+
+  // Context viewer state
+  const [viewingContext, setViewingContext] = useState<{
+    type: 'issue' | 'pr' | 'saved'
+    number?: number
+    slug?: string
+    title: string
+    content: string
+  } | null>(null)
+
+  const handleViewIssue = useCallback(
+    async (ctx: LoadedIssueContext) => {
+      if (!worktreeId || !activeWorktreePath) return
+      try {
+        const content = await getIssueContextContent(worktreeId, ctx.number, activeWorktreePath)
+        setViewingContext({ type: 'issue', number: ctx.number, title: ctx.title, content })
+      } catch (error) {
+        toast.error(`Failed to load context: ${error}`)
+      }
+    },
+    [worktreeId, activeWorktreePath]
+  )
+
+  const handleViewPR = useCallback(
+    async (ctx: LoadedPullRequestContext) => {
+      if (!worktreeId || !activeWorktreePath) return
+      try {
+        const content = await getPRContextContent(worktreeId, ctx.number, activeWorktreePath)
+        setViewingContext({ type: 'pr', number: ctx.number, title: ctx.title, content })
+      } catch (error) {
+        toast.error(`Failed to load context: ${error}`)
+      }
+    },
+    [worktreeId, activeWorktreePath]
+  )
+
+  const handleViewSavedContext = useCallback(
+    async (ctx: AttachedSavedContext) => {
+      if (!worktreeId) return
+      try {
+        const content = await getSavedContextContent(worktreeId, ctx.slug)
+        setViewingContext({
+          type: 'saved',
+          slug: ctx.slug,
+          title: ctx.name || ctx.slug,
+          content,
+        })
+      } catch (error) {
+        toast.error(`Failed to load context: ${error}`)
+      }
+    },
+    [worktreeId]
+  )
+
+  // Compute counts from arrays
+  const loadedIssueCount = loadedIssueContexts.length
+  const loadedPRCount = loadedPRContexts.length
+  const loadedContextCount = attachedSavedContexts.length
 
   const isDisabled = isSending || hasPendingQuestions
   const canSend = hasInputValue || hasPendingAttachments
@@ -525,25 +603,94 @@ export const ChatToolbar = memo(function ChatToolbar({
           </Kbd>
         </button>
 
-        {/* Issue/PR/Context indicator - desktop only */}
+        {/* Issue/PR/Context dropdown - desktop only */}
         {(loadedIssueCount > 0 || loadedPRCount > 0 || loadedContextCount > 0) && (
           <>
             <div className="hidden @md:block h-4 w-px bg-border/50" />
-            <button
-              type="button"
-              className="hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
-              onClick={onLoadContext}
-              title={`${loadedIssueCount > 0 ? `${loadedIssueCount} issue${loadedIssueCount > 1 ? 's' : ''}` : ''}${loadedIssueCount > 0 && (loadedPRCount > 0 || loadedContextCount > 0) ? ', ' : ''}${loadedPRCount > 0 ? `${loadedPRCount} PR${loadedPRCount > 1 ? 's' : ''}` : ''}${loadedPRCount > 0 && loadedContextCount > 0 ? ', ' : ''}${loadedContextCount > 0 ? `${loadedContextCount} context${loadedContextCount > 1 ? 's' : ''}` : ''} attached`}
-            >
-              <CircleDot className="h-3.5 w-3.5" />
-              <span>
-                {loadedIssueCount > 0 && `${loadedIssueCount} Issue${loadedIssueCount > 1 ? 's' : ''}`}
-                {loadedIssueCount > 0 && (loadedPRCount > 0 || loadedContextCount > 0) && ', '}
-                {loadedPRCount > 0 && `${loadedPRCount} PR${loadedPRCount > 1 ? 's' : ''}`}
-                {loadedPRCount > 0 && loadedContextCount > 0 && ', '}
-                {loadedContextCount > 0 && `${loadedContextCount} Context${loadedContextCount > 1 ? 's' : ''}`}
-              </span>
-            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
+                >
+                  <CircleDot className="h-3.5 w-3.5" />
+                  <span>
+                    {loadedIssueCount > 0 &&
+                      `${loadedIssueCount} Issue${loadedIssueCount > 1 ? 's' : ''}`}
+                    {loadedIssueCount > 0 && (loadedPRCount > 0 || loadedContextCount > 0) && ', '}
+                    {loadedPRCount > 0 && `${loadedPRCount} PR${loadedPRCount > 1 ? 's' : ''}`}
+                    {loadedPRCount > 0 && loadedContextCount > 0 && ', '}
+                    {loadedContextCount > 0 &&
+                      `${loadedContextCount} Context${loadedContextCount > 1 ? 's' : ''}`}
+                  </span>
+                  <ChevronDown className="h-3 w-3 opacity-50" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-64">
+                {/* Issues section */}
+                {loadedIssueContexts.length > 0 && (
+                  <>
+                    <DropdownMenuLabel className="text-xs text-muted-foreground">
+                      Issues
+                    </DropdownMenuLabel>
+                    {loadedIssueContexts.map((ctx) => (
+                      <DropdownMenuItem key={ctx.number} onClick={() => handleViewIssue(ctx)}>
+                        <CircleDot className="h-4 w-4 text-green-500" />
+                        <span className="truncate">
+                          #{ctx.number} {ctx.title}
+                        </span>
+                      </DropdownMenuItem>
+                    ))}
+                  </>
+                )}
+
+                {/* PRs section */}
+                {loadedPRContexts.length > 0 && (
+                  <>
+                    {loadedIssueContexts.length > 0 && <DropdownMenuSeparator />}
+                    <DropdownMenuLabel className="text-xs text-muted-foreground">
+                      Pull Requests
+                    </DropdownMenuLabel>
+                    {loadedPRContexts.map((ctx) => (
+                      <DropdownMenuItem key={ctx.number} onClick={() => handleViewPR(ctx)}>
+                        <GitPullRequest className="h-4 w-4 text-green-500" />
+                        <span className="truncate">
+                          #{ctx.number} {ctx.title}
+                        </span>
+                      </DropdownMenuItem>
+                    ))}
+                  </>
+                )}
+
+                {/* Saved contexts section */}
+                {attachedSavedContexts.length > 0 && (
+                  <>
+                    {(loadedIssueContexts.length > 0 || loadedPRContexts.length > 0) && (
+                      <DropdownMenuSeparator />
+                    )}
+                    <DropdownMenuLabel className="text-xs text-muted-foreground">
+                      Contexts
+                    </DropdownMenuLabel>
+                    {attachedSavedContexts.map((ctx) => (
+                      <DropdownMenuItem
+                        key={ctx.slug}
+                        onClick={() => handleViewSavedContext(ctx)}
+                      >
+                        <FolderOpen className="h-4 w-4 text-blue-500" />
+                        <span className="truncate">{ctx.name || ctx.slug}</span>
+                      </DropdownMenuItem>
+                    ))}
+                  </>
+                )}
+
+                {/* Manage button */}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={onLoadContext}>
+                  <FolderOpen className="h-4 w-4" />
+                  Manage Contexts...
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </>
         )}
 
@@ -816,6 +963,34 @@ export const ChatToolbar = memo(function ChatToolbar({
           </button>
         )}
       </div>
+
+      {/* Context viewer dialog */}
+      {viewingContext && (
+        <Dialog open={true} onOpenChange={() => setViewingContext(null)}>
+          <DialogContent className="!max-w-[calc(100vw-8rem)] !w-[calc(100vw-8rem)] !h-[calc(100vh-8rem)] flex flex-col">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                {viewingContext.type === 'issue' && (
+                  <CircleDot className="h-4 w-4 text-green-500" />
+                )}
+                {viewingContext.type === 'pr' && (
+                  <GitPullRequest className="h-4 w-4 text-green-500" />
+                )}
+                {viewingContext.type === 'saved' && (
+                  <FolderOpen className="h-4 w-4 text-blue-500" />
+                )}
+                {viewingContext.number ? `#${viewingContext.number}: ` : ''}
+                {viewingContext.title}
+              </DialogTitle>
+            </DialogHeader>
+            <ScrollArea className="flex-1 min-h-0">
+              <pre className="text-xs font-mono whitespace-pre-wrap p-4 bg-muted rounded-md">
+                {viewingContext.content}
+              </pre>
+            </ScrollArea>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 })
