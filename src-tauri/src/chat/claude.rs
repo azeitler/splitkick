@@ -132,6 +132,7 @@ fn build_claude_args(
     allowed_tools: Option<&[String]>,
     disable_thinking_in_non_plan_modes: bool,
     parallel_execution_prompt_enabled: bool,
+    ai_language: Option<&str>,
 ) -> (Vec<String>, Vec<(String, String)>) {
     let mut args = Vec::new();
     let mut env_vars = Vec::new();
@@ -230,10 +231,21 @@ fn build_claude_args(
         }
     }
 
+    // Build combined system prompt parts
+    // Claude CLI only uses the LAST --append-system-prompt, so we must combine all prompts
+    let mut system_prompt_parts: Vec<String> = Vec::new();
+
+    // AI language preference - user's preferred response language
+    if let Some(lang) = ai_language {
+        let lang = lang.trim();
+        if !lang.is_empty() {
+            system_prompt_parts.push(format!("Respond to the user in {}.", lang));
+        }
+    }
+
     // Parallel execution prompt - encourages sub-agent parallelization
     if parallel_execution_prompt_enabled {
-        args.push("--append-system-prompt".to_string());
-        args.push(
+        system_prompt_parts.push(
             "In plan mode, structure plans so sub-agents can work simultaneously. \
              In build/execute mode, use sub-agents in parallel for faster implementation."
                 .to_string(),
@@ -241,7 +253,6 @@ fn build_claude_args(
     }
 
     // Collect all context files (issues and PRs) and concatenate into a single file
-    // Claude CLI only uses the LAST --append-system-prompt, so we must combine all contexts
     let mut all_context_paths: Vec<std::path::PathBuf> = Vec::new();
 
     // Check for issue context files (shared storage)
@@ -314,8 +325,9 @@ fn build_claude_args(
         }
     }
 
-    // If we have context files, concatenate them into a single temp file
-    if !all_context_paths.is_empty() {
+    // If we have context files OR system prompt parts, create a combined context file
+    let has_system_prompts = !system_prompt_parts.is_empty();
+    if !all_context_paths.is_empty() || has_system_prompts {
         if let Ok(app_data_dir) = app.path().app_data_dir() {
             let combined_contexts_dir = app_data_dir.join("combined-contexts");
             let _ = std::fs::create_dir_all(&combined_contexts_dir);
@@ -348,24 +360,37 @@ fn build_claude_args(
             // Build combined content with header
             let mut combined_content = String::new();
 
-            // Add header explaining the context
-            combined_content.push_str("# Loaded Context\n\n");
-            combined_content.push_str("The following context has been loaded. ");
-            combined_content.push_str("You should be aware of this when working on this task.\n\n");
-
-            if issue_count > 0 || pr_count > 0 || saved_context_count > 0 {
-                combined_content.push_str("**Summary:**\n");
-                if issue_count > 0 {
-                    combined_content.push_str(&format!("- {} GitHub Issue(s)\n", issue_count));
-                }
-                if pr_count > 0 {
-                    combined_content.push_str(&format!("- {} GitHub Pull Request(s)\n", pr_count));
-                }
-                if saved_context_count > 0 {
-                    combined_content
-                        .push_str(&format!("- {} Saved Context(s)\n", saved_context_count));
+            // Add system prompt parts first (language preference, parallel execution)
+            if !system_prompt_parts.is_empty() {
+                combined_content.push_str("# Instructions\n\n");
+                for part in &system_prompt_parts {
+                    combined_content.push_str(part);
+                    combined_content.push('\n');
                 }
                 combined_content.push_str("\n---\n\n");
+            }
+
+            // Add context header if we have context files
+            if !all_context_paths.is_empty() {
+                combined_content.push_str("# Loaded Context\n\n");
+                combined_content.push_str("The following context has been loaded. ");
+                combined_content
+                    .push_str("You should be aware of this when working on this task.\n\n");
+
+                if issue_count > 0 || pr_count > 0 || saved_context_count > 0 {
+                    combined_content.push_str("**Summary:**\n");
+                    if issue_count > 0 {
+                        combined_content.push_str(&format!("- {} GitHub Issue(s)\n", issue_count));
+                    }
+                    if pr_count > 0 {
+                        combined_content.push_str(&format!("- {} GitHub Pull Request(s)\n", pr_count));
+                    }
+                    if saved_context_count > 0 {
+                        combined_content
+                            .push_str(&format!("- {} Saved Context(s)\n", saved_context_count));
+                    }
+                    combined_content.push_str("\n---\n\n");
+                }
             }
 
             for path in &all_context_paths {
@@ -435,6 +460,7 @@ pub fn execute_claude_detached(
     allowed_tools: Option<&[String]>,
     disable_thinking_in_non_plan_modes: bool,
     parallel_execution_prompt_enabled: bool,
+    ai_language: Option<&str>,
 ) -> Result<(u32, ClaudeResponse), String> {
     use super::detached::spawn_detached_claude;
     use crate::claude_cli::get_cli_binary_path;
@@ -483,6 +509,7 @@ pub fn execute_claude_detached(
         allowed_tools,
         disable_thinking_in_non_plan_modes,
         parallel_execution_prompt_enabled,
+        ai_language,
     );
 
     // Log the full Claude CLI command for debugging

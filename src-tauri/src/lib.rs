@@ -118,6 +118,8 @@ pub struct AppPreferences {
     pub magic_prompts: MagicPrompts, // Customizable prompts for AI-powered features
     #[serde(default = "default_file_edit_mode")]
     pub file_edit_mode: String, // How to edit files: inline (CodeMirror) or external (VS Code, etc.)
+    #[serde(default)]
+    pub ai_language: String, // Preferred language for AI responses (empty = default)
 }
 
 fn default_auto_branch_naming() -> bool {
@@ -439,6 +441,7 @@ impl Default for AppPreferences {
             parallel_execution_prompt_enabled: default_parallel_execution_prompt_enabled(),
             magic_prompts: MagicPrompts::default(),
             file_edit_mode: default_file_edit_mode(),
+            ai_language: String::new(),
         }
     }
 }

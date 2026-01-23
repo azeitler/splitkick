@@ -815,6 +815,7 @@ pub async fn send_chat_message(
     thinking_level: Option<ThinkingLevel>,
     disable_thinking_for_mode: Option<bool>,
     parallel_execution_prompt_enabled: Option<bool>,
+    ai_language: Option<String>,
     allowed_tools: Option<Vec<String>>,
 ) -> Result<ChatMessage, String> {
     log::trace!("Sending chat message for session: {session_id}, worktree: {worktree_id}, model: {model:?}, execution_mode: {execution_mode:?}, thinking: {thinking_level:?}, disable_thinking_for_mode: {disable_thinking_for_mode:?}, allowed_tools: {allowed_tools:?}");
@@ -1022,6 +1023,7 @@ pub async fn send_chat_message(
             allowed_tools.as_deref(),
             disable_thinking_in_non_plan_modes,
             parallel_execution_prompt,
+            ai_language.as_deref(),
         ) {
             Ok((pid, response)) => {
                 log::trace!("execute_claude_detached succeeded (PID: {pid})");
