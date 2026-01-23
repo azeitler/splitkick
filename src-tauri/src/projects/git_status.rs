@@ -448,7 +448,7 @@ pub fn get_git_diff(
         "uncommitted" => (
             "HEAD".to_string(),
             "working directory".to_string(),
-            vec!["diff", "--unified=3"],
+            vec!["diff", "HEAD", "--unified=3"],
         ),
         "branch" => {
             let origin_ref = format!("origin/{base}");
