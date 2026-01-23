@@ -37,7 +37,7 @@ pub fn is_process_alive(pid: u32) -> bool {
         let result = GetExitCodeProcess(handle, &mut exit_code);
         CloseHandle(handle);
 
-        result != 0 && exit_code == STILL_ACTIVE
+        result != 0 && exit_code == STILL_ACTIVE as u32
     }
 }
 

@@ -1,6 +1,5 @@
 // Cross-platform shell detection and command execution
 
-use std::env;
 use std::process::Command;
 
 /// Returns the user's default shell path
