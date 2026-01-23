@@ -1,5 +1,6 @@
 import { useCallback, useState, useRef, useEffect, useMemo } from 'react'
 import { ArrowDown, Circle, GitBranch, Square } from 'lucide-react'
+import { BorderSpinner } from '@/components/ui/border-spinner'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { isBaseSession, type Worktree } from '@/types/projects'
@@ -186,19 +187,14 @@ export function WorktreeItem({
     executionModes,
   ])
 
-  // Determine indicator color: blinking yellow=question, solid yellow=plan/build, red=yolo, green=review, grey=idle
-  // Active states get a glow effect for better visibility
+  // Determine indicator color: blinking yellow=waiting for user, green=review, grey=idle
+  // Running state uses BorderSpinner component instead (handled in render)
   const indicatorColor = useMemo(() => {
     if (isWaitingQuestion) return 'text-yellow-500 animate-blink shadow-[0_0_6px_currentColor]'
-    if (isWaitingPlan) return 'text-yellow-500 shadow-[0_0_6px_currentColor]'
-    if (isChatRunning) {
-      return runningSessionExecutionMode === 'yolo'
-        ? 'text-destructive shadow-[0_0_6px_currentColor]'
-        : 'text-yellow-500 shadow-[0_0_6px_currentColor]'
-    }
+    if (isWaitingPlan) return 'text-yellow-500 animate-blink shadow-[0_0_6px_currentColor]'
     if (isReviewing) return 'text-green-500 shadow-[0_0_6px_currentColor]'
     return 'text-muted-foreground/50'
-  }, [isWaitingQuestion, isWaitingPlan, isChatRunning, runningSessionExecutionMode, isReviewing])
+  }, [isWaitingQuestion, isWaitingPlan, isReviewing])
 
   // Responsive padding based on sidebar width
   const sidebarWidth = useSidebarWidth()
@@ -345,7 +341,19 @@ export function WorktreeItem({
         onDoubleClick={handleDoubleClick}
       >
         {/* Status indicator: circle for base session, square for worktrees */}
-        {isBase ? (
+        {/* When running, show spinning border; otherwise show filled shape */}
+        {isChatRunning ? (
+          <BorderSpinner
+            shape={isBase ? 'circle' : 'square'}
+            className={cn(
+              'h-2 w-2 shadow-[0_0_6px_currentColor]',
+              runningSessionExecutionMode === 'yolo' ? 'text-destructive' : 'text-yellow-500'
+            )}
+            bgClassName={
+              runningSessionExecutionMode === 'yolo' ? 'fill-destructive/50' : 'fill-yellow-500/50'
+            }
+          />
+        ) : isBase ? (
           <Circle className={cn('h-2 w-2 shrink-0 fill-current rounded-full', indicatorColor)} />
         ) : (
           <Square className={cn('h-2 w-2 shrink-0 fill-current rounded-sm', indicatorColor)} />

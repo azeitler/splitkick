@@ -162,6 +162,15 @@
   animation: blink 1s ease-in-out infinite;
 }
 
+/* Border spin animation for running indicator */
+@keyframes border-spin {
+  to { stroke-dashoffset: 0; }
+}
+
+.animate-border-spin {
+  animation: border-spin 1s linear infinite;
+}
+
 /* Animated dots for loading indicator */
 @keyframes dots {
   0%,
