@@ -1866,7 +1866,7 @@ function IssueItem({
         <CircleDot
           className={cn(
             'h-4 w-4 mt-0.5 flex-shrink-0',
-            issue.state === 'open' ? 'text-green-500' : 'text-purple-500'
+            issue.state === 'OPEN' ? 'text-green-500' : 'text-purple-500'
           )}
         />
       )}
