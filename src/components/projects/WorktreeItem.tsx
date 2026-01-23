@@ -1,6 +1,6 @@
 import { useCallback, useState, useRef, useEffect, useMemo } from 'react'
-import { ArrowDown, Circle, GitBranch, Square } from 'lucide-react'
 import { BorderSpinner } from '@/components/ui/border-spinner'
+import { ArrowDown, ArrowUp, Circle, GitBranch, Square } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { isBaseSession, type Worktree } from '@/types/projects'
@@ -14,6 +14,7 @@ import {
   setActiveWorktreeForPolling,
   useGitStatus,
   gitPull,
+  gitPush,
   triggerImmediateGitPoll,
 } from '@/services/git-status'
 import { useSidebarWidth } from '@/components/layout/SidebarWidthContext'
@@ -57,6 +58,14 @@ export function WorktreeItem({
   const { data: gitStatus } = useGitStatus(worktree.id)
   const behindCount =
     gitStatus?.behind_count ?? worktree.cached_behind_count ?? 0
+  const worktreeAheadCount =
+    gitStatus?.ahead_count ?? worktree.cached_ahead_count ?? 0
+  const baseBranchAheadCount =
+    gitStatus?.base_branch_ahead_count ??
+    worktree.cached_base_branch_ahead_count ??
+    0
+  // For base sessions, show base branch unpushed; for worktrees, show worktree unpushed
+  const pushCount = isBase ? baseBranchAheadCount : worktreeAheadCount
 
   // Fetch sessions to check for persisted unanswered questions
   const { data: sessionsData } = useSessions(worktree.id, worktree.path)
@@ -313,11 +322,26 @@ export function WorktreeItem({
       e.stopPropagation()
       const toastId = toast.loading('Pulling changes...')
       try {
-        await gitPull(worktree.path)
+        await gitPull(worktree.path, defaultBranch)
         triggerImmediateGitPoll()
         toast.success('Changes pulled', { id: toastId })
       } catch (error) {
         toast.error(`Pull failed: ${error}`, { id: toastId })
+      }
+    },
+    [worktree.path, defaultBranch]
+  )
+
+  const handlePush = useCallback(
+    async (e: React.MouseEvent) => {
+      e.stopPropagation()
+      const toastId = toast.loading('Pushing changes...')
+      try {
+        await gitPush(worktree.path)
+        triggerImmediateGitPoll()
+        toast.success('Changes pushed', { id: toastId })
+      } catch (error) {
+        toast.error(`Push failed: ${error}`, { id: toastId })
       }
     },
     [worktree.path]
@@ -396,6 +420,20 @@ export function WorktreeItem({
             <span className="flex items-center gap-0.5">
               <ArrowDown className="h-3 w-3" />
               {behindCount}
+            </span>
+          </button>
+        )}
+
+        {/* Push badge - unpushed commits */}
+        {pushCount > 0 && (
+          <button
+            onClick={handlePush}
+            className="shrink-0 rounded bg-orange-500/10 px-1.5 py-0.5 text-[11px] font-medium text-orange-500 transition-colors hover:bg-orange-500/20"
+            title={`Push ${pushCount} commit${pushCount > 1 ? 's' : ''} to remote`}
+          >
+            <span className="flex items-center gap-0.5">
+              <ArrowUp className="h-3 w-3" />
+              {pushCount}
             </span>
           </button>
         )}

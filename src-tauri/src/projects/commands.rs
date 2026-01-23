@@ -452,6 +452,8 @@ pub async fn create_worktree(
         cached_uncommitted_removed: None,
         cached_branch_diff_added: None,
         cached_branch_diff_removed: None,
+        cached_base_branch_ahead_count: None,
+        cached_base_branch_behind_count: None,
         order: 0, // Placeholder, actual order is set in background thread
         archived_at: None,
     };
@@ -760,6 +762,8 @@ pub async fn create_worktree(
                 cached_uncommitted_removed: None,
                 cached_branch_diff_added: None,
                 cached_branch_diff_removed: None,
+                cached_base_branch_ahead_count: None,
+                cached_base_branch_behind_count: None,
                 order: max_order + 1,
                 archived_at: None,
             };
@@ -876,6 +880,8 @@ pub async fn create_worktree_from_existing_branch(
         cached_uncommitted_removed: None,
         cached_branch_diff_added: None,
         cached_branch_diff_removed: None,
+        cached_base_branch_ahead_count: None,
+        cached_base_branch_behind_count: None,
         order: 0, // Placeholder, actual order is set in background thread
         archived_at: None,
     };
@@ -1085,6 +1091,8 @@ pub async fn create_worktree_from_existing_branch(
                 cached_uncommitted_removed: None,
                 cached_branch_diff_added: None,
                 cached_branch_diff_removed: None,
+                cached_base_branch_ahead_count: None,
+                cached_base_branch_behind_count: None,
                 order: max_order + 1,
                 archived_at: None,
             };
@@ -1301,6 +1309,8 @@ pub async fn create_base_session(app: AppHandle, project_id: String) -> Result<W
         cached_uncommitted_removed: None,
         cached_branch_diff_added: None,
         cached_branch_diff_removed: None,
+        cached_base_branch_ahead_count: None,
+        cached_base_branch_behind_count: None,
         order: 0, // Base sessions are always first
         archived_at: None,
     };
@@ -1597,6 +1607,8 @@ pub async fn import_worktree(
         cached_uncommitted_removed: None,
         cached_branch_diff_added: None,
         cached_branch_diff_removed: None,
+        cached_base_branch_ahead_count: None,
+        cached_base_branch_behind_count: None,
         order: max_order + 1,
         archived_at: None,
     };
@@ -2767,6 +2779,8 @@ pub async fn update_worktree_cached_status(
     uncommitted_removed: Option<u32>,
     branch_diff_added: Option<u32>,
     branch_diff_removed: Option<u32>,
+    base_branch_ahead_count: Option<u32>,
+    base_branch_behind_count: Option<u32>,
 ) -> Result<(), String> {
     log::trace!("Updating cached status for worktree {worktree_id}");
 
@@ -2802,6 +2816,12 @@ pub async fn update_worktree_cached_status(
     }
     if branch_diff_removed.is_some() {
         worktree.cached_branch_diff_removed = branch_diff_removed;
+    }
+    if base_branch_ahead_count.is_some() {
+        worktree.cached_base_branch_ahead_count = base_branch_ahead_count;
+    }
+    if base_branch_behind_count.is_some() {
+        worktree.cached_base_branch_behind_count = base_branch_behind_count;
     }
     worktree.cached_status_at = Some(
         std::time::SystemTime::now()
@@ -3793,6 +3813,13 @@ pub async fn run_review_with_ai(
 pub async fn git_pull(worktree_path: String, base_branch: String) -> Result<String, String> {
     log::trace!("Pulling changes for worktree: {worktree_path}, base branch: {base_branch}");
     git::git_pull(&worktree_path, &base_branch)
+}
+
+/// Push current branch to remote origin
+#[tauri::command]
+pub async fn git_push(worktree_path: String) -> Result<String, String> {
+    log::trace!("Pushing changes for worktree: {worktree_path}");
+    git::git_push(&worktree_path)
 }
 
 // =============================================================================

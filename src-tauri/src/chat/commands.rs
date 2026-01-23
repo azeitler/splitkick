@@ -598,6 +598,8 @@ pub async fn restore_session_with_base(
         cached_uncommitted_removed: None,
         cached_branch_diff_added: None,
         cached_branch_diff_removed: None,
+        cached_base_branch_ahead_count: None,
+        cached_base_branch_behind_count: None,
         order: 0,
         archived_at: None,
     };

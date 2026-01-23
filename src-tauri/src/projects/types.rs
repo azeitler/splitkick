@@ -123,6 +123,12 @@ pub struct Worktree {
     /// Cached branch diff deletions (lines removed vs base branch)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cached_branch_diff_removed: Option<u32>,
+    /// Cached base branch ahead count (unpushed commits on base branch)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cached_base_branch_ahead_count: Option<u32>,
+    /// Cached base branch behind count (commits behind on base branch)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cached_base_branch_behind_count: Option<u32>,
     /// Display order within project (lower = higher in list, base sessions ignore this)
     #[serde(default)]
     pub order: u32,

@@ -1,8 +1,9 @@
 import { memo, useCallback, useState } from 'react'
 import { toast } from 'sonner'
-import { gitPull, triggerImmediateGitPoll } from '@/services/git-status'
+import { gitPull, gitPush, triggerImmediateGitPoll } from '@/services/git-status'
 import {
   ArrowDown,
+  ArrowUp,
   BookmarkPlus,
   Brain,
   ChevronDown,
@@ -150,6 +151,7 @@ interface ChatToolbarProps {
   // Git state
   hasBranchUpdates: boolean
   behindCount: number
+  aheadCount: number
   baseBranch: string
   uncommittedAdded: number
   uncommittedRemoved: number
@@ -207,6 +209,7 @@ export const ChatToolbar = memo(function ChatToolbar({
   queuedMessageCount,
   hasBranchUpdates,
   behindCount,
+  aheadCount,
   baseBranch,
   uncommittedAdded,
   uncommittedRemoved,
@@ -258,13 +261,29 @@ export const ChatToolbar = memo(function ChatToolbar({
     setIsPulling(true)
     const toastId = toast.loading('Pulling changes...')
     try {
-      await gitPull(activeWorktreePath)
+      await gitPull(activeWorktreePath, baseBranch)
       triggerImmediateGitPoll()
       toast.success('Changes pulled', { id: toastId })
     } catch (error) {
       toast.error(`Pull failed: ${error}`, { id: toastId })
     } finally {
       setIsPulling(false)
+    }
+  }, [activeWorktreePath, baseBranch])
+
+  const [isPushing, setIsPushing] = useState(false)
+  const handlePushClick = useCallback(async () => {
+    if (!activeWorktreePath) return
+    setIsPushing(true)
+    const toastId = toast.loading('Pushing changes...')
+    try {
+      await gitPush(activeWorktreePath)
+      triggerImmediateGitPoll()
+      toast.success('Changes pushed', { id: toastId })
+    } catch (error) {
+      toast.error(`Push failed: ${error}`, { id: toastId })
+    } finally {
+      setIsPushing(false)
     }
   }, [activeWorktreePath])
 
@@ -418,6 +437,14 @@ export const ChatToolbar = memo(function ChatToolbar({
               <DropdownMenuItem onClick={handlePullClick} disabled={isPulling}>
                 <ArrowDown className="h-4 w-4" />
                 Pull {behindCount} commit{behindCount === 1 ? '' : 's'}
+              </DropdownMenuItem>
+            )}
+
+            {/* Push button */}
+            {aheadCount > 0 && (
+              <DropdownMenuItem onClick={handlePushClick} disabled={isPushing}>
+                <ArrowUp className="h-4 w-4" />
+                Push {aheadCount} commit{aheadCount === 1 ? '' : 's'}
               </DropdownMenuItem>
             )}
 
@@ -707,6 +734,23 @@ export const ChatToolbar = memo(function ChatToolbar({
             >
               <ArrowDown className="h-3.5 w-3.5" />
               <span>Pull {behindCount}</span>
+            </button>
+          </>
+        )}
+
+        {/* Push button - shown when ahead of remote (desktop only) */}
+        {aheadCount > 0 && (
+          <>
+            <div className="hidden @md:block h-4 w-px bg-border/50" />
+            <button
+              type="button"
+              className="hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-orange-500 transition-colors hover:bg-muted/80 hover:text-orange-400 disabled:pointer-events-none disabled:opacity-50"
+              onClick={handlePushClick}
+              disabled={isPushing}
+              title={`${aheadCount} unpushed commit${aheadCount === 1 ? '' : 's'}`}
+            >
+              <ArrowUp className="h-3.5 w-3.5" />
+              <span>Push {aheadCount}</span>
             </button>
           </>
         )}

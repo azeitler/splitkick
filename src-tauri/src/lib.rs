@@ -1170,6 +1170,7 @@ pub fn run() {
             projects::has_uncommitted_changes,
             projects::get_git_diff,
             projects::git_pull,
+            projects::git_push,
             projects::merge_worktree_to_base,
             projects::reorder_projects,
             projects::reorder_worktrees,

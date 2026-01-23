@@ -36,6 +36,10 @@ export interface GitStatusEvent {
   branch_diff_added: number
   /** Lines removed compared to base branch (origin/main) */
   branch_diff_removed: number
+  /** Commits the local base branch is ahead of origin (unpushed on base) */
+  base_branch_ahead_count: number
+  /** Commits the local base branch is behind origin */
+  base_branch_behind_count: number
 }
 
 /**
@@ -135,6 +139,19 @@ export async function gitPull(
     throw new Error('Git pull only available in Tauri')
   }
   return invoke<string>('git_pull', { worktreePath, baseBranch })
+}
+
+/**
+ * Push current branch to remote origin.
+ *
+ * @param worktreePath - Path to the worktree/repository
+ * @returns Output from git push command
+ */
+export async function gitPush(worktreePath: string): Promise<string> {
+  if (!isTauri()) {
+    throw new Error('Git push only available in Tauri')
+  }
+  return invoke<string>('git_push', { worktreePath })
 }
 
 /**
@@ -258,7 +275,9 @@ export function useGitStatusEvents(
           status.uncommitted_added,
           status.uncommitted_removed,
           status.branch_diff_added,
-          status.branch_diff_removed
+          status.branch_diff_removed,
+          status.base_branch_ahead_count,
+          status.base_branch_behind_count
         ).catch(err =>
           console.warn('[git-status] Failed to cache status:', err)
         )

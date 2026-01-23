@@ -33,6 +33,10 @@ pub struct GitBranchStatus {
     pub branch_diff_added: u32,
     /// Lines removed compared to base branch (origin/main)
     pub branch_diff_removed: u32,
+    /// Commits the local base branch is ahead of origin (unpushed on base)
+    pub base_branch_ahead_count: u32,
+    /// Commits the local base branch is behind origin
+    pub base_branch_behind_count: u32,
 }
 
 /// Fetch the latest changes from origin for a specific branch
@@ -665,6 +669,11 @@ pub fn get_branch_status(info: &ActiveWorktreeInfo) -> Result<GitBranchStatus, S
     // Get branch diff stats (changes compared to base branch)
     let (branch_diff_added, branch_diff_removed) = get_branch_diff_stats(repo_path, base_branch);
 
+    // Base branch's own remote sync status
+    // Compare local base branch to origin/base_branch
+    let base_branch_ahead_count = count_commits_between(repo_path, &origin_ref, base_branch);
+    let base_branch_behind_count = count_commits_between(repo_path, base_branch, &origin_ref);
+
     // Get current timestamp
     let checked_at = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -683,6 +692,8 @@ pub fn get_branch_status(info: &ActiveWorktreeInfo) -> Result<GitBranchStatus, S
         uncommitted_removed,
         branch_diff_added,
         branch_diff_removed,
+        base_branch_ahead_count,
+        base_branch_behind_count,
     })
 }
 
@@ -704,6 +715,8 @@ mod tests {
             uncommitted_removed: 5,
             branch_diff_added: 150,
             branch_diff_removed: 42,
+            base_branch_ahead_count: 2,
+            base_branch_behind_count: 0,
         };
 
         let json = serde_json::to_string(&status).unwrap();

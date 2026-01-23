@@ -410,6 +410,30 @@ pub fn git_pull(repo_path: &str, base_branch: &str) -> Result<String, String> {
     }
 }
 
+/// Push current branch to remote origin
+pub fn git_push(repo_path: &str) -> Result<String, String> {
+    log::trace!("Pushing to origin in {repo_path}");
+
+    let output = Command::new("git")
+        .args(["push"])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to run git push: {e}"))?;
+
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        // Git push often outputs to stderr even on success
+        let result = if stdout.is_empty() { stderr } else { stdout };
+        log::trace!("Successfully pushed to origin");
+        Ok(result)
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        log::error!("Failed to push to origin: {stderr}");
+        Err(stderr)
+    }
+}
+
 /// Fetch from remote origin (best effort, ignores errors if no remote)
 pub fn fetch_origin(repo_path: &str) -> Result<(), String> {
     log::trace!("Fetching from origin in {repo_path}");

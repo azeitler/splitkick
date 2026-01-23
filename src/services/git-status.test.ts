@@ -193,17 +193,17 @@ describe('git-status service', () => {
     it('calls invoke and returns output', async () => {
       mockInvoke.mockResolvedValueOnce('Already up to date.')
 
-      const result = await gitPull('/path/to/repo')
+      const result = await gitPull('/path/to/repo', 'main')
 
       expect(result).toBe('Already up to date.')
-      expect(mockInvoke).toHaveBeenCalledWith('git_pull', { worktreePath: '/path/to/repo' })
+      expect(mockInvoke).toHaveBeenCalledWith('git_pull', { worktreePath: '/path/to/repo', baseBranch: 'main' })
     })
 
     it('throws when not in Tauri', async () => {
       const { isTauri } = vi.mocked(await import('@/services/projects'))
       isTauri.mockReturnValue(false)
 
-      await expect(gitPull('/path')).rejects.toThrow('Git pull only available in Tauri')
+      await expect(gitPull('/path', 'main')).rejects.toThrow('Git pull only available in Tauri')
     })
   })
 
