@@ -134,6 +134,8 @@ const NAMING_PROMPT_BOTH: &str = r#"<task>Generate a session name AND a git bran
 - DO NOT include any type prefix like "feat/", "fix/", etc.
 - Just provide the descriptive name directly
 - The name MUST be unique - do NOT use any of the existing names listed below
+- For GitHub issue investigations, format as: {number}-{brief-description} (e.g., "7904-fix-login-bug")
+- For GitHub PR investigations, format as: {number}-{brief-description} (e.g., "456-add-auth")
 </branch_name_rules>
 
 <existing_branch_names>
@@ -180,6 +182,8 @@ const NAMING_PROMPT_BRANCH_ONLY: &str = r#"<task>Generate a short, descriptive g
 - DO NOT include any type prefix like "feat/", "fix/", etc.
 - Just provide the descriptive name directly
 - The name MUST be unique - do NOT use any of the existing names listed below
+- For GitHub issue investigations, format as: {number}-{brief-description} (e.g., "7904-fix-login-bug")
+- For GitHub PR investigations, format as: {number}-{brief-description} (e.g., "456-add-auth")
 </rules>
 
 <existing_branch_names>
