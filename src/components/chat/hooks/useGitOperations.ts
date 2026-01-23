@@ -32,8 +32,10 @@ interface UseGitOperationsParams {
 }
 
 interface UseGitOperationsReturn {
-  /** Creates commit with AI-generated message */
+  /** Creates commit with AI-generated message (no push) */
   handleCommit: () => Promise<void>
+  /** Creates commit with AI-generated message and pushes to remote */
+  handleCommitAndPush: () => Promise<void>
   /** Creates PR with AI-generated title and description */
   handleOpenPr: () => Promise<void>
   /** Runs AI code review */
@@ -68,7 +70,7 @@ export function useGitOperations({
   const [pendingMergeWorktree, setPendingMergeWorktree] =
     useState<Worktree | null>(null)
 
-  // Handle Commit - creates commit with AI-generated message in background
+  // Handle Commit - creates commit with AI-generated message (no push)
   const handleCommit = useCallback(async () => {
     if (!activeWorktreePath) return
 
@@ -80,18 +82,45 @@ export function useGitOperations({
         {
           worktreePath: activeWorktreePath,
           customPrompt: preferences?.magic_prompts?.commit_message,
+          push: false,
         }
       )
 
       // Trigger git status refresh
       triggerImmediateGitPoll()
 
-      const pushInfo = result.pushed ? ' and pushed' : ''
-      toast.success(`Committed${pushInfo}: ${result.message.split('\n')[0]}`, {
+      toast.success(`Committed: ${result.message.split('\n')[0]}`, {
         id: toastId,
       })
     } catch (error) {
       toast.error(`Failed to commit: ${error}`, { id: toastId })
+    }
+  }, [activeWorktreePath, preferences?.magic_prompts?.commit_message])
+
+  // Handle Commit & Push - creates commit with AI-generated message and pushes
+  const handleCommitAndPush = useCallback(async () => {
+    if (!activeWorktreePath) return
+
+    const toastId = toast.loading('Committing and pushing...')
+
+    try {
+      const result = await invoke<CreateCommitResponse>(
+        'create_commit_with_ai',
+        {
+          worktreePath: activeWorktreePath,
+          customPrompt: preferences?.magic_prompts?.commit_message,
+          push: true,
+        }
+      )
+
+      // Trigger git status refresh
+      triggerImmediateGitPoll()
+
+      toast.success(`Committed and pushed: ${result.message.split('\n')[0]}`, {
+        id: toastId,
+      })
+    } catch (error) {
+      toast.error(`Failed: ${error}`, { id: toastId })
     }
   }, [activeWorktreePath, preferences?.magic_prompts?.commit_message])
 
@@ -336,6 +365,7 @@ Please help me resolve these conflicts. Analyze the diff above, explain what's c
 
   return {
     handleCommit,
+    handleCommitAndPush,
     handleOpenPr,
     handleReview,
     handleMerge,

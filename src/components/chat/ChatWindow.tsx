@@ -1035,6 +1035,7 @@ export function ChatWindow() {
   // Git operations hook - handles commit, PR, review, merge operations
   const {
     handleCommit,
+    handleCommitAndPush,
     handleOpenPr,
     handleReview,
     handleMerge,
@@ -1370,6 +1371,7 @@ Begin your investigation now.`
     handleSaveContext,
     handleLoadContext,
     handleCommit,
+    handleCommitAndPush,
     handleOpenPr,
     handleReview,
     handleMerge,

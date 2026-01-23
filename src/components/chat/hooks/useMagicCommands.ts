@@ -4,6 +4,7 @@ interface MagicCommandHandlers {
   handleSaveContext: () => void
   handleLoadContext: () => void
   handleCommit: () => void
+  handleCommitAndPush: () => void
   handleOpenPr: () => void
   handleReview: () => void
   handleMerge: () => void
@@ -21,6 +22,7 @@ export function useMagicCommands({
   handleSaveContext,
   handleLoadContext,
   handleCommit,
+  handleCommitAndPush,
   handleOpenPr,
   handleReview,
   handleMerge,
@@ -32,6 +34,7 @@ export function useMagicCommands({
     handleSaveContext,
     handleLoadContext,
     handleCommit,
+    handleCommitAndPush,
     handleOpenPr,
     handleReview,
     handleMerge,
@@ -46,6 +49,7 @@ export function useMagicCommands({
       handleSaveContext,
       handleLoadContext,
       handleCommit,
+      handleCommitAndPush,
       handleOpenPr,
       handleReview,
       handleMerge,
@@ -67,6 +71,9 @@ export function useMagicCommands({
           break
         case 'commit':
           handlers.handleCommit()
+          break
+        case 'commit-and-push':
+          handlers.handleCommitAndPush()
           break
         case 'open-pr':
           handlers.handleOpenPr()

@@ -24,6 +24,7 @@ type MagicOption =
   | 'save-context'
   | 'load-context'
   | 'commit'
+  | 'commit-and-push'
   | 'open-pr'
   | 'review'
   | 'merge'
@@ -58,8 +59,9 @@ const MAGIC_SECTIONS: MagicSection[] = [
   {
     header: 'Git',
     options: [
-      { id: 'commit', label: 'Commit & Push', icon: GitCommitHorizontal, key: 'C' },
-      { id: 'open-pr', label: 'Open PR', icon: GitPullRequest, key: 'P' },
+      { id: 'commit', label: 'Commit', icon: GitCommitHorizontal, key: 'C' },
+      { id: 'commit-and-push', label: 'Commit & Push', icon: GitCommitHorizontal, key: 'P' },
+      { id: 'open-pr', label: 'Open PR', icon: GitPullRequest, key: 'O' },
       { id: 'review', label: 'Review', icon: Eye, key: 'R' },
       { id: 'merge', label: 'Merge to Base', icon: GitMerge, key: 'M' },
       { id: 'investigate-issue', label: 'Investigate Issue', icon: Search, key: 'I' },
@@ -73,7 +75,8 @@ const KEY_TO_OPTION: Record<string, MagicOption> = {
   s: 'save-context',
   l: 'load-context',
   c: 'commit',
-  p: 'open-pr',
+  p: 'commit-and-push',
+  o: 'open-pr',
   r: 'review',
   m: 'merge',
   i: 'investigate-issue',

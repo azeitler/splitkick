@@ -3510,6 +3510,7 @@ pub async fn create_commit_with_ai(
     app: AppHandle,
     worktree_path: String,
     custom_prompt: Option<String>,
+    push: bool,
 ) -> Result<CreateCommitResponse, String> {
     log::trace!("Creating commit for: {worktree_path}");
 
@@ -3558,18 +3559,11 @@ pub async fn create_commit_with_ai(
 
     log::trace!("Created commit: {commit_hash}");
 
-    // 8. Push if remote exists
-    let pushed = if !remote_info.trim().is_empty() {
-        match push_to_remote(&worktree_path) {
-            Ok(()) => {
-                log::trace!("Pushed to remote");
-                true
-            }
-            Err(e) => {
-                log::warn!("Failed to push: {e}");
-                false
-            }
-        }
+    // 8. Push if requested
+    let pushed = if push {
+        push_to_remote(&worktree_path)?;
+        log::trace!("Pushed to remote");
+        true
     } else {
         false
     };
