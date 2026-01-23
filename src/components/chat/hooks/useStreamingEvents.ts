@@ -395,9 +395,10 @@ export default function useStreamingEvents({
       // Clear waiting state (in case error occurred while waiting for input)
       setWaitingForInput(session_id, false)
 
-      // Clear executing planning mode
-      const { clearExecutingMode } = useChatStore.getState()
+      // Clear executing planning mode and set reviewing state
+      const { clearExecutingMode, setSessionReviewing } = useChatStore.getState()
       clearExecutingMode(session_id)
+      setSessionReviewing(session_id, true)
 
       // Show error toast with longer duration
       toast.error('Request failed', {
