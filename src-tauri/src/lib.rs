@@ -3,8 +3,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
 use tauri::{AppHandle, Emitter, Manager};
+
+#[cfg(target_os = "macos")]
+use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
 
 mod background_tasks;
 mod chat;
@@ -865,6 +867,7 @@ async fn cleanup_old_recovery_files(app: AppHandle) -> Result<u32, String> {
     Ok(removed_count)
 }
 
+#[cfg(target_os = "macos")]
 // Create the native menu system
 fn create_app_menu(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     log::trace!("Setting up native menu system");
