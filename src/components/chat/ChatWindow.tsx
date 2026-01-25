@@ -1014,27 +1014,8 @@ export function ChatWindow() {
     ]
   )
 
-  // Process queued messages when not sending
-  // This effect runs whenever isSending changes. When isSending becomes false
-  // and there are queued messages, it dequeues and sends the next one.
-  // sendMessageNow immediately sets isSending back to true, preventing re-entry.
-  useEffect(() => {
-    // Skip if currently sending, waiting for questions, or no session
-    if (isSending || hasPendingQuestions || !activeSessionId) return
-
-    const { getQueuedMessages, dequeueMessage } = useChatStore.getState()
-    const queue = getQueuedMessages(activeSessionId)
-
-    if (queue.length > 0) {
-      // Dequeue and send immediately
-      // sendMessageNow calls addSendingSession which sets isSending=true,
-      // preventing this effect from running again until message completes
-      const nextMessage = dequeueMessage(activeSessionId)
-      if (nextMessage) {
-        sendMessageNow(nextMessage)
-      }
-    }
-  }, [isSending, hasPendingQuestions, activeSessionId, sendMessageNow])
+  // Note: Queue processing moved to useQueueProcessor hook in App.tsx
+  // This ensures queued messages execute even when the worktree is unfocused
 
   // Git operations hook - handles commit, PR, review, merge operations
   const {

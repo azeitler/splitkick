@@ -18,6 +18,7 @@ import { useChatStore } from './store/chat-store'
 import { useFontSettings } from './hooks/use-font-settings'
 import { useImmediateSessionStateSave } from './hooks/useImmediateSessionStateSave'
 import { useCliVersionCheck } from './hooks/useCliVersionCheck'
+import { useQueueProcessor } from './hooks/useQueueProcessor'
 import useStreamingEvents from './components/chat/hooks/useStreamingEvents'
 
 function App() {
@@ -34,6 +35,10 @@ function App() {
   // even when ChatWindow is unmounted (e.g., when viewing session board)
   const queryClient = useQueryClient()
   useStreamingEvents({ queryClient })
+
+  // Global queue processor - must be at App level so queued messages execute
+  // even when the worktree is not focused (ChatWindow unmounted)
+  useQueueProcessor()
 
   // Check CLI installation status
   const { data: claudeStatus, isLoading: isClaudeStatusLoading } =
