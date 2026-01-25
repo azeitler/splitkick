@@ -94,6 +94,7 @@ describe('preferences service', () => {
         magic_prompts: DEFAULT_MAGIC_PROMPTS,
         file_edit_mode: 'external',
         ai_language: '',
+        allow_web_tools_in_plan_mode: true,
       }
       vi.mocked(invoke).mockResolvedValueOnce(mockPreferences)
 
@@ -166,6 +167,7 @@ describe('preferences service', () => {
         magic_prompts: DEFAULT_MAGIC_PROMPTS,
         file_edit_mode: 'external',
         ai_language: '',
+        allow_web_tools_in_plan_mode: true,
       }
       vi.mocked(invoke).mockResolvedValueOnce(prefsWithOldBinding)
 
@@ -213,6 +215,7 @@ describe('preferences service', () => {
         magic_prompts: DEFAULT_MAGIC_PROMPTS,
         file_edit_mode: 'external',
         ai_language: '',
+        allow_web_tools_in_plan_mode: true,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -258,6 +261,7 @@ describe('preferences service', () => {
         magic_prompts: DEFAULT_MAGIC_PROMPTS,
         file_edit_mode: 'external',
         ai_language: '',
+        allow_web_tools_in_plan_mode: true,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -303,6 +307,7 @@ describe('preferences service', () => {
         magic_prompts: DEFAULT_MAGIC_PROMPTS,
         file_edit_mode: 'external',
         ai_language: '',
+        allow_web_tools_in_plan_mode: true,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -348,6 +353,7 @@ describe('preferences service', () => {
         magic_prompts: DEFAULT_MAGIC_PROMPTS,
         file_edit_mode: 'external',
         ai_language: '',
+        allow_web_tools_in_plan_mode: true,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {

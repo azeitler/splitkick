@@ -213,6 +213,7 @@ export interface AppPreferences {
   magic_prompts: MagicPrompts // Customizable prompts for AI-powered features
   file_edit_mode: FileEditMode // How to edit files: inline (CodeMirror) or external (VS Code, etc.)
   ai_language: string // Preferred language for AI responses (empty = default)
+  allow_web_tools_in_plan_mode: boolean // Allow WebFetch/WebSearch in plan mode without prompts
 }
 
 export type FileEditMode = 'inline' | 'external'
@@ -403,4 +404,5 @@ export const defaultPreferences: AppPreferences = {
   magic_prompts: DEFAULT_MAGIC_PROMPTS,
   file_edit_mode: 'external',
   ai_language: '', // Default: empty (Claude's default behavior)
+  allow_web_tools_in_plan_mode: true, // Default: enabled
 }

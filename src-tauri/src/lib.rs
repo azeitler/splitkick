@@ -120,6 +120,8 @@ pub struct AppPreferences {
     pub file_edit_mode: String, // How to edit files: inline (CodeMirror) or external (VS Code, etc.)
     #[serde(default)]
     pub ai_language: String, // Preferred language for AI responses (empty = default)
+    #[serde(default = "default_allow_web_tools_in_plan_mode")]
+    pub allow_web_tools_in_plan_mode: bool, // Allow WebFetch/WebSearch in plan mode without prompts
 }
 
 fn default_auto_branch_naming() -> bool {
@@ -216,6 +218,10 @@ fn default_session_recap_enabled() -> bool {
 
 fn default_parallel_execution_prompt_enabled() -> bool {
     false // Disabled by default (experimental)
+}
+
+fn default_allow_web_tools_in_plan_mode() -> bool {
+    true // Enabled by default
 }
 
 // =============================================================================
@@ -442,6 +448,7 @@ impl Default for AppPreferences {
             magic_prompts: MagicPrompts::default(),
             file_edit_mode: default_file_edit_mode(),
             ai_language: String::new(),
+            allow_web_tools_in_plan_mode: default_allow_web_tools_in_plan_mode(),
         }
     }
 }

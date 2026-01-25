@@ -483,6 +483,23 @@ export const GeneralPane: React.FC = () => {
             />
           </InlineField>
 
+          <InlineField
+            label="Allow web tools in plan mode"
+            description="Auto-approve WebFetch/WebSearch without prompts"
+          >
+            <Switch
+              checked={preferences?.allow_web_tools_in_plan_mode ?? true}
+              onCheckedChange={checked => {
+                if (preferences) {
+                  savePreferences.mutate({
+                    ...preferences,
+                    allow_web_tools_in_plan_mode: checked,
+                  })
+                }
+              }}
+            />
+          </InlineField>
+
           <InlineField label="Editor" description="App to open worktrees in">
             <Select
               value={preferences?.editor ?? 'vscode'}

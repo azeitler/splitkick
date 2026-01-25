@@ -809,10 +809,19 @@ export function ChatWindow() {
 
       // Get session-approved tools to include
       const sessionApprovedTools = getApprovedTools(activeSessionId)
+
+      // Build base allowed tools (git always, web tools if enabled)
+      const webTools = preferences?.allow_web_tools_in_plan_mode
+        ? ['WebFetch', 'WebSearch']
+        : []
+      const baseAllowedTools = [...GIT_ALLOWED_TOOLS, ...webTools]
+
       const allowedTools =
         sessionApprovedTools.length > 0
-          ? [...GIT_ALLOWED_TOOLS, ...sessionApprovedTools]
-          : undefined
+          ? [...baseAllowedTools, ...sessionApprovedTools]
+          : baseAllowedTools.length > GIT_ALLOWED_TOOLS.length
+            ? baseAllowedTools
+            : undefined
 
       // Build full message with attachment refs for backend
       const fullMessage = buildMessageWithRefs(queuedMsg)
@@ -839,7 +848,7 @@ export function ChatWindow() {
         }
       )
     },
-    [activeSessionId, activeWorktreeId, activeWorktreePath, buildMessageWithRefs, sendMessage, preferences?.parallel_execution_prompt_enabled, preferences?.ai_language]
+    [activeSessionId, activeWorktreeId, activeWorktreePath, buildMessageWithRefs, sendMessage, preferences?.parallel_execution_prompt_enabled, preferences?.ai_language, preferences?.allow_web_tools_in_plan_mode]
   )
 
   // GitDiffModal handlers - extracted for performance (prevents child re-renders)
