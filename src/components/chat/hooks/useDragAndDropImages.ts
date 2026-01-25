@@ -49,7 +49,7 @@ export function useDragAndDropImages(
         setIsDragging(false)
 
         if (!sessionId) {
-          toast.error('Aucune session active')
+          toast.error('No active session')
           return
         }
 
@@ -60,8 +60,8 @@ export function useDragAndDropImages(
         })
 
         if (imagePaths.length === 0) {
-          toast.error('Aucune image détectée', {
-            description: 'Seuls les fichiers PNG, JPEG, GIF, WebP sont acceptés',
+          toast.error('No image detected', {
+            description: 'Only PNG, JPEG, GIF, WebP files are accepted',
           })
           return
         }
@@ -74,8 +74,8 @@ export function useDragAndDropImages(
         // Notify if some files were skipped
         const skippedCount = paths.length - imagePaths.length
         if (skippedCount > 0) {
-          toast.warning(`${skippedCount} fichier(s) ignoré(s)`, {
-            description: 'Seules les images sont acceptées',
+          toast.warning(`${skippedCount} file(s) skipped`, {
+            description: 'Only images are accepted',
           })
         }
       } else if (event.payload.type === 'leave') {
@@ -116,15 +116,15 @@ async function processDroppedImage(
     // Parse error message for user-friendly display
     const errorStr = String(error)
     if (errorStr.includes('too large')) {
-      toast.error('Image trop grande', {
-        description: `Taille maximum: ${MAX_IMAGE_SIZE / 1024 / 1024}MB`,
+      toast.error('Image too large', {
+        description: `Maximum size: ${MAX_IMAGE_SIZE / 1024 / 1024}MB`,
       })
     } else if (errorStr.includes('Invalid image type')) {
-      toast.error('Type d\'image non supporté', {
-        description: 'Types acceptés: PNG, JPEG, GIF, WebP',
+      toast.error('Unsupported image type', {
+        description: 'Accepted types: PNG, JPEG, GIF, WebP',
       })
     } else {
-      toast.error('Échec de la sauvegarde', {
+      toast.error('Failed to save image', {
         description: errorStr,
       })
     }
