@@ -112,6 +112,8 @@ pub struct AppPreferences {
     pub disable_thinking_in_non_plan_modes: bool, // Disable thinking in build/yolo modes (only plan uses thinking)
     #[serde(default = "default_session_recap_enabled")]
     pub session_recap_enabled: bool, // Show session recap when returning to unfocused sessions
+    #[serde(default = "default_session_recap_model")]
+    pub session_recap_model: String, // Model for generating session recaps: haiku, sonnet, opus
     #[serde(default = "default_parallel_execution_prompt_enabled")]
     pub parallel_execution_prompt_enabled: bool, // Add system prompt to encourage parallel sub-agent execution
     #[serde(default)]
@@ -214,6 +216,10 @@ fn default_disable_thinking_in_non_plan_modes() -> bool {
 
 fn default_session_recap_enabled() -> bool {
     false // Disabled by default (experimental)
+}
+
+fn default_session_recap_model() -> String {
+    "haiku".to_string() // Use Haiku by default for fast, cheap session recap generation
 }
 
 fn default_parallel_execution_prompt_enabled() -> bool {
@@ -444,6 +450,7 @@ impl Default for AppPreferences {
             syntax_theme_light: default_syntax_theme_light(),
             disable_thinking_in_non_plan_modes: default_disable_thinking_in_non_plan_modes(),
             session_recap_enabled: default_session_recap_enabled(),
+            session_recap_model: default_session_recap_model(),
             parallel_execution_prompt_enabled: default_parallel_execution_prompt_enabled(),
             magic_prompts: MagicPrompts::default(),
             file_edit_mode: default_file_edit_mode(),

@@ -1,8 +1,16 @@
 import React from 'react'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { usePreferences, useSavePreferences } from '@/services/preferences'
+import { modelOptions, type ClaudeModel } from '@/types/preferences'
 
 const SettingsSection: React.FC<{
   title: string
@@ -81,6 +89,36 @@ export const ExperimentalPane: React.FC = () => {
               }}
             />
           </InlineField>
+
+          {preferences?.session_recap_enabled && (
+            <InlineField
+              label="Recap model"
+              description="Claude model for generating session summaries"
+            >
+              <Select
+                value={preferences?.session_recap_model ?? 'haiku'}
+                onValueChange={(value: ClaudeModel) => {
+                  if (preferences) {
+                    savePreferences.mutate({
+                      ...preferences,
+                      session_recap_model: value,
+                    })
+                  }
+                }}
+              >
+                <SelectTrigger className="w-40">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {modelOptions.map(option => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </InlineField>
+          )}
         </div>
       </SettingsSection>
     </div>
