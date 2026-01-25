@@ -1073,14 +1073,19 @@ pub fn run() {
                 }
             }
 
-            // Set up native menu system
-            if let Err(e) = create_app_menu(app) {
-                log::error!("Failed to create app menu: {e}");
-                return Err(e);
+            #[cfg(target_os = "macos")]
+            {
+                log::trace!("Creating macOS app menu");
+                if let Err(e) = create_app_menu(app) {
+                    log::error!("Failed to create app menu: {e}");
+                    return Err(e);
+                }
             }
 
-            // Set up menu event handlers
-            app.on_menu_event(move |app, event| {
+            #[cfg(target_os = "macos")]
+            {
+                // Set up menu event handlers
+                app.on_menu_event(move |app, event| {
                 log::trace!("Menu event received: {:?}", event.id());
 
                 match event.id().as_ref() {
@@ -1149,6 +1154,7 @@ pub fn run() {
                     }
                 }
             });
+            }
 
             // Initialize background task manager
             let task_manager = background_tasks::BackgroundTaskManager::new(app.handle().clone());
