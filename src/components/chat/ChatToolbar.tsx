@@ -1,6 +1,7 @@
 import { memo, useCallback, useState } from 'react'
 import { toast } from 'sonner'
 import { gitPull, gitPush, triggerImmediateGitPoll } from '@/services/git-status'
+import { useChatStore } from '@/store/chat-store'
 import {
   ArrowDown,
   ArrowUp,
@@ -81,11 +82,11 @@ const THINKING_LEVEL_OPTIONS: {
   label: string
   tokens: string
 }[] = [
-  { value: 'off', label: 'Off', tokens: 'Disabled' },
-  { value: 'think', label: 'Think', tokens: '4K' },
-  { value: 'megathink', label: 'Megathink', tokens: '10K' },
-  { value: 'ultrathink', label: 'Ultrathink', tokens: '32K' },
-]
+    { value: 'off', label: 'Off', tokens: 'Disabled' },
+    { value: 'think', label: 'Think', tokens: '4K' },
+    { value: 'megathink', label: 'Megathink', tokens: '10K' },
+    { value: 'ultrathink', label: 'Ultrathink', tokens: '32K' },
+  ]
 
 /** Get display label and color for PR status */
 function getPrStatusDisplay(status: PrDisplayStatus): {
@@ -257,8 +258,10 @@ export const ChatToolbar = memo(function ChatToolbar({
 
   const [isPulling, setIsPulling] = useState(false)
   const handlePullClick = useCallback(async () => {
-    if (!activeWorktreePath) return
+    if (!activeWorktreePath || !worktreeId) return
     setIsPulling(true)
+    const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
+    setWorktreeLoading(worktreeId, 'pull')
     const toastId = toast.loading('Pulling changes...')
     try {
       await gitPull(activeWorktreePath, baseBranch)
@@ -268,6 +271,7 @@ export const ChatToolbar = memo(function ChatToolbar({
       toast.error(`Pull failed: ${error}`, { id: toastId })
     } finally {
       setIsPulling(false)
+      clearWorktreeLoading(worktreeId)
     }
   }, [activeWorktreePath, baseBranch])
 
@@ -285,7 +289,7 @@ export const ChatToolbar = memo(function ChatToolbar({
     } finally {
       setIsPushing(false)
     }
-  }, [activeWorktreePath])
+  }, [activeWorktreePath, baseBranch, worktreeId])
 
   const handleUncommittedDiffClick = useCallback(() => {
     onSetDiffRequest({
@@ -540,8 +544,8 @@ export const ChatToolbar = memo(function ChatToolbar({
                   {thinkingOverrideActive
                     ? 'Off'
                     : THINKING_LEVEL_OPTIONS.find(
-                        o => o.value === selectedThinkingLevel
-                      )?.label}
+                      o => o.value === selectedThinkingLevel
+                    )?.label}
                 </span>
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
@@ -857,8 +861,8 @@ export const ChatToolbar = memo(function ChatToolbar({
               className={cn(
                 'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
                 selectedThinkingLevel !== 'off' &&
-                  !thinkingOverrideActive &&
-                  'rounded border border-dashed border-purple-500 bg-purple-500/10 text-purple-700 dark:border-purple-400/60 dark:bg-purple-500/10 dark:text-purple-400'
+                !thinkingOverrideActive &&
+                'rounded border border-dashed border-purple-500 bg-purple-500/10 text-purple-700 dark:border-purple-400/60 dark:bg-purple-500/10 dark:text-purple-400'
               )}
               title={
                 thinkingOverrideActive
@@ -871,8 +875,8 @@ export const ChatToolbar = memo(function ChatToolbar({
                 {thinkingOverrideActive
                   ? 'Off'
                   : THINKING_LEVEL_OPTIONS.find(
-                      o => o.value === selectedThinkingLevel
-                    )?.label}
+                    o => o.value === selectedThinkingLevel
+                  )?.label}
               </span>
               <ChevronDown className="h-3 w-3 opacity-50" />
             </button>
@@ -907,9 +911,9 @@ export const ChatToolbar = memo(function ChatToolbar({
               className={cn(
                 'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
                 executionMode === 'plan' &&
-                  'rounded border border-dashed border-yellow-600 bg-yellow-500/10 text-yellow-700 dark:border-yellow-500/60 dark:bg-yellow-500/10 dark:text-yellow-400',
+                'rounded border border-dashed border-yellow-600 bg-yellow-500/10 text-yellow-700 dark:border-yellow-500/60 dark:bg-yellow-500/10 dark:text-yellow-400',
                 executionMode === 'yolo' &&
-                  'rounded border border-dashed border-red-500 bg-red-500/10 text-red-600 dark:text-red-400'
+                'rounded border border-dashed border-red-500 bg-red-500/10 text-red-600 dark:text-red-400'
               )}
               title={`${executionMode.charAt(0).toUpperCase() + executionMode.slice(1)} mode (Shift+Tab to cycle)`}
             >
