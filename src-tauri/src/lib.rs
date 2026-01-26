@@ -1167,6 +1167,7 @@ pub fn run() {
             projects::get_worktree,
             projects::create_worktree,
             projects::create_worktree_from_existing_branch,
+            projects::checkout_pr,
             projects::delete_worktree,
             projects::create_base_session,
             projects::close_base_session,

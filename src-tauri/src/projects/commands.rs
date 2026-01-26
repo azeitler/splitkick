@@ -14,7 +14,7 @@ use super::git::get_repo_identifier;
 use super::github_issues::{
     add_issue_reference, add_pr_reference, format_issue_context_markdown,
     format_pr_context_markdown, generate_branch_name_from_issue, generate_branch_name_from_pr,
-    get_github_contexts_dir, get_pr_diff, IssueContext, PullRequestContext,
+    get_github_contexts_dir, get_github_pr, get_pr_diff, IssueContext, PullRequestContext,
 };
 use super::names::generate_unique_workspace_name;
 use super::storage::{get_project_worktrees_dir, load_projects_data, save_projects_data};
@@ -1138,6 +1138,325 @@ pub async fn create_worktree_from_existing_branch(
     });
 
     log::trace!("Returning pending worktree: {}", pending_worktree.name);
+    Ok(pending_worktree)
+}
+
+/// Checkout a GitHub PR to a new worktree
+///
+/// This command:
+/// 1. Fetches PR details from GitHub
+/// 2. Fetches the PR branch using GitHub's magic refs (works for forks)
+/// 3. Creates a worktree using the fetched branch
+/// 4. Writes PR context file for reference
+///
+/// Events emitted:
+/// - `worktree:creating` - Emitted immediately with worktree ID and info
+/// - `worktree:created` - Emitted when worktree is ready
+/// - `worktree:error` - Emitted if any step fails
+#[tauri::command]
+pub async fn checkout_pr(
+    app: AppHandle,
+    project_id: String,
+    pr_number: u32,
+) -> Result<Worktree, String> {
+    log::trace!("Checking out PR #{pr_number} for project: {project_id}");
+
+    let data = load_projects_data(&app)?;
+
+    let project = data
+        .find_project(&project_id)
+        .ok_or_else(|| format!("Project not found: {project_id}"))?
+        .clone();
+
+    // Fetch PR details from GitHub (for context and worktree naming)
+    let pr_detail = get_github_pr(project.path.clone(), pr_number).await?;
+
+    // Get valid base branch for creating the worktree
+    let base_branch = git::get_valid_base_branch(&project.path, &project.default_branch)?;
+
+    // Generate worktree name from PR (for the directory/worktree name, not the branch)
+    let worktree_name = generate_branch_name_from_pr(pr_number, &pr_detail.title);
+
+    // Check if worktree name already exists, add suffix if needed
+    let final_worktree_name = if data.worktree_name_exists(&project_id, &worktree_name) {
+        let mut counter = 2;
+        loop {
+            let candidate = format!("{worktree_name}-{counter}");
+            if !data.worktree_name_exists(&project_id, &candidate) {
+                break candidate;
+            }
+            counter += 1;
+        }
+    } else {
+        worktree_name
+    };
+
+    // Generate a temporary branch name for worktree creation
+    // This will be replaced by the actual PR branch after gh pr checkout
+    let temp_branch_name = format!("pr-{pr_number}-temp-{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap_or("xxxx"));
+
+    // Build worktree path: ~/jean/<project-name>/<workspace-name>
+    let project_worktrees_dir = get_project_worktrees_dir(&project.name)?;
+    let worktree_path = project_worktrees_dir.join(&final_worktree_name);
+    let worktree_path_str = worktree_path
+        .to_str()
+        .ok_or_else(|| "Invalid worktree path".to_string())?
+        .to_string();
+
+    // Generate ID upfront so we can track this worktree
+    let worktree_id = Uuid::new_v4().to_string();
+    let created_at = now();
+
+    // Emit creating event immediately (branch will be updated after gh pr checkout)
+    let creating_event = WorktreeCreatingEvent {
+        id: worktree_id.clone(),
+        project_id: project_id.clone(),
+        name: final_worktree_name.clone(),
+        path: worktree_path_str.clone(),
+        branch: pr_detail.head_ref_name.clone(), // Use PR's actual branch name
+    };
+    if let Err(e) = app.emit("worktree:creating", &creating_event) {
+        log::error!("Failed to emit worktree:creating event: {e}");
+    }
+
+    // Create a pending worktree record to return immediately
+    // Note: branch will be updated to actual PR branch after gh pr checkout
+    let pending_worktree = Worktree {
+        id: worktree_id.clone(),
+        project_id: project_id.clone(),
+        name: final_worktree_name.clone(),
+        path: worktree_path_str.clone(),
+        branch: pr_detail.head_ref_name.clone(), // Use PR's actual branch name
+        created_at,
+        setup_output: None,
+        setup_script: None,
+        session_type: SessionType::Worktree,
+        pr_number: Some(pr_number),
+        pr_url: None,
+        cached_pr_status: None,
+        cached_check_status: None,
+        cached_behind_count: None,
+        cached_ahead_count: None,
+        cached_status_at: None,
+        cached_uncommitted_added: None,
+        cached_uncommitted_removed: None,
+        cached_branch_diff_added: None,
+        cached_branch_diff_removed: None,
+        cached_base_branch_ahead_count: None,
+        cached_base_branch_behind_count: None,
+        cached_worktree_ahead_count: None,
+        order: 0, // Will be updated in background thread
+        archived_at: None,
+    };
+
+    // Clone values for background thread
+    let app_clone = app.clone();
+    let project_path = project.path.clone();
+    let worktree_id_clone = worktree_id.clone();
+    let project_id_clone = project_id.clone();
+    let worktree_path_clone = worktree_path_str.clone();
+    let worktree_name_clone = final_worktree_name.clone();
+    let temp_branch_clone = temp_branch_name.clone();
+    let base_branch_clone = base_branch.clone();
+    let pr_title = pr_detail.title.clone();
+    let pr_body = pr_detail.body.clone();
+    let pr_head_ref = pr_detail.head_ref_name.clone();
+    let pr_base_ref = pr_detail.base_ref_name.clone();
+    let pr_comments = pr_detail.comments.clone();
+    let pr_reviews = pr_detail.reviews.clone();
+
+    // Do the heavy lifting in a background thread
+    thread::spawn(move || {
+        log::trace!("Background: Creating worktree for PR #{pr_number}");
+
+        // Step 1: Create worktree with a temporary branch based on base branch
+        // This gives us a working directory where we can run gh pr checkout
+        if let Err(e) = git::create_worktree(
+            &project_path,
+            &worktree_path_clone,
+            &temp_branch_clone,
+            &base_branch_clone,
+        ) {
+            log::error!("Background: Failed to create worktree: {e}");
+            let error_event = WorktreeCreateErrorEvent {
+                id: worktree_id_clone,
+                project_id: project_id_clone,
+                error: e,
+            };
+            if let Err(emit_err) = app_clone.emit("worktree:error", &error_event) {
+                log::error!("Failed to emit worktree:error event: {emit_err}");
+            }
+            return;
+        }
+
+        log::trace!("Background: Worktree created, now running gh pr checkout {pr_number}");
+
+        // Step 2: Run gh pr checkout inside the worktree
+        // This checks out the actual PR branch and sets up tracking
+        let actual_branch = match git::gh_pr_checkout(&worktree_path_clone, pr_number) {
+            Ok(branch) => {
+                log::trace!("Background: gh pr checkout succeeded, branch: {branch}");
+                branch
+            }
+            Err(e) => {
+                log::error!("Background: Failed to checkout PR: {e}");
+                // Clean up the worktree we created
+                let _ = git::remove_worktree(&project_path, &worktree_path_clone);
+                let _ = git::delete_branch(&project_path, &temp_branch_clone);
+                let error_event = WorktreeCreateErrorEvent {
+                    id: worktree_id_clone,
+                    project_id: project_id_clone,
+                    error: e,
+                };
+                if let Err(emit_err) = app_clone.emit("worktree:error", &error_event) {
+                    log::error!("Failed to emit worktree:error event: {emit_err}");
+                }
+                return;
+            }
+        };
+
+        // Step 3: Delete the temporary branch (it's no longer needed)
+        // The worktree is now on the actual PR branch
+        if let Err(e) = git::delete_branch(&project_path, &temp_branch_clone) {
+            log::warn!("Background: Failed to delete temp branch {temp_branch_clone}: {e}");
+            // Not fatal, continue anyway
+        }
+
+        log::trace!("Background: Git worktree ready with PR #{pr_number} on branch {actual_branch}");
+
+        // Write PR context file to shared git-context directory
+        if let Ok(repo_id) = get_repo_identifier(&project_path) {
+            let repo_key = repo_id.to_key();
+            if let Ok(contexts_dir) = get_github_contexts_dir(&app_clone) {
+                if let Err(e) = std::fs::create_dir_all(&contexts_dir) {
+                    log::warn!("Background: Failed to create git-context directory: {e}");
+                } else {
+                    // Create PR context
+                    let pr_context = PullRequestContext {
+                        number: pr_number,
+                        title: pr_title.clone(),
+                        body: pr_body,
+                        head_ref_name: pr_head_ref,
+                        base_ref_name: pr_base_ref,
+                        comments: pr_comments
+                            .into_iter()
+                            .map(|c| super::github_issues::GitHubComment {
+                                body: c.body,
+                                author: super::github_issues::GitHubAuthor {
+                                    login: c.author.login,
+                                },
+                                created_at: c.created_at,
+                            })
+                            .collect(),
+                        reviews: pr_reviews
+                            .into_iter()
+                            .map(|r| super::github_issues::GitHubReview {
+                                body: r.body,
+                                state: r.state,
+                                author: super::github_issues::GitHubAuthor {
+                                    login: r.author.login,
+                                },
+                                submitted_at: r.submitted_at,
+                            })
+                            .collect(),
+                        diff: get_pr_diff(&project_path, pr_number).ok(),
+                    };
+
+                    let context_file = contexts_dir.join(format!("{repo_key}-pr-{pr_number}.md"));
+                    let context_content = format_pr_context_markdown(&pr_context);
+                    if let Err(e) = std::fs::write(&context_file, context_content) {
+                        log::warn!("Background: Failed to write PR context file: {e}");
+                    } else {
+                        // Add reference for this worktree
+                        if let Err(e) =
+                            add_pr_reference(&app_clone, &repo_key, pr_number, &worktree_id_clone)
+                        {
+                            log::warn!("Background: Failed to add PR reference: {e}");
+                        }
+                        log::trace!("Background: PR context file written to {:?}", context_file);
+                    }
+                }
+            }
+        }
+
+        // Save to storage
+        if let Ok(mut data) = load_projects_data(&app_clone) {
+            // Get max order for worktrees in this project
+            let max_order = data
+                .worktrees
+                .iter()
+                .filter(|w| w.project_id == project_id_clone)
+                .map(|w| w.order)
+                .max()
+                .unwrap_or(0);
+
+            // Create the final worktree record with the actual PR branch name
+            let worktree = Worktree {
+                id: worktree_id_clone.clone(),
+                project_id: project_id_clone.clone(),
+                name: worktree_name_clone.clone(),
+                path: worktree_path_clone.clone(),
+                branch: actual_branch.clone(),
+                created_at,
+                setup_output: None,
+                setup_script: None,
+                session_type: SessionType::Worktree,
+                pr_number: Some(pr_number),
+                pr_url: None,
+                cached_pr_status: None,
+                cached_check_status: None,
+                cached_behind_count: None,
+                cached_ahead_count: None,
+                cached_status_at: None,
+                cached_uncommitted_added: None,
+                cached_uncommitted_removed: None,
+                cached_branch_diff_added: None,
+                cached_branch_diff_removed: None,
+                cached_base_branch_ahead_count: None,
+                cached_base_branch_behind_count: None,
+                cached_worktree_ahead_count: None,
+                order: max_order + 1,
+                archived_at: None,
+            };
+
+            data.add_worktree(worktree.clone());
+            if let Err(e) = save_projects_data(&app_clone, &data) {
+                log::error!("Background: Failed to save worktree data: {e}");
+                let error_event = WorktreeCreateErrorEvent {
+                    id: worktree_id_clone,
+                    project_id: project_id_clone,
+                    error: format!("Failed to save worktree: {e}"),
+                };
+                if let Err(emit_err) = app_clone.emit("worktree:error", &error_event) {
+                    log::error!("Failed to emit worktree:error event: {emit_err}");
+                }
+                return;
+            }
+
+            // Emit success event
+            log::trace!(
+                "Background: Worktree created successfully for PR #{}: {}",
+                pr_number,
+                worktree.name
+            );
+            let created_event = WorktreeCreatedEvent { worktree };
+            if let Err(e) = app_clone.emit("worktree:created", &created_event) {
+                log::error!("Failed to emit worktree:created event: {e}");
+            }
+        } else {
+            log::error!("Background: Failed to load projects data for saving");
+            let error_event = WorktreeCreateErrorEvent {
+                id: worktree_id_clone,
+                project_id: project_id_clone,
+                error: "Failed to load projects data".to_string(),
+            };
+            if let Err(emit_err) = app_clone.emit("worktree:error", &error_event) {
+                log::error!("Failed to emit worktree:error event: {emit_err}");
+            }
+        }
+    });
+
+    log::trace!("Returning pending worktree for PR #{}: {}", pr_number, pending_worktree.name);
     Ok(pending_worktree)
 }
 

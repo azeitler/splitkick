@@ -537,9 +537,12 @@ export function useWorktreeEvents() {
           }
         )
 
-        // Set as active worktree for chat
+        // Select worktree in sidebar and set as active for chat
+        const { expandProject, selectWorktree } = useProjectsStore.getState()
         const { setActiveWorktree, addSetupScriptResult } =
           useChatStore.getState()
+        expandProject(worktree.project_id)
+        selectWorktree(worktree.id)
         setActiveWorktree(worktree.id, worktree.path)
 
         // Add setup script output to chat store if present
