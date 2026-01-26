@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { useClaudeCliStatus, useClaudeCliAuth, claudeCliQueryKeys } from '@/services/claude-cli'
 import { useGhCliStatus, useGhCliAuth, ghCliQueryKeys } from '@/services/gh-cli'
 import { useUIStore } from '@/store/ui-store'
@@ -457,6 +458,25 @@ export const GeneralPane: React.FC = () => {
                   savePreferences.mutate({
                     ...preferences,
                     disable_thinking_in_non_plan_modes: checked,
+                  })
+                }
+              }}
+            />
+          </InlineField>
+
+          <InlineField
+            label="AI Language"
+            description="Language for AI responses (e.g. French, 日本語)"
+          >
+            <Input
+              className="w-40"
+              placeholder="Default"
+              value={preferences?.ai_language ?? ''}
+              onChange={e => {
+                if (preferences) {
+                  savePreferences.mutate({
+                    ...preferences,
+                    ai_language: e.target.value,
                   })
                 }
               }}

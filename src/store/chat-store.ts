@@ -163,6 +163,9 @@ interface ChatUIState {
   // Generated session digests (cached until dismissed)
   sessionDigests: Record<string, SessionDigest>
 
+  // Worktree loading operations (commit, pr, review, merge, pull)
+  worktreeLoadingOperations: Record<string, string | null>
+
   // Actions - Session management
   setActiveSession: (worktreeId: string, sessionId: string) => void
   getActiveSession: (worktreeId: string) => string | undefined
@@ -375,6 +378,11 @@ interface ChatUIState {
   hasPendingDigest: (sessionId: string) => boolean
   getSessionDigest: (sessionId: string) => SessionDigest | undefined
 
+  // Actions - Worktree loading operations (commit, pr, review, merge, pull)
+  setWorktreeLoading: (worktreeId: string, operation: string) => void
+  clearWorktreeLoading: (worktreeId: string) => void
+  getWorktreeLoadingOperation: (worktreeId: string) => string | null
+
   // Legacy actions (deprecated - for backward compatibility)
   /** @deprecated Use addSendingSession instead */
   addSendingWorktree: (worktreeId: string) => void
@@ -428,6 +436,7 @@ export const useChatStore = create<ChatUIState>()(
       skippedQuestionSessions: {},
       pendingDigestSessionIds: {},
       sessionDigests: {},
+      worktreeLoadingOperations: {},
 
       // Session management
       setActiveSession: (worktreeId, sessionId) =>
@@ -1596,6 +1605,32 @@ export const useChatStore = create<ChatUIState>()(
         get().pendingDigestSessionIds[sessionId] ?? false,
 
       getSessionDigest: sessionId => get().sessionDigests[sessionId],
+
+      // Worktree loading operations (commit, pr, review, merge, pull)
+      setWorktreeLoading: (worktreeId, operation) =>
+        set(
+          state => ({
+            worktreeLoadingOperations: {
+              ...state.worktreeLoadingOperations,
+              [worktreeId]: operation,
+            },
+          }),
+          undefined,
+          'setWorktreeLoading'
+        ),
+
+      clearWorktreeLoading: worktreeId =>
+        set(
+          state => {
+            const { [worktreeId]: _, ...rest } = state.worktreeLoadingOperations
+            return { worktreeLoadingOperations: rest }
+          },
+          undefined,
+          'clearWorktreeLoading'
+        ),
+
+      getWorktreeLoadingOperation: worktreeId =>
+        get().worktreeLoadingOperations[worktreeId] ?? null,
 
       // Legacy actions (deprecated - for backward compatibility)
       addSendingWorktree: worktreeId => {

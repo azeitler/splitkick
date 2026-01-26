@@ -49,6 +49,10 @@ export function WorktreeItem({
     state => state.waitingForInputSessionIds
   )
   const reviewingSessions = useChatStore(state => state.reviewingSessions)
+  // Check if worktree has a loading operation (commit, pr, review, merge, pull)
+  const loadingOperation = useChatStore(
+    state => state.worktreeLoadingOperations[worktree.id] ?? null
+  )
   const isSelected = selectedWorktreeId === worktree.id
   const isBase = isBaseSession(worktree)
 
@@ -320,6 +324,8 @@ export function WorktreeItem({
   const handlePull = useCallback(
     async (e: React.MouseEvent) => {
       e.stopPropagation()
+      const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
+      setWorktreeLoading(worktree.id, 'pull')
       const toastId = toast.loading('Pulling changes...')
       try {
         await gitPull(worktree.path, defaultBranch)
@@ -327,6 +333,8 @@ export function WorktreeItem({
         toast.success('Changes pulled', { id: toastId })
       } catch (error) {
         toast.error(`Pull failed: ${error}`, { id: toastId })
+      } finally {
+        clearWorktreeLoading(worktree.id)
       }
     },
     [worktree.path, defaultBranch]
@@ -344,7 +352,7 @@ export function WorktreeItem({
         toast.error(`Push failed: ${error}`, { id: toastId })
       }
     },
-    [worktree.path]
+    [defaultBranch, worktree.id, worktree.path]
   )
 
   return (
@@ -365,7 +373,7 @@ export function WorktreeItem({
         onDoubleClick={handleDoubleClick}
       >
         {/* Status indicator: circle for base session, square for worktrees */}
-        {/* When running, show spinning border; otherwise show filled shape */}
+        {/* Priority: chat running > loading operation > idle states */}
         {isChatRunning ? (
           <BorderSpinner
             shape={isBase ? 'circle' : 'square'}
@@ -376,6 +384,12 @@ export function WorktreeItem({
             bgClassName={
               runningSessionExecutionMode === 'yolo' ? 'fill-destructive/50' : 'fill-yellow-500/50'
             }
+          />
+        ) : loadingOperation ? (
+          <BorderSpinner
+            shape={isBase ? 'circle' : 'square'}
+            className="h-2 w-2 shadow-[0_0_6px_currentColor] text-cyan-500"
+            bgClassName="fill-cyan-500/50"
           />
         ) : isBase ? (
           <Circle className={cn('h-2 w-2 shrink-0 fill-current rounded-full', indicatorColor)} />

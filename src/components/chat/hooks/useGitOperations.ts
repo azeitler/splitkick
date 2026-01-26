@@ -72,8 +72,10 @@ export function useGitOperations({
 
   // Handle Commit - creates commit with AI-generated message (no push)
   const handleCommit = useCallback(async () => {
-    if (!activeWorktreePath) return
+    if (!activeWorktreePath || !activeWorktreeId) return
 
+    const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
+    setWorktreeLoading(activeWorktreeId, 'commit')
     const toastId = toast.loading('Creating commit...')
 
     try {
@@ -94,13 +96,17 @@ export function useGitOperations({
       })
     } catch (error) {
       toast.error(`Failed to commit: ${error}`, { id: toastId })
+    } finally {
+      clearWorktreeLoading(activeWorktreeId)
     }
-  }, [activeWorktreePath, preferences?.magic_prompts?.commit_message])
+  }, [activeWorktreeId, activeWorktreePath, preferences?.magic_prompts?.commit_message])
 
   // Handle Commit & Push - creates commit with AI-generated message and pushes
   const handleCommitAndPush = useCallback(async () => {
-    if (!activeWorktreePath) return
+    if (!activeWorktreePath || !activeWorktreeId) return
 
+    const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
+    setWorktreeLoading(activeWorktreeId, 'commit')
     const toastId = toast.loading('Committing and pushing...')
 
     try {
@@ -121,13 +127,17 @@ export function useGitOperations({
       })
     } catch (error) {
       toast.error(`Failed: ${error}`, { id: toastId })
+    } finally {
+      clearWorktreeLoading(activeWorktreeId)
     }
-  }, [activeWorktreePath, preferences?.magic_prompts?.commit_message])
+  }, [activeWorktreeId, activeWorktreePath, preferences?.magic_prompts?.commit_message])
 
   // Handle Open PR - creates PR with AI-generated title and description in background
   const handleOpenPr = useCallback(async () => {
     if (!activeWorktreeId || !activeWorktreePath || !worktree) return
 
+    const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
+    setWorktreeLoading(activeWorktreeId, 'pr')
     const toastId = toast.loading('Creating PR...')
 
     try {
@@ -159,6 +169,8 @@ export function useGitOperations({
       })
     } catch (error) {
       toast.error(`Failed to create PR: ${error}`, { id: toastId })
+    } finally {
+      clearWorktreeLoading(activeWorktreeId)
     }
   }, [activeWorktreeId, activeWorktreePath, worktree, queryClient, preferences?.magic_prompts?.pr_content])
 
@@ -166,6 +178,8 @@ export function useGitOperations({
   const handleReview = useCallback(async () => {
     if (!activeWorktreeId || !activeWorktreePath) return
 
+    const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
+    setWorktreeLoading(activeWorktreeId, 'review')
     const toastId = toast.loading('Running AI code review...')
 
     try {
@@ -194,6 +208,8 @@ export function useGitOperations({
       )
     } catch (error) {
       toast.error(`Failed to review: ${error}`, { id: toastId })
+    } finally {
+      clearWorktreeLoading(activeWorktreeId)
     }
   }, [activeWorktreeId, activeWorktreePath, preferences?.magic_prompts?.code_review])
 
@@ -243,6 +259,8 @@ export function useGitOperations({
       setShowMergeDialog(false)
       setPendingMergeWorktree(null)
 
+      const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
+      setWorktreeLoading(activeWorktreeId, 'merge')
       const toastId = toast.loading('Checking for uncommitted changes...')
       const featureBranch = worktreeData.branch
       const projectId = worktreeData.project_id
@@ -361,6 +379,8 @@ Please help me resolve these conflicts. Analyze the diff above, explain what's c
         }
       } catch (error) {
         toast.error(String(error), { id: toastId })
+      } finally {
+        clearWorktreeLoading(activeWorktreeId)
       }
     },
     [activeWorktreeId, pendingMergeWorktree, project, queryClient, inputRef]

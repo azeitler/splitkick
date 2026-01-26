@@ -34,7 +34,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
 # Philosophy
 
-Learn more about our approach: [Philosophy](https://coolify.io/philosophy/)
+Learn more about our approach: [Philosophy](https://coollabs.io/philosophy/)
 
 ---
 
