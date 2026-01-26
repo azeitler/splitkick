@@ -37,6 +37,7 @@ interface SendMessageMutation {
       executionMode?: ExecutionMode
       thinkingLevel?: ThinkingLevel
       allowedTools?: string[]
+      disableThinkingForMode?: boolean
     },
     options?: {
       onSettled?: () => void
@@ -53,6 +54,7 @@ interface UseMessageHandlersParams {
   selectedModelRef: RefObject<string>
   executionModeRef: RefObject<ExecutionMode>
   selectedThinkingLevelRef: RefObject<ThinkingLevel>
+  disableThinkingForModeRef: RefObject<boolean>
   // Actions
   sendMessage: SendMessageMutation
   queryClient: QueryClient
@@ -105,6 +107,7 @@ export function useMessageHandlers({
   selectedModelRef,
   executionModeRef,
   selectedThinkingLevelRef,
+  disableThinkingForModeRef,
   sendMessage,
   queryClient,
   scrollToBottom,
@@ -286,6 +289,7 @@ export function useMessageHandlers({
           model: selectedModelRef.current,
           executionMode: 'build',
           thinkingLevel: selectedThinkingLevelRef.current,
+          disableThinkingForMode: disableThinkingForModeRef.current,
         },
         {
           onSettled: () => {
@@ -300,6 +304,7 @@ export function useMessageHandlers({
       activeWorktreePathRef,
       selectedModelRef,
       selectedThinkingLevelRef,
+      disableThinkingForModeRef,
       sendMessage,
       queryClient,
       inputRef,
@@ -369,6 +374,7 @@ export function useMessageHandlers({
           model: selectedModelRef.current,
           executionMode: 'yolo',
           thinkingLevel: selectedThinkingLevelRef.current,
+          disableThinkingForMode: disableThinkingForModeRef.current,
         },
         {
           onSettled: () => {
@@ -383,6 +389,7 @@ export function useMessageHandlers({
       activeWorktreePathRef,
       selectedModelRef,
       selectedThinkingLevelRef,
+      disableThinkingForModeRef,
       sendMessage,
       queryClient,
       inputRef,
@@ -447,6 +454,7 @@ export function useMessageHandlers({
         model: selectedModelRef.current,
         executionMode: 'build',
         thinkingLevel: selectedThinkingLevelRef.current,
+        disableThinkingForMode: disableThinkingForModeRef.current,
       },
       {
         onSettled: () => {
@@ -460,6 +468,7 @@ export function useMessageHandlers({
     activeWorktreePathRef,
     selectedModelRef,
     selectedThinkingLevelRef,
+    disableThinkingForModeRef,
     sendMessage,
     inputRef,
   ])
@@ -513,6 +522,7 @@ export function useMessageHandlers({
         model: selectedModelRef.current,
         executionMode: 'yolo',
         thinkingLevel: selectedThinkingLevelRef.current,
+        disableThinkingForMode: disableThinkingForModeRef.current,
       },
       {
         onSettled: () => {
@@ -526,6 +536,7 @@ export function useMessageHandlers({
     activeWorktreePathRef,
     selectedModelRef,
     selectedThinkingLevelRef,
+    disableThinkingForModeRef,
     sendMessage,
     inputRef,
   ])

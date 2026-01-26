@@ -499,6 +499,9 @@ export function ChatWindow() {
   const selectedModelRef = useRef(selectedModel)
   const selectedThinkingLevelRef = useRef(selectedThinkingLevel)
   const executionModeRef = useRef(executionMode)
+  const disableThinkingForModeRef = useRef(
+    preferences?.disable_thinking_in_non_plan_modes ?? true
+  )
 
   // Keep refs in sync with current values (runs on every render, but cheap)
   activeSessionIdRef.current = activeSessionId
@@ -507,6 +510,8 @@ export function ChatWindow() {
   selectedModelRef.current = selectedModel
   selectedThinkingLevelRef.current = selectedThinkingLevel
   executionModeRef.current = executionMode
+  disableThinkingForModeRef.current =
+    preferences?.disable_thinking_in_non_plan_modes ?? true
 
   // Ref for approve button (passed to VirtualizedMessageList)
   const approveButtonRef = useRef<HTMLButtonElement>(null)
@@ -1441,6 +1446,7 @@ Begin your investigation now.`
     selectedModelRef,
     executionModeRef,
     selectedThinkingLevelRef,
+    disableThinkingForModeRef,
     sendMessage,
     queryClient,
     scrollToBottom,
