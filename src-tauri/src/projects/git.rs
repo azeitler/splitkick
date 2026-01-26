@@ -604,6 +604,45 @@ pub fn create_worktree_from_existing_branch(
     Ok(())
 }
 
+/// Checkout a PR using gh CLI in the specified directory
+///
+/// Uses `gh pr checkout <number>` which properly handles:
+/// - Fetching the PR branch from forks
+/// - Setting up proper tracking
+/// - Checking out the actual PR branch
+///
+/// # Arguments
+/// * `worktree_path` - Path to the worktree where to checkout the PR
+/// * `pr_number` - The PR number to checkout
+pub fn gh_pr_checkout(worktree_path: &str, pr_number: u32) -> Result<String, String> {
+    log::trace!("Running gh pr checkout {pr_number} in {worktree_path}");
+
+    let output = Command::new("gh")
+        .args(["pr", "checkout", &pr_number.to_string()])
+        .current_dir(worktree_path)
+        .output()
+        .map_err(|e| format!("Failed to run gh pr checkout: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to checkout PR #{pr_number}: {stderr}"));
+    }
+
+    // Get the current branch name after checkout
+    let branch_output = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(worktree_path)
+        .output()
+        .map_err(|e| format!("Failed to get branch name: {e}"))?;
+
+    let branch_name = String::from_utf8_lossy(&branch_output.stdout)
+        .trim()
+        .to_string();
+
+    log::trace!("Successfully checked out PR #{pr_number} to branch {branch_name}");
+    Ok(branch_name)
+}
+
 /// Remove a git worktree
 ///
 /// # Arguments

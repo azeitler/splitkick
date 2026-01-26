@@ -1375,6 +1375,11 @@ Begin your investigation now.`
     )
   }, [queryClient, sendMessage, preferences?.magic_prompts?.investigate_pr, preferences?.parallel_execution_prompt_enabled, preferences?.ai_language])
 
+  // Handle checkout PR - opens modal to select and checkout a PR to a new worktree
+  const handleCheckoutPR = useCallback(() => {
+    useUIStore.getState().setCheckoutPRModalOpen(true)
+  }, [])
+
   // Listen for magic-command events from MagicModal
   useMagicCommands({
     handleSaveContext,
@@ -1387,6 +1392,7 @@ Begin your investigation now.`
     handleResolveConflicts,
     handleInvestigateIssue,
     handleInvestigatePR,
+    handleCheckoutPR,
   })
 
   // Listen for command palette context events

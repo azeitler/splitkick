@@ -82,6 +82,7 @@ interface UIState {
   openInModalOpen: boolean
   magicModalOpen: boolean
   newWorktreeModalOpen: boolean
+  checkoutPRModalOpen: boolean
   cliUpdateModalOpen: boolean
   cliUpdateModalType: CliUpdateModalType
   cliLoginModalOpen: boolean
@@ -114,6 +115,7 @@ interface UIState {
   setOpenInModalOpen: (open: boolean) => void
   setMagicModalOpen: (open: boolean) => void
   setNewWorktreeModalOpen: (open: boolean) => void
+  setCheckoutPRModalOpen: (open: boolean) => void
   openCliUpdateModal: (type: 'claude' | 'gh') => void
   closeCliUpdateModal: () => void
   openCliLoginModal: (type: 'claude' | 'gh', command: string) => void
@@ -145,6 +147,7 @@ export const useUIStore = create<UIState>()(
       openInModalOpen: false,
       magicModalOpen: false,
       newWorktreeModalOpen: false,
+      checkoutPRModalOpen: false,
       cliUpdateModalOpen: false,
       cliUpdateModalType: null,
       cliLoginModalOpen: false,
@@ -235,6 +238,9 @@ export const useUIStore = create<UIState>()(
 
       setNewWorktreeModalOpen: open =>
         set({ newWorktreeModalOpen: open }, undefined, 'setNewWorktreeModalOpen'),
+
+      setCheckoutPRModalOpen: open =>
+        set({ checkoutPRModalOpen: open }, undefined, 'setCheckoutPRModalOpen'),
 
       openCliUpdateModal: type =>
         set(

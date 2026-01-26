@@ -11,6 +11,7 @@ interface MagicCommandHandlers {
   handleResolveConflicts: () => void
   handleInvestigateIssue: () => void
   handleInvestigatePR: () => void
+  handleCheckoutPR: () => void
 }
 
 /**
@@ -30,6 +31,7 @@ export function useMagicCommands({
   handleResolveConflicts,
   handleInvestigateIssue,
   handleInvestigatePR,
+  handleCheckoutPR,
 }: MagicCommandHandlers): void {
   // Store handlers in ref so event listener always has access to current versions
   const handlersRef = useRef<MagicCommandHandlers>({
@@ -43,6 +45,7 @@ export function useMagicCommands({
     handleResolveConflicts,
     handleInvestigateIssue,
     handleInvestigatePR,
+    handleCheckoutPR,
   })
 
   // Update refs in useLayoutEffect to avoid linter warning about ref updates during render
@@ -59,6 +62,7 @@ export function useMagicCommands({
       handleResolveConflicts,
       handleInvestigateIssue,
       handleInvestigatePR,
+      handleCheckoutPR,
     }
   })
 
@@ -96,6 +100,9 @@ export function useMagicCommands({
           break
         case 'investigate-pr':
           handlers.handleInvestigatePR()
+          break
+        case 'checkout-pr':
+          handlers.handleCheckoutPR()
           break
       }
     }
