@@ -2,6 +2,23 @@ import type { ThinkingLevel } from './chat'
 import { DEFAULT_KEYBINDINGS, type KeybindingsMap } from './keybindings'
 
 // =============================================================================
+// Notification Sounds
+// =============================================================================
+
+export type NotificationSound = 'none' | 'ding' | 'chime' | 'pop' | 'choochoo'
+
+export const notificationSoundOptions: {
+  value: NotificationSound
+  label: string
+}[] = [
+  { value: 'none', label: 'None' },
+  { value: 'ding', label: 'Ding' },
+  { value: 'chime', label: 'Chime' },
+  { value: 'pop', label: 'Pop' },
+  { value: 'choochoo', label: 'Choo-choo' },
+]
+
+// =============================================================================
 // Magic Prompts - Customizable prompts for AI-powered features
 // =============================================================================
 
@@ -213,6 +230,8 @@ export interface AppPreferences {
   magic_prompts: MagicPrompts // Customizable prompts for AI-powered features
   file_edit_mode: FileEditMode // How to edit files: inline (CodeMirror) or external (VS Code, etc.)
   ai_language: string // Preferred language for AI responses (empty = default)
+  waiting_sound: NotificationSound // Sound when session is waiting for input
+  review_sound: NotificationSound // Sound when session finishes reviewing
 }
 
 export type FileEditMode = 'inline' | 'external'
@@ -403,4 +422,6 @@ export const defaultPreferences: AppPreferences = {
   magic_prompts: DEFAULT_MAGIC_PROMPTS,
   file_edit_mode: 'external',
   ai_language: '', // Default: empty (Claude's default behavior)
+  waiting_sound: 'ding',
+  review_sound: 'chime',
 }

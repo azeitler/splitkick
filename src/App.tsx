@@ -19,6 +19,7 @@ import { useFontSettings } from './hooks/use-font-settings'
 import { useImmediateSessionStateSave } from './hooks/useImmediateSessionStateSave'
 import { useCliVersionCheck } from './hooks/useCliVersionCheck'
 import useStreamingEvents from './components/chat/hooks/useStreamingEvents'
+import { preloadAllSounds } from './lib/sounds'
 
 function App() {
   // Apply font settings from preferences
@@ -71,6 +72,9 @@ function App() {
     logger.info('🚀 Frontend application starting up')
     initializeCommandSystem()
     logger.debug('Command system initialized')
+
+    // Preload notification sounds for instant playback
+    preloadAllSounds()
 
     // Kill any orphaned terminals from previous session/reload
     // This ensures cleanup even if beforeunload didn't complete

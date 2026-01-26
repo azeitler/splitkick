@@ -120,6 +120,10 @@ pub struct AppPreferences {
     pub file_edit_mode: String, // How to edit files: inline (CodeMirror) or external (VS Code, etc.)
     #[serde(default)]
     pub ai_language: String, // Preferred language for AI responses (empty = default)
+    #[serde(default = "default_waiting_sound")]
+    pub waiting_sound: String, // Sound when session is waiting for input: none, ding, chime, pop, choochoo
+    #[serde(default = "default_review_sound")]
+    pub review_sound: String, // Sound when session finishes reviewing: none, ding, chime, pop, choochoo
 }
 
 fn default_auto_branch_naming() -> bool {
@@ -216,6 +220,14 @@ fn default_session_recap_enabled() -> bool {
 
 fn default_parallel_execution_prompt_enabled() -> bool {
     false // Disabled by default (experimental)
+}
+
+fn default_waiting_sound() -> String {
+    "ding".to_string()
+}
+
+fn default_review_sound() -> String {
+    "chime".to_string()
 }
 
 // =============================================================================
@@ -442,6 +454,8 @@ impl Default for AppPreferences {
             magic_prompts: MagicPrompts::default(),
             file_edit_mode: default_file_edit_mode(),
             ai_language: String::new(),
+            waiting_sound: default_waiting_sound(),
+            review_sound: default_review_sound(),
         }
     }
 }

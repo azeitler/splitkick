@@ -94,6 +94,8 @@ describe('preferences service', () => {
         magic_prompts: DEFAULT_MAGIC_PROMPTS,
         file_edit_mode: 'external',
         ai_language: '',
+        waiting_sound: 'ding',
+        review_sound: 'chime',
       }
       vi.mocked(invoke).mockResolvedValueOnce(mockPreferences)
 
@@ -166,6 +168,8 @@ describe('preferences service', () => {
         magic_prompts: DEFAULT_MAGIC_PROMPTS,
         file_edit_mode: 'external',
         ai_language: '',
+        waiting_sound: 'ding',
+        review_sound: 'chime',
       }
       vi.mocked(invoke).mockResolvedValueOnce(prefsWithOldBinding)
 
@@ -211,8 +215,13 @@ describe('preferences service', () => {
         session_recap_enabled: false,
         parallel_execution_prompt_enabled: false,
         magic_prompts: DEFAULT_MAGIC_PROMPTS,
+<<<<<<< HEAD
         file_edit_mode: 'external',
         ai_language: '',
+=======
+        waiting_sound: 'ding',
+        review_sound: 'chime',
+>>>>>>> ff20d2f (feat: add notification sounds for session events)
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -258,6 +267,8 @@ describe('preferences service', () => {
         magic_prompts: DEFAULT_MAGIC_PROMPTS,
         file_edit_mode: 'external',
         ai_language: '',
+        waiting_sound: 'ding',
+        review_sound: 'chime',
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -303,6 +314,8 @@ describe('preferences service', () => {
         magic_prompts: DEFAULT_MAGIC_PROMPTS,
         file_edit_mode: 'external',
         ai_language: '',
+        waiting_sound: 'ding',
+        review_sound: 'chime',
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -348,6 +361,8 @@ describe('preferences service', () => {
         magic_prompts: DEFAULT_MAGIC_PROMPTS,
         file_edit_mode: 'external',
         ai_language: '',
+        waiting_sound: 'ding',
+        review_sound: 'chime',
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
