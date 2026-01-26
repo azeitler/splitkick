@@ -536,7 +536,7 @@ export function ChatWindow() {
   })
 
   // Drag and drop images into chat input
-  const { isDragging } = useDragAndDropImages(activeSessionId, formRef)
+  const { isDragging } = useDragAndDropImages(activeSessionId)
 
   // State for file content modal (opened by clicking filenames in tool calls)
   const [viewingFilePath, setViewingFilePath] = useState<string | null>(null)

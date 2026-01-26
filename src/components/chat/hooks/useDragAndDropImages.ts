@@ -27,7 +27,6 @@ interface UseDragAndDropImagesResult {
  */
 export function useDragAndDropImages(
   sessionId: string | undefined,
-  _containerRef: React.RefObject<HTMLElement | null>,
   options?: UseDragAndDropImagesOptions
 ): UseDragAndDropImagesResult {
   const [isDragging, setIsDragging] = useState(false)
