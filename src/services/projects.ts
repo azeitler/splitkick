@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
+import { disposeAllWorktreeTerminals } from '@/lib/terminal-instances'
 import type {
   Project,
   Worktree,
@@ -921,6 +922,9 @@ export function useDeleteWorktree() {
         }
       )
 
+      // Cleanup terminal instances for this worktree
+      disposeAllWorktreeTerminals(worktreeId)
+
       // Clear chat if the deleted worktree was active
       const { activeWorktreeId, clearActiveWorktree } = useChatStore.getState()
       if (activeWorktreeId === worktreeId) {
@@ -985,6 +989,9 @@ export function useArchiveWorktree() {
 
       // Invalidate archived sessions query (worktree's sessions are also archived)
       queryClient.invalidateQueries({ queryKey: ['all-archived-sessions'] })
+
+      // Cleanup terminal instances for this worktree
+      disposeAllWorktreeTerminals(worktreeId)
 
       // Clear chat if this worktree was active
       const { activeWorktreeId, clearActiveWorktree } = useChatStore.getState()
@@ -1216,6 +1223,9 @@ export function useCloseBaseSession() {
         queryKey: projectsQueryKeys.worktrees(projectId),
       })
 
+      // Cleanup terminal instances for this worktree
+      disposeAllWorktreeTerminals(worktreeId)
+
       // Clear chat if the closed session was active
       const { activeWorktreeId, clearActiveWorktree } = useChatStore.getState()
       if (activeWorktreeId === worktreeId) {
@@ -1259,6 +1269,9 @@ export function useCloseBaseSessionClean() {
       queryClient.invalidateQueries({
         queryKey: projectsQueryKeys.worktrees(projectId),
       })
+
+      // Cleanup terminal instances for this worktree
+      disposeAllWorktreeTerminals(worktreeId)
 
       // Clear chat if the closed session was active
       const { activeWorktreeId, clearActiveWorktree } = useChatStore.getState()

@@ -13,7 +13,7 @@ describe('TerminalStore', () => {
       activeTerminalIds: {},
       runningTerminals: new Set(),
       terminalVisible: false,
-      terminalPanelOpen: false,
+      terminalPanelOpen: {},
       terminalHeight: 30,
     })
   })
@@ -29,25 +29,27 @@ describe('TerminalStore', () => {
       expect(useTerminalStore.getState().terminalVisible).toBe(false)
     })
 
-    it('sets terminal panel open', () => {
-      const { setTerminalPanelOpen } = useTerminalStore.getState()
+    it('sets terminal panel open per worktree', () => {
+      const { setTerminalPanelOpen, isTerminalPanelOpen } = useTerminalStore.getState()
+      const worktreeId = 'test-worktree'
 
-      setTerminalPanelOpen(true)
-      expect(useTerminalStore.getState().terminalPanelOpen).toBe(true)
+      setTerminalPanelOpen(worktreeId, true)
+      expect(isTerminalPanelOpen(worktreeId)).toBe(true)
 
-      setTerminalPanelOpen(false)
-      expect(useTerminalStore.getState().terminalPanelOpen).toBe(false)
+      setTerminalPanelOpen(worktreeId, false)
+      expect(isTerminalPanelOpen(worktreeId)).toBe(false)
     })
 
     it('toggles terminal visibility', () => {
-      const { toggleTerminal } = useTerminalStore.getState()
+      const { toggleTerminal, isTerminalPanelOpen } = useTerminalStore.getState()
+      const worktreeId = 'test-worktree'
 
-      toggleTerminal()
+      toggleTerminal(worktreeId)
       const state1 = useTerminalStore.getState()
       expect(state1.terminalVisible).toBe(true)
-      expect(state1.terminalPanelOpen).toBe(true)
+      expect(isTerminalPanelOpen(worktreeId)).toBe(true)
 
-      toggleTerminal()
+      toggleTerminal(worktreeId)
       expect(useTerminalStore.getState().terminalVisible).toBe(false)
     })
 
@@ -67,11 +69,12 @@ describe('TerminalStore', () => {
 
       expect(id).toBeDefined()
       const state = useTerminalStore.getState()
+      const { isTerminalPanelOpen } = useTerminalStore.getState()
       expect(state.terminals['worktree-1']).toHaveLength(1)
       expect(state.terminals['worktree-1']?.[0]?.id).toBe(id)
       expect(state.terminals['worktree-1']?.[0]?.label).toBe('Shell')
       expect(state.activeTerminalIds['worktree-1']).toBe(id)
-      expect(state.terminalPanelOpen).toBe(true)
+      expect(isTerminalPanelOpen('worktree-1')).toBe(true)
       expect(state.terminalVisible).toBe(true)
     })
 
@@ -217,14 +220,14 @@ describe('TerminalStore', () => {
     })
 
     it('shows terminal panel when starting run', () => {
-      useTerminalStore.setState({ terminalVisible: false, terminalPanelOpen: false })
-      const { startRun } = useTerminalStore.getState()
+      useTerminalStore.setState({ terminalVisible: false, terminalPanelOpen: {} })
+      const { startRun, isTerminalPanelOpen } = useTerminalStore.getState()
 
       startRun('worktree-1', 'npm test')
 
       const state = useTerminalStore.getState()
       expect(state.terminalVisible).toBe(true)
-      expect(state.terminalPanelOpen).toBe(true)
+      expect(isTerminalPanelOpen('worktree-1')).toBe(true)
     })
   })
 
@@ -259,15 +262,17 @@ describe('TerminalStore', () => {
       expect(isTerminalRunning(id2)).toBe(false)
     })
 
-    it('hides terminal panel when closing all', () => {
-      const { addTerminal, closeAllTerminals } = useTerminalStore.getState()
+    it('closes panel for worktree but preserves global visibility', () => {
+      const { addTerminal, closeAllTerminals, isTerminalPanelOpen } = useTerminalStore.getState()
 
       addTerminal('worktree-1')
       closeAllTerminals('worktree-1')
 
       const state = useTerminalStore.getState()
-      expect(state.terminalPanelOpen).toBe(false)
-      expect(state.terminalVisible).toBe(false)
+      expect(isTerminalPanelOpen('worktree-1')).toBe(false)
+      // terminalVisible is global and should NOT be affected by closing terminals in one worktree
+      // This prevents closing terminals in worktree A from affecting worktree B's terminal panel
+      expect(state.terminalVisible).toBe(true)
     })
 
     it('returns empty array for worktree with no terminals', () => {

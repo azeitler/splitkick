@@ -93,7 +93,7 @@ import {
   ResizableHandle,
   type ImperativePanelHandle,
 } from '@/components/ui/resizable'
-import { TerminalView } from './TerminalView'
+import { TerminalPanel } from './TerminalPanel'
 import { useTerminalStore } from '@/store/terminal-store'
 
 // Extracted hooks (useStreamingEvents is now in App.tsx for global persistence)
@@ -161,9 +161,11 @@ export function ChatWindow() {
     activeSessionId ? (state.manualThinkingOverrides[activeSessionId] ?? false) : false
   )
 
-  // Terminal panel visibility
+  // Terminal panel visibility (per-worktree)
   const terminalVisible = useTerminalStore(state => state.terminalVisible)
-  const terminalPanelOpen = useTerminalStore(state => state.terminalPanelOpen)
+  const terminalPanelOpen = useTerminalStore(state =>
+    activeWorktreeId ? (state.terminalPanelOpen[activeWorktreeId] ?? false) : false
+  )
   const { setTerminalVisible } = useTerminalStore.getState()
 
   // Sync terminal panel with terminalVisible state
@@ -2020,9 +2022,7 @@ Begin your investigation now.`
                 onCollapse={handleTerminalCollapse}
                 onExpand={handleTerminalExpand}
               >
-                <TerminalView
-                  worktreeId={activeWorktreeId}
-                  worktreePath={activeWorktreePath}
+                <TerminalPanel
                   isCollapsed={!terminalVisible}
                   onExpand={handleTerminalExpand}
                 />
