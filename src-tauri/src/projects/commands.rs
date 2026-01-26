@@ -4029,6 +4029,70 @@ pub async fn merge_worktree_to_base(
     }
 }
 
+/// Response from get_merge_conflicts command
+#[derive(Debug, Clone, Serialize)]
+pub struct MergeConflictsResponse {
+    /// Whether there are unresolved merge conflicts
+    pub has_conflicts: bool,
+    /// List of files with conflicts
+    pub conflicts: Vec<String>,
+    /// Diff showing conflict markers
+    pub conflict_diff: String,
+}
+
+/// Detect existing merge/rebase conflicts in a worktree
+///
+/// Use this when the user has manually started a merge/rebase
+/// and wants the app to help resolve conflicts.
+#[tauri::command]
+pub async fn get_merge_conflicts(
+    app: AppHandle,
+    worktree_id: String,
+) -> Result<MergeConflictsResponse, String> {
+    log::trace!("Checking for merge conflicts in worktree: {worktree_id}");
+
+    let data = load_projects_data(&app)?;
+    let worktree = data
+        .find_worktree(&worktree_id)
+        .ok_or_else(|| format!("Worktree not found: {worktree_id}"))?;
+
+    // Get list of files with unresolved conflicts (unmerged paths)
+    let conflict_output = std::process::Command::new("git")
+        .args(["diff", "--name-only", "--diff-filter=U"])
+        .current_dir(&worktree.path)
+        .output()
+        .map_err(|e| format!("Failed to check conflicts: {e}"))?;
+
+    let conflicts: Vec<String> = String::from_utf8_lossy(&conflict_output.stdout)
+        .lines()
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    if conflicts.is_empty() {
+        return Ok(MergeConflictsResponse {
+            has_conflicts: false,
+            conflicts: vec![],
+            conflict_diff: String::new(),
+        });
+    }
+
+    // Get the diff with conflict markers
+    let diff_output = std::process::Command::new("git")
+        .args(["diff"])
+        .current_dir(&worktree.path)
+        .output()
+        .map_err(|e| format!("Failed to get conflict diff: {e}"))?;
+
+    let conflict_diff = String::from_utf8_lossy(&diff_output.stdout).to_string();
+
+    Ok(MergeConflictsResponse {
+        has_conflicts: true,
+        conflicts,
+        conflict_diff,
+    })
+}
+
 /// Result of the archive cleanup operation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CleanupResult {

@@ -321,3 +321,13 @@ export interface MergeWorktreeResponse {
   /** Whether worktree was cleaned up */
   cleaned_up: boolean
 }
+
+/** Response from get_merge_conflicts command */
+export interface MergeConflictsResponse {
+  /** Whether there are unresolved merge conflicts */
+  has_conflicts: boolean
+  /** List of files with conflicts */
+  conflicts: string[]
+  /** Diff showing conflict markers */
+  conflict_diff: string
+}
