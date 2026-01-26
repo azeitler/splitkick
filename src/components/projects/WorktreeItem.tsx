@@ -63,7 +63,7 @@ export function WorktreeItem({
   const behindCount =
     gitStatus?.behind_count ?? worktree.cached_behind_count ?? 0
   const worktreeAheadCount =
-    gitStatus?.ahead_count ?? worktree.cached_ahead_count ?? 0
+    gitStatus?.worktree_ahead_count ?? worktree.cached_worktree_ahead_count ?? 0
   const baseBranchAheadCount =
     gitStatus?.base_branch_ahead_count ??
     worktree.cached_base_branch_ahead_count ??
