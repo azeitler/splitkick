@@ -14,7 +14,7 @@ import {
   useGitStatus,
   gitPull,
   gitPush,
-  triggerImmediateGitPoll,
+  fetchWorktreesStatus,
 } from '@/services/git-status'
 import { WorktreeList } from './WorktreeList'
 import { ProjectContextMenu } from './ProjectContextMenu'
@@ -110,13 +110,13 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
       const toastId = toast.loading('Pulling changes...')
       try {
         await gitPull(project.path, project.default_branch)
-        triggerImmediateGitPoll()
+        fetchWorktreesStatus(project.id)
         toast.success('Changes pulled', { id: toastId })
       } catch (error) {
         toast.error(`Pull failed: ${error}`, { id: toastId })
       }
     },
-    [project.path, project.default_branch]
+    [project.id, project.path, project.default_branch]
   )
 
   const handleBasePush = useCallback(
@@ -125,13 +125,13 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
       const toastId = toast.loading('Pushing changes...')
       try {
         await gitPush(project.path)
-        triggerImmediateGitPoll()
+        fetchWorktreesStatus(project.id)
         toast.success('Changes pushed', { id: toastId })
       } catch (error) {
         toast.error(`Push failed: ${error}`, { id: toastId })
       }
     },
-    [project.path]
+    [project.id, project.path]
   )
 
   return (
