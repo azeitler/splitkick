@@ -28,6 +28,7 @@ type MagicOption =
   | 'open-pr'
   | 'review'
   | 'merge'
+  | 'resolve-conflicts'
   | 'investigate-issue'
   | 'investigate-pr'
 
@@ -64,6 +65,7 @@ const MAGIC_SECTIONS: MagicSection[] = [
       { id: 'open-pr', label: 'Open PR', icon: GitPullRequest, key: 'O' },
       { id: 'review', label: 'Review', icon: Eye, key: 'R' },
       { id: 'merge', label: 'Merge to Base', icon: GitMerge, key: 'M' },
+      { id: 'resolve-conflicts', label: 'Resolve Conflicts', icon: GitMerge, key: 'F' },
       { id: 'investigate-issue', label: 'Investigate Issue', icon: Search, key: 'I' },
       { id: 'investigate-pr', label: 'Investigate PR', icon: Search, key: 'U' },
     ],
@@ -79,6 +81,7 @@ const KEY_TO_OPTION: Record<string, MagicOption> = {
   o: 'open-pr',
   r: 'review',
   m: 'merge',
+  f: 'resolve-conflicts',
   i: 'investigate-issue',
   u: 'investigate-pr',
 }
