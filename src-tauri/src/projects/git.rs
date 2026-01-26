@@ -429,6 +429,29 @@ pub fn git_push(repo_path: &str) -> Result<String, String> {
         Ok(result)
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+        // Check if branch doesn't have upstream yet (same pattern as rebase_feature_branch)
+        if stderr.contains("has no upstream branch") {
+            log::trace!("No upstream branch, retrying with -u origin HEAD");
+            let push_u_output = Command::new("git")
+                .args(["push", "-u", "origin", "HEAD"])
+                .current_dir(repo_path)
+                .output()
+                .map_err(|e| format!("Failed to run git push -u: {e}"))?;
+
+            if push_u_output.status.success() {
+                let stdout = String::from_utf8_lossy(&push_u_output.stdout).to_string();
+                let stderr = String::from_utf8_lossy(&push_u_output.stderr).to_string();
+                let result = if stdout.is_empty() { stderr } else { stdout };
+                log::trace!("Successfully pushed with upstream set");
+                return Ok(result);
+            } else {
+                let stderr = String::from_utf8_lossy(&push_u_output.stderr).to_string();
+                log::error!("Failed to push with -u: {stderr}");
+                return Err(stderr);
+            }
+        }
+
         log::error!("Failed to push to origin: {stderr}");
         Err(stderr)
     }
