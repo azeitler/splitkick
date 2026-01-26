@@ -223,11 +223,11 @@ fn default_parallel_execution_prompt_enabled() -> bool {
 }
 
 fn default_waiting_sound() -> String {
-    "ding".to_string()
+    "none".to_string()
 }
 
 fn default_review_sound() -> String {
-    "chime".to_string()
+    "none".to_string()
 }
 
 // =============================================================================

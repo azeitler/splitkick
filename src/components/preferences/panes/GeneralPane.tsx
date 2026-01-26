@@ -590,7 +590,7 @@ export const GeneralPane: React.FC = () => {
             description="Play when session needs your input"
           >
             <Select
-              value={preferences?.waiting_sound ?? 'ding'}
+              value={preferences?.waiting_sound ?? 'none'}
               onValueChange={handleWaitingSoundChange}
             >
               <SelectTrigger className="w-40">
@@ -611,7 +611,7 @@ export const GeneralPane: React.FC = () => {
             description="Play when session finishes"
           >
             <Select
-              value={preferences?.review_sound ?? 'chime'}
+              value={preferences?.review_sound ?? 'none'}
               onValueChange={handleReviewSoundChange}
             >
               <SelectTrigger className="w-40">

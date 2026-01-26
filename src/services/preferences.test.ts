@@ -94,8 +94,8 @@ describe('preferences service', () => {
         magic_prompts: DEFAULT_MAGIC_PROMPTS,
         file_edit_mode: 'external',
         ai_language: '',
-        waiting_sound: 'ding',
-        review_sound: 'chime',
+        waiting_sound: 'none',
+        review_sound: 'none',
       }
       vi.mocked(invoke).mockResolvedValueOnce(mockPreferences)
 
@@ -168,8 +168,8 @@ describe('preferences service', () => {
         magic_prompts: DEFAULT_MAGIC_PROMPTS,
         file_edit_mode: 'external',
         ai_language: '',
-        waiting_sound: 'ding',
-        review_sound: 'chime',
+        waiting_sound: 'none',
+        review_sound: 'none',
       }
       vi.mocked(invoke).mockResolvedValueOnce(prefsWithOldBinding)
 
@@ -217,8 +217,8 @@ describe('preferences service', () => {
         magic_prompts: DEFAULT_MAGIC_PROMPTS,
         file_edit_mode: 'external',
         ai_language: '',
-        waiting_sound: 'ding',
-        review_sound: 'chime',
+        waiting_sound: 'none',
+        review_sound: 'none',
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -264,8 +264,8 @@ describe('preferences service', () => {
         magic_prompts: DEFAULT_MAGIC_PROMPTS,
         file_edit_mode: 'external',
         ai_language: '',
-        waiting_sound: 'ding',
-        review_sound: 'chime',
+        waiting_sound: 'none',
+        review_sound: 'none',
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -311,8 +311,8 @@ describe('preferences service', () => {
         magic_prompts: DEFAULT_MAGIC_PROMPTS,
         file_edit_mode: 'external',
         ai_language: '',
-        waiting_sound: 'ding',
-        review_sound: 'chime',
+        waiting_sound: 'none',
+        review_sound: 'none',
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -358,8 +358,8 @@ describe('preferences service', () => {
         magic_prompts: DEFAULT_MAGIC_PROMPTS,
         file_edit_mode: 'external',
         ai_language: '',
-        waiting_sound: 'ding',
-        review_sound: 'chime',
+        waiting_sound: 'none',
+        review_sound: 'none',
       }
 
       const { result } = renderHook(() => useSavePreferences(), {

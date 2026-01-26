@@ -12,10 +12,11 @@ export const notificationSoundOptions: {
   label: string
 }[] = [
   { value: 'none', label: 'None' },
-  { value: 'ding', label: 'Ding' },
-  { value: 'chime', label: 'Chime' },
-  { value: 'pop', label: 'Pop' },
-  { value: 'choochoo', label: 'Choo-choo' },
+  // More sounds will be added later:
+  // { value: 'ding', label: 'Ding' },
+  // { value: 'chime', label: 'Chime' },
+  // { value: 'pop', label: 'Pop' },
+  // { value: 'choochoo', label: 'Choo-choo' },
 ]
 
 // =============================================================================
@@ -422,6 +423,6 @@ export const defaultPreferences: AppPreferences = {
   magic_prompts: DEFAULT_MAGIC_PROMPTS,
   file_edit_mode: 'external',
   ai_language: '', // Default: empty (Claude's default behavior)
-  waiting_sound: 'ding',
-  review_sound: 'chime',
+  waiting_sound: 'none',
+  review_sound: 'none',
 }
