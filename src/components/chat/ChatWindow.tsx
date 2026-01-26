@@ -1453,7 +1453,6 @@ Begin your investigation now.`
     selectedModelRef,
     executionModeRef,
     selectedThinkingLevelRef,
-    disableThinkingForModeRef,
     sendMessage,
     queryClient,
     scrollToBottom,
