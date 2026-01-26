@@ -585,7 +585,7 @@ export function useCommandContext(preferences?: AppPreferences): CommandContext 
       addTerminal(selectedWorktreeId)
     } else {
       // Just show the panel
-      setTerminalPanelOpen(true)
+      setTerminalPanelOpen(selectedWorktreeId, true)
       setTerminalVisible(true)
     }
   }, [])

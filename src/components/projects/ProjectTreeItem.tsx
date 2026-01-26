@@ -1,13 +1,21 @@
 import { useCallback, useState } from 'react'
-import { ChevronDown, MoreHorizontal, Plus } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronDown, MoreHorizontal, Plus } from 'lucide-react'
 import { convertFileSrc } from '@tauri-apps/api/core'
+import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import type { Project } from '@/types/projects'
+import { isBaseSession } from '@/types/projects'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 import { useWorktrees, useAppDataDir } from '@/services/projects'
-import { useFetchWorktreesStatus } from '@/services/git-status'
+import {
+  useFetchWorktreesStatus,
+  useGitStatus,
+  gitPull,
+  gitPush,
+  fetchWorktreesStatus,
+} from '@/services/git-status'
 import { WorktreeList } from './WorktreeList'
 import { ProjectContextMenu } from './ProjectContextMenu'
 
@@ -45,6 +53,25 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
   // Fetch git status for all worktrees when project is expanded
   useFetchWorktreesStatus(project.id, isExpanded)
 
+  // Check if base session exists
+  const hasBaseSession = worktrees.some(w => isBaseSession(w))
+
+  // Get base branch status from any worktree (all have it)
+  const firstWorktree = worktrees[0]
+  const { data: gitStatus } = useGitStatus(firstWorktree?.id ?? null)
+
+  // Only show on project line when no base session
+  const baseBranchBehindCount = !hasBaseSession
+    ? (gitStatus?.base_branch_behind_count ??
+        firstWorktree?.cached_base_branch_behind_count ??
+        0)
+    : 0
+  const baseBranchAheadCount = !hasBaseSession
+    ? (gitStatus?.base_branch_ahead_count ??
+        firstWorktree?.cached_base_branch_ahead_count ??
+        0)
+    : 0
+
   // Get chat store state
   const activeWorktreeId = useChatStore(state => state.activeWorktreeId)
   const clearActiveWorktree = useChatStore(state => state.clearActiveWorktree)
@@ -75,6 +102,36 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
       setNewWorktreeModalOpen(true)
     },
     [project.id, selectProject, setNewWorktreeModalOpen]
+  )
+
+  const handleBasePull = useCallback(
+    async (e: React.MouseEvent) => {
+      e.stopPropagation()
+      const toastId = toast.loading('Pulling changes...')
+      try {
+        await gitPull(project.path, project.default_branch)
+        fetchWorktreesStatus(project.id)
+        toast.success('Changes pulled', { id: toastId })
+      } catch (error) {
+        toast.error(`Pull failed: ${error}`, { id: toastId })
+      }
+    },
+    [project.id, project.path, project.default_branch]
+  )
+
+  const handleBasePush = useCallback(
+    async (e: React.MouseEvent) => {
+      e.stopPropagation()
+      const toastId = toast.loading('Pushing changes...')
+      try {
+        await gitPush(project.path)
+        fetchWorktreesStatus(project.id)
+        toast.success('Changes pushed', { id: toastId })
+      } catch (error) {
+        toast.error(`Push failed: ${error}`, { id: toastId })
+      }
+    },
+    [project.id, project.path]
   )
 
   return (
@@ -123,6 +180,32 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
               </button>
             )}
           </span>
+
+          {/* Base branch pull/push indicators (when no base session) */}
+          {baseBranchBehindCount > 0 && (
+            <button
+              onClick={handleBasePull}
+              className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/20"
+              title={`Pull ${baseBranchBehindCount} commit${baseBranchBehindCount > 1 ? 's' : ''} on ${project.default_branch}`}
+            >
+              <span className="flex items-center gap-0.5">
+                <ArrowDown className="h-3 w-3" />
+                {baseBranchBehindCount}
+              </span>
+            </button>
+          )}
+          {baseBranchAheadCount > 0 && (
+            <button
+              onClick={handleBasePush}
+              className="shrink-0 rounded bg-orange-500/10 px-1.5 py-0.5 text-[11px] font-medium text-orange-500 transition-colors hover:bg-orange-500/20"
+              title={`Push ${baseBranchAheadCount} commit${baseBranchAheadCount > 1 ? 's' : ''} on ${project.default_branch}`}
+            >
+              <span className="flex items-center gap-0.5">
+                <ArrowUp className="h-3 w-3" />
+                {baseBranchAheadCount}
+              </span>
+            </button>
+          )}
 
           {/* Settings */}
           <button

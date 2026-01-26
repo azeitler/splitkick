@@ -228,7 +228,7 @@ function CliReinstallModalUI({
                 <div className="text-center">
                   <p className="font-medium">Installation Successful</p>
                   <p className="text-sm text-muted-foreground mt-1">
-                    {cliName}: v{setup.status?.version ?? selectedVersion}
+                    {cliName}: v{selectedVersion}
                   </p>
                 </div>
               </div>

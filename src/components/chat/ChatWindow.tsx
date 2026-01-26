@@ -93,7 +93,7 @@ import {
   ResizableHandle,
   type ImperativePanelHandle,
 } from '@/components/ui/resizable'
-import { TerminalView } from './TerminalView'
+import { TerminalPanel } from './TerminalPanel'
 import { useTerminalStore } from '@/store/terminal-store'
 
 // Extracted hooks (useStreamingEvents is now in App.tsx for global persistence)
@@ -161,9 +161,11 @@ export function ChatWindow() {
     activeSessionId ? (state.manualThinkingOverrides[activeSessionId] ?? false) : false
   )
 
-  // Terminal panel visibility
+  // Terminal panel visibility (per-worktree)
   const terminalVisible = useTerminalStore(state => state.terminalVisible)
-  const terminalPanelOpen = useTerminalStore(state => state.terminalPanelOpen)
+  const terminalPanelOpen = useTerminalStore(state =>
+    activeWorktreeId ? (state.terminalPanelOpen[activeWorktreeId] ?? false) : false
+  )
   const { setTerminalVisible } = useTerminalStore.getState()
 
   // Sync terminal panel with terminalVisible state
@@ -809,10 +811,19 @@ export function ChatWindow() {
 
       // Get session-approved tools to include
       const sessionApprovedTools = getApprovedTools(activeSessionId)
+
+      // Build base allowed tools (git always, web tools if enabled)
+      const webTools = preferences?.allow_web_tools_in_plan_mode
+        ? ['WebFetch', 'WebSearch']
+        : []
+      const baseAllowedTools = [...GIT_ALLOWED_TOOLS, ...webTools]
+
       const allowedTools =
         sessionApprovedTools.length > 0
-          ? [...GIT_ALLOWED_TOOLS, ...sessionApprovedTools]
-          : undefined
+          ? [...baseAllowedTools, ...sessionApprovedTools]
+          : baseAllowedTools.length > GIT_ALLOWED_TOOLS.length
+            ? baseAllowedTools
+            : undefined
 
       // Build full message with attachment refs for backend
       const fullMessage = buildMessageWithRefs(queuedMsg)
@@ -839,7 +850,7 @@ export function ChatWindow() {
         }
       )
     },
-    [activeSessionId, activeWorktreeId, activeWorktreePath, buildMessageWithRefs, sendMessage, preferences?.parallel_execution_prompt_enabled, preferences?.ai_language]
+    [activeSessionId, activeWorktreeId, activeWorktreePath, buildMessageWithRefs, sendMessage, preferences?.parallel_execution_prompt_enabled, preferences?.ai_language, preferences?.allow_web_tools_in_plan_mode]
   )
 
   // GitDiffModal handlers - extracted for performance (prevents child re-renders)
@@ -1014,27 +1025,8 @@ export function ChatWindow() {
     ]
   )
 
-  // Process queued messages when not sending
-  // This effect runs whenever isSending changes. When isSending becomes false
-  // and there are queued messages, it dequeues and sends the next one.
-  // sendMessageNow immediately sets isSending back to true, preventing re-entry.
-  useEffect(() => {
-    // Skip if currently sending, waiting for questions, or no session
-    if (isSending || hasPendingQuestions || !activeSessionId) return
-
-    const { getQueuedMessages, dequeueMessage } = useChatStore.getState()
-    const queue = getQueuedMessages(activeSessionId)
-
-    if (queue.length > 0) {
-      // Dequeue and send immediately
-      // sendMessageNow calls addSendingSession which sets isSending=true,
-      // preventing this effect from running again until message completes
-      const nextMessage = dequeueMessage(activeSessionId)
-      if (nextMessage) {
-        sendMessageNow(nextMessage)
-      }
-    }
-  }, [isSending, hasPendingQuestions, activeSessionId, sendMessageNow])
+  // Note: Queue processing moved to useQueueProcessor hook in App.tsx
+  // This ensures queued messages execute even when the worktree is unfocused
 
   // Git operations hook - handles commit, PR, review, merge operations
   const {
@@ -2030,9 +2022,7 @@ Begin your investigation now.`
                 onCollapse={handleTerminalCollapse}
                 onExpand={handleTerminalExpand}
               >
-                <TerminalView
-                  worktreeId={activeWorktreeId}
-                  worktreePath={activeWorktreePath}
+                <TerminalPanel
                   isCollapsed={!terminalVisible}
                   onExpand={handleTerminalExpand}
                 />

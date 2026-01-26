@@ -5,10 +5,13 @@ import {
   FileJson,
   FolderOpen,
   Play,
+  Sparkles,
   Terminal,
   Trash2,
   X,
 } from 'lucide-react'
+import { invoke } from '@tauri-apps/api/core'
+import { toast } from 'sonner'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,8 +40,11 @@ import {
   useRunScript,
 } from '@/services/projects'
 import { usePreferences } from '@/services/preferences'
+import { useSessions } from '@/services/chat'
 import { getEditorLabel, getTerminalLabel } from '@/types/preferences'
 import { useTerminalStore } from '@/store/terminal-store'
+import { useChatStore } from '@/store/chat-store'
+import type { SessionDigest } from '@/types/chat'
 
 interface WorktreeContextMenuProps {
   worktree: Worktree
@@ -62,7 +68,13 @@ export function WorktreeContextMenu({
   const openInEditor = useOpenWorktreeInEditor()
   const { data: runScript } = useRunScript(worktree.path)
   const { data: preferences } = usePreferences()
+  const { data: sessionsData } = useSessions(worktree.id, worktree.path)
   const isBase = isBaseSession(worktree)
+
+  // Check if any session has at least one message (for recap generation)
+  const hasMessages = sessionsData?.sessions?.some(
+    session => session.messages.length > 0
+  )
 
   // Suppress unused variable warning
   void projectPath
@@ -117,6 +129,41 @@ export function WorktreeContextMenu({
     })
   }
 
+  const handleGenerateRecap = async () => {
+    // Find the most recent session with messages
+    const sessions = sessionsData?.sessions ?? []
+    const sessionWithMessages = sessions.find(s => s.messages.length >= 2)
+
+    if (!sessionWithMessages) {
+      toast.error('No session with enough messages for recap')
+      return
+    }
+
+    const toastId = toast.loading('Generating recap...')
+
+    try {
+      const digest = await invoke<SessionDigest>('generate_session_digest', {
+        sessionId: sessionWithMessages.id,
+      })
+
+      // Store the digest in the chat store for display
+      useChatStore.getState().markSessionNeedsDigest(sessionWithMessages.id)
+      useChatStore.getState().setSessionDigest(sessionWithMessages.id, digest)
+
+      toast.success(
+        <div className="space-y-1">
+          <div className="font-medium">{digest.chat_summary}</div>
+          <div className="text-xs text-muted-foreground">
+            {digest.last_action}
+          </div>
+        </div>,
+        { id: toastId, duration: 8000 }
+      )
+    } catch (error) {
+      toast.error(`Failed to generate recap: ${error}`, { id: toastId })
+    }
+  }
+
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
@@ -137,6 +184,13 @@ export function WorktreeContextMenu({
           <FileJson className="mr-2 h-4 w-4" />
           Edit jean.json
         </ContextMenuItem>
+
+        {hasMessages && (
+          <ContextMenuItem onClick={handleGenerateRecap}>
+            <Sparkles className="mr-2 h-4 w-4" />
+            Generate Recap
+          </ContextMenuItem>
+        )}
 
         <ContextMenuSeparator />
 

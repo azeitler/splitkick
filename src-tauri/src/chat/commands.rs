@@ -600,6 +600,7 @@ pub async fn restore_session_with_base(
         cached_branch_diff_removed: None,
         cached_base_branch_ahead_count: None,
         cached_base_branch_behind_count: None,
+        cached_worktree_ahead_count: None,
         order: 0,
         archived_at: None,
     };
@@ -2738,7 +2739,11 @@ pub struct SessionDigestResponse {
 }
 
 /// Execute one-shot Claude CLI call for session digest with JSON schema (non-streaming)
-fn execute_digest_claude(app: &AppHandle, prompt: &str) -> Result<SessionDigestResponse, String> {
+fn execute_digest_claude(
+    app: &AppHandle,
+    prompt: &str,
+    model: &str,
+) -> Result<SessionDigestResponse, String> {
     let cli_path = get_cli_binary_path(app)?;
 
     if !cli_path.exists() {
@@ -2756,7 +2761,7 @@ fn execute_digest_claude(app: &AppHandle, prompt: &str) -> Result<SessionDigestR
         "stream-json",
         "--verbose",
         "--model",
-        "haiku", // Fast model for quick digest generation
+        model,
         "--no-session-persistence",
         "--max-turns",
         "2", // Need 2 turns: one for thinking, one for structured output
@@ -2843,6 +2848,11 @@ pub async fn generate_session_digest(
 ) -> Result<SessionDigestResponse, String> {
     log::trace!("Generating digest for session {}", session_id);
 
+    // Load preferences to get model
+    let prefs = crate::load_preferences(app.clone())
+        .await
+        .map_err(|e| format!("Failed to load preferences: {e}"))?;
+
     // Load messages from session
     let messages = run_log::load_session_messages(&app, &session_id)?;
 
@@ -2857,7 +2867,7 @@ pub async fn generate_session_digest(
     let prompt = SESSION_DIGEST_PROMPT.replace("{conversation}", &conversation_history);
 
     // Call Claude CLI with JSON schema (non-streaming)
-    execute_digest_claude(&app, &prompt)
+    execute_digest_claude(&app, &prompt, &prefs.session_recap_model)
 }
 
 #[cfg(test)]

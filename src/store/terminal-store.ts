@@ -16,15 +16,16 @@ interface TerminalState {
   activeTerminalIds: Record<string, string>
   // Set of running terminal IDs (have active PTY process)
   runningTerminals: Set<string>
-  // Whether terminal panel is expanded (false = collapsed/minimized)
+  // Whether terminal panel is expanded (false = collapsed/minimized) - global since only one worktree visible
   terminalVisible: boolean
-  // Whether terminal panel is open at all (false = completely hidden via X button)
-  terminalPanelOpen: boolean
+  // Whether terminal panel is open per worktree (worktreeId -> open)
+  terminalPanelOpen: Record<string, boolean>
   terminalHeight: number
 
   setTerminalVisible: (visible: boolean) => void
-  setTerminalPanelOpen: (open: boolean) => void
-  toggleTerminal: () => void
+  setTerminalPanelOpen: (worktreeId: string, open: boolean) => void
+  isTerminalPanelOpen: (worktreeId: string) => boolean
+  toggleTerminal: (worktreeId: string) => void
   setTerminalHeight: (height: number) => void
 
   // Terminal instance management
@@ -63,18 +64,28 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   activeTerminalIds: {},
   runningTerminals: new Set(),
   terminalVisible: false,
-  terminalPanelOpen: false,
+  terminalPanelOpen: {},
   terminalHeight: 30,
 
   setTerminalVisible: visible => set({ terminalVisible: visible }),
 
-  setTerminalPanelOpen: open => set({ terminalPanelOpen: open }),
+  setTerminalPanelOpen: (worktreeId, open) =>
+    set(state => ({
+      terminalPanelOpen: {
+        ...state.terminalPanelOpen,
+        [worktreeId]: open,
+      },
+    })),
 
-  toggleTerminal: () =>
+  isTerminalPanelOpen: worktreeId => get().terminalPanelOpen[worktreeId] ?? false,
+
+  toggleTerminal: worktreeId =>
     set(state => ({
       terminalVisible: !state.terminalVisible,
-      // Also open the panel if making visible
-      terminalPanelOpen: !state.terminalVisible ? true : state.terminalPanelOpen,
+      // Also open the panel for this worktree if making visible
+      terminalPanelOpen: !state.terminalVisible
+        ? { ...state.terminalPanelOpen, [worktreeId]: true }
+        : state.terminalPanelOpen,
     })),
 
   setTerminalHeight: height => set({ terminalHeight: height }),
@@ -99,7 +110,10 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
           ...state.activeTerminalIds,
           [worktreeId]: id,
         },
-        terminalPanelOpen: true,
+        terminalPanelOpen: {
+          ...state.terminalPanelOpen,
+          [worktreeId]: true,
+        },
         terminalVisible: true,
       }
     })
@@ -182,15 +196,16 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
           [worktreeId]: existingTerminal.id,
         },
         terminalVisible: true,
-        terminalPanelOpen: true,
+        terminalPanelOpen: {
+          ...state.terminalPanelOpen,
+          [worktreeId]: true,
+        },
       })
       return existingTerminal.id
     }
 
-    // No existing running terminal, create a new one
-    const id = get().addTerminal(worktreeId, command)
-    set({ terminalVisible: true, terminalPanelOpen: true })
-    return id
+    // No existing running terminal, create a new one (addTerminal sets terminalPanelOpen)
+    return get().addTerminal(worktreeId, command)
   },
 
   closeAllTerminals: worktreeId => {
@@ -214,8 +229,11 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
         [worktreeId]: '',
       },
       runningTerminals: newRunning,
-      terminalPanelOpen: false,
-      terminalVisible: false,
+      terminalPanelOpen: {
+        ...state.terminalPanelOpen,
+        [worktreeId]: false,
+      },
+      // Don't set terminalVisible=false as that's global and affects other worktrees
     })
 
     return terminalIds

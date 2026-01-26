@@ -63,13 +63,20 @@ export function WorktreeItem({
   const behindCount =
     gitStatus?.behind_count ?? worktree.cached_behind_count ?? 0
   const worktreeAheadCount =
-    gitStatus?.ahead_count ?? worktree.cached_ahead_count ?? 0
+    gitStatus?.worktree_ahead_count ?? worktree.cached_worktree_ahead_count ?? 0
   const baseBranchAheadCount =
     gitStatus?.base_branch_ahead_count ??
     worktree.cached_base_branch_ahead_count ??
     0
   // For base sessions, show base branch unpushed; for worktrees, show worktree unpushed
   const pushCount = isBase ? baseBranchAheadCount : worktreeAheadCount
+
+  // Uncommitted changes (working directory)
+  const uncommittedAdded =
+    gitStatus?.uncommitted_added ?? worktree.cached_uncommitted_added ?? 0
+  const uncommittedRemoved =
+    gitStatus?.uncommitted_removed ?? worktree.cached_uncommitted_removed ?? 0
+  const hasUncommitted = uncommittedAdded > 0 || uncommittedRemoved > 0
 
   // Fetch sessions to check for persisted unanswered questions
   const { data: sessionsData } = useSessions(worktree.id, worktree.path)
@@ -450,6 +457,18 @@ export function WorktreeItem({
               {pushCount}
             </span>
           </button>
+        )}
+
+        {/* Uncommitted changes */}
+        {hasUncommitted && (
+          <span
+            className="shrink-0 text-[11px] font-medium"
+            title={`Uncommitted: +${uncommittedAdded}/-${uncommittedRemoved} lines`}
+          >
+            <span className="text-green-500">+{uncommittedAdded}</span>
+            <span className="text-muted-foreground">/</span>
+            <span className="text-red-500">-{uncommittedRemoved}</span>
+          </span>
         )}
 
       </div>
