@@ -1863,21 +1863,25 @@ pub async fn open_worktree_in_terminal(
     #[cfg(target_os = "linux")]
     {
         // Try common Linux terminal emulators in order of preference
-        let terminals = [
+        // Use owned Strings to avoid borrowing temporaries.
+        let terminals: Vec<(&str, Vec<String>)> = vec![
             (
                 "gnome-terminal",
-                vec!["--working-directory", &worktree_path],
+                vec!["--working-directory".into(), worktree_path.clone()],
             ),
-            ("konsole", vec!["--workdir", &worktree_path]),
-            ("alacritty", vec!["--working-directory", &worktree_path]),
-            ("kitty", vec!["--directory", &worktree_path]),
+            ("konsole", vec!["--workdir".into(), worktree_path.clone()]),
+            (
+                "alacritty",
+                vec!["--working-directory".into(), worktree_path.clone()],
+            ),
+            ("kitty", vec!["--directory".into(), worktree_path.clone()]),
             (
                 "xterm",
                 vec![
-                    "-e",
-                    "bash",
-                    "-c",
-                    &format!("cd '{}'; exec bash", worktree_path),
+                    "-e".into(),
+                    "bash".into(),
+                    "-c".into(),
+                    format!("cd '{}'; exec bash", worktree_path),
                 ],
             ),
         ];
@@ -1885,7 +1889,7 @@ pub async fn open_worktree_in_terminal(
         let mut opened = false;
         for (term, args) in terminals {
             if crate::platform::executable_exists(term) {
-                match std::process::Command::new(term).args(&args).spawn() {
+                match std::process::Command::new(term).args(args).spawn() {
                     Ok(_) => {
                         log::trace!("Opened terminal with {term}");
                         opened = true;
