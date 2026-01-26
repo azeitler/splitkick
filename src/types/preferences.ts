@@ -2,6 +2,24 @@ import type { ThinkingLevel } from './chat'
 import { DEFAULT_KEYBINDINGS, type KeybindingsMap } from './keybindings'
 
 // =============================================================================
+// Notification Sounds
+// =============================================================================
+
+export type NotificationSound = 'none' | 'ding' | 'chime' | 'pop' | 'choochoo'
+
+export const notificationSoundOptions: {
+  value: NotificationSound
+  label: string
+}[] = [
+  { value: 'none', label: 'None' },
+  // More sounds will be added later:
+  // { value: 'ding', label: 'Ding' },
+  // { value: 'chime', label: 'Chime' },
+  // { value: 'pop', label: 'Pop' },
+  // { value: 'choochoo', label: 'Choo-choo' },
+]
+
+// =============================================================================
 // Magic Prompts - Customizable prompts for AI-powered features
 // =============================================================================
 
@@ -215,6 +233,8 @@ export interface AppPreferences {
   file_edit_mode: FileEditMode // How to edit files: inline (CodeMirror) or external (VS Code, etc.)
   ai_language: string // Preferred language for AI responses (empty = default)
   allow_web_tools_in_plan_mode: boolean // Allow WebFetch/WebSearch in plan mode without prompts
+  waiting_sound: NotificationSound // Sound when session is waiting for input
+  review_sound: NotificationSound // Sound when session finishes reviewing
 }
 
 export type FileEditMode = 'inline' | 'external'
@@ -407,4 +427,6 @@ export const defaultPreferences: AppPreferences = {
   file_edit_mode: 'external',
   ai_language: '', // Default: empty (Claude's default behavior)
   allow_web_tools_in_plan_mode: true, // Default: enabled
+  waiting_sound: 'none',
+  review_sound: 'none',
 }

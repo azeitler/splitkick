@@ -20,6 +20,7 @@ import { useImmediateSessionStateSave } from './hooks/useImmediateSessionStateSa
 import { useCliVersionCheck } from './hooks/useCliVersionCheck'
 import { useQueueProcessor } from './hooks/useQueueProcessor'
 import useStreamingEvents from './components/chat/hooks/useStreamingEvents'
+import { preloadAllSounds } from './lib/sounds'
 
 function App() {
   // Apply font settings from preferences
@@ -76,6 +77,9 @@ function App() {
     logger.info('🚀 Frontend application starting up')
     initializeCommandSystem()
     logger.debug('Command system initialized')
+
+    // Preload notification sounds for instant playback
+    preloadAllSounds()
 
     // Kill any orphaned terminals from previous session/reload
     // This ensures cleanup even if beforeunload didn't complete

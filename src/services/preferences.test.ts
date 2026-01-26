@@ -96,6 +96,8 @@ describe('preferences service', () => {
         file_edit_mode: 'external',
         ai_language: '',
         allow_web_tools_in_plan_mode: true,
+        waiting_sound: 'none',
+        review_sound: 'none',
       }
       vi.mocked(invoke).mockResolvedValueOnce(mockPreferences)
 
@@ -170,6 +172,8 @@ describe('preferences service', () => {
         file_edit_mode: 'external',
         ai_language: '',
         allow_web_tools_in_plan_mode: true,
+        waiting_sound: 'none',
+        review_sound: 'none',
       }
       vi.mocked(invoke).mockResolvedValueOnce(prefsWithOldBinding)
 
@@ -219,6 +223,8 @@ describe('preferences service', () => {
         file_edit_mode: 'external',
         ai_language: '',
         allow_web_tools_in_plan_mode: true,
+        waiting_sound: 'none',
+        review_sound: 'none',
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -266,6 +272,8 @@ describe('preferences service', () => {
         file_edit_mode: 'external',
         ai_language: '',
         allow_web_tools_in_plan_mode: true,
+        waiting_sound: 'none',
+        review_sound: 'none',
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -313,6 +321,8 @@ describe('preferences service', () => {
         file_edit_mode: 'external',
         ai_language: '',
         allow_web_tools_in_plan_mode: true,
+        waiting_sound: 'none',
+        review_sound: 'none',
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -360,6 +370,8 @@ describe('preferences service', () => {
         file_edit_mode: 'external',
         ai_language: '',
         allow_web_tools_in_plan_mode: true,
+        waiting_sound: 'none',
+        review_sound: 'none',
       }
 
       const { result } = renderHook(() => useSavePreferences(), {

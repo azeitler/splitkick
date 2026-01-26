@@ -124,6 +124,10 @@ pub struct AppPreferences {
     pub ai_language: String, // Preferred language for AI responses (empty = default)
     #[serde(default = "default_allow_web_tools_in_plan_mode")]
     pub allow_web_tools_in_plan_mode: bool, // Allow WebFetch/WebSearch in plan mode without prompts
+    #[serde(default = "default_waiting_sound")]
+    pub waiting_sound: String, // Sound when session is waiting for input: none, ding, chime, pop, choochoo
+    #[serde(default = "default_review_sound")]
+    pub review_sound: String, // Sound when session finishes reviewing: none, ding, chime, pop, choochoo
 }
 
 fn default_auto_branch_naming() -> bool {
@@ -228,6 +232,14 @@ fn default_parallel_execution_prompt_enabled() -> bool {
 
 fn default_allow_web_tools_in_plan_mode() -> bool {
     true // Enabled by default
+}
+
+fn default_waiting_sound() -> String {
+    "none".to_string()
+}
+
+fn default_review_sound() -> String {
+    "none".to_string()
 }
 
 // =============================================================================
@@ -456,6 +468,8 @@ impl Default for AppPreferences {
             file_edit_mode: default_file_edit_mode(),
             ai_language: String::new(),
             allow_web_tools_in_plan_mode: default_allow_web_tools_in_plan_mode(),
+            waiting_sound: default_waiting_sound(),
+            review_sound: default_review_sound(),
         }
     }
 }

@@ -7,9 +7,10 @@ import { useChatStore } from '@/store/chat-store'
 import { chatQueryKeys } from '@/services/chat'
 import { isTauri, saveWorktreePr, projectsQueryKeys } from '@/services/projects'
 import { preferencesQueryKeys } from '@/services/preferences'
-import type { AppPreferences } from '@/types/preferences'
+import type { AppPreferences, NotificationSound } from '@/types/preferences'
 import { triggerImmediateGitPoll } from '@/services/git-status'
 import { isAskUserQuestion, isExitPlanMode } from '@/types/chat'
+import { playNotificationSound } from '@/lib/sounds'
 import type {
   ChunkEvent,
   ToolUseEvent,
@@ -255,6 +256,12 @@ export default function useStreamingEvents({
         clearExecutingMode(sessionId)
         setWaitingForInput(sessionId, true)
         removeSendingSession(sessionId)
+
+        // Play waiting sound if not currently viewing this session
+        if (!isCurrentlyViewing) {
+          const waitingSound = (preferences?.waiting_sound ?? 'none') as NotificationSound
+          playNotificationSound(waitingSound)
+        }
       } else {
         // No blocking tools - clear everything and mark for review
         clearStreamingContent(sessionId)
@@ -265,6 +272,12 @@ export default function useStreamingEvents({
         clearStreamingPlanApproval(sessionId)
         clearExecutingMode(sessionId)
         setSessionReviewing(sessionId, true)
+
+        // Play review sound if not currently viewing this session
+        if (!isCurrentlyViewing) {
+          const reviewSound = (preferences?.review_sound ?? 'none') as NotificationSound
+          playNotificationSound(reviewSound)
+        }
       }
 
       // NOW add optimistic message after streaming state is cleared
