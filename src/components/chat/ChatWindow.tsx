@@ -1298,6 +1298,8 @@ Begin your investigation now.`
     const prompt = promptParts.join('\n\n---\n\n')
 
     // Send message
+    const investigateModel = preferences?.magic_prompt_models?.investigate_model ?? selectedModelRef.current
+
     const {
       addSendingSession,
       setLastSentMessage,
@@ -1309,7 +1311,7 @@ Begin your investigation now.`
     setLastSentMessage(sessionId, prompt)
     setError(sessionId, null)
     addSendingSession(sessionId)
-    setSelectedModel(sessionId, selectedModelRef.current)
+    setSelectedModel(sessionId, investigateModel)
     setExecutingMode(sessionId, executionModeRef.current)
 
     sendMessage.mutate(
@@ -1318,7 +1320,7 @@ Begin your investigation now.`
         worktreeId,
         worktreePath,
         message: prompt,
-        model: selectedModelRef.current,
+        model: investigateModel,
         executionMode: executionModeRef.current,
         thinkingLevel: selectedThinkingLevelRef.current,
         parallelExecutionPromptEnabled:
@@ -1327,7 +1329,7 @@ Begin your investigation now.`
       },
       { onSettled: () => inputRef.current?.focus() }
     )
-  }, [queryClient, sendMessage, setLoadContextModalOpen, preferences?.magic_prompts?.investigate_issue, preferences?.magic_prompts?.investigate_pr, preferences?.parallel_execution_prompt_enabled, preferences?.ai_language])
+  }, [queryClient, sendMessage, setLoadContextModalOpen, preferences?.magic_prompts?.investigate_issue, preferences?.magic_prompts?.investigate_pr, preferences?.magic_prompt_models?.investigate_model, preferences?.parallel_execution_prompt_enabled, preferences?.ai_language])
 
   // Wraps modal open/close to auto-trigger investigation after user loads context
   const handleLoadContextModalChange = useCallback(async (open: boolean) => {
@@ -1722,423 +1724,423 @@ Begin your investigation now.`
       <div className="flex h-full w-full min-w-0 flex-col overflow-hidden">
         {/* Session tab bar */}
         <SessionTabBar
-        worktreeId={activeWorktreeId}
-        worktreePath={activeWorktreePath}
-        projectId={worktree?.project_id}
-        isBase={worktree?.session_type === 'base'}
-      />
+          worktreeId={activeWorktreeId}
+          worktreePath={activeWorktreePath}
+          projectId={worktree?.project_id}
+          isBase={worktree?.session_type === 'base'}
+        />
 
-      {/* Review results panel (when review tab is active) */}
-      {isViewingReviewTab ? (
-        <ReviewResultsPanel worktreeId={activeWorktreeId} />
-      ) : (
-        <ResizablePanelGroup direction="vertical" className="flex-1">
-          <ResizablePanel defaultSize={terminalVisible ? 70 : 100} minSize={30}>
-            <div className="flex h-full flex-col">
-          {/* Messages area */}
-          <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
-            {/* Session digest reminder (shows when opening a session that had activity while out of focus) */}
-            {activeSessionId && (
-              <SessionDigestReminder sessionId={activeSessionId} />
-            )}
-            <ScrollArea
-              className="h-full w-full"
-              viewportRef={scrollViewportRef}
-              onScroll={handleScroll}
-            >
-              <div className="mx-auto max-w-7xl px-4 py-4 md:px-6 min-w-0 w-full">
-                <div className="select-text space-y-4 font-mono text-sm min-w-0 break-words overflow-x-auto">
-                  {/* Debug info (dev mode only) */}
-                  {isDev && activeWorktreeId && activeWorktreePath && activeSessionId && (
-                    <div className="text-[0.625rem] text-muted-foreground/50 bg-muted/30 rounded font-mono">
-                      <SessionDebugPanel
-                        worktreeId={activeWorktreeId}
-                        worktreePath={activeWorktreePath}
-                        sessionId={activeSessionId}
-                      />
-                    </div>
-                  )}
-                  {/* Setup script output from jean.json */}
-                  {setupScriptResult && activeWorktreeId && (
-                    <SetupScriptOutput
-                      result={setupScriptResult}
-                      onDismiss={() => clearSetupScriptResult(activeWorktreeId)}
-                    />
-                  )}
-                  {isLoading || isSessionsLoading || isSessionSwitching ? (
-                    <div className="text-muted-foreground">Loading...</div>
-                  ) : !session || session.messages.length === 0 ? (
-                    <div className="text-muted-foreground">
-                      No messages yet. Start a conversation!
-                    </div>
-                  ) : (
-                    // Virtualized message list - only renders visible messages for performance
-                    <VirtualizedMessageList
-                      ref={virtualizedListRef}
-                      messages={messages}
-                      scrollContainerRef={scrollViewportRef}
-                      totalMessages={messages.length}
-                      lastPlanMessageIndex={lastPlanMessageIndex}
-                      hasFollowUpMap={hasFollowUpMap}
-                      sessionId={deferredSessionId ?? ''}
-                      worktreePath={activeWorktreePath ?? ''}
-                      approveShortcut={approveShortcut}
-                      approveButtonRef={approveButtonRef}
-                      isSending={isSending}
-                      onPlanApproval={handlePlanApproval}
-                      onPlanApprovalYolo={handlePlanApprovalYolo}
-                      onQuestionAnswer={handleQuestionAnswer}
-                      onQuestionSkip={handleSkipQuestion}
-                      onFileClick={setViewingFilePath}
-                      onEditedFileClick={setViewingFilePath}
-                      onFixFinding={handleFixFinding}
-                      onFixAllFindings={handleFixAllFindings}
-                      isQuestionAnswered={isQuestionAnswered}
-                      getSubmittedAnswers={getSubmittedAnswers}
-                      areQuestionsSkipped={areQuestionsSkipped}
-                      isFindingFixed={isFindingFixed}
-                      shouldScrollToBottom={isAtBottom}
-                      onScrollToBottomHandled={handleScrollToBottomHandled}
-                    />
-                  )}
-                  {isSending && activeSessionId && (
-                    <StreamingMessage
-                      sessionId={activeSessionId}
-                      contentBlocks={currentStreamingContentBlocks}
-                      toolCalls={currentToolCalls}
-                      streamingContent={streamingContent}
-                      streamingExecutionMode={streamingExecutionMode}
-                      selectedThinkingLevel={selectedThinkingLevel}
-                      approveShortcut={approveShortcut}
-                      onQuestionAnswer={handleQuestionAnswer}
-                      onQuestionSkip={handleSkipQuestion}
-                      onFileClick={setViewingFilePath}
-                      onEditedFileClick={setViewingFilePath}
-                      isQuestionAnswered={isQuestionAnswered}
-                      getSubmittedAnswers={getSubmittedAnswers}
-                      areQuestionsSkipped={areQuestionsSkipped}
-                      isStreamingPlanApproved={isStreamingPlanApproved}
-                      onStreamingPlanApproval={handleStreamingPlanApproval}
-                      onStreamingPlanApprovalYolo={handleStreamingPlanApprovalYolo}
-                    />
-                  )}
-
-                  {/* Permission approval UI - shown when tools require approval (never in yolo mode) */}
-                  {pendingDenials.length > 0 &&
-                    activeSessionId &&
-                    !isSending &&
-                    executionMode !== 'yolo' && (
-                      <PermissionApproval
-                        sessionId={activeSessionId}
-                        denials={pendingDenials}
-                        onApprove={handlePermissionApproval}
-                        onApproveYolo={handlePermissionApprovalYolo}
-                        onDeny={handlePermissionDeny}
-                      />
-                    )}
-
-                  {/* Queued messages - shown inline after streaming/messages */}
+        {/* Review results panel (when review tab is active) */}
+        {isViewingReviewTab ? (
+          <ReviewResultsPanel worktreeId={activeWorktreeId} />
+        ) : (
+          <ResizablePanelGroup direction="vertical" className="flex-1">
+            <ResizablePanel defaultSize={terminalVisible ? 70 : 100} minSize={30}>
+              <div className="flex h-full flex-col">
+                {/* Messages area */}
+                <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
+                  {/* Session digest reminder (shows when opening a session that had activity while out of focus) */}
                   {activeSessionId && (
-                    <QueuedMessagesList
-                      messages={currentQueuedMessages}
-                      sessionId={activeSessionId}
-                      onRemove={handleRemoveQueuedMessage}
-                    />
+                    <SessionDigestReminder sessionId={activeSessionId} />
                   )}
-                </div>
-              </div>
-            </ScrollArea>
+                  <ScrollArea
+                    className="h-full w-full"
+                    viewportRef={scrollViewportRef}
+                    onScroll={handleScroll}
+                  >
+                    <div className="mx-auto max-w-7xl px-4 py-4 md:px-6 min-w-0 w-full">
+                      <div className="select-text space-y-4 font-mono text-sm min-w-0 break-words overflow-x-auto">
+                        {/* Debug info (dev mode only) */}
+                        {isDev && activeWorktreeId && activeWorktreePath && activeSessionId && (
+                          <div className="text-[0.625rem] text-muted-foreground/50 bg-muted/30 rounded font-mono">
+                            <SessionDebugPanel
+                              worktreeId={activeWorktreeId}
+                              worktreePath={activeWorktreePath}
+                              sessionId={activeSessionId}
+                            />
+                          </div>
+                        )}
+                        {/* Setup script output from jean.json */}
+                        {setupScriptResult && activeWorktreeId && (
+                          <SetupScriptOutput
+                            result={setupScriptResult}
+                            onDismiss={() => clearSetupScriptResult(activeWorktreeId)}
+                          />
+                        )}
+                        {isLoading || isSessionsLoading || isSessionSwitching ? (
+                          <div className="text-muted-foreground">Loading...</div>
+                        ) : !session || session.messages.length === 0 ? (
+                          <div className="text-muted-foreground">
+                            No messages yet. Start a conversation!
+                          </div>
+                        ) : (
+                          // Virtualized message list - only renders visible messages for performance
+                          <VirtualizedMessageList
+                            ref={virtualizedListRef}
+                            messages={messages}
+                            scrollContainerRef={scrollViewportRef}
+                            totalMessages={messages.length}
+                            lastPlanMessageIndex={lastPlanMessageIndex}
+                            hasFollowUpMap={hasFollowUpMap}
+                            sessionId={deferredSessionId ?? ''}
+                            worktreePath={activeWorktreePath ?? ''}
+                            approveShortcut={approveShortcut}
+                            approveButtonRef={approveButtonRef}
+                            isSending={isSending}
+                            onPlanApproval={handlePlanApproval}
+                            onPlanApprovalYolo={handlePlanApprovalYolo}
+                            onQuestionAnswer={handleQuestionAnswer}
+                            onQuestionSkip={handleSkipQuestion}
+                            onFileClick={setViewingFilePath}
+                            onEditedFileClick={setViewingFilePath}
+                            onFixFinding={handleFixFinding}
+                            onFixAllFindings={handleFixAllFindings}
+                            isQuestionAnswered={isQuestionAnswered}
+                            getSubmittedAnswers={getSubmittedAnswers}
+                            areQuestionsSkipped={areQuestionsSkipped}
+                            isFindingFixed={isFindingFixed}
+                            shouldScrollToBottom={isAtBottom}
+                            onScrollToBottomHandled={handleScrollToBottomHandled}
+                          />
+                        )}
+                        {isSending && activeSessionId && (
+                          <StreamingMessage
+                            sessionId={activeSessionId}
+                            contentBlocks={currentStreamingContentBlocks}
+                            toolCalls={currentToolCalls}
+                            streamingContent={streamingContent}
+                            streamingExecutionMode={streamingExecutionMode}
+                            selectedThinkingLevel={selectedThinkingLevel}
+                            approveShortcut={approveShortcut}
+                            onQuestionAnswer={handleQuestionAnswer}
+                            onQuestionSkip={handleSkipQuestion}
+                            onFileClick={setViewingFilePath}
+                            onEditedFileClick={setViewingFilePath}
+                            isQuestionAnswered={isQuestionAnswered}
+                            getSubmittedAnswers={getSubmittedAnswers}
+                            areQuestionsSkipped={areQuestionsSkipped}
+                            isStreamingPlanApproved={isStreamingPlanApproved}
+                            onStreamingPlanApproval={handleStreamingPlanApproval}
+                            onStreamingPlanApprovalYolo={handleStreamingPlanApprovalYolo}
+                          />
+                        )}
 
-            {/* Floating scroll buttons */}
-            <FloatingButtons
-              hasPendingPlan={!!pendingPlanMessage}
-              hasStreamingPlan={hasStreamingPlan}
-              showFindingsButton={!areFindingsVisible}
-              isAtBottom={isAtBottom}
-              approveShortcut={approveShortcut}
-              onStreamingPlanApproval={handleStreamingPlanApproval}
-              onPendingPlanApproval={handlePendingPlanApprovalCallback}
-              onScrollToFindings={scrollToFindings}
-              onScrollToBottom={scrollToBottom}
-            />
-          </div>
+                        {/* Permission approval UI - shown when tools require approval (never in yolo mode) */}
+                        {pendingDenials.length > 0 &&
+                          activeSessionId &&
+                          !isSending &&
+                          executionMode !== 'yolo' && (
+                            <PermissionApproval
+                              sessionId={activeSessionId}
+                              denials={pendingDenials}
+                              onApprove={handlePermissionApproval}
+                              onApproveYolo={handlePermissionApprovalYolo}
+                              onDeny={handlePermissionDeny}
+                            />
+                          )}
 
-          {/* Error banner - shows when request fails */}
-          {currentError && (
-            <ErrorBanner
-              error={currentError}
-              onDismiss={() =>
-                activeSessionId && setError(activeSessionId, null)
-              }
-            />
-          )}
+                        {/* Queued messages - shown inline after streaming/messages */}
+                        {activeSessionId && (
+                          <QueuedMessagesList
+                            messages={currentQueuedMessages}
+                            sessionId={activeSessionId}
+                            onRemove={handleRemoveQueuedMessage}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  </ScrollArea>
 
-          {/* Input container - full width, centered content */}
-          <div className="bg-sidebar">
-            <div className="mx-auto max-w-7xl">
-              {/* Pending file preview (@ mentions) */}
-              <FilePreview
-                files={currentPendingFiles}
-                onRemove={handleRemovePendingFile}
-                disabled={isSending}
-              />
-
-              {/* Pending image preview */}
-              <ImagePreview
-                images={currentPendingImages}
-                onRemove={handleRemovePendingImage}
-                disabled={isSending}
-              />
-
-              {/* Pending text file preview */}
-              <TextFilePreview
-                textFiles={currentPendingTextFiles}
-                onRemove={handleRemovePendingTextFile}
-                disabled={isSending}
-              />
-
-              {/* Pending skills preview */}
-              {currentPendingSkills.length > 0 && (
-                <div className="px-4 md:px-6 pt-2 flex flex-wrap gap-2">
-                  {currentPendingSkills.map(skill => (
-                    <SkillBadge
-                      key={skill.id}
-                      skill={skill}
-                      onRemove={() => handleRemovePendingSkill(skill.id)}
-                    />
-                  ))}
-                </div>
-              )}
-
-              {/* Task widget - shows current session's active todos */}
-              {/* Show if: has todos AND (no dismissal OR source differs from dismissed message) */}
-              {activeTodos.length > 0 &&
-                (dismissedTodoMessageId === null ||
-                  (todoSourceMessageId !== null &&
-                    todoSourceMessageId !== dismissedTodoMessageId)) && (
-                  <div className="px-4 md:px-6 pt-2">
-                    <TodoWidget
-                      todos={normalizeTodosForDisplay(
-                        activeTodos,
-                        isFromStreaming
-                      )}
-                      isStreaming={isSending}
-                      onClose={() =>
-                        setDismissedTodoMessageId(
-                          todoSourceMessageId ?? '__streaming__'
-                        )
-                      }
-                    />
-                  </div>
-                )}
-
-              {/* Input area - unified container with textarea and toolbar */}
-              <form
-                ref={formRef}
-                onSubmit={handleSubmit}
-                className={cn(
-                  'relative rounded-lg transition-all duration-150',
-                  isDragging &&
-                    'ring-2 ring-primary ring-inset bg-primary/5'
-                )}
-              >
-                {/* Textarea section */}
-                <div className="px-4 pt-3 pb-2 md:px-6">
-                  <ChatInput
-                    activeSessionId={activeSessionId}
-                    activeWorktreePath={activeWorktreePath}
-                    isSending={isSending}
-                    executionMode={executionMode}
-                    focusChatShortcut={focusChatShortcut}
-                    onSubmit={handleSubmit}
-                    onCancel={handleCancel}
-                    onCommandExecute={handleCommandExecute}
-                    onHasValueChange={setHasInputValue}
-                    formRef={formRef}
-                    inputRef={inputRef}
+                  {/* Floating scroll buttons */}
+                  <FloatingButtons
+                    hasPendingPlan={!!pendingPlanMessage}
+                    hasStreamingPlan={hasStreamingPlan}
+                    showFindingsButton={!areFindingsVisible}
+                    isAtBottom={isAtBottom}
+                    approveShortcut={approveShortcut}
+                    onStreamingPlanApproval={handleStreamingPlanApproval}
+                    onPendingPlanApproval={handlePendingPlanApprovalCallback}
+                    onScrollToFindings={scrollToFindings}
+                    onScrollToBottom={scrollToBottom}
                   />
                 </div>
 
-                {/* Bottom toolbar - memoized to prevent re-renders */}
-                <ChatToolbar
-                  isSending={isSending}
-                  hasPendingQuestions={hasPendingQuestions}
-                  hasPendingAttachments={hasPendingAttachments}
-                  hasInputValue={hasInputValue}
-                  executionMode={executionMode}
-                  selectedModel={selectedModel}
-                  selectedThinkingLevel={selectedThinkingLevel}
-                  thinkingOverrideActive={
-                    executionMode !== 'plan' &&
-                    selectedThinkingLevel !== 'off' &&
-                    !hasManualThinkingOverride
-                  }
-                  queuedMessageCount={currentQueuedMessages.length}
-                  hasBranchUpdates={hasBranchUpdates}
-                  behindCount={behindCount}
-                  aheadCount={aheadCount}
-                  baseBranch={gitStatus?.base_branch ?? 'main'}
-                  uncommittedAdded={uncommittedAdded}
-                  uncommittedRemoved={uncommittedRemoved}
-                  branchDiffAdded={branchDiffAdded}
-                  branchDiffRemoved={branchDiffRemoved}
-                  prUrl={worktree?.pr_url}
-                  prNumber={worktree?.pr_number}
-                  displayStatus={displayStatus}
-                  checkStatus={checkStatus}
-                  magicModalShortcut={magicModalShortcut}
-                  activeWorktreePath={activeWorktreePath}
-                  worktreeId={activeWorktreeId ?? null}
-                  loadedIssueContexts={loadedIssueContexts ?? []}
-                  loadedPRContexts={loadedPRContexts ?? []}
-                  attachedSavedContexts={attachedSavedContexts ?? []}
-                  onOpenMagicModal={handleOpenMagicModal}
-                  onSaveContext={handleSaveContext}
-                  onLoadContext={handleLoadContext}
-                  onCommit={handleCommit}
-                  onOpenPr={handleOpenPr}
-                  onReview={handleReview}
-                  onMerge={handleMerge}
-                  isBaseSession={worktree ? isBaseSession(worktree) : true}
-                  hasOpenPr={Boolean(worktree?.pr_url)}
-                  onSetDiffRequest={setDiffRequest}
-                  onModelChange={handleToolbarModelChange}
-                  onThinkingLevelChange={handleToolbarThinkingLevelChange}
-                  onSetExecutionMode={handleToolbarSetExecutionMode}
-                  onCancel={handleCancel}
-                />
-              </form>
-            </div>
-          </div>
-            </div>
-          </ResizablePanel>
+                {/* Error banner - shows when request fails */}
+                {currentError && (
+                  <ErrorBanner
+                    error={currentError}
+                    onDismiss={() =>
+                      activeSessionId && setError(activeSessionId, null)
+                    }
+                  />
+                )}
 
-          {/* Terminal panel - only render when panel is open */}
-          {activeWorktreePath && terminalPanelOpen && (
-            <>
-              <ResizableHandle withHandle />
-              <ResizablePanel
-                ref={terminalPanelRef}
-                defaultSize={terminalVisible ? 30 : 4}
-                minSize={terminalVisible ? 15 : 4}
-                collapsible
-                collapsedSize={4}
-                onCollapse={handleTerminalCollapse}
-                onExpand={handleTerminalExpand}
-              >
-                <TerminalPanel
-                  isCollapsed={!terminalVisible}
+                {/* Input container - full width, centered content */}
+                <div className="bg-sidebar">
+                  <div className="mx-auto max-w-7xl">
+                    {/* Pending file preview (@ mentions) */}
+                    <FilePreview
+                      files={currentPendingFiles}
+                      onRemove={handleRemovePendingFile}
+                      disabled={isSending}
+                    />
+
+                    {/* Pending image preview */}
+                    <ImagePreview
+                      images={currentPendingImages}
+                      onRemove={handleRemovePendingImage}
+                      disabled={isSending}
+                    />
+
+                    {/* Pending text file preview */}
+                    <TextFilePreview
+                      textFiles={currentPendingTextFiles}
+                      onRemove={handleRemovePendingTextFile}
+                      disabled={isSending}
+                    />
+
+                    {/* Pending skills preview */}
+                    {currentPendingSkills.length > 0 && (
+                      <div className="px-4 md:px-6 pt-2 flex flex-wrap gap-2">
+                        {currentPendingSkills.map(skill => (
+                          <SkillBadge
+                            key={skill.id}
+                            skill={skill}
+                            onRemove={() => handleRemovePendingSkill(skill.id)}
+                          />
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Task widget - shows current session's active todos */}
+                    {/* Show if: has todos AND (no dismissal OR source differs from dismissed message) */}
+                    {activeTodos.length > 0 &&
+                      (dismissedTodoMessageId === null ||
+                        (todoSourceMessageId !== null &&
+                          todoSourceMessageId !== dismissedTodoMessageId)) && (
+                        <div className="px-4 md:px-6 pt-2">
+                          <TodoWidget
+                            todos={normalizeTodosForDisplay(
+                              activeTodos,
+                              isFromStreaming
+                            )}
+                            isStreaming={isSending}
+                            onClose={() =>
+                              setDismissedTodoMessageId(
+                                todoSourceMessageId ?? '__streaming__'
+                              )
+                            }
+                          />
+                        </div>
+                      )}
+
+                    {/* Input area - unified container with textarea and toolbar */}
+                    <form
+                      ref={formRef}
+                      onSubmit={handleSubmit}
+                      className={cn(
+                        'relative rounded-lg transition-all duration-150',
+                        isDragging &&
+                        'ring-2 ring-primary ring-inset bg-primary/5'
+                      )}
+                    >
+                      {/* Textarea section */}
+                      <div className="px-4 pt-3 pb-2 md:px-6">
+                        <ChatInput
+                          activeSessionId={activeSessionId}
+                          activeWorktreePath={activeWorktreePath}
+                          isSending={isSending}
+                          executionMode={executionMode}
+                          focusChatShortcut={focusChatShortcut}
+                          onSubmit={handleSubmit}
+                          onCancel={handleCancel}
+                          onCommandExecute={handleCommandExecute}
+                          onHasValueChange={setHasInputValue}
+                          formRef={formRef}
+                          inputRef={inputRef}
+                        />
+                      </div>
+
+                      {/* Bottom toolbar - memoized to prevent re-renders */}
+                      <ChatToolbar
+                        isSending={isSending}
+                        hasPendingQuestions={hasPendingQuestions}
+                        hasPendingAttachments={hasPendingAttachments}
+                        hasInputValue={hasInputValue}
+                        executionMode={executionMode}
+                        selectedModel={selectedModel}
+                        selectedThinkingLevel={selectedThinkingLevel}
+                        thinkingOverrideActive={
+                          executionMode !== 'plan' &&
+                          selectedThinkingLevel !== 'off' &&
+                          !hasManualThinkingOverride
+                        }
+                        queuedMessageCount={currentQueuedMessages.length}
+                        hasBranchUpdates={hasBranchUpdates}
+                        behindCount={behindCount}
+                        aheadCount={aheadCount}
+                        baseBranch={gitStatus?.base_branch ?? 'main'}
+                        uncommittedAdded={uncommittedAdded}
+                        uncommittedRemoved={uncommittedRemoved}
+                        branchDiffAdded={branchDiffAdded}
+                        branchDiffRemoved={branchDiffRemoved}
+                        prUrl={worktree?.pr_url}
+                        prNumber={worktree?.pr_number}
+                        displayStatus={displayStatus}
+                        checkStatus={checkStatus}
+                        magicModalShortcut={magicModalShortcut}
+                        activeWorktreePath={activeWorktreePath}
+                        worktreeId={activeWorktreeId ?? null}
+                        loadedIssueContexts={loadedIssueContexts ?? []}
+                        loadedPRContexts={loadedPRContexts ?? []}
+                        attachedSavedContexts={attachedSavedContexts ?? []}
+                        onOpenMagicModal={handleOpenMagicModal}
+                        onSaveContext={handleSaveContext}
+                        onLoadContext={handleLoadContext}
+                        onCommit={handleCommit}
+                        onOpenPr={handleOpenPr}
+                        onReview={handleReview}
+                        onMerge={handleMerge}
+                        isBaseSession={worktree ? isBaseSession(worktree) : true}
+                        hasOpenPr={Boolean(worktree?.pr_url)}
+                        onSetDiffRequest={setDiffRequest}
+                        onModelChange={handleToolbarModelChange}
+                        onThinkingLevelChange={handleToolbarThinkingLevelChange}
+                        onSetExecutionMode={handleToolbarSetExecutionMode}
+                        onCancel={handleCancel}
+                      />
+                    </form>
+                  </div>
+                </div>
+              </div>
+            </ResizablePanel>
+
+            {/* Terminal panel - only render when panel is open */}
+            {activeWorktreePath && terminalPanelOpen && (
+              <>
+                <ResizableHandle withHandle />
+                <ResizablePanel
+                  ref={terminalPanelRef}
+                  defaultSize={terminalVisible ? 30 : 4}
+                  minSize={terminalVisible ? 15 : 4}
+                  collapsible
+                  collapsedSize={4}
+                  onCollapse={handleTerminalCollapse}
                   onExpand={handleTerminalExpand}
-                />
-              </ResizablePanel>
-            </>
-          )}
-        </ResizablePanelGroup>
-      )}
+                >
+                  <TerminalPanel
+                    isCollapsed={!terminalVisible}
+                    onExpand={handleTerminalExpand}
+                  />
+                </ResizablePanel>
+              </>
+            )}
+          </ResizablePanelGroup>
+        )}
 
-      {/* File content modal for viewing files from tool calls */}
-      <FileContentModal
-        filePath={viewingFilePath}
-        onClose={() => setViewingFilePath(null)}
-      />
+        {/* File content modal for viewing files from tool calls */}
+        <FileContentModal
+          filePath={viewingFilePath}
+          onClose={() => setViewingFilePath(null)}
+        />
 
-      {/* Git diff modal for viewing diffs */}
-      <GitDiffModal
-        diffRequest={diffRequest}
-        onClose={() => setDiffRequest(null)}
-        onAddToPrompt={handleGitDiffAddToPrompt}
-        onExecutePrompt={handleGitDiffExecutePrompt}
-      />
+        {/* Git diff modal for viewing diffs */}
+        <GitDiffModal
+          diffRequest={diffRequest}
+          onClose={() => setDiffRequest(null)}
+          onAddToPrompt={handleGitDiffAddToPrompt}
+          onExecutePrompt={handleGitDiffExecutePrompt}
+        />
 
-      {/* Single file diff modal for viewing edited file changes */}
-      <FileDiffModal
-        filePath={editedFilePath}
-        worktreePath={activeWorktreePath ?? ''}
-        onClose={() => setEditedFilePath(null)}
-      />
+        {/* Single file diff modal for viewing edited file changes */}
+        <FileDiffModal
+          filePath={editedFilePath}
+          worktreePath={activeWorktreePath ?? ''}
+          onClose={() => setEditedFilePath(null)}
+        />
 
-      {/* Load Context modal for selecting saved contexts */}
-      <LoadContextModal
-        open={loadContextModalOpen}
-        onOpenChange={handleLoadContextModalChange}
-        worktreeId={activeWorktreeId}
-        worktreePath={activeWorktreePath ?? null}
-        activeSessionId={activeSessionId ?? null}
-        projectName={worktree?.name ?? 'unknown-project'}
-      />
+        {/* Load Context modal for selecting saved contexts */}
+        <LoadContextModal
+          open={loadContextModalOpen}
+          onOpenChange={handleLoadContextModalChange}
+          worktreeId={activeWorktreeId}
+          worktreePath={activeWorktreePath ?? null}
+          activeSessionId={activeSessionId ?? null}
+          projectName={worktree?.name ?? 'unknown-project'}
+        />
 
-      {/* Merge options dialog */}
-      <AlertDialog open={showMergeDialog} onOpenChange={setShowMergeDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Merge to Base</AlertDialogTitle>
-            <AlertDialogDescription>
-              Choose how to merge your changes into the base branch.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="flex flex-col gap-2 py-4">
-            <Button
-              variant="outline"
-              className="h-auto justify-between py-3"
-              onClick={() => executeMerge('merge')}
-            >
-              <div className="flex items-center">
-                <GitMerge className="mr-3 h-5 w-5 shrink-0" />
-                <div className="text-left">
-                  <div className="font-medium">Preserve History</div>
-                  <div className="text-xs text-muted-foreground">
-                    Keep all commits, create merge commit
+        {/* Merge options dialog */}
+        <AlertDialog open={showMergeDialog} onOpenChange={setShowMergeDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Merge to Base</AlertDialogTitle>
+              <AlertDialogDescription>
+                Choose how to merge your changes into the base branch.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="flex flex-col gap-2 py-4">
+              <Button
+                variant="outline"
+                className="h-auto justify-between py-3"
+                onClick={() => executeMerge('merge')}
+              >
+                <div className="flex items-center">
+                  <GitMerge className="mr-3 h-5 w-5 shrink-0" />
+                  <div className="text-left">
+                    <div className="font-medium">Preserve History</div>
+                    <div className="text-xs text-muted-foreground">
+                      Keep all commits, create merge commit
+                    </div>
                   </div>
                 </div>
-              </div>
-              <kbd className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                P
-              </kbd>
-            </Button>
-            <Button
-              variant="outline"
-              className="h-auto justify-between py-3"
-              onClick={() => executeMerge('squash')}
-            >
-              <div className="flex items-center">
-                <Layers className="mr-3 h-5 w-5 shrink-0" />
-                <div className="text-left">
-                  <div className="font-medium">Squash Commits</div>
-                  <div className="text-xs text-muted-foreground">
-                    Combine all commits into one
+                <kbd className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                  P
+                </kbd>
+              </Button>
+              <Button
+                variant="outline"
+                className="h-auto justify-between py-3"
+                onClick={() => executeMerge('squash')}
+              >
+                <div className="flex items-center">
+                  <Layers className="mr-3 h-5 w-5 shrink-0" />
+                  <div className="text-left">
+                    <div className="font-medium">Squash Commits</div>
+                    <div className="text-xs text-muted-foreground">
+                      Combine all commits into one
+                    </div>
                   </div>
                 </div>
-              </div>
-              <kbd className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                S
-              </kbd>
-            </Button>
-            <Button
-              variant="outline"
-              className="h-auto justify-between py-3"
-              onClick={() => executeMerge('rebase')}
-            >
-              <div className="flex items-center">
-                <GitBranch className="mr-3 h-5 w-5 shrink-0" />
-                <div className="text-left">
-                  <div className="font-medium">Rebase</div>
-                  <div className="text-xs text-muted-foreground">
-                    Replay commits on top of base
+                <kbd className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                  S
+                </kbd>
+              </Button>
+              <Button
+                variant="outline"
+                className="h-auto justify-between py-3"
+                onClick={() => executeMerge('rebase')}
+              >
+                <div className="flex items-center">
+                  <GitBranch className="mr-3 h-5 w-5 shrink-0" />
+                  <div className="text-left">
+                    <div className="font-medium">Rebase</div>
+                    <div className="text-xs text-muted-foreground">
+                      Replay commits on top of base
+                    </div>
                   </div>
                 </div>
-              </div>
-              <kbd className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                R
-              </kbd>
-            </Button>
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+                <kbd className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                  R
+                </kbd>
+              </Button>
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
-    </div>
+      </div>
     </ErrorBoundary>
   )
 }

@@ -61,6 +61,7 @@ export function useContextOperations({
           sourceSessionId: activeSessionId,
           projectName,
           customPrompt: preferences?.magic_prompts?.context_summary,
+          model: preferences?.magic_prompt_models?.context_summary_model,
         }
       )
 
@@ -79,6 +80,7 @@ export function useContextOperations({
     worktree?.name,
     queryClient,
     preferences?.magic_prompts?.context_summary,
+    preferences?.magic_prompt_models?.context_summary_model,
   ])
 
   // Handle Load Context - opens modal to select saved context

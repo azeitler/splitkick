@@ -702,6 +702,7 @@ export function LoadContextModal({
             sourceSessionId: session.id,
             projectName: sessionProjectName,
             customPrompt: preferences?.magic_prompts?.context_summary,
+            model: preferences?.magic_prompt_models?.context_summary_model,
           }
         )
 
@@ -730,16 +731,13 @@ export function LoadContextModal({
         setGeneratingSessionId(null)
       }
     },
-    [worktreeId, refetchContexts, refetchAttachedContexts, preferences?.magic_prompts?.context_summary]
+    [worktreeId, refetchContexts, refetchAttachedContexts, preferences?.magic_prompts?.context_summary, preferences?.magic_prompt_models?.context_summary_model]
   )
 
   // Keyboard navigation
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       const key = e.key.toLowerCase()
-      const target = e.target as HTMLElement
-      const isInputFocused =
-        target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'
 
       // Tab shortcuts (Cmd+key, works even when input is focused)
       if (e.metaKey || e.ctrlKey) {

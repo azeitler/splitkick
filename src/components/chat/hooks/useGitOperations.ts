@@ -88,6 +88,7 @@ export function useGitOperations({
           worktreePath: activeWorktreePath,
           customPrompt: preferences?.magic_prompts?.commit_message,
           push: false,
+          model: preferences?.magic_prompt_models?.commit_message_model,
         }
       )
 
@@ -102,7 +103,7 @@ export function useGitOperations({
     } finally {
       clearWorktreeLoading(activeWorktreeId)
     }
-  }, [activeWorktreeId, activeWorktreePath, preferences?.magic_prompts?.commit_message])
+  }, [activeWorktreeId, activeWorktreePath, preferences?.magic_prompts?.commit_message, preferences?.magic_prompt_models?.commit_message_model])
 
   // Handle Commit & Push - creates commit with AI-generated message and pushes
   const handleCommitAndPush = useCallback(async () => {
@@ -119,6 +120,7 @@ export function useGitOperations({
           worktreePath: activeWorktreePath,
           customPrompt: preferences?.magic_prompts?.commit_message,
           push: true,
+          model: preferences?.magic_prompt_models?.commit_message_model,
         }
       )
 
@@ -133,7 +135,7 @@ export function useGitOperations({
     } finally {
       clearWorktreeLoading(activeWorktreeId)
     }
-  }, [activeWorktreeId, activeWorktreePath, preferences?.magic_prompts?.commit_message])
+  }, [activeWorktreeId, activeWorktreePath, preferences?.magic_prompts?.commit_message, preferences?.magic_prompt_models?.commit_message_model])
 
   // Handle Open PR - creates PR with AI-generated title and description in background
   const handleOpenPr = useCallback(async () => {
@@ -149,6 +151,7 @@ export function useGitOperations({
         {
           worktreePath: activeWorktreePath,
           customPrompt: preferences?.magic_prompts?.pr_content,
+          model: preferences?.magic_prompt_models?.pr_content_model,
         }
       )
 
@@ -175,7 +178,7 @@ export function useGitOperations({
     } finally {
       clearWorktreeLoading(activeWorktreeId)
     }
-  }, [activeWorktreeId, activeWorktreePath, worktree, queryClient, preferences?.magic_prompts?.pr_content])
+  }, [activeWorktreeId, activeWorktreePath, worktree, queryClient, preferences?.magic_prompts?.pr_content, preferences?.magic_prompt_models?.pr_content_model])
 
   // Handle Review - runs AI code review in background
   const handleReview = useCallback(async () => {
@@ -189,6 +192,7 @@ export function useGitOperations({
       const result = await invoke<ReviewResponse>('run_review_with_ai', {
         worktreePath: activeWorktreePath,
         customPrompt: preferences?.magic_prompts?.code_review,
+        model: preferences?.magic_prompt_models?.code_review_model,
       })
 
       // Store review results in Zustand (also activates review tab)
@@ -214,7 +218,7 @@ export function useGitOperations({
     } finally {
       clearWorktreeLoading(activeWorktreeId)
     }
-  }, [activeWorktreeId, activeWorktreePath, preferences?.magic_prompts?.code_review])
+  }, [activeWorktreeId, activeWorktreePath, preferences?.magic_prompts?.code_review, preferences?.magic_prompt_models?.code_review_model])
 
   // Handle Merge - validates and shows merge options dialog
   const handleMerge = useCallback(async () => {

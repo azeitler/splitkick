@@ -3399,6 +3399,7 @@ fn generate_pr_content(
     current_branch: &str,
     target_branch: &str,
     custom_prompt: Option<&str>,
+    model: Option<&str>,
 ) -> Result<PrContentResponse, String> {
     let cli_path = get_cli_binary_path(app)?;
 
@@ -3438,7 +3439,7 @@ fn generate_pr_content(
         "--output-format",
         "stream-json",
         "--model",
-        "haiku", // Fast model for PR generation
+        model.unwrap_or("haiku"),
         "--no-session-persistence",
         "--tools",
         "",
@@ -3522,6 +3523,7 @@ pub async fn create_pr_with_ai_content(
     app: AppHandle,
     worktree_path: String,
     custom_prompt: Option<String>,
+    model: Option<String>,
 ) -> Result<CreatePrResponse, String> {
     log::trace!("Creating PR for: {worktree_path}");
 
@@ -3603,6 +3605,7 @@ pub async fn create_pr_with_ai_content(
         &current_branch,
         target_branch,
         custom_prompt.as_deref(),
+        model.as_deref(),
     )?;
 
     log::trace!("Generated PR title: {}", pr_content.title);
@@ -3795,7 +3798,7 @@ fn push_to_remote(repo_path: &str) -> Result<(), String> {
 }
 
 /// Generate commit message using Claude CLI with JSON schema
-fn generate_commit_message(app: &AppHandle, prompt: &str) -> Result<CommitMessageResponse, String> {
+fn generate_commit_message(app: &AppHandle, prompt: &str, model: Option<&str>) -> Result<CommitMessageResponse, String> {
     let cli_path = get_cli_binary_path(app)?;
 
     if !cli_path.exists() {
@@ -3804,6 +3807,7 @@ fn generate_commit_message(app: &AppHandle, prompt: &str) -> Result<CommitMessag
 
     log::trace!("Generating commit message with Claude CLI (JSON schema)");
 
+    let model_str = model.unwrap_or("haiku");
     let mut cmd = Command::new(&cli_path);
     cmd.args([
         "--print",
@@ -3813,7 +3817,7 @@ fn generate_commit_message(app: &AppHandle, prompt: &str) -> Result<CommitMessag
         "--output-format",
         "stream-json",
         "--model",
-        "haiku",
+        model_str,
         "--no-session-persistence",
         "--tools",
         "",
@@ -3875,6 +3879,7 @@ pub async fn create_commit_with_ai(
     worktree_path: String,
     custom_prompt: Option<String>,
     push: bool,
+    model: Option<String>,
 ) -> Result<CreateCommitResponse, String> {
     log::trace!("Creating commit for: {worktree_path}");
 
@@ -3911,7 +3916,7 @@ pub async fn create_commit_with_ai(
         .replace("{remote_info}", &remote_info);
 
     // 6. Generate commit message with Claude CLI
-    let response = generate_commit_message(&app, &prompt)?;
+    let response = generate_commit_message(&app, &prompt, model.as_deref())?;
 
     log::trace!(
         "Generated commit message: {}",
@@ -3992,7 +3997,7 @@ pub struct ReviewResponse {
 }
 
 /// Execute Claude CLI to generate a code review
-fn generate_review(app: &AppHandle, prompt: &str) -> Result<ReviewResponse, String> {
+fn generate_review(app: &AppHandle, prompt: &str, model: Option<&str>) -> Result<ReviewResponse, String> {
     let cli_path = get_cli_binary_path(app)?;
 
     if !cli_path.exists() {
@@ -4001,6 +4006,7 @@ fn generate_review(app: &AppHandle, prompt: &str) -> Result<ReviewResponse, Stri
 
     log::trace!("Running code review with Claude CLI (JSON schema)");
 
+    let model_str = model.unwrap_or("haiku");
     let mut cmd = Command::new(&cli_path);
     cmd.args([
         "--print",
@@ -4010,7 +4016,7 @@ fn generate_review(app: &AppHandle, prompt: &str) -> Result<ReviewResponse, Stri
         "--output-format",
         "stream-json",
         "--model",
-        "haiku",
+        model_str,
         "--no-session-persistence",
         "--tools",
         "none",
@@ -4071,6 +4077,7 @@ pub async fn run_review_with_ai(
     app: AppHandle,
     worktree_path: String,
     custom_prompt: Option<String>,
+    model: Option<String>,
 ) -> Result<ReviewResponse, String> {
     log::trace!("Running AI code review for: {worktree_path}");
 
@@ -4141,7 +4148,7 @@ pub async fn run_review_with_ai(
         .replace("{uncommitted_section}", &uncommitted_section);
 
     // Run review with Claude CLI
-    let response = generate_review(&app, &prompt)?;
+    let response = generate_review(&app, &prompt, model.as_deref())?;
 
     log::trace!(
         "Review complete: {} findings, status: {}",
@@ -4250,7 +4257,7 @@ pub async fn merge_worktree_to_base(
             .replace("{recent_commits}", &recent_commits)
             .replace("{remote_info}", &remote_info);
 
-        match generate_commit_message(&app, &prompt) {
+        match generate_commit_message(&app, &prompt, None) {
             Ok(response) => {
                 // Create the commit with AI-generated message
                 match create_git_commit(&worktree.path, &response.message) {
