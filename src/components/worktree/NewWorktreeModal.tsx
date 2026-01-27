@@ -452,19 +452,19 @@ export function NewWorktreeModal() {
       const isInputFocused =
         target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'
 
-      // Tab shortcuts (only when not typing in an input)
-      if (!isInputFocused) {
-        if (key === 'q' && !e.metaKey && !e.ctrlKey) {
+      // Tab shortcuts (Cmd+key, works even when input is focused)
+      if (e.metaKey || e.ctrlKey) {
+        if (key === 'q') {
           e.preventDefault()
           setActiveTab('quick')
           return
         }
-        if (key === 'i' && !e.metaKey && !e.ctrlKey) {
+        if (key === 'i') {
           e.preventDefault()
           setActiveTab('issues')
           return
         }
-        if (key === 'p' && !e.metaKey && !e.ctrlKey) {
+        if (key === 'p') {
           e.preventDefault()
           setActiveTab('prs')
           return
@@ -575,7 +575,7 @@ export function NewWorktreeModal() {
             >
               {tab.label}
               <kbd className="ml-2 text-xs text-muted-foreground bg-muted px-1 py-0.5 rounded">
-                {tab.key}
+                ⌘+{tab.key}
               </kbd>
             </button>
           ))}
@@ -651,54 +651,52 @@ function QuickActionsTab({
   isCreating,
 }: QuickActionsTabProps) {
   return (
-    <div className="p-4 space-y-2">
-      {/* Base Session button */}
-      <button
-        onClick={onBaseSession}
-        disabled={isCreating}
-        className={cn(
-          'w-full flex items-center justify-between px-4 py-3 rounded-md text-sm transition-colors',
-          'hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring',
-          'border border-border'
-        )}
-      >
-        <div className="flex items-center gap-3">
-          <GitBranch className="h-4 w-4 text-muted-foreground" />
-          <div className="flex flex-col items-start">
-            <span>{hasBaseSession ? 'Switch to Base Session' : 'New Base Session'}</span>
-            <span className="text-xs text-muted-foreground">Work directly on the project folder</span>
-          </div>
-        </div>
-        <kbd className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-          B
-        </kbd>
-      </button>
-
-      {/* New Worktree button */}
-      <button
-        onClick={onCreateWorktree}
-        disabled={isCreating}
-        className={cn(
-          'w-full flex items-center justify-between px-4 py-3 rounded-md text-sm transition-colors',
-          'hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring',
-          'border border-border'
-        )}
-      >
-        <div className="flex items-center gap-3">
-          {isCreating ? (
-            <Loader2 className="h-4 w-4 text-muted-foreground animate-spin" />
-          ) : (
-            <Plus className="h-4 w-4 text-muted-foreground" />
+    <div className="flex items-center justify-center flex-1 p-10">
+      <div className="grid grid-cols-2 gap-6 w-full max-w-xl">
+        {/* Base Session button */}
+        <button
+          onClick={onBaseSession}
+          disabled={isCreating}
+          className={cn(
+            'relative flex flex-col items-center justify-center gap-4 aspect-square p-8 rounded-xl text-sm transition-colors',
+            'hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring',
+            'border border-border'
           )}
-          <div className="flex flex-col items-start">
-            <span>New Worktree</span>
-            <span className="text-xs text-muted-foreground">Create an isolated branch for your task</span>
+        >
+          <GitBranch className="h-10 w-10 text-muted-foreground" />
+          <div className="flex flex-col items-center gap-1.5">
+            <span className="font-medium text-base">{hasBaseSession ? 'Switch to Base Session' : 'New Base Session'}</span>
+            <span className="text-xs text-muted-foreground text-center">Work directly on the project folder</span>
           </div>
-        </div>
-        <kbd className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-          N
-        </kbd>
-      </button>
+          <kbd className="absolute top-3 right-3 text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+            B
+          </kbd>
+        </button>
+
+        {/* New Worktree button */}
+        <button
+          onClick={onCreateWorktree}
+          disabled={isCreating}
+          className={cn(
+            'relative flex flex-col items-center justify-center gap-4 aspect-square p-8 rounded-xl text-sm transition-colors',
+            'hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring',
+            'border border-border'
+          )}
+        >
+          {isCreating ? (
+            <Loader2 className="h-10 w-10 text-muted-foreground animate-spin" />
+          ) : (
+            <Plus className="h-10 w-10 text-muted-foreground" />
+          )}
+          <div className="flex flex-col items-center gap-1.5">
+            <span className="font-medium text-base">New Worktree</span>
+            <span className="text-xs text-muted-foreground text-center">Create an isolated branch for your task</span>
+          </div>
+          <kbd className="absolute top-3 right-3 text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+            N
+          </kbd>
+        </button>
+      </div>
     </div>
   )
 }

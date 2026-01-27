@@ -12,7 +12,6 @@ import {
 } from '@/components/ui/dropdown-menu'
 import {
   useProjects,
-  useWorktreeEvents,
   useCreateFolder,
 } from '@/services/projects'
 import { fetchWorktreesStatus } from '@/services/git-status'
@@ -34,9 +33,6 @@ export function ProjectsSidebar() {
 
   // Responsive layout threshold
   const isNarrow = sidebarWidth < 180
-
-  // Listen for background worktree events (creation/deletion)
-  useWorktreeEvents()
 
   // Listen for command palette events
   useEffect(() => {

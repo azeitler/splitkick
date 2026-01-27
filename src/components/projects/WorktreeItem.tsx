@@ -381,7 +381,13 @@ export function WorktreeItem({
       >
         {/* Status indicator: circle for base session, square for worktrees */}
         {/* Priority: chat running > loading operation > idle states */}
-        {isChatRunning ? (
+        {(isWaitingQuestion || isWaitingPlan) ? (
+          isBase ? (
+            <Circle className={cn('h-2 w-2 shrink-0 fill-current rounded-full', indicatorColor)} />
+          ) : (
+            <Square className={cn('h-2 w-2 shrink-0 fill-current rounded-sm', indicatorColor)} />
+          )
+        ) : isChatRunning ? (
           <BorderSpinner
             shape={isBase ? 'circle' : 'square'}
             className={cn(

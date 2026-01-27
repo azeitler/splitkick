@@ -1168,6 +1168,17 @@ pub async fn checkout_pr(
         .ok_or_else(|| format!("Project not found: {project_id}"))?
         .clone();
 
+    // Check if there's an archived worktree for this PR — restore it instead of creating a new one
+    if let Some(archived_wt) = data.worktrees.iter().find(|w| {
+        w.project_id == project_id
+            && w.pr_number == Some(pr_number)
+            && w.archived_at.is_some()
+    }) {
+        let worktree_id = archived_wt.id.clone();
+        log::trace!("Found archived worktree {worktree_id} for PR #{pr_number}, restoring instead of creating new");
+        return unarchive_worktree(app, worktree_id).await;
+    }
+
     // Fetch PR details from GitHub (for context and worktree naming)
     let pr_detail = get_github_pr(project.path.clone(), pr_number).await?;
 
