@@ -477,6 +477,11 @@ pub fn parse_run_to_message(lines: &[String], run: &RunEntry) -> Result<ChatMess
                             match block_type {
                                 "text" => {
                                     if let Some(text) = block.get("text").and_then(|v| v.as_str()) {
+                                        // Skip CLI placeholder text emitted when extended
+                                        // thinking starts before any real text content
+                                        if text == "(no content)" {
+                                            continue;
+                                        }
                                         content.push_str(text);
                                         content_blocks.push(ContentBlock::Text {
                                             text: text.to_string(),

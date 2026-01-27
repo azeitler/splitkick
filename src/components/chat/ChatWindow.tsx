@@ -501,9 +501,6 @@ export function ChatWindow() {
   const selectedModelRef = useRef(selectedModel)
   const selectedThinkingLevelRef = useRef(selectedThinkingLevel)
   const executionModeRef = useRef(executionMode)
-  const disableThinkingForModeRef = useRef(
-    preferences?.disable_thinking_in_non_plan_modes ?? true
-  )
 
   // Keep refs in sync with current values (runs on every render, but cheap)
   activeSessionIdRef.current = activeSessionId
@@ -512,8 +509,6 @@ export function ChatWindow() {
   selectedModelRef.current = selectedModel
   selectedThinkingLevelRef.current = selectedThinkingLevel
   executionModeRef.current = executionMode
-  disableThinkingForModeRef.current =
-    preferences?.disable_thinking_in_non_plan_modes ?? true
 
   // Ref for approve button (passed to VirtualizedMessageList)
   const approveButtonRef = useRef<HTMLButtonElement>(null)
@@ -916,7 +911,6 @@ export function ChatWindow() {
           executionMode: 'build',
           thinkingLevel,
           disableThinkingForMode:
-            (preferences?.disable_thinking_in_non_plan_modes ?? true) &&
             thinkingLevel !== 'off' &&
             !hasManualOverride,
           parallelExecutionPromptEnabled:
@@ -1009,7 +1003,6 @@ export function ChatWindow() {
         executionMode: mode,
         thinkingLevel: thinkingLvl,
         disableThinkingForMode:
-          (preferences?.disable_thinking_in_non_plan_modes ?? true) &&
           mode !== 'plan' &&
           thinkingLvl !== 'off' &&
           !hasManualOverride,
@@ -1990,7 +1983,6 @@ Begin your investigation now.`
                   selectedModel={selectedModel}
                   selectedThinkingLevel={selectedThinkingLevel}
                   thinkingOverrideActive={
-                    (preferences?.disable_thinking_in_non_plan_modes ?? true) &&
                     executionMode !== 'plan' &&
                     selectedThinkingLevel !== 'off' &&
                     !hasManualThinkingOverride

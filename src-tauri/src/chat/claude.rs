@@ -666,6 +666,11 @@ pub fn tail_claude_output(
                                         if let Some(text) =
                                             block.get("text").and_then(|v| v.as_str())
                                         {
+                                            // Skip CLI placeholder text emitted when extended
+                                            // thinking starts before any real text content
+                                            if text == "(no content)" {
+                                                continue;
+                                            }
                                             full_content.push_str(text);
                                             content_blocks.push(ContentBlock::Text {
                                                 text: text.to_string(),
