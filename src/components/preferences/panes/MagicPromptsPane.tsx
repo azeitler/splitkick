@@ -43,7 +43,7 @@ interface PromptConfig {
 const PROMPT_CONFIGS: PromptConfig[] = [
   {
     key: 'investigate_issue',
-    modelKey: 'investigate_issue_model',
+    modelKey: 'investigate_model',
     label: 'Investigate Issue',
     description: 'Prompt for analyzing GitHub issues loaded into the context.',
     variables: [
@@ -55,7 +55,7 @@ const PROMPT_CONFIGS: PromptConfig[] = [
   },
   {
     key: 'investigate_pr',
-    modelKey: 'investigate_pr_model',
+    modelKey: 'investigate_model',
     label: 'Investigate PR',
     description: 'Prompt for analyzing GitHub pull requests loaded into the context.',
     variables: [

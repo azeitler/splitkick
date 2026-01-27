@@ -512,6 +512,7 @@ export function ChatWindow() {
 
   // Ref for approve button (passed to VirtualizedMessageList)
   const approveButtonRef = useRef<HTMLButtonElement>(null)
+  const pendingInvestigateRef = useRef(false)
 
   // Terminal panel ref for imperative collapse/expand
   const terminalPanelRef = useRef<ImperativePanelHandle>(null)
@@ -1148,8 +1149,9 @@ export function ChatWindow() {
     useUIStore.getState().setMagicModalOpen(true)
   }, [])
 
-  // Handle investigate issue - sends prompt to analyze loaded issue(s)
-  const handleInvestigateIssue = useCallback(async () => {
+  // Handle investigate context - sends prompt to analyze loaded issue(s) and/or PR(s)
+  // If nothing is loaded, opens the Load Context modal instead
+  const handleInvestigate = useCallback(async () => {
     const sessionId = activeSessionIdRef.current
     const worktreeId = activeWorktreeIdRef.current
     const worktreePath = activeWorktreePathRef.current
@@ -1158,30 +1160,41 @@ export function ChatWindow() {
       return
     }
 
-    // Fetch loaded issues - use fetchQuery to ensure data is available
-    // (getQueryData may return empty during auto-investigate race condition)
-    const loadedIssues = await queryClient.fetchQuery({
-      queryKey: githubQueryKeys.loadedContexts(worktreeId),
-      queryFn: () => invoke<LoadedIssueContext[]>('list_loaded_issue_contexts', { worktreeId }),
-      staleTime: 1000 * 60,
-    })
+    // Fetch both loaded issues and PRs in parallel
+    const [loadedIssues, loadedPRs] = await Promise.all([
+      queryClient.fetchQuery({
+        queryKey: githubQueryKeys.loadedContexts(worktreeId),
+        queryFn: () => invoke<LoadedIssueContext[]>('list_loaded_issue_contexts', { worktreeId }),
+        staleTime: 1000 * 60,
+      }),
+      queryClient.fetchQuery({
+        queryKey: githubQueryKeys.loadedPrContexts(worktreeId),
+        queryFn: () => invoke<LoadedPullRequestContext[]>('list_loaded_pr_contexts', { worktreeId }),
+        staleTime: 1000 * 60,
+      }),
+    ])
 
-    if (!loadedIssues || loadedIssues.length === 0) {
-      toast.error('No issues loaded. Use Load Issue (I) first.')
+    const hasIssues = loadedIssues && loadedIssues.length > 0
+    const hasPRs = loadedPRs && loadedPRs.length > 0
+
+    // If nothing loaded, open the Load Context modal and re-trigger on close
+    if (!hasIssues && !hasPRs) {
+      pendingInvestigateRef.current = true
+      setLoadContextModalOpen(true)
       return
     }
 
-    // Build prompt using custom template from preferences
-    const issueRefs = loadedIssues.map(i => `#${i.number}`).join(', ')
-    const isSingle = loadedIssues.length === 1
-    const issueWord = isSingle ? 'issue' : 'issues'
+    // Build combined prompt from loaded issues and/or PRs
+    const promptParts: string[] = []
 
-    // Get custom prompt from preferences or use default
-    const customPrompt = preferences?.magic_prompts?.investigate_issue
-    const promptTemplate =
-      customPrompt && customPrompt.trim()
-        ? customPrompt
-        : `Investigate the loaded GitHub {issueWord} ({issueRefs}).
+    if (hasIssues) {
+      const issueRefs = loadedIssues.map(i => `#${i.number}`).join(', ')
+      const issueWord = loadedIssues.length === 1 ? 'issue' : 'issues'
+      const customPrompt = preferences?.magic_prompts?.investigate_issue
+      const issueTemplate =
+        customPrompt && customPrompt.trim()
+          ? customPrompt
+          : `Investigate the loaded GitHub {issueWord} ({issueRefs}).
 
 ## Investigation Steps
 
@@ -1221,79 +1234,21 @@ export function ChatWindow() {
 
 Begin your investigation now.`
 
-    // Replace template variables
-    const prompt = promptTemplate
-      .replace(/\{issueRefs\}/g, issueRefs)
-      .replace(/\{issueWord\}/g, issueWord)
-
-    // Send message (pattern from handleFixFinding)
-    const {
-      addSendingSession,
-      setLastSentMessage,
-      setError,
-      setSelectedModel,
-      setExecutingMode,
-    } = useChatStore.getState()
-
-    const investigateModel = preferences?.magic_prompt_models?.investigate_issue_model ?? selectedModelRef.current
-
-    setLastSentMessage(sessionId, prompt)
-    setError(sessionId, null)
-    addSendingSession(sessionId)
-    setSelectedModel(sessionId, investigateModel)
-    setExecutingMode(sessionId, executionModeRef.current)
-
-    sendMessage.mutate(
-      {
-        sessionId,
-        worktreeId,
-        worktreePath,
-        message: prompt,
-        model: investigateModel,
-        executionMode: executionModeRef.current,
-        thinkingLevel: selectedThinkingLevelRef.current,
-        parallelExecutionPromptEnabled:
-          preferences?.parallel_execution_prompt_enabled ?? false,
-        aiLanguage: preferences?.ai_language,
-      },
-      { onSettled: () => inputRef.current?.focus() }
-    )
-  }, [queryClient, sendMessage, preferences?.magic_prompts?.investigate_issue, preferences?.magic_prompt_models?.investigate_issue_model, preferences?.parallel_execution_prompt_enabled, preferences?.ai_language])
-
-  // Handle investigate PR - sends prompt to analyze loaded PR(s)
-  const handleInvestigatePR = useCallback(async () => {
-    const sessionId = activeSessionIdRef.current
-    const worktreeId = activeWorktreeIdRef.current
-    const worktreePath = activeWorktreePathRef.current
-    if (!sessionId || !worktreeId || !worktreePath) {
-      toast.error('No active session')
-      return
+      promptParts.push(
+        issueTemplate
+          .replace(/\{issueRefs\}/g, issueRefs)
+          .replace(/\{issueWord\}/g, issueWord)
+      )
     }
 
-    // Fetch loaded PRs - use fetchQuery to ensure data is available
-    // (getQueryData may return empty during auto-investigate race condition)
-    const loadedPRs = await queryClient.fetchQuery({
-      queryKey: githubQueryKeys.loadedPrContexts(worktreeId),
-      queryFn: () => invoke<LoadedPullRequestContext[]>('list_loaded_pr_contexts', { worktreeId }),
-      staleTime: 1000 * 60,
-    })
-
-    if (!loadedPRs || loadedPRs.length === 0) {
-      toast.error('No PRs loaded. Use Load Context (I) and select the PR tab first.')
-      return
-    }
-
-    // Build prompt using custom template from preferences
-    const prRefs = loadedPRs.map(pr => `#${pr.number}`).join(', ')
-    const isSingle = loadedPRs.length === 1
-    const prWord = isSingle ? 'pull request' : 'pull requests'
-
-    // Get custom prompt from preferences or use default
-    const customPrompt = preferences?.magic_prompts?.investigate_pr
-    const promptTemplate =
-      customPrompt && customPrompt.trim()
-        ? customPrompt
-        : `Investigate the loaded GitHub {prWord} ({prRefs}).
+    if (hasPRs) {
+      const prRefs = loadedPRs.map(pr => `#${pr.number}`).join(', ')
+      const prWord = loadedPRs.length === 1 ? 'pull request' : 'pull requests'
+      const customPrompt = preferences?.magic_prompts?.investigate_pr
+      const prTemplate =
+        customPrompt && customPrompt.trim()
+          ? customPrompt
+          : `Investigate the loaded GitHub {prWord} ({prRefs}).
 
 ## Investigation Steps
 
@@ -1333,13 +1288,17 @@ Begin your investigation now.`
 
 Begin your investigation now.`
 
-    // Replace template variables
-    const prompt = promptTemplate
-      .replace(/\{prRefs\}/g, prRefs)
-      .replace(/\{prWord\}/g, prWord)
+      promptParts.push(
+        prTemplate
+          .replace(/\{prRefs\}/g, prRefs)
+          .replace(/\{prWord\}/g, prWord)
+      )
+    }
 
-    // Send message (pattern from handleFixFinding)
-    const investigatePrModel = preferences?.magic_prompt_models?.investigate_pr_model ?? selectedModelRef.current
+    const prompt = promptParts.join('\n\n---\n\n')
+
+    // Send message
+    const investigateModel = preferences?.magic_prompt_models?.investigate_model ?? selectedModelRef.current
 
     const {
       addSendingSession,
@@ -1352,7 +1311,7 @@ Begin your investigation now.`
     setLastSentMessage(sessionId, prompt)
     setError(sessionId, null)
     addSendingSession(sessionId)
-    setSelectedModel(sessionId, investigatePrModel)
+    setSelectedModel(sessionId, investigateModel)
     setExecutingMode(sessionId, executionModeRef.current)
 
     sendMessage.mutate(
@@ -1361,7 +1320,7 @@ Begin your investigation now.`
         worktreeId,
         worktreePath,
         message: prompt,
-        model: investigatePrModel,
+        model: investigateModel,
         executionMode: executionModeRef.current,
         thinkingLevel: selectedThinkingLevelRef.current,
         parallelExecutionPromptEnabled:
@@ -1370,7 +1329,16 @@ Begin your investigation now.`
       },
       { onSettled: () => inputRef.current?.focus() }
     )
-  }, [queryClient, sendMessage, preferences?.magic_prompts?.investigate_pr, preferences?.magic_prompt_models?.investigate_pr_model, preferences?.parallel_execution_prompt_enabled, preferences?.ai_language])
+  }, [queryClient, sendMessage, setLoadContextModalOpen, preferences?.magic_prompts?.investigate_issue, preferences?.magic_prompts?.investigate_pr, preferences?.magic_prompt_models?.investigate_model, preferences?.parallel_execution_prompt_enabled, preferences?.ai_language])
+
+  // Wraps modal open/close to auto-trigger investigation after user loads context
+  const handleLoadContextModalChange = useCallback((open: boolean) => {
+    setLoadContextModalOpen(open)
+    if (!open && pendingInvestigateRef.current) {
+      pendingInvestigateRef.current = false
+      handleInvestigate()
+    }
+  }, [setLoadContextModalOpen, handleInvestigate])
 
   // Handle checkout PR - opens modal to select and checkout a PR to a new worktree
   const handleCheckoutPR = useCallback(() => {
@@ -1387,8 +1355,7 @@ Begin your investigation now.`
     handleReview,
     handleMerge,
     handleResolveConflicts,
-    handleInvestigateIssue,
-    handleInvestigatePR,
+    handleInvestigate,
     handleCheckoutPR,
   })
 
@@ -2078,7 +2045,7 @@ Begin your investigation now.`
       {/* Load Context modal for selecting saved contexts */}
       <LoadContextModal
         open={loadContextModalOpen}
-        onOpenChange={setLoadContextModalOpen}
+        onOpenChange={handleLoadContextModalChange}
         worktreeId={activeWorktreeId}
         worktreePath={activeWorktreePath ?? null}
         activeSessionId={activeSessionId ?? null}

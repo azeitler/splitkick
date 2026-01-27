@@ -430,9 +430,7 @@ Format as clean markdown. Be concise but capture reasoning.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MagicPromptModels {
     #[serde(default = "default_model")]
-    pub investigate_issue_model: String,
-    #[serde(default = "default_model")]
-    pub investigate_pr_model: String,
+    pub investigate_model: String,
     #[serde(default = "default_haiku_model")]
     pub pr_content_model: String,
     #[serde(default = "default_haiku_model")]
@@ -450,8 +448,7 @@ fn default_haiku_model() -> String {
 impl Default for MagicPromptModels {
     fn default() -> Self {
         Self {
-            investigate_issue_model: default_model(),
-            investigate_pr_model: default_model(),
+            investigate_model: default_model(),
             pr_content_model: default_haiku_model(),
             commit_message_model: default_haiku_model(),
             code_review_model: default_haiku_model(),

@@ -205,8 +205,7 @@ export const DEFAULT_MAGIC_PROMPTS: MagicPrompts = {
  * Per-prompt model overrides. Field names use snake_case to match Rust struct exactly.
  */
 export interface MagicPromptModels {
-  investigate_issue_model: ClaudeModel
-  investigate_pr_model: ClaudeModel
+  investigate_model: ClaudeModel
   pr_content_model: ClaudeModel
   commit_message_model: ClaudeModel
   code_review_model: ClaudeModel
@@ -215,8 +214,7 @@ export interface MagicPromptModels {
 
 /** Default models for each magic prompt */
 export const DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
-  investigate_issue_model: 'opus',
-  investigate_pr_model: 'opus',
+  investigate_model: 'opus',
   pr_content_model: 'haiku',
   commit_message_model: 'haiku',
   code_review_model: 'haiku',
