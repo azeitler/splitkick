@@ -702,6 +702,7 @@ export function LoadContextModal({
             sourceSessionId: session.id,
             projectName: sessionProjectName,
             customPrompt: preferences?.magic_prompts?.context_summary,
+            model: preferences?.magic_prompt_models?.context_summary_model,
           }
         )
 
@@ -730,7 +731,7 @@ export function LoadContextModal({
         setGeneratingSessionId(null)
       }
     },
-    [worktreeId, refetchContexts, refetchAttachedContexts, preferences?.magic_prompts?.context_summary]
+    [worktreeId, refetchContexts, refetchAttachedContexts, preferences?.magic_prompts?.context_summary, preferences?.magic_prompt_models?.context_summary_model]
   )
 
   // Keyboard navigation

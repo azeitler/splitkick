@@ -2,6 +2,13 @@ import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { usePreferences, useSavePreferences } from '@/services/preferences'
 import {
   DEFAULT_INVESTIGATE_ISSUE_PROMPT,
@@ -11,7 +18,10 @@ import {
   DEFAULT_CODE_REVIEW_PROMPT,
   DEFAULT_CONTEXT_SUMMARY_PROMPT,
   DEFAULT_MAGIC_PROMPTS,
+  DEFAULT_MAGIC_PROMPT_MODELS,
   type MagicPrompts,
+  type MagicPromptModels,
+  type ClaudeModel,
 } from '@/types/preferences'
 import { cn } from '@/lib/utils'
 
@@ -22,15 +32,18 @@ interface VariableInfo {
 
 interface PromptConfig {
   key: keyof MagicPrompts
+  modelKey: keyof MagicPromptModels
   label: string
   description: string
   variables: VariableInfo[]
   defaultValue: string
+  defaultModel: ClaudeModel
 }
 
 const PROMPT_CONFIGS: PromptConfig[] = [
   {
     key: 'investigate_issue',
+    modelKey: 'investigate_issue_model',
     label: 'Investigate Issue',
     description: 'Prompt for analyzing GitHub issues loaded into the context.',
     variables: [
@@ -38,9 +51,11 @@ const PROMPT_CONFIGS: PromptConfig[] = [
       { name: '{issueWord}', description: '"issue" or "issues" based on count' },
     ],
     defaultValue: DEFAULT_INVESTIGATE_ISSUE_PROMPT,
+    defaultModel: 'opus',
   },
   {
     key: 'investigate_pr',
+    modelKey: 'investigate_pr_model',
     label: 'Investigate PR',
     description: 'Prompt for analyzing GitHub pull requests loaded into the context.',
     variables: [
@@ -48,9 +63,11 @@ const PROMPT_CONFIGS: PromptConfig[] = [
       { name: '{prWord}', description: '"pull request" or "pull requests" based on count' },
     ],
     defaultValue: DEFAULT_INVESTIGATE_PR_PROMPT,
+    defaultModel: 'opus',
   },
   {
     key: 'pr_content',
+    modelKey: 'pr_content_model',
     label: 'PR Content',
     description: 'Prompt for generating pull request titles and descriptions.',
     variables: [
@@ -61,9 +78,11 @@ const PROMPT_CONFIGS: PromptConfig[] = [
       { name: '{diff}', description: 'Git diff of all changes' },
     ],
     defaultValue: DEFAULT_PR_CONTENT_PROMPT,
+    defaultModel: 'haiku',
   },
   {
     key: 'commit_message',
+    modelKey: 'commit_message_model',
     label: 'Commit Message',
     description: 'Prompt for generating commit messages from staged changes.',
     variables: [
@@ -73,9 +92,11 @@ const PROMPT_CONFIGS: PromptConfig[] = [
       { name: '{remote_info}', description: 'Remote repository info' },
     ],
     defaultValue: DEFAULT_COMMIT_MESSAGE_PROMPT,
+    defaultModel: 'haiku',
   },
   {
     key: 'code_review',
+    modelKey: 'code_review_model',
     label: 'Code Review',
     description: 'Prompt for AI-powered code review of your changes.',
     variables: [
@@ -85,9 +106,11 @@ const PROMPT_CONFIGS: PromptConfig[] = [
       { name: '{uncommitted_section}', description: 'Unstaged changes if any' },
     ],
     defaultValue: DEFAULT_CODE_REVIEW_PROMPT,
+    defaultModel: 'haiku',
   },
   {
     key: 'context_summary',
+    modelKey: 'context_summary_model',
     label: 'Context Summary',
     description: 'Prompt for summarizing conversations when saving context.',
     variables: [
@@ -96,7 +119,14 @@ const PROMPT_CONFIGS: PromptConfig[] = [
       { name: '{conversation}', description: 'Full conversation history' },
     ],
     defaultValue: DEFAULT_CONTEXT_SUMMARY_PROMPT,
+    defaultModel: 'opus',
   },
+]
+
+const MODEL_OPTIONS: { value: ClaudeModel; label: string }[] = [
+  { value: 'opus', label: 'Opus' },
+  { value: 'sonnet', label: 'Sonnet' },
+  { value: 'haiku', label: 'Haiku' },
 ]
 
 export const MagicPromptsPane: React.FC = () => {
@@ -107,8 +137,10 @@ export const MagicPromptsPane: React.FC = () => {
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const currentPrompts = preferences?.magic_prompts ?? DEFAULT_MAGIC_PROMPTS
+  const currentModels = preferences?.magic_prompt_models ?? DEFAULT_MAGIC_PROMPT_MODELS
   const selectedConfig = PROMPT_CONFIGS.find(c => c.key === selectedKey)!
   const currentValue = currentPrompts[selectedKey] ?? selectedConfig.defaultValue
+  const currentModel = currentModels[selectedConfig.modelKey] ?? selectedConfig.defaultModel
   const isModified = currentValue !== selectedConfig.defaultValue
 
   // Sync local value when selection changes or external value updates
@@ -176,12 +208,27 @@ export const MagicPromptsPane: React.FC = () => {
     })
   }, [preferences, savePreferences, currentPrompts, selectedKey, selectedConfig.defaultValue])
 
+  const handleModelChange = useCallback(
+    (model: ClaudeModel) => {
+      if (!preferences) return
+      savePreferences.mutate({
+        ...preferences,
+        magic_prompt_models: {
+          ...currentModels,
+          [selectedConfig.modelKey]: model,
+        },
+      })
+    },
+    [preferences, savePreferences, currentModels, selectedConfig.modelKey]
+  )
+
   return (
     <div className="flex flex-col" style={{ height: 'calc(85vh - 8rem)' }}>
       {/* Prompt selector grid */}
-      <div className="grid grid-cols-3 gap-2 mb-4 shrink-0">
+      <div className="grid grid-cols-3 gap-1.5 mb-4 shrink-0">
         {PROMPT_CONFIGS.map(config => {
           const promptIsModified = currentPrompts[config.key] !== config.defaultValue
+          const promptModel = currentModels[config.modelKey] ?? config.defaultModel
           return (
             <button
               key={config.key}
@@ -194,11 +241,19 @@ export const MagicPromptsPane: React.FC = () => {
                   : 'border-border bg-card'
               )}
             >
-              <div className="text-sm font-medium truncate">
-                {config.label}
-                {promptIsModified && (
-                  <span className="text-muted-foreground ml-1">*</span>
-                )}
+              <div className="flex items-center justify-between gap-1">
+                <span className="text-sm font-medium truncate">
+                  {config.label}
+                  {promptIsModified && (
+                    <span className="text-muted-foreground ml-1">*</span>
+                  )}
+                </span>
+                <span className={cn(
+                  'text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0',
+                  'bg-muted text-muted-foreground'
+                )}>
+                  {promptModel}
+                </span>
               </div>
             </button>
           )
@@ -207,31 +262,47 @@ export const MagicPromptsPane: React.FC = () => {
 
       {/* Selected prompt details */}
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-        {/* Header with description and reset */}
-        <div className="flex items-start justify-between gap-4 mb-3 shrink-0">
-          <div>
-            <h3 className="text-sm font-medium">{selectedConfig.label}</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {selectedConfig.description}
-            </p>
+        {/* Header */}
+        <div className="mb-3 shrink-0">
+          <h3 className="text-sm font-medium">{selectedConfig.label}</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {selectedConfig.description}
+          </p>
+          <div className="flex items-center gap-2 mt-2">
+            <span className="text-xs text-muted-foreground">Used model</span>
+            <Select
+              value={currentModel}
+              onValueChange={(v: string) => handleModelChange(v as ClaudeModel)}
+            >
+              <SelectTrigger className="w-[110px] h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {MODEL_OPTIONS.map(opt => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleReset}
+              disabled={!isModified}
+              className="gap-1.5 h-8"
+            >
+              <RotateCcw className="h-3 w-3" />
+              Reset
+            </Button>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleReset}
-            disabled={!isModified}
-            className="gap-1.5 shrink-0"
-          >
-            <RotateCcw className="h-3 w-3" />
-            Reset
-          </Button>
         </div>
 
         {/* Variables */}
-        <div className="flex flex-col gap-1 mb-3 shrink-0">
+        <div className="flex flex-wrap gap-x-3 gap-y-1 mb-3 shrink-0">
           {selectedConfig.variables.map(v => (
-            <div key={v.name} className="flex items-baseline gap-1.5 text-xs">
-              <code className="bg-muted px-1 py-0.5 rounded font-mono">
+            <div key={v.name} className="flex items-baseline gap-1 text-xs">
+              <code className="bg-muted px-1 py-0.5 rounded font-mono text-[11px]">
                 {v.name}
               </code>
               <span className="text-muted-foreground">{v.description}</span>

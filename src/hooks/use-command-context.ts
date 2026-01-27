@@ -545,6 +545,7 @@ export function useCommandContext(preferences?: AppPreferences): CommandContext 
       const result = await invoke<ReviewResponse>('run_review_with_ai', {
         worktreePath: activeWorktreePath,
         customPrompt: preferences?.magic_prompts?.code_review,
+        model: preferences?.magic_prompt_models?.code_review_model,
       })
 
       // Store review results in Zustand (also activates review tab)
@@ -566,7 +567,7 @@ export function useCommandContext(preferences?: AppPreferences): CommandContext 
     } catch (error) {
       toast.error(`Failed to review: ${error}`, { id: toastId })
     }
-  }, [preferences?.magic_prompts?.code_review])
+  }, [preferences?.magic_prompts?.code_review, preferences?.magic_prompt_models?.code_review_model])
 
   // Terminal - Open terminal panel
   const openTerminalPanel = useCallback(() => {

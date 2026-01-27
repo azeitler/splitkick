@@ -118,6 +118,8 @@ pub struct AppPreferences {
     pub parallel_execution_prompt_enabled: bool, // Add system prompt to encourage parallel sub-agent execution
     #[serde(default)]
     pub magic_prompts: MagicPrompts, // Customizable prompts for AI-powered features
+    #[serde(default)]
+    pub magic_prompt_models: MagicPromptModels, // Per-prompt model overrides
     #[serde(default = "default_file_edit_mode")]
     pub file_edit_mode: String, // How to edit files: inline (CodeMirror) or external (VS Code, etc.)
     #[serde(default)]
@@ -424,6 +426,40 @@ Format as clean markdown. Be concise but capture reasoning.
         .to_string()
 }
 
+/// Per-prompt model overrides for magic prompts
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MagicPromptModels {
+    #[serde(default = "default_model")]
+    pub investigate_issue_model: String,
+    #[serde(default = "default_model")]
+    pub investigate_pr_model: String,
+    #[serde(default = "default_haiku_model")]
+    pub pr_content_model: String,
+    #[serde(default = "default_haiku_model")]
+    pub commit_message_model: String,
+    #[serde(default = "default_haiku_model")]
+    pub code_review_model: String,
+    #[serde(default = "default_model")]
+    pub context_summary_model: String,
+}
+
+fn default_haiku_model() -> String {
+    "haiku".to_string()
+}
+
+impl Default for MagicPromptModels {
+    fn default() -> Self {
+        Self {
+            investigate_issue_model: default_model(),
+            investigate_pr_model: default_model(),
+            pr_content_model: default_haiku_model(),
+            commit_message_model: default_haiku_model(),
+            code_review_model: default_haiku_model(),
+            context_summary_model: default_model(),
+        }
+    }
+}
+
 impl Default for MagicPrompts {
     fn default() -> Self {
         Self {
@@ -465,6 +501,7 @@ impl Default for AppPreferences {
             session_recap_model: default_session_recap_model(),
             parallel_execution_prompt_enabled: default_parallel_execution_prompt_enabled(),
             magic_prompts: MagicPrompts::default(),
+            magic_prompt_models: MagicPromptModels::default(),
             file_edit_mode: default_file_edit_mode(),
             ai_language: String::new(),
             allow_web_tools_in_plan_mode: default_allow_web_tools_in_plan_mode(),

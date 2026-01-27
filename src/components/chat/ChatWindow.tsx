@@ -1235,10 +1235,12 @@ Begin your investigation now.`
       setExecutingMode,
     } = useChatStore.getState()
 
+    const investigateModel = preferences?.magic_prompt_models?.investigate_issue_model ?? selectedModelRef.current
+
     setLastSentMessage(sessionId, prompt)
     setError(sessionId, null)
     addSendingSession(sessionId)
-    setSelectedModel(sessionId, selectedModelRef.current)
+    setSelectedModel(sessionId, investigateModel)
     setExecutingMode(sessionId, executionModeRef.current)
 
     sendMessage.mutate(
@@ -1247,7 +1249,7 @@ Begin your investigation now.`
         worktreeId,
         worktreePath,
         message: prompt,
-        model: selectedModelRef.current,
+        model: investigateModel,
         executionMode: executionModeRef.current,
         thinkingLevel: selectedThinkingLevelRef.current,
         parallelExecutionPromptEnabled:
@@ -1256,7 +1258,7 @@ Begin your investigation now.`
       },
       { onSettled: () => inputRef.current?.focus() }
     )
-  }, [queryClient, sendMessage, preferences?.magic_prompts?.investigate_issue, preferences?.parallel_execution_prompt_enabled, preferences?.ai_language])
+  }, [queryClient, sendMessage, preferences?.magic_prompts?.investigate_issue, preferences?.magic_prompt_models?.investigate_issue_model, preferences?.parallel_execution_prompt_enabled, preferences?.ai_language])
 
   // Handle investigate PR - sends prompt to analyze loaded PR(s)
   const handleInvestigatePR = useCallback(async () => {
@@ -1337,6 +1339,8 @@ Begin your investigation now.`
       .replace(/\{prWord\}/g, prWord)
 
     // Send message (pattern from handleFixFinding)
+    const investigatePrModel = preferences?.magic_prompt_models?.investigate_pr_model ?? selectedModelRef.current
+
     const {
       addSendingSession,
       setLastSentMessage,
@@ -1348,7 +1352,7 @@ Begin your investigation now.`
     setLastSentMessage(sessionId, prompt)
     setError(sessionId, null)
     addSendingSession(sessionId)
-    setSelectedModel(sessionId, selectedModelRef.current)
+    setSelectedModel(sessionId, investigatePrModel)
     setExecutingMode(sessionId, executionModeRef.current)
 
     sendMessage.mutate(
@@ -1357,7 +1361,7 @@ Begin your investigation now.`
         worktreeId,
         worktreePath,
         message: prompt,
-        model: selectedModelRef.current,
+        model: investigatePrModel,
         executionMode: executionModeRef.current,
         thinkingLevel: selectedThinkingLevelRef.current,
         parallelExecutionPromptEnabled:
@@ -1366,7 +1370,7 @@ Begin your investigation now.`
       },
       { onSettled: () => inputRef.current?.focus() }
     )
-  }, [queryClient, sendMessage, preferences?.magic_prompts?.investigate_pr, preferences?.parallel_execution_prompt_enabled, preferences?.ai_language])
+  }, [queryClient, sendMessage, preferences?.magic_prompts?.investigate_pr, preferences?.magic_prompt_models?.investigate_pr_model, preferences?.parallel_execution_prompt_enabled, preferences?.ai_language])
 
   // Handle checkout PR - opens modal to select and checkout a PR to a new worktree
   const handleCheckoutPR = useCallback(() => {

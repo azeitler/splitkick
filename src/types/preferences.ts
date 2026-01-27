@@ -201,6 +201,28 @@ export const DEFAULT_MAGIC_PROMPTS: MagicPrompts = {
   context_summary: DEFAULT_CONTEXT_SUMMARY_PROMPT,
 }
 
+/**
+ * Per-prompt model overrides. Field names use snake_case to match Rust struct exactly.
+ */
+export interface MagicPromptModels {
+  investigate_issue_model: ClaudeModel
+  investigate_pr_model: ClaudeModel
+  pr_content_model: ClaudeModel
+  commit_message_model: ClaudeModel
+  code_review_model: ClaudeModel
+  context_summary_model: ClaudeModel
+}
+
+/** Default models for each magic prompt */
+export const DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
+  investigate_issue_model: 'opus',
+  investigate_pr_model: 'opus',
+  pr_content_model: 'haiku',
+  commit_message_model: 'haiku',
+  code_review_model: 'haiku',
+  context_summary_model: 'opus',
+}
+
 // Types that match the Rust AppPreferences struct
 // Only contains settings that should be persisted to disk
 // Note: Field names use snake_case to match Rust struct exactly
@@ -230,6 +252,7 @@ export interface AppPreferences {
   session_recap_model: ClaudeModel // Model for generating session recaps
   parallel_execution_prompt_enabled: boolean // Add system prompt to encourage parallel sub-agent execution
   magic_prompts: MagicPrompts // Customizable prompts for AI-powered features
+  magic_prompt_models: MagicPromptModels // Per-prompt model overrides
   file_edit_mode: FileEditMode // How to edit files: inline (CodeMirror) or external (VS Code, etc.)
   ai_language: string // Preferred language for AI responses (empty = default)
   allow_web_tools_in_plan_mode: boolean // Allow WebFetch/WebSearch in plan mode without prompts
@@ -424,6 +447,7 @@ export const defaultPreferences: AppPreferences = {
   session_recap_model: 'haiku', // Default: haiku for fast recaps
   parallel_execution_prompt_enabled: false, // Default: disabled (experimental)
   magic_prompts: DEFAULT_MAGIC_PROMPTS,
+  magic_prompt_models: DEFAULT_MAGIC_PROMPT_MODELS,
   file_edit_mode: 'external',
   ai_language: '', // Default: empty (Claude's default behavior)
   allow_web_tools_in_plan_mode: true, // Default: enabled
