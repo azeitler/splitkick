@@ -393,19 +393,34 @@ pub fn get_branches(repo_path: &str) -> Result<Vec<String>, String> {
 pub fn git_pull(repo_path: &str, base_branch: &str) -> Result<String, String> {
     log::trace!("Pulling from origin/{base_branch} in {repo_path}");
 
-    let output = Command::new("git")
-        .args(["pull", "origin", base_branch])
+    // Use explicit fetch + merge instead of `git pull` to avoid
+    // "Cannot rebase onto multiple branches" when pull.rebase=true
+    // is set in git config (common in worktree contexts)
+    let fetch = Command::new("git")
+        .args(["fetch", "origin", base_branch])
         .current_dir(repo_path)
         .output()
-        .map_err(|e| format!("Failed to run git pull: {e}"))?;
+        .map_err(|e| format!("Failed to run git fetch: {e}"))?;
 
-    if output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        log::trace!("Successfully pulled from origin/{base_branch}");
+    if !fetch.status.success() {
+        let stderr = String::from_utf8_lossy(&fetch.stderr).to_string();
+        log::error!("Failed to fetch origin/{base_branch}: {stderr}");
+        return Err(stderr);
+    }
+
+    let merge = Command::new("git")
+        .args(["merge", &format!("origin/{base_branch}")])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to run git merge: {e}"))?;
+
+    if merge.status.success() {
+        let stdout = String::from_utf8_lossy(&merge.stdout).to_string();
+        log::trace!("Successfully merged origin/{base_branch}");
         Ok(stdout)
     } else {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        log::error!("Failed to pull from origin/{base_branch}: {stderr}");
+        let stderr = String::from_utf8_lossy(&merge.stderr).to_string();
+        log::error!("Failed to merge origin/{base_branch}: {stderr}");
         Err(stderr)
     }
 }
