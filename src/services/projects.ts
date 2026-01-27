@@ -752,6 +752,31 @@ export function useWorktreeEvents() {
 
         // Invalidate archived worktrees query
         queryClient.invalidateQueries({ queryKey: ['archived-worktrees'] })
+
+        // Check if this worktree was marked for auto-investigate (PR)
+        const shouldInvestigatePR = useUIStore.getState().autoInvestigatePRWorktreeIds.has(worktree.id)
+        if (shouldInvestigatePR) {
+          const prTimeoutId = setTimeout(() => {
+            window.removeEventListener('chat-ready-for-investigate', prReadyHandler as EventListener)
+            useUIStore.getState().consumeAutoInvestigatePR(worktree.id)
+            window.dispatchEvent(
+              new CustomEvent('magic-command', { detail: { command: 'investigate' } })
+            )
+          }, 5000)
+
+          const prReadyHandler = (e: CustomEvent<{ worktreeId: string; type: string }>) => {
+            if (e.detail.worktreeId === worktree.id && e.detail.type === 'pr') {
+              clearTimeout(prTimeoutId)
+              window.removeEventListener('chat-ready-for-investigate', prReadyHandler as EventListener)
+              useUIStore.getState().consumeAutoInvestigatePR(worktree.id)
+              window.dispatchEvent(
+                new CustomEvent('magic-command', { detail: { command: 'investigate' } })
+              )
+            }
+          }
+
+          window.addEventListener('chat-ready-for-investigate', prReadyHandler as EventListener)
+        }
       })
     )
 

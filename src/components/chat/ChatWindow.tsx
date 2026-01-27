@@ -1330,13 +1330,30 @@ Begin your investigation now.`
   }, [queryClient, sendMessage, setLoadContextModalOpen, preferences?.magic_prompts?.investigate_issue, preferences?.magic_prompts?.investigate_pr, preferences?.parallel_execution_prompt_enabled, preferences?.ai_language])
 
   // Wraps modal open/close to auto-trigger investigation after user loads context
-  const handleLoadContextModalChange = useCallback((open: boolean) => {
+  const handleLoadContextModalChange = useCallback(async (open: boolean) => {
     setLoadContextModalOpen(open)
     if (!open && pendingInvestigateRef.current) {
       pendingInvestigateRef.current = false
-      handleInvestigate()
+      // Only re-trigger investigate if the user actually loaded contexts
+      const worktreeId = activeWorktreeIdRef.current
+      if (!worktreeId) return
+      const [loadedIssues, loadedPRs] = await Promise.all([
+        queryClient.fetchQuery({
+          queryKey: githubQueryKeys.loadedContexts(worktreeId),
+          queryFn: () => invoke<LoadedIssueContext[]>('list_loaded_issue_contexts', { worktreeId }),
+          staleTime: 1000 * 60,
+        }),
+        queryClient.fetchQuery({
+          queryKey: githubQueryKeys.loadedPrContexts(worktreeId),
+          queryFn: () => invoke<LoadedPullRequestContext[]>('list_loaded_pr_contexts', { worktreeId }),
+          staleTime: 1000 * 60,
+        }),
+      ])
+      if ((loadedIssues && loadedIssues.length > 0) || (loadedPRs && loadedPRs.length > 0)) {
+        handleInvestigate()
+      }
     }
-  }, [setLoadContextModalOpen, handleInvestigate])
+  }, [setLoadContextModalOpen, handleInvestigate, queryClient])
 
   // Handle checkout PR - opens modal to select and checkout a PR to a new worktree
   const handleCheckoutPR = useCallback(() => {

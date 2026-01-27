@@ -741,19 +741,19 @@ export function LoadContextModal({
       const isInputFocused =
         target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'
 
-      // Tab shortcuts (only when not typing in an input)
-      if (!isInputFocused) {
-        if (key === 'i' && !e.metaKey && !e.ctrlKey) {
+      // Tab shortcuts (Cmd+key, works even when input is focused)
+      if (e.metaKey || e.ctrlKey) {
+        if (key === 'i') {
           e.preventDefault()
           setActiveTab('issues')
           return
         }
-        if (key === 'p' && !e.metaKey && !e.ctrlKey) {
+        if (key === 'p') {
           e.preventDefault()
           setActiveTab('prs')
           return
         }
-        if (key === 'c' && !e.metaKey && !e.ctrlKey) {
+        if (key === 'c') {
           e.preventDefault()
           setActiveTab('contexts')
           return
@@ -892,7 +892,7 @@ export function LoadContextModal({
             >
               {tab.label}
               <kbd className="ml-2 text-xs text-muted-foreground bg-muted px-1 py-0.5 rounded">
-                {tab.key}
+                ⌘+{tab.key}
               </kbd>
             </button>
           ))}

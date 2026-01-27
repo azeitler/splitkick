@@ -49,7 +49,6 @@ export function CheckoutPRModal() {
   const [includeClosed, setIncludeClosed] = useState(false)
   const [selectedItemIndex, setSelectedItemIndex] = useState(0)
   const [checkingOutNumber, setCheckingOutNumber] = useState<number | null>(null)
-  const [autoInvestigate, setAutoInvestigate] = useState(false)
 
   const searchInputRef = useRef<HTMLInputElement>(null)
 
@@ -92,7 +91,6 @@ export function CheckoutPRModal() {
 
       if (open) {
         setIncludeClosed(false)
-        setAutoInvestigate(false)
 
         // Invalidate GitHub caches to fetch fresh data
         const projectPath = selectedProject?.path
@@ -111,7 +109,7 @@ export function CheckoutPRModal() {
   )
 
   const handleCheckoutPR = useCallback(
-    async (pr: GitHubPullRequest) => {
+    async (pr: GitHubPullRequest, investigate = false) => {
       if (!selectedProjectId) {
         toast.error('No project selected')
         return
@@ -127,17 +125,19 @@ export function CheckoutPRModal() {
         })
 
         // Add pending worktree to cache immediately so it appears in sidebar
+        // Skip if already present (e.g. restored from archive via worktree:unarchived event)
         const worktreeWithStatus = { ...pendingWorktree, status: 'pending' as const }
         queryClient.setQueryData<Worktree[]>(
           projectsQueryKeys.worktrees(selectedProjectId),
           old => {
             if (!old) return [worktreeWithStatus]
+            if (old.some(w => w.id === pendingWorktree.id)) return old
             return [...old, worktreeWithStatus]
           }
         )
 
         // If auto-investigate is enabled, mark the worktree
-        if (autoInvestigate) {
+        if (investigate) {
           const { markWorktreeForAutoInvestigatePR } = useUIStore.getState()
           markWorktreeForAutoInvestigatePR(pendingWorktree.id)
         }
@@ -153,7 +153,7 @@ export function CheckoutPRModal() {
         setCheckingOutNumber(null)
       }
     },
-    [selectedProjectId, autoInvestigate, handleOpenChange]
+    [selectedProjectId, handleOpenChange]
   )
 
   // Keyboard navigation
@@ -239,34 +239,18 @@ export function CheckoutPRModal() {
                 />
               </button>
             </div>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="checkout-include-closed"
-                  checked={includeClosed}
-                  onCheckedChange={checked => setIncludeClosed(checked === true)}
-                />
-                <label
-                  htmlFor="checkout-include-closed"
-                  className="text-xs text-muted-foreground cursor-pointer"
-                >
-                  Include closed/merged
-                </label>
-              </div>
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="checkout-auto-investigate"
-                  checked={autoInvestigate}
-                  onCheckedChange={checked => setAutoInvestigate(checked === true)}
-                />
-                <label
-                  htmlFor="checkout-auto-investigate"
-                  className="text-xs text-muted-foreground cursor-pointer flex items-center gap-1"
-                >
-                  <Wand2 className="h-3 w-3" />
-                  Auto-investigate
-                </label>
-              </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="checkout-include-closed"
+                checked={includeClosed}
+                onCheckedChange={checked => setIncludeClosed(checked === true)}
+              />
+              <label
+                htmlFor="checkout-include-closed"
+                className="text-xs text-muted-foreground cursor-pointer"
+              >
+                Include closed/merged
+              </label>
             </div>
           </div>
 
@@ -309,6 +293,7 @@ export function CheckoutPRModal() {
                     isCheckingOut={checkingOutNumber === pr.number}
                     onMouseEnter={() => setSelectedItemIndex(index)}
                     onClick={() => handleCheckoutPR(pr)}
+                    onInvestigateClick={() => handleCheckoutPR(pr, true)}
                   />
                 ))}
               </div>
@@ -327,6 +312,7 @@ interface CheckoutPRItemProps {
   isCheckingOut: boolean
   onMouseEnter: () => void
   onClick: () => void
+  onInvestigateClick: () => void
 }
 
 function CheckoutPRItem({
@@ -336,6 +322,7 @@ function CheckoutPRItem({
   isCheckingOut,
   onMouseEnter,
   onClick,
+  onInvestigateClick,
 }: CheckoutPRItemProps) {
   return (
     <button
@@ -397,6 +384,22 @@ function CheckoutPRItem({
             )}
           </div>
         )}
+      </div>
+      <div
+        role="button"
+        tabIndex={-1}
+        title="Checkout & Investigate"
+        onClick={e => {
+          e.stopPropagation()
+          onInvestigateClick()
+        }}
+        className={cn(
+          'flex-shrink-0 self-center p-1 rounded-md transition-colors',
+          'text-muted-foreground hover:text-foreground hover:bg-accent-foreground/10',
+          isCheckingOut && 'pointer-events-none'
+        )}
+      >
+        <Wand2 className="h-3.5 w-3.5" />
       </div>
     </button>
   )
