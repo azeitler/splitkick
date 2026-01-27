@@ -17,6 +17,7 @@ import {
   DEFAULT_COMMIT_MESSAGE_PROMPT,
   DEFAULT_CODE_REVIEW_PROMPT,
   DEFAULT_CONTEXT_SUMMARY_PROMPT,
+  DEFAULT_RESOLVE_CONFLICTS_PROMPT,
   DEFAULT_MAGIC_PROMPTS,
   DEFAULT_MAGIC_PROMPT_MODELS,
   type MagicPrompts,
@@ -119,6 +120,15 @@ const PROMPT_CONFIGS: PromptConfig[] = [
       { name: '{conversation}', description: 'Full conversation history' },
     ],
     defaultValue: DEFAULT_CONTEXT_SUMMARY_PROMPT,
+    defaultModel: 'opus',
+  },
+  {
+    key: 'resolve_conflicts',
+    modelKey: 'resolve_conflicts_model',
+    label: 'Resolve Conflicts',
+    description: 'Instructions appended to conflict resolution prompts.',
+    variables: [],
+    defaultValue: DEFAULT_RESOLVE_CONFLICTS_PROMPT,
     defaultModel: 'opus',
   },
 ]

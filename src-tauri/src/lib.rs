@@ -263,6 +263,8 @@ pub struct MagicPrompts {
     pub code_review: String,
     #[serde(default = "default_context_summary_prompt")]
     pub context_summary: String,
+    #[serde(default = "default_resolve_conflicts_prompt")]
+    pub resolve_conflicts: String,
 }
 
 fn default_investigate_issue_prompt() -> String {
@@ -426,6 +428,13 @@ Format as clean markdown. Be concise but capture reasoning.
         .to_string()
 }
 
+fn default_resolve_conflicts_prompt() -> String {
+    r#"Please help me resolve these conflicts. Analyze the diff above, explain what's conflicting in each file, and guide me through resolving each conflict.
+
+After resolving each file's conflicts, stage it with `git add`. Then run the appropriate continue command (`git rebase --continue`, `git merge --continue`, or `git cherry-pick --continue`). If more conflicts appear, resolve those too. Keep going until the operation is fully complete and the branch is ready to push."#
+        .to_string()
+}
+
 /// Per-prompt model overrides for magic prompts
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MagicPromptModels {
@@ -439,6 +448,8 @@ pub struct MagicPromptModels {
     pub code_review_model: String,
     #[serde(default = "default_model")]
     pub context_summary_model: String,
+    #[serde(default = "default_model")]
+    pub resolve_conflicts_model: String,
 }
 
 fn default_haiku_model() -> String {
@@ -453,6 +464,7 @@ impl Default for MagicPromptModels {
             commit_message_model: default_haiku_model(),
             code_review_model: default_haiku_model(),
             context_summary_model: default_model(),
+            resolve_conflicts_model: default_model(),
         }
     }
 }
@@ -466,6 +478,7 @@ impl Default for MagicPrompts {
             commit_message: default_commit_message_prompt(),
             code_review: default_code_review_prompt(),
             context_summary: default_context_summary_prompt(),
+            resolve_conflicts: default_resolve_conflicts_prompt(),
         }
     }
 }

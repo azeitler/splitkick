@@ -20,7 +20,7 @@ import type {
   Project,
 } from '@/types/projects'
 import type { Session } from '@/types/chat'
-import type { AppPreferences } from '@/types/preferences'
+import { DEFAULT_RESOLVE_CONFLICTS_PROMPT, type AppPreferences } from '@/types/preferences'
 
 interface UseGitOperationsParams {
   activeWorktreeId: string | null | undefined
@@ -299,12 +299,14 @@ export function useGitOperations({
         ? `\n\nHere is the diff showing the conflict details:\n\n\`\`\`diff\n${result.conflict_diff}\n\`\`\``
         : ''
 
+      const resolveInstructions = preferences?.magic_prompts?.resolve_conflicts ?? DEFAULT_RESOLVE_CONFLICTS_PROMPT
+
       const conflictPrompt = `I have merge conflicts that need to be resolved.
 
 Conflicts in these files:
 - ${conflictFiles}${diffSection}
 
-Please help me resolve these conflicts. Analyze the diff above, explain what's conflicting in each file, and guide me through resolving each conflict.`
+${resolveInstructions}`
 
       // Set the input draft for the new session
       setInputDraft(newSession.id, conflictPrompt)
@@ -321,7 +323,7 @@ Please help me resolve these conflicts. Analyze the diff above, explain what's c
     } catch (error) {
       toast.error(`Failed to check conflicts: ${error}`, { id: toastId })
     }
-  }, [activeWorktreeId, worktree, queryClient, inputRef])
+  }, [activeWorktreeId, worktree, preferences, queryClient, inputRef])
 
   // Execute merge with merge type option
   const executeMerge = useCallback(
@@ -426,6 +428,8 @@ Please help me resolve these conflicts. Analyze the diff above, explain what's c
           // Get base branch name from the project
           const baseBranch = project?.default_branch || 'main'
 
+          const resolveInstructions = preferences?.magic_prompts?.resolve_conflicts ?? DEFAULT_RESOLVE_CONFLICTS_PROMPT
+
           const conflictPrompt = `I tried to merge this branch (\`${featureBranch}\`) into \`${baseBranch}\`, but there are merge conflicts.
 
 To resolve this, please merge \`${baseBranch}\` INTO this branch by running:
@@ -436,7 +440,7 @@ git merge ${baseBranch}
 Then resolve the conflicts in these files:
 - ${conflictFiles}${diffSection}
 
-Please help me resolve these conflicts. Analyze the diff above, explain what's conflicting in each file, and guide me through resolving each conflict.`
+${resolveInstructions}`
 
           // Set the input draft for the new session
           setInputDraft(newSession.id, conflictPrompt)
@@ -457,7 +461,7 @@ Please help me resolve these conflicts. Analyze the diff above, explain what's c
         clearWorktreeLoading(activeWorktreeId)
       }
     },
-    [activeWorktreeId, pendingMergeWorktree, project, queryClient, inputRef]
+    [activeWorktreeId, pendingMergeWorktree, preferences, project, queryClient, inputRef]
   )
 
   return {
