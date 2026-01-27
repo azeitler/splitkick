@@ -211,7 +211,11 @@ export default function useStreamingEvents({
       const preferences = queryClient.getQueryData<AppPreferences>(preferencesQueryKeys.preferences())
       const sessionRecapEnabled = preferences?.session_recap_enabled ?? false
 
-      if (!isCurrentlyViewing && sessionRecapEnabled) {
+      // Only generate digest if status is CHANGING to review (not already reviewing)
+      // This prevents generating digests for all restored sessions on app startup
+      const wasAlreadyReviewing = useChatStore.getState().reviewingSessions[sessionId] ?? false
+
+      if (!isCurrentlyViewing && sessionRecapEnabled && !wasAlreadyReviewing) {
         // Mark for digest and generate it in the background immediately
         markSessionNeedsDigest(sessionId)
         console.log('[useStreamingEvents] Session completed while not viewing, generating digest:', sessionId)
@@ -402,7 +406,10 @@ export default function useStreamingEvents({
       const preferences = queryClient.getQueryData<AppPreferences>(preferencesQueryKeys.preferences())
       const sessionRecapEnabled = preferences?.session_recap_enabled ?? false
 
-      if (!isCurrentlyViewing && sessionRecapEnabled) {
+      // Only generate digest if status is CHANGING to review (not already reviewing)
+      const wasAlreadyReviewing = useChatStore.getState().reviewingSessions[session_id] ?? false
+
+      if (!isCurrentlyViewing && sessionRecapEnabled && !wasAlreadyReviewing) {
         // Mark for digest and generate it in the background immediately
         markSessionNeedsDigest(session_id)
         console.log('[useStreamingEvents] Session errored while not viewing, generating digest:', session_id)
@@ -479,7 +486,10 @@ export default function useStreamingEvents({
         const preferences = queryClient.getQueryData<AppPreferences>(preferencesQueryKeys.preferences())
         const sessionRecapEnabled = preferences?.session_recap_enabled ?? false
 
-        if (!isCurrentlyViewing && sessionRecapEnabled) {
+        // Only generate digest if status is CHANGING to review (not already reviewing)
+        const wasAlreadyReviewing = useChatStore.getState().reviewingSessions[session_id] ?? false
+
+        if (!isCurrentlyViewing && sessionRecapEnabled && !wasAlreadyReviewing) {
           // Mark for digest and generate it in the background immediately
           markSessionNeedsDigest(session_id)
           console.log('[useStreamingEvents] Session cancelled while not viewing, generating digest:', session_id)
