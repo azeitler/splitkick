@@ -600,6 +600,7 @@ pub async fn restore_session_with_base(
         cached_branch_diff_removed: None,
         cached_base_branch_ahead_count: None,
         cached_base_branch_behind_count: None,
+        cached_worktree_ahead_count: None,
         order: 0,
         archived_at: None,
     };
@@ -815,6 +816,7 @@ pub async fn send_chat_message(
     thinking_level: Option<ThinkingLevel>,
     disable_thinking_for_mode: Option<bool>,
     parallel_execution_prompt_enabled: Option<bool>,
+    ai_language: Option<String>,
     allowed_tools: Option<Vec<String>>,
 ) -> Result<ChatMessage, String> {
     log::trace!("Sending chat message for session: {session_id}, worktree: {worktree_id}, model: {model:?}, execution_mode: {execution_mode:?}, thinking: {thinking_level:?}, disable_thinking_for_mode: {disable_thinking_for_mode:?}, allowed_tools: {allowed_tools:?}");
@@ -1022,6 +1024,7 @@ pub async fn send_chat_message(
             allowed_tools.as_deref(),
             disable_thinking_in_non_plan_modes,
             parallel_execution_prompt,
+            ai_language.as_deref(),
         ) {
             Ok((pid, response)) => {
                 log::trace!("execute_claude_detached succeeded (PID: {pid})");
@@ -1412,6 +1415,83 @@ pub async fn save_pasted_image(
         .to_string();
 
     log::trace!("Image saved to: {path_str}");
+
+    Ok(SaveImageResponse {
+        id: Uuid::new_v4().to_string(),
+        filename,
+        path: path_str,
+    })
+}
+
+/// Save a dropped image file to the app data directory
+///
+/// Takes a source file path (from Tauri's drag-drop event) and copies it
+/// to the images directory. More efficient than base64 encoding for dropped files.
+#[tauri::command]
+pub async fn save_dropped_image(
+    app: AppHandle,
+    source_path: String,
+) -> Result<SaveImageResponse, String> {
+    log::trace!("Saving dropped image from: {source_path}");
+
+    let source = std::path::PathBuf::from(&source_path);
+
+    // Validate source file exists
+    if !source.exists() {
+        return Err(format!("Source file not found: {source_path}"));
+    }
+
+    // Get extension and validate it's an allowed image type
+    let extension = source
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .ok_or_else(|| "File has no extension".to_string())?;
+
+    let allowed_extensions = ["png", "jpg", "jpeg", "gif", "webp"];
+    if !allowed_extensions.contains(&extension.as_str()) {
+        return Err(format!(
+            "Invalid image type: .{extension}. Allowed types: {}",
+            allowed_extensions.join(", ")
+        ));
+    }
+
+    // Check file size
+    let metadata = std::fs::metadata(&source)
+        .map_err(|e| format!("Failed to read file metadata: {e}"))?;
+
+    if metadata.len() as usize > MAX_IMAGE_SIZE {
+        return Err(format!(
+            "Image too large: {} bytes. Maximum size: {} bytes (10MB)",
+            metadata.len(),
+            MAX_IMAGE_SIZE
+        ));
+    }
+
+    // Get the images directory
+    let images_dir = get_images_dir(&app)?;
+
+    // Generate unique filename (normalize jpeg to jpg)
+    let normalized_ext = if extension == "jpeg" { "jpg" } else { &extension };
+    let timestamp = now();
+    let short_uuid = &Uuid::new_v4().to_string()[..8];
+    let filename = format!("image-{timestamp}-{short_uuid}.{normalized_ext}");
+    let dest_path = images_dir.join(&filename);
+
+    // Copy file atomically (copy to temp, then rename)
+    let temp_path = dest_path.with_extension("tmp");
+    std::fs::copy(&source, &temp_path)
+        .map_err(|e| format!("Failed to copy image file: {e}"))?;
+
+    std::fs::rename(&temp_path, &dest_path)
+        .map_err(|e| format!("Failed to finalize image file: {e}"))?;
+
+    let path_str = dest_path
+        .to_str()
+        .ok_or_else(|| "Failed to convert path to string".to_string())?
+        .to_string();
+
+    log::trace!("Dropped image saved to: {path_str}");
 
     Ok(SaveImageResponse {
         id: Uuid::new_v4().to_string(),
@@ -2736,7 +2816,11 @@ pub struct SessionDigestResponse {
 }
 
 /// Execute one-shot Claude CLI call for session digest with JSON schema (non-streaming)
-fn execute_digest_claude(app: &AppHandle, prompt: &str) -> Result<SessionDigestResponse, String> {
+fn execute_digest_claude(
+    app: &AppHandle,
+    prompt: &str,
+    model: &str,
+) -> Result<SessionDigestResponse, String> {
     let cli_path = get_cli_binary_path(app)?;
 
     if !cli_path.exists() {
@@ -2754,7 +2838,7 @@ fn execute_digest_claude(app: &AppHandle, prompt: &str) -> Result<SessionDigestR
         "stream-json",
         "--verbose",
         "--model",
-        "haiku", // Fast model for quick digest generation
+        model,
         "--no-session-persistence",
         "--max-turns",
         "2", // Need 2 turns: one for thinking, one for structured output
@@ -2841,6 +2925,11 @@ pub async fn generate_session_digest(
 ) -> Result<SessionDigestResponse, String> {
     log::trace!("Generating digest for session {}", session_id);
 
+    // Load preferences to get model
+    let prefs = crate::load_preferences(app.clone())
+        .await
+        .map_err(|e| format!("Failed to load preferences: {e}"))?;
+
     // Load messages from session
     let messages = run_log::load_session_messages(&app, &session_id)?;
 
@@ -2855,7 +2944,7 @@ pub async fn generate_session_digest(
     let prompt = SESSION_DIGEST_PROMPT.replace("{conversation}", &conversation_history);
 
     // Call Claude CLI with JSON schema (non-streaming)
-    execute_digest_claude(&app, &prompt)
+    execute_digest_claude(&app, &prompt, &prefs.session_recap_model)
 }
 
 #[cfg(test)]

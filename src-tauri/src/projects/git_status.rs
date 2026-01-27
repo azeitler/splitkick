@@ -37,6 +37,8 @@ pub struct GitBranchStatus {
     pub base_branch_ahead_count: u32,
     /// Commits the local base branch is behind origin
     pub base_branch_behind_count: u32,
+    /// Commits unique to this worktree (ahead of local base branch, not origin)
+    pub worktree_ahead_count: u32,
 }
 
 /// Fetch the latest changes from origin for a specific branch
@@ -674,6 +676,10 @@ pub fn get_branch_status(info: &ActiveWorktreeInfo) -> Result<GitBranchStatus, S
     let base_branch_ahead_count = count_commits_between(repo_path, &origin_ref, base_branch);
     let base_branch_behind_count = count_commits_between(repo_path, base_branch, &origin_ref);
 
+    // Commits unique to this worktree (ahead of local base branch)
+    // This is what the worktree's push indicator should show
+    let worktree_ahead_count = count_commits_between(repo_path, base_branch, "HEAD");
+
     // Get current timestamp
     let checked_at = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -694,6 +700,7 @@ pub fn get_branch_status(info: &ActiveWorktreeInfo) -> Result<GitBranchStatus, S
         branch_diff_removed,
         base_branch_ahead_count,
         base_branch_behind_count,
+        worktree_ahead_count,
     })
 }
 
@@ -717,6 +724,7 @@ mod tests {
             branch_diff_removed: 42,
             base_branch_ahead_count: 2,
             base_branch_behind_count: 0,
+            worktree_ahead_count: 3,
         };
 
         let json = serde_json::to_string(&status).unwrap();

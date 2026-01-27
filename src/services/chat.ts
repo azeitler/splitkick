@@ -1051,6 +1051,7 @@ export function useSendMessage() {
       thinkingLevel,
       disableThinkingForMode,
       parallelExecutionPromptEnabled,
+      aiLanguage,
       allowedTools,
     }: {
       sessionId: string
@@ -1062,6 +1063,7 @@ export function useSendMessage() {
       thinkingLevel?: ThinkingLevel
       disableThinkingForMode?: boolean
       parallelExecutionPromptEnabled?: boolean
+      aiLanguage?: string
       allowedTools?: string[]
     }): Promise<ChatMessage> => {
       if (!isTauri()) {
@@ -1076,6 +1078,7 @@ export function useSendMessage() {
         thinkingLevel,
         disableThinkingForMode,
         parallelExecutionPromptEnabled,
+        aiLanguage,
         allowedTools,
       })
       const response = await invoke<ChatMessage>('send_chat_message', {
@@ -1086,8 +1089,9 @@ export function useSendMessage() {
         model,
         executionMode,
         thinkingLevel,
-        disable_thinking_for_mode: disableThinkingForMode,
-        parallel_execution_prompt_enabled: parallelExecutionPromptEnabled,
+        disableThinkingForMode,
+        parallelExecutionPromptEnabled,
+        aiLanguage,
         allowedTools,
       })
       logger.info('Chat message sent', { responseId: response.id })

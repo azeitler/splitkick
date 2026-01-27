@@ -15,7 +15,7 @@ import {
   useGitStatus,
   gitPull,
   gitPush,
-  triggerImmediateGitPoll,
+  fetchWorktreesStatus,
 } from '@/services/git-status'
 import { useSidebarWidth } from '@/components/layout/SidebarWidthContext'
 
@@ -49,6 +49,10 @@ export function WorktreeItem({
     state => state.waitingForInputSessionIds
   )
   const reviewingSessions = useChatStore(state => state.reviewingSessions)
+  // Check if worktree has a loading operation (commit, pr, review, merge, pull)
+  const loadingOperation = useChatStore(
+    state => state.worktreeLoadingOperations[worktree.id] ?? null
+  )
   const isSelected = selectedWorktreeId === worktree.id
   const isBase = isBaseSession(worktree)
 
@@ -59,13 +63,20 @@ export function WorktreeItem({
   const behindCount =
     gitStatus?.behind_count ?? worktree.cached_behind_count ?? 0
   const worktreeAheadCount =
-    gitStatus?.ahead_count ?? worktree.cached_ahead_count ?? 0
+    gitStatus?.worktree_ahead_count ?? worktree.cached_worktree_ahead_count ?? 0
   const baseBranchAheadCount =
     gitStatus?.base_branch_ahead_count ??
     worktree.cached_base_branch_ahead_count ??
     0
   // For base sessions, show base branch unpushed; for worktrees, show worktree unpushed
   const pushCount = isBase ? baseBranchAheadCount : worktreeAheadCount
+
+  // Uncommitted changes (working directory)
+  const uncommittedAdded =
+    gitStatus?.uncommitted_added ?? worktree.cached_uncommitted_added ?? 0
+  const uncommittedRemoved =
+    gitStatus?.uncommitted_removed ?? worktree.cached_uncommitted_removed ?? 0
+  const hasUncommitted = uncommittedAdded > 0 || uncommittedRemoved > 0
 
   // Fetch sessions to check for persisted unanswered questions
   const { data: sessionsData } = useSessions(worktree.id, worktree.path)
@@ -320,16 +331,20 @@ export function WorktreeItem({
   const handlePull = useCallback(
     async (e: React.MouseEvent) => {
       e.stopPropagation()
+      const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
+      setWorktreeLoading(worktree.id, 'pull')
       const toastId = toast.loading('Pulling changes...')
       try {
         await gitPull(worktree.path, defaultBranch)
-        triggerImmediateGitPoll()
+        fetchWorktreesStatus(projectId)
         toast.success('Changes pulled', { id: toastId })
       } catch (error) {
         toast.error(`Pull failed: ${error}`, { id: toastId })
+      } finally {
+        clearWorktreeLoading(worktree.id)
       }
     },
-    [worktree.path, defaultBranch]
+    [worktree.path, defaultBranch, projectId]
   )
 
   const handlePush = useCallback(
@@ -338,13 +353,13 @@ export function WorktreeItem({
       const toastId = toast.loading('Pushing changes...')
       try {
         await gitPush(worktree.path)
-        triggerImmediateGitPoll()
+        fetchWorktreesStatus(projectId)
         toast.success('Changes pushed', { id: toastId })
       } catch (error) {
         toast.error(`Push failed: ${error}`, { id: toastId })
       }
     },
-    [worktree.path]
+    [worktree.path, projectId]
   )
 
   return (
@@ -365,7 +380,7 @@ export function WorktreeItem({
         onDoubleClick={handleDoubleClick}
       >
         {/* Status indicator: circle for base session, square for worktrees */}
-        {/* When running, show spinning border; otherwise show filled shape */}
+        {/* Priority: chat running > loading operation > idle states */}
         {isChatRunning ? (
           <BorderSpinner
             shape={isBase ? 'circle' : 'square'}
@@ -376,6 +391,12 @@ export function WorktreeItem({
             bgClassName={
               runningSessionExecutionMode === 'yolo' ? 'fill-destructive/50' : 'fill-yellow-500/50'
             }
+          />
+        ) : loadingOperation ? (
+          <BorderSpinner
+            shape={isBase ? 'circle' : 'square'}
+            className="h-2 w-2 shadow-[0_0_6px_currentColor] text-cyan-500"
+            bgClassName="fill-cyan-500/50"
           />
         ) : isBase ? (
           <Circle className={cn('h-2 w-2 shrink-0 fill-current rounded-full', indicatorColor)} />
@@ -436,6 +457,18 @@ export function WorktreeItem({
               {pushCount}
             </span>
           </button>
+        )}
+
+        {/* Uncommitted changes */}
+        {hasUncommitted && (
+          <span
+            className="shrink-0 text-[11px] font-medium"
+            title={`Uncommitted: +${uncommittedAdded}/-${uncommittedRemoved} lines`}
+          >
+            <span className="text-green-500">+{uncommittedAdded}</span>
+            <span className="text-muted-foreground">/</span>
+            <span className="text-red-500">-{uncommittedRemoved}</span>
+          </span>
         )}
 
       </div>

@@ -429,6 +429,29 @@ pub fn git_push(repo_path: &str) -> Result<String, String> {
         Ok(result)
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+        // Check if branch doesn't have upstream yet (same pattern as rebase_feature_branch)
+        if stderr.contains("has no upstream branch") {
+            log::trace!("No upstream branch, retrying with -u origin HEAD");
+            let push_u_output = Command::new("git")
+                .args(["push", "-u", "origin", "HEAD"])
+                .current_dir(repo_path)
+                .output()
+                .map_err(|e| format!("Failed to run git push -u: {e}"))?;
+
+            if push_u_output.status.success() {
+                let stdout = String::from_utf8_lossy(&push_u_output.stdout).to_string();
+                let stderr = String::from_utf8_lossy(&push_u_output.stderr).to_string();
+                let result = if stdout.is_empty() { stderr } else { stdout };
+                log::trace!("Successfully pushed with upstream set");
+                return Ok(result);
+            } else {
+                let stderr = String::from_utf8_lossy(&push_u_output.stderr).to_string();
+                log::error!("Failed to push with -u: {stderr}");
+                return Err(stderr);
+            }
+        }
+
         log::error!("Failed to push to origin: {stderr}");
         Err(stderr)
     }
@@ -579,6 +602,45 @@ pub fn create_worktree_from_existing_branch(
         "Successfully created worktree at {worktree_path} using existing branch {existing_branch}"
     );
     Ok(())
+}
+
+/// Checkout a PR using gh CLI in the specified directory
+///
+/// Uses `gh pr checkout <number>` which properly handles:
+/// - Fetching the PR branch from forks
+/// - Setting up proper tracking
+/// - Checking out the actual PR branch
+///
+/// # Arguments
+/// * `worktree_path` - Path to the worktree where to checkout the PR
+/// * `pr_number` - The PR number to checkout
+pub fn gh_pr_checkout(worktree_path: &str, pr_number: u32) -> Result<String, String> {
+    log::trace!("Running gh pr checkout {pr_number} in {worktree_path}");
+
+    let output = Command::new("gh")
+        .args(["pr", "checkout", &pr_number.to_string()])
+        .current_dir(worktree_path)
+        .output()
+        .map_err(|e| format!("Failed to run gh pr checkout: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to checkout PR #{pr_number}: {stderr}"));
+    }
+
+    // Get the current branch name after checkout
+    let branch_output = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(worktree_path)
+        .output()
+        .map_err(|e| format!("Failed to get branch name: {e}"))?;
+
+    let branch_name = String::from_utf8_lossy(&branch_output.stdout)
+        .trim()
+        .to_string();
+
+    log::trace!("Successfully checked out PR #{pr_number} to branch {branch_name}");
+    Ok(branch_name)
 }
 
 /// Remove a git worktree

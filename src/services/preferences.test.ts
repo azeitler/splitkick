@@ -90,9 +90,14 @@ describe('preferences service', () => {
         syntax_theme_light: 'github-light',
         disable_thinking_in_non_plan_modes: true,
         session_recap_enabled: false,
+        session_recap_model: 'haiku',
         parallel_execution_prompt_enabled: false,
         magic_prompts: DEFAULT_MAGIC_PROMPTS,
         file_edit_mode: 'external',
+        ai_language: '',
+        allow_web_tools_in_plan_mode: true,
+        waiting_sound: 'none',
+        review_sound: 'none',
       }
       vi.mocked(invoke).mockResolvedValueOnce(mockPreferences)
 
@@ -161,9 +166,14 @@ describe('preferences service', () => {
         syntax_theme_light: 'github-light',
         disable_thinking_in_non_plan_modes: true,
         session_recap_enabled: false,
+        session_recap_model: 'haiku',
         parallel_execution_prompt_enabled: false,
         magic_prompts: DEFAULT_MAGIC_PROMPTS,
         file_edit_mode: 'external',
+        ai_language: '',
+        allow_web_tools_in_plan_mode: true,
+        waiting_sound: 'none',
+        review_sound: 'none',
       }
       vi.mocked(invoke).mockResolvedValueOnce(prefsWithOldBinding)
 
@@ -207,9 +217,14 @@ describe('preferences service', () => {
         syntax_theme_light: 'github-light',
         disable_thinking_in_non_plan_modes: false,
         session_recap_enabled: false,
+        session_recap_model: 'haiku',
         parallel_execution_prompt_enabled: false,
         magic_prompts: DEFAULT_MAGIC_PROMPTS,
         file_edit_mode: 'external',
+        ai_language: '',
+        allow_web_tools_in_plan_mode: true,
+        waiting_sound: 'none',
+        review_sound: 'none',
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -251,9 +266,14 @@ describe('preferences service', () => {
         syntax_theme_light: 'github-light',
         disable_thinking_in_non_plan_modes: true,
         session_recap_enabled: false,
+        session_recap_model: 'haiku',
         parallel_execution_prompt_enabled: false,
         magic_prompts: DEFAULT_MAGIC_PROMPTS,
         file_edit_mode: 'external',
+        ai_language: '',
+        allow_web_tools_in_plan_mode: true,
+        waiting_sound: 'none',
+        review_sound: 'none',
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -295,9 +315,14 @@ describe('preferences service', () => {
         syntax_theme_light: 'github-light',
         disable_thinking_in_non_plan_modes: true,
         session_recap_enabled: false,
+        session_recap_model: 'haiku',
         parallel_execution_prompt_enabled: false,
         magic_prompts: DEFAULT_MAGIC_PROMPTS,
         file_edit_mode: 'external',
+        ai_language: '',
+        allow_web_tools_in_plan_mode: true,
+        waiting_sound: 'none',
+        review_sound: 'none',
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -339,9 +364,14 @@ describe('preferences service', () => {
         syntax_theme_light: 'github-light',
         disable_thinking_in_non_plan_modes: true,
         session_recap_enabled: false,
+        session_recap_model: 'haiku',
         parallel_execution_prompt_enabled: false,
         magic_prompts: DEFAULT_MAGIC_PROMPTS,
         file_edit_mode: 'external',
+        ai_language: '',
+        allow_web_tools_in_plan_mode: true,
+        waiting_sound: 'none',
+        review_sound: 'none',
       }
 
       const { result } = renderHook(() => useSavePreferences(), {

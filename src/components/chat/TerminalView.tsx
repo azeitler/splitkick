@@ -3,6 +3,10 @@ import { Plus, X, Minus, Terminal, ChevronUp } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 import { useTerminal } from '@/hooks/useTerminal'
 import { useTerminalStore, type TerminalInstance } from '@/store/terminal-store'
+import {
+  disposeTerminal,
+  disposeAllWorktreeTerminals,
+} from '@/lib/terminal-instances'
 import { cn } from '@/lib/utils'
 import '@xterm/xterm/css/xterm.css'
 
@@ -10,24 +14,30 @@ interface TerminalViewProps {
   worktreeId: string
   worktreePath: string
   isCollapsed?: boolean
+  isWorktreeActive?: boolean
   onExpand?: () => void
 }
 
 /** Individual terminal tab content */
 const TerminalTabContent = memo(function TerminalTabContent({
   terminal,
+  worktreeId,
   worktreePath,
   isActive,
   isCollapsed = false,
+  isWorktreeActive = true,
 }: {
   terminal: TerminalInstance
+  worktreeId: string
   worktreePath: string
   isActive: boolean
   isCollapsed?: boolean
+  isWorktreeActive?: boolean
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const { initTerminal, fit, focus } = useTerminal({
     terminalId: terminal.id,
+    worktreeId,
     worktreePath,
     command: terminal.command,
   })
@@ -62,16 +72,16 @@ const TerminalTabContent = memo(function TerminalTabContent({
     }
   }, [fit, isActive])
 
-  // Fit and focus when becoming active or when expanding from collapsed
+  // Fit and focus when becoming active, expanding from collapsed, or worktree becomes visible
   useEffect(() => {
-    if (isActive && initialized.current && !isCollapsed) {
+    if (isActive && initialized.current && !isCollapsed && isWorktreeActive) {
       // Use requestAnimationFrame to ensure container has proper dimensions after expanding
       requestAnimationFrame(() => {
         fit()
         focus()
       })
     }
-  }, [isActive, isCollapsed, fit, focus])
+  }, [isActive, isCollapsed, isWorktreeActive, fit, focus])
 
   return (
     <div className={cn('h-full w-full p-2', !isActive && 'hidden')}>
@@ -84,6 +94,7 @@ export function TerminalView({
   worktreeId,
   worktreePath,
   isCollapsed = false,
+  isWorktreeActive = true,
   onExpand,
 }: TerminalViewProps) {
   const terminals = useTerminalStore(state => state.terminals[worktreeId] ?? [])
@@ -98,12 +109,15 @@ export function TerminalView({
     setActiveTerminal,
     setTerminalVisible,
     setTerminalPanelOpen,
-    closeAllTerminals,
   } = useTerminalStore.getState()
 
-  // Auto-create first terminal if none exists
+  // Auto-create first terminal if none exists AND panel wasn't explicitly closed
+  // terminalPanelOpen[worktreeId] === false means user explicitly closed all terminals
+  // terminalPanelOpen[worktreeId] === undefined means never opened (should auto-create)
   useEffect(() => {
-    if (terminals.length === 0) {
+    const { terminalPanelOpen } = useTerminalStore.getState()
+    const explicitlyClosed = terminalPanelOpen[worktreeId] === false
+    if (terminals.length === 0 && !explicitlyClosed) {
       addTerminal(worktreeId)
     }
   }, [terminals.length, worktreeId, addTerminal])
@@ -121,16 +135,18 @@ export function TerminalView({
       } catch {
         // Terminal may already be stopped
       }
+      // Dispose xterm instance (cleanup listeners, clear buffer)
+      disposeTerminal(terminalId)
       // Remove from store
       removeTerminal(worktreeId, terminalId)
-      // If this was the last terminal, close the panel
+      // If this was the last terminal, close the panel for THIS worktree only
+      // Don't set terminalVisible=false as that's global and affects other worktrees
       const remaining = useTerminalStore.getState().terminals[worktreeId] ?? []
       if (remaining.length === 0) {
-        setTerminalPanelOpen(false)
-        setTerminalVisible(false)
+        setTerminalPanelOpen(worktreeId, false)
       }
     },
-    [worktreeId, removeTerminal, setTerminalPanelOpen, setTerminalVisible]
+    [worktreeId, removeTerminal, setTerminalPanelOpen]
   )
 
   const handleSelectTerminal = useCallback(
@@ -144,17 +160,10 @@ export function TerminalView({
     setTerminalVisible(false)
   }, [setTerminalVisible])
 
-  const handleCloseAll = useCallback(async () => {
-    const terminalIds = closeAllTerminals(worktreeId)
-    // Stop all PTY processes
-    for (const terminalId of terminalIds) {
-      try {
-        await invoke('stop_terminal', { terminalId })
-      } catch {
-        // Terminal may already be stopped
-      }
-    }
-  }, [worktreeId, closeAllTerminals])
+  const handleCloseAll = useCallback(() => {
+    // Dispose all xterm instances and stop PTY processes
+    disposeAllWorktreeTerminals(worktreeId)
+  }, [worktreeId])
 
   // When collapsed, show collapsed bar but keep terminals mounted (hidden) to preserve state
   if (isCollapsed) {
@@ -180,9 +189,11 @@ export function TerminalView({
             <TerminalTabContent
               key={terminal.id}
               terminal={terminal}
+              worktreeId={worktreeId}
               worktreePath={worktreePath}
               isActive={terminal.id === activeTerminalId}
               isCollapsed
+              isWorktreeActive={isWorktreeActive}
             />
           ))}
         </div>
@@ -281,8 +292,10 @@ export function TerminalView({
           <TerminalTabContent
             key={terminal.id}
             terminal={terminal}
+            worktreeId={worktreeId}
             worktreePath={worktreePath}
             isActive={terminal.id === activeTerminalId}
+            isWorktreeActive={isWorktreeActive}
           />
         ))}
       </div>

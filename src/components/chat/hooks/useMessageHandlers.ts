@@ -37,6 +37,7 @@ interface SendMessageMutation {
       executionMode?: ExecutionMode
       thinkingLevel?: ThinkingLevel
       allowedTools?: string[]
+      disableThinkingForMode?: boolean
     },
     options?: {
       onSettled?: () => void
@@ -286,6 +287,7 @@ export function useMessageHandlers({
           model: selectedModelRef.current,
           executionMode: 'build',
           thinkingLevel: selectedThinkingLevelRef.current,
+          disableThinkingForMode: true, // Always disable thinking when executing approved plan
         },
         {
           onSettled: () => {
@@ -369,6 +371,7 @@ export function useMessageHandlers({
           model: selectedModelRef.current,
           executionMode: 'yolo',
           thinkingLevel: selectedThinkingLevelRef.current,
+          disableThinkingForMode: true, // Always disable thinking when executing approved plan
         },
         {
           onSettled: () => {
@@ -447,6 +450,7 @@ export function useMessageHandlers({
         model: selectedModelRef.current,
         executionMode: 'build',
         thinkingLevel: selectedThinkingLevelRef.current,
+        disableThinkingForMode: true, // Always disable thinking when executing approved plan
       },
       {
         onSettled: () => {
@@ -513,6 +517,7 @@ export function useMessageHandlers({
         model: selectedModelRef.current,
         executionMode: 'yolo',
         thinkingLevel: selectedThinkingLevelRef.current,
+        disableThinkingForMode: true, // Always disable thinking when executing approved plan
       },
       {
         onSettled: () => {

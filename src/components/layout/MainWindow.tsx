@@ -12,6 +12,7 @@ import { CliUpdateModal } from '@/components/layout/CliUpdateModal'
 import { CliLoginModal } from '@/components/preferences/CliLoginModal'
 import { OpenInModal } from '@/components/open-in/OpenInModal'
 import { MagicModal } from '@/components/magic/MagicModal'
+import { CheckoutPRModal } from '@/components/magic/CheckoutPRModal'
 import { NewWorktreeModal } from '@/components/worktree/NewWorktreeModal'
 import { PathConflictModal } from '@/components/worktree/PathConflictModal'
 import { BranchConflictModal } from '@/components/worktree/BranchConflictModal'
@@ -220,6 +221,7 @@ export function MainWindow() {
       <CliLoginModal />
       <OpenInModal />
       <MagicModal />
+      <CheckoutPRModal />
       <NewWorktreeModal />
       <PathConflictModal />
       <BranchConflictModal />

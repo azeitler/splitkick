@@ -114,12 +114,22 @@ pub struct AppPreferences {
     pub disable_thinking_in_non_plan_modes: bool, // Disable thinking in build/yolo modes (only plan uses thinking)
     #[serde(default = "default_session_recap_enabled")]
     pub session_recap_enabled: bool, // Show session recap when returning to unfocused sessions
+    #[serde(default = "default_session_recap_model")]
+    pub session_recap_model: String, // Model for generating session recaps: haiku, sonnet, opus
     #[serde(default = "default_parallel_execution_prompt_enabled")]
     pub parallel_execution_prompt_enabled: bool, // Add system prompt to encourage parallel sub-agent execution
     #[serde(default)]
     pub magic_prompts: MagicPrompts, // Customizable prompts for AI-powered features
     #[serde(default = "default_file_edit_mode")]
     pub file_edit_mode: String, // How to edit files: inline (CodeMirror) or external (VS Code, etc.)
+    #[serde(default)]
+    pub ai_language: String, // Preferred language for AI responses (empty = default)
+    #[serde(default = "default_allow_web_tools_in_plan_mode")]
+    pub allow_web_tools_in_plan_mode: bool, // Allow WebFetch/WebSearch in plan mode without prompts
+    #[serde(default = "default_waiting_sound")]
+    pub waiting_sound: String, // Sound when session is waiting for input: none, ding, chime, pop, choochoo
+    #[serde(default = "default_review_sound")]
+    pub review_sound: String, // Sound when session finishes reviewing: none, ding, chime, pop, choochoo
 }
 
 fn default_auto_branch_naming() -> bool {
@@ -214,8 +224,24 @@ fn default_session_recap_enabled() -> bool {
     false // Disabled by default (experimental)
 }
 
+fn default_session_recap_model() -> String {
+    "haiku".to_string() // Use Haiku by default for fast, cheap session recap generation
+}
+
 fn default_parallel_execution_prompt_enabled() -> bool {
     false // Disabled by default (experimental)
+}
+
+fn default_allow_web_tools_in_plan_mode() -> bool {
+    true // Enabled by default
+}
+
+fn default_waiting_sound() -> String {
+    "none".to_string()
+}
+
+fn default_review_sound() -> String {
+    "none".to_string()
 }
 
 // =============================================================================
@@ -438,9 +464,14 @@ impl Default for AppPreferences {
             syntax_theme_light: default_syntax_theme_light(),
             disable_thinking_in_non_plan_modes: default_disable_thinking_in_non_plan_modes(),
             session_recap_enabled: default_session_recap_enabled(),
+            session_recap_model: default_session_recap_model(),
             parallel_execution_prompt_enabled: default_parallel_execution_prompt_enabled(),
             magic_prompts: MagicPrompts::default(),
             file_edit_mode: default_file_edit_mode(),
+            ai_language: String::new(),
+            allow_web_tools_in_plan_mode: default_allow_web_tools_in_plan_mode(),
+            waiting_sound: default_waiting_sound(),
+            review_sound: default_review_sound(),
         }
     }
 }
@@ -1187,6 +1218,7 @@ pub fn run() {
             projects::get_worktree,
             projects::create_worktree,
             projects::create_worktree_from_existing_branch,
+            projects::checkout_pr,
             projects::delete_worktree,
             projects::create_base_session,
             projects::close_base_session,
@@ -1223,6 +1255,7 @@ pub fn run() {
             projects::git_pull,
             projects::git_push,
             projects::merge_worktree_to_base,
+            projects::get_merge_conflicts,
             projects::reorder_projects,
             projects::reorder_worktrees,
             projects::fetch_worktrees_status,
@@ -1294,6 +1327,7 @@ pub fn run() {
             chat::mark_plan_approved,
             // Chat commands - Image handling
             chat::save_pasted_image,
+            chat::save_dropped_image,
             chat::delete_pasted_image,
             // Chat commands - Text paste handling
             chat::save_pasted_text,

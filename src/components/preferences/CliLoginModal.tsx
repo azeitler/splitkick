@@ -7,6 +7,7 @@
  */
 
 import { useCallback, useEffect, useRef, useMemo } from 'react'
+import { invoke } from '@tauri-apps/api/core'
 import {
   Dialog,
   DialogContent,
@@ -16,6 +17,7 @@ import {
 } from '@/components/ui/dialog'
 import { useUIStore } from '@/store/ui-store'
 import { useTerminal } from '@/hooks/useTerminal'
+import { disposeTerminal } from '@/lib/terminal-instances'
 
 export function CliLoginModal() {
   const isOpen = useUIStore(state => state.cliLoginModalOpen)
@@ -55,8 +57,10 @@ function CliLoginModalContent({ cliType, command, onClose }: CliLoginModalConten
 
   console.log('[CliLoginModal] Render - terminalId:', terminalId, 'command:', command)
 
-  const { initTerminal, fit, dispose } = useTerminal({
+  // Use a synthetic worktreeId for CLI login (not associated with any real worktree)
+  const { initTerminal, fit } = useTerminal({
     terminalId,
+    worktreeId: 'cli-login', // Synthetic worktreeId for CLI login terminals
     worktreePath: '/tmp', // CLI commands don't depend on cwd
     command,
   })
@@ -115,13 +119,20 @@ function CliLoginModalContent({ cliType, command, onClose }: CliLoginModalConten
 
   // Cleanup terminal when modal closes
   const handleOpenChange = useCallback(
-    (open: boolean) => {
+    async (open: boolean) => {
       if (!open) {
-        dispose()
+        // Stop PTY process
+        try {
+          await invoke('stop_terminal', { terminalId })
+        } catch {
+          // Terminal may already be stopped
+        }
+        // Dispose xterm instance
+        disposeTerminal(terminalId)
         onClose()
       }
     },
-    [dispose, onClose]
+    [terminalId, onClose]
   )
 
   return (

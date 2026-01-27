@@ -18,6 +18,8 @@ xcode-select --install
 sudo apt install libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 ```
 
+**Linux Remote Desktop (RDP/xrdp)**: See [Linux Remote Development](#linux-remote-development-rdpxrdp) section below.
+
 **Windows**: No additional dependencies
 
 ## Quick Start
@@ -59,6 +61,7 @@ jean/
 | Command | Description |
 |---------|-------------|
 | `npm run tauri:dev` | Start app in development mode |
+| `npm run tauri:dev:rdp` | Start in dev mode with RDP/remote desktop support |
 | `npm run check:all` | **Run all quality checks (must pass before PR)** |
 | `npm run typecheck` | TypeScript type checking |
 | `npm run lint` | ESLint (zero warnings enforced) |
@@ -115,6 +118,29 @@ All Tauri commands are wrapped in TanStack Query hooks in `src/services/`.
 - **Frontend**: Vitest + React Testing Library
 - **Backend**: `cargo test`
 - **Run before PR**: `npm run check:all`
+
+## Linux Remote Development (RDP/xrdp)
+
+When developing on Linux via remote desktop (RDP/xrdp), you may encounter noisy EGL/Mesa/ZINK warnings like:
+- `libEGL warning: failed to create dri2 screen`
+- `MESA: ZINK: failed to choose pdev`
+
+This is common in VM/RDP environments where GPU acceleration is unavailable. Use the provided wrapper script:
+
+```bash
+# Auto-detects RDP session and enables software rendering
+npm run tauri:dev:rdp
+
+# Force software rendering (useful if auto-detection doesn't work)
+npm run tauri:dev:rdp -- --force
+```
+
+Or manually set environment variables:
+```bash
+LIBGL_ALWAYS_SOFTWARE=1 GDK_BACKEND=x11 npm run tauri:dev
+```
+
+**Note**: Software rendering is slower than hardware acceleration, but in RDP setups hardware acceleration is typically unavailable anyway. This approach provides cleaner logs and more consistent startup.
 
 ## Submitting Changes
 

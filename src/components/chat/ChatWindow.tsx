@@ -54,6 +54,7 @@ import type {
 } from '@/types/chat'
 import { isAskUserQuestion, isExitPlanMode, isTodoWrite } from '@/types/chat'
 import { getFilename } from '@/lib/path-utils'
+import { cn } from '@/lib/utils'
 import { PermissionApproval } from './PermissionApproval'
 import { SetupScriptOutput } from './SetupScriptOutput'
 import { SessionTabBar } from './SessionTabBar'
@@ -93,7 +94,7 @@ import {
   ResizableHandle,
   type ImperativePanelHandle,
 } from '@/components/ui/resizable'
-import { TerminalView } from './TerminalView'
+import { TerminalPanel } from './TerminalPanel'
 import { useTerminalStore } from '@/store/terminal-store'
 
 // Extracted hooks (useStreamingEvents is now in App.tsx for global persistence)
@@ -102,6 +103,7 @@ import { useGitOperations } from './hooks/useGitOperations'
 import { useContextOperations } from './hooks/useContextOperations'
 import { useMessageHandlers, GIT_ALLOWED_TOOLS } from './hooks/useMessageHandlers'
 import { useMagicCommands } from './hooks/useMagicCommands'
+import { useDragAndDropImages } from './hooks/useDragAndDropImages'
 
 /** Check if we're in development mode */
 const isDev = import.meta.env.DEV
@@ -161,9 +163,11 @@ export function ChatWindow() {
     activeSessionId ? (state.manualThinkingOverrides[activeSessionId] ?? false) : false
   )
 
-  // Terminal panel visibility
+  // Terminal panel visibility (per-worktree)
   const terminalVisible = useTerminalStore(state => state.terminalVisible)
-  const terminalPanelOpen = useTerminalStore(state => state.terminalPanelOpen)
+  const terminalPanelOpen = useTerminalStore(state =>
+    activeWorktreeId ? (state.terminalPanelOpen[activeWorktreeId] ?? false) : false
+  )
   const { setTerminalVisible } = useTerminalStore.getState()
 
   // Sync terminal panel with terminalVisible state
@@ -508,6 +512,7 @@ export function ChatWindow() {
 
   // Ref for approve button (passed to VirtualizedMessageList)
   const approveButtonRef = useRef<HTMLButtonElement>(null)
+  const pendingInvestigateRef = useRef(false)
 
   // Terminal panel ref for imperative collapse/expand
   const terminalPanelRef = useRef<ImperativePanelHandle>(null)
@@ -525,6 +530,9 @@ export function ChatWindow() {
     messages: session?.messages,
     virtualizedListRef,
   })
+
+  // Drag and drop images into chat input
+  const { isDragging } = useDragAndDropImages(activeSessionId)
 
   // State for file content modal (opened by clicking filenames in tool calls)
   const [viewingFilePath, setViewingFilePath] = useState<string | null>(null)
@@ -809,10 +817,19 @@ export function ChatWindow() {
 
       // Get session-approved tools to include
       const sessionApprovedTools = getApprovedTools(activeSessionId)
+
+      // Build base allowed tools (git always, web tools if enabled)
+      const webTools = preferences?.allow_web_tools_in_plan_mode
+        ? ['WebFetch', 'WebSearch']
+        : []
+      const baseAllowedTools = [...GIT_ALLOWED_TOOLS, ...webTools]
+
       const allowedTools =
         sessionApprovedTools.length > 0
-          ? [...GIT_ALLOWED_TOOLS, ...sessionApprovedTools]
-          : undefined
+          ? [...baseAllowedTools, ...sessionApprovedTools]
+          : baseAllowedTools.length > GIT_ALLOWED_TOOLS.length
+            ? baseAllowedTools
+            : undefined
 
       // Build full message with attachment refs for backend
       const fullMessage = buildMessageWithRefs(queuedMsg)
@@ -829,6 +846,7 @@ export function ChatWindow() {
           disableThinkingForMode: queuedMsg.disableThinkingForMode,
           parallelExecutionPromptEnabled:
             preferences?.parallel_execution_prompt_enabled ?? false,
+          aiLanguage: preferences?.ai_language,
           allowedTools,
         },
         {
@@ -838,7 +856,7 @@ export function ChatWindow() {
         }
       )
     },
-    [activeSessionId, activeWorktreeId, activeWorktreePath, buildMessageWithRefs, sendMessage, preferences?.parallel_execution_prompt_enabled]
+    [activeSessionId, activeWorktreeId, activeWorktreePath, buildMessageWithRefs, sendMessage, preferences?.parallel_execution_prompt_enabled, preferences?.ai_language, preferences?.allow_web_tools_in_plan_mode]
   )
 
   // GitDiffModal handlers - extracted for performance (prevents child re-renders)
@@ -894,11 +912,11 @@ export function ChatWindow() {
           executionMode: 'build',
           thinkingLevel,
           disableThinkingForMode:
-            (preferences?.disable_thinking_in_non_plan_modes ?? true) &&
             thinkingLevel !== 'off' &&
             !hasManualOverride,
           parallelExecutionPromptEnabled:
             preferences?.parallel_execution_prompt_enabled ?? false,
+          aiLanguage: preferences?.ai_language,
         },
         { onSettled: () => inputRef.current?.focus() }
       )
@@ -986,7 +1004,6 @@ export function ChatWindow() {
         executionMode: mode,
         thinkingLevel: thinkingLvl,
         disableThinkingForMode:
-          (preferences?.disable_thinking_in_non_plan_modes ?? true) &&
           mode !== 'plan' &&
           thinkingLvl !== 'off' &&
           !hasManualOverride,
@@ -1012,27 +1029,8 @@ export function ChatWindow() {
     ]
   )
 
-  // Process queued messages when not sending
-  // This effect runs whenever isSending changes. When isSending becomes false
-  // and there are queued messages, it dequeues and sends the next one.
-  // sendMessageNow immediately sets isSending back to true, preventing re-entry.
-  useEffect(() => {
-    // Skip if currently sending, waiting for questions, or no session
-    if (isSending || hasPendingQuestions || !activeSessionId) return
-
-    const { getQueuedMessages, dequeueMessage } = useChatStore.getState()
-    const queue = getQueuedMessages(activeSessionId)
-
-    if (queue.length > 0) {
-      // Dequeue and send immediately
-      // sendMessageNow calls addSendingSession which sets isSending=true,
-      // preventing this effect from running again until message completes
-      const nextMessage = dequeueMessage(activeSessionId)
-      if (nextMessage) {
-        sendMessageNow(nextMessage)
-      }
-    }
-  }, [isSending, hasPendingQuestions, activeSessionId, sendMessageNow])
+  // Note: Queue processing moved to useQueueProcessor hook in App.tsx
+  // This ensures queued messages execute even when the worktree is unfocused
 
   // Git operations hook - handles commit, PR, review, merge operations
   const {
@@ -1041,6 +1039,7 @@ export function ChatWindow() {
     handleOpenPr,
     handleReview,
     handleMerge,
+    handleResolveConflicts,
     executeMerge,
     showMergeDialog,
     setShowMergeDialog,
@@ -1150,8 +1149,9 @@ export function ChatWindow() {
     useUIStore.getState().setMagicModalOpen(true)
   }, [])
 
-  // Handle investigate issue - sends prompt to analyze loaded issue(s)
-  const handleInvestigateIssue = useCallback(async () => {
+  // Handle investigate context - sends prompt to analyze loaded issue(s) and/or PR(s)
+  // If nothing is loaded, opens the Load Context modal instead
+  const handleInvestigate = useCallback(async () => {
     const sessionId = activeSessionIdRef.current
     const worktreeId = activeWorktreeIdRef.current
     const worktreePath = activeWorktreePathRef.current
@@ -1160,30 +1160,41 @@ export function ChatWindow() {
       return
     }
 
-    // Fetch loaded issues - use fetchQuery to ensure data is available
-    // (getQueryData may return empty during auto-investigate race condition)
-    const loadedIssues = await queryClient.fetchQuery({
-      queryKey: githubQueryKeys.loadedContexts(worktreeId),
-      queryFn: () => invoke<LoadedIssueContext[]>('list_loaded_issue_contexts', { worktreeId }),
-      staleTime: 1000 * 60,
-    })
+    // Fetch both loaded issues and PRs in parallel
+    const [loadedIssues, loadedPRs] = await Promise.all([
+      queryClient.fetchQuery({
+        queryKey: githubQueryKeys.loadedContexts(worktreeId),
+        queryFn: () => invoke<LoadedIssueContext[]>('list_loaded_issue_contexts', { worktreeId }),
+        staleTime: 1000 * 60,
+      }),
+      queryClient.fetchQuery({
+        queryKey: githubQueryKeys.loadedPrContexts(worktreeId),
+        queryFn: () => invoke<LoadedPullRequestContext[]>('list_loaded_pr_contexts', { worktreeId }),
+        staleTime: 1000 * 60,
+      }),
+    ])
 
-    if (!loadedIssues || loadedIssues.length === 0) {
-      toast.error('No issues loaded. Use Load Issue (I) first.')
+    const hasIssues = loadedIssues && loadedIssues.length > 0
+    const hasPRs = loadedPRs && loadedPRs.length > 0
+
+    // If nothing loaded, open the Load Context modal and re-trigger on close
+    if (!hasIssues && !hasPRs) {
+      pendingInvestigateRef.current = true
+      setLoadContextModalOpen(true)
       return
     }
 
-    // Build prompt using custom template from preferences
-    const issueRefs = loadedIssues.map(i => `#${i.number}`).join(', ')
-    const isSingle = loadedIssues.length === 1
-    const issueWord = isSingle ? 'issue' : 'issues'
+    // Build combined prompt from loaded issues and/or PRs
+    const promptParts: string[] = []
 
-    // Get custom prompt from preferences or use default
-    const customPrompt = preferences?.magic_prompts?.investigate_issue
-    const promptTemplate =
-      customPrompt && customPrompt.trim()
-        ? customPrompt
-        : `Investigate the loaded GitHub {issueWord} ({issueRefs}).
+    if (hasIssues) {
+      const issueRefs = loadedIssues.map(i => `#${i.number}`).join(', ')
+      const issueWord = loadedIssues.length === 1 ? 'issue' : 'issues'
+      const customPrompt = preferences?.magic_prompts?.investigate_issue
+      const issueTemplate =
+        customPrompt && customPrompt.trim()
+          ? customPrompt
+          : `Investigate the loaded GitHub {issueWord} ({issueRefs}).
 
 ## Investigation Steps
 
@@ -1223,76 +1234,21 @@ export function ChatWindow() {
 
 Begin your investigation now.`
 
-    // Replace template variables
-    const prompt = promptTemplate
-      .replace(/\{issueRefs\}/g, issueRefs)
-      .replace(/\{issueWord\}/g, issueWord)
-
-    // Send message (pattern from handleFixFinding)
-    const {
-      addSendingSession,
-      setLastSentMessage,
-      setError,
-      setSelectedModel,
-      setExecutingMode,
-    } = useChatStore.getState()
-
-    setLastSentMessage(sessionId, prompt)
-    setError(sessionId, null)
-    addSendingSession(sessionId)
-    setSelectedModel(sessionId, selectedModelRef.current)
-    setExecutingMode(sessionId, executionModeRef.current)
-
-    sendMessage.mutate(
-      {
-        sessionId,
-        worktreeId,
-        worktreePath,
-        message: prompt,
-        model: selectedModelRef.current,
-        executionMode: executionModeRef.current,
-        thinkingLevel: selectedThinkingLevelRef.current,
-        parallelExecutionPromptEnabled:
-          preferences?.parallel_execution_prompt_enabled ?? false,
-      },
-      { onSettled: () => inputRef.current?.focus() }
-    )
-  }, [queryClient, sendMessage, preferences?.magic_prompts?.investigate_issue, preferences?.parallel_execution_prompt_enabled])
-
-  // Handle investigate PR - sends prompt to analyze loaded PR(s)
-  const handleInvestigatePR = useCallback(async () => {
-    const sessionId = activeSessionIdRef.current
-    const worktreeId = activeWorktreeIdRef.current
-    const worktreePath = activeWorktreePathRef.current
-    if (!sessionId || !worktreeId || !worktreePath) {
-      toast.error('No active session')
-      return
+      promptParts.push(
+        issueTemplate
+          .replace(/\{issueRefs\}/g, issueRefs)
+          .replace(/\{issueWord\}/g, issueWord)
+      )
     }
 
-    // Fetch loaded PRs - use fetchQuery to ensure data is available
-    // (getQueryData may return empty during auto-investigate race condition)
-    const loadedPRs = await queryClient.fetchQuery({
-      queryKey: githubQueryKeys.loadedPrContexts(worktreeId),
-      queryFn: () => invoke<LoadedPullRequestContext[]>('list_loaded_pr_contexts', { worktreeId }),
-      staleTime: 1000 * 60,
-    })
-
-    if (!loadedPRs || loadedPRs.length === 0) {
-      toast.error('No PRs loaded. Use Load Context (I) and select the PR tab first.')
-      return
-    }
-
-    // Build prompt using custom template from preferences
-    const prRefs = loadedPRs.map(pr => `#${pr.number}`).join(', ')
-    const isSingle = loadedPRs.length === 1
-    const prWord = isSingle ? 'pull request' : 'pull requests'
-
-    // Get custom prompt from preferences or use default
-    const customPrompt = preferences?.magic_prompts?.investigate_pr
-    const promptTemplate =
-      customPrompt && customPrompt.trim()
-        ? customPrompt
-        : `Investigate the loaded GitHub {prWord} ({prRefs}).
+    if (hasPRs) {
+      const prRefs = loadedPRs.map(pr => `#${pr.number}`).join(', ')
+      const prWord = loadedPRs.length === 1 ? 'pull request' : 'pull requests'
+      const customPrompt = preferences?.magic_prompts?.investigate_pr
+      const prTemplate =
+        customPrompt && customPrompt.trim()
+          ? customPrompt
+          : `Investigate the loaded GitHub {prWord} ({prRefs}).
 
 ## Investigation Steps
 
@@ -1332,12 +1288,16 @@ Begin your investigation now.`
 
 Begin your investigation now.`
 
-    // Replace template variables
-    const prompt = promptTemplate
-      .replace(/\{prRefs\}/g, prRefs)
-      .replace(/\{prWord\}/g, prWord)
+      promptParts.push(
+        prTemplate
+          .replace(/\{prRefs\}/g, prRefs)
+          .replace(/\{prWord\}/g, prWord)
+      )
+    }
 
-    // Send message (pattern from handleFixFinding)
+    const prompt = promptParts.join('\n\n---\n\n')
+
+    // Send message
     const {
       addSendingSession,
       setLastSentMessage,
@@ -1363,10 +1323,25 @@ Begin your investigation now.`
         thinkingLevel: selectedThinkingLevelRef.current,
         parallelExecutionPromptEnabled:
           preferences?.parallel_execution_prompt_enabled ?? false,
+        aiLanguage: preferences?.ai_language,
       },
       { onSettled: () => inputRef.current?.focus() }
     )
-  }, [queryClient, sendMessage, preferences?.magic_prompts?.investigate_pr, preferences?.parallel_execution_prompt_enabled])
+  }, [queryClient, sendMessage, setLoadContextModalOpen, preferences?.magic_prompts?.investigate_issue, preferences?.magic_prompts?.investigate_pr, preferences?.parallel_execution_prompt_enabled, preferences?.ai_language])
+
+  // Wraps modal open/close to auto-trigger investigation after user loads context
+  const handleLoadContextModalChange = useCallback((open: boolean) => {
+    setLoadContextModalOpen(open)
+    if (!open && pendingInvestigateRef.current) {
+      pendingInvestigateRef.current = false
+      handleInvestigate()
+    }
+  }, [setLoadContextModalOpen, handleInvestigate])
+
+  // Handle checkout PR - opens modal to select and checkout a PR to a new worktree
+  const handleCheckoutPR = useCallback(() => {
+    useUIStore.getState().setCheckoutPRModalOpen(true)
+  }, [])
 
   // Listen for magic-command events from MagicModal
   useMagicCommands({
@@ -1377,8 +1352,9 @@ Begin your investigation now.`
     handleOpenPr,
     handleReview,
     handleMerge,
-    handleInvestigateIssue,
-    handleInvestigatePR,
+    handleResolveConflicts,
+    handleInvestigate,
+    handleCheckoutPR,
   })
 
   // Listen for command palette context events
@@ -1517,6 +1493,7 @@ Begin your investigation now.`
             disableThinkingForMode: thinkingLvl !== 'off' && !hasManualOverride,
             parallelExecutionPromptEnabled:
               preferences?.parallel_execution_prompt_enabled ?? false,
+            aiLanguage: preferences?.ai_language,
           },
           {
             onSettled: () => {
@@ -1939,7 +1916,15 @@ Begin your investigation now.`
                 )}
 
               {/* Input area - unified container with textarea and toolbar */}
-              <form ref={formRef} onSubmit={handleSubmit} className="relative">
+              <form
+                ref={formRef}
+                onSubmit={handleSubmit}
+                className={cn(
+                  'relative rounded-lg transition-all duration-150',
+                  isDragging &&
+                    'ring-2 ring-primary ring-inset bg-primary/5'
+                )}
+              >
                 {/* Textarea section */}
                 <div className="px-4 pt-3 pb-2 md:px-6">
                   <ChatInput
@@ -1967,7 +1952,6 @@ Begin your investigation now.`
                   selectedModel={selectedModel}
                   selectedThinkingLevel={selectedThinkingLevel}
                   thinkingOverrideActive={
-                    (preferences?.disable_thinking_in_non_plan_modes ?? true) &&
                     executionMode !== 'plan' &&
                     selectedThinkingLevel !== 'off' &&
                     !hasManualThinkingOverride
@@ -2025,9 +2009,7 @@ Begin your investigation now.`
                 onCollapse={handleTerminalCollapse}
                 onExpand={handleTerminalExpand}
               >
-                <TerminalView
-                  worktreeId={activeWorktreeId}
-                  worktreePath={activeWorktreePath}
+                <TerminalPanel
                   isCollapsed={!terminalVisible}
                   onExpand={handleTerminalExpand}
                 />
@@ -2061,7 +2043,7 @@ Begin your investigation now.`
       {/* Load Context modal for selecting saved contexts */}
       <LoadContextModal
         open={loadContextModalOpen}
-        onOpenChange={setLoadContextModalOpen}
+        onOpenChange={handleLoadContextModalChange}
         worktreeId={activeWorktreeId}
         worktreePath={activeWorktreePath ?? null}
         activeSessionId={activeSessionId ?? null}

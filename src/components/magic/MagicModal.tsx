@@ -1,5 +1,6 @@
 import { useCallback, useState, useRef, useEffect, useMemo } from 'react'
 import {
+  GitBranch,
   GitCommitHorizontal,
   GitMerge,
   GitPullRequest,
@@ -28,8 +29,9 @@ type MagicOption =
   | 'open-pr'
   | 'review'
   | 'merge'
-  | 'investigate-issue'
-  | 'investigate-pr'
+  | 'resolve-conflicts'
+  | 'investigate'
+  | 'checkout-pr'
 
 interface MagicOptionItem {
   id: MagicOption
@@ -64,8 +66,9 @@ const MAGIC_SECTIONS: MagicSection[] = [
       { id: 'open-pr', label: 'Open PR', icon: GitPullRequest, key: 'O' },
       { id: 'review', label: 'Review', icon: Eye, key: 'R' },
       { id: 'merge', label: 'Merge to Base', icon: GitMerge, key: 'M' },
-      { id: 'investigate-issue', label: 'Investigate Issue', icon: Search, key: 'I' },
-      { id: 'investigate-pr', label: 'Investigate PR', icon: Search, key: 'U' },
+      { id: 'resolve-conflicts', label: 'Resolve Conflicts', icon: GitMerge, key: 'F' },
+      { id: 'investigate', label: 'Investigate Context', icon: Search, key: 'I' },
+      { id: 'checkout-pr', label: 'Checkout PR', icon: GitBranch, key: 'K' },
     ],
   },
 ]
@@ -79,8 +82,9 @@ const KEY_TO_OPTION: Record<string, MagicOption> = {
   o: 'open-pr',
   r: 'review',
   m: 'merge',
-  i: 'investigate-issue',
-  u: 'investigate-pr',
+  f: 'resolve-conflicts',
+  i: 'investigate',
+  k: 'checkout-pr',
 }
 
 export function MagicModal() {
@@ -115,8 +119,24 @@ export function MagicModal() {
     [setMagicModalOpen]
   )
 
+  const selectedProjectId = useProjectsStore(state => state.selectedProjectId)
+
   const executeAction = useCallback(
     (option: MagicOption) => {
+      // checkout-pr only needs a project selected, not a worktree
+      // Handle it directly here since ChatWindow may not be rendered
+      if (option === 'checkout-pr') {
+        if (!selectedProjectId) {
+          notify('No project selected', undefined, { type: 'error' })
+          setMagicModalOpen(false)
+          return
+        }
+        // Open the checkout PR modal directly
+        useUIStore.getState().setCheckoutPRModalOpen(true)
+        setMagicModalOpen(false)
+        return
+      }
+
       if (!selectedWorktreeId) {
         notify('No worktree selected', undefined, { type: 'error' })
         setMagicModalOpen(false)
@@ -130,7 +150,7 @@ export function MagicModal() {
 
       setMagicModalOpen(false)
     },
-    [selectedWorktreeId, setMagicModalOpen]
+    [selectedWorktreeId, selectedProjectId, setMagicModalOpen]
   )
 
   // Handle keyboard navigation

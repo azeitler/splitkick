@@ -236,8 +236,7 @@ export function SessionBoardView({ projectId, onSessionClick }: SessionBoardView
   return (
     <div className="flex h-full flex-col p-4">
       {/* Header */}
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Session Board</h2>
+      <div className="mb-4 flex items-end justify-end">
         <span className="text-sm text-muted-foreground">{project.name}</span>
       </div>
 

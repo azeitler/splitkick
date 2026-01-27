@@ -14,6 +14,7 @@ import type {
   CreateCommitResponse,
   ReviewResponse,
   MergeWorktreeResponse,
+  MergeConflictsResponse,
   MergeType,
   Worktree,
   Project,
@@ -42,6 +43,8 @@ interface UseGitOperationsReturn {
   handleReview: () => Promise<void>
   /** Validates and shows merge options dialog */
   handleMerge: () => Promise<void>
+  /** Detects existing merge conflicts and opens resolution session */
+  handleResolveConflicts: () => Promise<void>
   /** Executes the actual merge with specified type */
   executeMerge: (mergeType: MergeType) => Promise<void>
   /** Whether merge dialog is open */
@@ -72,8 +75,10 @@ export function useGitOperations({
 
   // Handle Commit - creates commit with AI-generated message (no push)
   const handleCommit = useCallback(async () => {
-    if (!activeWorktreePath) return
+    if (!activeWorktreePath || !activeWorktreeId) return
 
+    const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
+    setWorktreeLoading(activeWorktreeId, 'commit')
     const toastId = toast.loading('Creating commit...')
 
     try {
@@ -94,13 +99,17 @@ export function useGitOperations({
       })
     } catch (error) {
       toast.error(`Failed to commit: ${error}`, { id: toastId })
+    } finally {
+      clearWorktreeLoading(activeWorktreeId)
     }
-  }, [activeWorktreePath, preferences?.magic_prompts?.commit_message])
+  }, [activeWorktreeId, activeWorktreePath, preferences?.magic_prompts?.commit_message])
 
   // Handle Commit & Push - creates commit with AI-generated message and pushes
   const handleCommitAndPush = useCallback(async () => {
-    if (!activeWorktreePath) return
+    if (!activeWorktreePath || !activeWorktreeId) return
 
+    const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
+    setWorktreeLoading(activeWorktreeId, 'commit')
     const toastId = toast.loading('Committing and pushing...')
 
     try {
@@ -121,13 +130,17 @@ export function useGitOperations({
       })
     } catch (error) {
       toast.error(`Failed: ${error}`, { id: toastId })
+    } finally {
+      clearWorktreeLoading(activeWorktreeId)
     }
-  }, [activeWorktreePath, preferences?.magic_prompts?.commit_message])
+  }, [activeWorktreeId, activeWorktreePath, preferences?.magic_prompts?.commit_message])
 
   // Handle Open PR - creates PR with AI-generated title and description in background
   const handleOpenPr = useCallback(async () => {
     if (!activeWorktreeId || !activeWorktreePath || !worktree) return
 
+    const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
+    setWorktreeLoading(activeWorktreeId, 'pr')
     const toastId = toast.loading('Creating PR...')
 
     try {
@@ -159,6 +172,8 @@ export function useGitOperations({
       })
     } catch (error) {
       toast.error(`Failed to create PR: ${error}`, { id: toastId })
+    } finally {
+      clearWorktreeLoading(activeWorktreeId)
     }
   }, [activeWorktreeId, activeWorktreePath, worktree, queryClient, preferences?.magic_prompts?.pr_content])
 
@@ -166,6 +181,8 @@ export function useGitOperations({
   const handleReview = useCallback(async () => {
     if (!activeWorktreeId || !activeWorktreePath) return
 
+    const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
+    setWorktreeLoading(activeWorktreeId, 'review')
     const toastId = toast.loading('Running AI code review...')
 
     try {
@@ -194,6 +211,8 @@ export function useGitOperations({
       )
     } catch (error) {
       toast.error(`Failed to review: ${error}`, { id: toastId })
+    } finally {
+      clearWorktreeLoading(activeWorktreeId)
     }
   }, [activeWorktreeId, activeWorktreePath, preferences?.magic_prompts?.code_review])
 
@@ -233,6 +252,73 @@ export function useGitOperations({
     setShowMergeDialog(true)
   }, [activeWorktreeId, worktree])
 
+  // Handle Resolve Conflicts - detects existing merge conflicts and opens resolution session
+  const handleResolveConflicts = useCallback(async () => {
+    if (!activeWorktreeId || !worktree) return
+
+    const toastId = toast.loading('Checking for merge conflicts...')
+
+    try {
+      const result = await invoke<MergeConflictsResponse>(
+        'get_merge_conflicts',
+        { worktreeId: activeWorktreeId }
+      )
+
+      if (!result.has_conflicts) {
+        toast.info('No merge conflicts detected', { id: toastId })
+        return
+      }
+
+      toast.warning(
+        `Found conflicts in ${result.conflicts.length} file(s)`,
+        {
+          id: toastId,
+          description: 'Opening conflict resolution session...',
+        }
+      )
+
+      const { setActiveSession, setInputDraft } = useChatStore.getState()
+
+      // Create a NEW session tab for conflict resolution
+      const newSession = await invoke<Session>('create_session', {
+        worktreeId: activeWorktreeId,
+        worktreePath: worktree.path,
+        name: 'Resolve conflicts',
+      })
+
+      // Set the new session as active
+      setActiveSession(activeWorktreeId, newSession.id)
+
+      // Build conflict resolution prompt with diff details
+      const conflictFiles = result.conflicts.join('\n- ')
+      const diffSection = result.conflict_diff
+        ? `\n\nHere is the diff showing the conflict details:\n\n\`\`\`diff\n${result.conflict_diff}\n\`\`\``
+        : ''
+
+      const conflictPrompt = `I have merge conflicts that need to be resolved.
+
+Conflicts in these files:
+- ${conflictFiles}${diffSection}
+
+Please help me resolve these conflicts. Analyze the diff above, explain what's conflicting in each file, and guide me through resolving each conflict.`
+
+      // Set the input draft for the new session
+      setInputDraft(newSession.id, conflictPrompt)
+
+      // Invalidate queries to refresh session list in tab bar
+      queryClient.invalidateQueries({
+        queryKey: chatQueryKeys.sessions(activeWorktreeId),
+      })
+
+      // Focus input after a short delay to allow UI to update
+      setTimeout(() => {
+        inputRef.current?.focus()
+      }, 100)
+    } catch (error) {
+      toast.error(`Failed to check conflicts: ${error}`, { id: toastId })
+    }
+  }, [activeWorktreeId, worktree, queryClient, inputRef])
+
   // Execute merge with merge type option
   const executeMerge = useCallback(
     async (mergeType: MergeType) => {
@@ -243,6 +329,8 @@ export function useGitOperations({
       setShowMergeDialog(false)
       setPendingMergeWorktree(null)
 
+      const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
+      setWorktreeLoading(activeWorktreeId, 'merge')
       const toastId = toast.loading('Checking for uncommitted changes...')
       const featureBranch = worktreeData.branch
       const projectId = worktreeData.project_id
@@ -361,6 +449,8 @@ Please help me resolve these conflicts. Analyze the diff above, explain what's c
         }
       } catch (error) {
         toast.error(String(error), { id: toastId })
+      } finally {
+        clearWorktreeLoading(activeWorktreeId)
       }
     },
     [activeWorktreeId, pendingMergeWorktree, project, queryClient, inputRef]
@@ -372,6 +462,7 @@ Please help me resolve these conflicts. Analyze the diff above, explain what's c
     handleOpenPr,
     handleReview,
     handleMerge,
+    handleResolveConflicts,
     executeMerge,
     showMergeDialog,
     setShowMergeDialog,
