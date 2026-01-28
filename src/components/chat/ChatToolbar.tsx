@@ -57,7 +57,7 @@ import { Markdown } from '@/components/ui/markdown'
 import { cn } from '@/lib/utils'
 import type { ClaudeModel } from '@/store/chat-store'
 import type { ThinkingLevel, ExecutionMode } from '@/types/chat'
-import type { PrDisplayStatus, CheckStatus } from '@/types/pr-status'
+import type { PrDisplayStatus, CheckStatus, MergeableStatus } from '@/types/pr-status'
 import type { DiffRequest } from '@/types/git-diff'
 import type {
   LoadedIssueContext,
@@ -165,6 +165,7 @@ interface ChatToolbarProps {
   prNumber: number | undefined
   displayStatus: PrDisplayStatus | undefined
   checkStatus: CheckStatus | undefined
+  mergeableStatus: MergeableStatus | undefined
 
   // Shortcuts
   magicModalShortcut: string
@@ -186,6 +187,8 @@ interface ChatToolbarProps {
   onOpenPr: () => void
   onReview: () => void
   onMerge: () => void
+  onResolvePrConflicts: () => void
+  onResolveConflicts: () => void
   isBaseSession: boolean
   hasOpenPr: boolean
   onSetDiffRequest: (request: DiffRequest) => void
@@ -221,6 +224,7 @@ export const ChatToolbar = memo(function ChatToolbar({
   prNumber,
   displayStatus,
   checkStatus,
+  mergeableStatus,
   magicModalShortcut,
   activeWorktreePath,
   worktreeId,
@@ -234,6 +238,8 @@ export const ChatToolbar = memo(function ChatToolbar({
   onOpenPr,
   onReview,
   onMerge,
+  onResolvePrConflicts,
+  onResolveConflicts,
   isBaseSession,
   hasOpenPr,
   onSetDiffRequest,
@@ -269,12 +275,24 @@ export const ChatToolbar = memo(function ChatToolbar({
       triggerImmediateGitPoll()
       toast.success('Changes pulled', { id: toastId })
     } catch (error) {
-      toast.error(`Pull failed: ${error}`, { id: toastId })
+      // Tauri errors may be strings or Error objects with the message
+      // Use String() to coerce any error type to a string for matching
+      const errorStr = String(error)
+      console.log('[ChatToolbar] Pull error:', { error, errorStr, type: typeof error })
+      if (errorStr.includes('Merge conflicts in:')) {
+        toast.warning('Pull resulted in conflicts', {
+          id: toastId,
+          description: 'Opening conflict resolution...',
+        })
+        onResolveConflicts()
+      } else {
+        toast.error(`Pull failed: ${errorStr}`, { id: toastId })
+      }
     } finally {
       setIsPulling(false)
       clearWorktreeLoading(worktreeId)
     }
-  }, [activeWorktreePath, baseBranch])
+  }, [activeWorktreePath, baseBranch, onResolveConflicts])
 
   const [isPushing, setIsPushing] = useState(false)
   const handlePushClick = useCallback(async () => {
@@ -825,6 +843,22 @@ export const ChatToolbar = memo(function ChatToolbar({
               </span>
               <CheckStatusIcon status={checkStatus ?? null} />
             </a>
+          </>
+        )}
+
+        {/* PR conflicts indicator - desktop only */}
+        {mergeableStatus === 'conflicting' && (
+          <>
+            <div className="hidden @md:block h-4 w-px bg-border/50" />
+            <button
+              type="button"
+              className="hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-amber-600 dark:text-amber-400 transition-colors cursor-pointer hover:bg-muted/80"
+              title="PR has merge conflicts — click to resolve"
+              onClick={onResolvePrConflicts}
+            >
+              <GitMerge className="h-3 w-3" />
+              <span>Conflicts</span>
+            </button>
           </>
         )}
 

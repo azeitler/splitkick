@@ -334,12 +334,28 @@ export function WorktreeItem({
         fetchWorktreesStatus(projectId)
         toast.success('Changes pulled', { id: toastId })
       } catch (error) {
-        toast.error(`Pull failed: ${error}`, { id: toastId })
+        const errorStr = String(error)
+        if (errorStr.includes('Merge conflicts in:')) {
+          toast.warning('Pull resulted in conflicts', {
+            id: toastId,
+            description: 'Opening conflict resolution...',
+          })
+          // Select this worktree and trigger resolve-conflicts via magic command
+          selectWorktree(worktree.id)
+          // Small delay to ensure worktree is selected before dispatching
+          setTimeout(() => {
+            window.dispatchEvent(
+              new CustomEvent('magic-command', { detail: { command: 'resolve-conflicts' } })
+            )
+          }, 100)
+        } else {
+          toast.error(`Pull failed: ${error}`, { id: toastId })
+        }
       } finally {
         clearWorktreeLoading(worktree.id)
       }
     },
-    [worktree.path, defaultBranch, projectId]
+    [worktree.id, worktree.path, defaultBranch, projectId, selectWorktree]
   )
 
   const handlePush = useCallback(
