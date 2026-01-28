@@ -25,6 +25,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Markdown } from '@/components/ui/markdown'
 import { cn } from '@/lib/utils'
 import { useAllSessions } from '@/services/chat'
 import type {
@@ -1028,9 +1029,9 @@ export function LoadContextModal({
                 </DialogTitle>
               </DialogHeader>
               <ScrollArea className="flex-1 min-h-0">
-                <pre className="text-xs font-mono whitespace-pre-wrap p-4 bg-muted rounded-md">
+                <Markdown className="p-4">
                   {viewingContext.content}
-                </pre>
+                </Markdown>
               </ScrollArea>
             </DialogContent>
           </Dialog>

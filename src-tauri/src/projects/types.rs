@@ -132,6 +132,9 @@ pub struct Worktree {
     /// Cached worktree ahead count (commits unique to worktree, ahead of local base)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cached_worktree_ahead_count: Option<u32>,
+    /// Cached unpushed count (commits in HEAD not yet pushed to origin/current_branch)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cached_unpushed_count: Option<u32>,
     /// Display order within project (lower = higher in list, base sessions ignore this)
     #[serde(default)]
     pub order: u32,

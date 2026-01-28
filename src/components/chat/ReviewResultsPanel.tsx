@@ -140,7 +140,7 @@ const FindingCard = memo(function FindingCard({
   isFixing,
   onFix,
 }: FindingCardProps) {
-  const [isExpanded, setIsExpanded] = useState(!isFixed)
+  const [isExpanded, setIsExpanded] = useState(false)
   const [customSuggestion, setCustomSuggestion] = useState('')
 
   const config = getSeverityConfig(finding.severity)
@@ -158,17 +158,14 @@ const FindingCard = memo(function FindingCard({
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
       <div
         className={cn(
-          'border-l-2',
+          'border-l-2 rounded-md bg-muted/30',
           config.borderColor,
           isFixed && 'opacity-60'
         )}
       >
         {/* Header */}
         <CollapsibleTrigger asChild>
-          <div
-            role="button"
-            className="flex w-full items-center gap-2 px-4 py-3 text-left hover:bg-muted/50 transition-colors cursor-pointer select-text"
-          >
+          <div className="flex w-full items-center gap-2 px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors">
             <ChevronRight
               className={cn(
                 'h-4 w-4 shrink-0 transition-transform text-muted-foreground',
@@ -202,7 +199,7 @@ const FindingCard = memo(function FindingCard({
 
         {/* Content */}
         <CollapsibleContent>
-          <div className="px-4 pb-4 pt-1 space-y-3">
+          <div className="px-4 pb-4 pt-3 space-y-3 border-t border-border/50">
             {/* Description */}
             <p className="text-sm text-muted-foreground">
               {finding.description}
@@ -539,7 +536,7 @@ Please apply all these fixes to the codebase.`
             </p>
           </div>
         ) : (
-          <div className="divide-y">
+          <div className="space-y-2 p-2">
             {sortFindingsBySeverity(reviewResults.findings).map(
               ({ finding, originalIndex }) => (
                 <FindingCard
