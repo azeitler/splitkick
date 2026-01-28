@@ -1,4 +1,4 @@
-import { Plus, Trash2 } from 'lucide-react'
+import { ArrowUpToLine, Plus, Trash2 } from 'lucide-react'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -7,7 +7,7 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
 import type { Project } from '@/types/projects'
-import { useDeleteFolder, useProjects } from '@/services/projects'
+import { useDeleteFolder, useMoveItem, useProjects } from '@/services/projects'
 import { useProjectsStore } from '@/store/projects-store'
 
 interface FolderContextMenuProps {
@@ -20,6 +20,7 @@ export function FolderContextMenu({
   children,
 }: FolderContextMenuProps) {
   const deleteFolder = useDeleteFolder()
+  const moveItem = useMoveItem()
   const { data: projects = [] } = useProjects()
   const setAddProjectDialogOpen = useProjectsStore(
     state => state.setAddProjectDialogOpen
@@ -27,9 +28,14 @@ export function FolderContextMenu({
 
   // Check if folder is empty (no children)
   const isEmpty = !projects.some(p => p.parent_id === folder.id)
+  const isNested = folder.parent_id !== undefined
 
   const handleNewProject = () => {
     setAddProjectDialogOpen(true, folder.id)
+  }
+
+  const handleMoveToRoot = () => {
+    moveItem.mutate({ itemId: folder.id, newParentId: undefined })
   }
 
   const handleDelete = () => {
@@ -44,6 +50,12 @@ export function FolderContextMenu({
           <Plus className="mr-2 h-4 w-4" />
           New Project
         </ContextMenuItem>
+        {isNested && (
+          <ContextMenuItem onClick={handleMoveToRoot}>
+            <ArrowUpToLine className="mr-2 h-4 w-4" />
+            Move to Root
+          </ContextMenuItem>
+        )}
         <ContextMenuSeparator />
         <ContextMenuItem
           variant="destructive"

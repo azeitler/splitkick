@@ -53,6 +53,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Markdown } from '@/components/ui/markdown'
 import { cn } from '@/lib/utils'
 import type { ClaudeModel } from '@/store/chat-store'
 import type { ThinkingLevel, ExecutionMode } from '@/types/chat'
@@ -1052,9 +1053,9 @@ export const ChatToolbar = memo(function ChatToolbar({
               </DialogTitle>
             </DialogHeader>
             <ScrollArea className="flex-1 min-h-0">
-              <pre className="text-xs font-mono whitespace-pre-wrap p-4 bg-muted rounded-md">
+              <Markdown className="p-4">
                 {viewingContext.content}
-              </pre>
+              </Markdown>
             </ScrollArea>
           </DialogContent>
         </Dialog>

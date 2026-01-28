@@ -393,20 +393,57 @@ pub fn get_branches(repo_path: &str) -> Result<Vec<String>, String> {
 pub fn git_pull(repo_path: &str, base_branch: &str) -> Result<String, String> {
     log::trace!("Pulling from origin/{base_branch} in {repo_path}");
 
-    let output = Command::new("git")
-        .args(["pull", "origin", base_branch])
+    // Use explicit fetch + merge instead of `git pull` to avoid
+    // "Cannot rebase onto multiple branches" when pull.rebase=true
+    // is set in git config (common in worktree contexts)
+    let fetch = Command::new("git")
+        .args(["fetch", "origin", base_branch])
         .current_dir(repo_path)
         .output()
-        .map_err(|e| format!("Failed to run git pull: {e}"))?;
+        .map_err(|e| format!("Failed to run git fetch: {e}"))?;
 
-    if output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        log::trace!("Successfully pulled from origin/{base_branch}");
+    if !fetch.status.success() {
+        let stderr = String::from_utf8_lossy(&fetch.stderr).to_string();
+        log::error!("Failed to fetch origin/{base_branch}: {stderr}");
+        return Err(stderr);
+    }
+
+    let merge = Command::new("git")
+        .args(["merge", &format!("origin/{base_branch}")])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to run git merge: {e}"))?;
+
+    if merge.status.success() {
+        let stdout = String::from_utf8_lossy(&merge.stdout).to_string();
+        log::trace!("Successfully merged origin/{base_branch}");
         Ok(stdout)
     } else {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        log::error!("Failed to pull from origin/{base_branch}: {stderr}");
-        Err(stderr)
+        let stdout_str = String::from_utf8_lossy(&merge.stdout);
+        let stderr_str = String::from_utf8_lossy(&merge.stderr);
+
+        // Check for merge conflicts (git reports these on stdout)
+        if stdout_str.contains("CONFLICT") || stdout_str.contains("Automatic merge failed") {
+            let conflicts = Command::new("git")
+                .args(["diff", "--name-only", "--diff-filter=U"])
+                .current_dir(repo_path)
+                .output()
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                .unwrap_or_default();
+
+            let msg = format!("Merge conflicts in: {conflicts}. Resolve manually or run 'git merge --abort'");
+            log::warn!("Merge conflicts during pull: {conflicts}");
+            return Err(msg);
+        }
+
+        // Fallback: prefer stderr, else stdout
+        let error = if stderr_str.trim().is_empty() {
+            stdout_str.trim().to_string()
+        } else {
+            stderr_str.trim().to_string()
+        };
+        log::error!("Failed to merge origin/{base_branch}: {error}");
+        Err(error)
     }
 }
 
@@ -614,11 +651,22 @@ pub fn create_worktree_from_existing_branch(
 /// # Arguments
 /// * `worktree_path` - Path to the worktree where to checkout the PR
 /// * `pr_number` - The PR number to checkout
-pub fn gh_pr_checkout(worktree_path: &str, pr_number: u32) -> Result<String, String> {
+/// * `branch_name` - Optional local branch name to use (ensures local matches remote)
+pub fn gh_pr_checkout(
+    worktree_path: &str,
+    pr_number: u32,
+    branch_name: Option<&str>,
+) -> Result<String, String> {
     log::trace!("Running gh pr checkout {pr_number} in {worktree_path}");
 
+    let pr_num_str = pr_number.to_string();
+    let mut args = vec!["pr", "checkout", &pr_num_str];
+    if let Some(name) = branch_name {
+        args.extend(["-b", name]);
+    }
+
     let output = Command::new("gh")
-        .args(["pr", "checkout", &pr_number.to_string()])
+        .args(&args)
         .current_dir(worktree_path)
         .output()
         .map_err(|e| format!("Failed to run gh pr checkout: {e}"))?;

@@ -324,7 +324,7 @@ export function ChatWindow() {
   const behindCount =
     gitStatus?.behind_count ?? worktree?.cached_behind_count ?? 0
   const aheadCount =
-    gitStatus?.ahead_count ?? worktree?.cached_ahead_count ?? 0
+    gitStatus?.unpushed_count ?? worktree?.cached_unpushed_count ?? 0
   const hasBranchUpdates = behindCount > 0
   // Diff stats with cached fallback
   const uncommittedAdded =
@@ -1759,6 +1759,7 @@ Begin your investigation now.`
                               worktreeId={activeWorktreeId}
                               worktreePath={activeWorktreePath}
                               sessionId={activeSessionId}
+                              onFileClick={setViewingFilePath}
                             />
                           </div>
                         )}

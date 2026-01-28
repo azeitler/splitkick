@@ -98,6 +98,8 @@ export interface Worktree {
   cached_base_branch_behind_count?: number
   /** Cached worktree ahead count (commits unique to worktree, ahead of local base) */
   cached_worktree_ahead_count?: number
+  /** Cached unpushed count (commits not yet pushed to origin/current_branch) */
+  cached_unpushed_count?: number
   /** Display order within project (lower = higher in list, base sessions ignore this) */
   order: number
   /** Unix timestamp when worktree was archived (undefined = not archived) */

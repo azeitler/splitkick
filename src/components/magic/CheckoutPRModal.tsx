@@ -25,9 +25,12 @@ import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
 import {
   useGitHubPRs,
+  useSearchGitHubPRs,
   filterPRs,
+  mergeWithSearchResults,
   githubQueryKeys,
 } from '@/services/github'
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { useProjects, projectsQueryKeys } from '@/services/projects'
 import type { GitHubPullRequest } from '@/types/github'
 import type { Worktree } from '@/types/projects'
@@ -62,10 +65,22 @@ export function CheckoutPRModal() {
     refetch: refetchPRs,
   } = useGitHubPRs(selectedProject?.path ?? null, prState)
 
-  // Filter PRs locally
+  // Debounced search query for GitHub API search
+  const debouncedSearchQuery = useDebouncedValue(searchQuery, 300)
+
+  // GitHub search query (triggered when local filter may miss results)
+  const {
+    data: searchedPRs,
+    isFetching: isSearchingPRs,
+  } = useSearchGitHubPRs(selectedProject?.path ?? null, debouncedSearchQuery)
+
+  // Filter PRs locally, then merge with remote search results
   const filteredPRs = useMemo(
-    () => filterPRs(prs ?? [], searchQuery),
-    [prs, searchQuery]
+    () => mergeWithSearchResults(
+      filterPRs(prs ?? [], searchQuery),
+      searchedPRs,
+    ),
+    [prs, searchQuery, searchedPRs]
   )
 
   // Focus search input when modal opens
@@ -274,10 +289,19 @@ export function CheckoutPRModal() {
               </div>
             )}
 
-            {!isLoadingPRs && !prsError && filteredPRs.length === 0 && (
+            {!isLoadingPRs && !prsError && filteredPRs.length === 0 && !isSearchingPRs && (
               <div className="flex items-center justify-center py-8">
                 <span className="text-sm text-muted-foreground">
                   {searchQuery ? 'No PRs match your search' : 'No open pull requests found'}
+                </span>
+              </div>
+            )}
+
+            {!isLoadingPRs && !prsError && filteredPRs.length === 0 && isSearchingPRs && (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                <span className="ml-2 text-sm text-muted-foreground">
+                  Searching GitHub...
                 </span>
               </div>
             )}
@@ -296,6 +320,14 @@ export function CheckoutPRModal() {
                     onInvestigateClick={() => handleCheckoutPR(pr, true)}
                   />
                 ))}
+                {isSearchingPRs && (
+                  <div className="flex items-center justify-center py-2">
+                    <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                    <span className="ml-1.5 text-xs text-muted-foreground">
+                      Searching GitHub for more results...
+                    </span>
+                  </div>
+                )}
               </div>
             )}
           </ScrollArea>

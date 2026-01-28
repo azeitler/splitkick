@@ -1,4 +1,5 @@
 import {
+  ArrowUpToLine,
   Code,
   ExternalLink,
   Folder,
@@ -21,6 +22,7 @@ import { isBaseSession, type Project } from '@/types/projects'
 import {
   useCreateBaseSession,
   useCreateWorktree,
+  useMoveItem,
   useOpenProjectOnGitHub,
   useOpenProjectWorktreesFolder,
   useOpenWorktreeInEditor,
@@ -45,6 +47,7 @@ export function ProjectContextMenu({
 }: ProjectContextMenuProps) {
   const createWorktree = useCreateWorktree()
   const createBaseSession = useCreateBaseSession()
+  const moveItem = useMoveItem()
   const removeProject = useRemoveProject()
   const openOnGitHub = useOpenProjectOnGitHub()
   const openInFinder = useOpenWorktreeInFinder()
@@ -58,6 +61,7 @@ export function ProjectContextMenu({
 
   // Check if base session already exists
   const existingBaseSession = worktrees.find(isBaseSession)
+  const isNested = project.parent_id !== undefined
 
   const handleOpenInFinder = () => {
     openInFinder.mutate(project.path)
@@ -97,6 +101,10 @@ export function ProjectContextMenu({
     openOnGitHub.mutate(project.id)
   }
 
+  const handleMoveToRoot = () => {
+    moveItem.mutate({ itemId: project.id, newParentId: undefined })
+  }
+
   const handleOpenSettings = () => {
     openProjectSettings(project.id)
   }
@@ -118,6 +126,13 @@ export function ProjectContextMenu({
           <LayoutGrid className="mr-2 h-4 w-4" />
           Session Board
         </ContextMenuItem>
+
+        {isNested && (
+          <ContextMenuItem onClick={handleMoveToRoot}>
+            <ArrowUpToLine className="mr-2 h-4 w-4" />
+            Move to Root
+          </ContextMenuItem>
+        )}
 
         <ContextMenuSeparator />
 

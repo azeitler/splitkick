@@ -122,6 +122,56 @@ pub async fn list_github_issues(
     Ok(issues)
 }
 
+/// Search GitHub issues using GitHub's search syntax
+///
+/// Uses `gh issue list --search` to query GitHub's search API.
+/// This finds issues beyond the default -L 100 limit.
+#[tauri::command]
+pub async fn search_github_issues(
+    project_path: String,
+    query: String,
+) -> Result<Vec<GitHubIssue>, String> {
+    log::trace!("Searching GitHub issues for {project_path} with query: {query}");
+
+    let output = Command::new("gh")
+        .args([
+            "issue",
+            "list",
+            "--search",
+            &query,
+            "--json",
+            "number,title,body,state,labels,createdAt,author",
+            "-L",
+            "30",
+            "--state",
+            "all",
+        ])
+        .current_dir(&project_path)
+        .output()
+        .map_err(|e| format!("Failed to run gh issue list --search: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("gh auth login") || stderr.contains("authentication") {
+            return Err("GitHub CLI not authenticated. Run 'gh auth login' first.".to_string());
+        }
+        if stderr.contains("not a git repository") {
+            return Err("Not a git repository".to_string());
+        }
+        if stderr.contains("Could not resolve") {
+            return Err("Could not resolve repository. Is this a GitHub repository?".to_string());
+        }
+        return Err(format!("gh issue list --search failed: {stderr}"));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let issues: Vec<GitHubIssue> =
+        serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse gh response: {e}"))?;
+
+    log::trace!("Search found {} issues", issues.len());
+    Ok(issues)
+}
+
 /// Get detailed information about a specific GitHub issue
 ///
 /// Uses `gh issue view` to fetch the issue with comments.
@@ -877,6 +927,56 @@ pub async fn list_github_prs(
         serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse gh response: {e}"))?;
 
     log::trace!("Found {} PRs", prs.len());
+    Ok(prs)
+}
+
+/// Search GitHub pull requests using GitHub's search syntax
+///
+/// Uses `gh pr list --search` to query GitHub's search API.
+/// This finds PRs beyond the default -L 100 limit.
+#[tauri::command]
+pub async fn search_github_prs(
+    project_path: String,
+    query: String,
+) -> Result<Vec<GitHubPullRequest>, String> {
+    log::trace!("Searching GitHub PRs for {project_path} with query: {query}");
+
+    let output = Command::new("gh")
+        .args([
+            "pr",
+            "list",
+            "--search",
+            &query,
+            "--json",
+            "number,title,body,state,headRefName,baseRefName,isDraft,createdAt,author,labels",
+            "-L",
+            "30",
+            "--state",
+            "all",
+        ])
+        .current_dir(&project_path)
+        .output()
+        .map_err(|e| format!("Failed to run gh pr list --search: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("gh auth login") || stderr.contains("authentication") {
+            return Err("GitHub CLI not authenticated. Run 'gh auth login' first.".to_string());
+        }
+        if stderr.contains("not a git repository") {
+            return Err("Not a git repository".to_string());
+        }
+        if stderr.contains("Could not resolve") {
+            return Err("Could not resolve repository. Is this a GitHub repository?".to_string());
+        }
+        return Err(format!("gh pr list --search failed: {stderr}"));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let prs: Vec<GitHubPullRequest> =
+        serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse gh response: {e}"))?;
+
+    log::trace!("Search found {} PRs", prs.len());
     Ok(prs)
 }
 

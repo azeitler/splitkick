@@ -25,6 +25,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Markdown } from '@/components/ui/markdown'
 import { cn } from '@/lib/utils'
 import { useAllSessions } from '@/services/chat'
 import type {
@@ -38,11 +39,14 @@ import { usePreferences } from '@/services/preferences'
 import {
   useGitHubIssues,
   useGitHubPRs,
+  useSearchGitHubIssues,
+  useSearchGitHubPRs,
   useLoadedIssueContexts,
   useLoadedPRContexts,
   useAttachedSavedContexts,
   filterIssues,
   filterPRs,
+  mergeWithSearchResults,
   githubQueryKeys,
   loadIssueContext,
   removeIssueContext,
@@ -54,6 +58,7 @@ import {
   removeSavedContext,
   getSavedContextContent,
 } from '@/services/github'
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import type {
   GitHubIssue,
   GitHubPullRequest,
@@ -203,19 +208,35 @@ export function LoadContextModal({
   const { data: allSessionsData, isLoading: isLoadingSessions } =
     useAllSessions(open)
 
-  // Filter issues locally, excluding already loaded ones
+  // Debounced search query for GitHub API search
+  const debouncedSearchQuery = useDebouncedValue(searchQuery, 300)
+
+  // GitHub search queries (triggered when local filter may miss results)
+  const {
+    data: searchedIssues,
+    isFetching: isSearchingIssues,
+  } = useSearchGitHubIssues(worktreePath, debouncedSearchQuery)
+
+  const {
+    data: searchedPRs,
+    isFetching: isSearchingPRs,
+  } = useSearchGitHubPRs(worktreePath, debouncedSearchQuery)
+
+  // Filter issues locally, merge with search results, exclude already loaded ones
   const filteredIssues = useMemo(() => {
     const loadedNumbers = new Set(loadedIssueContexts?.map(c => c.number) ?? [])
-    const filtered = filterIssues(issues ?? [], searchQuery)
-    return filtered.filter(issue => !loadedNumbers.has(issue.number))
-  }, [issues, searchQuery, loadedIssueContexts])
+    const localFiltered = filterIssues(issues ?? [], searchQuery)
+    const merged = mergeWithSearchResults(localFiltered, searchedIssues)
+    return merged.filter(issue => !loadedNumbers.has(issue.number))
+  }, [issues, searchQuery, searchedIssues, loadedIssueContexts])
 
-  // Filter PRs locally, excluding already loaded ones
+  // Filter PRs locally, merge with search results, exclude already loaded ones
   const filteredPRs = useMemo(() => {
     const loadedNumbers = new Set(loadedPRContexts?.map(c => c.number) ?? [])
-    const filtered = filterPRs(prs ?? [], searchQuery)
-    return filtered.filter(pr => !loadedNumbers.has(pr.number))
-  }, [prs, searchQuery, loadedPRContexts])
+    const localFiltered = filterPRs(prs ?? [], searchQuery)
+    const merged = mergeWithSearchResults(localFiltered, searchedPRs)
+    return merged.filter(pr => !loadedNumbers.has(pr.number))
+  }, [prs, searchQuery, searchedPRs, loadedPRContexts])
 
   // Filter contexts by search query (includes custom name), excluding already attached ones
   const filteredContexts = useMemo(() => {
@@ -910,6 +931,7 @@ export function LoadContextModal({
               filteredItems={filteredIssues}
               isLoading={isLoadingIssues}
               isRefetching={isRefetchingIssues}
+              isSearching={isSearchingIssues}
               error={issuesError}
               onRefresh={() => refetchIssues()}
               selectedIndex={selectedIndex}
@@ -936,6 +958,7 @@ export function LoadContextModal({
               filteredItems={filteredPRs}
               isLoading={isLoadingPRs}
               isRefetching={isRefetchingPRs}
+              isSearching={isSearchingPRs}
               error={prsError}
               onRefresh={() => refetchPRs()}
               selectedIndex={selectedIndex}
@@ -1006,9 +1029,9 @@ export function LoadContextModal({
                 </DialogTitle>
               </DialogHeader>
               <ScrollArea className="flex-1 min-h-0">
-                <pre className="text-xs font-mono whitespace-pre-wrap p-4 bg-muted rounded-md">
+                <Markdown className="p-4">
                   {viewingContext.content}
-                </pre>
+                </Markdown>
               </ScrollArea>
             </DialogContent>
           </Dialog>
@@ -1033,6 +1056,7 @@ interface IssuesTabProps {
   filteredItems: GitHubIssue[]
   isLoading: boolean
   isRefetching: boolean
+  isSearching: boolean
   error: Error | null
   onRefresh: () => void
   selectedIndex: number
@@ -1057,6 +1081,7 @@ function IssuesTab({
   filteredItems,
   isLoading,
   isRefetching,
+  isSearching,
   error,
   onRefresh,
   selectedIndex,
@@ -1168,7 +1193,7 @@ function IssuesTab({
           </div>
         )}
 
-        {!isLoading && !error && filteredItems.length === 0 && (
+        {!isLoading && !error && filteredItems.length === 0 && !isSearching && (
           <div className="flex items-center justify-center py-8">
             <span className="text-sm text-muted-foreground">
               {searchQuery
@@ -1176,6 +1201,15 @@ function IssuesTab({
                 : hasLoadedContexts
                   ? 'All open issues already loaded'
                   : 'No open issues found'}
+            </span>
+          </div>
+        )}
+
+        {!isLoading && !error && filteredItems.length === 0 && isSearching && (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            <span className="ml-2 text-sm text-muted-foreground">
+              Searching GitHub...
             </span>
           </div>
         )}
@@ -1193,6 +1227,14 @@ function IssuesTab({
                 onClick={() => onSelectItem(issue)}
               />
             ))}
+            {isSearching && (
+              <div className="flex items-center justify-center py-2">
+                <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                <span className="ml-1.5 text-xs text-muted-foreground">
+                  Searching GitHub for more results...
+                </span>
+              </div>
+            )}
           </div>
         )}
       </ScrollArea>
@@ -1215,6 +1257,7 @@ interface PullRequestsTabProps {
   filteredItems: GitHubPullRequest[]
   isLoading: boolean
   isRefetching: boolean
+  isSearching: boolean
   error: Error | null
   onRefresh: () => void
   selectedIndex: number
@@ -1239,6 +1282,7 @@ function PullRequestsTab({
   filteredItems,
   isLoading,
   isRefetching,
+  isSearching,
   error,
   onRefresh,
   selectedIndex,
@@ -1350,7 +1394,7 @@ function PullRequestsTab({
           </div>
         )}
 
-        {!isLoading && !error && filteredItems.length === 0 && (
+        {!isLoading && !error && filteredItems.length === 0 && !isSearching && (
           <div className="flex items-center justify-center py-8">
             <span className="text-sm text-muted-foreground">
               {searchQuery
@@ -1358,6 +1402,15 @@ function PullRequestsTab({
                 : hasLoadedContexts
                   ? 'All open PRs already loaded'
                   : 'No open pull requests found'}
+            </span>
+          </div>
+        )}
+
+        {!isLoading && !error && filteredItems.length === 0 && isSearching && (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            <span className="ml-2 text-sm text-muted-foreground">
+              Searching GitHub...
             </span>
           </div>
         )}
@@ -1375,6 +1428,14 @@ function PullRequestsTab({
                 onClick={() => onSelectItem(pr)}
               />
             ))}
+            {isSearching && (
+              <div className="flex items-center justify-center py-2">
+                <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                <span className="ml-1.5 text-xs text-muted-foreground">
+                  Searching GitHub for more results...
+                </span>
+              </div>
+            )}
           </div>
         )}
       </ScrollArea>

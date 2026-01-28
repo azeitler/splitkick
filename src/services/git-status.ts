@@ -42,6 +42,8 @@ export interface GitStatusEvent {
   base_branch_behind_count: number
   /** Commits unique to this worktree (ahead of local base branch) */
   worktree_ahead_count: number
+  /** Commits in HEAD not yet pushed to origin/current_branch */
+  unpushed_count: number
 }
 
 /**
@@ -280,7 +282,8 @@ export function useGitStatusEvents(
           status.branch_diff_removed,
           status.base_branch_ahead_count,
           status.base_branch_behind_count,
-          status.worktree_ahead_count
+          status.worktree_ahead_count,
+          status.unpushed_count
         ).catch(err =>
           console.warn('[git-status] Failed to cache status:', err)
         )

@@ -39,6 +39,8 @@ pub struct GitBranchStatus {
     pub base_branch_behind_count: u32,
     /// Commits unique to this worktree (ahead of local base branch, not origin)
     pub worktree_ahead_count: u32,
+    /// Commits in HEAD not yet pushed to origin/{current_branch}
+    pub unpushed_count: u32,
 }
 
 /// Fetch the latest changes from origin for a specific branch
@@ -323,6 +325,16 @@ fn get_branch_diff_stats(repo_path: &str, base_branch: &str) -> (u32, u32) {
         }
         _ => (0, 0),
     }
+}
+
+/// Check if a git ref exists
+fn ref_exists(repo_path: &str, git_ref: &str) -> bool {
+    Command::new("git")
+        .args(["rev-parse", "--verify", "--quiet", git_ref])
+        .current_dir(repo_path)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
 }
 
 /// Count commits between two refs
@@ -677,8 +689,24 @@ pub fn get_branch_status(info: &ActiveWorktreeInfo) -> Result<GitBranchStatus, S
     let base_branch_behind_count = count_commits_between(repo_path, base_branch, &origin_ref);
 
     // Commits unique to this worktree (ahead of local base branch)
-    // This is what the worktree's push indicator should show
     let worktree_ahead_count = count_commits_between(repo_path, base_branch, "HEAD");
+
+    // Commits not yet pushed to origin/{current_branch}
+    // If the remote branch doesn't exist (never pushed), all worktree commits are unpushed
+    let origin_current_ref = format!("origin/{current_branch}");
+    let unpushed_count = if current_branch != *base_branch {
+        // Fetch origin/{current_branch} so we have up-to-date remote info
+        let _ = fetch_origin_branch(repo_path, &current_branch);
+        if ref_exists(repo_path, &origin_current_ref) {
+            count_commits_between(repo_path, &origin_current_ref, "HEAD")
+        } else {
+            // Never pushed — all worktree-unique commits are unpushed
+            worktree_ahead_count
+        }
+    } else {
+        // On the base branch itself, unpushed = base_branch_ahead_count
+        base_branch_ahead_count
+    };
 
     // Get current timestamp
     let checked_at = SystemTime::now()
@@ -701,6 +729,7 @@ pub fn get_branch_status(info: &ActiveWorktreeInfo) -> Result<GitBranchStatus, S
         base_branch_ahead_count,
         base_branch_behind_count,
         worktree_ahead_count,
+        unpushed_count,
     })
 }
 
@@ -725,6 +754,7 @@ mod tests {
             base_branch_ahead_count: 2,
             base_branch_behind_count: 0,
             worktree_ahead_count: 3,
+            unpushed_count: 1,
         };
 
         let json = serde_json::to_string(&status).unwrap();

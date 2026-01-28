@@ -1596,7 +1596,8 @@ export async function updateWorktreeCachedStatus(
   branchDiffRemoved: number | null = null,
   baseBranchAheadCount: number | null = null,
   baseBranchBehindCount: number | null = null,
-  worktreeAheadCount: number | null = null
+  worktreeAheadCount: number | null = null,
+  unpushedCount: number | null = null
 ): Promise<void> {
   if (!isTauri()) return
 
@@ -1613,6 +1614,7 @@ export async function updateWorktreeCachedStatus(
     baseBranchAheadCount,
     baseBranchBehindCount,
     worktreeAheadCount,
+    unpushedCount,
   })
 }
 
@@ -1976,7 +1978,11 @@ export function useMoveItem() {
     },
     onError: error => {
       const message =
-        error instanceof Error ? error.message : 'Unknown error occurred'
+        typeof error === 'string'
+          ? error
+          : error instanceof Error
+            ? error.message
+            : 'Unknown error occurred'
       logger.error('Failed to move item', { error })
       toast.error('Failed to move item', { description: message })
     },
