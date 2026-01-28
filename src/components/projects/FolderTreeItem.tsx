@@ -10,9 +10,10 @@ interface FolderTreeItemProps {
   folder: Project
   children: React.ReactNode
   depth: number
+  isDropTarget?: boolean
 }
 
-export function FolderTreeItem({ folder, children, depth }: FolderTreeItemProps) {
+export function FolderTreeItem({ folder, children, depth, isDropTarget }: FolderTreeItemProps) {
   const {
     expandedFolderIds,
     toggleFolderExpanded,
@@ -109,7 +110,8 @@ export function FolderTreeItem({ folder, children, depth }: FolderTreeItemProps)
         <div
           className={cn(
             'group flex cursor-pointer items-center gap-1 px-3 py-1.5 transition-colors duration-150',
-            'text-[13px] font-medium text-muted-foreground/70 hover:bg-accent/50 hover:text-muted-foreground'
+            'text-[13px] font-medium text-muted-foreground/70 hover:bg-accent/50 hover:text-muted-foreground',
+            isDropTarget && 'bg-primary/10 text-primary'
           )}
           style={{ paddingLeft: `${12 + depth * 12}px` }}
           onClick={handleClick}

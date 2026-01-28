@@ -1260,12 +1260,14 @@ pub fn run() {
             projects::list_claude_commands,
             // GitHub issues commands
             projects::list_github_issues,
+            projects::search_github_issues,
             projects::get_github_issue,
             projects::load_issue_context,
             projects::list_loaded_issue_contexts,
             projects::remove_issue_context,
             // GitHub PR commands
             projects::list_github_prs,
+            projects::search_github_prs,
             projects::get_github_pr,
             projects::load_pr_context,
             projects::list_loaded_pr_contexts,

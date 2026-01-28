@@ -1,7 +1,8 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import {
   DndContext,
-  closestCenter,
+  DragOverlay,
+  pointerWithin,
   KeyboardSensor,
   PointerSensor,
   useSensor,
@@ -18,7 +19,7 @@ import {
   verticalListSortingStrategy,
   useSortable,
 } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
+import { Folder } from 'lucide-react'
 import { isFolder, type Project } from '@/types/projects'
 import { ProjectTreeItem } from './ProjectTreeItem'
 import { FolderTreeItem } from './FolderTreeItem'
@@ -62,6 +63,7 @@ interface SortableItemProps {
   depth: number
   isOverFolder: boolean
   expandedFolderIds: Set<string>
+  overFolderId: string | null
 }
 
 function SortableItem({
@@ -70,21 +72,17 @@ function SortableItem({
   depth,
   isOverFolder,
   expandedFolderIds,
+  overFolderId,
 }: SortableItemProps) {
   const {
     attributes,
     listeners,
     setNodeRef,
-    transform,
-    transition,
     isDragging,
   } = useSortable({ id: item.id })
 
   const style: React.CSSProperties = {
-    transform: CSS.Translate.toString(transform),
-    transition,
-    zIndex: isDragging ? 10 : 0,
-    opacity: isDragging ? 0.5 : 1,
+    opacity: isDragging ? 0.3 : 1,
     paddingLeft: depth > 0 ? `${depth * 12}px` : undefined,
   }
 
@@ -97,18 +95,16 @@ function SortableItem({
         style={style}
         {...attributes}
         {...listeners}
-        className={cn(
-          isDragging ? 'cursor-grabbing' : 'cursor-grab',
-          isOverFolder && 'ring-2 ring-primary/50 ring-inset rounded'
-        )}
+        className={isDragging ? 'cursor-grabbing' : 'cursor-grab'}
       >
-        <FolderTreeItem folder={item} depth={depth}>
+        <FolderTreeItem folder={item} depth={depth} isDropTarget={isOverFolder}>
           {isExpanded && (
             <NestedItems
               projects={allProjects}
               parentId={item.id}
               depth={depth + 1}
               expandedFolderIds={expandedFolderIds}
+              overFolderId={overFolderId}
             />
           )}
         </FolderTreeItem>
@@ -135,6 +131,7 @@ interface NestedItemsProps {
   parentId: string
   depth: number
   expandedFolderIds: Set<string>
+  overFolderId: string | null
 }
 
 function NestedItems({
@@ -142,6 +139,7 @@ function NestedItems({
   parentId,
   depth,
   expandedFolderIds,
+  overFolderId,
 }: NestedItemsProps) {
   const items = projects
     .filter(p => p.parent_id === parentId)
@@ -159,8 +157,9 @@ function NestedItems({
           item={item}
           allProjects={projects}
           depth={depth}
-          isOverFolder={false}
+          isOverFolder={overFolderId === item.id}
           expandedFolderIds={expandedFolderIds}
+          overFolderId={overFolderId}
         />
       ))}
     </>
@@ -175,12 +174,16 @@ function RootDropZone({ isOver }: { isOver: boolean }) {
     <div
       ref={setNodeRef}
       className={cn(
-        'h-8 mx-2 mt-1 rounded border-2 border-dashed transition-colors',
+        'mx-2 mt-1 rounded border-2 border-dashed transition-colors flex items-center justify-center py-2',
         isOver
           ? 'border-primary/50 bg-primary/5'
-          : 'border-transparent'
+          : 'border-muted-foreground/25'
       )}
-    />
+    >
+      <span className="text-[11px] text-muted-foreground/50 select-none">
+        Drop here to move to root level
+      </span>
+    </div>
   )
 }
 
@@ -191,6 +194,11 @@ export function ProjectTree({ projects }: ProjectTreeProps) {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [overFolderId, setOverFolderId] = useState<string | null>(null)
   const [isOverRoot, setIsOverRoot] = useState(false)
+
+  const activeItem = useMemo(
+    () => (activeId ? projects.find(p => p.id === activeId) : null),
+    [activeId, projects]
+  )
 
   // Root level items split into folders and standalone projects
   const rootItems = projects.filter(p => p.parent_id === undefined)
@@ -356,7 +364,7 @@ export function ProjectTree({ projects }: ProjectTreeProps) {
     <div className="py-1">
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCenter}
+        collisionDetection={pointerWithin}
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
@@ -377,6 +385,7 @@ export function ProjectTree({ projects }: ProjectTreeProps) {
               depth={0}
               isOverFolder={overFolderId === item.id}
               expandedFolderIds={expandedFolderIds}
+              overFolderId={overFolderId}
             />
           ))}
           {hasBothTypes && (
@@ -399,6 +408,7 @@ export function ProjectTree({ projects }: ProjectTreeProps) {
               depth={0}
               isOverFolder={false}
               expandedFolderIds={expandedFolderIds}
+              overFolderId={overFolderId}
             />
           ))}
         </SortableContext>
@@ -407,6 +417,20 @@ export function ProjectTree({ projects }: ProjectTreeProps) {
         {activeId && projects.find(p => p.id === activeId)?.parent_id !== undefined && (
           <RootDropZone isOver={isOverRoot} />
         )}
+
+        <DragOverlay dropAnimation={null}>
+          {activeItem && (
+            <div className="rounded bg-accent px-3 py-1.5 text-sm font-medium shadow-md flex items-center gap-1.5 opacity-90">
+              {isFolder(activeItem) && <Folder className="size-3.5 text-muted-foreground" />}
+              {!isFolder(activeItem) && (
+                <div className="flex size-4 shrink-0 items-center justify-center rounded bg-muted-foreground/20">
+                  <span className="text-[10px] font-medium uppercase">{activeItem.name[0]}</span>
+                </div>
+              )}
+              <span className="truncate">{activeItem.name}</span>
+            </div>
+          )}
+        </DragOverlay>
       </DndContext>
     </div>
   )

@@ -29,6 +29,10 @@ export const githubQueryKeys = {
     [...githubQueryKeys.all, 'loaded-pr-contexts', worktreeId] as const,
   attachedContexts: (worktreeId: string) =>
     [...githubQueryKeys.all, 'attached-contexts', worktreeId] as const,
+  issueSearch: (projectPath: string, query: string) =>
+    [...githubQueryKeys.all, 'issue-search', projectPath, query] as const,
+  prSearch: (projectPath: string, query: string) =>
+    [...githubQueryKeys.all, 'pr-search', projectPath, query] as const,
 }
 
 /**
@@ -128,6 +132,43 @@ export function filterIssues(issues: GitHubIssue[], query: string): GitHubIssue[
     }
 
     return false
+  })
+}
+
+/**
+ * Hook to search GitHub issues using GitHub's search API
+ *
+ * Queries GitHub directly via `gh issue list --search`, which finds
+ * issues beyond the default list limit of 100.
+ *
+ * @param projectPath - Path to the git repository
+ * @param query - Search query (should be debounced by caller)
+ */
+export function useSearchGitHubIssues(projectPath: string | null, query: string) {
+  return useQuery({
+    queryKey: githubQueryKeys.issueSearch(projectPath ?? '', query),
+    queryFn: async (): Promise<GitHubIssue[]> => {
+      if (!isTauri() || !projectPath || !query) {
+        return []
+      }
+
+      try {
+        logger.debug('Searching GitHub issues', { projectPath, query })
+        const issues = await invoke<GitHubIssue[]>('search_github_issues', {
+          projectPath,
+          query,
+        })
+        logger.info('GitHub issue search results', { count: issues.length, query })
+        return issues
+      } catch (error) {
+        logger.error('Failed to search GitHub issues', { error, projectPath, query })
+        throw error
+      }
+    },
+    enabled: !!projectPath && query.length >= 2,
+    staleTime: 1000 * 30, // 30 seconds
+    gcTime: 1000 * 60 * 5, // 5 minutes
+    retry: 0,
   })
 }
 
@@ -390,6 +431,60 @@ export function filterPRs(prs: GitHubPullRequest[], query: string): GitHubPullRe
 
     return false
   })
+}
+
+/**
+ * Hook to search GitHub PRs using GitHub's search API
+ *
+ * Queries GitHub directly via `gh pr list --search`, which finds
+ * PRs beyond the default list limit of 100.
+ *
+ * @param projectPath - Path to the git repository
+ * @param query - Search query (should be debounced by caller)
+ */
+export function useSearchGitHubPRs(projectPath: string | null, query: string) {
+  return useQuery({
+    queryKey: githubQueryKeys.prSearch(projectPath ?? '', query),
+    queryFn: async (): Promise<GitHubPullRequest[]> => {
+      if (!isTauri() || !projectPath || !query) {
+        return []
+      }
+
+      try {
+        logger.debug('Searching GitHub PRs', { projectPath, query })
+        const prs = await invoke<GitHubPullRequest[]>('search_github_prs', {
+          projectPath,
+          query,
+        })
+        logger.info('GitHub PR search results', { count: prs.length, query })
+        return prs
+      } catch (error) {
+        logger.error('Failed to search GitHub PRs', { error, projectPath, query })
+        throw error
+      }
+    },
+    enabled: !!projectPath && query.length >= 2,
+    staleTime: 1000 * 30, // 30 seconds
+    gcTime: 1000 * 60 * 5, // 5 minutes
+    retry: 0,
+  })
+}
+
+/**
+ * Merge local-filtered results with remote search results, deduplicating by number.
+ * Local results appear first, remote-only results are appended.
+ */
+export function mergeWithSearchResults<T extends { number: number }>(
+  localResults: T[],
+  searchResults: T[] | undefined,
+): T[] {
+  if (!searchResults?.length) return localResults
+
+  const localNumbers = new Set(localResults.map(item => item.number))
+  const remoteOnly = searchResults.filter(item => !localNumbers.has(item.number))
+
+  if (remoteOnly.length === 0) return localResults
+  return [...localResults, ...remoteOnly]
 }
 
 // =============================================================================

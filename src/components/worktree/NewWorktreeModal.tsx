@@ -29,10 +29,14 @@ import { useChatStore } from '@/store/chat-store'
 import {
   useGitHubIssues,
   useGitHubPRs,
+  useSearchGitHubIssues,
+  useSearchGitHubPRs,
   filterIssues,
   filterPRs,
+  mergeWithSearchResults,
   githubQueryKeys,
 } from '@/services/github'
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import {
   useProjects,
   useWorktrees,
@@ -108,16 +112,42 @@ export function NewWorktreeModal() {
     refetch: refetchPRs,
   } = useGitHubPRs(selectedProject?.path ?? null, prState)
 
-  // Filter issues locally
-  const filteredIssues = useMemo(
-    () => filterIssues(issues ?? [], searchQuery),
-    [issues, searchQuery]
+  // Debounced search query for GitHub API search
+  const debouncedSearchQuery = useDebouncedValue(searchQuery, 300)
+
+  // GitHub search queries (triggered when local filter may miss results)
+  const {
+    data: searchedIssues,
+    isFetching: isSearchingIssues,
+  } = useSearchGitHubIssues(
+    selectedProject?.path ?? null,
+    debouncedSearchQuery,
   )
 
-  // Filter PRs locally
+  const {
+    data: searchedPRs,
+    isFetching: isSearchingPRs,
+  } = useSearchGitHubPRs(
+    selectedProject?.path ?? null,
+    debouncedSearchQuery,
+  )
+
+  // Filter issues locally, then merge with remote search results
+  const filteredIssues = useMemo(
+    () => mergeWithSearchResults(
+      filterIssues(issues ?? [], searchQuery),
+      searchedIssues,
+    ),
+    [issues, searchQuery, searchedIssues]
+  )
+
+  // Filter PRs locally, then merge with remote search results
   const filteredPRs = useMemo(
-    () => filterPRs(prs ?? [], searchQuery),
-    [prs, searchQuery]
+    () => mergeWithSearchResults(
+      filterPRs(prs ?? [], searchQuery),
+      searchedPRs,
+    ),
+    [prs, searchQuery, searchedPRs]
   )
 
   // Mutations
@@ -598,6 +628,7 @@ export function NewWorktreeModal() {
               issues={filteredIssues}
               isLoading={isLoadingIssues}
               isRefetching={isRefetchingIssues}
+              isSearching={isSearchingIssues}
               error={issuesError}
               onRefresh={() => refetchIssues()}
               selectedIndex={selectedItemIndex}
@@ -618,6 +649,7 @@ export function NewWorktreeModal() {
               prs={filteredPRs}
               isLoading={isLoadingPRs}
               isRefetching={isRefetchingPRs}
+              isSearching={isSearchingPRs}
               error={prsError}
               onRefresh={() => refetchPRs()}
               selectedIndex={selectedItemIndex}
@@ -706,6 +738,7 @@ interface GitHubIssuesTabProps {
   issues: GitHubIssue[]
   isLoading: boolean
   isRefetching: boolean
+  isSearching: boolean
   error: Error | null
   onRefresh: () => void
   selectedIndex: number
@@ -724,6 +757,7 @@ function GitHubIssuesTab({
   issues,
   isLoading,
   isRefetching,
+  isSearching,
   error,
   onRefresh,
   selectedIndex,
@@ -803,10 +837,19 @@ function GitHubIssuesTab({
           </div>
         )}
 
-        {!isLoading && !error && issues.length === 0 && (
+        {!isLoading && !error && issues.length === 0 && !isSearching && (
           <div className="flex items-center justify-center py-8">
             <span className="text-sm text-muted-foreground">
               {searchQuery ? 'No issues match your search' : 'No open issues found'}
+            </span>
+          </div>
+        )}
+
+        {!isLoading && !error && issues.length === 0 && isSearching && (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            <span className="ml-2 text-sm text-muted-foreground">
+              Searching GitHub...
             </span>
           </div>
         )}
@@ -825,6 +868,14 @@ function GitHubIssuesTab({
                 onInvestigate={() => onInvestigateIssue(issue)}
               />
             ))}
+            {isSearching && (
+              <div className="flex items-center justify-center py-2">
+                <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                <span className="ml-1.5 text-xs text-muted-foreground">
+                  Searching GitHub for more results...
+                </span>
+              </div>
+            )}
           </div>
         )}
       </ScrollArea>
@@ -840,6 +891,7 @@ interface GitHubPRsTabProps {
   prs: GitHubPullRequest[]
   isLoading: boolean
   isRefetching: boolean
+  isSearching: boolean
   error: Error | null
   onRefresh: () => void
   selectedIndex: number
@@ -858,6 +910,7 @@ function GitHubPRsTab({
   prs,
   isLoading,
   isRefetching,
+  isSearching,
   error,
   onRefresh,
   selectedIndex,
@@ -937,10 +990,19 @@ function GitHubPRsTab({
           </div>
         )}
 
-        {!isLoading && !error && prs.length === 0 && (
+        {!isLoading && !error && prs.length === 0 && !isSearching && (
           <div className="flex items-center justify-center py-8">
             <span className="text-sm text-muted-foreground">
               {searchQuery ? 'No PRs match your search' : 'No open pull requests found'}
+            </span>
+          </div>
+        )}
+
+        {!isLoading && !error && prs.length === 0 && isSearching && (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            <span className="ml-2 text-sm text-muted-foreground">
+              Searching GitHub...
             </span>
           </div>
         )}
@@ -959,6 +1021,14 @@ function GitHubPRsTab({
                 onInvestigate={() => onInvestigatePR(pr)}
               />
             ))}
+            {isSearching && (
+              <div className="flex items-center justify-center py-2">
+                <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                <span className="ml-1.5 text-xs text-muted-foreground">
+                  Searching GitHub for more results...
+                </span>
+              </div>
+            )}
           </div>
         )}
       </ScrollArea>
