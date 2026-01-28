@@ -346,6 +346,7 @@ export function ChatWindow() {
   const checkStatus =
     prStatus?.check_status ??
     (worktree?.cached_check_status as CheckStatus | undefined)
+  const mergeableStatus = prStatus?.mergeable ?? undefined
 
   // Run script for this worktree (used by CMD+R keybinding)
   const { data: runScript } = useRunScript(activeWorktreePath ?? null)
@@ -1040,6 +1041,7 @@ export function ChatWindow() {
     handleReview,
     handleMerge,
     handleResolveConflicts,
+    handleResolvePrConflicts,
     executeMerge,
     showMergeDialog,
     setShowMergeDialog,
@@ -1988,6 +1990,7 @@ Begin your investigation now.`
                         prNumber={worktree?.pr_number}
                         displayStatus={displayStatus}
                         checkStatus={checkStatus}
+                        mergeableStatus={mergeableStatus}
                         magicModalShortcut={magicModalShortcut}
                         activeWorktreePath={activeWorktreePath}
                         worktreeId={activeWorktreeId ?? null}
@@ -2001,6 +2004,7 @@ Begin your investigation now.`
                         onOpenPr={handleOpenPr}
                         onReview={handleReview}
                         onMerge={handleMerge}
+                        onResolvePrConflicts={handleResolvePrConflicts}
                         isBaseSession={worktree ? isBaseSession(worktree) : true}
                         hasOpenPr={Boolean(worktree?.pr_url)}
                         onSetDiffRequest={setDiffRequest}

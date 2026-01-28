@@ -56,7 +56,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import type { ClaudeModel } from '@/store/chat-store'
 import type { ThinkingLevel, ExecutionMode } from '@/types/chat'
-import type { PrDisplayStatus, CheckStatus } from '@/types/pr-status'
+import type { PrDisplayStatus, CheckStatus, MergeableStatus } from '@/types/pr-status'
 import type { DiffRequest } from '@/types/git-diff'
 import type {
   LoadedIssueContext,
@@ -164,6 +164,7 @@ interface ChatToolbarProps {
   prNumber: number | undefined
   displayStatus: PrDisplayStatus | undefined
   checkStatus: CheckStatus | undefined
+  mergeableStatus: MergeableStatus | undefined
 
   // Shortcuts
   magicModalShortcut: string
@@ -185,6 +186,7 @@ interface ChatToolbarProps {
   onOpenPr: () => void
   onReview: () => void
   onMerge: () => void
+  onResolvePrConflicts: () => void
   isBaseSession: boolean
   hasOpenPr: boolean
   onSetDiffRequest: (request: DiffRequest) => void
@@ -220,6 +222,7 @@ export const ChatToolbar = memo(function ChatToolbar({
   prNumber,
   displayStatus,
   checkStatus,
+  mergeableStatus,
   magicModalShortcut,
   activeWorktreePath,
   worktreeId,
@@ -233,6 +236,7 @@ export const ChatToolbar = memo(function ChatToolbar({
   onOpenPr,
   onReview,
   onMerge,
+  onResolvePrConflicts,
   isBaseSession,
   hasOpenPr,
   onSetDiffRequest,
@@ -824,6 +828,22 @@ export const ChatToolbar = memo(function ChatToolbar({
               </span>
               <CheckStatusIcon status={checkStatus ?? null} />
             </a>
+          </>
+        )}
+
+        {/* PR conflicts indicator - desktop only */}
+        {mergeableStatus === 'conflicting' && (
+          <>
+            <div className="hidden @md:block h-4 w-px bg-border/50" />
+            <button
+              type="button"
+              className="hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-amber-600 dark:text-amber-400 transition-colors cursor-pointer hover:bg-muted/80"
+              title="PR has merge conflicts — click to resolve"
+              onClick={onResolvePrConflicts}
+            >
+              <GitMerge className="h-3 w-3" />
+              <span>Conflicts</span>
+            </button>
           </>
         )}
 

@@ -4434,6 +4434,92 @@ pub async fn get_merge_conflicts(
     })
 }
 
+/// Fetch the base branch and merge it into the current worktree branch.
+///
+/// Used when a PR has merge conflicts on GitHub. This creates the conflict
+/// state locally so the user can resolve conflicts with AI assistance.
+/// If the merge is clean (no conflicts), the merge commit is kept.
+#[tauri::command]
+pub async fn fetch_and_merge_base(
+    app: AppHandle,
+    worktree_id: String,
+) -> Result<MergeConflictsResponse, String> {
+    log::trace!("Fetching base branch and merging into worktree: {worktree_id}");
+
+    let data = load_projects_data(&app)?;
+    let worktree = data
+        .find_worktree(&worktree_id)
+        .ok_or_else(|| format!("Worktree not found: {worktree_id}"))?;
+    let project = data
+        .find_project(&worktree.project_id)
+        .ok_or_else(|| format!("Project not found: {}", worktree.project_id))?;
+
+    let base_branch = &project.default_branch;
+    let worktree_path = &worktree.path;
+
+    // Fetch the latest base branch from origin
+    let fetch_output = std::process::Command::new("git")
+        .args(["fetch", "origin", base_branch])
+        .current_dir(worktree_path)
+        .output()
+        .map_err(|e| format!("Failed to fetch origin: {e}"))?;
+
+    if !fetch_output.status.success() {
+        let stderr = String::from_utf8_lossy(&fetch_output.stderr);
+        return Err(format!("Failed to fetch origin/{base_branch}: {stderr}"));
+    }
+
+    // Merge origin/<base_branch> into current branch
+    let merge_output = std::process::Command::new("git")
+        .args(["merge", &format!("origin/{base_branch}")])
+        .current_dir(worktree_path)
+        .output()
+        .map_err(|e| format!("Failed to merge: {e}"))?;
+
+    // Check if merge succeeded cleanly
+    if merge_output.status.success() {
+        return Ok(MergeConflictsResponse {
+            has_conflicts: false,
+            conflicts: vec![],
+            conflict_diff: String::new(),
+        });
+    }
+
+    // Merge failed — check for conflict files
+    let conflict_output = std::process::Command::new("git")
+        .args(["diff", "--name-only", "--diff-filter=U"])
+        .current_dir(worktree_path)
+        .output()
+        .map_err(|e| format!("Failed to check conflicts: {e}"))?;
+
+    let conflicts: Vec<String> = String::from_utf8_lossy(&conflict_output.stdout)
+        .lines()
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    if conflicts.is_empty() {
+        // Merge failed but no conflict markers — unexpected error
+        let stderr = String::from_utf8_lossy(&merge_output.stderr);
+        return Err(format!("Merge failed: {stderr}"));
+    }
+
+    // Get the diff with conflict markers
+    let diff_output = std::process::Command::new("git")
+        .args(["diff"])
+        .current_dir(worktree_path)
+        .output()
+        .map_err(|e| format!("Failed to get conflict diff: {e}"))?;
+
+    let conflict_diff = String::from_utf8_lossy(&diff_output.stdout).to_string();
+
+    Ok(MergeConflictsResponse {
+        has_conflicts: true,
+        conflicts,
+        conflict_diff,
+    })
+}
+
 /// Result of the archive cleanup operation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CleanupResult {
