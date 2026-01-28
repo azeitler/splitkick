@@ -28,6 +28,24 @@ import { useProjectsStore } from '@/store/projects-store'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
 
+const MAX_NESTING_DEPTH = 3
+
+function getDepth(projects: Project[], itemId: string): number {
+  let depth = 0
+  let current = projects.find(p => p.id === itemId)
+  while (current?.parent_id) {
+    depth++
+    current = projects.find(p => p.id === current!.parent_id)
+  }
+  return depth
+}
+
+function getMaxSubtreeDepth(projects: Project[], itemId: string): number {
+  const children = projects.filter(p => p.parent_id === itemId)
+  if (children.length === 0) return 0
+  return 1 + Math.max(...children.map(c => getMaxSubtreeDepth(projects, c.id)))
+}
+
 interface ProjectTreeProps {
   projects: Project[]
 }
@@ -57,6 +75,11 @@ function flattenItems(projects: Project[]): string[] {
   return result
 }
 
+// Insertion line shown above an item to indicate reorder drop position
+function InsertionIndicator() {
+  return <div className="h-0.5 mx-2 bg-primary/60 rounded-full" />
+}
+
 interface SortableItemProps {
   item: Project
   allProjects: Project[]
@@ -64,6 +87,7 @@ interface SortableItemProps {
   isOverFolder: boolean
   expandedFolderIds: Set<string>
   overFolderId: string | null
+  insertBeforeId: string | null
 }
 
 function SortableItem({
@@ -73,6 +97,7 @@ function SortableItem({
   isOverFolder,
   expandedFolderIds,
   overFolderId,
+  insertBeforeId,
 }: SortableItemProps) {
   const {
     attributes,
@@ -86,10 +111,43 @@ function SortableItem({
     paddingLeft: depth > 0 ? `${depth * 12}px` : undefined,
   }
 
+  const showInsertBefore = insertBeforeId === item.id
+  const showInsertAfter = insertBeforeId === `after:${item.id}`
+
   if (isFolder(item)) {
     const isExpanded = expandedFolderIds.has(item.id)
 
     return (
+      <>
+        {showInsertBefore && <InsertionIndicator />}
+        <div
+          ref={setNodeRef}
+          style={style}
+          {...attributes}
+          {...listeners}
+          className={isDragging ? 'cursor-grabbing' : 'cursor-grab'}
+        >
+          <FolderTreeItem folder={item} depth={depth} isDropTarget={isOverFolder}>
+            {isExpanded && (
+              <NestedItems
+                projects={allProjects}
+                parentId={item.id}
+                depth={depth + 1}
+                expandedFolderIds={expandedFolderIds}
+                overFolderId={overFolderId}
+                insertBeforeId={insertBeforeId}
+              />
+            )}
+          </FolderTreeItem>
+        </div>
+        {showInsertAfter && <InsertionIndicator />}
+      </>
+    )
+  }
+
+  return (
+    <>
+      {showInsertBefore && <InsertionIndicator />}
       <div
         ref={setNodeRef}
         style={style}
@@ -97,31 +155,10 @@ function SortableItem({
         {...listeners}
         className={isDragging ? 'cursor-grabbing' : 'cursor-grab'}
       >
-        <FolderTreeItem folder={item} depth={depth} isDropTarget={isOverFolder}>
-          {isExpanded && (
-            <NestedItems
-              projects={allProjects}
-              parentId={item.id}
-              depth={depth + 1}
-              expandedFolderIds={expandedFolderIds}
-              overFolderId={overFolderId}
-            />
-          )}
-        </FolderTreeItem>
+        <ProjectTreeItem project={item} />
       </div>
-    )
-  }
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
-      className={isDragging ? 'cursor-grabbing' : 'cursor-grab'}
-    >
-      <ProjectTreeItem project={item} />
-    </div>
+      {showInsertAfter && <InsertionIndicator />}
+    </>
   )
 }
 
@@ -132,6 +169,7 @@ interface NestedItemsProps {
   depth: number
   expandedFolderIds: Set<string>
   overFolderId: string | null
+  insertBeforeId: string | null
 }
 
 function NestedItems({
@@ -140,6 +178,7 @@ function NestedItems({
   depth,
   expandedFolderIds,
   overFolderId,
+  insertBeforeId,
 }: NestedItemsProps) {
   const items = projects
     .filter(p => p.parent_id === parentId)
@@ -160,6 +199,7 @@ function NestedItems({
           isOverFolder={overFolderId === item.id}
           expandedFolderIds={expandedFolderIds}
           overFolderId={overFolderId}
+          insertBeforeId={insertBeforeId}
         />
       ))}
     </>
@@ -194,6 +234,7 @@ export function ProjectTree({ projects }: ProjectTreeProps) {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [overFolderId, setOverFolderId] = useState<string | null>(null)
   const [isOverRoot, setIsOverRoot] = useState(false)
+  const [insertBeforeId, setInsertBeforeId] = useState<string | null>(null)
 
   const activeItem = useMemo(
     () => (activeId ? projects.find(p => p.id === activeId) : null),
@@ -230,10 +271,11 @@ export function ProjectTree({ projects }: ProjectTreeProps) {
 
   const handleDragOver = useCallback(
     (event: DragOverEvent) => {
-      const { over } = event
+      const { over, active } = event
       if (!over) {
         setOverFolderId(null)
         setIsOverRoot(false)
+        setInsertBeforeId(null)
         return
       }
 
@@ -241,17 +283,61 @@ export function ProjectTree({ projects }: ProjectTreeProps) {
       if (over.id === 'root-drop-zone') {
         setOverFolderId(null)
         setIsOverRoot(true)
+        setInsertBeforeId(null)
         return
       }
 
       setIsOverRoot(false)
 
-      // Check if dragging over a folder
       const overItem = projects.find(p => p.id === over.id)
+      const activeItemObj = projects.find(p => p.id === activeId)
+
+      // Check if dragging over a folder (skip if at max depth)
       if (overItem && isFolder(overItem) && activeId !== over.id) {
-        setOverFolderId(over.id as string)
-      } else {
-        setOverFolderId(null)
+        const folderDepth = getDepth(projects, overItem.id)
+        const subtreeDepth = activeItemObj && isFolder(activeItemObj)
+          ? getMaxSubtreeDepth(projects, activeItemObj.id)
+          : 0
+        if (folderDepth + 1 + subtreeDepth <= MAX_NESTING_DEPTH) {
+          setOverFolderId(over.id as string)
+          setInsertBeforeId(null)
+        } else {
+          setOverFolderId(null)
+          setInsertBeforeId(null)
+        }
+        return
+      }
+
+      setOverFolderId(null)
+
+      // Show insertion indicator for same-level reorder
+      if (overItem && activeItemObj && over.id !== active.id && !isFolder(overItem)) {
+        // Determine insert position based on dragged item center vs over item center
+        const activeRect = active.rect.current.translated
+        const overRect = over.rect
+        const activeCenter = activeRect ? activeRect.top + activeRect.height / 2 : 0
+        const overCenter = overRect.top + overRect.height / 2
+
+        // Get siblings at the over item's level
+        const siblings = projects
+          .filter(p => p.parent_id === overItem.parent_id && p.id !== active.id)
+          .sort((a, b) => {
+            if (isFolder(a) && !isFolder(b)) return -1
+            if (!isFolder(a) && isFolder(b)) return 1
+            return a.order - b.order
+          })
+        const overIndex = siblings.findIndex(p => p.id === over.id)
+
+        if (activeCenter < overCenter) {
+          // Insert before the over item
+          setInsertBeforeId(over.id as string)
+        } else {
+          // Insert after: show indicator after this item
+          const nextItem = siblings[overIndex + 1]
+          setInsertBeforeId(nextItem ? nextItem.id : `after:${over.id}`)
+        }
+      } else if (!overItem || !isFolder(overItem)) {
+        setInsertBeforeId(null)
       }
     },
     [projects, activeId]
@@ -263,6 +349,7 @@ export function ProjectTree({ projects }: ProjectTreeProps) {
       setActiveId(null)
       setOverFolderId(null)
       setIsOverRoot(false)
+      setInsertBeforeId(null)
 
       if (!over) return
 
@@ -296,6 +383,13 @@ export function ProjectTree({ projects }: ProjectTreeProps) {
         active.id !== over.id &&
         activeItem.parent_id !== over.id
       ) {
+        // Prevent exceeding max nesting depth
+        const folderDepth = getDepth(projects, overItem.id)
+        const subtreeDepth = isFolder(activeItem)
+          ? getMaxSubtreeDepth(projects, activeItem.id)
+          : 0
+        if (folderDepth + 1 + subtreeDepth > MAX_NESTING_DEPTH) return
+
         // Prevent moving folder into itself or descendants
         if (isFolder(activeItem)) {
           let currentParent = overItem.parent_id
@@ -386,6 +480,7 @@ export function ProjectTree({ projects }: ProjectTreeProps) {
               isOverFolder={overFolderId === item.id}
               expandedFolderIds={expandedFolderIds}
               overFolderId={overFolderId}
+              insertBeforeId={insertBeforeId}
             />
           ))}
           {hasBothTypes && (
@@ -409,6 +504,7 @@ export function ProjectTree({ projects }: ProjectTreeProps) {
               isOverFolder={false}
               expandedFolderIds={expandedFolderIds}
               overFolderId={overFolderId}
+              insertBeforeId={insertBeforeId}
             />
           ))}
         </SortableContext>

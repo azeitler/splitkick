@@ -1976,7 +1976,11 @@ export function useMoveItem() {
     },
     onError: error => {
       const message =
-        error instanceof Error ? error.message : 'Unknown error occurred'
+        typeof error === 'string'
+          ? error
+          : error instanceof Error
+            ? error.message
+            : 'Unknown error occurred'
       logger.error('Failed to move item', { error })
       toast.error('Failed to move item', { description: message })
     },

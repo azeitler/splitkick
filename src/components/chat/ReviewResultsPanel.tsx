@@ -41,7 +41,6 @@ function getSeverityConfig(severity: string) {
       return {
         icon: AlertCircle,
         color: 'text-red-500',
-        bgColor: 'bg-red-500/10',
         borderColor: 'border-red-500/20',
         label: 'Critical',
       }
@@ -49,7 +48,6 @@ function getSeverityConfig(severity: string) {
       return {
         icon: AlertTriangle,
         color: 'text-yellow-500',
-        bgColor: 'bg-yellow-500/10',
         borderColor: 'border-yellow-500/20',
         label: 'Warning',
       }
@@ -57,7 +55,6 @@ function getSeverityConfig(severity: string) {
       return {
         icon: Lightbulb,
         color: 'text-blue-500',
-        bgColor: 'bg-blue-500/10',
         borderColor: 'border-blue-500/20',
         label: 'Suggestion',
       }
@@ -65,7 +62,6 @@ function getSeverityConfig(severity: string) {
       return {
         icon: ThumbsUp,
         color: 'text-green-500',
-        bgColor: 'bg-green-500/10',
         borderColor: 'border-green-500/20',
         label: 'Good',
       }
@@ -73,7 +69,6 @@ function getSeverityConfig(severity: string) {
       return {
         icon: MessageSquare,
         color: 'text-muted-foreground',
-        bgColor: 'bg-muted/10',
         borderColor: 'border-muted/20',
         label: severity,
       }
@@ -106,28 +101,24 @@ function getApprovalConfig(status: string) {
       return {
         icon: CheckCircle2,
         color: 'text-green-500',
-        bgColor: 'bg-green-500/10',
         label: 'Approved',
       }
     case 'changes_requested':
       return {
         icon: AlertTriangle,
         color: 'text-yellow-500',
-        bgColor: 'bg-yellow-500/10',
         label: 'Changes Requested',
       }
     case 'needs_discussion':
       return {
         icon: MessageSquare,
         color: 'text-blue-500',
-        bgColor: 'bg-blue-500/10',
         label: 'Needs Discussion',
       }
     default:
       return {
         icon: MessageSquare,
         color: 'text-muted-foreground',
-        bgColor: 'bg-muted/10',
         label: status,
       }
   }
@@ -169,15 +160,14 @@ const FindingCard = memo(function FindingCard({
         className={cn(
           'border-l-2',
           config.borderColor,
-          config.bgColor,
           isFixed && 'opacity-60'
         )}
       >
         {/* Header */}
         <CollapsibleTrigger asChild>
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 px-4 py-3 text-left hover:bg-muted/50 transition-colors"
+          <div
+            role="button"
+            className="flex w-full items-center gap-2 px-4 py-3 text-left hover:bg-muted/50 transition-colors cursor-pointer select-text"
           >
             <ChevronRight
               className={cn(
@@ -207,7 +197,7 @@ const FindingCard = memo(function FindingCard({
               {finding.file}
               {finding.line ? `:${finding.line}` : ''}
             </span>
-          </button>
+          </div>
         </CollapsibleTrigger>
 
         {/* Content */}
@@ -457,8 +447,7 @@ Please apply all these fixes to the codebase.`
             <div className="flex items-center gap-2 mb-2">
               <div
                 className={cn(
-                  'flex items-center gap-1.5 rounded-full px-2.5 py-1',
-                  approvalConfig.bgColor
+                  'flex items-center gap-1.5 rounded-full px-2.5 py-1'
                 )}
               >
                 <ApprovalIcon className={cn('h-4 w-4', approvalConfig.color)} />

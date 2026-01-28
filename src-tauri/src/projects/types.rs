@@ -299,13 +299,13 @@ impl ProjectsData {
             .unwrap_or(0)
     }
 
-    /// Check if moving would exceed max depth (3 levels)
+    /// Check if moving would exceed max depth (3 levels of folders, items allowed at depth 3)
     pub fn would_exceed_max_depth(&self, item_id: &str, new_parent_id: Option<&str>) -> bool {
         let parent_depth = new_parent_id
             .map(|pid| self.get_nesting_level(pid) + 1)
             .unwrap_or(0);
         let item_subtree_depth = self.get_max_subtree_depth(item_id);
-        parent_depth + item_subtree_depth >= 3
+        parent_depth + item_subtree_depth > 3
     }
 
     /// Get the next order value for items at a given level
