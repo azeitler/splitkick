@@ -2006,6 +2006,7 @@ Begin your investigation now.`
                         onReview={handleReview}
                         onMerge={handleMerge}
                         onResolvePrConflicts={handleResolvePrConflicts}
+                        onResolveConflicts={handleResolveConflicts}
                         isBaseSession={worktree ? isBaseSession(worktree) : true}
                         hasOpenPr={Boolean(worktree?.pr_url)}
                         onSetDiffRequest={setDiffRequest}

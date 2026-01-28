@@ -188,6 +188,7 @@ interface ChatToolbarProps {
   onReview: () => void
   onMerge: () => void
   onResolvePrConflicts: () => void
+  onResolveConflicts: () => void
   isBaseSession: boolean
   hasOpenPr: boolean
   onSetDiffRequest: (request: DiffRequest) => void
@@ -238,6 +239,7 @@ export const ChatToolbar = memo(function ChatToolbar({
   onReview,
   onMerge,
   onResolvePrConflicts,
+  onResolveConflicts,
   isBaseSession,
   hasOpenPr,
   onSetDiffRequest,
@@ -273,12 +275,24 @@ export const ChatToolbar = memo(function ChatToolbar({
       triggerImmediateGitPoll()
       toast.success('Changes pulled', { id: toastId })
     } catch (error) {
-      toast.error(`Pull failed: ${error}`, { id: toastId })
+      // Tauri errors may be strings or Error objects with the message
+      // Use String() to coerce any error type to a string for matching
+      const errorStr = String(error)
+      console.log('[ChatToolbar] Pull error:', { error, errorStr, type: typeof error })
+      if (errorStr.includes('Merge conflicts in:')) {
+        toast.warning('Pull resulted in conflicts', {
+          id: toastId,
+          description: 'Opening conflict resolution...',
+        })
+        onResolveConflicts()
+      } else {
+        toast.error(`Pull failed: ${errorStr}`, { id: toastId })
+      }
     } finally {
       setIsPulling(false)
       clearWorktreeLoading(worktreeId)
     }
-  }, [activeWorktreePath, baseBranch])
+  }, [activeWorktreePath, baseBranch, onResolveConflicts])
 
   const [isPushing, setIsPushing] = useState(false)
   const handlePushClick = useCallback(async () => {
