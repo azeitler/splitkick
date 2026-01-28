@@ -3,8 +3,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
 use tauri::{AppHandle, Emitter, Manager};
+
+#[cfg(target_os = "macos")]
+use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
 
 mod background_tasks;
 mod chat;
@@ -943,6 +945,7 @@ async fn cleanup_old_recovery_files(app: AppHandle) -> Result<u32, String> {
     Ok(removed_count)
 }
 
+#[cfg(target_os = "macos")]
 // Create the native menu system
 fn create_app_menu(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     log::trace!("Setting up native menu system");
@@ -1048,6 +1051,48 @@ pub fn run() {
     #[cfg(target_os = "macos")]
     fix_macos_path();
 
+    // FIX: Avoid WebKit GBM buffer errors on Linux (especially NVIDIA)
+    //
+    // This issue occurs when using transparent windows with WebKitGTK on Linux,
+    // particularly with NVIDIA GPUs. The error "Failed to create GBM buffer of size NxN: Invalid argument"
+    // is caused by incompatibilities between hardware-accelerated compositing and certain
+    // GPU drivers/compositors.
+    //
+    // Related issues:
+    // - https://github.com/tauri-apps/tauri/issues/13493
+    // - https://github.com/tauri-apps/tauri/issues/8254
+    // - https://bugs.webkit.org/show_bug.cgi?id=165246
+    // - https://github.com/tauri-apps/tauri/issues/9394 (NVIDIA problems doc)
+    //
+    // The fix disables problematic GPU compositing modes. Users can override via env vars:
+    // - JEAN_FORCE_X11=1 to force X11 backend (default: no)
+    // - WEBKIT_DISABLE_COMPOSITING_MODE=0 to re-enable GPU compositing (risky)
+    #[cfg(target_os = "linux")]
+    {
+        log::trace!("Setting WebKit compatibility fixes for Linux");
+        
+        // Disable problematic GPU compositing modes
+        if std::env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").is_none() {
+            std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+            log::trace!("WEBKIT_DISABLE_COMPOSITING_MODE=1");
+        }
+        
+        // Disable DMABUF renderer (common cause of GBM errors)
+        if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+            log::trace!("WEBKIT_DISABLE_DMABUF_RENDERER=1");
+        }
+        
+        // Force X11 backend if Wayland causes issues
+        // Check if user explicitly wants Wayland via environment variable
+        let force_x11 = std::env::var("JEAN_FORCE_X11")
+            .unwrap_or_else(|_| "0".to_string()) == "1";
+        if force_x11 && std::env::var_os("GDK_BACKEND").is_none() {
+            std::env::set_var("GDK_BACKEND", "x11");
+            log::trace!("GDK_BACKEND=x11 (forced by JEAN_FORCE_X11)");
+        }
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
@@ -1109,14 +1154,19 @@ pub fn run() {
                 }
             }
 
-            // Set up native menu system
-            if let Err(e) = create_app_menu(app) {
-                log::error!("Failed to create app menu: {e}");
-                return Err(e);
+            #[cfg(target_os = "macos")]
+            {
+                log::trace!("Creating macOS app menu");
+                if let Err(e) = create_app_menu(app) {
+                    log::error!("Failed to create app menu: {e}");
+                    return Err(e);
+                }
             }
 
-            // Set up menu event handlers
-            app.on_menu_event(move |app, event| {
+            #[cfg(target_os = "macos")]
+            {
+                // Set up menu event handlers
+                app.on_menu_event(move |app, event| {
                 log::trace!("Menu event received: {:?}", event.id());
 
                 match event.id().as_ref() {
@@ -1185,6 +1235,7 @@ pub fn run() {
                     }
                 }
             });
+            }
 
             // Initialize background task manager
             let task_manager = background_tasks::BackgroundTaskManager::new(app.handle().clone());
