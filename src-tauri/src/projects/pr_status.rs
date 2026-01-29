@@ -89,11 +89,12 @@ pub fn get_pr_status(
     pr_number: u32,
     pr_url: &str,
     worktree_id: &str,
+    gh_binary: &std::path::Path,
 ) -> Result<PrStatus, String> {
     log::trace!("Fetching PR status for #{pr_number} in {repo_path}");
 
     // Run gh pr view
-    let output = Command::new("gh")
+    let output = Command::new(gh_binary)
         .args([
             "pr",
             "view",

@@ -7,6 +7,9 @@ use tauri::{AppHandle, Manager};
 pub const CLI_DIR_NAME: &str = "claude-cli";
 
 /// Name of the Claude CLI binary
+#[cfg(windows)]
+pub const CLI_BINARY_NAME: &str = "claude.exe";
+#[cfg(not(windows))]
 pub const CLI_BINARY_NAME: &str = "claude";
 
 /// Get the directory where Claude CLI is installed

@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use super::git;
 use super::git::get_repo_identifier;
+use crate::gh_cli::config::resolve_gh_binary;
 use super::github_issues::{
     add_issue_reference, add_pr_reference, format_issue_context_markdown,
     format_pr_context_markdown, generate_branch_name_from_issue, generate_branch_name_from_pr,
@@ -35,6 +36,64 @@ fn now() -> u64 {
 }
 
 /// List all projects
+/// Check if git global user identity is configured
+#[tauri::command]
+pub async fn check_git_identity() -> Result<GitIdentity, String> {
+    let name = std::process::Command::new("git")
+        .args(["config", "--global", "user.name"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    let email = std::process::Command::new("git")
+        .args(["config", "--global", "user.email"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    Ok(GitIdentity {
+        name,
+        email,
+    })
+}
+
+/// Set git global user identity
+#[tauri::command]
+pub async fn set_git_identity(name: String, email: String) -> Result<(), String> {
+    let name_output = std::process::Command::new("git")
+        .args(["config", "--global", "user.name", &name])
+        .output()
+        .map_err(|e| format!("Failed to set git user.name: {e}"))?;
+
+    if !name_output.status.success() {
+        let stderr = String::from_utf8_lossy(&name_output.stderr);
+        return Err(format!("Failed to set git user.name: {stderr}"));
+    }
+
+    let email_output = std::process::Command::new("git")
+        .args(["config", "--global", "user.email", &email])
+        .output()
+        .map_err(|e| format!("Failed to set git user.email: {e}"))?;
+
+    if !email_output.status.success() {
+        let stderr = String::from_utf8_lossy(&email_output.stderr);
+        return Err(format!("Failed to set git user.email: {stderr}"));
+    }
+
+    log::trace!("Git identity set: {name} <{email}>");
+    Ok(())
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitIdentity {
+    pub name: Option<String>,
+    pub email: Option<String>,
+}
+
 #[tauri::command]
 pub async fn list_projects(app: AppHandle) -> Result<Vec<Project>, String> {
     log::trace!("Listing all projects");
@@ -62,7 +121,8 @@ pub async fn add_project(
 
     // Get repository name and current branch
     let name = git::get_repo_name(&path)?;
-    let default_branch = git::get_current_branch(&path)?;
+    // Fall back to "main" if HEAD doesn't exist yet (no commits)
+    let default_branch = git::get_current_branch(&path).unwrap_or_else(|_| "main".to_string());
 
     // Check if project already exists
     let mut data = load_projects_data(&app)?;
@@ -105,10 +165,11 @@ pub async fn add_project(
 pub async fn init_git_in_folder(path: String) -> Result<String, String> {
     log::trace!("Initializing git in existing folder: {path}");
 
-    // Validate path exists
+    // Create directory if it doesn't exist (new project flow)
     let path_obj = std::path::Path::new(&path);
     if !path_obj.exists() {
-        return Err(format!("Path does not exist: {path}"));
+        std::fs::create_dir_all(path_obj)
+            .map_err(|e| format!("Failed to create directory: {e}"))?;
     }
     if !path_obj.is_dir() {
         return Err(format!("Path is not a directory: {path}"));
@@ -620,7 +681,7 @@ pub async fn create_worktree(
         let final_branch = if let Some(ref ctx) = pr_context_clone {
             log::trace!("Background: Running gh pr checkout {} for PR branch", ctx.number);
 
-            match git::gh_pr_checkout(&worktree_path_clone, ctx.number, Some(&ctx.head_ref_name)) {
+            match git::gh_pr_checkout(&worktree_path_clone, ctx.number, Some(&ctx.head_ref_name), &resolve_gh_binary(&app_clone)) {
                 Ok(branch) => {
                     log::trace!("Background: gh pr checkout succeeded, branch: {branch}");
 
@@ -705,9 +766,10 @@ pub async fn create_worktree(
                         log::warn!("Background: Failed to create git-context directory: {e}");
                     } else {
                         // Fetch the diff if not already present
+                        let gh = resolve_gh_binary(&app_clone);
                         let ctx_with_diff = if ctx.diff.is_none() {
                             log::debug!("Background: Fetching diff for PR #{}", ctx.number);
-                            let diff = get_pr_diff(&project_path, ctx.number).ok();
+                            let diff = get_pr_diff(&project_path, ctx.number, &gh).ok();
                             PullRequestContext {
                                 number: ctx.number,
                                 title: ctx.title.clone(),
@@ -1041,9 +1103,10 @@ pub async fn create_worktree_from_existing_branch(
                         log::warn!("Background: Failed to create git-context directory: {e}");
                     } else {
                         // Fetch the diff if not already present
+                        let gh = resolve_gh_binary(&app_clone);
                         let ctx_with_diff = if ctx.diff.is_none() {
                             log::debug!("Background: Fetching diff for PR #{}", ctx.number);
-                            let diff = get_pr_diff(&project_path, ctx.number).ok();
+                            let diff = get_pr_diff(&project_path, ctx.number, &gh).ok();
                             PullRequestContext {
                                 number: ctx.number,
                                 title: ctx.title.clone(),
@@ -1237,7 +1300,7 @@ pub async fn checkout_pr(
     }
 
     // Fetch PR details from GitHub (for context and worktree naming)
-    let pr_detail = get_github_pr(project.path.clone(), pr_number).await?;
+    let pr_detail = get_github_pr(app.clone(), project.path.clone(), pr_number).await?;
 
     // Get valid base branch for creating the worktree
     let base_branch = git::get_valid_base_branch(&project.path, &project.default_branch)?;
@@ -1363,7 +1426,7 @@ pub async fn checkout_pr(
         // Step 2: Run gh pr checkout inside the worktree
         // This checks out the actual PR branch and sets up tracking
         // Pass the PR's head_ref_name to ensure local branch matches remote
-        let actual_branch = match git::gh_pr_checkout(&worktree_path_clone, pr_number, Some(&pr_head_ref)) {
+        let actual_branch = match git::gh_pr_checkout(&worktree_path_clone, pr_number, Some(&pr_head_ref), &resolve_gh_binary(&app_clone)) {
             Ok(branch) => {
                 log::trace!("Background: gh pr checkout succeeded, branch: {branch}");
                 branch
@@ -1464,7 +1527,7 @@ pub async fn checkout_pr(
                                 submitted_at: r.submitted_at,
                             })
                             .collect(),
-                        diff: get_pr_diff(&project_path, pr_number).ok(),
+                        diff: get_pr_diff(&project_path, pr_number, &resolve_gh_binary(&app_clone)).ok(),
                     };
 
                     let context_file = contexts_dir.join(format!("{repo_key}-pr-{pr_number}.md"));
@@ -2228,7 +2291,16 @@ pub async fn open_worktree_in_finder(worktree_path: String) -> Result<(), String
     Ok(())
 }
 
-/// Open a worktree path in the configured terminal app (macOS)
+/// Format a spawn error with a user-friendly message when the executable is not found
+fn format_open_error(app_name: &str, error: &std::io::Error) -> String {
+    if error.kind() == std::io::ErrorKind::NotFound {
+        format!("'{app_name}' not found. Make sure it is installed and available in your PATH.")
+    } else {
+        format!("Failed to open {app_name}: {error}")
+    }
+}
+
+/// Open a worktree path in the configured terminal app
 #[tauri::command]
 pub async fn open_worktree_in_terminal(
     worktree_path: String,
@@ -2266,7 +2338,7 @@ pub async fn open_worktree_in_terminal(
 
                 match output {
                     Ok(_) => return Ok(()),
-                    Err(e) => return Err(format!("Failed to open Ghostty: {e}")),
+                    Err(e) => return Err(format_open_error("Ghostty", &e)),
                 }
             }
             _ => {
@@ -2284,7 +2356,7 @@ pub async fn open_worktree_in_terminal(
         std::process::Command::new("osascript")
             .args(["-e", &script])
             .spawn()
-            .map_err(|e| format!("Failed to open {terminal_app}: {e}"))?;
+            .map_err(|e| format_open_error(&terminal_app, &e))?;
     }
 
     #[cfg(target_os = "linux")]
@@ -2336,19 +2408,38 @@ pub async fn open_worktree_in_terminal(
 
     #[cfg(target_os = "windows")]
     {
-        // Use PowerShell (default choice per user preference)
-        let result = std::process::Command::new("powershell")
-            .args([
-                "-NoExit",
-                "-Command",
-                &format!("Set-Location '{}'", worktree_path),
-            ])
-            .spawn();
+        match terminal_app.as_str() {
+            "powershell" => {
+                std::process::Command::new("powershell")
+                    .args(["-NoExit", "-Command", &format!("Set-Location '{worktree_path}'")])
+                    .spawn()
+                    .map_err(|e| format_open_error("PowerShell", &e))?;
+            }
+            "cmd" => {
+                std::process::Command::new("cmd")
+                    .args(["/k", &format!("cd /d \"{worktree_path}\"")])
+                    .spawn()
+                    .map_err(|e| format_open_error("CMD", &e))?;
+            }
+            _ => {
+                // Default: Windows Terminal (wt.exe) — opens new tab in existing window
+                let result = std::process::Command::new("wt")
+                    .args(["-w", "0", "nt", "-d", &worktree_path])
+                    .spawn();
 
-        match result {
-            Ok(_) => log::trace!("Opened PowerShell in {worktree_path}"),
-            Err(e) => return Err(format!("Failed to open PowerShell: {e}")),
+                match result {
+                    Ok(_) => {}
+                    Err(_) => {
+                        // Fallback to PowerShell if wt.exe not available
+                        std::process::Command::new("powershell")
+                            .args(["-NoExit", "-Command", &format!("Set-Location '{worktree_path}'")])
+                            .spawn()
+                            .map_err(|e| format_open_error("PowerShell", &e))?;
+                    }
+                }
+            }
         }
+        log::trace!("Opened terminal in {worktree_path}");
     }
 
     Ok(())
@@ -2408,7 +2499,7 @@ pub async fn open_worktree_in_editor(
                 log::trace!("Successfully opened {editor_app}");
             }
             Err(e) => {
-                return Err(format!("Failed to open {editor_app}: {e}"));
+                return Err(format_open_error(&editor_app, &e));
             }
         }
     }
@@ -2436,7 +2527,7 @@ pub async fn open_worktree_in_editor(
                 log::trace!("Successfully opened {editor_app}");
             }
             Err(e) => {
-                return Err(format!("Failed to open {editor_app}: {e}"));
+                return Err(format_open_error(&editor_app, &e));
             }
         }
     }
@@ -2582,11 +2673,13 @@ pub async fn open_pull_request(
         .ok_or_else(|| format!("Worktree not found: {worktree_id}"))?;
 
     // Use the worktree path for the PR creation
+    let gh = resolve_gh_binary(&app);
     let result = git::open_pull_request(
         &worktree.path,
         title.as_deref(),
         body.as_deref(),
         draft.unwrap_or(false),
+        &gh,
     )?;
 
     log::trace!(
@@ -3713,7 +3806,8 @@ pub async fn create_pr_with_ai_content(
 
     // Create the PR using gh CLI
     log::trace!("Creating PR with gh CLI");
-    let output = Command::new("gh")
+    let gh = resolve_gh_binary(&app);
+    let output = Command::new(&gh)
         .args([
             "pr",
             "create",

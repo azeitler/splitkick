@@ -303,7 +303,7 @@ export function useCreateSession() {
     },
     onError: error => {
       const message =
-        error instanceof Error ? error.message : 'Unknown error occurred'
+        error instanceof Error ? error.message : typeof error === 'string' ? error : 'Unknown error occurred'
       logger.error('Failed to create session', { error })
       toast.error('Failed to create session', { description: message })
     },
@@ -348,7 +348,7 @@ export function useRenameSession() {
     },
     onError: error => {
       const message =
-        error instanceof Error ? error.message : 'Unknown error occurred'
+        error instanceof Error ? error.message : typeof error === 'string' ? error : 'Unknown error occurred'
       logger.error('Failed to rename session', { error })
       toast.error('Failed to rename session', { description: message })
     },
@@ -473,7 +473,7 @@ export function useCloseSession() {
     },
     onError: error => {
       const message =
-        error instanceof Error ? error.message : 'Unknown error occurred'
+        error instanceof Error ? error.message : typeof error === 'string' ? error : 'Unknown error occurred'
       logger.error('Failed to close session', { error })
       toast.error('Failed to close session', { description: message })
     },
@@ -972,7 +972,7 @@ export function useReorderSessions() {
         )
       }
       const message =
-        error instanceof Error ? error.message : 'Unknown error occurred'
+        error instanceof Error ? error.message : typeof error === 'string' ? error : 'Unknown error occurred'
       logger.error('Failed to reorder sessions', { error })
       toast.error('Failed to reorder sessions', { description: message })
     },
@@ -1020,7 +1020,7 @@ export function useSetActiveSession() {
     },
     onError: error => {
       const message =
-        error instanceof Error ? error.message : 'Unknown error occurred'
+        error instanceof Error ? error.message : typeof error === 'string' ? error : 'Unknown error occurred'
       logger.error('Failed to set active session', { error })
       toast.error('Failed to set active session', { description: message })
     },
@@ -1288,7 +1288,7 @@ export function useClearSessionHistory() {
     },
     onError: error => {
       const message =
-        error instanceof Error ? error.message : 'Unknown error occurred'
+        error instanceof Error ? error.message : typeof error === 'string' ? error : 'Unknown error occurred'
       logger.error('Failed to clear session history', { error })
       toast.error('Failed to clear chat history', { description: message })
     },
@@ -1329,7 +1329,7 @@ export function useClearChatHistory() {
     },
     onError: error => {
       const message =
-        error instanceof Error ? error.message : 'Unknown error occurred'
+        error instanceof Error ? error.message : typeof error === 'string' ? error : 'Unknown error occurred'
       logger.error('Failed to clear chat history', { error })
       toast.error('Failed to clear chat history', { description: message })
     },
@@ -1377,7 +1377,7 @@ export function useSetSessionModel() {
     },
     onError: error => {
       const message =
-        error instanceof Error ? error.message : 'Unknown error occurred'
+        error instanceof Error ? error.message : typeof error === 'string' ? error : 'Unknown error occurred'
       logger.error('Failed to save model selection', { error })
       toast.error('Failed to save model', { description: message })
     },
@@ -1428,7 +1428,7 @@ export function useSetSessionThinkingLevel() {
     },
     onError: error => {
       const message =
-        error instanceof Error ? error.message : 'Unknown error occurred'
+        error instanceof Error ? error.message : typeof error === 'string' ? error : 'Unknown error occurred'
       logger.error('Failed to save thinking level selection', { error })
       toast.error('Failed to save thinking level', { description: message })
     },
@@ -1470,7 +1470,7 @@ export function useSetWorktreeModel() {
     },
     onError: error => {
       const message =
-        error instanceof Error ? error.message : 'Unknown error occurred'
+        error instanceof Error ? error.message : typeof error === 'string' ? error : 'Unknown error occurred'
       logger.error('Failed to save model selection', { error })
       toast.error('Failed to save model', { description: message })
     },
@@ -1519,7 +1519,7 @@ export function useSetWorktreeThinkingLevel() {
     },
     onError: error => {
       const message =
-        error instanceof Error ? error.message : 'Unknown error occurred'
+        error instanceof Error ? error.message : typeof error === 'string' ? error : 'Unknown error occurred'
       logger.error('Failed to save thinking level selection', { error })
       toast.error('Failed to save thinking level', { description: message })
     },

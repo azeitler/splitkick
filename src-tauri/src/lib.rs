@@ -175,7 +175,10 @@ fn default_thinking_level() -> String {
 }
 
 fn default_terminal() -> String {
-    "terminal".to_string()
+    #[cfg(target_os = "windows")]
+    { "windows-terminal".to_string() }
+    #[cfg(not(target_os = "windows"))]
+    { "terminal".to_string() }
 }
 
 fn default_editor() -> String {
@@ -1256,6 +1259,8 @@ pub fn run() {
             load_emergency_data,
             cleanup_old_recovery_files,
             // Project management commands
+            projects::check_git_identity,
+            projects::set_git_identity,
             projects::list_projects,
             projects::add_project,
             projects::init_git_in_folder,

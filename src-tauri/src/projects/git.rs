@@ -101,22 +101,34 @@ pub fn init_repo(path: &str) -> Result<(), String> {
             .map_err(|e| format!("Failed to create directory: {e}"))?;
     }
 
-    // Check if directory is not empty and already has .git
+    // Check if directory already has .git
     let git_path = path_obj.join(".git");
     if git_path.exists() {
-        return Err("Directory is already a git repository".to_string());
-    }
+        // Check if it has any commits
+        let has_commits = Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(path)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
 
-    // Run git init
-    let output = Command::new("git")
-        .args(["init"])
-        .current_dir(path)
-        .output()
-        .map_err(|e| format!("Failed to run git init: {e}"))?;
+        if has_commits {
+            return Err("Directory is already a git repository".to_string());
+        }
+        // No commits yet, skip git init and just create the initial commit
+        log::trace!("Git repo exists but has no commits, will create initial commit");
+    } else {
+        // Run git init
+        let output = Command::new("git")
+            .args(["init"])
+            .current_dir(path)
+            .output()
+            .map_err(|e| format!("Failed to run git init: {e}"))?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("git init failed: {stderr}"));
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("git init failed: {stderr}"));
+        }
     }
 
     // Create .gitkeep file so we have something to commit
@@ -656,6 +668,7 @@ pub fn gh_pr_checkout(
     worktree_path: &str,
     pr_number: u32,
     branch_name: Option<&str>,
+    gh_binary: &std::path::Path,
 ) -> Result<String, String> {
     log::trace!("Running gh pr checkout {pr_number} in {worktree_path}");
 
@@ -665,7 +678,7 @@ pub fn gh_pr_checkout(
         args.extend(["-b", name]);
     }
 
-    let output = Command::new("gh")
+    let output = Command::new(gh_binary)
         .args(&args)
         .current_dir(worktree_path)
         .output()
@@ -927,11 +940,12 @@ pub fn open_pull_request(
     title: Option<&str>,
     body: Option<&str>,
     draft: bool,
+    gh_binary: &std::path::Path,
 ) -> Result<String, String> {
     log::trace!("Opening pull request from {repo_path}");
 
     // First check if gh is installed
-    let gh_check = Command::new("gh")
+    let gh_check = Command::new(gh_binary)
         .args(["--version"])
         .output()
         .map_err(|_| {
@@ -949,7 +963,7 @@ pub fn open_pull_request(
     }
 
     // Check if user is authenticated
-    let auth_check = Command::new("gh")
+    let auth_check = Command::new(gh_binary)
         .args(["auth", "status"])
         .current_dir(repo_path)
         .output()
@@ -998,7 +1012,7 @@ pub fn open_pull_request(
 
     log::trace!("Running gh command with args: {:?}", args);
 
-    let output = Command::new("gh")
+    let output = Command::new(gh_binary)
         .args(&args)
         .current_dir(repo_path)
         .output()

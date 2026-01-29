@@ -1,5 +1,6 @@
 import { useCallback } from 'react'
 import { open, save } from '@tauri-apps/plugin-dialog'
+import { invoke } from '@tauri-apps/api/core'
 import { toast } from 'sonner'
 import { FolderOpen, FolderPlus } from 'lucide-react'
 import {
@@ -89,6 +90,19 @@ export function AddProjectDialog() {
       })
 
       if (selected && typeof selected === 'string') {
+        // Check if git identity is configured before init (commit requires it)
+        try {
+          const identity = await invoke<{ name: string | null; email: string | null }>('check_git_identity')
+          if (!identity.name || !identity.email) {
+            // Identity not configured - route through GitInitModal which handles identity setup
+            const { openGitInitModal } = useProjectsStore.getState()
+            openGitInitModal(selected)
+            return
+          }
+        } catch {
+          // If check fails, try anyway and let the error surface naturally
+        }
+
         await initProject.mutateAsync({
           path: selected,
           parentId: addProjectParentFolderId ?? undefined,
