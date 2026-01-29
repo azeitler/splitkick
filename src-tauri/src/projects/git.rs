@@ -494,6 +494,158 @@ pub fn git_push(repo_path: &str) -> Result<String, String> {
     }
 }
 
+/// Push to a PR's remote branch, handling fork PRs by adding the fork remote if needed.
+/// Uses --force-with-lease for safety.
+///
+/// Flow:
+/// 1. Query gh pr view for fork info
+/// 2. Same-repo PR: push to origin
+/// 3. Fork PR: add fork remote if needed, fetch, push
+pub fn git_push_to_pr(repo_path: &str, pr_number: u32) -> Result<String, String> {
+    log::trace!("Pushing to PR #{pr_number} remote branch in {repo_path}");
+
+    // 1. Query PR info from GitHub
+    let gh_output = Command::new("gh")
+        .args([
+            "pr",
+            "view",
+            &pr_number.to_string(),
+            "--json",
+            "headRefName,isCrossRepository,headRepositoryOwner,headRepository",
+        ])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to run gh pr view: {e}"))?;
+
+    if !gh_output.status.success() {
+        let stderr = String::from_utf8_lossy(&gh_output.stderr).to_string();
+        log::warn!("gh pr view failed, falling back to regular push: {stderr}");
+        return git_push(repo_path);
+    }
+
+    let pr_info: serde_json::Value =
+        serde_json::from_slice(&gh_output.stdout).map_err(|e| format!("Failed to parse gh pr view output: {e}"))?;
+
+    let head_ref_name = pr_info["headRefName"]
+        .as_str()
+        .ok_or_else(|| "Missing headRefName in PR info".to_string())?;
+    let is_cross_repository = pr_info["isCrossRepository"].as_bool().unwrap_or(false);
+
+    if !is_cross_repository {
+        // Same-repo PR: push to origin with --force-with-lease
+        log::trace!("Same-repo PR, pushing to origin/{head_ref_name}");
+        let output = Command::new("git")
+            .args(["push", "--force-with-lease", "origin", head_ref_name])
+            .current_dir(repo_path)
+            .output()
+            .map_err(|e| format!("Failed to run git push: {e}"))?;
+
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            let result = if stdout.is_empty() { stderr } else { stdout };
+            log::trace!("Successfully pushed to origin/{head_ref_name}");
+            return Ok(result);
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            log::error!("Failed to push to origin/{head_ref_name}: {stderr}");
+            return Err(stderr);
+        }
+    }
+
+    // Fork PR: need to add fork remote and push there
+    let fork_owner = pr_info["headRepositoryOwner"]["login"]
+        .as_str()
+        .ok_or_else(|| "Missing headRepositoryOwner.login in PR info".to_string())?;
+    let fork_repo_name = pr_info["headRepository"]["name"]
+        .as_str()
+        .ok_or_else(|| "Missing headRepository.name in PR info".to_string())?;
+
+    log::trace!("Fork PR from {fork_owner}/{fork_repo_name}, branch {head_ref_name}");
+
+    // Determine URL scheme from origin
+    let origin_url_output = Command::new("git")
+        .args(["remote", "get-url", "origin"])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to get origin URL: {e}"))?;
+
+    let origin_url = String::from_utf8_lossy(&origin_url_output.stdout).trim().to_string();
+    let fork_url = if origin_url.starts_with("git@") || origin_url.starts_with("ssh://") {
+        format!("git@github.com:{fork_owner}/{fork_repo_name}.git")
+    } else {
+        format!("https://github.com/{fork_owner}/{fork_repo_name}.git")
+    };
+
+    log::trace!("Fork URL: {fork_url}");
+
+    // Check if a remote for this fork already exists
+    let remotes_output = Command::new("git")
+        .args(["remote", "-v"])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to list remotes: {e}"))?;
+
+    let remotes_str = String::from_utf8_lossy(&remotes_output.stdout);
+    let remote_name = remotes_str
+        .lines()
+        .find(|line| line.contains(&fork_url) || line.contains(&format!("{fork_owner}/{fork_repo_name}")))
+        .and_then(|line| line.split_whitespace().next())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| {
+            // Add the fork remote
+            log::trace!("Adding fork remote: {fork_owner} -> {fork_url}");
+            let add_output = Command::new("git")
+                .args(["remote", "add", fork_owner, &fork_url])
+                .current_dir(repo_path)
+                .output();
+
+            if let Err(e) = &add_output {
+                log::warn!("Failed to add fork remote: {e}");
+            } else if let Ok(out) = &add_output {
+                if !out.status.success() {
+                    let stderr = String::from_utf8_lossy(&out.stderr);
+                    log::warn!("git remote add failed: {stderr}");
+                }
+            }
+
+            fork_owner.to_string()
+        });
+
+    // Fetch the branch from the fork remote
+    log::trace!("Fetching {head_ref_name} from {remote_name}");
+    let fetch_output = Command::new("git")
+        .args(["fetch", &remote_name, head_ref_name])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to fetch from fork: {e}"))?;
+
+    if !fetch_output.status.success() {
+        let stderr = String::from_utf8_lossy(&fetch_output.stderr).to_string();
+        log::warn!("Fetch from fork failed (continuing with push): {stderr}");
+    }
+
+    // Push to the fork remote with --force-with-lease
+    log::trace!("Pushing to {remote_name}/{head_ref_name} --force-with-lease");
+    let push_output = Command::new("git")
+        .args(["push", "--force-with-lease", &remote_name, head_ref_name])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to push to fork: {e}"))?;
+
+    if push_output.status.success() {
+        let stdout = String::from_utf8_lossy(&push_output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&push_output.stderr).to_string();
+        let result = if stdout.is_empty() { stderr } else { stdout };
+        log::trace!("Successfully pushed to {remote_name}/{head_ref_name}");
+        Ok(result)
+    } else {
+        let stderr = String::from_utf8_lossy(&push_output.stderr).to_string();
+        log::error!("Failed to push to {remote_name}/{head_ref_name}: {stderr}");
+        Err(stderr)
+    }
+}
+
 /// Fetch from remote origin (best effort, ignores errors if no remote)
 pub fn fetch_origin(repo_path: &str) -> Result<(), String> {
     log::trace!("Fetching from origin in {repo_path}");

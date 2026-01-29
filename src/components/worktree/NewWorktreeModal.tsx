@@ -577,7 +577,7 @@ export function NewWorktreeModal() {
   return (
     <Dialog open={newWorktreeModalOpen} onOpenChange={handleOpenChange}>
       <DialogContent
-        className="!max-w-[calc(100vw-4rem)] !w-[calc(100vw-4rem)] h-[calc(100vh-4rem)] p-0 flex flex-col"
+        className="!w-[90vw] !max-w-[90vw] !h-[85vh] !max-h-[85vh] p-0 flex flex-col overflow-hidden"
         onKeyDown={handleKeyDown}
       >
         <DialogHeader className="px-4 pt-4 pb-2">
@@ -595,9 +595,10 @@ export function NewWorktreeModal() {
               className={cn(
                 'flex-1 px-4 py-2 text-sm font-medium transition-colors',
                 'hover:bg-accent focus:outline-none',
+                'border-b-2',
                 activeTab === tab.id
-                  ? 'border-b-2 border-primary text-foreground'
-                  : 'text-muted-foreground'
+                  ? 'border-primary text-foreground'
+                  : 'border-transparent text-muted-foreground'
               )}
             >
               {tab.label}

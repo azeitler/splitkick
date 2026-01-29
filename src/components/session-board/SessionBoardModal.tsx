@@ -15,7 +15,7 @@ export function SessionBoardModal() {
 
   return (
     <Dialog open={isOpen} onOpenChange={open => !open && closeSessionBoardModal()}>
-      <DialogContent className="!max-w-[calc(100vw-2rem)] w-full h-[calc(100vh-2rem)] flex flex-col">
+      <DialogContent className="!w-[90vw] !max-w-[90vw] !h-[85vh] !max-h-[85vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle>Session Board</DialogTitle>
         </DialogHeader>

@@ -4267,11 +4267,15 @@ pub async fn git_pull(worktree_path: String, base_branch: String) -> Result<Stri
     git::git_pull(&worktree_path, &base_branch)
 }
 
-/// Push current branch to remote origin
+/// Push current branch to remote. If pr_number is provided, uses PR-aware push
+/// that handles fork remotes and uses --force-with-lease.
 #[tauri::command]
-pub async fn git_push(worktree_path: String) -> Result<String, String> {
-    log::trace!("Pushing changes for worktree: {worktree_path}");
-    git::git_push(&worktree_path)
+pub async fn git_push(worktree_path: String, pr_number: Option<u32>) -> Result<String, String> {
+    log::trace!("Pushing changes for worktree: {worktree_path}, pr_number: {pr_number:?}");
+    match pr_number {
+        Some(pr) => git::git_push_to_pr(&worktree_path, pr),
+        None => git::git_push(&worktree_path),
+    }
 }
 
 // =============================================================================

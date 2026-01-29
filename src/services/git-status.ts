@@ -146,16 +146,18 @@ export async function gitPull(
 }
 
 /**
- * Push current branch to remote origin.
+ * Push current branch to remote. If prNumber is provided, uses PR-aware push
+ * that handles fork remotes and uses --force-with-lease.
  *
  * @param worktreePath - Path to the worktree/repository
+ * @param prNumber - Optional PR number for PR-aware push
  * @returns Output from git push command
  */
-export async function gitPush(worktreePath: string): Promise<string> {
+export async function gitPush(worktreePath: string, prNumber?: number): Promise<string> {
   if (!isTauri()) {
     throw new Error('Git push only available in Tauri')
   }
-  return invoke<string>('git_push', { worktreePath })
+  return invoke<string>('git_push', { worktreePath, prNumber: prNumber ?? null })
 }
 
 /**

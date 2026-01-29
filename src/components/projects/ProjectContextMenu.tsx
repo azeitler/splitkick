@@ -158,14 +158,16 @@ export function ProjectContextMenu({
           Open in Finder
         </ContextMenuItem>
 
-        <ContextMenuItem onClick={handleOpenWorktreesFolder}>
-          <Folder className="mr-2 h-4 w-4" />
-          Open Worktrees Folder
-        </ContextMenuItem>
-
         <ContextMenuItem onClick={handleOpenInTerminal}>
           <Terminal className="mr-2 h-4 w-4" />
           Open in {getTerminalLabel(preferences?.terminal)}
+        </ContextMenuItem>
+
+        <ContextMenuSeparator />
+
+        <ContextMenuItem onClick={handleOpenWorktreesFolder}>
+          <Folder className="mr-2 h-4 w-4" />
+          Open Worktrees Folder
         </ContextMenuItem>
 
         <ContextMenuItem onClick={handleOpenOnGitHub}>
@@ -179,11 +181,12 @@ export function ProjectContextMenu({
           variant="destructive"
           onClick={handleRemoveProject}
           disabled={worktrees.length > 0}
+          className="whitespace-nowrap"
         >
-          <Trash2 className="mr-2 h-4 w-4" />
+          <Trash2 className="mr-2 h-4 w-4 shrink-0" />
           Remove Project
           {worktrees.length > 0 && (
-            <span className="ml-auto text-xs opacity-60">
+            <span className="ml-auto text-xs opacity-60 shrink-0">
               ({worktrees.length} worktrees)
             </span>
           )}

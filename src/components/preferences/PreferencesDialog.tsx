@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { Settings, Palette, Keyboard, Wand2, FlaskConical } from 'lucide-react'
 import {
   Breadcrumb,
@@ -83,20 +83,20 @@ export function PreferencesDialog() {
   // Handle open state change and navigate to specific pane if requested
   const handleOpenChange = useCallback(
     (open: boolean) => {
-      if (open && preferencesPane) {
-        setActivePane(preferencesPane)
-      } else if (!open) {
-        // Reset to general when closing
+      if (!open) {
         setActivePane('general')
       }
       setPreferencesOpen(open)
     },
-    [preferencesPane, setPreferencesOpen]
+    [setPreferencesOpen]
   )
 
-  // Apply requested pane when dialog opens with a specific pane
-  const effectivePane =
-    preferencesOpen && preferencesPane ? preferencesPane : activePane
+  // Sync activePane from preferencesPane when dialog opens to a specific pane
+  useEffect(() => {
+    if (preferencesOpen && preferencesPane) {
+      setActivePane(preferencesPane)
+    }
+  }, [preferencesOpen, preferencesPane])
 
   return (
     <Dialog open={preferencesOpen} onOpenChange={handleOpenChange}>
@@ -116,7 +116,7 @@ export function PreferencesDialog() {
                       <SidebarMenuItem key={item.id}>
                         <SidebarMenuButton
                           asChild
-                          isActive={effectivePane === item.id}
+                          isActive={activePane === item.id}
                         >
                           <button
                             onClick={() => setActivePane(item.id)}
@@ -145,7 +145,7 @@ export function PreferencesDialog() {
                     <BreadcrumbSeparator className="hidden md:block" />
                     <BreadcrumbItem>
                       <BreadcrumbPage>
-                        {getPaneTitle(effectivePane)}
+                        {getPaneTitle(activePane)}
                       </BreadcrumbPage>
                     </BreadcrumbItem>
                   </BreadcrumbList>
@@ -154,11 +154,11 @@ export function PreferencesDialog() {
             </header>
 
             <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4 pt-0 max-h-[calc(85vh-4rem)]">
-              {effectivePane === 'general' && <GeneralPane />}
-              {effectivePane === 'appearance' && <AppearancePane />}
-              {effectivePane === 'keybindings' && <KeybindingsPane />}
-              {effectivePane === 'magic-prompts' && <MagicPromptsPane />}
-              {effectivePane === 'experimental' && <ExperimentalPane />}
+              {activePane === 'general' && <GeneralPane />}
+              {activePane === 'appearance' && <AppearancePane />}
+              {activePane === 'keybindings' && <KeybindingsPane />}
+              {activePane === 'magic-prompts' && <MagicPromptsPane />}
+              {activePane === 'experimental' && <ExperimentalPane />}
             </div>
           </main>
         </SidebarProvider>

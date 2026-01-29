@@ -133,6 +133,29 @@ export function useWorktree(worktreeId: string | null) {
 // ============================================================================
 
 /**
+ * After adding a project, auto-create and open the base session
+ */
+async function openBaseSessionForProject(
+  projectId: string,
+  queryClient: ReturnType<typeof useQueryClient>
+) {
+  try {
+    const session = await invoke<Worktree>('create_base_session', {
+      projectId,
+    })
+    queryClient.invalidateQueries({
+      queryKey: projectsQueryKeys.worktrees(projectId),
+    })
+    const { selectWorktree } = useProjectsStore.getState()
+    selectWorktree(session.id)
+    const { setActiveWorktree } = useChatStore.getState()
+    setActiveWorktree(session.id, session.path)
+  } catch (error) {
+    logger.error('Failed to auto-open base session', { error })
+  }
+}
+
+/**
  * Hook to add a new project
  */
 export function useAddProject() {
@@ -165,6 +188,9 @@ export function useAddProject() {
         expandFolder(parentId)
       }
       expandProject(project.id)
+
+      // Auto-open the base session so the user lands in chat
+      openBaseSessionForProject(project.id, queryClient)
     },
     onError: error => {
       // Tauri invoke errors are thrown as strings, not Error objects
@@ -213,6 +239,9 @@ export function useInitProject() {
         expandFolder(parentId)
       }
       expandProject(project.id)
+
+      // Auto-open the base session so the user lands in chat
+      openBaseSessionForProject(project.id, queryClient)
     },
     onError: error => {
       const message =

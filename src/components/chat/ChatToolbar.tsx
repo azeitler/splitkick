@@ -300,7 +300,7 @@ export const ChatToolbar = memo(function ChatToolbar({
     setIsPushing(true)
     const toastId = toast.loading('Pushing changes...')
     try {
-      await gitPush(activeWorktreePath)
+      await gitPush(activeWorktreePath, prNumber)
       triggerImmediateGitPoll()
       toast.success('Changes pushed', { id: toastId })
     } catch (error) {
@@ -308,7 +308,7 @@ export const ChatToolbar = memo(function ChatToolbar({
     } finally {
       setIsPushing(false)
     }
-  }, [activeWorktreePath, baseBranch, worktreeId])
+  }, [activeWorktreePath, prNumber])
 
   const handleUncommittedDiffClick = useCallback(() => {
     onSetDiffRequest({

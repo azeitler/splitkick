@@ -363,14 +363,14 @@ export function WorktreeItem({
       e.stopPropagation()
       const toastId = toast.loading('Pushing changes...')
       try {
-        await gitPush(worktree.path)
+        await gitPush(worktree.path, worktree.pr_number)
         fetchWorktreesStatus(projectId)
         toast.success('Changes pushed', { id: toastId })
       } catch (error) {
         toast.error(`Push failed: ${error}`, { id: toastId })
       }
     },
-    [worktree.path, projectId]
+    [worktree.path, worktree.pr_number, projectId]
   )
 
   return (

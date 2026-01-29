@@ -3,6 +3,9 @@ import { ChatWindow } from '@/components/chat'
 import { WorktreeDashboard } from '@/components/dashboard'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
+import { useProjects } from '@/services/projects'
+import { Button } from '@/components/ui/button'
+import { Plus } from 'lucide-react'
 
 interface MainWindowContentProps {
   children?: React.ReactNode
@@ -15,6 +18,10 @@ export function MainWindowContent({
 }: MainWindowContentProps) {
   const activeWorktreePath = useChatStore(state => state.activeWorktreePath)
   const selectedProjectId = useProjectsStore(state => state.selectedProjectId)
+  const setAddProjectDialogOpen = useProjectsStore(
+    state => state.setAddProjectDialogOpen
+  )
+  const { data: projects = [] } = useProjects()
 
   return (
     <div
@@ -29,10 +36,20 @@ export function MainWindowContent({
         <WorktreeDashboard projectId={selectedProjectId} />
       ) : (
         children || (
-          <div className="flex flex-1 items-center justify-center font-sans">
+          <div className="flex flex-1 flex-col items-center justify-center gap-4 font-sans">
             <h1 className="text-4xl font-bold text-foreground">
               Welcome to Jean!
             </h1>
+            {projects.length === 0 && (
+              <Button
+                variant="outline"
+                size="lg"
+                onClick={() => setAddProjectDialogOpen(true)}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Add Your First Project
+              </Button>
+            )}
           </div>
         )
       )}
