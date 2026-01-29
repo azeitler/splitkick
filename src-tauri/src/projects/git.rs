@@ -519,7 +519,7 @@ pub fn git_push_to_pr(repo_path: &str, pr_number: u32) -> Result<String, String>
     log::trace!("Pushing to PR #{pr_number} remote branch in {repo_path}");
 
     // 1. Query PR info from GitHub
-    let gh_output = Command::new("gh")
+    let gh_output = silent_command("gh")
         .args([
             "pr",
             "view",
@@ -548,7 +548,7 @@ pub fn git_push_to_pr(repo_path: &str, pr_number: u32) -> Result<String, String>
     if !is_cross_repository {
         // Same-repo PR: push to origin with --force-with-lease
         log::trace!("Same-repo PR, pushing to origin/{head_ref_name}");
-        let output = Command::new("git")
+        let output = silent_command("git")
             .args(["push", "--force-with-lease", "origin", head_ref_name])
             .current_dir(repo_path)
             .output()
@@ -578,7 +578,7 @@ pub fn git_push_to_pr(repo_path: &str, pr_number: u32) -> Result<String, String>
     log::trace!("Fork PR from {fork_owner}/{fork_repo_name}, branch {head_ref_name}");
 
     // Determine URL scheme from origin
-    let origin_url_output = Command::new("git")
+    let origin_url_output = silent_command("git")
         .args(["remote", "get-url", "origin"])
         .current_dir(repo_path)
         .output()
@@ -594,7 +594,7 @@ pub fn git_push_to_pr(repo_path: &str, pr_number: u32) -> Result<String, String>
     log::trace!("Fork URL: {fork_url}");
 
     // Check if a remote for this fork already exists
-    let remotes_output = Command::new("git")
+    let remotes_output = silent_command("git")
         .args(["remote", "-v"])
         .current_dir(repo_path)
         .output()
@@ -609,7 +609,7 @@ pub fn git_push_to_pr(repo_path: &str, pr_number: u32) -> Result<String, String>
         .unwrap_or_else(|| {
             // Add the fork remote
             log::trace!("Adding fork remote: {fork_owner} -> {fork_url}");
-            let add_output = Command::new("git")
+            let add_output = silent_command("git")
                 .args(["remote", "add", fork_owner, &fork_url])
                 .current_dir(repo_path)
                 .output();
@@ -628,7 +628,7 @@ pub fn git_push_to_pr(repo_path: &str, pr_number: u32) -> Result<String, String>
 
     // Fetch the branch from the fork remote
     log::trace!("Fetching {head_ref_name} from {remote_name}");
-    let fetch_output = Command::new("git")
+    let fetch_output = silent_command("git")
         .args(["fetch", &remote_name, head_ref_name])
         .current_dir(repo_path)
         .output()
@@ -641,7 +641,7 @@ pub fn git_push_to_pr(repo_path: &str, pr_number: u32) -> Result<String, String>
 
     // Push to the fork remote with --force-with-lease
     log::trace!("Pushing to {remote_name}/{head_ref_name} --force-with-lease");
-    let push_output = Command::new("git")
+    let push_output = silent_command("git")
         .args(["push", "--force-with-lease", &remote_name, head_ref_name])
         .current_dir(repo_path)
         .output()
