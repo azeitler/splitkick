@@ -1,4 +1,5 @@
 import { useMemo, useCallback, useRef, useEffect, useState, lazy, Suspense } from 'react'
+import { cn } from '@/lib/utils'
 import { TitleBar } from '@/components/titlebar/TitleBar'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { DevModeBanner } from './DevModeBanner'
@@ -132,10 +133,14 @@ const CloseWorktreeDialog = lazy(() =>
 )
 import { FloatingDock } from '@/components/ui/floating-dock'
 import { Toaster } from '@/components/ui/sonner'
+import { useWindowMaximized } from '@/hooks/use-window-maximized'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useMainWindowEventListeners } from '@/hooks/useMainWindowEventListeners'
-import { useCloseSessionOrWorktreeKeybinding } from '@/services/chat'
+import {
+  useCloseSessionOrWorktreeKeybinding,
+  useSessions,
+} from '@/services/chat'
 import { useUIStatePersistence } from '@/hooks/useUIStatePersistence'
 import { useSessionStatePersistence } from '@/hooks/useSessionStatePersistence'
 import { useSessionPrefetch } from '@/hooks/useSessionPrefetch'
@@ -154,7 +159,10 @@ import {
   useCreateWorktreeKeybinding,
   useWorktreeEvents,
 } from '@/services/projects'
+import { usePreferences } from '@/services/preferences'
+import { useChatStore } from '@/store/chat-store'
 import { isNativeApp } from '@/lib/environment'
+import { isWindows } from '@/lib/platform'
 
 // Left sidebar resize constraints (pixels)
 const MIN_SIDEBAR_WIDTH = 150
@@ -173,6 +181,7 @@ function useRetainedMount(active: boolean) {
 }
 
 export function MainWindow() {
+  const isMaximized = useWindowMaximized()
   const leftSidebarVisible = useUIStore(state => state.leftSidebarVisible)
   const leftSidebarSize = useUIStore(state => state.leftSidebarSize)
   const setLeftSidebarSize = useUIStore(state => state.setLeftSidebarSize)
@@ -212,6 +221,22 @@ export function MainWindow() {
     ? projects?.find(p => p.id === worktree.project_id)
     : null
 
+  // Fetch preferences and session data for title
+  const { data: preferences } = usePreferences()
+  const { data: sessionsData } = useSessions(
+    selectedWorktreeId ?? null,
+    worktree?.path ?? null
+  )
+  const activeSessionId = useChatStore(state =>
+    selectedWorktreeId ? state.activeSessionIds[selectedWorktreeId] : undefined
+  )
+
+  // Find active session name
+  const activeSessionName = useMemo(() => {
+    if (!sessionsData?.sessions || !activeSessionId) return undefined
+    return sessionsData.sessions.find(s => s.id === activeSessionId)?.name
+  }, [sessionsData?.sessions, activeSessionId])
+
   // Compute window title based on selected project/worktree
   // On mobile, show only project name (worktree name is in the content header)
   const windowTitle = useMemo(() => {
@@ -220,8 +245,13 @@ export function MainWindow() {
     const branchSuffix =
       worktree.branch !== worktree.name ? ` (${worktree.branch})` : ''
 
+    // Add session name when grouping enabled
+    if (preferences?.session_grouping_enabled && activeSessionName) {
+      return `${project.name} › ${worktree.name} › ${activeSessionName}`
+    }
+
     return `${project.name} › ${worktree.name}${branchSuffix}`
-  }, [project, worktree, isMobile])
+  }, [project, worktree, isMobile, preferences?.session_grouping_enabled, activeSessionName])
 
   // Compute polling info - null if no worktree or data not loaded
   const pollingInfo: WorktreePollingInfo | null = useMemo(() => {
@@ -374,9 +404,18 @@ export function MainWindow() {
   const shouldRenderCloseWorktreeDialog = useRetainedMount(closeConfirmOpen)
   const shouldRenderGitHubDashboardModal = useRetainedMount(githubDashboardOpen)
 
+  // On Windows, use smaller border radius and remove it when maximized
+  // On other platforms, use rounded-xl only in native app mode
+  const roundedClass = isWindows
+    ? (!isMaximized && 'rounded-sm')
+    : (isNativeApp() && 'rounded-xl')
+
   return (
     <div
-      className={`flex h-dvh w-full flex-col overflow-hidden bg-background ${isNativeApp() ? 'rounded-xl' : ''}`}
+      className={cn(
+        'flex h-dvh w-full flex-col overflow-hidden bg-background',
+        roundedClass
+      )}
     >
       {/* Title Bar - semi-transparent overlay */}
       <TitleBar title={windowTitle} className="absolute top-0 left-0 right-0" />
