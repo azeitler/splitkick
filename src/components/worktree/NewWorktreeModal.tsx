@@ -13,6 +13,9 @@ import {
   Wand2,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { isGhAuthError } from '@/services/github'
+import { useGhLogin } from '@/hooks/useGhLogin'
+import { GhAuthError } from '@/components/shared/GhAuthError'
 import {
   Dialog,
   DialogContent,
@@ -62,6 +65,7 @@ const TABS: Tab[] = [
 
 export function NewWorktreeModal() {
   const queryClient = useQueryClient()
+  const { triggerLogin: triggerGhLogin, isGhInstalled } = useGhLogin()
   const { newWorktreeModalOpen, setNewWorktreeModalOpen } = useUIStore()
   const selectedProjectId = useProjectsStore(state => state.selectedProjectId)
 
@@ -603,7 +607,7 @@ export function NewWorktreeModal() {
             >
               {tab.label}
               <kbd className="ml-2 text-xs text-muted-foreground bg-muted px-1 py-0.5 rounded">
-                ⌘+{tab.key}
+                {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+{tab.key}
               </kbd>
             </button>
           ))}
@@ -638,6 +642,8 @@ export function NewWorktreeModal() {
               onInvestigateIssue={handleSelectIssueAndInvestigate}
               creatingFromNumber={creatingFromNumber}
               searchInputRef={searchInputRef}
+              onGhLogin={triggerGhLogin}
+              isGhInstalled={isGhInstalled}
             />
           )}
 
@@ -659,6 +665,8 @@ export function NewWorktreeModal() {
               onInvestigatePR={handleSelectPRAndInvestigate}
               creatingFromNumber={creatingFromNumber}
               searchInputRef={searchInputRef}
+              onGhLogin={triggerGhLogin}
+              isGhInstalled={isGhInstalled}
             />
           )}
         </div>
@@ -748,6 +756,8 @@ interface GitHubIssuesTabProps {
   onInvestigateIssue: (issue: GitHubIssue) => void
   creatingFromNumber: number | null
   searchInputRef: React.RefObject<HTMLInputElement | null>
+  onGhLogin: () => void
+  isGhInstalled: boolean
 }
 
 function GitHubIssuesTab({
@@ -767,6 +777,8 @@ function GitHubIssuesTab({
   onInvestigateIssue,
   creatingFromNumber,
   searchInputRef,
+  onGhLogin,
+  isGhInstalled,
 }: GitHubIssuesTabProps) {
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -830,12 +842,16 @@ function GitHubIssuesTab({
         )}
 
         {error && (
-          <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
-            <AlertCircle className="h-5 w-5 text-destructive mb-2" />
-            <span className="text-sm text-muted-foreground">
-              {error.message || 'Failed to load issues'}
-            </span>
-          </div>
+          isGhAuthError(error) ? (
+            <GhAuthError onLogin={onGhLogin} isGhInstalled={isGhInstalled} />
+          ) : (
+            <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
+              <AlertCircle className="h-5 w-5 text-destructive mb-2" />
+              <span className="text-sm text-muted-foreground">
+                {error.message || 'Failed to load issues'}
+              </span>
+            </div>
+          )
         )}
 
         {!isLoading && !error && issues.length === 0 && !isSearching && (
@@ -901,6 +917,8 @@ interface GitHubPRsTabProps {
   onInvestigatePR: (pr: GitHubPullRequest) => void
   creatingFromNumber: number | null
   searchInputRef: React.RefObject<HTMLInputElement | null>
+  onGhLogin: () => void
+  isGhInstalled: boolean
 }
 
 function GitHubPRsTab({
@@ -920,6 +938,8 @@ function GitHubPRsTab({
   onInvestigatePR,
   creatingFromNumber,
   searchInputRef,
+  onGhLogin,
+  isGhInstalled,
 }: GitHubPRsTabProps) {
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -983,12 +1003,16 @@ function GitHubPRsTab({
         )}
 
         {error && (
-          <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
-            <AlertCircle className="h-5 w-5 text-destructive mb-2" />
-            <span className="text-sm text-muted-foreground">
-              {error.message || 'Failed to load pull requests'}
-            </span>
-          </div>
+          isGhAuthError(error) ? (
+            <GhAuthError onLogin={onGhLogin} isGhInstalled={isGhInstalled} />
+          ) : (
+            <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
+              <AlertCircle className="h-5 w-5 text-destructive mb-2" />
+              <span className="text-sm text-muted-foreground">
+                {error.message || 'Failed to load pull requests'}
+              </span>
+            </div>
+          )
         )}
 
         {!isLoading && !error && prs.length === 0 && !isSearching && (

@@ -9,7 +9,7 @@ export const windowCommands: AppCommand[] = [
     description: 'Close the current window',
     icon: X,
     group: 'window',
-    shortcut: '⌘+W',
+    shortcut: 'mod+w',
 
     execute: async context => {
       try {
@@ -28,7 +28,7 @@ export const windowCommands: AppCommand[] = [
     description: 'Minimize the current window',
     icon: Minus,
     group: 'window',
-    shortcut: '⌘+M',
+    shortcut: 'mod+m',
 
     execute: async context => {
       try {

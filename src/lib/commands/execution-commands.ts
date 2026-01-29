@@ -60,7 +60,7 @@ export const executionCommands: AppCommand[] = [
     description: 'Cycle through Plan, Build, and Yolo modes',
     icon: RefreshCw,
     group: 'execution',
-    shortcut: '⇧+Tab',
+    shortcut: 'shift+tab',
     keywords: ['execution', 'mode', 'cycle', 'toggle', 'switch'],
 
     execute: context => {

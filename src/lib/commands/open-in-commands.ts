@@ -77,7 +77,7 @@ export const openInCommands: AppCommand[] = [
     description: 'Show all Open In options',
     icon: MoreHorizontal,
     group: 'open-in',
-    shortcut: '⌘+O',
+    shortcut: 'mod+o',
     keywords: ['open', 'modal', 'options'],
 
     execute: context => {

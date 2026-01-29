@@ -74,7 +74,10 @@ export function TitleBar({ className, title = 'Jean' }: TitleBarProps) {
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              Settings <kbd className="ml-1 text-[0.625rem] opacity-60">⌘,</kbd>
+              Settings <kbd className="ml-1 text-[0.625rem] opacity-60">{formatShortcutDisplay(
+                (preferences?.keybindings?.open_preferences ||
+                  DEFAULT_KEYBINDINGS.open_preferences) as string
+              )}</kbd>
             </TooltipContent>
           </Tooltip>
         </div>

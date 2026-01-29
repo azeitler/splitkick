@@ -16,6 +16,9 @@ import {
   Eye,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { isGhAuthError } from '@/services/github'
+import { useGhLogin } from '@/hooks/useGhLogin'
+import { GhAuthError } from '@/components/shared/GhAuthError'
 import {
   Dialog,
   DialogContent,
@@ -115,6 +118,7 @@ export function LoadContextModal({
   projectName: _projectName,
 }: LoadContextModalProps) {
   const queryClient = useQueryClient()
+  const { triggerLogin: triggerGhLogin, isGhInstalled } = useGhLogin()
   const { data: preferences } = usePreferences()
 
   // Tab state
@@ -911,7 +915,7 @@ export function LoadContextModal({
             >
               {tab.label}
               <kbd className="ml-2 text-xs text-muted-foreground bg-muted px-1 py-0.5 rounded">
-                ⌘+{tab.key}
+                {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+{tab.key}
               </kbd>
             </button>
           ))}
@@ -943,6 +947,8 @@ export function LoadContextModal({
               onRemoveItem={handleRemoveIssue}
               onViewItem={handleViewIssue}
               hasLoadedContexts={hasLoadedIssueContexts}
+              onGhLogin={triggerGhLogin}
+              isGhInstalled={isGhInstalled}
             />
           )}
 
@@ -970,6 +976,8 @@ export function LoadContextModal({
               onRemoveItem={handleRemovePR}
               onViewItem={handleViewPR}
               hasLoadedContexts={hasLoadedPRContexts}
+              onGhLogin={triggerGhLogin}
+              isGhInstalled={isGhInstalled}
             />
           )}
 
@@ -1068,6 +1076,8 @@ interface IssuesTabProps {
   onRemoveItem: (num: number) => void
   onViewItem: (ctx: LoadedIssueContext) => void
   hasLoadedContexts: boolean
+  onGhLogin: () => void
+  isGhInstalled: boolean
 }
 
 function IssuesTab({
@@ -1093,6 +1103,8 @@ function IssuesTab({
   onRemoveItem,
   onViewItem,
   hasLoadedContexts,
+  onGhLogin,
+  isGhInstalled,
 }: IssuesTabProps) {
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -1185,12 +1197,16 @@ function IssuesTab({
         )}
 
         {error && (
-          <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
-            <AlertCircle className="h-5 w-5 text-destructive mb-2" />
-            <span className="text-sm text-muted-foreground">
-              {error.message || 'Failed to load issues'}
-            </span>
-          </div>
+          isGhAuthError(error) ? (
+            <GhAuthError onLogin={onGhLogin} isGhInstalled={isGhInstalled} />
+          ) : (
+            <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
+              <AlertCircle className="h-5 w-5 text-destructive mb-2" />
+              <span className="text-sm text-muted-foreground">
+                {error.message || 'Failed to load issues'}
+              </span>
+            </div>
+          )
         )}
 
         {!isLoading && !error && filteredItems.length === 0 && !isSearching && (
@@ -1269,6 +1285,8 @@ interface PullRequestsTabProps {
   onRemoveItem: (num: number) => void
   onViewItem: (ctx: LoadedPullRequestContext) => void
   hasLoadedContexts: boolean
+  onGhLogin: () => void
+  isGhInstalled: boolean
 }
 
 function PullRequestsTab({
@@ -1294,6 +1312,8 @@ function PullRequestsTab({
   onRemoveItem,
   onViewItem,
   hasLoadedContexts,
+  onGhLogin,
+  isGhInstalled,
 }: PullRequestsTabProps) {
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -1386,12 +1406,16 @@ function PullRequestsTab({
         )}
 
         {error && (
-          <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
-            <AlertCircle className="h-5 w-5 text-destructive mb-2" />
-            <span className="text-sm text-muted-foreground">
-              {error.message || 'Failed to load pull requests'}
-            </span>
-          </div>
+          isGhAuthError(error) ? (
+            <GhAuthError onLogin={onGhLogin} isGhInstalled={isGhInstalled} />
+          ) : (
+            <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
+              <AlertCircle className="h-5 w-5 text-destructive mb-2" />
+              <span className="text-sm text-muted-foreground">
+                {error.message || 'Failed to load pull requests'}
+              </span>
+            </div>
+          )
         )}
 
         {!isLoading && !error && filteredItems.length === 0 && !isSearching && (

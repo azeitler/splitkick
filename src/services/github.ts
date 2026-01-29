@@ -12,6 +12,30 @@ import type {
 } from '@/types/github'
 import { isTauri } from './projects'
 
+/**
+ * Check if an error is a GitHub CLI setup/authentication error.
+ *
+ * Matches:
+ * - Auth errors: "GitHub CLI not authenticated. Run 'gh auth login' first."
+ * - Not found: "Failed to run gh issue list: The system cannot find the file specified."
+ * - Generic gh failures that indicate setup issues
+ */
+export function isGhAuthError(error: unknown): boolean {
+  if (!error) return false
+  const message = error instanceof Error ? error.message : String(error)
+  const lower = message.toLowerCase()
+
+  if (import.meta.env.DEV) {
+    console.log('[isGhAuthError] error type:', typeof error, 'message:', message)
+  }
+
+  return (
+    lower.includes('not authenticated') ||
+    lower.includes('gh auth login') ||
+    lower.includes('failed to run gh')
+  )
+}
+
 // Query keys for GitHub
 export const githubQueryKeys = {
   all: ['github'] as const,

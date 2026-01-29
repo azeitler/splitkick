@@ -18,10 +18,18 @@ Jean (Claude haha) is an AI assistant application that helps you to manage multi
 ![Diff View](screenshots/SCR-20260123-oaxs.png)
 ![Plan Mode](screenshots/SCR-20260123-oazz.png)
 
+# Prerequisites
+
+- [Node.js](https://nodejs.org/)
+- [Rust](https://www.rust-lang.org/tools/install)
+- **Windows only**: In the Visual Studio Installer, ensure the **"Desktop development with C++"** workload is selected, which includes:
+  - MSVC C++ build tools
+  - Windows SDK (provides `kernel32.lib` and other system libraries required by Rust)
+
 # Platform Support
 
-- **macOS**: Tested ✓
-- **Windows**: Not tested
+- **macOS**: Tested
+- **Windows**: Tested
 - **Linux**: Not tested
 
 # Roadmap
