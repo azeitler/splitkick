@@ -1,6 +1,7 @@
 import { X, Minus, Maximize2, Maximize, Minimize2 } from 'lucide-react'
 import type { AppCommand } from './types'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { invoke } from '@tauri-apps/api/core'
 
 export const windowCommands: AppCommand[] = [
   {
@@ -13,8 +14,30 @@ export const windowCommands: AppCommand[] = [
 
     execute: async context => {
       try {
-        const appWindow = getCurrentWindow()
-        await appWindow.close()
+        // In production, check for running sessions before closing.
+        // We handle this here (not in onCloseRequested) because
+        // Tauri's async onCloseRequested handler can silently fail on Windows.
+        if (!import.meta.env.DEV) {
+          try {
+            const hasRunning = await Promise.race([
+              invoke<boolean>('has_running_sessions'),
+              new Promise<boolean>((_, reject) =>
+                setTimeout(() => reject(new Error('timeout')), 2000)
+              ),
+            ])
+            if (hasRunning) {
+              window.dispatchEvent(new CustomEvent('quit-confirmation-requested'))
+              return
+            }
+          } catch {
+            // Fail open: if we can't check, allow quit
+          }
+        }
+
+        // Use destroy() to bypass onCloseRequested entirely.
+        // This avoids the Windows issue where close() + async onCloseRequested
+        // silently prevents the window from closing.
+        await getCurrentWindow().destroy()
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
         context.showToast(`Failed to close window: ${message}`, 'error')
