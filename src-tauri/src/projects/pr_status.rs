@@ -1,6 +1,6 @@
-use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::platform::silent_command;
 use serde::{Deserialize, Serialize};
 
 /// PR state from GitHub API
@@ -94,7 +94,7 @@ pub fn get_pr_status(
     log::trace!("Fetching PR status for #{pr_number} in {repo_path}");
 
     // Run gh pr view
-    let output = Command::new(gh_binary)
+    let output = silent_command(gh_binary)
         .args([
             "pr",
             "view",

@@ -232,3 +232,35 @@ toast.success('PR created', {
   },
 })
 ```
+
+#### Windows Console Window Flash Prevention
+
+**CRITICAL:** On Windows, every `std::process::Command::new()` call opens a visible console window that briefly flashes on screen unless `CREATE_NO_WINDOW` (0x08000000) is set via `creation_flags()`.
+
+**Use `silent_command()` for all background operations:**
+
+```rust
+use crate::platform::silent_command;
+
+// ✅ GOOD: No console window flash
+let output = silent_command("git")
+    .args(["status", "--porcelain"])
+    .current_dir(repo_path)
+    .output()?;
+
+// ❌ BAD: Flashes a console window on Windows
+let output = Command::new("git")
+    .args(["status", "--porcelain"])
+    .current_dir(repo_path)
+    .output()?;
+```
+
+**Keep `Command::new()` ONLY for commands that intentionally open UI:**
+- File managers: `open`, `explorer`, `xdg-open`
+- Terminals: `wt`, `powershell`, `cmd`, terminal emulators
+- Editors: `code`, `cursor`, `xed`
+- macOS automation: `osascript`
+
+**For detached processes** that need both `CREATE_NO_WINDOW` and `CREATE_NEW_PROCESS_GROUP`: use `silent_command()` but re-set both flags via `creation_flags()` (it replaces, doesn't merge).
+
+The helper is defined in `src-tauri/src/platform/process.rs` and exported via `pub use process::*` in `platform/mod.rs`.

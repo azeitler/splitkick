@@ -383,7 +383,8 @@ fn build_claude_args(
                         combined_content.push_str(&format!("- {} GitHub Issue(s)\n", issue_count));
                     }
                     if pr_count > 0 {
-                        combined_content.push_str(&format!("- {} GitHub Pull Request(s)\n", pr_count));
+                        combined_content
+                            .push_str(&format!("- {} GitHub Pull Request(s)\n", pr_count));
                     }
                     if saved_context_count > 0 {
                         combined_content
@@ -749,7 +750,7 @@ pub fn tail_claude_output(
                                             }
                                             #[cfg(windows)]
                                             {
-                                                let _ = std::process::Command::new("taskkill")
+                                                let _ = crate::platform::silent_command("taskkill")
                                                     .args(["/F", "/PID", &pid.to_string()])
                                                     .output();
                                             }

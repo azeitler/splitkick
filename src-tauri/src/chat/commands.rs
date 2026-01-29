@@ -1,6 +1,6 @@
 use std::io::Write;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use tauri::{AppHandle, Manager};
@@ -18,6 +18,7 @@ use super::types::{
     Session, ThinkingLevel, WorktreeSessions,
 };
 use crate::claude_cli::get_cli_binary_path;
+use crate::platform::silent_command;
 use crate::projects::storage::load_projects_data;
 use crate::projects::types::SessionType;
 
@@ -1458,8 +1459,8 @@ pub async fn save_dropped_image(
     }
 
     // Check file size
-    let metadata = std::fs::metadata(&source)
-        .map_err(|e| format!("Failed to read file metadata: {e}"))?;
+    let metadata =
+        std::fs::metadata(&source).map_err(|e| format!("Failed to read file metadata: {e}"))?;
 
     if metadata.len() as usize > MAX_IMAGE_SIZE {
         return Err(format!(
@@ -1473,7 +1474,11 @@ pub async fn save_dropped_image(
     let images_dir = get_images_dir(&app)?;
 
     // Generate unique filename (normalize jpeg to jpg)
-    let normalized_ext = if extension == "jpeg" { "jpg" } else { &extension };
+    let normalized_ext = if extension == "jpeg" {
+        "jpg"
+    } else {
+        &extension
+    };
     let timestamp = now();
     let short_uuid = &Uuid::new_v4().to_string()[..8];
     let filename = format!("image-{timestamp}-{short_uuid}.{normalized_ext}");
@@ -1481,8 +1486,7 @@ pub async fn save_dropped_image(
 
     // Copy file atomically (copy to temp, then rename)
     let temp_path = dest_path.with_extension("tmp");
-    std::fs::copy(&source, &temp_path)
-        .map_err(|e| format!("Failed to copy image file: {e}"))?;
+    std::fs::copy(&source, &temp_path).map_err(|e| format!("Failed to copy image file: {e}"))?;
 
     std::fs::rename(&temp_path, &dest_path)
         .map_err(|e| format!("Failed to finalize image file: {e}"))?;
@@ -1774,10 +1778,7 @@ pub async fn write_file_content(path: String, content: String) -> Result<(), Str
 ///
 /// Uses the editor preference (vscode, cursor, xcode) to open files.
 #[tauri::command]
-pub async fn open_file_in_default_app(
-    path: String,
-    editor: Option<String>,
-) -> Result<(), String> {
+pub async fn open_file_in_default_app(path: String, editor: Option<String>) -> Result<(), String> {
     let editor_app = editor.unwrap_or_else(|| "vscode".to_string());
     log::trace!("Opening file in {editor_app}: {path}");
 
@@ -2306,7 +2307,7 @@ fn execute_summarization_claude(
     log::trace!("Executing one-shot Claude summarization with JSON schema");
 
     let model_str = model.unwrap_or("opus");
-    let mut cmd = Command::new(&cli_path);
+    let mut cmd = silent_command(&cli_path);
     cmd.args([
         "--print",
         "--input-format",
@@ -2833,7 +2834,7 @@ fn execute_digest_claude(
 
     log::trace!("Executing one-shot Claude digest with JSON schema");
 
-    let mut cmd = Command::new(&cli_path);
+    let mut cmd = silent_command(&cli_path);
     cmd.args([
         "--print",
         "--input-format",

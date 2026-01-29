@@ -1,5 +1,5 @@
+use crate::platform::silent_command;
 use std::path::Path;
-use std::process::Command;
 
 use serde::{Deserialize, Serialize};
 
@@ -105,7 +105,7 @@ pub fn init_repo(path: &str) -> Result<(), String> {
     let git_path = path_obj.join(".git");
     if git_path.exists() {
         // Check if it has any commits
-        let has_commits = Command::new("git")
+        let has_commits = silent_command("git")
             .args(["rev-parse", "HEAD"])
             .current_dir(path)
             .output()
@@ -119,7 +119,7 @@ pub fn init_repo(path: &str) -> Result<(), String> {
         log::trace!("Git repo exists but has no commits, will create initial commit");
     } else {
         // Run git init
-        let output = Command::new("git")
+        let output = silent_command("git")
             .args(["init"])
             .current_dir(path)
             .output()
@@ -136,7 +136,7 @@ pub fn init_repo(path: &str) -> Result<(), String> {
     std::fs::write(&gitkeep_path, "").map_err(|e| format!("Failed to create .gitkeep: {e}"))?;
 
     // Stage the file
-    let add_output = Command::new("git")
+    let add_output = silent_command("git")
         .args(["add", ".gitkeep"])
         .current_dir(path)
         .output()
@@ -148,7 +148,7 @@ pub fn init_repo(path: &str) -> Result<(), String> {
     }
 
     // Create initial commit
-    let commit_output = Command::new("git")
+    let commit_output = silent_command("git")
         .args(["commit", "-m", "jean's init vibe commit"])
         .current_dir(path)
         .output()
@@ -182,7 +182,7 @@ pub fn get_repo_name(path: &str) -> Result<String, String> {
 ///
 /// Converts git remote URLs to HTTPS GitHub URLs
 pub fn get_github_url(repo_path: &str) -> Result<String, String> {
-    let output = Command::new("git")
+    let output = silent_command("git")
         .args(["remote", "get-url", "origin"])
         .current_dir(repo_path)
         .output()
@@ -216,7 +216,7 @@ pub fn get_github_url(repo_path: &str) -> Result<String, String> {
 
 /// Get the current branch name (HEAD) for a repository
 pub fn get_current_branch(repo_path: &str) -> Result<String, String> {
-    let output = Command::new("git")
+    let output = silent_command("git")
         .args(["rev-parse", "--abbrev-ref", "HEAD"])
         .current_dir(repo_path)
         .output()
@@ -233,7 +233,7 @@ pub fn get_current_branch(repo_path: &str) -> Result<String, String> {
 
 /// Check if a branch exists in a repository
 pub fn branch_exists(repo_path: &str, branch_name: &str) -> bool {
-    Command::new("git")
+    silent_command("git")
         .args([
             "rev-parse",
             "--verify",
@@ -247,7 +247,7 @@ pub fn branch_exists(repo_path: &str, branch_name: &str) -> bool {
 
 /// Check if a repository has any commits
 pub fn has_commits(repo_path: &str) -> bool {
-    Command::new("git")
+    silent_command("git")
         .args(["rev-parse", "HEAD"])
         .current_dir(repo_path)
         .output()
@@ -300,7 +300,7 @@ pub fn rename_branch(repo_path: &str, new_name: &str) -> Result<String, String> 
     log::trace!("Renaming current branch to {new_name} in {repo_path}");
 
     // First check if we're in detached HEAD state
-    let head_check = Command::new("git")
+    let head_check = silent_command("git")
         .args(["symbolic-ref", "--short", "HEAD"])
         .current_dir(repo_path)
         .output()
@@ -321,7 +321,7 @@ pub fn rename_branch(repo_path: &str, new_name: &str) -> Result<String, String> 
     }
 
     // Check if target branch name already exists
-    let branch_exists = Command::new("git")
+    let branch_exists = silent_command("git")
         .args(["rev-parse", "--verify", &format!("refs/heads/{}", new_name)])
         .current_dir(repo_path)
         .output()
@@ -336,7 +336,7 @@ pub fn rename_branch(repo_path: &str, new_name: &str) -> Result<String, String> 
     };
 
     // Perform the rename
-    let output = Command::new("git")
+    let output = silent_command("git")
         .args(["branch", "-m", &final_name])
         .current_dir(repo_path)
         .output()
@@ -364,7 +364,7 @@ fn find_unique_branch_name(repo_path: &str, base_name: &str) -> Result<String, S
             .collect();
 
         let candidate = format!("{base_name}-{suffix}");
-        let exists = Command::new("git")
+        let exists = silent_command("git")
             .args(["rev-parse", "--verify", &format!("refs/heads/{candidate}")])
             .current_dir(repo_path)
             .output()
@@ -381,7 +381,7 @@ fn find_unique_branch_name(repo_path: &str, base_name: &str) -> Result<String, S
 
 /// Get list of local branches for a repository
 pub fn get_branches(repo_path: &str) -> Result<Vec<String>, String> {
-    let output = Command::new("git")
+    let output = silent_command("git")
         .args(["branch", "--format=%(refname:short)"])
         .current_dir(repo_path)
         .output()
@@ -408,7 +408,7 @@ pub fn git_pull(repo_path: &str, base_branch: &str) -> Result<String, String> {
     // Use explicit fetch + merge instead of `git pull` to avoid
     // "Cannot rebase onto multiple branches" when pull.rebase=true
     // is set in git config (common in worktree contexts)
-    let fetch = Command::new("git")
+    let fetch = silent_command("git")
         .args(["fetch", "origin", base_branch])
         .current_dir(repo_path)
         .output()
@@ -420,7 +420,7 @@ pub fn git_pull(repo_path: &str, base_branch: &str) -> Result<String, String> {
         return Err(stderr);
     }
 
-    let merge = Command::new("git")
+    let merge = silent_command("git")
         .args(["merge", &format!("origin/{base_branch}")])
         .current_dir(repo_path)
         .output()
@@ -436,14 +436,16 @@ pub fn git_pull(repo_path: &str, base_branch: &str) -> Result<String, String> {
 
         // Check for merge conflicts (git reports these on stdout)
         if stdout_str.contains("CONFLICT") || stdout_str.contains("Automatic merge failed") {
-            let conflicts = Command::new("git")
+            let conflicts = silent_command("git")
                 .args(["diff", "--name-only", "--diff-filter=U"])
                 .current_dir(repo_path)
                 .output()
                 .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
                 .unwrap_or_default();
 
-            let msg = format!("Merge conflicts in: {conflicts}. Resolve manually or run 'git merge --abort'");
+            let msg = format!(
+                "Merge conflicts in: {conflicts}. Resolve manually or run 'git merge --abort'"
+            );
             log::warn!("Merge conflicts during pull: {conflicts}");
             return Err(msg);
         }
@@ -463,7 +465,7 @@ pub fn git_pull(repo_path: &str, base_branch: &str) -> Result<String, String> {
 pub fn git_push(repo_path: &str) -> Result<String, String> {
     log::trace!("Pushing to origin in {repo_path}");
 
-    let output = Command::new("git")
+    let output = silent_command("git")
         .args(["push"])
         .current_dir(repo_path)
         .output()
@@ -482,7 +484,7 @@ pub fn git_push(repo_path: &str) -> Result<String, String> {
         // Check if branch doesn't have upstream yet (same pattern as rebase_feature_branch)
         if stderr.contains("has no upstream branch") {
             log::trace!("No upstream branch, retrying with -u origin HEAD");
-            let push_u_output = Command::new("git")
+            let push_u_output = silent_command("git")
                 .args(["push", "-u", "origin", "HEAD"])
                 .current_dir(repo_path)
                 .output()
@@ -662,7 +664,7 @@ pub fn git_push_to_pr(repo_path: &str, pr_number: u32) -> Result<String, String>
 pub fn fetch_origin(repo_path: &str) -> Result<(), String> {
     log::trace!("Fetching from origin in {repo_path}");
 
-    let output = Command::new("git")
+    let output = silent_command("git")
         .args(["fetch", "origin"])
         .current_dir(repo_path)
         .output()
@@ -688,7 +690,7 @@ pub fn fetch_origin(repo_path: &str) -> Result<(), String> {
 
 /// Get list of remote branches for a repository (strips origin/ prefix)
 pub fn get_remote_branches(repo_path: &str) -> Result<Vec<String>, String> {
-    let output = Command::new("git")
+    let output = silent_command("git")
         .args(["branch", "-r", "--format=%(refname:short)"])
         .current_dir(repo_path)
         .output()
@@ -745,7 +747,7 @@ pub fn create_worktree(
     }
 
     // git worktree add -b <new_branch> <path> <base_branch>
-    let output = Command::new("git")
+    let output = silent_command("git")
         .args([
             "worktree",
             "add",
@@ -788,7 +790,7 @@ pub fn create_worktree_from_existing_branch(
     }
 
     // git worktree add <path> <existing_branch> (no -b flag)
-    let output = Command::new("git")
+    let output = silent_command("git")
         .args(["worktree", "add", worktree_path, existing_branch])
         .current_dir(repo_path)
         .output()
@@ -830,7 +832,7 @@ pub fn gh_pr_checkout(
         args.extend(["-b", name]);
     }
 
-    let output = Command::new(gh_binary)
+    let output = silent_command(gh_binary)
         .args(&args)
         .current_dir(worktree_path)
         .output()
@@ -842,7 +844,7 @@ pub fn gh_pr_checkout(
     }
 
     // Get the current branch name after checkout
-    let branch_output = Command::new("git")
+    let branch_output = silent_command("git")
         .args(["rev-parse", "--abbrev-ref", "HEAD"])
         .current_dir(worktree_path)
         .output()
@@ -866,7 +868,7 @@ pub fn remove_worktree(repo_path: &str, worktree_path: &str) -> Result<(), Strin
     log::trace!("git worktree remove {worktree_path} --force (in {repo_path})");
 
     // git worktree remove <path>
-    let output = Command::new("git")
+    let output = silent_command("git")
         .args(["worktree", "remove", worktree_path, "--force"])
         .current_dir(repo_path)
         .output()
@@ -892,7 +894,7 @@ pub fn remove_worktree(repo_path: &str, worktree_path: &str) -> Result<(), Strin
                 "Worktree at {worktree_path} not found or not a working tree, proceeding with cleanup"
             );
             // Try to prune stale worktrees
-            let _ = Command::new("git")
+            let _ = silent_command("git")
                 .args(["worktree", "prune"])
                 .current_dir(repo_path)
                 .output();
@@ -915,7 +917,7 @@ pub fn delete_branch(repo_path: &str, branch_name: &str) -> Result<(), String> {
     log::trace!("git branch -D {branch_name} (in {repo_path})");
 
     // git branch -D <branch>
-    let output = Command::new("git")
+    let output = silent_command("git")
         .args(["branch", "-D", branch_name])
         .current_dir(repo_path)
         .output()
@@ -945,7 +947,7 @@ pub fn delete_branch(repo_path: &str, branch_name: &str) -> Result<(), String> {
 /// List existing worktrees for a repository
 #[allow(dead_code)]
 pub fn list_worktrees(repo_path: &str) -> Result<Vec<String>, String> {
-    let output = Command::new("git")
+    let output = silent_command("git")
         .args(["worktree", "list", "--porcelain"])
         .current_dir(repo_path)
         .output()
@@ -979,7 +981,7 @@ pub fn commit_changes(repo_path: &str, message: &str, stage_all: bool) -> Result
 
     // Optionally stage all changes
     if stage_all {
-        let add_output = Command::new("git")
+        let add_output = silent_command("git")
             .args(["add", "-A"])
             .current_dir(repo_path)
             .output()
@@ -992,7 +994,7 @@ pub fn commit_changes(repo_path: &str, message: &str, stage_all: bool) -> Result
     }
 
     // Check if there are any changes in the working tree
-    let status_output = Command::new("git")
+    let status_output = silent_command("git")
         .args(["status", "--porcelain"])
         .current_dir(repo_path)
         .output()
@@ -1004,7 +1006,7 @@ pub fn commit_changes(repo_path: &str, message: &str, stage_all: bool) -> Result
     }
 
     // Check if there are staged changes
-    let diff_output = Command::new("git")
+    let diff_output = silent_command("git")
         .args(["diff", "--cached", "--quiet"])
         .current_dir(repo_path)
         .output()
@@ -1019,7 +1021,7 @@ pub fn commit_changes(repo_path: &str, message: &str, stage_all: bool) -> Result
     }
 
     // Commit
-    let commit_output = Command::new("git")
+    let commit_output = silent_command("git")
         .args(["commit", "-m", message])
         .current_dir(repo_path)
         .output()
@@ -1044,7 +1046,7 @@ pub fn commit_changes(repo_path: &str, message: &str, stage_all: bool) -> Result
     }
 
     // Get the commit hash
-    let hash_output = Command::new("git")
+    let hash_output = silent_command("git")
         .args(["rev-parse", "HEAD"])
         .current_dir(repo_path)
         .output()
@@ -1097,7 +1099,7 @@ pub fn open_pull_request(
     log::trace!("Opening pull request from {repo_path}");
 
     // First check if gh is installed
-    let gh_check = Command::new(gh_binary)
+    let gh_check = silent_command(gh_binary)
         .args(["--version"])
         .output()
         .map_err(|_| {
@@ -1115,7 +1117,7 @@ pub fn open_pull_request(
     }
 
     // Check if user is authenticated
-    let auth_check = Command::new(gh_binary)
+    let auth_check = silent_command(gh_binary)
         .args(["auth", "status"])
         .current_dir(repo_path)
         .output()
@@ -1127,7 +1129,7 @@ pub fn open_pull_request(
 
     // Push current branch to remote first
     log::trace!("Pushing current branch to remote...");
-    let push_output = Command::new("git")
+    let push_output = silent_command("git")
         .args(["push", "-u", "origin", "HEAD"])
         .current_dir(repo_path)
         .output()
@@ -1164,7 +1166,7 @@ pub fn open_pull_request(
 
     log::trace!("Running gh command with args: {:?}", args);
 
-    let output = Command::new(gh_binary)
+    let output = silent_command(gh_binary)
         .args(&args)
         .current_dir(repo_path)
         .output()
@@ -1204,7 +1206,7 @@ pub struct PrContext {
 
 /// Get the number of uncommitted changes (staged + unstaged)
 pub fn get_uncommitted_count(repo_path: &str) -> Result<u32, String> {
-    let output = Command::new("git")
+    let output = silent_command("git")
         .args(["status", "--porcelain"])
         .current_dir(repo_path)
         .output()
@@ -1217,7 +1219,7 @@ pub fn get_uncommitted_count(repo_path: &str) -> Result<u32, String> {
 
 /// Check if current branch has an upstream tracking branch
 pub fn has_upstream_branch(repo_path: &str) -> bool {
-    Command::new("git")
+    silent_command("git")
         .args(["rev-parse", "--abbrev-ref", "@{upstream}"])
         .current_dir(repo_path)
         .output()
@@ -1289,7 +1291,7 @@ pub fn run_setup_script(
     let (shell, supports_login) = get_user_shell();
     log::trace!("Using shell: {shell} (login mode: {supports_login})");
 
-    let mut cmd = Command::new(&shell);
+    let mut cmd = silent_command(&shell);
     if supports_login {
         cmd.args(["-l", "-c", script]);
     } else {
@@ -1319,7 +1321,7 @@ pub fn run_setup_script(
 
 /// Check if there are uncommitted changes (staged or unstaged)
 pub fn has_uncommitted_changes(repo_path: &str) -> bool {
-    Command::new("git")
+    silent_command("git")
         .args(["status", "--porcelain"])
         .current_dir(repo_path)
         .output()
@@ -1355,7 +1357,7 @@ pub fn rebase_onto_base(
         log::trace!("Committing uncommitted changes: {message}");
 
         // Stage all changes
-        let add_output = Command::new("git")
+        let add_output = silent_command("git")
             .args(["add", "-A"])
             .current_dir(repo_path)
             .output()
@@ -1367,7 +1369,7 @@ pub fn rebase_onto_base(
         }
 
         // Commit
-        let commit_output = Command::new("git")
+        let commit_output = silent_command("git")
             .args(["commit", "-m", message])
             .current_dir(repo_path)
             .output()
@@ -1384,7 +1386,7 @@ pub fn rebase_onto_base(
 
     // Step 2: Fetch from origin
     log::trace!("Fetching from origin...");
-    let fetch_output = Command::new("git")
+    let fetch_output = silent_command("git")
         .args(["fetch", "origin", base_branch])
         .current_dir(repo_path)
         .output()
@@ -1397,7 +1399,7 @@ pub fn rebase_onto_base(
 
     // Step 3: Rebase onto origin/{base_branch}
     log::trace!("Rebasing onto origin/{base_branch}...");
-    let rebase_output = Command::new("git")
+    let rebase_output = silent_command("git")
         .args(["rebase", &format!("origin/{base_branch}")])
         .current_dir(repo_path)
         .output()
@@ -1406,7 +1408,7 @@ pub fn rebase_onto_base(
     if !rebase_output.status.success() {
         let stderr = String::from_utf8_lossy(&rebase_output.stderr);
         // Abort the rebase if it fails
-        let _ = Command::new("git")
+        let _ = silent_command("git")
             .args(["rebase", "--abort"])
             .current_dir(repo_path)
             .output();
@@ -1417,7 +1419,7 @@ pub fn rebase_onto_base(
 
     // Step 4: Force push with lease
     log::trace!("Force pushing with lease...");
-    let push_output = Command::new("git")
+    let push_output = silent_command("git")
         .args(["push", "--force-with-lease"])
         .current_dir(repo_path)
         .output()
@@ -1428,7 +1430,7 @@ pub fn rebase_onto_base(
         // Check if branch doesn't have upstream yet
         if stderr.contains("has no upstream branch") {
             // Try regular push with -u
-            let push_u_output = Command::new("git")
+            let push_u_output = silent_command("git")
                 .args(["push", "-u", "origin", "HEAD"])
                 .current_dir(repo_path)
                 .output()
@@ -1506,7 +1508,7 @@ pub fn merge_branch_to_base(
 
     // Step 2: Checkout base branch
     log::trace!("Checking out {base_branch}...");
-    let checkout_output = Command::new("git")
+    let checkout_output = silent_command("git")
         .args(["checkout", base_branch])
         .current_dir(repo_path)
         .output();
@@ -1528,7 +1530,7 @@ pub fn merge_branch_to_base(
 
     // Step 3: Pull from origin (best effort - don't fail if no remote)
     log::trace!("Pulling latest from origin...");
-    let pull_output = Command::new("git")
+    let pull_output = silent_command("git")
         .args(["pull", "origin", base_branch])
         .current_dir(repo_path)
         .output();
@@ -1575,13 +1577,13 @@ fn perform_merge(repo_path: &str, feature_branch: &str, squash: bool) -> MergeRe
 
     let merge_output = if squash {
         // --squash stages all changes but doesn't commit
-        Command::new("git")
+        silent_command("git")
             .args(["merge", "--squash", feature_branch])
             .current_dir(repo_path)
             .output()
     } else {
         // --no-ff creates a merge commit preserving history
-        Command::new("git")
+        silent_command("git")
             .args(["merge", "--no-ff", feature_branch, "-m", &merge_message])
             .current_dir(repo_path)
             .output()
@@ -1592,7 +1594,7 @@ fn perform_merge(repo_path: &str, feature_branch: &str, squash: bool) -> MergeRe
             if output.status.success() {
                 // For squash merges, we need to commit the staged changes
                 if squash {
-                    let commit_output = Command::new("git")
+                    let commit_output = silent_command("git")
                         .args(["commit", "-m", &merge_message])
                         .current_dir(repo_path)
                         .output();
@@ -1643,7 +1645,7 @@ fn rebase_and_merge(
     log::trace!("Rebasing {feature_branch} onto {base_branch} in worktree {worktree_path}...");
 
     // Step 1: Rebase in worktree (feature branch is already checked out there)
-    let rebase_output = Command::new("git")
+    let rebase_output = silent_command("git")
         .args(["rebase", base_branch])
         .current_dir(worktree_path)
         .output();
@@ -1661,7 +1663,7 @@ fn rebase_and_merge(
                     || combined.contains("fix conflicts")
                 {
                     // Get list of conflicting files during rebase
-                    let conflict_output = Command::new("git")
+                    let conflict_output = silent_command("git")
                         .args(["diff", "--name-only", "--diff-filter=U"])
                         .current_dir(worktree_path)
                         .output();
@@ -1677,7 +1679,7 @@ fn rebase_and_merge(
                         .unwrap_or_default();
 
                     // Get the diff with conflict markers
-                    let diff_output = Command::new("git")
+                    let diff_output = silent_command("git")
                         .args(["diff"])
                         .current_dir(worktree_path)
                         .output();
@@ -1691,7 +1693,7 @@ fn rebase_and_merge(
                         "Rebase has conflicts in {} files, aborting...",
                         conflicting_files.len()
                     );
-                    let _ = Command::new("git")
+                    let _ = silent_command("git")
                         .args(["rebase", "--abort"])
                         .current_dir(worktree_path)
                         .output();
@@ -1702,7 +1704,7 @@ fn rebase_and_merge(
                     };
                 } else {
                     // Abort any partial rebase state
-                    let _ = Command::new("git")
+                    let _ = silent_command("git")
                         .args(["rebase", "--abort"])
                         .current_dir(worktree_path)
                         .output();
@@ -1731,7 +1733,7 @@ fn rebase_and_merge(
     // Step 2: Fast-forward merge in main repo (base branch already checked out by caller)
     log::trace!("Rebase successful, fast-forward merging into {base_branch}...");
 
-    let ff_merge = Command::new("git")
+    let ff_merge = silent_command("git")
         .args(["merge", "--ff-only", feature_branch])
         .current_dir(repo_path)
         .output();
@@ -1755,7 +1757,7 @@ fn rebase_and_merge(
 
 /// Helper function to get the current HEAD commit hash
 fn get_head_commit_hash(repo_path: &str) -> MergeResult {
-    let hash_output = Command::new("git")
+    let hash_output = silent_command("git")
         .args(["rev-parse", "HEAD"])
         .current_dir(repo_path)
         .output();
@@ -1780,7 +1782,7 @@ fn handle_merge_failure(repo_path: &str, stdout: &[u8], stderr: &[u8]) -> MergeR
         || combined.contains("fix conflicts")
     {
         // Get list of conflicting files
-        let conflict_output = Command::new("git")
+        let conflict_output = silent_command("git")
             .args(["diff", "--name-only", "--diff-filter=U"])
             .current_dir(repo_path)
             .output();
@@ -1796,7 +1798,7 @@ fn handle_merge_failure(repo_path: &str, stdout: &[u8], stderr: &[u8]) -> MergeR
             .unwrap_or_default();
 
         // Get the diff with conflict markers BEFORE aborting
-        let diff_output = Command::new("git")
+        let diff_output = silent_command("git")
             .args(["diff"])
             .current_dir(repo_path)
             .output();
@@ -1810,7 +1812,7 @@ fn handle_merge_failure(repo_path: &str, stdout: &[u8], stderr: &[u8]) -> MergeR
             "Merge has conflicts in {} files, aborting...",
             conflicting_files.len()
         );
-        let _ = Command::new("git")
+        let _ = silent_command("git")
             .args(["merge", "--abort"])
             .current_dir(repo_path)
             .output();
@@ -1821,7 +1823,7 @@ fn handle_merge_failure(repo_path: &str, stdout: &[u8], stderr: &[u8]) -> MergeR
         }
     } else {
         // Abort any partial merge state
-        let _ = Command::new("git")
+        let _ = silent_command("git")
             .args(["merge", "--abort"])
             .current_dir(repo_path)
             .output();

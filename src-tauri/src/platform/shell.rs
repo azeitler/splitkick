@@ -3,6 +3,8 @@
 use std::env;
 use std::process::Command;
 
+use super::silent_command;
+
 /// Returns the user's default shell path
 /// - Unix: Uses $SHELL env var, falls back to /bin/sh
 /// - Windows: Returns powershell.exe (for general shell tasks)
@@ -36,7 +38,7 @@ pub fn get_shell_command_args(cmd: &str) -> (String, Vec<String>) {
 /// Creates a Command configured to run a shell command string
 pub fn shell_command(cmd: &str) -> Command {
     let (shell, args) = get_shell_command_args(cmd);
-    let mut command = Command::new(shell);
+    let mut command = silent_command(shell);
     command.args(args);
     command
 }
@@ -89,7 +91,7 @@ pub fn find_executable(name: &str) -> Option<std::path::PathBuf> {
 /// Check if WSL is available on Windows
 #[cfg(windows)]
 pub fn is_wsl_available() -> bool {
-    Command::new("wsl")
+    silent_command("wsl")
         .arg("--status")
         .output()
         .map(|o| o.status.success())
@@ -130,7 +132,7 @@ pub fn wsl_shell_command(cmd: &str) -> Result<Command, String> {
         return Err("WSL is required on Windows. Install with: wsl --install".to_string());
     }
 
-    let mut command = Command::new("wsl");
+    let mut command = silent_command("wsl");
     command.args(["-e", "bash", "-c", cmd]);
     Ok(command)
 }
