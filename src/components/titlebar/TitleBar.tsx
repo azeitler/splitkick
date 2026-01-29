@@ -1,5 +1,8 @@
+import type React from 'react'
 import { cn } from '@/lib/utils'
 import { MacOSWindowControls } from './MacOSWindowControls'
+import { WindowsWindowControls } from './WindowsWindowControls'
+import { isMacOS } from '@/lib/platform'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -35,11 +38,11 @@ export function TitleBar({ className, title = 'Jean' }: TitleBarProps) {
       )}
     >
       {/* Left side - Window Controls + Left Actions */}
-      <div className="flex items-center">
-        <MacOSWindowControls />
+      <div className="flex items-center" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+        {isMacOS && <MacOSWindowControls />}
 
         {/* Left Action Buttons */}
-        <div className="flex items-center gap-1">
+        <div className={cn('flex items-center gap-1', !isMacOS && 'pl-2')}>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -89,6 +92,9 @@ export function TitleBar({ className, title = 'Jean' }: TitleBarProps) {
           {title}
         </span>
       </div>
+
+      {/* Right side - Windows/Linux window controls */}
+      {!isMacOS && <WindowsWindowControls />}
     </div>
   )
 }
