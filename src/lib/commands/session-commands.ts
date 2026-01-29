@@ -16,7 +16,7 @@ export const sessionCommands: AppCommand[] = [
     description: 'Create a new chat session',
     icon: Plus,
     group: 'sessions',
-    shortcut: '⌘+T',
+    shortcut: 'mod+t',
     keywords: ['session', 'tab', 'new', 'create', 'chat'],
 
     execute: context => {
@@ -32,7 +32,7 @@ export const sessionCommands: AppCommand[] = [
     description: 'Close the current chat session',
     icon: X,
     group: 'sessions',
-    shortcut: '⌘+W',
+    shortcut: 'mod+w',
     keywords: ['session', 'tab', 'close', 'remove'],
 
     execute: context => {
@@ -48,7 +48,7 @@ export const sessionCommands: AppCommand[] = [
     description: 'Switch to the next session tab',
     icon: ChevronRight,
     group: 'sessions',
-    shortcut: '⌘+⌥+→',
+    shortcut: 'mod+alt+arrowright',
     keywords: ['session', 'tab', 'next', 'switch', 'right'],
 
     execute: context => {
@@ -64,7 +64,7 @@ export const sessionCommands: AppCommand[] = [
     description: 'Switch to the previous session tab',
     icon: ChevronLeft,
     group: 'sessions',
-    shortcut: '⌘+⌥+←',
+    shortcut: 'mod+alt+arrowleft',
     keywords: ['session', 'tab', 'previous', 'switch', 'left'],
 
     execute: context => {

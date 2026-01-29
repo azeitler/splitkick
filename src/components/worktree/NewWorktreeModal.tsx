@@ -606,7 +606,7 @@ export function NewWorktreeModal() {
             >
               {tab.label}
               <kbd className="ml-2 text-xs text-muted-foreground bg-muted px-1 py-0.5 rounded">
-                ⌘+{tab.key}
+                {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+{tab.key}
               </kbd>
             </button>
           ))}

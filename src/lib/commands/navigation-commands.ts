@@ -21,7 +21,7 @@ export const navigationCommands: AppCommand[] = [
     description: 'Show the left sidebar',
     icon: Sidebar,
     group: 'navigation',
-    shortcut: '⌘+B',
+    shortcut: 'mod+b',
     keywords: ['sidebar', 'left', 'panel', 'show'],
 
     execute: () => {
@@ -37,7 +37,7 @@ export const navigationCommands: AppCommand[] = [
     description: 'Hide the left sidebar',
     icon: Sidebar,
     group: 'navigation',
-    shortcut: '⌘+B',
+    shortcut: 'mod+b',
     keywords: ['sidebar', 'left', 'panel', 'hide'],
 
     execute: () => {
@@ -53,7 +53,7 @@ export const navigationCommands: AppCommand[] = [
     description: 'Open the application preferences',
     icon: Settings,
     group: 'settings',
-    shortcut: '⌘+,',
+    shortcut: 'mod+comma',
     keywords: ['preferences', 'settings', 'config', 'options'],
 
     execute: context => {
@@ -114,7 +114,7 @@ export const navigationCommands: AppCommand[] = [
     description: 'Focus the chat input field',
     icon: MessageSquare,
     group: 'navigation',
-    shortcut: '⌘+L',
+    shortcut: 'mod+l',
     keywords: ['focus', 'chat', 'input', 'message', 'type'],
 
     execute: context => {
