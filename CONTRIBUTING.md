@@ -20,7 +20,7 @@ xcode-select --install
 sudo apt update
 sudo apt install libwebkit2gtk-4.1-dev librsvg2-dev patchelf
 
-# Ubuntu/Linux Mint: prefer Ayatana AppIndicator (avoids conflicts with libayatana-appindicator3-1)
+# Ubuntu/Linux Mint: prefer Ayatana AppIndicator (avoids conflicts between old libappindicator3 and Ayatana packages)
 sudo apt install libayatana-appindicator3-dev
 
 # Debian/older distros (if Ayatana packages are unavailable):
