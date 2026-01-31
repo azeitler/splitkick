@@ -257,7 +257,15 @@ export interface DoneEvent {
 }
 
 /**
- * Event payload for context compaction from Rust
+ * Event payload for compaction-in-progress from Rust
+ */
+export interface CompactingEvent {
+  session_id: string
+  worktree_id: string
+}
+
+/**
+ * Event payload for context compaction complete from Rust
  */
 export interface CompactedEvent {
   session_id: string

@@ -388,6 +388,11 @@ export function ChatWindow() {
         EMPTY_CONTENT_BLOCKS)
       : EMPTY_CONTENT_BLOCKS
   )
+  const isCompacting = useChatStore(state =>
+    deferredSessionId
+      ? (state.compactingSessions[deferredSessionId] ?? false)
+      : false
+  )
   // Per-session input - check if there's any input for submit button state
   // PERFORMANCE: Track hasValue via callback from ChatInput instead of store subscription
   // ChatInput notifies on mount, session change, and empty/non-empty boundary changes
@@ -1826,6 +1831,7 @@ Begin your investigation now.`
                             isQuestionAnswered={isQuestionAnswered}
                             getSubmittedAnswers={getSubmittedAnswers}
                             areQuestionsSkipped={areQuestionsSkipped}
+                            isCompacting={isCompacting}
                             isStreamingPlanApproved={isStreamingPlanApproved}
                             onStreamingPlanApproval={handleStreamingPlanApproval}
                             onStreamingPlanApprovalYolo={handleStreamingPlanApprovalYolo}

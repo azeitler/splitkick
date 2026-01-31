@@ -1,6 +1,6 @@
 use tauri::{Emitter, Manager};
 
-use super::types::{ContentBlock, ThinkingLevel, ToolCall, UsageData};
+use super::types::{CompactMetadata, ContentBlock, ThinkingLevel, ToolCall, UsageData};
 use crate::projects::github_issues::{
     get_github_contexts_dir, get_worktree_issue_refs, get_worktree_pr_refs,
 };
@@ -111,6 +111,23 @@ struct PermissionDeniedEvent {
     session_id: String,
     worktree_id: String, // Kept for backward compatibility
     denials: Vec<PermissionDenial>,
+}
+
+/// Payload for compacting-in-progress events sent to frontend
+/// Signals that context compaction has started
+#[derive(serde::Serialize, Clone)]
+struct CompactingEvent {
+    session_id: String,
+    worktree_id: String,
+}
+
+/// Payload for compaction-complete events sent to frontend
+/// Contains metadata about the compaction that occurred
+#[derive(serde::Serialize, Clone)]
+struct CompactedEvent {
+    session_id: String,
+    worktree_id: String,
+    metadata: CompactMetadata,
 }
 
 // =============================================================================
@@ -978,6 +995,35 @@ pub fn tail_claude_output(
 
                     completed = true;
                     log::trace!("Received result message - Claude CLI completed");
+                }
+                "system" => {
+                    let subtype = msg.get("subtype").and_then(|v| v.as_str()).unwrap_or("");
+                    if subtype == "compact_boundary" {
+                        log::trace!("Detected compact_boundary system message");
+
+                        // Signal UI that compaction is in progress
+                        let compacting_event = CompactingEvent {
+                            session_id: session_id.to_string(),
+                            worktree_id: worktree_id.to_string(),
+                        };
+                        if let Err(e) = app.emit("chat:compacting", &compacting_event) {
+                            log::error!("Failed to emit compacting: {e}");
+                        }
+
+                        // Emit compacted event with metadata if available
+                        if let Some(metadata_val) = msg.get("compactMetadata") {
+                            if let Ok(metadata) = serde_json::from_value::<CompactMetadata>(metadata_val.clone()) {
+                                let compacted_event = CompactedEvent {
+                                    session_id: session_id.to_string(),
+                                    worktree_id: worktree_id.to_string(),
+                                    metadata,
+                                };
+                                if let Err(e) = app.emit("chat:compacted", &compacted_event) {
+                                    log::error!("Failed to emit compacted: {e}");
+                                }
+                            }
+                        }
+                    }
                 }
                 _ => {}
             }

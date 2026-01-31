@@ -54,6 +54,8 @@ interface StreamingMessageProps {
   ) => QuestionAnswer[] | undefined
   /** Check if questions are being skipped for this session */
   areQuestionsSkipped: (sessionId: string) => boolean
+  /** Whether context compaction is in progress */
+  isCompacting?: boolean
   /** Check if streaming plan has been approved */
   isStreamingPlanApproved: (sessionId: string) => boolean
   /** Callback when user approves streaming plan */
@@ -80,6 +82,7 @@ export const StreamingMessage = memo(function StreamingMessage({
   isQuestionAnswered,
   getSubmittedAnswers,
   areQuestionsSkipped,
+  isCompacting,
   isStreamingPlanApproved,
   onStreamingPlanApproval,
   onStreamingPlanApprovalYolo,
@@ -251,17 +254,19 @@ export const StreamingMessage = memo(function StreamingMessage({
       {/* Show status indicator - waiting when question pending, planning/vibing otherwise */}
       <div className="text-sm text-muted-foreground/60 mt-4">
         <span className="animate-dots">
-          {toolCalls.some(
-            tc =>
-              (isAskUserQuestion(tc) || isExitPlanMode(tc)) &&
-              !isQuestionAnswered(sessionId, tc.id)
-          )
-            ? 'Waiting for your input'
-            : streamingExecutionMode === 'plan'
-              ? 'Planning'
-              : streamingExecutionMode === 'yolo'
-                ? 'Yoloing'
-                : 'Vibing'}
+          {isCompacting
+            ? 'Compacting context'
+            : toolCalls.some(
+                tc =>
+                  (isAskUserQuestion(tc) || isExitPlanMode(tc)) &&
+                  !isQuestionAnswered(sessionId, tc.id)
+              )
+              ? 'Waiting for your input'
+              : streamingExecutionMode === 'plan'
+                ? 'Planning'
+                : streamingExecutionMode === 'yolo'
+                  ? 'Yoloing'
+                  : 'Vibing'}
         </span>
       </div>
     </div>
