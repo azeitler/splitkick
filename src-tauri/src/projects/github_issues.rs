@@ -1,11 +1,11 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager};
 
 use super::git::get_repo_identifier;
 use crate::gh_cli::config::resolve_gh_binary;
+use crate::platform::silent_command;
 
 // =============================================================================
 // GitHub Types
@@ -87,7 +87,7 @@ pub async fn list_github_issues(
     let state_arg = state.unwrap_or_else(|| "open".to_string());
 
     // Run gh issue list
-    let output = Command::new(&gh)
+    let output = silent_command(&gh)
         .args([
             "issue",
             "list",
@@ -138,7 +138,7 @@ pub async fn search_github_issues(
     log::trace!("Searching GitHub issues for {project_path} with query: {query}");
 
     let gh = resolve_gh_binary(&app);
-    let output = Command::new(&gh)
+    let output = silent_command(&gh)
         .args([
             "issue",
             "list",
@@ -190,7 +190,7 @@ pub async fn get_github_issue(
 
     let gh = resolve_gh_binary(&app);
     // Run gh issue view
-    let output = Command::new(&gh)
+    let output = silent_command(&gh)
         .args([
             "issue",
             "view",
@@ -902,7 +902,7 @@ pub async fn list_github_prs(
     let state_arg = state.unwrap_or_else(|| "open".to_string());
 
     // Run gh pr list
-    let output = Command::new(&gh)
+    let output = silent_command(&gh)
         .args([
             "pr",
             "list",
@@ -952,7 +952,7 @@ pub async fn search_github_prs(
     log::trace!("Searching GitHub PRs for {project_path} with query: {query}");
 
     let gh = resolve_gh_binary(&app);
-    let output = Command::new(&gh)
+    let output = silent_command(&gh)
         .args([
             "pr",
             "list",
@@ -1004,7 +1004,7 @@ pub async fn get_github_pr(
 
     let gh = resolve_gh_binary(&app);
     // Run gh pr view
-    let output = Command::new(&gh)
+    let output = silent_command(&gh)
         .args([
             "pr",
             "view",
@@ -1120,10 +1120,14 @@ pub fn format_pr_context_markdown(ctx: &PullRequestContext) -> String {
 /// Get the diff for a PR using `gh pr diff`
 ///
 /// Returns the diff as a string, truncated to 100KB if too large.
-pub fn get_pr_diff(project_path: &str, pr_number: u32, gh_binary: &std::path::Path) -> Result<String, String> {
+pub fn get_pr_diff(
+    project_path: &str,
+    pr_number: u32,
+    gh_binary: &std::path::Path,
+) -> Result<String, String> {
     log::debug!("Fetching diff for PR #{pr_number} in {project_path}");
 
-    let output = Command::new(gh_binary)
+    let output = silent_command(gh_binary)
         .args(["pr", "diff", &pr_number.to_string(), "--color", "never"])
         .current_dir(project_path)
         .output()

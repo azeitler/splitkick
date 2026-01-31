@@ -2,7 +2,7 @@ use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager};
@@ -11,7 +11,6 @@ use uuid::Uuid;
 
 use super::git;
 use super::git::get_repo_identifier;
-use crate::gh_cli::config::resolve_gh_binary;
 use super::github_issues::{
     add_issue_reference, add_pr_reference, format_issue_context_markdown,
     format_pr_context_markdown, generate_branch_name_from_issue, generate_branch_name_from_pr,
@@ -26,6 +25,8 @@ use super::types::{
     WorktreePermanentlyDeletedEvent, WorktreeUnarchivedEvent,
 };
 use crate::claude_cli::get_cli_binary_path;
+use crate::gh_cli::config::resolve_gh_binary;
+use crate::platform::silent_command;
 
 /// Get current Unix timestamp
 fn now() -> u64 {
@@ -39,7 +40,7 @@ fn now() -> u64 {
 /// Check if git global user identity is configured
 #[tauri::command]
 pub async fn check_git_identity() -> Result<GitIdentity, String> {
-    let name = std::process::Command::new("git")
+    let name = silent_command("git")
         .args(["config", "--global", "user.name"])
         .output()
         .ok()
@@ -47,7 +48,7 @@ pub async fn check_git_identity() -> Result<GitIdentity, String> {
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
         .filter(|s| !s.is_empty());
 
-    let email = std::process::Command::new("git")
+    let email = silent_command("git")
         .args(["config", "--global", "user.email"])
         .output()
         .ok()
@@ -55,16 +56,13 @@ pub async fn check_git_identity() -> Result<GitIdentity, String> {
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
         .filter(|s| !s.is_empty());
 
-    Ok(GitIdentity {
-        name,
-        email,
-    })
+    Ok(GitIdentity { name, email })
 }
 
 /// Set git global user identity
 #[tauri::command]
 pub async fn set_git_identity(name: String, email: String) -> Result<(), String> {
-    let name_output = std::process::Command::new("git")
+    let name_output = silent_command("git")
         .args(["config", "--global", "user.name", &name])
         .output()
         .map_err(|e| format!("Failed to set git user.name: {e}"))?;
@@ -74,7 +72,7 @@ pub async fn set_git_identity(name: String, email: String) -> Result<(), String>
         return Err(format!("Failed to set git user.name: {stderr}"));
     }
 
-    let email_output = std::process::Command::new("git")
+    let email_output = silent_command("git")
         .args(["config", "--global", "user.email", &email])
         .output()
         .map_err(|e| format!("Failed to set git user.email: {e}"))?;
@@ -181,7 +179,7 @@ pub async fn init_git_in_folder(path: String) -> Result<String, String> {
 
     if already_git_repo {
         // Check if it has any commits (HEAD exists)
-        let has_commits = std::process::Command::new("git")
+        let has_commits = silent_command("git")
             .args(["rev-parse", "HEAD"])
             .current_dir(&path)
             .output()
@@ -197,7 +195,7 @@ pub async fn init_git_in_folder(path: String) -> Result<String, String> {
 
     // Run git init (skip if already a git repo)
     if !already_git_repo {
-        let output = std::process::Command::new("git")
+        let output = silent_command("git")
             .args(["init"])
             .current_dir(&path)
             .output()
@@ -210,7 +208,7 @@ pub async fn init_git_in_folder(path: String) -> Result<String, String> {
     }
 
     // Stage all files
-    let add_output = std::process::Command::new("git")
+    let add_output = silent_command("git")
         .args(["add", "."])
         .current_dir(&path)
         .output()
@@ -222,7 +220,7 @@ pub async fn init_git_in_folder(path: String) -> Result<String, String> {
     }
 
     // Create initial commit
-    let commit_output = std::process::Command::new("git")
+    let commit_output = silent_command("git")
         .args(["commit", "-m", "Initial commit"])
         .current_dir(&path)
         .output()
@@ -236,7 +234,7 @@ pub async fn init_git_in_folder(path: String) -> Result<String, String> {
         if stderr.contains("nothing to commit") || stdout.contains("nothing to commit") {
             log::warn!("No files to commit, creating empty initial commit");
             // Create an empty commit with --allow-empty
-            let empty_commit = std::process::Command::new("git")
+            let empty_commit = silent_command("git")
                 .args(["commit", "--allow-empty", "-m", "Initial commit"])
                 .current_dir(&path)
                 .output()
@@ -516,7 +514,7 @@ pub async fn create_worktree(
         cached_base_branch_ahead_count: None,
         cached_base_branch_behind_count: None,
         cached_worktree_ahead_count: None,
-            cached_unpushed_count: None,
+        cached_unpushed_count: None,
         order: 0, // Placeholder, actual order is set in background thread
         archived_at: None,
     };
@@ -597,64 +595,73 @@ pub async fn create_worktree(
 
         // For PR context, we use a temp branch + gh pr checkout pattern
         // For other cases, check if branch already exists
-        let (branch_for_worktree, temp_branch_to_delete, actual_branch_name) = if let Some(ref ctx) = pr_context_clone {
-            // Use temp branch for PR checkout pattern
-            let temp_branch = format!(
-                "pr-{}-temp-{}",
-                ctx.number,
-                uuid::Uuid::new_v4().to_string().split('-').next().unwrap_or("xxxx")
-            );
-            (temp_branch.clone(), Some(temp_branch), ctx.head_ref_name.clone())
-        } else {
-            // Check if branch already exists for non-PR cases
-            if git::branch_exists(&project_path, &name_clone) {
-                log::trace!("Background: Branch already exists: {name_clone}");
+        let (branch_for_worktree, temp_branch_to_delete, actual_branch_name) =
+            if let Some(ref ctx) = pr_context_clone {
+                // Use temp branch for PR checkout pattern
+                let temp_branch = format!(
+                    "pr-{}-temp-{}",
+                    ctx.number,
+                    uuid::Uuid::new_v4()
+                        .to_string()
+                        .split('-')
+                        .next()
+                        .unwrap_or("xxxx")
+                );
+                (
+                    temp_branch.clone(),
+                    Some(temp_branch),
+                    ctx.head_ref_name.clone(),
+                )
+            } else {
+                // Check if branch already exists for non-PR cases
+                if git::branch_exists(&project_path, &name_clone) {
+                    log::trace!("Background: Branch already exists: {name_clone}");
 
-                // Generate a suggested alternative name with incremented suffix
-                let suggested_name = {
-                    let data = load_projects_data(&app_clone).ok();
-                    let mut counter = 2;
-                    loop {
-                        let candidate = format!("{name_clone}-{counter}");
-                        let name_in_storage = data
-                            .as_ref()
-                            .map(|d| d.worktree_name_exists(&project_id_clone, &candidate))
-                            .unwrap_or(false);
-                        let branch_in_git = git::branch_exists(&project_path, &candidate);
+                    // Generate a suggested alternative name with incremented suffix
+                    let suggested_name = {
+                        let data = load_projects_data(&app_clone).ok();
+                        let mut counter = 2;
+                        loop {
+                            let candidate = format!("{name_clone}-{counter}");
+                            let name_in_storage = data
+                                .as_ref()
+                                .map(|d| d.worktree_name_exists(&project_id_clone, &candidate))
+                                .unwrap_or(false);
+                            let branch_in_git = git::branch_exists(&project_path, &candidate);
 
-                        if !name_in_storage && !branch_in_git {
-                            break candidate;
+                            if !name_in_storage && !branch_in_git {
+                                break candidate;
+                            }
+                            counter += 1;
                         }
-                        counter += 1;
+                    };
+
+                    // Emit branch_exists event
+                    let branch_exists_event = WorktreeBranchExistsEvent {
+                        id: worktree_id_clone.clone(),
+                        project_id: project_id_clone.clone(),
+                        branch: name_clone.clone(),
+                        suggested_name,
+                        issue_context: issue_context_clone.clone(),
+                        pr_context: pr_context_clone.clone(),
+                    };
+                    if let Err(e) = app_clone.emit("worktree:branch_exists", &branch_exists_event) {
+                        log::error!("Failed to emit worktree:branch_exists event: {e}");
                     }
-                };
 
-                // Emit branch_exists event
-                let branch_exists_event = WorktreeBranchExistsEvent {
-                    id: worktree_id_clone.clone(),
-                    project_id: project_id_clone.clone(),
-                    branch: name_clone.clone(),
-                    suggested_name,
-                    issue_context: issue_context_clone.clone(),
-                    pr_context: pr_context_clone.clone(),
-                };
-                if let Err(e) = app_clone.emit("worktree:branch_exists", &branch_exists_event) {
-                    log::error!("Failed to emit worktree:branch_exists event: {e}");
+                    // Also emit error event to remove the pending worktree from UI
+                    let error_event = WorktreeCreateErrorEvent {
+                        id: worktree_id_clone,
+                        project_id: project_id_clone,
+                        error: format!("Branch already exists: {name_clone}"),
+                    };
+                    if let Err(e) = app_clone.emit("worktree:error", &error_event) {
+                        log::error!("Failed to emit worktree:error event: {e}");
+                    }
+                    return;
                 }
-
-                // Also emit error event to remove the pending worktree from UI
-                let error_event = WorktreeCreateErrorEvent {
-                    id: worktree_id_clone,
-                    project_id: project_id_clone,
-                    error: format!("Branch already exists: {name_clone}"),
-                };
-                if let Err(e) = app_clone.emit("worktree:error", &error_event) {
-                    log::error!("Failed to emit worktree:error event: {e}");
-                }
-                return;
-            }
-            (name_clone.clone(), None, name_clone.clone())
-        };
+                (name_clone.clone(), None, name_clone.clone())
+            };
 
         // Create the git worktree (this is the slow operation)
         if let Err(e) = git::create_worktree(
@@ -679,16 +686,26 @@ pub async fn create_worktree(
 
         // For PR context, run gh pr checkout to get the actual PR branch
         let final_branch = if let Some(ref ctx) = pr_context_clone {
-            log::trace!("Background: Running gh pr checkout {} for PR branch", ctx.number);
+            log::trace!(
+                "Background: Running gh pr checkout {} for PR branch",
+                ctx.number
+            );
 
-            match git::gh_pr_checkout(&worktree_path_clone, ctx.number, Some(&ctx.head_ref_name), &resolve_gh_binary(&app_clone)) {
+            match git::gh_pr_checkout(
+                &worktree_path_clone,
+                ctx.number,
+                Some(&ctx.head_ref_name),
+                &resolve_gh_binary(&app_clone),
+            ) {
                 Ok(branch) => {
                     log::trace!("Background: gh pr checkout succeeded, branch: {branch}");
 
                     // Delete the temporary branch
                     if let Some(ref temp_branch) = temp_branch_to_delete {
                         if let Err(e) = git::delete_branch(&project_path, temp_branch) {
-                            log::warn!("Background: Failed to delete temp branch {temp_branch}: {e}");
+                            log::warn!(
+                                "Background: Failed to delete temp branch {temp_branch}: {e}"
+                            );
                             // Not fatal, continue anyway
                         }
                     }
@@ -882,7 +899,7 @@ pub async fn create_worktree(
                 cached_base_branch_ahead_count: None,
                 cached_base_branch_behind_count: None,
                 cached_worktree_ahead_count: None,
-            cached_unpushed_count: None,
+                cached_unpushed_count: None,
                 order: max_order + 1,
                 archived_at: None,
             };
@@ -1002,7 +1019,7 @@ pub async fn create_worktree_from_existing_branch(
         cached_base_branch_ahead_count: None,
         cached_base_branch_behind_count: None,
         cached_worktree_ahead_count: None,
-            cached_unpushed_count: None,
+        cached_unpushed_count: None,
         order: 0, // Placeholder, actual order is set in background thread
         archived_at: None,
     };
@@ -1216,7 +1233,7 @@ pub async fn create_worktree_from_existing_branch(
                 cached_base_branch_ahead_count: None,
                 cached_base_branch_behind_count: None,
                 cached_worktree_ahead_count: None,
-            cached_unpushed_count: None,
+                cached_unpushed_count: None,
                 order: max_order + 1,
                 archived_at: None,
             };
@@ -1290,9 +1307,7 @@ pub async fn checkout_pr(
 
     // Check if there's an archived worktree for this PR — restore it instead of creating a new one
     if let Some(archived_wt) = data.worktrees.iter().find(|w| {
-        w.project_id == project_id
-            && w.pr_number == Some(pr_number)
-            && w.archived_at.is_some()
+        w.project_id == project_id && w.pr_number == Some(pr_number) && w.archived_at.is_some()
     }) {
         let worktree_id = archived_wt.id.clone();
         log::trace!("Found archived worktree {worktree_id} for PR #{pr_number}, restoring instead of creating new");
@@ -1324,7 +1339,14 @@ pub async fn checkout_pr(
 
     // Generate a temporary branch name for worktree creation
     // This will be replaced by the actual PR branch after gh pr checkout
-    let temp_branch_name = format!("pr-{pr_number}-temp-{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap_or("xxxx"));
+    let temp_branch_name = format!(
+        "pr-{pr_number}-temp-{}",
+        uuid::Uuid::new_v4()
+            .to_string()
+            .split('-')
+            .next()
+            .unwrap_or("xxxx")
+    );
 
     // Build worktree path: ~/jean/<project-name>/<workspace-name>
     let project_worktrees_dir = get_project_worktrees_dir(&project.name)?;
@@ -1376,7 +1398,7 @@ pub async fn checkout_pr(
         cached_base_branch_ahead_count: None,
         cached_base_branch_behind_count: None,
         cached_worktree_ahead_count: None,
-            cached_unpushed_count: None,
+        cached_unpushed_count: None,
         order: 0, // Will be updated in background thread
         archived_at: None,
     };
@@ -1426,7 +1448,12 @@ pub async fn checkout_pr(
         // Step 2: Run gh pr checkout inside the worktree
         // This checks out the actual PR branch and sets up tracking
         // Pass the PR's head_ref_name to ensure local branch matches remote
-        let actual_branch = match git::gh_pr_checkout(&worktree_path_clone, pr_number, Some(&pr_head_ref), &resolve_gh_binary(&app_clone)) {
+        let actual_branch = match git::gh_pr_checkout(
+            &worktree_path_clone,
+            pr_number,
+            Some(&pr_head_ref),
+            &resolve_gh_binary(&app_clone),
+        ) {
             Ok(branch) => {
                 log::trace!("Background: gh pr checkout succeeded, branch: {branch}");
                 branch
@@ -1455,7 +1482,9 @@ pub async fn checkout_pr(
             // Not fatal, continue anyway
         }
 
-        log::trace!("Background: Git worktree ready with PR #{pr_number} on branch {actual_branch}");
+        log::trace!(
+            "Background: Git worktree ready with PR #{pr_number} on branch {actual_branch}"
+        );
 
         // Check for jean.json and run setup script
         let (setup_output, setup_script) =
@@ -1527,7 +1556,8 @@ pub async fn checkout_pr(
                                 submitted_at: r.submitted_at,
                             })
                             .collect(),
-                        diff: get_pr_diff(&project_path, pr_number, &resolve_gh_binary(&app_clone)).ok(),
+                        diff: get_pr_diff(&project_path, pr_number, &resolve_gh_binary(&app_clone))
+                            .ok(),
                     };
 
                     let context_file = contexts_dir.join(format!("{repo_key}-pr-{pr_number}.md"));
@@ -1583,7 +1613,7 @@ pub async fn checkout_pr(
                 cached_base_branch_ahead_count: None,
                 cached_base_branch_behind_count: None,
                 cached_worktree_ahead_count: None,
-            cached_unpushed_count: None,
+                cached_unpushed_count: None,
                 order: max_order + 1,
                 archived_at: None,
             };
@@ -1625,7 +1655,11 @@ pub async fn checkout_pr(
         }
     });
 
-    log::trace!("Returning pending worktree for PR #{}: {}", pr_number, pending_worktree.name);
+    log::trace!(
+        "Returning pending worktree for PR #{}: {}",
+        pr_number,
+        pending_worktree.name
+    );
     Ok(pending_worktree)
 }
 
@@ -1804,7 +1838,7 @@ pub async fn create_base_session(app: AppHandle, project_id: String) -> Result<W
         cached_base_branch_ahead_count: None,
         cached_base_branch_behind_count: None,
         cached_worktree_ahead_count: None,
-            cached_unpushed_count: None,
+        cached_unpushed_count: None,
         order: 0, // Base sessions are always first
         archived_at: None,
     };
@@ -2104,7 +2138,7 @@ pub async fn import_worktree(
         cached_base_branch_ahead_count: None,
         cached_base_branch_behind_count: None,
         cached_worktree_ahead_count: None,
-            cached_unpushed_count: None,
+        cached_unpushed_count: None,
         order: max_order + 1,
         archived_at: None,
     };
@@ -2411,7 +2445,11 @@ pub async fn open_worktree_in_terminal(
         match terminal_app.as_str() {
             "powershell" => {
                 std::process::Command::new("powershell")
-                    .args(["-NoExit", "-Command", &format!("Set-Location '{worktree_path}'")])
+                    .args([
+                        "-NoExit",
+                        "-Command",
+                        &format!("Set-Location '{worktree_path}'"),
+                    ])
                     .spawn()
                     .map_err(|e| format_open_error("PowerShell", &e))?;
             }
@@ -2432,7 +2470,11 @@ pub async fn open_worktree_in_terminal(
                     Err(_) => {
                         // Fallback to PowerShell if wt.exe not available
                         std::process::Command::new("powershell")
-                            .args(["-NoExit", "-Command", &format!("Set-Location '{worktree_path}'")])
+                            .args([
+                                "-NoExit",
+                                "-Command",
+                                &format!("Set-Location '{worktree_path}'"),
+                            ])
                             .spawn()
                             .map_err(|e| format_open_error("PowerShell", &e))?;
                     }
@@ -3029,7 +3071,7 @@ pub async fn get_review_prompt(
     let current_branch = git::get_current_branch(&worktree_path)?;
 
     // Get the full git diff (origin/target...HEAD)
-    let diff_output = std::process::Command::new("git")
+    let diff_output = silent_command("git")
         .args(["diff", &format!("origin/{target_branch}...HEAD")])
         .current_dir(&worktree_path)
         .output()
@@ -3043,7 +3085,7 @@ pub async fn get_review_prompt(
     };
 
     // Get the commit history (origin/target..HEAD)
-    let log_output = std::process::Command::new("git")
+    let log_output = silent_command("git")
         .args([
             "log",
             &format!("origin/{target_branch}..HEAD"),
@@ -3061,7 +3103,7 @@ pub async fn get_review_prompt(
     };
 
     // Get uncommitted changes (staged + unstaged for tracked files)
-    let uncommitted_output = std::process::Command::new("git")
+    let uncommitted_output = silent_command("git")
         .args(["diff", "HEAD"])
         .current_dir(&worktree_path)
         .output()
@@ -3074,7 +3116,7 @@ pub async fn get_review_prompt(
     };
 
     // Get list of untracked files
-    let untracked_output = std::process::Command::new("git")
+    let untracked_output = silent_command("git")
         .args(["ls-files", "--others", "--exclude-standard"])
         .current_dir(&worktree_path)
         .output()
@@ -3523,7 +3565,7 @@ fn extract_structured_output(output: &str) -> Result<String, String> {
 
 /// Get git diff between current branch and target branch
 fn get_branch_diff(repo_path: &str, target_branch: &str) -> Result<String, String> {
-    let output = Command::new("git")
+    let output = silent_command("git")
         .args(["diff", &format!("origin/{target_branch}...HEAD")])
         .current_dir(repo_path)
         .output()
@@ -3550,7 +3592,7 @@ fn get_branch_diff(repo_path: &str, target_branch: &str) -> Result<String, Strin
 
 /// Get commit messages between current branch and target branch
 fn get_branch_commits(repo_path: &str, target_branch: &str) -> Result<String, String> {
-    let output = Command::new("git")
+    let output = silent_command("git")
         .args(["log", "--oneline", &format!("origin/{target_branch}..HEAD")])
         .current_dir(repo_path)
         .output()
@@ -3566,7 +3608,7 @@ fn get_branch_commits(repo_path: &str, target_branch: &str) -> Result<String, St
 
 /// Count commits between current branch and target branch
 fn count_branch_commits(repo_path: &str, target_branch: &str) -> Result<u32, String> {
-    let output = Command::new("git")
+    let output = silent_command("git")
         .args([
             "rev-list",
             "--count",
@@ -3624,7 +3666,7 @@ fn generate_pr_content(
 
     log::trace!("Generating PR content with Claude CLI (JSON schema)");
 
-    let mut cmd = Command::new(&cli_path);
+    let mut cmd = silent_command(&cli_path);
     cmd.args([
         "--print",
         "--verbose",
@@ -3749,7 +3791,7 @@ pub async fn create_pr_with_ai_content(
         log::trace!("Staging and committing {uncommitted} uncommitted changes");
 
         // Stage all changes
-        let stage_output = Command::new("git")
+        let stage_output = silent_command("git")
             .args(["add", "-A"])
             .current_dir(&worktree_path)
             .output()
@@ -3761,7 +3803,7 @@ pub async fn create_pr_with_ai_content(
         }
 
         // Commit with a generic message (the PR will have the real description)
-        let commit_output = Command::new("git")
+        let commit_output = silent_command("git")
             .args(["commit", "-m", "chore: prepare for PR"])
             .current_dir(&worktree_path)
             .output()
@@ -3778,7 +3820,7 @@ pub async fn create_pr_with_ai_content(
 
     // Push the branch
     log::trace!("Pushing branch to remote");
-    let push_output = Command::new("git")
+    let push_output = silent_command("git")
         .args(["push", "-u", "origin", "HEAD"])
         .current_dir(&worktree_path)
         .output()
@@ -3807,7 +3849,7 @@ pub async fn create_pr_with_ai_content(
     // Create the PR using gh CLI
     log::trace!("Creating PR with gh CLI");
     let gh = resolve_gh_binary(&app);
-    let output = Command::new(&gh)
+    let output = silent_command(&gh)
         .args([
             "pr",
             "create",
@@ -3882,7 +3924,7 @@ pub struct CreateCommitResponse {
 
 /// Get git status output
 fn get_git_status(repo_path: &str) -> Result<String, String> {
-    let output = Command::new("git")
+    let output = silent_command("git")
         .args(["status", "--short"])
         .current_dir(repo_path)
         .output()
@@ -3893,7 +3935,7 @@ fn get_git_status(repo_path: &str) -> Result<String, String> {
 
 /// Get staged diff
 fn get_staged_diff(repo_path: &str) -> Result<String, String> {
-    let output = Command::new("git")
+    let output = silent_command("git")
         .args(["diff", "--cached"])
         .current_dir(repo_path)
         .output()
@@ -3915,7 +3957,7 @@ fn get_staged_diff(repo_path: &str) -> Result<String, String> {
 
 /// Get recent commit messages for style reference
 fn get_recent_commits(repo_path: &str, count: u32) -> Result<String, String> {
-    let output = Command::new("git")
+    let output = silent_command("git")
         .args(["log", "--oneline", &format!("-{count}")])
         .current_dir(repo_path)
         .output()
@@ -3926,7 +3968,7 @@ fn get_recent_commits(repo_path: &str, count: u32) -> Result<String, String> {
 
 /// Get remote info
 fn get_remote_info(repo_path: &str) -> Result<String, String> {
-    let output = Command::new("git")
+    let output = silent_command("git")
         .args(["remote", "-v"])
         .current_dir(repo_path)
         .output()
@@ -3937,7 +3979,7 @@ fn get_remote_info(repo_path: &str) -> Result<String, String> {
 
 /// Stage all changes
 fn stage_all_changes(repo_path: &str) -> Result<(), String> {
-    let output = Command::new("git")
+    let output = silent_command("git")
         .args(["add", "-A"])
         .current_dir(repo_path)
         .output()
@@ -3953,7 +3995,7 @@ fn stage_all_changes(repo_path: &str) -> Result<(), String> {
 
 /// Create a git commit with the given message
 fn create_git_commit(repo_path: &str, message: &str) -> Result<String, String> {
-    let output = Command::new("git")
+    let output = silent_command("git")
         .args(["commit", "-m", message])
         .current_dir(repo_path)
         .output()
@@ -3965,7 +4007,7 @@ fn create_git_commit(repo_path: &str, message: &str) -> Result<String, String> {
     }
 
     // Get the commit hash
-    let hash_output = Command::new("git")
+    let hash_output = silent_command("git")
         .args(["rev-parse", "HEAD"])
         .current_dir(repo_path)
         .output()
@@ -3978,7 +4020,7 @@ fn create_git_commit(repo_path: &str, message: &str) -> Result<String, String> {
 
 /// Push to remote
 fn push_to_remote(repo_path: &str) -> Result<(), String> {
-    let output = Command::new("git")
+    let output = silent_command("git")
         .args(["push"])
         .current_dir(repo_path)
         .output()
@@ -3993,7 +4035,11 @@ fn push_to_remote(repo_path: &str) -> Result<(), String> {
 }
 
 /// Generate commit message using Claude CLI with JSON schema
-fn generate_commit_message(app: &AppHandle, prompt: &str, model: Option<&str>) -> Result<CommitMessageResponse, String> {
+fn generate_commit_message(
+    app: &AppHandle,
+    prompt: &str,
+    model: Option<&str>,
+) -> Result<CommitMessageResponse, String> {
     let cli_path = get_cli_binary_path(app)?;
 
     if !cli_path.exists() {
@@ -4003,7 +4049,7 @@ fn generate_commit_message(app: &AppHandle, prompt: &str, model: Option<&str>) -
     log::trace!("Generating commit message with Claude CLI (JSON schema)");
 
     let model_str = model.unwrap_or("haiku");
-    let mut cmd = Command::new(&cli_path);
+    let mut cmd = silent_command(&cli_path);
     cmd.args([
         "--print",
         "--verbose",
@@ -4192,7 +4238,11 @@ pub struct ReviewResponse {
 }
 
 /// Execute Claude CLI to generate a code review
-fn generate_review(app: &AppHandle, prompt: &str, model: Option<&str>) -> Result<ReviewResponse, String> {
+fn generate_review(
+    app: &AppHandle,
+    prompt: &str,
+    model: Option<&str>,
+) -> Result<ReviewResponse, String> {
     let cli_path = get_cli_binary_path(app)?;
 
     if !cli_path.exists() {
@@ -4202,7 +4252,7 @@ fn generate_review(app: &AppHandle, prompt: &str, model: Option<&str>) -> Result
     log::trace!("Running code review with Claude CLI (JSON schema)");
 
     let model_str = model.unwrap_or("haiku");
-    let mut cmd = Command::new(&cli_path);
+    let mut cmd = silent_command(&cli_path);
     cmd.args([
         "--print",
         "--verbose",
@@ -4301,7 +4351,7 @@ pub async fn run_review_with_ai(
     let commits = get_branch_commits(&worktree_path, target_branch)?;
 
     // Get uncommitted changes
-    let uncommitted_output = Command::new("git")
+    let uncommitted_output = silent_command("git")
         .args(["diff", "HEAD"])
         .current_dir(&worktree_path)
         .output()
@@ -4597,7 +4647,7 @@ pub async fn get_merge_conflicts(
         .ok_or_else(|| format!("Worktree not found: {worktree_id}"))?;
 
     // Get list of files with unresolved conflicts (unmerged paths)
-    let conflict_output = std::process::Command::new("git")
+    let conflict_output = silent_command("git")
         .args(["diff", "--name-only", "--diff-filter=U"])
         .current_dir(&worktree.path)
         .output()
@@ -4618,7 +4668,7 @@ pub async fn get_merge_conflicts(
     }
 
     // Get the diff with conflict markers
-    let diff_output = std::process::Command::new("git")
+    let diff_output = silent_command("git")
         .args(["diff"])
         .current_dir(&worktree.path)
         .output()
@@ -4657,7 +4707,7 @@ pub async fn fetch_and_merge_base(
     let worktree_path = &worktree.path;
 
     // Fetch the latest base branch from origin
-    let fetch_output = std::process::Command::new("git")
+    let fetch_output = silent_command("git")
         .args(["fetch", "origin", base_branch])
         .current_dir(worktree_path)
         .output()
@@ -4669,7 +4719,7 @@ pub async fn fetch_and_merge_base(
     }
 
     // Merge origin/<base_branch> into current branch
-    let merge_output = std::process::Command::new("git")
+    let merge_output = silent_command("git")
         .args(["merge", &format!("origin/{base_branch}")])
         .current_dir(worktree_path)
         .output()
@@ -4685,7 +4735,7 @@ pub async fn fetch_and_merge_base(
     }
 
     // Merge failed — check for conflict files
-    let conflict_output = std::process::Command::new("git")
+    let conflict_output = silent_command("git")
         .args(["diff", "--name-only", "--diff-filter=U"])
         .current_dir(worktree_path)
         .output()
@@ -4704,7 +4754,7 @@ pub async fn fetch_and_merge_base(
     }
 
     // Get the diff with conflict markers
-    let diff_output = std::process::Command::new("git")
+    let diff_output = silent_command("git")
         .args(["diff"])
         .current_dir(worktree_path)
         .output()

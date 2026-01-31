@@ -4,6 +4,7 @@
 //! based on the first message in a session.
 
 use crate::claude_cli::get_cli_binary_path;
+use crate::platform::silent_command;
 use crate::projects::git;
 use crate::projects::storage::{load_projects_data, save_projects_data};
 
@@ -11,7 +12,7 @@ use super::storage::with_sessions_mut;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use tauri::{AppHandle, Emitter, Manager};
 
 /// Request for combined naming (session + branch)
@@ -341,7 +342,7 @@ fn generate_names(app: &AppHandle, request: &NamingRequest) -> Result<NamingOutp
         "Generating names with Claude CLI using model {model_alias}, has_images: {has_images}, has_text_files: {has_text_files}, has_file_mentions: {has_file_mentions}"
     );
 
-    let mut cmd = Command::new(&cli_path);
+    let mut cmd = silent_command(&cli_path);
     cmd.args([
         "--print",
         "--input-format",

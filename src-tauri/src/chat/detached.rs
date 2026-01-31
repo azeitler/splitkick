@@ -5,13 +5,14 @@
 //! which Jean tails for real-time updates.
 
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 #[cfg(unix)]
 use std::io::{BufRead, BufReader};
 
 // Re-export is_process_alive from platform module
 pub use crate::platform::is_process_alive;
+use crate::platform::silent_command;
 
 /// Escape a string for safe use in a shell command.
 #[cfg(unix)]
@@ -95,7 +96,7 @@ pub fn spawn_detached_claude(
     log::trace!("Working directory: {working_dir:?}");
 
     // Spawn the shell command
-    let mut child = Command::new("sh")
+    let mut child = silent_command("sh")
         .arg("-c")
         .arg(&shell_cmd)
         .current_dir(working_dir)
@@ -193,7 +194,9 @@ pub fn spawn_detached_claude(
         .map_err(|e| format!("Failed to clone output file handle: {e}"))?;
 
     // Build command - run claude.exe directly
-    let mut cmd = Command::new(cli_path);
+    // NOTE: silent_command sets CREATE_NO_WINDOW, but creation_flags() replaces
+    // (doesn't merge), so we must re-specify both flags here.
+    let mut cmd = silent_command(cli_path);
     cmd.args(args)
         .current_dir(working_dir)
         .stdin(Stdio::piped())
