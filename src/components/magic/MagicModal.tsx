@@ -1,5 +1,7 @@
 import { useCallback, useState, useRef, useEffect, useMemo } from 'react'
 import {
+  ArrowDownToLine,
+  ArrowUpToLine,
   GitBranch,
   GitCommitHorizontal,
   GitMerge,
@@ -28,6 +30,8 @@ type MagicOption =
   | 'load-context'
   | 'commit'
   | 'commit-and-push'
+  | 'pull'
+  | 'push'
   | 'open-pr'
   | 'review'
   | 'merge'
@@ -64,6 +68,13 @@ function buildMagicSections(hasOpenPr: boolean): MagicSection[] {
       ],
     },
     {
+      header: 'Sync',
+      options: [
+        { id: 'pull', label: 'Pull', icon: ArrowDownToLine, key: 'D' },
+        { id: 'push', label: 'Push', icon: ArrowUpToLine, key: 'U' },
+      ],
+    },
+    {
       header: 'Pull Request',
       options: [
         { id: 'open-pr', label: hasOpenPr ? 'Open' : 'Create', icon: GitPullRequest, key: 'O' },
@@ -88,6 +99,8 @@ const KEY_TO_OPTION: Record<string, MagicOption> = {
   l: 'load-context',
   c: 'commit',
   p: 'commit-and-push',
+  d: 'pull',
+  u: 'push',
   o: 'open-pr',
   r: 'review',
   m: 'merge',
