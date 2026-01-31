@@ -1445,13 +1445,24 @@ pub async fn checkout_pr(
 
         log::trace!("Background: Worktree created, now running gh pr checkout {pr_number}");
 
+        // Determine safe local branch name for gh pr checkout -b
+        // If pr_head_ref (e.g. "main") already exists locally, use an alternative
+        // to avoid "refusing to fetch into branch" errors when the branch is checked out
+        let local_branch_name = if git::branch_exists(&project_path, &pr_head_ref) {
+            let alt = format!("pr-{pr_number}-{pr_head_ref}");
+            log::trace!("Branch '{pr_head_ref}' already exists, using '{alt}' instead");
+            alt
+        } else {
+            pr_head_ref.clone()
+        };
+
         // Step 2: Run gh pr checkout inside the worktree
         // This checks out the actual PR branch and sets up tracking
-        // Pass the PR's head_ref_name to ensure local branch matches remote
+        // Pass the local branch name to ensure no conflicts with checked-out branches
         let actual_branch = match git::gh_pr_checkout(
             &worktree_path_clone,
             pr_number,
-            Some(&pr_head_ref),
+            Some(&local_branch_name),
             &resolve_gh_binary(&app_clone),
         ) {
             Ok(branch) => {

@@ -625,6 +625,7 @@ export default function useStreamingEvents({
         const { session_id } = event.payload
         const { setCompacting } = useChatStore.getState()
         setCompacting(session_id, true)
+        toast.info('Compacting context...')
       }
     )
 

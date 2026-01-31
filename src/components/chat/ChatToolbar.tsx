@@ -18,6 +18,7 @@ import {
   CircleDot,
   Clock,
   ClipboardList,
+  ExternalLink,
   Eye,
   FolderOpen,
   GitBranch,
@@ -33,6 +34,7 @@ import {
   Wand2,
   Zap,
 } from 'lucide-react'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import { Kbd } from '@/components/ui/kbd'
 import {
   Select,
@@ -737,6 +739,17 @@ export const ChatToolbar = memo(function ChatToolbar({
                         <span className="truncate">
                           #{ctx.number} {ctx.title}
                         </span>
+                        <button
+                          className="ml-auto shrink-0 rounded p-0.5 hover:bg-accent"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openUrl(
+                              `https://github.com/${ctx.repoOwner}/${ctx.repoName}/issues/${ctx.number}`
+                            )
+                          }}
+                        >
+                          <ExternalLink className="h-3.5 w-3.5 opacity-60" />
+                        </button>
                       </DropdownMenuItem>
                     ))}
                   </>
@@ -755,6 +768,17 @@ export const ChatToolbar = memo(function ChatToolbar({
                         <span className="truncate">
                           #{ctx.number} {ctx.title}
                         </span>
+                        <button
+                          className="ml-auto shrink-0 rounded p-0.5 hover:bg-accent"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openUrl(
+                              `https://github.com/${ctx.repoOwner}/${ctx.repoName}/pull/${ctx.number}`
+                            )
+                          }}
+                        >
+                          <ExternalLink className="h-3.5 w-3.5 opacity-60" />
+                        </button>
                       </DropdownMenuItem>
                     ))}
                   </>

@@ -130,6 +130,8 @@ export function ToolCallInline({
 interface TaskCallInlineProps {
   taskToolCall: ToolCall
   subToolCalls: ToolCall[]
+  /** All tool calls in the message, used to resolve nested Task sub-tools */
+  allToolCalls?: ToolCall[]
   className?: string
   /** Callback when a file path is clicked (for Read/Edit/Write tools) */
   onFileClick?: (filePath: string) => void
@@ -146,6 +148,7 @@ interface TaskCallInlineProps {
 export function TaskCallInline({
   taskToolCall,
   subToolCalls,
+  allToolCalls,
   className,
   onFileClick,
   isStreaming,
@@ -206,13 +209,26 @@ export function TaskCallInline({
             {/* Show sub-tools as compact list */}
             {subToolCalls.length > 0 ? (
               <div className="space-y-1">
-                {subToolCalls.map(subTool => (
-                  <SubToolItem
-                    key={subTool.id}
-                    toolCall={subTool}
-                    onFileClick={onFileClick}
-                  />
-                ))}
+                {subToolCalls.map(subTool =>
+                  subTool.name === 'Task' && allToolCalls ? (
+                    <TaskCallInline
+                      key={subTool.id}
+                      taskToolCall={subTool}
+                      subToolCalls={allToolCalls.filter(
+                        t => t.parent_tool_use_id === subTool.id
+                      )}
+                      allToolCalls={allToolCalls}
+                      onFileClick={onFileClick}
+                      isStreaming={isStreaming}
+                    />
+                  ) : (
+                    <SubToolItem
+                      key={subTool.id}
+                      toolCall={subTool}
+                      onFileClick={onFileClick}
+                    />
+                  )
+                )}
               </div>
             ) : (
               <p className="text-xs text-muted-foreground/60 italic">
