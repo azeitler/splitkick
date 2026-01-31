@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import {
   FileText,
   Edit,
@@ -14,6 +14,7 @@ import {
   Brain,
   Loader2,
 } from 'lucide-react'
+import { diffLines } from 'diff'
 import type { ToolCall } from '@/types/chat'
 import type { StackableItem } from './tool-call-utils'
 import { Markdown } from '@/components/ui/markdown'
@@ -105,9 +106,9 @@ export function ToolCallInline({
         </CollapsibleTrigger>
         <CollapsibleContent>
           <div className="border-t border-border/50 px-3 py-2">
-            <pre className="max-h-64 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">
+            <div className="max-h-64 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">
               {expandedContent}
-            </pre>
+            </div>
             {toolCall.output && (
               <>
                 <div className="border-t border-border/30 my-2" />
@@ -425,9 +426,9 @@ function SubToolItem({ toolCall, onFileClick }: SubToolItemProps) {
         </CollapsibleTrigger>
         <CollapsibleContent>
           <div className="border-t border-border/30 px-2 py-1.5">
-            <pre className="max-h-40 overflow-auto whitespace-pre-wrap text-[0.625rem] text-muted-foreground/70">
+            <div className="max-h-40 overflow-auto whitespace-pre-wrap text-[0.625rem] text-muted-foreground/70">
               {expandedContent}
-            </pre>
+            </div>
             {toolCall.output && (
               <>
                 <div className="border-t border-border/20 my-1.5" />
@@ -452,7 +453,51 @@ interface ToolDisplay {
   detail?: string
   /** Full file path for file-related tools (Read, Edit, Write) */
   filePath?: string
-  expandedContent: string
+  expandedContent: React.ReactNode
+}
+
+/** Renders a unified diff view with colored +/- lines */
+function DiffView({
+  oldString,
+  newString,
+  filePath,
+  className,
+}: {
+  oldString: string
+  newString: string
+  filePath: string
+  className?: string
+}) {
+  const parts = useMemo(
+    () => diffLines(oldString, newString),
+    [oldString, newString]
+  )
+
+  return (
+    <div className={className}>
+      <div className="text-muted-foreground mb-1.5">Path: {filePath}</div>
+      <div className="rounded border border-border/30 overflow-auto max-h-64">
+        {parts.map((part, i) => {
+          const lines = part.value.replace(/\n$/, '').split('\n')
+          return lines.map((line, j) => (
+            <div
+              key={`${i}-${j}`}
+              className={cn(
+                'px-2 font-mono',
+                part.added && 'bg-green-500/15 text-green-400',
+                part.removed && 'bg-red-500/15 text-red-400'
+              )}
+            >
+              <span className="inline-block w-4 select-none opacity-60">
+                {part.added ? '+' : part.removed ? '-' : ' '}
+              </span>
+              {line}
+            </div>
+          ))
+        })}
+      </div>
+    </div>
+  )
 }
 
 function getToolDisplay(toolCall: ToolCall): ToolDisplay {
@@ -486,9 +531,15 @@ function getToolDisplay(toolCall: ToolCall): ToolDisplay {
         label: 'Edit',
         detail: filename,
         filePath,
-        expandedContent: filePath
-          ? `Path: ${filePath}\n\n--- Old ---\n${oldString ?? '(empty)'}\n\n+++ New +++\n${newString ?? '(empty)'}`
-          : 'No file path specified',
+        expandedContent: filePath ? (
+          <DiffView
+            filePath={filePath}
+            oldString={oldString ?? ''}
+            newString={newString ?? ''}
+          />
+        ) : (
+          'No file path specified'
+        ),
       }
     }
 

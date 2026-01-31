@@ -201,7 +201,6 @@ interface ChatToolbarProps {
   onResolvePrConflicts: () => void
   onResolveConflicts: () => void
   onInvestigate: () => void
-  isBaseSession: boolean
   hasOpenPr: boolean
   onSetDiffRequest: (request: DiffRequest) => void
   onModelChange: (model: ClaudeModel) => void
@@ -256,7 +255,6 @@ export const ChatToolbar = memo(function ChatToolbar({
   onResolvePrConflicts,
   onResolveConflicts,
   onInvestigate,
-  isBaseSession,
   hasOpenPr,
   onSetDiffRequest,
   onModelChange,
