@@ -1,9 +1,7 @@
 import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { check } from '@tauri-apps/plugin-updater'
-import { relaunch } from '@tauri-apps/plugin-process'
-import { ask, message } from '@tauri-apps/plugin-dialog'
-import { invoke } from '@tauri-apps/api/core'
+import { invoke, useWsConnectionStatus, useWsAuthError } from '@/lib/transport'
+import { isNativeApp } from '@/lib/environment'
 import { initializeCommandSystem } from './lib/commands'
 import { logger } from './lib/logger'
 import { cleanupOldFiles } from './lib/recovery'
@@ -21,6 +19,39 @@ import { useCliVersionCheck } from './hooks/useCliVersionCheck'
 import { useQueueProcessor } from './hooks/useQueueProcessor'
 import useStreamingEvents from './components/chat/hooks/useStreamingEvents'
 import { preloadAllSounds } from './lib/sounds'
+
+/** Small fixed badge showing WebSocket connection status (browser mode only). */
+function WsStatusBadge() {
+  const connected = useWsConnectionStatus()
+  const authError = useWsAuthError()
+
+  if (authError) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/90 backdrop-blur-sm">
+        <div className="mx-4 max-w-md rounded-lg border border-destructive/50 bg-background p-6 shadow-lg">
+          <div className="flex items-center gap-2 text-destructive">
+            <svg className="size-5 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            <h2 className="text-sm font-semibold">Connection Failed</h2>
+          </div>
+          <p className="mt-2 text-sm text-muted-foreground">{authError}</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="fixed bottom-2 right-2 z-50 flex items-center gap-1.5 rounded-full bg-background/80 px-2.5 py-1 text-xs font-medium shadow-sm ring-1 ring-border/50 backdrop-blur-sm">
+      <span
+        className={`inline-block size-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`}
+      />
+      <span className="text-muted-foreground">
+        {connected ? 'Connected' : 'Reconnecting\u2026'}
+      </span>
+    </div>
+  )
+}
 
 function App() {
   // Apply font settings from preferences
@@ -40,6 +71,25 @@ function App() {
   // Global queue processor - must be at App level so queued messages execute
   // even when the worktree is not focused (ChatWindow unmounted)
   useQueueProcessor()
+
+  // When WebSocket connects (browser mode), invalidate all cached queries
+  // so they refetch with the now-available backend. Without this, queries
+  // that fired before the WS was ready return empty data and cache it.
+  // Uses reactive hook instead of DOM event to avoid race conditions.
+  const wsConnected = useWsConnectionStatus()
+  useEffect(() => {
+    if (!isNativeApp() && wsConnected) {
+      logger.info('WebSocket connected, invalidating all queries')
+      queryClient.invalidateQueries()
+    }
+  }, [wsConnected, queryClient])
+
+  // Add native-app class to body for desktop-only CSS (cursor, user-select, etc.)
+  useEffect(() => {
+    if (isNativeApp()) {
+      document.body.classList.add('native-app')
+    }
+  }, [])
 
   // Check CLI installation status
   const { data: claudeStatus, isLoading: isClaudeStatusLoading } =
@@ -144,7 +194,12 @@ function App() {
 
     // Auto-updater logic - check for updates 5 seconds after app loads
     const checkForUpdates = async () => {
+      if (!isNativeApp()) return
+
       try {
+        const { check } = await import('@tauri-apps/plugin-updater')
+        const { ask, message } = await import('@tauri-apps/plugin-dialog')
+
         const update = await check()
         if (update) {
           logger.info(`Update available: ${update.version}`)
@@ -179,6 +234,7 @@ function App() {
               )
 
               if (shouldRestart) {
+                const { relaunch } = await import('@tauri-apps/plugin-process')
                 await relaunch()
               }
             } catch (updateError) {
@@ -207,6 +263,7 @@ function App() {
     <ErrorBoundary>
       <ThemeProvider>
         <MainWindow />
+        {!isNativeApp() && <WsStatusBadge />}
       </ThemeProvider>
     </ErrorBoundary>
   )

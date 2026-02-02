@@ -4,9 +4,10 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::io::Write;
 use std::process::Command;
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 
 use super::config::{ensure_cli_dir, get_cli_binary_path};
+use crate::http_server::EmitExt;
 
 /// Extract semver version number from a version string
 /// Handles formats like: "1.0.28", "v1.0.28", "Claude CLI 1.0.28"
@@ -487,7 +488,7 @@ fn emit_progress(app: &AppHandle, stage: &str, message: &str, percent: u8) {
         percent,
     };
 
-    if let Err(e) = app.emit("claude-cli:install-progress", &progress) {
+    if let Err(e) = app.emit_all("claude-cli:install-progress", &progress) {
         log::warn!("Failed to emit install progress: {}", e);
     }
 }

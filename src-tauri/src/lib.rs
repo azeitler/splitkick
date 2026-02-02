@@ -12,6 +12,7 @@ mod background_tasks;
 mod chat;
 mod claude_cli;
 mod gh_cli;
+pub mod http_server;
 mod platform;
 mod projects;
 mod terminal;
@@ -132,6 +133,12 @@ pub struct AppPreferences {
     pub waiting_sound: String, // Sound when session is waiting for input: none, ding, chime, pop, choochoo
     #[serde(default = "default_review_sound")]
     pub review_sound: String, // Sound when session finishes reviewing: none, ding, chime, pop, choochoo
+    #[serde(default)]
+    pub http_server_auto_start: bool, // Auto-start HTTP server on app launch
+    #[serde(default = "default_http_server_port")]
+    pub http_server_port: u16, // HTTP server port (default: 3456)
+    #[serde(default)]
+    pub http_server_token: Option<String>, // Persisted auth token (generated once)
 }
 
 fn default_auto_branch_naming() -> bool {
@@ -244,6 +251,10 @@ fn default_waiting_sound() -> String {
 
 fn default_review_sound() -> String {
     "none".to_string()
+}
+
+fn default_http_server_port() -> u16 {
+    3456
 }
 
 // =============================================================================
@@ -519,6 +530,9 @@ impl Default for AppPreferences {
             allow_web_tools_in_plan_mode: default_allow_web_tools_in_plan_mode(),
             waiting_sound: default_waiting_sound(),
             review_sound: default_review_sound(),
+            http_server_auto_start: false,
+            http_server_port: default_http_server_port(),
+            http_server_token: None,
         }
     }
 }
@@ -945,6 +959,98 @@ async fn cleanup_old_recovery_files(app: AppHandle) -> Result<u32, String> {
     Ok(removed_count)
 }
 
+// =============================================================================
+// HTTP Server Tauri Commands
+// =============================================================================
+
+#[tauri::command]
+async fn start_http_server(
+    app: AppHandle,
+    port: Option<u16>,
+) -> Result<http_server::server::ServerStatus, String> {
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+
+    let actual_port = port.unwrap_or(default_http_server_port());
+
+    // Generate or load token
+    let token = {
+        let prefs = load_preferences(app.clone()).await?;
+        match prefs.http_server_token {
+            Some(t) if !t.is_empty() => t,
+            _ => {
+                let new_token = http_server::auth::generate_token();
+                // Persist the token
+                let mut prefs = prefs;
+                prefs.http_server_token = Some(new_token.clone());
+                save_preferences(app.clone(), prefs).await?;
+                new_token
+            }
+        }
+    };
+
+    // Check if already running
+    {
+        let handle_state = app.try_state::<Arc<Mutex<Option<http_server::server::HttpServerHandle>>>>();
+        if let Some(state) = handle_state {
+            let handle = state.lock().await;
+            if handle.is_some() {
+                return Err("HTTP server is already running".to_string());
+            }
+        }
+    }
+
+    // Start the server
+    let handle = http_server::server::start_server(app.clone(), actual_port, token).await?;
+    let status = http_server::server::ServerStatus {
+        running: true,
+        url: Some(handle.url.clone()),
+        token: Some(handle.token.clone()),
+        port: Some(handle.port),
+    };
+
+    // Store the handle
+    let handle_state = app.try_state::<Arc<Mutex<Option<http_server::server::HttpServerHandle>>>>();
+    if let Some(state) = handle_state {
+        let mut guard = state.lock().await;
+        *guard = Some(handle);
+    }
+
+    log::info!("HTTP server started: {}", status.url.as_deref().unwrap_or("unknown"));
+    Ok(status)
+}
+
+#[tauri::command]
+async fn stop_http_server(app: AppHandle) -> Result<(), String> {
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+
+    let handle_state = app.try_state::<Arc<Mutex<Option<http_server::server::HttpServerHandle>>>>();
+    if let Some(state) = handle_state {
+        let mut guard = state.lock().await;
+        if let Some(handle) = guard.take() {
+            let _ = handle.shutdown_tx.send(());
+            log::info!("HTTP server stopped");
+        }
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_http_server_status(app: AppHandle) -> Result<http_server::server::ServerStatus, String> {
+    Ok(http_server::server::get_server_status(app).await)
+}
+
+#[tauri::command]
+async fn regenerate_http_token(app: AppHandle) -> Result<String, String> {
+    let new_token = http_server::auth::generate_token();
+    let mut prefs = load_preferences(app.clone()).await?;
+    prefs.http_server_token = Some(new_token.clone());
+    save_preferences(app.clone(), prefs).await?;
+    Ok(new_token)
+}
+
 #[cfg(target_os = "macos")]
 // Create the native menu system
 fn create_app_menu(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
@@ -1243,6 +1349,33 @@ pub fn run() {
             app.manage(task_manager);
             log::trace!("Background task manager initialized");
 
+            // Initialize HTTP server infrastructure
+            let (broadcaster, _) = http_server::WsBroadcaster::new();
+            app.manage(broadcaster);
+            app.manage(std::sync::Arc::new(tokio::sync::Mutex::new(
+                None::<http_server::server::HttpServerHandle>,
+            )));
+            log::trace!("HTTP server infrastructure initialized");
+
+            // Auto-start HTTP server if configured
+            let app_handle_http = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                match load_preferences(app_handle_http.clone()).await {
+                    Ok(prefs) if prefs.http_server_auto_start => {
+                        log::info!("Auto-starting HTTP server on port {}", prefs.http_server_port);
+                        match start_http_server(app_handle_http, Some(prefs.http_server_port)).await {
+                            Ok(status) => {
+                                log::info!("HTTP server auto-started: {}", status.url.unwrap_or_default());
+                            }
+                            Err(e) => {
+                                log::error!("Failed to auto-start HTTP server: {e}");
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -1398,6 +1531,8 @@ pub fn run() {
             chat::generate_context_from_session,
             // Chat commands - Session digest (context recall)
             chat::generate_session_digest,
+            // Chat commands - Real-time setting sync
+            chat::broadcast_session_setting,
             // Chat commands - Debug info
             chat::get_session_debug_info,
             // Chat commands - Session resume (detached process recovery)
@@ -1422,6 +1557,11 @@ pub fn run() {
             background_tasks::commands::set_remote_poll_interval,
             background_tasks::commands::get_remote_poll_interval,
             background_tasks::commands::trigger_immediate_remote_poll,
+            // HTTP server commands
+            start_http_server,
+            stop_http_server,
+            get_http_server_status,
+            regenerate_http_token,
         ])
         .build(tauri::generate_context!())
         .expect("error building tauri application")

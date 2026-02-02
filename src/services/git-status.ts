@@ -5,8 +5,8 @@
  * and listen for status updates from the Rust backend.
  */
 
-import { invoke } from '@tauri-apps/api/core'
-import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { invoke, useWsConnectionStatus } from '@/lib/transport'
+import { listen, type UnlistenFn } from '@/lib/transport'
 import { useEffect, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
@@ -251,6 +251,7 @@ export function useGitStatusEvents(
   onStatusUpdate?: (status: GitStatusEvent) => void
 ) {
   const queryClient = useQueryClient()
+  const wsConnected = useWsConnectionStatus()
 
   useEffect(() => {
     if (!isTauri()) return
@@ -302,7 +303,7 @@ export function useGitStatusEvents(
     return () => {
       unlistens.forEach(unlisten => unlisten())
     }
-  }, [queryClient, onStatusUpdate])
+  }, [queryClient, onStatusUpdate, wsConnected])
 }
 
 /**
@@ -313,6 +314,7 @@ export function useGitStatusEvents(
  */
 export function useAppFocusTracking() {
   const isMounted = useRef(true)
+  const wsConnected = useWsConnectionStatus()
 
   useEffect(() => {
     if (!isTauri()) return
@@ -353,7 +355,7 @@ export function useAppFocusTracking() {
       window.removeEventListener('focus', handleFocus)
       window.removeEventListener('blur', handleBlur)
     }
-  }, [])
+  }, [wsConnected])
 }
 
 /**
@@ -381,6 +383,7 @@ export function useGitStatus(worktreeId: string | null) {
  */
 export function useWorktreePolling(info: WorktreePollingInfo | null) {
   const prevInfoRef = useRef<WorktreePollingInfo | null>(null)
+  const wsConnected = useWsConnectionStatus()
 
   useEffect(() => {
     if (!isTauri()) return
@@ -399,7 +402,7 @@ export function useWorktreePolling(info: WorktreePollingInfo | null) {
       setActiveWorktreeForPolling(info)
       prevInfoRef.current = info
     }
-  }, [info])
+  }, [info, wsConnected])
 
   // Clear polling on unmount
   useEffect(() => {

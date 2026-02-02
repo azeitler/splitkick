@@ -1,6 +1,6 @@
 import { X, Minus, Maximize2, Maximize, Minimize2 } from 'lucide-react'
 import type { AppCommand } from './types'
-import { getCurrentWindow } from '@tauri-apps/api/window'
+import { isNativeApp } from '@/lib/environment'
 
 export const windowCommands: AppCommand[] = [
   {
@@ -12,7 +12,9 @@ export const windowCommands: AppCommand[] = [
     shortcut: '⌘+W',
 
     execute: async context => {
+      if (!isNativeApp()) return
       try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window')
         const appWindow = getCurrentWindow()
         await appWindow.close()
       } catch (error) {
@@ -31,7 +33,9 @@ export const windowCommands: AppCommand[] = [
     shortcut: '⌘+M',
 
     execute: async context => {
+      if (!isNativeApp()) return
       try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window')
         const appWindow = getCurrentWindow()
         await appWindow.minimize()
       } catch (error) {
@@ -49,7 +53,9 @@ export const windowCommands: AppCommand[] = [
     group: 'window',
 
     execute: async context => {
+      if (!isNativeApp()) return
       try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window')
         const appWindow = getCurrentWindow()
         await appWindow.toggleMaximize()
       } catch (error) {
@@ -68,7 +74,9 @@ export const windowCommands: AppCommand[] = [
     shortcut: 'F11',
 
     execute: async context => {
+      if (!isNativeApp()) return
       try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window')
         const appWindow = getCurrentWindow()
         await appWindow.setFullscreen(true)
       } catch (error) {
@@ -87,7 +95,9 @@ export const windowCommands: AppCommand[] = [
     shortcut: 'Escape',
 
     execute: async context => {
+      if (!isNativeApp()) return
       try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window')
         const appWindow = getCurrentWindow()
         await appWindow.setFullscreen(false)
       } catch (error) {

@@ -266,6 +266,10 @@ export interface AppPreferences {
   allow_web_tools_in_plan_mode: boolean // Allow WebFetch/WebSearch in plan mode without prompts
   waiting_sound: NotificationSound // Sound when session is waiting for input
   review_sound: NotificationSound // Sound when session finishes reviewing
+  http_server_enabled: boolean // Whether HTTP server is enabled
+  http_server_port: number // HTTP server port (default 3456)
+  http_server_token: string | null // Auth token for HTTP/WS access
+  http_server_auto_start: boolean // Auto-start HTTP server on launch
 }
 
 export type FileEditMode = 'inline' | 'external'
@@ -461,4 +465,8 @@ export const defaultPreferences: AppPreferences = {
   allow_web_tools_in_plan_mode: true, // Default: enabled
   waiting_sound: 'none',
   review_sound: 'none',
+  http_server_enabled: false,
+  http_server_port: 3456,
+  http_server_token: null,
+  http_server_auto_start: false,
 }
