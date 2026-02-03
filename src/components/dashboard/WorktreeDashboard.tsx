@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useQueries, useQueryClient } from '@tanstack/react-query'
+import { useQueries } from '@tanstack/react-query'
 import { invoke } from '@/lib/transport'
 import { Search, GitBranch } from 'lucide-react'
 import { Input } from '@/components/ui/input'
@@ -8,18 +8,8 @@ import {
   useWorktrees,
   useProjects,
   isTauri,
-  useArchiveWorktree,
-  useCloseBaseSessionClean,
 } from '@/services/projects'
-import {
-  chatQueryKeys,
-  useSendMessage,
-  markPlanApproved,
-  useArchiveSession,
-  useCloseSession,
-  useCreateSession,
-} from '@/services/chat'
-import { usePreferences } from '@/services/preferences'
+import { chatQueryKeys, useCreateSession } from '@/services/chat'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
@@ -30,9 +20,15 @@ import { SessionChatModal } from '@/components/chat/SessionChatModal'
 import { SessionCard } from '@/components/chat/SessionCard'
 import {
   type SessionCardData,
-  type ChatStoreState,
   computeSessionCardData,
 } from '@/components/chat/session-card-utils'
+import { useCanvasStoreState } from '@/components/chat/hooks/useCanvasStoreState'
+import { usePlanApproval } from '@/components/chat/hooks/usePlanApproval'
+import {
+  useArchiveWorktree,
+  useCloseBaseSessionClean,
+} from '@/services/projects'
+import { useArchiveSession, useCloseSession } from '@/services/chat'
 
 interface WorktreeDashboardProps {
   projectId: string
@@ -51,13 +47,11 @@ interface FlatCard {
 }
 
 export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
-  const queryClient = useQueryClient()
   const [searchQuery, setSearchQuery] = useState('')
 
   // Get project info
   const { data: projects = [], isLoading: projectsLoading } = useProjects()
   const project = projects.find(p => p.id === projectId)
-  const { data: preferences } = usePreferences()
 
   // Get worktrees
   const { data: worktrees = [], isLoading: worktreesLoading } =
@@ -108,42 +102,8 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     return map
   }, [sessionQueries])
 
-  // Subscribe to chat store state for status computation
-  const sendingSessionIds = useChatStore(state => state.sendingSessionIds)
-  const executingModes = useChatStore(state => state.executingModes)
-  const executionModes = useChatStore(state => state.executionModes)
-  const activeToolCalls = useChatStore(state => state.activeToolCalls)
-  const answeredQuestions = useChatStore(state => state.answeredQuestions)
-  const waitingForInputSessionIds = useChatStore(
-    state => state.waitingForInputSessionIds
-  )
-  const reviewingSessions = useChatStore(state => state.reviewingSessions)
-  const pendingPermissionDenials = useChatStore(
-    state => state.pendingPermissionDenials
-  )
-
-  const storeState: ChatStoreState = useMemo(
-    () => ({
-      sendingSessionIds,
-      executingModes,
-      executionModes,
-      activeToolCalls,
-      answeredQuestions,
-      waitingForInputSessionIds,
-      reviewingSessions,
-      pendingPermissionDenials,
-    }),
-    [
-      sendingSessionIds,
-      executingModes,
-      executionModes,
-      activeToolCalls,
-      answeredQuestions,
-      waitingForInputSessionIds,
-      reviewingSessions,
-      pendingPermissionDenials,
-    ]
-  )
+  // Use shared store state hook
+  const storeState = useCanvasStoreState()
 
   // Build worktree sections with computed card data
   const worktreeSections: WorktreeSection[] = useMemo(() => {
@@ -205,9 +165,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
 
   // Dialog state
   const [planDialogPath, setPlanDialogPath] = useState<string | null>(null)
-  const [planDialogContent, setPlanDialogContent] = useState<string | null>(
-    null
-  )
+  const [planDialogContent, setPlanDialogContent] = useState<string | null>(null)
   const [selectedSession, setSelectedSession] = useState<{
     sessionId: string
     worktreeId: string
@@ -219,6 +177,21 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const cardRefs = useRef<(HTMLDivElement | null)[]>([])
   const searchInputRef = useRef<HTMLInputElement>(null)
+
+  // Get current selected card's worktree info for hooks
+  const selectedCard = selectedIndex !== null ? flatCards[selectedIndex] : null
+
+  // Use shared hooks - pass the currently selected card's worktree
+  const { handlePlanApproval, handlePlanApprovalYolo } = usePlanApproval({
+    worktreeId: selectedCard?.worktreeId ?? '',
+    worktreePath: selectedCard?.worktreePath ?? '',
+  })
+
+  // Archive mutations - need to handle per-worktree
+  const archiveSession = useArchiveSession()
+  const closeSession = useCloseSession()
+  const archiveWorktree = useArchiveWorktree()
+  const closeBaseSessionClean = useCloseBaseSessionClean()
 
   // Listen for focus-canvas-search event
   useEffect(() => {
@@ -242,28 +215,10 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
   const setActiveSession = useChatStore(state => state.setActiveSession)
 
   // Mutations
-  const sendMessage = useSendMessage()
-  const archiveSession = useArchiveSession()
-  const closeSession = useCloseSession()
-  const archiveWorktree = useArchiveWorktree()
-  const closeBaseSessionClean = useCloseBaseSessionClean()
   const createSession = useCreateSession()
 
   // Actions via getState()
-  const {
-    setViewingCanvasTab,
-    setExecutionMode,
-    addSendingSession,
-    setSelectedModel,
-    setLastSentMessage,
-    setError,
-    setExecutingMode,
-    setSessionReviewing,
-    setWaitingForInput,
-    clearToolCalls,
-    clearStreamingContentBlocks,
-    setPendingPlanMessageId,
-  } = useChatStore.getState()
+  const { setViewingCanvasTab } = useChatStore.getState()
 
   // Find the card visually below/above the current one
   const findVerticalNeighbor = useCallback(
@@ -422,13 +377,12 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     setViewingCanvasTab,
   ])
 
-  // Handle archive session
-  const handleArchiveSession = useCallback(
+  // Handle archive session for a specific worktree
+  const handleArchiveSessionForWorktree = useCallback(
     (worktreeId: string, worktreePath: string, sessionId: string) => {
-      const sessionData = sessionsByWorktreeId.get(worktreeId)
-      const activeSessions =
-        sessionData?.sessions.filter(s => !s.archived_at) ?? []
       const worktree = readyWorktrees.find(w => w.id === worktreeId)
+      const sessionData = sessionsByWorktreeId.get(worktreeId)
+      const activeSessions = sessionData?.sessions?.filter(s => !s.archived_at) ?? []
 
       if (activeSessions.length <= 1 && worktree && project) {
         if (isBaseSession(worktree)) {
@@ -450,23 +404,15 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
         })
       }
     },
-    [
-      sessionsByWorktreeId,
-      readyWorktrees,
-      project,
-      archiveSession,
-      archiveWorktree,
-      closeBaseSessionClean,
-    ]
+    [readyWorktrees, sessionsByWorktreeId, project, archiveSession, archiveWorktree, closeBaseSessionClean]
   )
 
-  // Handle delete session
-  const handleDeleteSession = useCallback(
+  // Handle delete session for a specific worktree
+  const handleDeleteSessionForWorktree = useCallback(
     (worktreeId: string, worktreePath: string, sessionId: string) => {
-      const sessionData = sessionsByWorktreeId.get(worktreeId)
-      const activeSessions =
-        sessionData?.sessions.filter(s => !s.archived_at) ?? []
       const worktree = readyWorktrees.find(w => w.id === worktreeId)
+      const sessionData = sessionsByWorktreeId.get(worktreeId)
+      const activeSessions = sessionData?.sessions?.filter(s => !s.archived_at) ?? []
 
       if (activeSessions.length <= 1 && worktree && project) {
         if (isBaseSession(worktree)) {
@@ -488,14 +434,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
         })
       }
     },
-    [
-      sessionsByWorktreeId,
-      readyWorktrees,
-      project,
-      closeSession,
-      archiveWorktree,
-      closeBaseSessionClean,
-    ]
+    [readyWorktrees, sessionsByWorktreeId, project, closeSession, archiveWorktree, closeBaseSessionClean]
   )
 
   // Handle plan view
@@ -508,142 +447,6 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
       setPlanDialogPath(null)
     }
   }, [])
-
-  // Handle plan approval
-  const handlePlanApproval = useCallback(
-    (worktreeId: string, worktreePath: string, card: SessionCardData) => {
-      if (!card.pendingPlanMessageId) return
-
-      const sessionId = card.session.id
-      const messageId = card.pendingPlanMessageId
-
-      markPlanApproved(worktreeId, worktreePath, sessionId, messageId)
-
-      queryClient.setQueryData<Session>(
-        chatQueryKeys.session(sessionId),
-        old => {
-          if (!old) return old
-          return {
-            ...old,
-            messages: old.messages.map(msg =>
-              msg.id === messageId ? { ...msg, plan_approved: true } : msg
-            ),
-          }
-        }
-      )
-
-      setExecutionMode(sessionId, 'build')
-      clearToolCalls(sessionId)
-      clearStreamingContentBlocks(sessionId)
-      setSessionReviewing(sessionId, false)
-      setWaitingForInput(sessionId, false)
-      setPendingPlanMessageId(sessionId, null)
-
-      const model = preferences?.selected_model ?? 'opus'
-      const thinkingLevel = preferences?.thinking_level ?? 'off'
-
-      setLastSentMessage(sessionId, 'Approved')
-      setError(sessionId, null)
-      addSendingSession(sessionId)
-      setSelectedModel(sessionId, model)
-      setExecutingMode(sessionId, 'build')
-
-      sendMessage.mutate({
-        sessionId,
-        worktreeId,
-        worktreePath,
-        message: 'Approved',
-        model,
-        executionMode: 'build',
-        thinkingLevel,
-        disableThinkingForMode: true,
-      })
-    },
-    [
-      queryClient,
-      preferences,
-      sendMessage,
-      setExecutionMode,
-      clearToolCalls,
-      clearStreamingContentBlocks,
-      setSessionReviewing,
-      setWaitingForInput,
-      setPendingPlanMessageId,
-      setLastSentMessage,
-      setError,
-      addSendingSession,
-      setSelectedModel,
-      setExecutingMode,
-    ]
-  )
-
-  // Handle plan approval with yolo mode
-  const handlePlanApprovalYolo = useCallback(
-    (worktreeId: string, worktreePath: string, card: SessionCardData) => {
-      if (!card.pendingPlanMessageId) return
-
-      const sessionId = card.session.id
-      const messageId = card.pendingPlanMessageId
-
-      markPlanApproved(worktreeId, worktreePath, sessionId, messageId)
-
-      queryClient.setQueryData<Session>(
-        chatQueryKeys.session(sessionId),
-        old => {
-          if (!old) return old
-          return {
-            ...old,
-            messages: old.messages.map(msg =>
-              msg.id === messageId ? { ...msg, plan_approved: true } : msg
-            ),
-          }
-        }
-      )
-
-      setExecutionMode(sessionId, 'yolo')
-      clearToolCalls(sessionId)
-      clearStreamingContentBlocks(sessionId)
-      setSessionReviewing(sessionId, false)
-      setWaitingForInput(sessionId, false)
-      setPendingPlanMessageId(sessionId, null)
-
-      const model = preferences?.selected_model ?? 'opus'
-      const thinkingLevel = preferences?.thinking_level ?? 'off'
-
-      setLastSentMessage(sessionId, 'Approved - yolo')
-      setError(sessionId, null)
-      addSendingSession(sessionId)
-      setSelectedModel(sessionId, model)
-      setExecutingMode(sessionId, 'yolo')
-
-      sendMessage.mutate({
-        sessionId,
-        worktreeId,
-        worktreePath,
-        message: 'Approved - yolo',
-        model,
-        executionMode: 'yolo',
-        thinkingLevel,
-        disableThinkingForMode: true,
-      })
-    },
-    [
-      queryClient,
-      preferences,
-      sendMessage,
-      setExecutionMode,
-      clearToolCalls,
-      clearStreamingContentBlocks,
-      setSessionReviewing,
-      setWaitingForInput,
-      setPendingPlanMessageId,
-      setLastSentMessage,
-      setError,
-      addSendingSession,
-      setSelectedModel,
-      setExecutingMode,
-    ]
-  )
 
   // Listen for close-session-or-worktree event to handle CMD+W
   useEffect(() => {
@@ -658,7 +461,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
       if (selectedIndex !== null && flatCards[selectedIndex]) {
         e.stopImmediatePropagation()
         const item = flatCards[selectedIndex]
-        handleArchiveSession(item.worktreeId, item.worktreePath, item.card.session.id)
+        handleArchiveSessionForWorktree(item.worktreeId, item.worktreePath, item.card.session.id)
 
         // Move selection to previous card, or clear if none left
         const total = flatCards.length
@@ -679,7 +482,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
         handleCloseSessionOrWorktree,
         { capture: true }
       )
-  }, [selectedSession, selectedIndex, flatCards, handleArchiveSession])
+  }, [selectedSession, selectedIndex, flatCards, handleArchiveSessionForWorktree])
 
   // Listen for keyboard shortcut events for selected session
   useEffect(() => {
@@ -689,17 +492,17 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     const item = flatCards[selectedIndex]
     if (!item) return
 
-    const { card, worktreeId, worktreePath } = item
+    const { card } = item
 
     const handleApprovePlanEvent = () => {
       if (card.hasExitPlanMode && !card.hasQuestion) {
-        handlePlanApproval(worktreeId, worktreePath, card)
+        handlePlanApproval(card)
       }
     }
 
     const handleApprovePlanYoloEvent = () => {
       if (card.hasExitPlanMode && !card.hasQuestion) {
-        handlePlanApprovalYolo(worktreeId, worktreePath, card)
+        handlePlanApprovalYolo(card)
       }
     }
 
@@ -784,7 +587,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     )
   }
 
-  // Count total sessions across all worktrees
+  // Count total worktrees
   const totalWorktrees = worktreeSections.length
 
   // Track global card index for refs
@@ -864,34 +667,22 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
                             )
                           }}
                           onArchive={() =>
-                            handleArchiveSession(
+                            handleArchiveSessionForWorktree(
                               section.worktree.id,
                               section.worktree.path,
                               card.session.id
                             )
                           }
                           onDelete={() =>
-                            handleDeleteSession(
+                            handleDeleteSessionForWorktree(
                               section.worktree.id,
                               section.worktree.path,
                               card.session.id
                             )
                           }
                           onPlanView={() => handlePlanView(card)}
-                          onApprove={() =>
-                            handlePlanApproval(
-                              section.worktree.id,
-                              section.worktree.path,
-                              card
-                            )
-                          }
-                          onYolo={() =>
-                            handlePlanApprovalYolo(
-                              section.worktree.id,
-                              section.worktree.path,
-                              card
-                            )
-                          }
+                          onApprove={() => handlePlanApproval(card)}
+                          onYolo={() => handlePlanApprovalYolo(card)}
                         />
                       )
                     })}
