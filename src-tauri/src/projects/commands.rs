@@ -2588,6 +2588,43 @@ pub async fn open_worktree_in_editor(
     Ok(())
 }
 
+/// Open a branch on GitHub in the browser
+#[tauri::command]
+pub async fn open_branch_on_github(repo_path: String, branch: String) -> Result<(), String> {
+    log::trace!("Opening branch on GitHub: {branch} in {repo_path}");
+
+    let github_url = git::get_github_url(&repo_path)?;
+    let url = format!("{github_url}/tree/{branch}");
+
+    log::trace!("Opening GitHub branch URL: {url}");
+
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&url)
+            .spawn()
+            .map_err(|e| format!("Failed to open browser: {e}"))?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&url)
+            .spawn()
+            .map_err(|e| format!("Failed to open browser: {e}"))?;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/c", "start", "", &url])
+            .spawn()
+            .map_err(|e| format!("Failed to open browser: {e}"))?;
+    }
+
+    Ok(())
+}
+
 /// Open the project's GitHub page in the browser
 #[tauri::command]
 pub async fn open_project_on_github(app: AppHandle, project_id: String) -> Result<(), String> {

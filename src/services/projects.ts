@@ -1348,6 +1348,35 @@ export function useCloseBaseSessionClean() {
 }
 
 /**
+ * Hook to open a branch on GitHub
+ */
+export function useOpenBranchOnGitHub() {
+  return useMutation({
+    mutationFn: async ({
+      repoPath,
+      branch,
+    }: {
+      repoPath: string
+      branch: string
+    }): Promise<void> => {
+      if (!isTauri()) {
+        throw new Error('Not in Tauri context')
+      }
+
+      logger.debug('Opening branch on GitHub', { repoPath, branch })
+      await invoke('open_branch_on_github', { repoPath, branch })
+      logger.info('Opened branch on GitHub')
+    },
+    onError: error => {
+      const message =
+        error instanceof Error ? error.message : typeof error === 'string' ? error : 'Unknown error occurred'
+      logger.error('Failed to open on GitHub', { error })
+      toast.error('Failed to open on GitHub', { description: message })
+    },
+  })
+}
+
+/**
  * Hook to open a worktree in Finder
  */
 export function useOpenWorktreeInFinder() {

@@ -1308,6 +1308,7 @@ pub fn run() {
             projects::run_review_with_ai,
             projects::commit_changes,
             projects::open_project_on_github,
+            projects::open_branch_on_github,
             projects::list_worktree_files,
             projects::get_project_branches,
             projects::update_project_settings,

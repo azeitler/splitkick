@@ -1,5 +1,5 @@
 import { useCallback, useState, useRef, useEffect } from 'react'
-import { Code, Terminal, Folder, Settings } from 'lucide-react'
+import { Code, Terminal, Folder, Settings, Github } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -13,14 +13,16 @@ import {
   useOpenWorktreeInFinder,
   useOpenWorktreeInTerminal,
   useOpenWorktreeInEditor,
+  useOpenBranchOnGitHub,
   useProjects,
+  useWorktree,
 } from '@/services/projects'
 import { usePreferences } from '@/services/preferences'
 import { getEditorLabel, getTerminalLabel } from '@/types/preferences'
 import { notify } from '@/lib/notifications'
 import { cn } from '@/lib/utils'
 
-type OpenOption = 'editor' | 'terminal' | 'finder'
+type OpenOption = 'editor' | 'terminal' | 'finder' | 'github'
 
 export function OpenInModal() {
   const { openInModalOpen, setOpenInModalOpen, openPreferencesPane } =
@@ -32,9 +34,11 @@ export function OpenInModal() {
   const hasInitializedRef = useRef(false)
   const [selectedOption, setSelectedOption] = useState<OpenOption>('editor')
 
+  const { data: worktree } = useWorktree(selectedWorktreeId)
   const openInFinder = useOpenWorktreeInFinder()
   const openInTerminal = useOpenWorktreeInTerminal()
   const openInEditor = useOpenWorktreeInEditor()
+  const openOnGitHub = useOpenBranchOnGitHub()
   const { data: preferences } = usePreferences()
 
   // Build options with dynamic labels based on preferences
@@ -57,6 +61,7 @@ export function OpenInModal() {
       key: 'T',
     },
     { id: 'finder', label: 'Finder', icon: Folder, key: 'F' },
+    { id: 'github', label: 'GitHub', icon: Github, key: 'G' },
   ]
 
   // Reset selection tracking when modal closes
@@ -117,6 +122,15 @@ export function OpenInModal() {
         case 'finder':
           openInFinder.mutate(targetPath)
           break
+        case 'github': {
+          const branch = worktree?.branch
+          if (!branch) {
+            notify('No branch found for this worktree', undefined, { type: 'error' })
+            break
+          }
+          openOnGitHub.mutate({ repoPath: targetPath, branch })
+          break
+        }
       }
 
       setOpenInModalOpen(false)
@@ -126,6 +140,8 @@ export function OpenInModal() {
       openInEditor,
       openInTerminal,
       openInFinder,
+      openOnGitHub,
+      worktree,
       preferences,
       setOpenInModalOpen,
     ]
@@ -135,9 +151,9 @@ export function OpenInModal() {
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       const key = e.key.toLowerCase()
-      const optionIds: OpenOption[] = ['editor', 'terminal', 'finder']
+      const optionIds: OpenOption[] = ['editor', 'terminal', 'finder', 'github']
 
-      // Quick select with e/t/f
+      // Quick select with e/t/f/g
       if (key === 'e') {
         e.preventDefault()
         executeAction('editor')
@@ -147,6 +163,9 @@ export function OpenInModal() {
       } else if (key === 'f') {
         e.preventDefault()
         executeAction('finder')
+      } else if (key === 'g') {
+        e.preventDefault()
+        executeAction('github')
       } else if (key === 'enter') {
         e.preventDefault()
         executeAction(selectedOption)

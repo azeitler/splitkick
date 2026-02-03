@@ -431,6 +431,13 @@ export function ProjectTree({ projects }: ProjectTreeProps) {
 
       // Same-level reorder
       if (overItem && activeItem.parent_id === overItem.parent_id) {
+        // Recalculate insert position based on center-point (same logic as handleDragOver)
+        const activeRect = active.rect.current.translated
+        const overRect = over.rect
+        const activeCenter = activeRect ? activeRect.top + activeRect.height / 2 : 0
+        const overCenter = overRect.top + overRect.height / 2
+        const insertAfter = activeCenter >= overCenter
+
         const parentId = activeItem.parent_id
         const siblings = projects
           .filter(p => p.parent_id === parentId)
@@ -441,9 +448,17 @@ export function ProjectTree({ projects }: ProjectTreeProps) {
           })
 
         const oldIndex = siblings.findIndex(p => p.id === active.id)
-        const newIndex = siblings.findIndex(p => p.id === over.id)
+        let newIndex = siblings.findIndex(p => p.id === over.id)
 
         if (oldIndex === -1 || newIndex === -1) return
+
+        // Adjust for insert-after when dragging UP (oldIndex > newIndex)
+        // arrayMove places item AT newIndex, but indicator showed AFTER the target
+        if (insertAfter && oldIndex > newIndex) {
+          newIndex += 1
+        }
+
+        if (oldIndex === newIndex) return
 
         const reorderedItems = arrayMove(siblings, oldIndex, newIndex)
         const itemIds = reorderedItems.map(p => p.id)
