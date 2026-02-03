@@ -221,6 +221,11 @@ class WsTransport {
     // Persist token from URL to localStorage for future page loads
     if (urlToken) {
       localStorage.setItem('jean-http-token', urlToken)
+
+      // Remove token from URL for security (prevent history/bookmark exposure)
+      const url = new URL(window.location.href)
+      url.searchParams.delete('token')
+      window.history.replaceState({}, '', url.toString())
     }
 
     // Don't attempt connection without a token — it will always be rejected
