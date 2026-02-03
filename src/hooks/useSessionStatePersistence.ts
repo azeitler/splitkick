@@ -58,6 +58,8 @@ interface SessionState {
   } | null
   isReviewing: boolean
   waitingForInput: boolean
+  planFilePath: string | null
+  pendingPlanMessageId: string | null
 }
 
 /**
@@ -103,6 +105,8 @@ export function useSessionStatePersistence() {
         deniedMessageContext,
         reviewingSessions,
         waitingForInputSessionIds,
+        planFilePaths,
+        pendingPlanMessageIds,
       } = useChatStore.getState()
 
       const ctx = deniedMessageContext[sessionId]
@@ -121,6 +125,8 @@ export function useSessionStatePersistence() {
           : null,
         isReviewing: reviewingSessions[sessionId] ?? false,
         waitingForInput: waitingForInputSessionIds[sessionId] ?? false,
+        planFilePath: planFilePaths[sessionId] ?? null,
+        pendingPlanMessageId: pendingPlanMessageIds[sessionId] ?? null,
       }
     },
     []
@@ -151,6 +157,8 @@ export function useSessionStatePersistence() {
         deniedMessageContext: state.deniedMessageContext,
         isReviewing: state.isReviewing,
         waitingForInput: state.waitingForInput,
+        planFilePath: state.planFilePath,
+        pendingPlanMessageId: state.pendingPlanMessageId,
       })
     }, 500)
 
@@ -245,6 +253,22 @@ export function useSessionStatePersistence() {
       [activeSessionId]: session.waiting_for_input ?? false,
     }
 
+    // Load plan file path
+    if (session.plan_file_path) {
+      updates.planFilePaths = {
+        ...currentState.planFilePaths,
+        [activeSessionId]: session.plan_file_path,
+      }
+    }
+
+    // Load pending plan message ID
+    if (session.pending_plan_message_id) {
+      updates.pendingPlanMessageIds = {
+        ...currentState.pendingPlanMessageIds,
+        [activeSessionId]: session.pending_plan_message_id,
+      }
+    }
+
     // Apply all updates at once
     if (Object.keys(updates).length > 0) {
       useChatStore.setState(updates)
@@ -277,6 +301,8 @@ export function useSessionStatePersistence() {
     let prevDeniedContext = useChatStore.getState().deniedMessageContext[sessionId]
     let prevReviewing = useChatStore.getState().reviewingSessions[sessionId]
     let prevWaiting = useChatStore.getState().waitingForInputSessionIds[sessionId]
+    let prevPlanFilePath = useChatStore.getState().planFilePaths[sessionId]
+    let prevPendingPlanMessageId = useChatStore.getState().pendingPlanMessageIds[sessionId]
 
     const unsubscribe = useChatStore.subscribe(state => {
       if (isLoadingRef.current) return
@@ -288,6 +314,8 @@ export function useSessionStatePersistence() {
       const currentDeniedCtx = state.deniedMessageContext[sessionId]
       const currentReviewing = state.reviewingSessions[sessionId]
       const currentWaiting = state.waitingForInputSessionIds[sessionId]
+      const currentPlanFilePath = state.planFilePaths[sessionId]
+      const currentPendingPlanMessageId = state.pendingPlanMessageIds[sessionId]
 
       const hasChanges =
         currentAnswered !== prevAnsweredQuestions ||
@@ -296,7 +324,9 @@ export function useSessionStatePersistence() {
         currentDenials !== prevPendingDenials ||
         currentDeniedCtx !== prevDeniedContext ||
         currentReviewing !== prevReviewing ||
-        currentWaiting !== prevWaiting
+        currentWaiting !== prevWaiting ||
+        currentPlanFilePath !== prevPlanFilePath ||
+        currentPendingPlanMessageId !== prevPendingPlanMessageId
 
       if (hasChanges) {
         prevAnsweredQuestions = currentAnswered
@@ -306,6 +336,8 @@ export function useSessionStatePersistence() {
         prevDeniedContext = currentDeniedCtx
         prevReviewing = currentReviewing
         prevWaiting = currentWaiting
+        prevPlanFilePath = currentPlanFilePath
+        prevPendingPlanMessageId = currentPendingPlanMessageId
 
         const currentState = getCurrentSessionState(sessionId)
         debouncedSaveRef.current?.(currentState)

@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/dialog'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
+import { useChatStore } from '@/store/chat-store'
 import { useWorktree } from '@/services/projects'
 import { isNativeApp } from '@/lib/environment'
 import { notify } from '@/lib/notifications'
@@ -110,8 +111,12 @@ const KEY_TO_OPTION: Record<string, MagicOption> = {
 }
 
 export function MagicModal() {
-  const { magicModalOpen, setMagicModalOpen } = useUIStore()
-  const selectedWorktreeId = useProjectsStore(state => state.selectedWorktreeId)
+  const { magicModalOpen, setMagicModalOpen, sessionChatModalWorktreeId } = useUIStore()
+  const selectedWorktreeIdFromProjects = useProjectsStore(state => state.selectedWorktreeId)
+  const activeWorktreeId = useChatStore(state => state.activeWorktreeId)
+  // Fall back chain: projects store → chat store → session modal worktree
+  // Session modal worktree is set when user opens a session from canvas view
+  const selectedWorktreeId = selectedWorktreeIdFromProjects ?? activeWorktreeId ?? sessionChatModalWorktreeId
   const { data: worktree } = useWorktree(selectedWorktreeId)
   const hasInitializedRef = useRef(false)
   const [selectedOption, setSelectedOption] =
@@ -171,6 +176,21 @@ export function MagicModal() {
         return
       }
 
+      // Magic commands only work in full view (ChatWindow), not in canvas views
+      // UNLESS a session modal is open
+      const chatStore = useChatStore.getState()
+      const activeWorktreePath = chatStore.activeWorktreePath
+      const isViewingCanvas = chatStore.isViewingCanvasTab(selectedWorktreeId)
+      const sessionModalOpen = useUIStore.getState().sessionChatModalOpen
+
+      // Block if: no ChatWindow (project dashboard) OR viewing canvas tab within ChatWindow
+      // Exception: allow if session modal is open
+      if (!sessionModalOpen && (!activeWorktreePath || isViewingCanvas)) {
+        notify('Open a session to use magic commands', undefined, { type: 'error' })
+        setMagicModalOpen(false)
+        return
+      }
+
       // If PR already exists, open it in the browser instead of creating a new one
       if (option === 'open-pr' && worktree?.pr_url) {
         if (isNativeApp()) {
@@ -183,7 +203,7 @@ export function MagicModal() {
         return
       }
 
-      // Dispatch custom event for ChatWindow to handle
+      // Dispatch magic command for ChatWindow to handle
       window.dispatchEvent(
         new CustomEvent('magic-command', { detail: { command: option } })
       )

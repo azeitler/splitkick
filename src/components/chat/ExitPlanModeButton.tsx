@@ -18,6 +18,8 @@ interface ExitPlanModeButtonProps {
   buttonRef?: React.RefObject<HTMLButtonElement | null>
   /** Keyboard shortcut to display on the button */
   shortcut?: string
+  /** Keyboard shortcut to display on the yolo button */
+  shortcutYolo?: string
 }
 
 /**
@@ -37,6 +39,7 @@ export function ExitPlanModeButton({
   onPlanApprovalYolo,
   buttonRef,
   shortcut,
+  shortcutYolo,
 }: ExitPlanModeButtonProps) {
   if (!toolCalls) return null
 
@@ -74,6 +77,11 @@ export function ExitPlanModeButton({
         }}
       >
         Approve (yolo)
+        {shortcutYolo && (
+          <Kbd className="ml-1.5 h-4 text-[10px] bg-destructive-foreground/20 text-destructive-foreground">
+            {shortcutYolo}
+          </Kbd>
+        )}
       </Button>
     </div>
   )

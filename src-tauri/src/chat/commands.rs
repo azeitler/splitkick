@@ -219,6 +219,9 @@ pub async fn update_session_state(
     denied_message_context: Option<Option<super::types::DeniedMessageContext>>,
     is_reviewing: Option<bool>,
     waiting_for_input: Option<bool>,
+    waiting_for_input_type: Option<Option<String>>,
+    plan_file_path: Option<Option<String>>,
+    pending_plan_message_id: Option<Option<String>>,
 ) -> Result<(), String> {
     log::trace!("Updating session state for: {session_id}");
 
@@ -244,6 +247,15 @@ pub async fn update_session_state(
             }
             if let Some(v) = waiting_for_input {
                 session.waiting_for_input = v;
+            }
+            if let Some(v) = waiting_for_input_type {
+                session.waiting_for_input_type = v;
+            }
+            if let Some(v) = plan_file_path {
+                session.plan_file_path = v;
+            }
+            if let Some(v) = pending_plan_message_id {
+                session.pending_plan_message_id = v;
             }
             Ok(())
         } else {
@@ -1340,6 +1352,10 @@ pub async fn mark_plan_approved(
                 session.approved_plan_message_ids.push(message_id.clone());
                 log::trace!("Plan marked as approved (added to approved_plan_message_ids)");
             }
+            // Clear waiting state after approval
+            session.waiting_for_input = false;
+            session.pending_plan_message_id = None;
+            session.waiting_for_input_type = None;
             Ok(())
         } else {
             Err(format!("Session not found: {session_id}"))

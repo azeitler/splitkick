@@ -15,11 +15,21 @@ interface MagicCommandHandlers {
   handleCheckoutPR: () => void
 }
 
+interface UseMagicCommandsOptions extends MagicCommandHandlers {
+  /** Whether this ChatWindow is rendered in modal mode */
+  isModal?: boolean
+  /** Whether the main ChatWindow is currently showing canvas tab */
+  isViewingCanvasTab?: boolean
+}
+
 /**
  * Listens for 'magic-command' custom events from MagicModal and dispatches to appropriate handlers.
  *
  * PERFORMANCE: Uses refs to keep event listener stable across handler changes.
  * The event listener is set up once and uses refs to access current handler versions.
+ *
+ * DEDUPLICATION: When main ChatWindow shows canvas view, it skips listener registration.
+ * The modal ChatWindow (inside SessionChatModal) will handle events instead.
  */
 export function useMagicCommands({
   handleSaveContext,
@@ -34,7 +44,9 @@ export function useMagicCommands({
   handleResolveConflicts,
   handleInvestigate,
   handleCheckoutPR,
-}: MagicCommandHandlers): void {
+  isModal = false,
+  isViewingCanvasTab = false,
+}: UseMagicCommandsOptions): void {
   // Store handlers in ref so event listener always has access to current versions
   const handlersRef = useRef<MagicCommandHandlers>({
     handleSaveContext,
@@ -71,6 +83,13 @@ export function useMagicCommands({
   })
 
   useEffect(() => {
+    // If main ChatWindow is showing canvas view, don't register listener here.
+    // The modal ChatWindow (inside SessionChatModal) will handle events instead.
+    // This prevents duplicate event handling when both ChatWindow instances exist.
+    if (!isModal && isViewingCanvasTab) {
+      return
+    }
+
     const handleMagicCommand = (e: CustomEvent<{ command: string }>) => {
       const { command } = e.detail
       const handlers = handlersRef.current
@@ -123,5 +142,5 @@ export function useMagicCommands({
         'magic-command',
         handleMagicCommand as EventListener
       )
-  }, []) // Empty deps - stable listener using refs
+  }, [isModal, isViewingCanvasTab]) // Re-register when modal/canvas state changes
 }

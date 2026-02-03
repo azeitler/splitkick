@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { listen, invoke } from '@/lib/transport'
 import { isNativeApp } from '@/lib/environment'
+import { notify } from '@/lib/notifications'
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
@@ -211,8 +212,21 @@ function executeKeybindingAction(
       break
     case 'open_magic_modal': {
       logger.debug('Keybinding: open_magic_modal')
-      const { activeWorktreeId, activeSessionIds, sendingSessionIds } =
-        useChatStore.getState()
+      const chatStore = useChatStore.getState()
+      const uiStore = useUIStore.getState()
+      const { activeWorktreeId, activeSessionIds, sendingSessionIds, activeWorktreePath } = chatStore
+
+      // Block in canvas views (project dashboard or worktree canvas) UNLESS session modal is open
+      const selectedWorktreeId = useProjectsStore.getState().selectedWorktreeId
+      const worktreeIdToCheck = selectedWorktreeId ?? activeWorktreeId
+      const isViewingCanvas = worktreeIdToCheck ? chatStore.isViewingCanvasTab(worktreeIdToCheck) : false
+      const sessionModalOpen = uiStore.sessionChatModalOpen
+
+      if (!sessionModalOpen && (!activeWorktreePath || isViewingCanvas)) {
+        notify('Open a session to use magic commands', undefined, { type: 'error' })
+        break
+      }
+
       const activeSessionId = activeWorktreeId
         ? activeSessionIds[activeWorktreeId]
         : null
@@ -220,7 +234,7 @@ function executeKeybindingAction(
         ? (sendingSessionIds[activeSessionId] ?? false)
         : false
       if (!isSending) {
-        useUIStore.getState().setMagicModalOpen(true)
+        uiStore.setMagicModalOpen(true)
       }
       break
     }
@@ -256,26 +270,30 @@ function executeKeybindingAction(
       logger.debug('Keybinding: previous_worktree')
       switchWorktree('previous', queryClient)
       break
-    case 'cycle_execution_mode': {
+    case 'cycle_execution_mode':
       logger.debug('Keybinding: cycle_execution_mode')
-      const { activeWorktreeId, getActiveSession, cycleExecutionMode } =
-        useChatStore.getState()
-      if (activeWorktreeId) {
-        const activeSessionId = getActiveSession(activeWorktreeId)
-        if (activeSessionId) {
-          cycleExecutionMode(activeSessionId)
-        }
-      }
+      window.dispatchEvent(new CustomEvent('cycle-execution-mode'))
       break
-    }
     case 'approve_plan':
       logger.debug('Keybinding: approve_plan')
       window.dispatchEvent(new CustomEvent('approve-plan'))
       window.dispatchEvent(new CustomEvent('answer-question'))
       break
+    case 'approve_plan_yolo':
+      logger.debug('Keybinding: approve_plan_yolo')
+      window.dispatchEvent(new CustomEvent('approve-plan-yolo'))
+      break
+    case 'open_plan':
+      logger.debug('Keybinding: open_plan')
+      window.dispatchEvent(new CustomEvent('open-plan'))
+      break
     case 'restore_last_archived':
       logger.debug('Keybinding: restore_last_archived')
       window.dispatchEvent(new CustomEvent('restore-last-archived'))
+      break
+    case 'focus_canvas_search':
+      logger.debug('Keybinding: focus_canvas_search')
+      window.dispatchEvent(new CustomEvent('focus-canvas-search'))
       break
   }
 }
@@ -299,11 +317,25 @@ export function useMainWindowEventListeners() {
       const shortcut = eventToShortcutString(e)
       if (!shortcut) return
 
+      // Skip single-key shortcuts (no modifier) when focus is in input/textarea
+      const hasModifier = e.metaKey || e.ctrlKey || e.altKey || e.shiftKey
+      if (!hasModifier) {
+        const tag = document.activeElement?.tagName
+        if (
+          tag === 'INPUT' ||
+          tag === 'TEXTAREA' ||
+          (document.activeElement as HTMLElement)?.isContentEditable
+        ) {
+          return
+        }
+      }
+
       // Look up matching action in keybindings
       const keybindings = keybindingsRef.current
       for (const [action, binding] of Object.entries(keybindings)) {
         if (binding === shortcut) {
           e.preventDefault()
+          e.stopPropagation()
           executeKeybindingAction(
             action as KeybindingAction,
             commandContext,
@@ -488,7 +520,8 @@ export function useMainWindowEventListeners() {
       return unlisteners
     }
 
-    document.addEventListener('keydown', handleKeyDown)
+    // Use capture phase to handle keybindings before dialogs/modals can intercept
+    document.addEventListener('keydown', handleKeyDown, { capture: true })
 
     let menuUnlisteners: (() => void)[] = []
     setupMenuListeners()
@@ -501,7 +534,7 @@ export function useMainWindowEventListeners() {
       })
 
     return () => {
-      document.removeEventListener('keydown', handleKeyDown)
+      document.removeEventListener('keydown', handleKeyDown, { capture: true })
       menuUnlisteners.forEach(unlisten => {
         if (unlisten && typeof unlisten === 'function') {
           unlisten()

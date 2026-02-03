@@ -59,7 +59,7 @@ import { PermissionApproval } from './PermissionApproval'
 import { SetupScriptOutput } from './SetupScriptOutput'
 import { SessionTabBar } from './SessionTabBar'
 import { TodoWidget } from './TodoWidget'
-import { normalizeTodosForDisplay } from './tool-call-utils'
+import { normalizeTodosForDisplay, findPlanFilePath, findPlanContent } from './tool-call-utils'
 import { ImagePreview } from './ImagePreview'
 import { TextFilePreview } from './TextFilePreview'
 import { SkillBadge } from './SkillBadge'
@@ -69,8 +69,10 @@ import { ChatInput } from './ChatInput'
 import { SessionDebugPanel } from './SessionDebugPanel'
 import { ChatToolbar } from './ChatToolbar'
 import { ReviewResultsPanel } from './ReviewResultsPanel'
+import { SessionCanvasView } from './SessionCanvasView'
 import { QueuedMessagesList } from './QueuedMessageItem'
 import { FloatingButtons } from './FloatingButtons'
+import { PlanDialog } from './PlanDialog'
 import { StreamingMessage } from './StreamingMessage'
 import { ErrorBanner } from './ErrorBanner'
 import { SessionDigestReminder } from './SessionDigestReminder'
@@ -120,19 +122,36 @@ const EMPTY_PENDING_SKILLS: PendingSkill[] = []
 const EMPTY_QUEUED_MESSAGES: QueuedMessage[] = []
 const EMPTY_PERMISSION_DENIALS: PermissionDenial[] = []
 
-export function ChatWindow() {
+interface ChatWindowProps {
+  /** When true, hides SessionTabBar, terminal panel, and other elements not needed in modal */
+  isModal?: boolean
+  /** Override worktree ID (used in modal mode to avoid setting global state) */
+  worktreeId?: string
+  /** Override worktree path (used in modal mode to avoid setting global state) */
+  worktreePath?: string
+}
+
+export function ChatWindow({
+  isModal = false,
+  worktreeId: propWorktreeId,
+  worktreePath: propWorktreePath,
+}: ChatWindowProps = {}) {
   // PERFORMANCE: Use focused selectors instead of whole-store destructuring
   // This prevents re-renders when other sessions' state changes (e.g., streaming chunks)
 
   // Stable values that don't change per-session
-  const activeWorktreeId = useChatStore(state => state.activeWorktreeId)
-  const activeWorktreePath = useChatStore(state => state.activeWorktreePath)
+  // Use props if provided (modal mode), otherwise fall back to store
+  const storeWorktreeId = useChatStore(state => state.activeWorktreeId)
+  const storeWorktreePath = useChatStore(state => state.activeWorktreePath)
+  const activeWorktreeId = propWorktreeId ?? storeWorktreeId
+  const activeWorktreePath = propWorktreePath ?? storeWorktreePath
+
   // PERFORMANCE: Proper selector for activeSessionId - subscribes to changes
   // This triggers re-render when tabs are clicked (setActiveSession updates activeSessionIds)
   // Without this, ChatWindow wouldn't know when to re-render on tab switch
   let activeSessionId = useChatStore(state =>
-    state.activeWorktreeId
-      ? state.activeSessionIds[state.activeWorktreeId]
+    activeWorktreeId
+      ? state.activeSessionIds[activeWorktreeId]
       : undefined
   )
 
@@ -157,6 +176,13 @@ export function ChatWindow() {
   const isViewingReviewTab = useChatStore(state =>
     state.activeWorktreeId
       ? (state.viewingReviewTab[state.activeWorktreeId] ?? false)
+      : false
+  )
+  // PERFORMANCE: Proper selector for isViewingCanvasTab - subscribes to actual data
+  // Default to true so Canvas is the initial view when opening a worktree
+  const isViewingCanvasTabRaw = useChatStore(state =>
+    state.activeWorktreeId
+      ? (state.viewingCanvasTab[state.activeWorktreeId] ?? true)
       : false
   )
   const isStreamingPlanApproved = useChatStore(
@@ -207,14 +233,17 @@ export function ChatWindow() {
   const queryClient = useQueryClient()
 
   // Load sessions to ensure we have a valid active session
-  const { data: sessionsData, isLoading: isSessionsLoading } = useSessions(
-    activeWorktreeId,
-    activeWorktreePath
-  )
+  const {
+    data: sessionsData,
+    isLoading: isSessionsLoading,
+    isFetching: isSessionsFetching,
+  } = useSessions(activeWorktreeId, activeWorktreePath)
 
   // Sync active session from backend if store doesn't have one
   useEffect(() => {
-    if (!activeWorktreeId || !sessionsData) return
+    // Skip while refetching - stale cached data could overwrite a valid selection
+    // (e.g., when creating a new session, the cache doesn't include it yet)
+    if (!activeWorktreeId || !sessionsData || isSessionsFetching) return
 
     const store = useChatStore.getState()
     const currentActive = store.activeSessionIds[activeWorktreeId]
@@ -229,7 +258,7 @@ export function ChatWindow() {
         store.setActiveSession(activeWorktreeId, targetSession)
       }
     }
-  }, [sessionsData, activeWorktreeId])
+  }, [sessionsData, activeWorktreeId, isSessionsFetching])
 
   // Use backend's active session if store doesn't have one yet
   if (!activeSessionId && sessionsData?.sessions.length) {
@@ -252,6 +281,12 @@ export function ChatWindow() {
   )
 
   const { data: preferences } = usePreferences()
+  // Apply canvas preferences: if canvas disabled, never show; if canvas-only, always show
+  const canvasEnabled = preferences?.canvas_enabled ?? true
+  const canvasOnlyMode = preferences?.canvas_only_mode ?? false
+  const isViewingCanvasTab = canvasEnabled
+    ? (canvasOnlyMode || isViewingCanvasTabRaw)
+    : false
   const focusChatShortcut = formatShortcutDisplay(
     (preferences?.keybindings?.focus_chat_input ??
       DEFAULT_KEYBINDINGS.focus_chat_input) as string
@@ -263,6 +298,10 @@ export function ChatWindow() {
   const approveShortcut = formatShortcutDisplay(
     (preferences?.keybindings?.approve_plan ??
       DEFAULT_KEYBINDINGS.approve_plan) as string
+  )
+  const approveShortcutYolo = formatShortcutDisplay(
+    (preferences?.keybindings?.approve_plan_yolo ??
+      DEFAULT_KEYBINDINGS.approve_plan_yolo) as string
   )
   const sendMessage = useSendMessage()
   const createSession = useCreateSession()
@@ -636,6 +675,43 @@ export function ChatWindow() {
     return hasExitPlanModeTool && !isStreamingPlanApproved(activeSessionId)
   }, [isSending, activeSessionId, currentToolCalls, isStreamingPlanApproved])
 
+  // Find latest plan content from ExitPlanMode tool calls (primary source)
+  const latestPlanContent = useMemo(() => {
+    // Check streaming tool calls first
+    const streamingPlan = findPlanContent(currentToolCalls)
+    if (streamingPlan) return streamingPlan
+    // Check persisted messages
+    const msgs = session?.messages ?? []
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const m = msgs[i]
+      if (m?.tool_calls) {
+        const content = findPlanContent(m.tool_calls)
+        if (content) return content
+      }
+    }
+    return null
+  }, [session?.messages, currentToolCalls])
+
+  // Find latest plan file path across all messages (fallback for old-style file-based plans)
+  const latestPlanFilePath = useMemo(() => {
+    const msgs = session?.messages ?? []
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const m = msgs[i]
+      if (m?.tool_calls) {
+        const path = findPlanFilePath(m.tool_calls)
+        if (path) return path
+      }
+    }
+    return null
+  }, [session?.messages])
+
+  // Whether a plan is available (content preferred over file)
+  const hasPlan = !!latestPlanContent || !!latestPlanFilePath
+
+  // State for plan dialog
+  const [isPlanDialogOpen, setIsPlanDialogOpen] = useState(false)
+  const [planDialogContent, setPlanDialogContent] = useState<string | null>(null)
+
   // Manage dismissal state based on streaming and message ID changes
   useEffect(() => {
     // When streaming produces NEW todos, clear any previous dismissal
@@ -693,6 +769,60 @@ export function ChatWindow() {
     return () =>
       window.removeEventListener('focus-chat-input', handleFocusRequest)
   }, [])
+
+  // Listen for global open-plan request from keybinding (p key)
+  useEffect(() => {
+    const handleOpenPlan = () => {
+      if (latestPlanContent) {
+        setPlanDialogContent(latestPlanContent)
+        setIsPlanDialogOpen(true)
+      } else if (latestPlanFilePath) {
+        setIsPlanDialogOpen(true)
+      }
+    }
+
+    window.addEventListener('open-plan', handleOpenPlan)
+    return () => window.removeEventListener('open-plan', handleOpenPlan)
+  }, [latestPlanContent, latestPlanFilePath])
+
+  // Listen for global create-new-session event from keybinding (CMD+T)
+  // This needs to be in ChatWindow (not SessionTabBar) because SessionTabBar
+  // may be hidden in canvas-only mode
+  useEffect(() => {
+    const handleCreateNewSession = () => {
+      if (!activeWorktreeId || !activeWorktreePath) return
+      createSession.mutate(
+        { worktreeId: activeWorktreeId, worktreePath: activeWorktreePath },
+        {
+          onSuccess: session => {
+            useChatStore.getState().setActiveSession(activeWorktreeId, session.id)
+            // In canvas-only mode, open the new session in a modal
+            if (canvasOnlyMode) {
+              window.dispatchEvent(
+                new CustomEvent('open-session-modal', { detail: { sessionId: session.id } })
+              )
+            }
+          },
+        }
+      )
+    }
+
+    window.addEventListener('create-new-session', handleCreateNewSession)
+    return () =>
+      window.removeEventListener('create-new-session', handleCreateNewSession)
+  }, [activeWorktreeId, activeWorktreePath, createSession, canvasOnlyMode])
+
+  // Listen for cycle-execution-mode event from keybinding (SHIFT+TAB)
+  useEffect(() => {
+    if (!activeSessionId) return
+
+    const handleCycleExecutionMode = () => {
+      useChatStore.getState().cycleExecutionMode(activeSessionId)
+    }
+
+    window.addEventListener('cycle-execution-mode', handleCycleExecutionMode)
+    return () => window.removeEventListener('cycle-execution-mode', handleCycleExecutionMode)
+  }, [activeSessionId])
 
   // Listen for global git diff request from keybinding (CMD+G by default)
   useEffect(() => {
@@ -1391,6 +1521,7 @@ Begin your investigation now.`
   }, [])
 
   // Listen for magic-command events from MagicModal
+  // Pass isModal and isViewingCanvasTab to prevent duplicate listeners when modal is open over canvas
   useMagicCommands({
     handleSaveContext,
     handleLoadContext,
@@ -1404,6 +1535,8 @@ Begin your investigation now.`
     handleResolveConflicts,
     handleInvestigate,
     handleCheckoutPR,
+    isModal,
+    isViewingCanvasTab,
   })
 
   // Listen for command palette context events
@@ -1752,16 +1885,24 @@ Begin your investigation now.`
       </div>
     }>
       <div className="flex h-full w-full min-w-0 flex-col overflow-hidden">
-        {/* Session tab bar */}
-        <SessionTabBar
-          worktreeId={activeWorktreeId}
-          worktreePath={activeWorktreePath}
-          projectId={worktree?.project_id}
-          isBase={worktree?.session_type === 'base'}
-        />
+        {/* Session tab bar - hidden in modal mode and canvas-only mode */}
+        {!isModal && !canvasOnlyMode && (
+          <SessionTabBar
+            worktreeId={activeWorktreeId}
+            worktreePath={activeWorktreePath}
+            projectId={worktree?.project_id}
+            isBase={worktree?.session_type === 'base'}
+          />
+        )}
 
-        {/* Review results panel (when review tab is active) */}
-        {isViewingReviewTab ? (
+        {/* Canvas view (when canvas tab is active) */}
+        {/* Canvas and review views - not shown in modal mode */}
+        {!isModal && isViewingCanvasTab ? (
+          <SessionCanvasView
+            worktreeId={activeWorktreeId}
+            worktreePath={activeWorktreePath}
+          />
+        ) : !isModal && isViewingReviewTab ? (
           <ReviewResultsPanel worktreeId={activeWorktreeId} />
         ) : (
           <ResizablePanelGroup direction="vertical" className="flex-1">
@@ -1816,6 +1957,7 @@ Begin your investigation now.`
                             sessionId={deferredSessionId ?? ''}
                             worktreePath={activeWorktreePath ?? ''}
                             approveShortcut={approveShortcut}
+                            approveShortcutYolo={approveShortcutYolo}
                             approveButtonRef={approveButtonRef}
                             isSending={isSending}
                             onPlanApproval={handlePlanApproval}
@@ -1843,6 +1985,7 @@ Begin your investigation now.`
                             streamingExecutionMode={streamingExecutionMode}
                             selectedThinkingLevel={selectedThinkingLevel}
                             approveShortcut={approveShortcut}
+                            approveShortcutYolo={approveShortcutYolo}
                             onQuestionAnswer={handleQuestionAnswer}
                             onQuestionSkip={handleSkipQuestion}
                             onFileClick={setViewingFilePath}
@@ -1890,10 +2033,17 @@ Begin your investigation now.`
                     showFindingsButton={!areFindingsVisible}
                     isAtBottom={isAtBottom}
                     approveShortcut={approveShortcut}
+                    hasPlan={hasPlan}
                     onStreamingPlanApproval={handleStreamingPlanApproval}
                     onPendingPlanApproval={handlePendingPlanApprovalCallback}
                     onScrollToFindings={scrollToFindings}
                     onScrollToBottom={scrollToBottom}
+                    onOpenPlan={() => {
+                      if (latestPlanContent) {
+                        setPlanDialogContent(latestPlanContent)
+                      }
+                      setIsPlanDialogOpen(true)
+                    }}
                   />
                 </div>
 
@@ -2053,8 +2203,8 @@ Begin your investigation now.`
               </div>
             </ResizablePanel>
 
-            {/* Terminal panel - only render when panel is open (native app only) */}
-            {isNativeApp() && activeWorktreePath && terminalPanelOpen && (
+            {/* Terminal panel - only render when panel is open (native app only, not in modal) */}
+            {!isModal && isNativeApp() && activeWorktreePath && terminalPanelOpen && (
               <>
                 <ResizableHandle withHandle />
                 <ResizablePanel
@@ -2106,6 +2256,26 @@ Begin your investigation now.`
           activeSessionId={activeSessionId ?? null}
           projectName={worktree?.name ?? 'unknown-project'}
         />
+
+        {/* Plan dialog - read-only view of latest plan */}
+        {isPlanDialogOpen && (
+          planDialogContent ? (
+            <PlanDialog
+              content={planDialogContent}
+              isOpen={isPlanDialogOpen}
+              onClose={() => {
+                setIsPlanDialogOpen(false)
+                setPlanDialogContent(null)
+              }}
+            />
+          ) : latestPlanFilePath ? (
+            <PlanDialog
+              filePath={latestPlanFilePath}
+              isOpen={isPlanDialogOpen}
+              onClose={() => setIsPlanDialogOpen(false)}
+            />
+          ) : null
+        )}
 
         {/* Merge options dialog */}
         <AlertDialog open={showMergeDialog} onOpenChange={setShowMergeDialog}>

@@ -1,39 +1,63 @@
-import { useMemo, useState, useCallback } from 'react'
-import { useQueries } from '@tanstack/react-query'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { invoke } from '@/lib/transport'
-import {
-  Search,
-  GitBranch,
-  MessageSquare,
-  Calendar,
-  ChevronRight,
-} from 'lucide-react'
+import { Search, GitBranch } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
-import { useWorktrees, useProjects, isTauri } from '@/services/projects'
-import { chatQueryKeys } from '@/services/chat'
+import {
+  useWorktrees,
+  useProjects,
+  isTauri,
+  useArchiveWorktree,
+  useCloseBaseSessionClean,
+} from '@/services/projects'
+import {
+  chatQueryKeys,
+  useSendMessage,
+  markPlanApproved,
+  useArchiveSession,
+  useCloseSession,
+  useCreateSession,
+} from '@/services/chat'
+import { usePreferences } from '@/services/preferences'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
+import { useUIStore } from '@/store/ui-store'
 import { isBaseSession, type Worktree } from '@/types/projects'
 import type { Session, WorktreeSessions } from '@/types/chat'
-import { cn } from '@/lib/utils'
+import { PlanDialog } from '@/components/chat/PlanDialog'
+import { SessionChatModal } from '@/components/chat/SessionChatModal'
+import { SessionCard } from '@/components/chat/SessionCard'
+import {
+  type SessionCardData,
+  type ChatStoreState,
+  computeSessionCardData,
+} from '@/components/chat/session-card-utils'
 
 interface WorktreeDashboardProps {
   projectId: string
 }
 
-interface WorktreeWithSessions {
+interface WorktreeSection {
   worktree: Worktree
-  sessions: Session[]
-  messageCount: number
+  cards: SessionCardData[]
+}
+
+interface FlatCard {
+  worktreeId: string
+  worktreePath: string
+  card: SessionCardData
+  globalIndex: number
 }
 
 export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
+  const queryClient = useQueryClient()
   const [searchQuery, setSearchQuery] = useState('')
 
   // Get project info
   const { data: projects = [], isLoading: projectsLoading } = useProjects()
   const project = projects.find(p => p.id === projectId)
+  const { data: preferences } = usePreferences()
 
   // Get worktrees
   const { data: worktrees = [], isLoading: worktreesLoading } =
@@ -47,7 +71,6 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
   }, [worktrees])
 
   // Load sessions for all worktrees dynamically using useQueries
-  // Each query includes worktreeId in its select to enable stable ID-based lookups
   const sessionQueries = useQueries({
     queries: readyWorktrees.map(wt => ({
       queryKey: [...chatQueryKeys.sessions(wt.id), 'with-counts'],
@@ -71,7 +94,6 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
   })
 
   // Build a Map of worktree ID -> session data for stable lookups
-  // This avoids relying on array index alignment between readyWorktrees and sessionQueries
   const sessionsByWorktreeId = useMemo(() => {
     const map = new Map<string, { sessions: Session[]; isLoading: boolean }>()
     for (const query of sessionQueries) {
@@ -81,74 +103,672 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
           sessions: query.data?.sessions ?? [],
           isLoading: query.isLoading,
         })
-      } else if (query.isLoading) {
-        // For loading queries, we can't map them yet - they'll be added once data arrives
       }
     }
     return map
   }, [sessionQueries])
 
-  // Aggregate worktrees with their sessions using ID-based lookups
-  const worktreesWithSessions = useMemo(() => {
-    const result: WorktreeWithSessions[] = []
+  // Subscribe to chat store state for status computation
+  const sendingSessionIds = useChatStore(state => state.sendingSessionIds)
+  const executingModes = useChatStore(state => state.executingModes)
+  const executionModes = useChatStore(state => state.executionModes)
+  const activeToolCalls = useChatStore(state => state.activeToolCalls)
+  const answeredQuestions = useChatStore(state => state.answeredQuestions)
+  const waitingForInputSessionIds = useChatStore(
+    state => state.waitingForInputSessionIds
+  )
+  const reviewingSessions = useChatStore(state => state.reviewingSessions)
+  const pendingPermissionDenials = useChatStore(
+    state => state.pendingPermissionDenials
+  )
 
-    for (const worktree of readyWorktrees) {
+  const storeState: ChatStoreState = useMemo(
+    () => ({
+      sendingSessionIds,
+      executingModes,
+      executionModes,
+      activeToolCalls,
+      answeredQuestions,
+      waitingForInputSessionIds,
+      reviewingSessions,
+      pendingPermissionDenials,
+    }),
+    [
+      sendingSessionIds,
+      executingModes,
+      executionModes,
+      activeToolCalls,
+      answeredQuestions,
+      waitingForInputSessionIds,
+      reviewingSessions,
+      pendingPermissionDenials,
+    ]
+  )
+
+  // Build worktree sections with computed card data
+  const worktreeSections: WorktreeSection[] = useMemo(() => {
+    const result: WorktreeSection[] = []
+
+    // Sort worktrees: base sessions first, then by created_at (newest first)
+    const sortedWorktrees = [...readyWorktrees].sort((a, b) => {
+      const aIsBase = isBaseSession(a)
+      const bIsBase = isBaseSession(b)
+      if (aIsBase && !bIsBase) return -1
+      if (!aIsBase && bIsBase) return 1
+      return b.created_at - a.created_at
+    })
+
+    for (const worktree of sortedWorktrees) {
       const sessionData = sessionsByWorktreeId.get(worktree.id)
       const sessions = sessionData?.sessions ?? []
-      const messageCount = sessions.reduce(
-        (total, session) => total + (session.message_count ?? 0),
-        0
+
+      // Filter sessions based on search query
+      const filteredSessions = searchQuery.trim()
+        ? sessions.filter(session =>
+            session.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            worktree.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            worktree.branch.toLowerCase().includes(searchQuery.toLowerCase())
+          )
+        : sessions
+
+      // Compute card data for each session
+      const cards = filteredSessions.map(session =>
+        computeSessionCardData(session, storeState)
       )
 
-      result.push({ worktree, sessions, messageCount })
+      // Only include worktrees that have sessions (after filtering)
+      if (cards.length > 0) {
+        result.push({ worktree, cards })
+      }
     }
 
     return result
-  }, [readyWorktrees, sessionsByWorktreeId])
+  }, [readyWorktrees, sessionsByWorktreeId, storeState, searchQuery])
 
-  // Filter based on search query (worktree name, branch, or session name)
-  const filteredItems = useMemo(() => {
-    if (!searchQuery.trim()) return worktreesWithSessions
+  // Build flat array of all cards for keyboard navigation
+  const flatCards: FlatCard[] = useMemo(() => {
+    const result: FlatCard[] = []
+    let globalIndex = 0
+    for (const section of worktreeSections) {
+      for (const card of section.cards) {
+        result.push({
+          worktreeId: section.worktree.id,
+          worktreePath: section.worktree.path,
+          card,
+          globalIndex,
+        })
+        globalIndex++
+      }
+    }
+    return result
+  }, [worktreeSections])
 
-    const query = searchQuery.toLowerCase()
+  // Dialog state
+  const [planDialogPath, setPlanDialogPath] = useState<string | null>(null)
+  const [planDialogContent, setPlanDialogContent] = useState<string | null>(
+    null
+  )
+  const [selectedSession, setSelectedSession] = useState<{
+    sessionId: string
+    worktreeId: string
+    worktreePath: string
+  } | null>(null)
 
-    return worktreesWithSessions.filter(item => {
-      // Check worktree name and branch
-      if (item.worktree.name.toLowerCase().includes(query)) return true
-      if (item.worktree.branch.toLowerCase().includes(query)) return true
+  // Keyboard navigation state
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const cardRefs = useRef<(HTMLDivElement | null)[]>([])
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
-      // Check session names
-      if (
-        item.sessions.some(session =>
-          session.name.toLowerCase().includes(query)
-        )
-      ) {
-        return true
+  // Listen for focus-canvas-search event
+  useEffect(() => {
+    const handleFocusSearch = () => searchInputRef.current?.focus()
+    window.addEventListener('focus-canvas-search', handleFocusSearch)
+    return () => window.removeEventListener('focus-canvas-search', handleFocusSearch)
+  }, [])
+
+  // Track session modal open state for magic command keybindings
+  useEffect(() => {
+    useUIStore.getState().setSessionChatModalOpen(
+      !!selectedSession,
+      selectedSession?.worktreeId ?? null
+    )
+  }, [selectedSession])
+
+  // Projects store actions
+  const selectProject = useProjectsStore(state => state.selectProject)
+  const selectWorktree = useProjectsStore(state => state.selectWorktree)
+  const setActiveWorktree = useChatStore(state => state.setActiveWorktree)
+  const setActiveSession = useChatStore(state => state.setActiveSession)
+
+  // Mutations
+  const sendMessage = useSendMessage()
+  const archiveSession = useArchiveSession()
+  const closeSession = useCloseSession()
+  const archiveWorktree = useArchiveWorktree()
+  const closeBaseSessionClean = useCloseBaseSessionClean()
+  const createSession = useCreateSession()
+
+  // Actions via getState()
+  const {
+    setViewingCanvasTab,
+    setExecutionMode,
+    addSendingSession,
+    setSelectedModel,
+    setLastSentMessage,
+    setError,
+    setExecutingMode,
+    setSessionReviewing,
+    setWaitingForInput,
+    clearToolCalls,
+    clearStreamingContentBlocks,
+    setPendingPlanMessageId,
+  } = useChatStore.getState()
+
+  // Find the card visually below/above the current one
+  const findVerticalNeighbor = useCallback(
+    (currentIndex: number, direction: 'up' | 'down'): number | null => {
+      const currentRef = cardRefs.current[currentIndex]
+      if (!currentRef) return null
+
+      const currentRect = currentRef.getBoundingClientRect()
+      const currentCenterX = currentRect.left + currentRect.width / 2
+
+      let bestIndex: number | null = null
+      let bestDistance = Infinity
+
+      for (let i = 0; i < cardRefs.current.length; i++) {
+        if (i === currentIndex) continue
+        const ref = cardRefs.current[i]
+        if (!ref) continue
+
+        const rect = ref.getBoundingClientRect()
+
+        // Check if card is in the correct direction
+        if (direction === 'down' && rect.top <= currentRect.bottom) continue
+        if (direction === 'up' && rect.bottom >= currentRect.top) continue
+
+        // Calculate horizontal distance (how aligned it is)
+        const cardCenterX = rect.left + rect.width / 2
+        const horizontalDistance = Math.abs(cardCenterX - currentCenterX)
+
+        // Calculate vertical distance
+        const verticalDistance =
+          direction === 'down'
+            ? rect.top - currentRect.bottom
+            : currentRect.top - rect.bottom
+
+        // Prefer cards that are horizontally aligned and close vertically
+        // Weight horizontal alignment more heavily
+        const distance = horizontalDistance + verticalDistance * 0.5
+
+        if (distance < bestDistance) {
+          bestDistance = distance
+          bestIndex = i
+        }
       }
 
-      return false
-    })
-  }, [worktreesWithSessions, searchQuery])
+      return bestIndex
+    },
+    []
+  )
 
-  // Sort: base sessions first, then by created_at (newest first)
-  const sortedItems = useMemo(() => {
-    return [...filteredItems].sort((a, b) => {
-      const aIsBase = isBaseSession(a.worktree)
-      const bIsBase = isBaseSession(b.worktree)
-      if (aIsBase && !bIsBase) return -1
-      if (!aIsBase && bIsBase) return 1
-      return b.worktree.created_at - a.worktree.created_at
-    })
-  }, [filteredItems])
+  // Handle clicking on a session card - open modal
+  const handleSessionClick = useCallback(
+    (worktreeId: string, worktreePath: string, sessionId: string) => {
+      setSelectedSession({ sessionId, worktreeId, worktreePath })
+    },
+    []
+  )
 
-  // Check if loading - any worktree without session data yet is considered loading
+  // Global keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (selectedSession) return
+      if (
+        document.activeElement?.tagName === 'INPUT' ||
+        document.activeElement?.tagName === 'TEXTAREA' ||
+        (document.activeElement as HTMLElement)?.isContentEditable
+      ) {
+        return
+      }
+
+      const total = flatCards.length
+      if (total === 0) return
+
+      if (selectedIndex === null) {
+        if (
+          ['ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown'].includes(e.key)
+        ) {
+          setSelectedIndex(0)
+          e.preventDefault()
+        }
+        return
+      }
+
+      switch (e.key) {
+        case 'ArrowRight':
+          e.preventDefault()
+          if (selectedIndex < total - 1) setSelectedIndex(selectedIndex + 1)
+          break
+        case 'ArrowLeft':
+          e.preventDefault()
+          if (selectedIndex > 0) setSelectedIndex(selectedIndex - 1)
+          break
+        case 'ArrowDown': {
+          e.preventDefault()
+          const nextIndex = findVerticalNeighbor(selectedIndex, 'down')
+          if (nextIndex !== null) setSelectedIndex(nextIndex)
+          break
+        }
+        case 'ArrowUp': {
+          e.preventDefault()
+          const prevIndex = findVerticalNeighbor(selectedIndex, 'up')
+          if (prevIndex !== null) setSelectedIndex(prevIndex)
+          break
+        }
+        case 'Enter':
+          // Only handle plain Enter (no modifiers) - CMD+Enter is for approve_plan keybinding
+          if (e.metaKey || e.ctrlKey) return
+          e.preventDefault()
+          if (flatCards[selectedIndex]) {
+            const item = flatCards[selectedIndex]
+            handleSessionClick(
+              item.worktreeId,
+              item.worktreePath,
+              item.card.session.id
+            )
+          }
+          break
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [
+    selectedIndex,
+    selectedSession,
+    flatCards,
+    findVerticalNeighbor,
+    handleSessionClick,
+  ])
+
+  // Scroll selected card into view when selection changes
+  useEffect(() => {
+    if (selectedIndex === null) return
+    const card = cardRefs.current[selectedIndex]
+    if (card) {
+      card.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    }
+  }, [selectedIndex])
+
+  // Handle opening full view from modal
+  const handleOpenFullView = useCallback(() => {
+    if (selectedSession) {
+      selectProject(projectId)
+      selectWorktree(selectedSession.worktreeId)
+      setActiveWorktree(selectedSession.worktreeId, selectedSession.worktreePath)
+      setActiveSession(selectedSession.worktreeId, selectedSession.sessionId)
+      setViewingCanvasTab(selectedSession.worktreeId, false)
+      setSelectedSession(null)
+    }
+  }, [
+    selectedSession,
+    projectId,
+    selectProject,
+    selectWorktree,
+    setActiveWorktree,
+    setActiveSession,
+    setViewingCanvasTab,
+  ])
+
+  // Handle archive session
+  const handleArchiveSession = useCallback(
+    (worktreeId: string, worktreePath: string, sessionId: string) => {
+      const sessionData = sessionsByWorktreeId.get(worktreeId)
+      const activeSessions =
+        sessionData?.sessions.filter(s => !s.archived_at) ?? []
+      const worktree = readyWorktrees.find(w => w.id === worktreeId)
+
+      if (activeSessions.length <= 1 && worktree && project) {
+        if (isBaseSession(worktree)) {
+          closeBaseSessionClean.mutate({
+            worktreeId,
+            projectId: project.id,
+          })
+        } else {
+          archiveWorktree.mutate({
+            worktreeId,
+            projectId: project.id,
+          })
+        }
+      } else {
+        archiveSession.mutate({
+          worktreeId,
+          worktreePath,
+          sessionId,
+        })
+      }
+    },
+    [
+      sessionsByWorktreeId,
+      readyWorktrees,
+      project,
+      archiveSession,
+      archiveWorktree,
+      closeBaseSessionClean,
+    ]
+  )
+
+  // Handle delete session
+  const handleDeleteSession = useCallback(
+    (worktreeId: string, worktreePath: string, sessionId: string) => {
+      const sessionData = sessionsByWorktreeId.get(worktreeId)
+      const activeSessions =
+        sessionData?.sessions.filter(s => !s.archived_at) ?? []
+      const worktree = readyWorktrees.find(w => w.id === worktreeId)
+
+      if (activeSessions.length <= 1 && worktree && project) {
+        if (isBaseSession(worktree)) {
+          closeBaseSessionClean.mutate({
+            worktreeId,
+            projectId: project.id,
+          })
+        } else {
+          archiveWorktree.mutate({
+            worktreeId,
+            projectId: project.id,
+          })
+        }
+      } else {
+        closeSession.mutate({
+          worktreeId,
+          worktreePath,
+          sessionId,
+        })
+      }
+    },
+    [
+      sessionsByWorktreeId,
+      readyWorktrees,
+      project,
+      closeSession,
+      archiveWorktree,
+      closeBaseSessionClean,
+    ]
+  )
+
+  // Handle plan view
+  const handlePlanView = useCallback((card: SessionCardData) => {
+    if (card.planFilePath) {
+      setPlanDialogPath(card.planFilePath)
+      setPlanDialogContent(null)
+    } else if (card.planContent) {
+      setPlanDialogContent(card.planContent)
+      setPlanDialogPath(null)
+    }
+  }, [])
+
+  // Handle plan approval
+  const handlePlanApproval = useCallback(
+    (worktreeId: string, worktreePath: string, card: SessionCardData) => {
+      if (!card.pendingPlanMessageId) return
+
+      const sessionId = card.session.id
+      const messageId = card.pendingPlanMessageId
+
+      markPlanApproved(worktreeId, worktreePath, sessionId, messageId)
+
+      queryClient.setQueryData<Session>(
+        chatQueryKeys.session(sessionId),
+        old => {
+          if (!old) return old
+          return {
+            ...old,
+            messages: old.messages.map(msg =>
+              msg.id === messageId ? { ...msg, plan_approved: true } : msg
+            ),
+          }
+        }
+      )
+
+      setExecutionMode(sessionId, 'build')
+      clearToolCalls(sessionId)
+      clearStreamingContentBlocks(sessionId)
+      setSessionReviewing(sessionId, false)
+      setWaitingForInput(sessionId, false)
+      setPendingPlanMessageId(sessionId, null)
+
+      const model = preferences?.selected_model ?? 'opus'
+      const thinkingLevel = preferences?.thinking_level ?? 'off'
+
+      setLastSentMessage(sessionId, 'Approved')
+      setError(sessionId, null)
+      addSendingSession(sessionId)
+      setSelectedModel(sessionId, model)
+      setExecutingMode(sessionId, 'build')
+
+      sendMessage.mutate({
+        sessionId,
+        worktreeId,
+        worktreePath,
+        message: 'Approved',
+        model,
+        executionMode: 'build',
+        thinkingLevel,
+        disableThinkingForMode: true,
+      })
+    },
+    [
+      queryClient,
+      preferences,
+      sendMessage,
+      setExecutionMode,
+      clearToolCalls,
+      clearStreamingContentBlocks,
+      setSessionReviewing,
+      setWaitingForInput,
+      setPendingPlanMessageId,
+      setLastSentMessage,
+      setError,
+      addSendingSession,
+      setSelectedModel,
+      setExecutingMode,
+    ]
+  )
+
+  // Handle plan approval with yolo mode
+  const handlePlanApprovalYolo = useCallback(
+    (worktreeId: string, worktreePath: string, card: SessionCardData) => {
+      if (!card.pendingPlanMessageId) return
+
+      const sessionId = card.session.id
+      const messageId = card.pendingPlanMessageId
+
+      markPlanApproved(worktreeId, worktreePath, sessionId, messageId)
+
+      queryClient.setQueryData<Session>(
+        chatQueryKeys.session(sessionId),
+        old => {
+          if (!old) return old
+          return {
+            ...old,
+            messages: old.messages.map(msg =>
+              msg.id === messageId ? { ...msg, plan_approved: true } : msg
+            ),
+          }
+        }
+      )
+
+      setExecutionMode(sessionId, 'yolo')
+      clearToolCalls(sessionId)
+      clearStreamingContentBlocks(sessionId)
+      setSessionReviewing(sessionId, false)
+      setWaitingForInput(sessionId, false)
+      setPendingPlanMessageId(sessionId, null)
+
+      const model = preferences?.selected_model ?? 'opus'
+      const thinkingLevel = preferences?.thinking_level ?? 'off'
+
+      setLastSentMessage(sessionId, 'Approved - yolo')
+      setError(sessionId, null)
+      addSendingSession(sessionId)
+      setSelectedModel(sessionId, model)
+      setExecutingMode(sessionId, 'yolo')
+
+      sendMessage.mutate({
+        sessionId,
+        worktreeId,
+        worktreePath,
+        message: 'Approved - yolo',
+        model,
+        executionMode: 'yolo',
+        thinkingLevel,
+        disableThinkingForMode: true,
+      })
+    },
+    [
+      queryClient,
+      preferences,
+      sendMessage,
+      setExecutionMode,
+      clearToolCalls,
+      clearStreamingContentBlocks,
+      setSessionReviewing,
+      setWaitingForInput,
+      setPendingPlanMessageId,
+      setLastSentMessage,
+      setError,
+      addSendingSession,
+      setSelectedModel,
+      setExecutingMode,
+    ]
+  )
+
+  // Listen for close-session-or-worktree event to handle CMD+W
+  useEffect(() => {
+    const handleCloseSessionOrWorktree = (e: Event) => {
+      // If modal is open, close it
+      if (selectedSession) {
+        setSelectedSession(null)
+        return
+      }
+
+      // If there's a keyboard-selected session, archive it
+      if (selectedIndex !== null && flatCards[selectedIndex]) {
+        e.stopImmediatePropagation()
+        const item = flatCards[selectedIndex]
+        handleArchiveSession(item.worktreeId, item.worktreePath, item.card.session.id)
+
+        // Move selection to previous card, or clear if none left
+        const total = flatCards.length
+        if (total <= 1) {
+          setSelectedIndex(null)
+        } else if (selectedIndex >= total - 1) {
+          setSelectedIndex(selectedIndex - 1)
+        }
+      }
+    }
+
+    window.addEventListener('close-session-or-worktree', handleCloseSessionOrWorktree, {
+      capture: true,
+    })
+    return () =>
+      window.removeEventListener(
+        'close-session-or-worktree',
+        handleCloseSessionOrWorktree,
+        { capture: true }
+      )
+  }, [selectedSession, selectedIndex, flatCards, handleArchiveSession])
+
+  // Listen for keyboard shortcut events for selected session
+  useEffect(() => {
+    // Only handle when we have a keyboard-selected session and modal is not open
+    if (selectedSession || selectedIndex === null) return
+
+    const item = flatCards[selectedIndex]
+    if (!item) return
+
+    const { card, worktreeId, worktreePath } = item
+
+    const handleApprovePlanEvent = () => {
+      if (card.hasExitPlanMode && !card.hasQuestion) {
+        handlePlanApproval(worktreeId, worktreePath, card)
+      }
+    }
+
+    const handleApprovePlanYoloEvent = () => {
+      if (card.hasExitPlanMode && !card.hasQuestion) {
+        handlePlanApprovalYolo(worktreeId, worktreePath, card)
+      }
+    }
+
+    const handleOpenPlanEvent = () => {
+      if (card.planFilePath || card.planContent) {
+        handlePlanView(card)
+      }
+    }
+
+    window.addEventListener('approve-plan', handleApprovePlanEvent)
+    window.addEventListener('approve-plan-yolo', handleApprovePlanYoloEvent)
+    window.addEventListener('open-plan', handleOpenPlanEvent)
+
+    return () => {
+      window.removeEventListener('approve-plan', handleApprovePlanEvent)
+      window.removeEventListener('approve-plan-yolo', handleApprovePlanYoloEvent)
+      window.removeEventListener('open-plan', handleOpenPlanEvent)
+    }
+  }, [
+    selectedSession,
+    selectedIndex,
+    flatCards,
+    handlePlanApproval,
+    handlePlanApprovalYolo,
+    handlePlanView,
+  ])
+
+  // Listen for create-new-session event to handle CMD+T
+  useEffect(() => {
+    const handleCreateNewSession = (e: Event) => {
+      // Only handle when we have a keyboard-selected session and modal is not open
+      if (selectedSession || selectedIndex === null) return
+
+      const item = flatCards[selectedIndex]
+      if (!item) return
+
+      e.stopImmediatePropagation()
+
+      createSession.mutate(
+        { worktreeId: item.worktreeId, worktreePath: item.worktreePath },
+        {
+          onSuccess: session => {
+            setSelectedSession({
+              sessionId: session.id,
+              worktreeId: item.worktreeId,
+              worktreePath: item.worktreePath,
+            })
+          },
+        }
+      )
+    }
+
+    window.addEventListener('create-new-session', handleCreateNewSession, {
+      capture: true,
+    })
+    return () =>
+      window.removeEventListener('create-new-session', handleCreateNewSession, {
+        capture: true,
+      })
+  }, [selectedSession, selectedIndex, flatCards, createSession])
+
+  // Check if loading
   const isLoading =
     projectsLoading ||
     worktreesLoading ||
     (readyWorktrees.length > 0 &&
       readyWorktrees.some(wt => !sessionsByWorktreeId.has(wt.id)))
 
-  if (isLoading && worktreesWithSessions.length === 0) {
+  if (isLoading && worktreeSections.length === 0) {
     return (
       <div className="flex h-full items-center justify-center">
         <Spinner className="h-6 w-6" />
@@ -164,13 +784,19 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     )
   }
 
+  // Count total sessions across all worktrees
+  const totalWorktrees = worktreeSections.length
+
+  // Track global card index for refs
+  let cardIndex = 0
+
   return (
-    <div className="flex h-full flex-col p-4">
+    <div ref={containerRef} className="flex h-full flex-col p-4">
       {/* Header */}
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-semibold">{project.name}</h2>
         <span className="text-sm text-muted-foreground">
-          {sortedItems.length} worktree{sortedItems.length !== 1 ? 's' : ''}
+          {totalWorktrees} worktree{totalWorktrees !== 1 ? 's' : ''}
         </span>
       </div>
 
@@ -178,6 +804,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
       <div className="relative mb-4">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
+          ref={searchInputRef}
           placeholder="Search worktrees and sessions..."
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
@@ -185,176 +812,121 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
         />
       </div>
 
-      {/* Worktree List */}
-      <div className="flex-1 overflow-auto">
-        {sortedItems.length === 0 ? (
+      {/* Canvas View */}
+      <div className="flex-1 min-h-0 overflow-auto">
+        {worktreeSections.length === 0 ? (
           <div className="flex h-full items-center justify-center text-muted-foreground">
             {searchQuery
               ? 'No worktrees or sessions match your search'
               : 'No worktrees yet'}
           </div>
         ) : (
-          <div className="space-y-2">
-            {sortedItems.map(item => (
-              <WorktreeRow
-                key={item.worktree.id}
-                item={item}
-                searchQuery={searchQuery}
-              />
-            ))}
+          <div className="space-y-6">
+            {worktreeSections.map(section => {
+              const isBase = isBaseSession(section.worktree)
+
+              return (
+                <div key={section.worktree.id}>
+                  {/* Worktree header */}
+                  <div className="mb-3 flex items-center gap-2">
+                    <GitBranch className="h-4 w-4 text-muted-foreground" />
+                    <span className="font-medium">
+                      {isBase ? 'Base Session' : section.worktree.name}
+                    </span>
+                    <span className="text-sm text-muted-foreground">
+                      ({section.worktree.branch})
+                    </span>
+                    {isBase && (
+                      <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+                        base
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Session cards grid */}
+                  <div className="flex flex-row flex-wrap gap-3">
+                    {section.cards.map(card => {
+                      const currentIndex = cardIndex++
+                      return (
+                        <SessionCard
+                          key={card.session.id}
+                          ref={el => {
+                            cardRefs.current[currentIndex] = el
+                          }}
+                          card={card}
+                          isSelected={selectedIndex === currentIndex}
+                          onSelect={() => {
+                            setSelectedIndex(currentIndex)
+                            handleSessionClick(
+                              section.worktree.id,
+                              section.worktree.path,
+                              card.session.id
+                            )
+                          }}
+                          onArchive={() =>
+                            handleArchiveSession(
+                              section.worktree.id,
+                              section.worktree.path,
+                              card.session.id
+                            )
+                          }
+                          onDelete={() =>
+                            handleDeleteSession(
+                              section.worktree.id,
+                              section.worktree.path,
+                              card.session.id
+                            )
+                          }
+                          onPlanView={() => handlePlanView(card)}
+                          onApprove={() =>
+                            handlePlanApproval(
+                              section.worktree.id,
+                              section.worktree.path,
+                              card
+                            )
+                          }
+                          onYolo={() =>
+                            handlePlanApprovalYolo(
+                              section.worktree.id,
+                              section.worktree.path,
+                              card
+                            )
+                          }
+                        />
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
-    </div>
-  )
-}
 
-interface WorktreeRowProps {
-  item: WorktreeWithSessions
-  searchQuery: string
-}
+      {/* Plan Dialog */}
+      {planDialogPath ? (
+        <PlanDialog
+          filePath={planDialogPath}
+          isOpen={true}
+          onClose={() => setPlanDialogPath(null)}
+        />
+      ) : planDialogContent ? (
+        <PlanDialog
+          content={planDialogContent}
+          isOpen={true}
+          onClose={() => setPlanDialogContent(null)}
+        />
+      ) : null}
 
-function WorktreeRow({ item, searchQuery }: WorktreeRowProps) {
-  const { worktree, sessions, messageCount } = item
-
-  const selectProject = useProjectsStore(state => state.selectProject)
-  const selectWorktree = useProjectsStore(state => state.selectWorktree)
-  const setActiveWorktree = useChatStore(state => state.setActiveWorktree)
-  const setActiveSession = useChatStore(state => state.setActiveSession)
-
-  // Find matching sessions when searching
-  const matchingSessions = useMemo(() => {
-    if (!searchQuery.trim()) return []
-    const query = searchQuery.toLowerCase()
-    return sessions.filter(session =>
-      session.name.toLowerCase().includes(query)
-    )
-  }, [sessions, searchQuery])
-
-  // Format creation date/time
-  const createdDate = useMemo(() => {
-    const date = new Date(worktree.created_at * 1000)
-    const now = new Date()
-    const isToday = date.toDateString() === now.toDateString()
-
-    if (isToday) {
-      // Today: show time only
-      return date.toLocaleTimeString('en-US', {
-        hour: 'numeric',
-        minute: '2-digit',
-      })
-    } else {
-      // Other days: show date + time
-      return date.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-      })
-    }
-  }, [worktree.created_at])
-
-  const handleWorktreeClick = useCallback(() => {
-    selectProject(worktree.project_id)
-    selectWorktree(worktree.id)
-    setActiveWorktree(worktree.id, worktree.path)
-
-    // Set the first session as active if available
-    if (sessions.length > 0) {
-      const firstSession = sessions[0]
-      if (firstSession) {
-        setActiveSession(worktree.id, firstSession.id)
-      }
-    }
-  }, [
-    worktree,
-    sessions,
-    selectProject,
-    selectWorktree,
-    setActiveWorktree,
-    setActiveSession,
-  ])
-
-  const handleSessionClick = useCallback(
-    (session: Session) => {
-      selectProject(worktree.project_id)
-      selectWorktree(worktree.id)
-      setActiveWorktree(worktree.id, worktree.path)
-      setActiveSession(worktree.id, session.id)
-    },
-    [
-      worktree,
-      selectProject,
-      selectWorktree,
-      setActiveWorktree,
-      setActiveSession,
-    ]
-  )
-
-  const isBase = isBaseSession(worktree)
-
-  return (
-    <div className="space-y-1">
-      {/* Worktree Row */}
-      <div
-        onClick={handleWorktreeClick}
-        className={cn(
-          'flex cursor-pointer items-center gap-4 rounded-lg border p-3 transition-colors',
-          'hover:bg-accent hover:border-accent-foreground/20'
-        )}
-      >
-        {/* Name and branch */}
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="truncate font-medium">
-              {isBase ? 'Base Session' : worktree.name}
-            </span>
-            {isBase && (
-              <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-                base
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-1 text-sm text-muted-foreground">
-            <GitBranch className="h-3 w-3" />
-            <span className="truncate">{worktree.branch}</span>
-          </div>
-        </div>
-
-        {/* Message count */}
-        <div className="flex items-center gap-1 text-sm text-muted-foreground">
-          <MessageSquare className="h-3.5 w-3.5" />
-          <span>{messageCount}</span>
-        </div>
-
-        {/* Creation date */}
-        <div className="flex items-center gap-1 text-sm text-muted-foreground">
-          <Calendar className="h-3.5 w-3.5" />
-          <span className="whitespace-nowrap">{createdDate}</span>
-        </div>
-      </div>
-
-      {/* Matching Sessions (shown when search matches session names) */}
-      {matchingSessions.length > 0 && (
-        <div className="ml-8 space-y-1">
-          {matchingSessions.map(session => (
-            <div
-              key={session.id}
-              onClick={() => handleSessionClick(session)}
-              className={cn(
-                'flex cursor-pointer items-center gap-2 rounded-md border border-dashed p-2 text-sm transition-colors',
-                'hover:bg-accent hover:border-accent-foreground/20'
-              )}
-            >
-              <ChevronRight className="h-3 w-3 text-muted-foreground" />
-              <span className="truncate">{session.name}</span>
-              <span className="text-muted-foreground">
-                ({session.message_count ?? 0} messages)
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Session Chat Modal */}
+      <SessionChatModal
+        sessionId={selectedSession?.sessionId ?? null}
+        worktreeId={selectedSession?.worktreeId ?? ''}
+        worktreePath={selectedSession?.worktreePath ?? ''}
+        isOpen={!!selectedSession}
+        onClose={() => setSelectedSession(null)}
+        onOpenFullView={handleOpenFullView}
+      />
     </div>
   )
 }

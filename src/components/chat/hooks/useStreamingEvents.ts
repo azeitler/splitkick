@@ -11,6 +11,7 @@ import type { AppPreferences, NotificationSound } from '@/types/preferences'
 import { triggerImmediateGitPoll } from '@/services/git-status'
 import { isAskUserQuestion, isExitPlanMode } from '@/types/chat'
 import { playNotificationSound } from '@/lib/sounds'
+import { findPlanFilePath } from '@/components/chat/tool-call-utils'
 import type {
   ChunkEvent,
   ToolUseEvent,
@@ -307,6 +308,71 @@ export default function useStreamingEvents({
           setWaitingForInput(sessionId, true)
           removeSendingSession(sessionId)
 
+          // Determine waiting type: question or plan
+          const hasUnansweredQuestion = toolCalls?.some(
+            tc => isAskUserQuestion(tc) && !isQuestionAnswered(sessionId, tc.id)
+          )
+          const hasUnansweredPlan = toolCalls?.some(
+            tc => isExitPlanMode(tc) && !isQuestionAnswered(sessionId, tc.id)
+          )
+          // Questions take priority over plans for the type indicator
+          const waitingType: 'question' | 'plan' | null = hasUnansweredQuestion
+            ? 'question'
+            : hasUnansweredPlan
+              ? 'plan'
+              : null
+
+          // Persist plan file path and pending message ID for ExitPlanMode
+          if (toolCalls) {
+            const planPath = findPlanFilePath(toolCalls)
+            if (planPath) {
+              useChatStore.getState().setPlanFilePath(sessionId, planPath)
+            }
+
+            // Check if there's an ExitPlanMode tool call - if so, generate a message ID
+            // that will be used for the optimistic message and persist it
+            const hasExitPlanModeCall = toolCalls.some(tc => isExitPlanMode(tc))
+            if (hasExitPlanModeCall) {
+              // Generate message ID now so we can persist it before the optimistic message is created
+              const pendingMessageId = crypto.randomUUID()
+              useChatStore.getState().setPendingPlanMessageId(sessionId, pendingMessageId)
+              // Store for use when creating the optimistic message
+              ;(window as unknown as Record<string, string>)[`__pendingMessageId_${sessionId}`] = pendingMessageId
+
+              // Persist directly to session file (session state persistence hook only handles active session)
+              const { worktreePaths } = useChatStore.getState()
+              const wtPath = worktreePaths[worktreeId]
+              if (wtPath) {
+                invoke('update_session_state', {
+                  worktreeId,
+                  worktreePath: wtPath,
+                  sessionId,
+                  planFilePath: planPath ?? undefined,
+                  pendingPlanMessageId: pendingMessageId,
+                  waitingForInput: true,
+                  waitingForInputType: waitingType,
+                }).catch(err => {
+                  console.error('[useStreamingEvents] Failed to persist plan state:', err)
+                })
+              }
+            } else if (waitingType === 'question') {
+              // Persist question waiting state (no plan file path needed)
+              const { worktreePaths } = useChatStore.getState()
+              const wtPath = worktreePaths[worktreeId]
+              if (wtPath) {
+                invoke('update_session_state', {
+                  worktreeId,
+                  worktreePath: wtPath,
+                  sessionId,
+                  waitingForInput: true,
+                  waitingForInputType: waitingType,
+                }).catch(err => {
+                  console.error('[useStreamingEvents] Failed to persist question state:', err)
+                })
+              }
+            }
+          }
+
           // Play waiting sound if not currently viewing this session
           if (!isCurrentlyViewing) {
             const waitingSound = (preferences?.waiting_sound ?? 'none') as NotificationSound
@@ -334,6 +400,15 @@ export default function useStreamingEvents({
       // NOW add optimistic message after streaming state is cleared
       // Add message if there's content OR tool calls (some responses are only tool calls)
       if (content || (toolCalls && toolCalls.length > 0)) {
+        // Use pre-generated message ID if available (for ExitPlanMode), otherwise generate new
+        const pendingIdKey = `__pendingMessageId_${sessionId}`
+        const preGeneratedId = (window as unknown as Record<string, string>)[pendingIdKey]
+        const messageId = preGeneratedId ?? crypto.randomUUID()
+        // Clean up the temporary storage
+        if (preGeneratedId) {
+          delete (window as unknown as Record<string, string>)[pendingIdKey]
+        }
+
         queryClient.setQueryData<Session>(
           chatQueryKeys.session(sessionId),
           old => {
@@ -343,7 +418,7 @@ export default function useStreamingEvents({
               messages: [
                 ...old.messages,
                 {
-                  id: crypto.randomUUID(),
+                  id: messageId,
                   session_id: sessionId,
                   role: 'assistant' as const,
                   content: content ?? '',

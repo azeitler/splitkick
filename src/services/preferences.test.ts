@@ -104,6 +104,9 @@ describe('preferences service', () => {
         http_server_token: null,
         http_server_auto_start: false,
         http_server_localhost_only: true,
+        auto_archive_on_pr_merged: true,
+        canvas_enabled: true,
+        canvas_only_mode: false,
       }
       vi.mocked(invoke).mockResolvedValueOnce(mockPreferences)
 
@@ -186,6 +189,9 @@ describe('preferences service', () => {
         http_server_token: null,
         http_server_auto_start: false,
         http_server_localhost_only: true,
+        auto_archive_on_pr_merged: true,
+        canvas_enabled: true,
+        canvas_only_mode: false,
       }
       vi.mocked(invoke).mockResolvedValueOnce(prefsWithOldBinding)
 
@@ -243,6 +249,9 @@ describe('preferences service', () => {
         http_server_token: null,
         http_server_auto_start: false,
         http_server_localhost_only: true,
+        auto_archive_on_pr_merged: true,
+        canvas_enabled: true,
+        canvas_only_mode: false,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -298,6 +307,9 @@ describe('preferences service', () => {
         http_server_token: null,
         http_server_auto_start: false,
         http_server_localhost_only: true,
+        auto_archive_on_pr_merged: true,
+        canvas_enabled: true,
+        canvas_only_mode: false,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -353,6 +365,9 @@ describe('preferences service', () => {
         http_server_token: null,
         http_server_auto_start: false,
         http_server_localhost_only: true,
+        auto_archive_on_pr_merged: true,
+        canvas_enabled: true,
+        canvas_only_mode: false,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -408,6 +423,9 @@ describe('preferences service', () => {
         http_server_token: null,
         http_server_auto_start: false,
         http_server_localhost_only: true,
+        auto_archive_on_pr_merged: true,
+        canvas_enabled: true,
+        canvas_only_mode: false,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {

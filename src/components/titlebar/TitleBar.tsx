@@ -19,9 +19,10 @@ import { isNativeApp } from '@/lib/environment'
 interface TitleBarProps {
   className?: string
   title?: string
+  hideTitle?: boolean
 }
 
-export function TitleBar({ className, title = 'Jean' }: TitleBarProps) {
+export function TitleBar({ className, title = 'Jean', hideTitle = false }: TitleBarProps) {
   const { leftSidebarVisible, toggleLeftSidebar } = useUIStore()
   const commandContext = useCommandContext()
   const { data: preferences } = usePreferences()
@@ -90,11 +91,13 @@ export function TitleBar({ className, title = 'Jean' }: TitleBarProps) {
       </div>
 
       {/* Center - Title */}
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 max-w-[50%] px-2">
-        <span className="block truncate text-sm font-medium text-foreground/80">
-          {title}
-        </span>
-      </div>
+      {!hideTitle && (
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 max-w-[50%] px-2">
+          <span className="block truncate text-sm font-medium text-foreground/80">
+            {title}
+          </span>
+        </div>
+      )}
 
       {/* Right side - Windows/Linux window controls */}
       {native && !isMacOS && <WindowsWindowControls />}

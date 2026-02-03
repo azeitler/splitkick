@@ -33,6 +33,8 @@ interface StreamingMessageProps {
   selectedThinkingLevel: ThinkingLevel
   /** Keyboard shortcut for approve button */
   approveShortcut: string
+  /** Keyboard shortcut for approve yolo button */
+  approveShortcutYolo?: string
   /** Callback when user answers a question */
   onQuestionAnswer: (
     toolCallId: string,
@@ -73,6 +75,7 @@ export const StreamingMessage = memo(function StreamingMessage({
   streamingContent,
   streamingExecutionMode,
   approveShortcut,
+  approveShortcutYolo,
   onQuestionAnswer,
   onQuestionSkip,
   onFileClick,
@@ -210,6 +213,7 @@ export const StreamingMessage = memo(function StreamingMessage({
                         onPlanApproval={onStreamingPlanApproval}
                         onPlanApprovalYolo={onStreamingPlanApprovalYolo}
                         shortcut={approveShortcut}
+                        shortcutYolo={approveShortcutYolo}
                       />
                     </div>
                   )

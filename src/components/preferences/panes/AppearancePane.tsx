@@ -158,6 +158,32 @@ export const AppearancePane: React.FC = () => {
     [savePreferences, preferences]
   )
 
+  const handleCanvasEnabledChange = useCallback(
+    (checked: boolean) => {
+      if (preferences) {
+        savePreferences.mutate({
+          ...preferences,
+          canvas_enabled: checked,
+          // If disabling canvas, also disable canvas-only mode
+          canvas_only_mode: checked ? preferences.canvas_only_mode : false,
+        })
+      }
+    },
+    [savePreferences, preferences]
+  )
+
+  const handleCanvasOnlyChange = useCallback(
+    (checked: boolean) => {
+      if (preferences) {
+        savePreferences.mutate({
+          ...preferences,
+          canvas_only_mode: checked,
+        })
+      }
+    },
+    [savePreferences, preferences]
+  )
+
   const handleSyntaxThemeChange = useCallback(
     (field: 'syntax_theme_dark' | 'syntax_theme_light', value: SyntaxTheme) => {
       if (preferences) {
@@ -322,6 +348,28 @@ export const AppearancePane: React.FC = () => {
               checked={preferences?.session_grouping_enabled ?? true}
               onCheckedChange={handleSessionGroupingChange}
               disabled={savePreferences.isPending}
+            />
+          </InlineField>
+
+          <InlineField
+            label="Canvas view"
+            description="Show the canvas tab for session overview"
+          >
+            <Switch
+              checked={preferences?.canvas_enabled ?? true}
+              onCheckedChange={handleCanvasEnabledChange}
+              disabled={savePreferences.isPending}
+            />
+          </InlineField>
+
+          <InlineField
+            label="Canvas only mode"
+            description="Always show canvas view, hide session tabs"
+          >
+            <Switch
+              checked={preferences?.canvas_only_mode ?? false}
+              onCheckedChange={handleCanvasOnlyChange}
+              disabled={savePreferences.isPending || !preferences?.canvas_enabled}
             />
           </InlineField>
         </div>

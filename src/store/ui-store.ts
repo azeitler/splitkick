@@ -96,8 +96,14 @@ interface UIState {
   autoInvestigateWorktreeIds: Set<string>
   /** Worktree IDs that should auto-trigger investigate-pr when created */
   autoInvestigatePRWorktreeIds: Set<string>
+  /** Worktree IDs that should auto-open first session modal when canvas mounts */
+  autoOpenSessionWorktreeIds: Set<string>
   /** Project ID for the Session Board modal (null = closed) */
   sessionBoardProjectId: string | null
+  /** Whether a session chat modal is open (for magic command keybinding checks) */
+  sessionChatModalOpen: boolean
+  /** Which worktree the session chat modal is for (for magic command worktree resolution) */
+  sessionChatModalWorktreeId: string | null
 
   toggleLeftSidebar: () => void
   setLeftSidebarVisible: (visible: boolean) => void
@@ -128,8 +134,11 @@ interface UIState {
   consumeAutoInvestigate: (worktreeId: string) => boolean
   markWorktreeForAutoInvestigatePR: (worktreeId: string) => void
   consumeAutoInvestigatePR: (worktreeId: string) => boolean
+  markWorktreeForAutoOpenSession: (worktreeId: string) => void
+  consumeAutoOpenSession: (worktreeId: string) => boolean
   openSessionBoardModal: (projectId: string) => void
   closeSessionBoardModal: () => void
+  setSessionChatModalOpen: (open: boolean, worktreeId?: string | null) => void
 }
 
 export const useUIStore = create<UIState>()(
@@ -157,7 +166,10 @@ export const useUIStore = create<UIState>()(
       branchConflictData: null,
       autoInvestigateWorktreeIds: new Set(),
       autoInvestigatePRWorktreeIds: new Set(),
+      autoOpenSessionWorktreeIds: new Set(),
       sessionBoardProjectId: null,
+      sessionChatModalOpen: false,
+      sessionChatModalWorktreeId: null,
 
       toggleLeftSidebar: () =>
         set(
@@ -340,11 +352,46 @@ export const useUIStore = create<UIState>()(
         return false
       },
 
+      markWorktreeForAutoOpenSession: worktreeId =>
+        set(
+          state => ({
+            autoOpenSessionWorktreeIds: new Set([
+              ...state.autoOpenSessionWorktreeIds,
+              worktreeId,
+            ]),
+          }),
+          undefined,
+          'markWorktreeForAutoOpenSession'
+        ),
+
+      consumeAutoOpenSession: worktreeId => {
+        const state = useUIStore.getState()
+        if (state.autoOpenSessionWorktreeIds.has(worktreeId)) {
+          set(
+            state => {
+              const newSet = new Set(state.autoOpenSessionWorktreeIds)
+              newSet.delete(worktreeId)
+              return { autoOpenSessionWorktreeIds: newSet }
+            },
+            undefined,
+            'consumeAutoOpenSession'
+          )
+          return true
+        }
+        return false
+      },
+
       openSessionBoardModal: projectId =>
         set({ sessionBoardProjectId: projectId }, undefined, 'openSessionBoardModal'),
 
       closeSessionBoardModal: () =>
         set({ sessionBoardProjectId: null }, undefined, 'closeSessionBoardModal'),
+
+      setSessionChatModalOpen: (open, worktreeId) =>
+        set({
+          sessionChatModalOpen: open,
+          sessionChatModalWorktreeId: open ? (worktreeId ?? null) : null,
+        }, undefined, 'setSessionChatModalOpen'),
     }),
     {
       name: 'ui-store',

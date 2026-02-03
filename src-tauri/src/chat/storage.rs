@@ -398,7 +398,10 @@ pub fn load_sessions(
                 denied_message_context: None,
                 is_reviewing: false,
                 waiting_for_input: false,
+                waiting_for_input_type: None,
                 approved_plan_message_ids: vec![],
+                plan_file_path: None,
+                pending_plan_message_id: None,
             }
         };
         sessions.push(session);

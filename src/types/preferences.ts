@@ -253,6 +253,8 @@ export interface AppPreferences {
   keybindings: KeybindingsMap // User-configurable keyboard shortcuts
   archive_retention_days: number // Days to keep archived items (0 = never delete)
   session_grouping_enabled: boolean // Group session tabs by status when >3 sessions
+  canvas_enabled: boolean // Show the canvas tab for session overview
+  canvas_only_mode: boolean // Always show canvas view, hide session tabs
   syntax_theme_dark: SyntaxTheme // Syntax highlighting theme for dark mode
   syntax_theme_light: SyntaxTheme // Syntax highlighting theme for light mode
   disable_thinking_in_non_plan_modes: boolean // Disable thinking in build/yolo modes (only plan uses thinking)
@@ -271,6 +273,7 @@ export interface AppPreferences {
   http_server_token: string | null // Auth token for HTTP/WS access
   http_server_auto_start: boolean // Auto-start HTTP server on launch
   http_server_localhost_only: boolean // Bind to localhost only (more secure)
+  auto_archive_on_pr_merged: boolean // Auto-archive worktrees when their PR is merged
 }
 
 export type FileEditMode = 'inline' | 'external'
@@ -460,6 +463,8 @@ export const defaultPreferences: AppPreferences = {
   keybindings: DEFAULT_KEYBINDINGS,
   archive_retention_days: 30,
   session_grouping_enabled: true,
+  canvas_enabled: true,
+  canvas_only_mode: false,
   syntax_theme_dark: 'vitesse-black',
   syntax_theme_light: 'github-light',
   disable_thinking_in_non_plan_modes: true, // Default: only plan mode uses thinking
@@ -478,4 +483,5 @@ export const defaultPreferences: AppPreferences = {
   http_server_token: null,
   http_server_auto_start: false,
   http_server_localhost_only: true, // Default to localhost-only for security
+  auto_archive_on_pr_merged: true, // Default: enabled
 }

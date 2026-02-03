@@ -374,6 +374,9 @@ export function useUpdateSessionState() {
       deniedMessageContext,
       isReviewing,
       waitingForInput,
+      waitingForInputType,
+      planFilePath,
+      pendingPlanMessageId,
     }: {
       worktreeId: string
       worktreePath: string
@@ -393,6 +396,9 @@ export function useUpdateSessionState() {
       } | null
       isReviewing?: boolean
       waitingForInput?: boolean
+      waitingForInputType?: 'question' | 'plan' | null
+      planFilePath?: string | null
+      pendingPlanMessageId?: string | null
     }): Promise<void> => {
       if (!isTauri()) {
         throw new Error('Not in Tauri context')
@@ -410,6 +416,9 @@ export function useUpdateSessionState() {
         deniedMessageContext,
         isReviewing,
         waitingForInput,
+        waitingForInputType,
+        planFilePath,
+        pendingPlanMessageId,
       })
       logger.debug('Session state updated')
     },

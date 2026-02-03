@@ -608,13 +608,23 @@ export function useWorktreeEvents() {
           }
         )
 
-        // Select worktree in sidebar and set as active for chat
+        // Select worktree in sidebar
         const { expandProject, selectWorktree } = useProjectsStore.getState()
-        const { setActiveWorktree, addSetupScriptResult } =
+        const { activeWorktreePath, setActiveWorktree, addSetupScriptResult } =
           useChatStore.getState()
         expandProject(worktree.project_id)
         selectWorktree(worktree.id)
-        setActiveWorktree(worktree.id, worktree.path)
+
+        // Only switch to worktree view if already viewing a worktree
+        // If on project canvas (activeWorktreePath is null), stay there
+        if (activeWorktreePath) {
+          setActiveWorktree(worktree.id, worktree.path)
+        }
+
+        // In canvas-only mode, mark worktree for auto-open first session modal
+        console.log('[AUTO-OPEN] Marking worktree for auto-open:', worktree.id)
+        useUIStore.getState().markWorktreeForAutoOpenSession(worktree.id)
+        console.log('[AUTO-OPEN] Store state after mark:', [...useUIStore.getState().autoOpenSessionWorktreeIds])
 
         // Add setup script output to chat store if present
         if (worktree.setup_output) {
@@ -1321,6 +1331,11 @@ export function useCreateBaseSession() {
       // Set as active for chat
       const { setActiveWorktree } = useChatStore.getState()
       setActiveWorktree(session.id, session.path)
+
+      // In canvas-only mode, mark worktree for auto-open first session modal
+      console.log('[AUTO-OPEN] Marking base session for auto-open:', session.id)
+      useUIStore.getState().markWorktreeForAutoOpenSession(session.id)
+      console.log('[AUTO-OPEN] Store state after mark:', [...useUIStore.getState().autoOpenSessionWorktreeIds])
 
       toast.success(`Base session: ${session.name}`)
     },

@@ -323,6 +323,11 @@ export function PermissionApproval({
           >
             <Play className="h-3 w-3" />
             Approve (yolo)
+            <Kbd className="ml-1.5 h-4 text-[10px] bg-destructive-foreground/20 text-destructive-foreground">
+              {formatShortcutDisplay(
+                DEFAULT_KEYBINDINGS.approve_plan_yolo ?? 'mod+y'
+              )}
+            </Kbd>
           </Button>
         )}
         {onDeny && (

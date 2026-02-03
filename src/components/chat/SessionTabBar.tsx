@@ -32,6 +32,7 @@ import {
   Clock,
   Eye,
   FileText,
+  LayoutGrid,
   MessageSquare,
   Sparkles,
   Zap,
@@ -530,6 +531,15 @@ export function SessionTabBar({
   const isViewingReviewTab = useChatStore(
     state => state.viewingReviewTab[worktreeId] ?? false
   )
+  const isViewingCanvasTabRaw = useChatStore(
+    state => state.viewingCanvasTab[worktreeId] ?? true // Default to canvas view
+  )
+  // Apply canvas preferences: if canvas disabled, never show; if canvas-only, always show
+  const canvasEnabled = preferences?.canvas_enabled ?? true
+  const canvasOnlyMode = preferences?.canvas_only_mode ?? false
+  const isViewingCanvasTab = canvasEnabled
+    ? (canvasOnlyMode || isViewingCanvasTabRaw)
+    : false
   const reviewResults = useChatStore(state => state.reviewResults[worktreeId])
   const reviewingSessions = useChatStore(state => state.reviewingSessions)
 
@@ -538,6 +548,7 @@ export function SessionTabBar({
   const {
     setActiveSession,
     setViewingReviewTab,
+    setViewingCanvasTab,
     clearReviewResults,
     getActiveSession,
     isSending,
@@ -586,16 +597,6 @@ export function SessionTabBar({
     )
   }, [worktreeId, worktreePath, createSession, setActiveSession])
 
-  // Listen for global create-new-session event from keybinding (CMD+T)
-  useEffect(() => {
-    const handleCreateNewSession = () => {
-      handleCreateSession()
-    }
-
-    window.addEventListener('create-new-session', handleCreateNewSession)
-    return () =>
-      window.removeEventListener('create-new-session', handleCreateNewSession)
-  }, [handleCreateSession])
 
   // Scroll to pending session after query refetch renders it
   useEffect(() => {
@@ -700,15 +701,22 @@ export function SessionTabBar({
     (sessionId: string) => {
       startTransition(() => {
         setViewingReviewTab(worktreeId, false)
+        setViewingCanvasTab(worktreeId, false)
         setActiveSession(worktreeId, sessionId)
       })
     },
-    [worktreeId, setActiveSession, setViewingReviewTab]
+    [worktreeId, setActiveSession, setViewingReviewTab, setViewingCanvasTab]
   )
 
   const handleReviewTabClick = useCallback(() => {
     setViewingReviewTab(worktreeId, true)
-  }, [worktreeId, setViewingReviewTab])
+    setViewingCanvasTab(worktreeId, false)
+  }, [worktreeId, setViewingReviewTab, setViewingCanvasTab])
+
+  const handleCanvasTabClick = useCallback(() => {
+    setViewingCanvasTab(worktreeId, true)
+    setViewingReviewTab(worktreeId, false)
+  }, [worktreeId, setViewingCanvasTab, setViewingReviewTab])
 
   const handleCloseReviewTab = useCallback(
     (e: React.MouseEvent) => {
@@ -1037,6 +1045,26 @@ export function SessionTabBar({
         viewportRef={tabScrollRef}
       >
         <div className="flex h-8 items-center gap-0.5 px-2">
+          {/* Canvas tab - session overview grid (shown when canvas is enabled) */}
+          {canvasEnabled && (
+            <button
+              type="button"
+              onClick={handleCanvasTabClick}
+              className={cn(
+                'group relative flex h-7 shrink-0 items-center gap-1 rounded-t px-2 text-sm transition-colors',
+                isViewingCanvasTab
+                  ? 'text-foreground font-medium border-b-2 border-foreground'
+                  : 'text-muted-foreground hover:text-foreground/70'
+              )}
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+              <span className="whitespace-nowrap">Canvas</span>
+              <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium">
+                {sessionStates.length}
+              </span>
+            </button>
+          )}
+
           {/* AI Review results tab - shown when review results exist */}
           {reviewResults && (
             <div
@@ -1078,8 +1106,8 @@ export function SessionTabBar({
             </div>
           )}
 
-          {/* Session tabs - grouped or flat depending on count */}
-          {shouldGroup ? (
+          {/* Session tabs - grouped or flat depending on count (hidden in canvas-only mode) */}
+          {canvasOnlyMode ? null : shouldGroup ? (
             // GROUPED MODE (> 6 sessions) - no drag-and-drop
             <>
               <SessionGroupDropdown
@@ -1197,16 +1225,18 @@ export function SessionTabBar({
             </DndContext>
           )}
 
-          {/* Add new session button */}
-          <button
-            type="button"
-            onClick={handleCreateSession}
-            disabled={createSession.isPending}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
-            aria-label="New session"
-          >
-            <Plus className="h-3.5 w-3.5" />
-          </button>
+          {/* Add new session button (hidden in canvas-only mode) */}
+          {!canvasOnlyMode && (
+            <button
+              type="button"
+              onClick={handleCreateSession}
+              disabled={createSession.isPending}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
+              aria-label="New session"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
       </ScrollArea>
     </div>

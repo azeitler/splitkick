@@ -297,9 +297,18 @@ pub struct Session {
     /// Whether this session is waiting for user input (AskUserQuestion, ExitPlanMode)
     #[serde(default)]
     pub waiting_for_input: bool,
+    /// Type of waiting: "question" for AskUserQuestion, "plan" for ExitPlanMode
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub waiting_for_input_type: Option<String>,
     /// Message IDs whose plans have been approved (for NDJSON-only storage)
     #[serde(default)]
     pub approved_plan_message_ids: Vec<String>,
+    /// File path to the current plan (extracted from Write tool calls)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_file_path: Option<String>,
+    /// Message ID of the pending plan awaiting approval (for Canvas view)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_plan_message_id: Option<String>,
 }
 
 impl Session {
@@ -328,7 +337,10 @@ impl Session {
             denied_message_context: None,
             is_reviewing: false,
             waiting_for_input: false,
+            waiting_for_input_type: None,
             approved_plan_message_ids: vec![],
+            plan_file_path: None,
+            pending_plan_message_id: None,
         }
     }
 
@@ -459,7 +471,10 @@ impl SessionMetadata {
             denied_message_context: self.denied_message_context.clone(),
             is_reviewing: self.is_reviewing,
             waiting_for_input: self.waiting_for_input,
+            waiting_for_input_type: self.waiting_for_input_type.clone(),
             approved_plan_message_ids: self.approved_plan_message_ids.clone(),
+            plan_file_path: self.plan_file_path.clone(),
+            pending_plan_message_id: self.pending_plan_message_id.clone(),
         }
     }
 
@@ -479,7 +494,10 @@ impl SessionMetadata {
         self.denied_message_context = session.denied_message_context.clone();
         self.is_reviewing = session.is_reviewing;
         self.waiting_for_input = session.waiting_for_input;
+        self.waiting_for_input_type = session.waiting_for_input_type.clone();
         self.approved_plan_message_ids = session.approved_plan_message_ids.clone();
+        self.plan_file_path = session.plan_file_path.clone();
+        self.pending_plan_message_id = session.pending_plan_message_id.clone();
     }
 }
 
@@ -734,9 +752,18 @@ pub struct SessionMetadata {
     /// Whether this session is waiting for user input (AskUserQuestion, ExitPlanMode)
     #[serde(default)]
     pub waiting_for_input: bool,
+    /// Type of waiting: "question" for AskUserQuestion, "plan" for ExitPlanMode
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub waiting_for_input_type: Option<String>,
     /// Message IDs whose plans have been approved
     #[serde(default)]
     pub approved_plan_message_ids: Vec<String>,
+    /// File path to the current plan (extracted from Write tool calls)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_file_path: Option<String>,
+    /// Message ID of the pending plan awaiting approval (for Canvas view)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_plan_message_id: Option<String>,
 
     /// Run history - each entry corresponds to one Claude CLI execution
     #[serde(default)]
@@ -817,7 +844,10 @@ impl SessionMetadata {
             denied_message_context: None,
             is_reviewing: false,
             waiting_for_input: false,
+            waiting_for_input_type: None,
             approved_plan_message_ids: vec![],
+            plan_file_path: None,
+            pending_plan_message_id: None,
             runs: vec![],
             version: 1,
         }

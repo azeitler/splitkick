@@ -960,11 +960,14 @@ pub async fn dispatch_command(
             let denied_message_context: Option<Option<crate::chat::types::DeniedMessageContext>> = field_opt(&args, "deniedMessageContext", "denied_message_context")?;
             let is_reviewing: Option<bool> = field_opt(&args, "isReviewing", "is_reviewing")?;
             let waiting_for_input: Option<bool> = field_opt(&args, "waitingForInput", "waiting_for_input")?;
+            let waiting_for_input_type: Option<Option<String>> = field_opt(&args, "waitingForInputType", "waiting_for_input_type")?;
+            let plan_file_path: Option<Option<String>> = field_opt(&args, "planFilePath", "plan_file_path")?;
+            let pending_plan_message_id: Option<Option<String>> = field_opt(&args, "pendingPlanMessageId", "pending_plan_message_id")?;
             crate::chat::update_session_state(
                 app.clone(), worktree_id, worktree_path, session_id,
                 answered_questions, submitted_answers, fixed_findings,
                 pending_permission_denials, denied_message_context,
-                is_reviewing, waiting_for_input,
+                is_reviewing, waiting_for_input, waiting_for_input_type, plan_file_path, pending_plan_message_id,
             ).await?;
             emit_cache_invalidation(app, &["sessions"]);
             Ok(Value::Null)

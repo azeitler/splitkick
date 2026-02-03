@@ -63,6 +63,11 @@ export function MainWindow() {
   const activeSessionId = useChatStore(state =>
     selectedWorktreeId ? state.activeSessionIds[selectedWorktreeId] : undefined
   )
+  const isViewingCanvasTabRaw = useChatStore(state =>
+    selectedWorktreeId
+      ? (state.viewingCanvasTab[selectedWorktreeId] ?? true)
+      : false
+  )
 
   // Find active session name
   const activeSessionName = useMemo(() => {
@@ -82,6 +87,13 @@ export function MainWindow() {
 
     return `${project.name} › ${worktree.name}${branchSuffix}`
   }, [project, worktree, preferences?.session_grouping_enabled, activeSessionName])
+
+  // Determine if canvas view is active (for hiding title bar)
+  const canvasEnabled = preferences?.canvas_enabled ?? true
+  const canvasOnlyMode = preferences?.canvas_only_mode ?? false
+  const isViewingCanvasTab = canvasEnabled
+    ? (canvasOnlyMode || isViewingCanvasTabRaw)
+    : false
 
   // Compute polling info - null if no worktree or data not loaded
   const pollingInfo: WorktreePollingInfo | null = useMemo(() => {
@@ -188,7 +200,7 @@ export function MainWindow() {
       <DevModeBanner />
 
       {/* Title Bar */}
-      <TitleBar title={windowTitle} />
+      <TitleBar title={windowTitle} hideTitle={isViewingCanvasTab} />
 
       {/* Main Content Area */}
       <div className="flex flex-1 overflow-hidden">

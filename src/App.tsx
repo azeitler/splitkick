@@ -20,6 +20,7 @@ import { useFontSettings } from './hooks/use-font-settings'
 import { useImmediateSessionStateSave } from './hooks/useImmediateSessionStateSave'
 import { useCliVersionCheck } from './hooks/useCliVersionCheck'
 import { useQueueProcessor } from './hooks/useQueueProcessor'
+import { useAutoArchiveOnMerge } from './hooks/useAutoArchiveOnMerge'
 import useStreamingEvents from './components/chat/hooks/useStreamingEvents'
 import { preloadAllSounds } from './lib/sounds'
 
@@ -193,6 +194,9 @@ function App() {
   // Global queue processor - must be at App level so queued messages execute
   // even when the worktree is not focused (ChatWindow unmounted)
   useQueueProcessor()
+
+  // Auto-archive worktrees when their PR is merged (if enabled in preferences)
+  useAutoArchiveOnMerge()
 
   // When WebSocket connects (browser mode), invalidate queries that weren't preloaded
   // so they refetch with the now-available backend. Skip preloaded data.

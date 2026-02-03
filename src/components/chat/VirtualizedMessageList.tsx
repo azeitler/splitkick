@@ -51,6 +51,8 @@ interface VirtualizedMessageListProps {
   worktreePath: string
   /** Keyboard shortcut for approve button */
   approveShortcut: string
+  /** Keyboard shortcut for approve yolo button */
+  approveShortcutYolo?: string
   /** Ref for approve button visibility tracking */
   approveButtonRef?: React.RefObject<HTMLButtonElement | null>
   /** Whether Claude is currently streaming */
@@ -111,6 +113,7 @@ export const VirtualizedMessageList = memo(
         sessionId,
         worktreePath,
         approveShortcut,
+        approveShortcutYolo,
         approveButtonRef,
         isSending,
         onPlanApproval,
@@ -281,6 +284,7 @@ export const VirtualizedMessageList = memo(
                   sessionId={sessionId}
                   worktreePath={worktreePath}
                   approveShortcut={approveShortcut}
+                  approveShortcutYolo={approveShortcutYolo}
                   approveButtonRef={
                     globalIndex === lastPlanMessageIndex
                       ? approveButtonRef

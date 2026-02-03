@@ -1,6 +1,7 @@
 import { useCallback, type RefObject } from 'react'
 import type { QueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { invoke } from '@/lib/transport'
 import {
   chatQueryKeys,
   markPlanApproved as markPlanApprovedService,
@@ -140,6 +141,17 @@ export function useMessageHandlers({
       setSessionReviewing(sessionId, false)
       setWaitingForInput(sessionId, false)
 
+      // Persist cleared waiting state to backend (for canvas view where session may not be active)
+      invoke('update_session_state', {
+        worktreeId,
+        worktreePath,
+        sessionId,
+        waitingForInput: false,
+        waitingForInputType: null,
+      }).catch(err => {
+        console.error('[useMessageHandlers] Failed to clear waiting state:', err)
+      })
+
       // Scroll to bottom to compensate for the question form collapsing
       scrollToBottom()
 
@@ -188,7 +200,9 @@ export function useMessageHandlers({
   const handleSkipQuestion = useCallback(
     (toolCallId: string) => {
       const sessionId = activeSessionIdRef.current
-      if (!sessionId) return
+      const worktreeId = activeWorktreeIdRef.current
+      const worktreePath = activeWorktreePathRef.current
+      if (!sessionId || !worktreeId || !worktreePath) return
 
       const {
         markQuestionAnswered,
@@ -216,10 +230,21 @@ export function useMessageHandlers({
       setWaitingForInput(sessionId, false)
       setSessionReviewing(sessionId, true)
 
+      // Persist cleared waiting state to backend (for canvas view where session may not be active)
+      invoke('update_session_state', {
+        worktreeId,
+        worktreePath,
+        sessionId,
+        waitingForInput: false,
+        waitingForInputType: null,
+      }).catch(err => {
+        console.error('[useMessageHandlers] Failed to clear waiting state:', err)
+      })
+
       // Focus input so user can type their next message
       inputRef.current?.focus()
     },
-    [activeSessionIdRef, inputRef]
+    [activeSessionIdRef, activeWorktreeIdRef, activeWorktreePathRef, inputRef]
   )
 
   // Handle plan approval for ExitPlanMode

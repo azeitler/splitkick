@@ -689,6 +689,23 @@ export const GeneralPane: React.FC = () => {
       <SettingsSection title="Archive">
         <div className="space-y-4">
           <InlineField
+            label="Auto-archive on PR merge"
+            description="Archive worktrees when their PR is merged"
+          >
+            <Switch
+              checked={preferences?.auto_archive_on_pr_merged ?? true}
+              onCheckedChange={checked => {
+                if (preferences) {
+                  savePreferences.mutate({
+                    ...preferences,
+                    auto_archive_on_pr_merged: checked,
+                  })
+                }
+              }}
+            />
+          </InlineField>
+
+          <InlineField
             label="Auto-delete archives"
             description="Delete archived items older than this"
           >
