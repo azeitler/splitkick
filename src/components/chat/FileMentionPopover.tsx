@@ -131,7 +131,7 @@ export function FileMentionPopover({
         }}
       />
       <PopoverContent
-        className="w-80 p-0"
+        className="w-96 p-0"
         align="start"
         side="top"
         sideOffset={4}

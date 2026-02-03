@@ -42,6 +42,7 @@ describe('ChatStore', () => {
       pendingPermissionDenials: {},
       deniedMessageContext: {},
       lastCompaction: {},
+      compactingSessions: {},
       reviewingSessions: {},
       savingContext: {},
       skippedQuestionSessions: {},

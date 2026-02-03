@@ -294,13 +294,20 @@ export const thinkingLevelOptions: { value: ThinkingLevel; label: string }[] = [
   { value: 'ultrathink', label: 'Ultrathink (32K)' },
 ]
 
-export type TerminalApp = 'terminal' | 'warp' | 'ghostty'
+export type TerminalApp = 'terminal' | 'warp' | 'ghostty' | 'windows-terminal' | 'powershell' | 'cmd'
 
-export const terminalOptions: { value: TerminalApp; label: string }[] = [
-  { value: 'terminal', label: 'Terminal' },
-  { value: 'warp', label: 'Warp' },
-  { value: 'ghostty', label: 'Ghostty' },
-]
+export const terminalOptions: { value: TerminalApp; label: string }[] =
+  navigator.platform.startsWith('Win')
+    ? [
+        { value: 'windows-terminal', label: 'Windows Terminal' },
+        { value: 'powershell', label: 'PowerShell' },
+        { value: 'cmd', label: 'Command Prompt' },
+      ]
+    : [
+        { value: 'terminal', label: 'Terminal' },
+        { value: 'warp', label: 'Warp' },
+        { value: 'ghostty', label: 'Ghostty' },
+      ]
 
 export type EditorApp = 'vscode' | 'cursor' | 'xcode'
 

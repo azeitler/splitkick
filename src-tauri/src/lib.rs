@@ -182,7 +182,14 @@ fn default_thinking_level() -> String {
 }
 
 fn default_terminal() -> String {
-    "terminal".to_string()
+    #[cfg(target_os = "windows")]
+    {
+        "windows-terminal".to_string()
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        "terminal".to_string()
+    }
 }
 
 fn default_editor() -> String {
@@ -1121,14 +1128,14 @@ fn create_app_menu(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error
 /// (.zprofile, .bash_profile) while avoiding .zshrc which triggers TCC dialogs on Sequoia.
 #[cfg(target_os = "macos")]
 fn fix_macos_path() {
-    use std::process::Command;
+    use crate::platform::silent_command;
 
     // Get user's shell from $SHELL, default to zsh (macOS default since Catalina)
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
 
     // Spawn a login (-l) + interactive (-i) shell to source all config files
     // including .zshrc where tools like bun, nvm add their PATH entries
-    let output = Command::new(&shell)
+    let output = silent_command(&shell)
         .args(["-l", "-i", "-c", "echo $PATH"])
         .output();
 
@@ -1176,23 +1183,22 @@ pub fn run() {
     #[cfg(target_os = "linux")]
     {
         log::trace!("Setting WebKit compatibility fixes for Linux");
-        
+
         // Disable problematic GPU compositing modes
         if std::env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").is_none() {
             std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
             log::trace!("WEBKIT_DISABLE_COMPOSITING_MODE=1");
         }
-        
+
         // Disable DMABUF renderer (common cause of GBM errors)
         if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
             std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
             log::trace!("WEBKIT_DISABLE_DMABUF_RENDERER=1");
         }
-        
+
         // Force X11 backend if Wayland causes issues
         // Check if user explicitly wants Wayland via environment variable
-        let force_x11 = std::env::var("JEAN_FORCE_X11")
-            .unwrap_or_else(|_| "0".to_string()) == "1";
+        let force_x11 = std::env::var("JEAN_FORCE_X11").unwrap_or_else(|_| "0".to_string()) == "1";
         if force_x11 && std::env::var_os("GDK_BACKEND").is_none() {
             std::env::set_var("GDK_BACKEND", "x11");
             log::trace!("GDK_BACKEND=x11 (forced by JEAN_FORCE_X11)");
@@ -1273,74 +1279,86 @@ pub fn run() {
             {
                 // Set up menu event handlers
                 app.on_menu_event(move |app, event| {
-                log::trace!("Menu event received: {:?}", event.id());
+                    log::trace!("Menu event received: {:?}", event.id());
 
-                match event.id().as_ref() {
-                    "about" => {
-                        log::trace!("About menu item clicked");
-                        // Emit event to React for handling
-                        match app.emit("menu-about", ()) {
-                            Ok(_) => log::trace!("Successfully emitted menu-about event"),
-                            Err(e) => log::error!("Failed to emit menu-about event: {e}"),
-                        }
-                    }
-                    "check-updates" => {
-                        log::trace!("Check for Updates menu item clicked");
-                        // Emit event to React for handling
-                        match app.emit("menu-check-updates", ()) {
-                            Ok(_) => log::trace!("Successfully emitted menu-check-updates event"),
-                            Err(e) => log::error!("Failed to emit menu-check-updates event: {e}"),
-                        }
-                    }
-                    "preferences" => {
-                        log::trace!("Preferences menu item clicked");
-                        // Emit event to React for handling
-                        match app.emit("menu-preferences", ()) {
-                            Ok(_) => log::trace!("Successfully emitted menu-preferences event"),
-                            Err(e) => log::error!("Failed to emit menu-preferences event: {e}"),
-                        }
-                    }
-                    "toggle-left-sidebar" => {
-                        log::trace!("Toggle Left Sidebar menu item clicked");
-                        // Emit event to React for handling
-                        match app.emit("menu-toggle-left-sidebar", ()) {
-                            Ok(_) => {
-                                log::trace!("Successfully emitted menu-toggle-left-sidebar event")
-                            }
-                            Err(e) => {
-                                log::error!("Failed to emit menu-toggle-left-sidebar event: {e}")
+                    match event.id().as_ref() {
+                        "about" => {
+                            log::trace!("About menu item clicked");
+                            // Emit event to React for handling
+                            match app.emit("menu-about", ()) {
+                                Ok(_) => log::trace!("Successfully emitted menu-about event"),
+                                Err(e) => log::error!("Failed to emit menu-about event: {e}"),
                             }
                         }
-                    }
-                    "toggle-right-sidebar" => {
-                        log::trace!("Toggle Right Sidebar menu item clicked");
-                        // Emit event to React for handling
-                        match app.emit("menu-toggle-right-sidebar", ()) {
-                            Ok(_) => {
-                                log::trace!("Successfully emitted menu-toggle-right-sidebar event")
-                            }
-                            Err(e) => {
-                                log::error!("Failed to emit menu-toggle-right-sidebar event: {e}")
-                            }
-                        }
-                    }
-                    "open-pull-request" => {
-                        log::trace!("Open Pull Request menu item clicked");
-                        // Emit event to React for handling
-                        match app.emit("menu-open-pull-request", ()) {
-                            Ok(_) => {
-                                log::trace!("Successfully emitted menu-open-pull-request event")
-                            }
-                            Err(e) => {
-                                log::error!("Failed to emit menu-open-pull-request event: {e}")
+                        "check-updates" => {
+                            log::trace!("Check for Updates menu item clicked");
+                            // Emit event to React for handling
+                            match app.emit("menu-check-updates", ()) {
+                                Ok(_) => {
+                                    log::trace!("Successfully emitted menu-check-updates event")
+                                }
+                                Err(e) => {
+                                    log::error!("Failed to emit menu-check-updates event: {e}")
+                                }
                             }
                         }
+                        "preferences" => {
+                            log::trace!("Preferences menu item clicked");
+                            // Emit event to React for handling
+                            match app.emit("menu-preferences", ()) {
+                                Ok(_) => log::trace!("Successfully emitted menu-preferences event"),
+                                Err(e) => log::error!("Failed to emit menu-preferences event: {e}"),
+                            }
+                        }
+                        "toggle-left-sidebar" => {
+                            log::trace!("Toggle Left Sidebar menu item clicked");
+                            // Emit event to React for handling
+                            match app.emit("menu-toggle-left-sidebar", ()) {
+                                Ok(_) => {
+                                    log::trace!(
+                                        "Successfully emitted menu-toggle-left-sidebar event"
+                                    )
+                                }
+                                Err(e) => {
+                                    log::error!(
+                                        "Failed to emit menu-toggle-left-sidebar event: {e}"
+                                    )
+                                }
+                            }
+                        }
+                        "toggle-right-sidebar" => {
+                            log::trace!("Toggle Right Sidebar menu item clicked");
+                            // Emit event to React for handling
+                            match app.emit("menu-toggle-right-sidebar", ()) {
+                                Ok(_) => {
+                                    log::trace!(
+                                        "Successfully emitted menu-toggle-right-sidebar event"
+                                    )
+                                }
+                                Err(e) => {
+                                    log::error!(
+                                        "Failed to emit menu-toggle-right-sidebar event: {e}"
+                                    )
+                                }
+                            }
+                        }
+                        "open-pull-request" => {
+                            log::trace!("Open Pull Request menu item clicked");
+                            // Emit event to React for handling
+                            match app.emit("menu-open-pull-request", ()) {
+                                Ok(_) => {
+                                    log::trace!("Successfully emitted menu-open-pull-request event")
+                                }
+                                Err(e) => {
+                                    log::error!("Failed to emit menu-open-pull-request event: {e}")
+                                }
+                            }
+                        }
+                        _ => {
+                            log::trace!("Unhandled menu event: {:?}", event.id());
+                        }
                     }
-                    _ => {
-                        log::trace!("Unhandled menu event: {:?}", event.id());
-                    }
-                }
-            });
+                });
             }
 
             // Initialize background task manager
@@ -1389,6 +1407,8 @@ pub fn run() {
             load_emergency_data,
             cleanup_old_recovery_files,
             // Project management commands
+            projects::check_git_identity,
+            projects::set_git_identity,
             projects::list_projects,
             projects::add_project,
             projects::init_git_in_folder,

@@ -79,7 +79,7 @@ impl NdjsonTailer {
                     // Check if we have a complete line (ends with newline)
                     if self.buffer.ends_with('\n') {
                         // Remove the trailing newline and add to results
-                        let complete_line = self.buffer.trim_end_matches('\n').to_string();
+                        let complete_line = self.buffer.trim_end_matches(['\n', '\r']).to_string();
                         lines.push(complete_line);
                         self.buffer.clear();
                     }

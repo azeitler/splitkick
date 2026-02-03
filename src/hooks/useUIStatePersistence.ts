@@ -171,6 +171,12 @@ export function useUIStatePersistence() {
       useUIStore.getState().setLeftSidebarVisible(uiState.left_sidebar_visible)
     }
 
+    // Force sidebar open when no projects exist (first-time launch)
+    if (projects.length === 0) {
+      logger.debug('No projects found, forcing sidebar open')
+      useUIStore.getState().setLeftSidebarVisible(true)
+    }
+
     // Restore active project first (selectProject clears selectedWorktreeId)
     // This must happen BEFORE restoring the active worktree
     if (uiState.active_project_id) {

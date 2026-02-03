@@ -1,6 +1,6 @@
 use tauri::Manager;
 
-use super::types::{ContentBlock, ThinkingLevel, ToolCall, UsageData};
+use super::types::{CompactMetadata, ContentBlock, ThinkingLevel, ToolCall, UsageData};
 use crate::http_server::EmitExt;
 use crate::projects::github_issues::{
     get_github_contexts_dir, get_worktree_issue_refs, get_worktree_pr_refs,
@@ -114,6 +114,23 @@ struct PermissionDeniedEvent {
     denials: Vec<PermissionDenial>,
 }
 
+/// Payload for compacting-in-progress events sent to frontend
+/// Signals that context compaction has started
+#[derive(serde::Serialize, Clone)]
+struct CompactingEvent {
+    session_id: String,
+    worktree_id: String,
+}
+
+/// Payload for compaction-complete events sent to frontend
+/// Contains metadata about the compaction that occurred
+#[derive(serde::Serialize, Clone)]
+struct CompactedEvent {
+    session_id: String,
+    worktree_id: String,
+    metadata: CompactMetadata,
+}
+
 // =============================================================================
 // Detached Claude CLI execution
 // =============================================================================
@@ -210,6 +227,7 @@ fn build_claude_args(
         thinking_level
     };
 
+    // Thinking configuration via --settings (only thinking, no permissions to avoid overwriting)
     if let Some(level) = effective_thinking_level {
         let settings = if level.is_enabled() {
             r#"{"alwaysThinkingEnabled": true}"#
@@ -232,6 +250,15 @@ fn build_claude_args(
         }
     }
 
+    // Allow embedded CLI binaries without approval via --allowedTools
+    // Claude wraps paths with spaces in quotes, so the actual command is:
+    // "/Users/.../Application Support/.../gh-cli/gh" --version
+    // Use *gh-cli/gh* to match regardless of quoting
+    args.push("--allowedTools".to_string());
+    args.push("Bash(*gh-cli/gh*)".to_string());
+    args.push("--allowedTools".to_string());
+    args.push("Bash(*claude-cli/claude*)".to_string());
+
     // Build combined system prompt parts
     // Claude CLI only uses the LAST --append-system-prompt, so we must combine all prompts
     let mut system_prompt_parts: Vec<String> = Vec::new();
@@ -251,6 +278,27 @@ fn build_claude_args(
              In build/execute mode, use sub-agents in parallel for faster implementation."
                 .to_string(),
         );
+    }
+
+    // Embedded gh CLI path - tell Claude to use the app's bundled binary
+    let gh_binary = crate::gh_cli::config::resolve_gh_binary(app);
+    if gh_binary != std::path::PathBuf::from("gh") {
+        system_prompt_parts.push(format!(
+            "When running GitHub CLI commands, use the full path to the embedded binary: {}\n\
+             Do NOT use bare `gh` — always use the full path above.",
+            gh_binary.display()
+        ));
+    }
+
+    // Embedded Claude CLI path - tell Claude to use the app's bundled binary
+    if let Ok(claude_binary) = crate::claude_cli::get_cli_binary_path(app) {
+        if claude_binary.exists() {
+            system_prompt_parts.push(format!(
+                "When running Claude CLI commands, use the full path to the embedded binary: {}\n\
+                 Do NOT use bare `claude` — always use the full path above.",
+                claude_binary.display()
+            ));
+        }
     }
 
     // Collect all context files (issues and PRs) and concatenate into a single file
@@ -384,7 +432,8 @@ fn build_claude_args(
                         combined_content.push_str(&format!("- {} GitHub Issue(s)\n", issue_count));
                     }
                     if pr_count > 0 {
-                        combined_content.push_str(&format!("- {} GitHub Pull Request(s)\n", pr_count));
+                        combined_content
+                            .push_str(&format!("- {} GitHub Pull Request(s)\n", pr_count));
                     }
                     if saved_context_count > 0 {
                         combined_content
@@ -534,7 +583,20 @@ pub fn execute_claude_detached(
         output_file,
         working_dir,
         &env_refs,
-    )?;
+    )
+    .map_err(|e| {
+        let error_msg = format!("Failed to start Claude CLI: {e}");
+        log::error!("{error_msg}");
+        let _ = app.emit(
+            "chat:error",
+            &ErrorEvent {
+                session_id: session_id.to_string(),
+                worktree_id: worktree_id.to_string(),
+                error: error_msg.clone(),
+            },
+        );
+        error_msg
+    })?;
 
     log::trace!("Detached Claude CLI spawned with PID: {pid}");
 
@@ -750,7 +812,7 @@ pub fn tail_claude_output(
                                             }
                                             #[cfg(windows)]
                                             {
-                                                let _ = std::process::Command::new("taskkill")
+                                                let _ = crate::platform::silent_command("taskkill")
                                                     .args(["/F", "/PID", &pid.to_string()])
                                                     .output();
                                             }
@@ -934,6 +996,35 @@ pub fn tail_claude_output(
 
                     completed = true;
                     log::trace!("Received result message - Claude CLI completed");
+                }
+                "system" => {
+                    let subtype = msg.get("subtype").and_then(|v| v.as_str()).unwrap_or("");
+                    if subtype == "compact_boundary" {
+                        log::trace!("Detected compact_boundary system message");
+
+                        // Signal UI that compaction is in progress
+                        let compacting_event = CompactingEvent {
+                            session_id: session_id.to_string(),
+                            worktree_id: worktree_id.to_string(),
+                        };
+                        if let Err(e) = app.emit("chat:compacting", &compacting_event) {
+                            log::error!("Failed to emit compacting: {e}");
+                        }
+
+                        // Emit compacted event with metadata if available
+                        if let Some(metadata_val) = msg.get("compactMetadata") {
+                            if let Ok(metadata) = serde_json::from_value::<CompactMetadata>(metadata_val.clone()) {
+                                let compacted_event = CompactedEvent {
+                                    session_id: session_id.to_string(),
+                                    worktree_id: worktree_id.to_string(),
+                                    metadata,
+                                };
+                                if let Err(e) = app.emit("chat:compacted", &compacted_event) {
+                                    log::error!("Failed to emit compacted: {e}");
+                                }
+                            }
+                        }
+                    }
                 }
                 _ => {}
             }

@@ -1,5 +1,8 @@
+import type React from 'react'
 import { cn } from '@/lib/utils'
 import { MacOSWindowControls } from './MacOSWindowControls'
+import { WindowsWindowControls } from './WindowsWindowControls'
+import { isMacOS } from '@/lib/platform'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -38,11 +41,11 @@ export function TitleBar({ className, title = 'Jean' }: TitleBarProps) {
       )}
     >
       {/* Left side - Window Controls + Left Actions */}
-      <div className="flex items-center">
-        {native && <MacOSWindowControls />}
+      <div className="flex items-center" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+        {isMacOS && <MacOSWindowControls />}
 
         {/* Left Action Buttons */}
-        <div className={cn('flex items-center gap-1', !native && 'pl-3')}>
+        <div className={cn('flex items-center gap-1', !isMacOS && 'pl-2')}>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -77,7 +80,10 @@ export function TitleBar({ className, title = 'Jean' }: TitleBarProps) {
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              Settings <kbd className="ml-1 text-[0.625rem] opacity-60">⌘,</kbd>
+              Settings <kbd className="ml-1 text-[0.625rem] opacity-60">{formatShortcutDisplay(
+                (preferences?.keybindings?.open_preferences ||
+                  DEFAULT_KEYBINDINGS.open_preferences) as string
+              )}</kbd>
             </TooltipContent>
           </Tooltip>
         </div>
@@ -89,6 +95,9 @@ export function TitleBar({ className, title = 'Jean' }: TitleBarProps) {
           {title}
         </span>
       </div>
+
+      {/* Right side - Windows/Linux window controls */}
+      {!isMacOS && <WindowsWindowControls />}
     </div>
   )
 }

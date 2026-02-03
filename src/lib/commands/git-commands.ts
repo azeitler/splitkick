@@ -15,7 +15,7 @@ export const gitCommands: AppCommand[] = [
     description: 'Open the commit modal to commit your changes',
     icon: GitCommit,
     group: 'git',
-    shortcut: '⌘+⇧+C',
+    shortcut: 'mod+shift+c',
     keywords: ['commit', 'git', 'save', 'changes'],
 
     execute: context => {
@@ -31,7 +31,7 @@ export const gitCommands: AppCommand[] = [
     description: 'View uncommitted changes in the current worktree',
     icon: GitCompare,
     group: 'git',
-    shortcut: '⌘+G',
+    shortcut: 'mod+g',
     keywords: ['diff', 'git', 'changes', 'compare'],
 
     execute: context => {
@@ -62,7 +62,7 @@ export const gitCommands: AppCommand[] = [
     description: 'Create a new pull request for the current worktree',
     icon: GitPullRequest,
     group: 'git',
-    shortcut: '⌘+⇧+P',
+    shortcut: 'mod+shift+p',
     keywords: ['pr', 'pull', 'request', 'github', 'merge'],
 
     execute: async context => {

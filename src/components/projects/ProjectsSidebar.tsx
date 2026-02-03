@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react'
 import { Plus, Folder, Archive, Briefcase } from 'lucide-react'
 import { invoke } from '@/lib/transport'
 import { useQueryClient } from '@tanstack/react-query'
-import { Button } from '@/components/ui/button'
 import { useSidebarWidth } from '@/components/layout/SidebarWidthContext'
 import {
   DropdownMenu,
@@ -130,7 +129,9 @@ export function ProjectsSidebar() {
             <span className="text-sm text-muted-foreground">Loading...</span>
           </div>
         ) : projects.length === 0 ? (
-          <EmptyState onAddProject={() => setAddProjectDialogOpen(true)} />
+          <div className="flex h-full items-center justify-center px-2">
+            <span className="truncate text-sm text-muted-foreground/50">No projects found</span>
+          </div>
         ) : (
           <ProjectTree projects={projects} />
         )}
@@ -148,7 +149,7 @@ export function ProjectsSidebar() {
               New
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-48">
+          <DropdownMenuContent align="start" style={{ width: sidebarWidth - 12 }}>
             <DropdownMenuItem onClick={() => createFolder.mutate({ name: 'New Folder' })}>
               <Folder className="mr-2 size-3.5" />
               Folder
@@ -180,20 +181,3 @@ export function ProjectsSidebar() {
   )
 }
 
-function EmptyState({ onAddProject }: { onAddProject: () => void }) {
-  return (
-    <div className="flex flex-col items-center justify-center gap-3 p-6 text-center">
-      <Plus className="h-10 w-10 text-muted-foreground/50" />
-      <div>
-        <p className="text-sm font-medium">No projects yet</p>
-        <p className="text-xs text-muted-foreground">
-          Add a git repository to get started
-        </p>
-      </div>
-      <Button variant="outline" size="sm" onClick={onAddProject}>
-        <Plus className="mr-2 h-4 w-4" />
-        Add Project
-      </Button>
-    </div>
-  )
-}

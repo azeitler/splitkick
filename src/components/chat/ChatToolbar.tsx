@@ -1,16 +1,24 @@
 import { memo, useCallback, useState } from 'react'
 import { toast } from 'sonner'
-import { gitPull, gitPush, triggerImmediateGitPoll } from '@/services/git-status'
+import {
+  gitPull,
+  gitPush,
+  triggerImmediateGitPoll,
+  fetchWorktreesStatus,
+} from '@/services/git-status'
 import { useChatStore } from '@/store/chat-store'
 import {
   ArrowDown,
+  ArrowDownToLine,
   ArrowUp,
+  ArrowUpToLine,
   BookmarkPlus,
   Brain,
   ChevronDown,
   CircleDot,
   Clock,
   ClipboardList,
+  ExternalLink,
   Eye,
   FolderOpen,
   GitBranch,
@@ -20,11 +28,13 @@ import {
   Hammer,
   MoreHorizontal,
   Pencil,
+  Search,
   Send,
   Sparkles,
   Wand2,
   Zap,
 } from 'lucide-react'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import { Kbd } from '@/components/ui/kbd'
 import {
   Select,
@@ -173,6 +183,7 @@ interface ChatToolbarProps {
   // Worktree info
   activeWorktreePath: string | undefined
   worktreeId: string | null
+  projectId: string | undefined
 
   // Issue/PR/Saved context
   loadedIssueContexts: LoadedIssueContext[]
@@ -184,12 +195,14 @@ interface ChatToolbarProps {
   onSaveContext: () => void
   onLoadContext: () => void
   onCommit: () => void
+  onCommitAndPush: () => void
   onOpenPr: () => void
   onReview: () => void
+  onCheckoutPr: () => void
   onMerge: () => void
   onResolvePrConflicts: () => void
   onResolveConflicts: () => void
-  isBaseSession: boolean
+  onInvestigate: () => void
   hasOpenPr: boolean
   onSetDiffRequest: (request: DiffRequest) => void
   onModelChange: (model: ClaudeModel) => void
@@ -228,6 +241,7 @@ export const ChatToolbar = memo(function ChatToolbar({
   magicModalShortcut,
   activeWorktreePath,
   worktreeId,
+  projectId,
   loadedIssueContexts,
   loadedPRContexts,
   attachedSavedContexts,
@@ -235,12 +249,14 @@ export const ChatToolbar = memo(function ChatToolbar({
   onSaveContext,
   onLoadContext,
   onCommit,
+  onCommitAndPush,
   onOpenPr,
   onReview,
+  onCheckoutPr,
   onMerge,
   onResolvePrConflicts,
   onResolveConflicts,
-  isBaseSession,
+  onInvestigate,
   hasOpenPr,
   onSetDiffRequest,
   onModelChange,
@@ -263,22 +279,24 @@ export const ChatToolbar = memo(function ChatToolbar({
     [onThinkingLevelChange]
   )
 
-  const [isPulling, setIsPulling] = useState(false)
+  const loadingOperation = useChatStore(
+    (state) => (worktreeId ? state.worktreeLoadingOperations[worktreeId] ?? null : null)
+  )
+  const isPulling = loadingOperation === 'pull'
+  const isPushing = loadingOperation === 'push'
+
   const handlePullClick = useCallback(async () => {
     if (!activeWorktreePath || !worktreeId) return
-    setIsPulling(true)
     const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
     setWorktreeLoading(worktreeId, 'pull')
     const toastId = toast.loading('Pulling changes...')
     try {
       await gitPull(activeWorktreePath, baseBranch)
       triggerImmediateGitPoll()
+      if (projectId) fetchWorktreesStatus(projectId)
       toast.success('Changes pulled', { id: toastId })
     } catch (error) {
-      // Tauri errors may be strings or Error objects with the message
-      // Use String() to coerce any error type to a string for matching
       const errorStr = String(error)
-      console.log('[ChatToolbar] Pull error:', { error, errorStr, type: typeof error })
       if (errorStr.includes('Merge conflicts in:')) {
         toast.warning('Pull resulted in conflicts', {
           id: toastId,
@@ -289,26 +307,26 @@ export const ChatToolbar = memo(function ChatToolbar({
         toast.error(`Pull failed: ${errorStr}`, { id: toastId })
       }
     } finally {
-      setIsPulling(false)
       clearWorktreeLoading(worktreeId)
     }
-  }, [activeWorktreePath, baseBranch, onResolveConflicts])
+  }, [activeWorktreePath, baseBranch, worktreeId, projectId, onResolveConflicts])
 
-  const [isPushing, setIsPushing] = useState(false)
   const handlePushClick = useCallback(async () => {
-    if (!activeWorktreePath) return
-    setIsPushing(true)
+    if (!activeWorktreePath || !worktreeId) return
+    const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
+    setWorktreeLoading(worktreeId, 'push')
     const toastId = toast.loading('Pushing changes...')
     try {
-      await gitPush(activeWorktreePath)
+      await gitPush(activeWorktreePath, prNumber)
       triggerImmediateGitPoll()
+      if (projectId) fetchWorktreesStatus(projectId)
       toast.success('Changes pushed', { id: toastId })
     } catch (error) {
       toast.error(`Push failed: ${error}`, { id: toastId })
     } finally {
-      setIsPushing(false)
+      clearWorktreeLoading(worktreeId)
     }
-  }, [activeWorktreePath, baseBranch, worktreeId])
+  }, [activeWorktreePath, worktreeId, projectId, prNumber])
 
   const handleUncommittedDiffClick = useCallback(() => {
     onSetDiffRequest({
@@ -403,73 +421,105 @@ export const ChatToolbar = memo(function ChatToolbar({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-56">
-            {/* Core section */}
-            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
-              Core
+            {/* Context section */}
+            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Context
             </div>
             <DropdownMenuItem onClick={onSaveContext}>
               <BookmarkPlus className="h-4 w-4" />
               Save Context
+              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">S</span>
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onLoadContext}>
               <FolderOpen className="h-4 w-4" />
               Load Context
-              {(loadedIssueCount > 0 || loadedPRCount > 0 || loadedContextCount > 0) && (
-                <span className="ml-auto text-xs text-muted-foreground">
-                  {loadedIssueCount + loadedPRCount + loadedContextCount} loaded
-                </span>
-              )}
+              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">L</span>
             </DropdownMenuItem>
 
             <DropdownMenuSeparator />
 
-            {/* Git section */}
-            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
-              Git
+            {/* Commit section */}
+            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Commit
             </div>
             <DropdownMenuItem onClick={onCommit}>
               <GitCommitHorizontal className="h-4 w-4" />
               Commit
+              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">C</span>
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={onCommitAndPush}>
+              <GitCommitHorizontal className="h-4 w-4" />
+              Commit & Push
+              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">P</span>
+            </DropdownMenuItem>
+
+            <DropdownMenuSeparator />
+
+            {/* Sync section */}
+            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Sync
+            </div>
+            <DropdownMenuItem onClick={handlePullClick}>
+              <ArrowDownToLine className="h-4 w-4" />
+              Pull
+              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">D</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handlePushClick}>
+              <ArrowUpToLine className="h-4 w-4" />
+              Push
+              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">U</span>
+            </DropdownMenuItem>
+
+            <DropdownMenuSeparator />
+
+            {/* Pull Request section */}
+            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Pull Request
+            </div>
             <DropdownMenuItem onClick={onOpenPr}>
               <GitPullRequest className="h-4 w-4" />
-              Open PR
+              {hasOpenPr ? 'Open' : 'Create'}
+              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">O</span>
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onReview}>
               <Eye className="h-4 w-4" />
               Review
+              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">R</span>
             </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={onMerge}
-              disabled={isBaseSession || hasOpenPr}
-            >
+            <DropdownMenuItem onClick={onCheckoutPr}>
+              <GitBranch className="h-4 w-4" />
+              Checkout
+              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">K</span>
+            </DropdownMenuItem>
+
+            <DropdownMenuSeparator />
+
+            {/* Branch section */}
+            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Branch
+            </div>
+            <DropdownMenuItem onClick={onMerge}>
               <GitMerge className="h-4 w-4" />
               Merge to Base
+              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">M</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onResolveConflicts}>
+              <GitMerge className="h-4 w-4" />
+              Resolve Conflicts
+              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">F</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onInvestigate}>
+              <Search className="h-4 w-4" />
+              Investigate Context
+              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">I</span>
             </DropdownMenuItem>
 
             {/* Git stats section - conditional */}
-            {(hasBranchUpdates ||
-              uncommittedAdded > 0 ||
+            {(uncommittedAdded > 0 ||
               uncommittedRemoved > 0 ||
               branchDiffAdded > 0 ||
               branchDiffRemoved > 0 ||
               prUrl) && <DropdownMenuSeparator />}
-
-            {/* Pull button */}
-            {hasBranchUpdates && (
-              <DropdownMenuItem onClick={handlePullClick} disabled={isPulling}>
-                <ArrowDown className="h-4 w-4" />
-                Pull {behindCount} commit{behindCount === 1 ? '' : 's'}
-              </DropdownMenuItem>
-            )}
-
-            {/* Push button */}
-            {aheadCount > 0 && (
-              <DropdownMenuItem onClick={handlePushClick} disabled={isPushing}>
-                <ArrowUp className="h-4 w-4" />
-                Push {aheadCount} commit{aheadCount === 1 ? '' : 's'}
-              </DropdownMenuItem>
-            )}
 
             {/* Uncommitted diff */}
             {(uncommittedAdded > 0 || uncommittedRemoved > 0) && (
@@ -689,6 +739,17 @@ export const ChatToolbar = memo(function ChatToolbar({
                         <span className="truncate">
                           #{ctx.number} {ctx.title}
                         </span>
+                        <button
+                          className="ml-auto shrink-0 rounded p-0.5 hover:bg-accent"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openUrl(
+                              `https://github.com/${ctx.repoOwner}/${ctx.repoName}/issues/${ctx.number}`
+                            )
+                          }}
+                        >
+                          <ExternalLink className="h-3.5 w-3.5 opacity-60" />
+                        </button>
                       </DropdownMenuItem>
                     ))}
                   </>
@@ -707,6 +768,17 @@ export const ChatToolbar = memo(function ChatToolbar({
                         <span className="truncate">
                           #{ctx.number} {ctx.title}
                         </span>
+                        <button
+                          className="ml-auto shrink-0 rounded p-0.5 hover:bg-accent"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openUrl(
+                              `https://github.com/${ctx.repoOwner}/${ctx.repoName}/pull/${ctx.number}`
+                            )
+                          }}
+                        >
+                          <ExternalLink className="h-3.5 w-3.5 opacity-60" />
+                        </button>
                       </DropdownMenuItem>
                     ))}
                   </>

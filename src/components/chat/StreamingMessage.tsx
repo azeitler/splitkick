@@ -130,6 +130,7 @@ export const StreamingMessage = memo(function StreamingMessage({
                       key={item.key}
                       taskToolCall={item.taskTool}
                       subToolCalls={item.subTools}
+                      allToolCalls={toolCalls}
                       onFileClick={onFileClick}
                       isStreaming={true}
                       isLastIncomplete={isLastIncomplete}
@@ -252,16 +253,16 @@ export const StreamingMessage = memo(function StreamingMessage({
       <div className="text-sm text-muted-foreground/60 mt-4">
         <span className="animate-dots">
           {toolCalls.some(
-            tc =>
-              (isAskUserQuestion(tc) || isExitPlanMode(tc)) &&
-              !isQuestionAnswered(sessionId, tc.id)
-          )
-            ? 'Waiting for your input'
-            : streamingExecutionMode === 'plan'
-              ? 'Planning'
-              : streamingExecutionMode === 'yolo'
-                ? 'Yoloing'
-                : 'Vibing'}
+                tc =>
+                  (isAskUserQuestion(tc) || isExitPlanMode(tc)) &&
+                  !isQuestionAnswered(sessionId, tc.id)
+              )
+              ? 'Waiting for your input'
+              : streamingExecutionMode === 'plan'
+                ? 'Planning'
+                : streamingExecutionMode === 'yolo'
+                  ? 'Yoloing'
+                  : 'Vibing'}
         </span>
       </div>
     </div>

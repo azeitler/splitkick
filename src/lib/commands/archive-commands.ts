@@ -24,7 +24,7 @@ export const archiveCommands: AppCommand[] = [
     description: 'Restore the most recently archived item',
     icon: ArchiveRestore,
     group: 'archive',
-    shortcut: '⌘+⇧+T',
+    shortcut: 'mod+shift+t',
     keywords: ['restore', 'undo', 'archive', 'reopen', 'last'],
 
     execute: context => {

@@ -8,7 +8,7 @@ export const githubCommands: AppCommand[] = [
     description: 'Create a new pull request for the selected worktree',
     icon: GitPullRequest,
     group: 'github',
-    shortcut: '⌘+⇧+P',
+    shortcut: 'mod+shift+p',
     keywords: ['pr', 'pull', 'request', 'github', 'merge', 'branch'],
 
     execute: async context => {

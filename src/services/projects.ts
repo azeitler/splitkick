@@ -136,6 +136,29 @@ export function useWorktree(worktreeId: string | null) {
 // ============================================================================
 
 /**
+ * After adding a project, auto-create and open the base session
+ */
+async function openBaseSessionForProject(
+  projectId: string,
+  queryClient: ReturnType<typeof useQueryClient>
+) {
+  try {
+    const session = await invoke<Worktree>('create_base_session', {
+      projectId,
+    })
+    queryClient.invalidateQueries({
+      queryKey: projectsQueryKeys.worktrees(projectId),
+    })
+    const { selectWorktree } = useProjectsStore.getState()
+    selectWorktree(session.id)
+    const { setActiveWorktree } = useChatStore.getState()
+    setActiveWorktree(session.id, session.path)
+  } catch (error) {
+    logger.error('Failed to auto-open base session', { error })
+  }
+}
+
+/**
  * Hook to add a new project
  */
 export function useAddProject() {
@@ -168,6 +191,9 @@ export function useAddProject() {
         expandFolder(parentId)
       }
       expandProject(project.id)
+
+      // Auto-open the base session so the user lands in chat
+      openBaseSessionForProject(project.id, queryClient)
     },
     onError: error => {
       // Tauri invoke errors are thrown as strings, not Error objects
@@ -216,6 +242,9 @@ export function useInitProject() {
         expandFolder(parentId)
       }
       expandProject(project.id)
+
+      // Auto-open the base session so the user lands in chat
+      openBaseSessionForProject(project.id, queryClient)
     },
     onError: error => {
       const message =
@@ -1047,7 +1076,7 @@ export function useDeleteWorktree() {
     },
     onError: error => {
       const message =
-        error instanceof Error ? error.message : 'Unknown error occurred'
+        error instanceof Error ? error.message : typeof error === 'string' ? error : 'Unknown error occurred'
       logger.error('Failed to start worktree deletion', { error })
       toast.error('Failed to delete worktree', { description: message })
     },
@@ -1297,7 +1326,7 @@ export function useCreateBaseSession() {
     },
     onError: error => {
       const message =
-        error instanceof Error ? error.message : 'Unknown error occurred'
+        error instanceof Error ? error.message : typeof error === 'string' ? error : 'Unknown error occurred'
       logger.error('Failed to create base session', { error })
       toast.error('Failed to create base session', { description: message })
     },
@@ -1344,7 +1373,7 @@ export function useCloseBaseSession() {
     },
     onError: error => {
       const message =
-        error instanceof Error ? error.message : 'Unknown error occurred'
+        error instanceof Error ? error.message : typeof error === 'string' ? error : 'Unknown error occurred'
       logger.error('Failed to close session', { error })
       toast.error('Failed to close session', { description: message })
     },
@@ -1391,7 +1420,7 @@ export function useCloseBaseSessionClean() {
     },
     onError: error => {
       const message =
-        error instanceof Error ? error.message : 'Unknown error occurred'
+        error instanceof Error ? error.message : typeof error === 'string' ? error : 'Unknown error occurred'
       logger.error('Failed to close session (clean)', { error })
       toast.error('Failed to close session', { description: message })
     },
@@ -1414,7 +1443,7 @@ export function useOpenWorktreeInFinder() {
     },
     onError: error => {
       const message =
-        error instanceof Error ? error.message : 'Unknown error occurred'
+        error instanceof Error ? error.message : typeof error === 'string' ? error : 'Unknown error occurred'
       logger.error('Failed to open in Finder', { error })
       toast.error('Failed to open in Finder', { description: message })
     },
@@ -1437,7 +1466,7 @@ export function useOpenProjectWorktreesFolder() {
     },
     onError: error => {
       const message =
-        error instanceof Error ? error.message : 'Unknown error occurred'
+        error instanceof Error ? error.message : typeof error === 'string' ? error : 'Unknown error occurred'
       logger.error('Failed to open worktrees folder', { error })
       toast.error('Failed to open worktrees folder', { description: message })
     },
@@ -1466,7 +1495,7 @@ export function useOpenWorktreeInTerminal() {
     },
     onError: error => {
       const message =
-        error instanceof Error ? error.message : 'Unknown error occurred'
+        error instanceof Error ? error.message : typeof error === 'string' ? error : 'Unknown error occurred'
       logger.error('Failed to open in Terminal', { error })
       toast.error('Failed to open in Terminal', { description: message })
     },
@@ -1495,7 +1524,7 @@ export function useOpenWorktreeInEditor() {
     },
     onError: error => {
       const message =
-        error instanceof Error ? error.message : 'Unknown error occurred'
+        error instanceof Error ? error.message : typeof error === 'string' ? error : 'Unknown error occurred'
       logger.error('Failed to open in Editor', { error })
       toast.error('Failed to open in Editor', { description: message })
     },
@@ -1579,7 +1608,7 @@ export function useOpenProjectOnGitHub() {
     },
     onError: error => {
       const message =
-        error instanceof Error ? error.message : 'Unknown error occurred'
+        error instanceof Error ? error.message : typeof error === 'string' ? error : 'Unknown error occurred'
       logger.error('Failed to open on GitHub', { error })
       toast.error('Failed to open on GitHub', { description: message })
     },
@@ -1833,7 +1862,7 @@ export function useReorderProjects() {
         )
       }
       const message =
-        error instanceof Error ? error.message : 'Unknown error occurred'
+        error instanceof Error ? error.message : typeof error === 'string' ? error : 'Unknown error occurred'
       logger.error('Failed to reorder projects', { error })
       toast.error('Failed to reorder projects', { description: message })
     },
@@ -1907,7 +1936,7 @@ export function useReorderWorktrees() {
         )
       }
       const message =
-        error instanceof Error ? error.message : 'Unknown error occurred'
+        error instanceof Error ? error.message : typeof error === 'string' ? error : 'Unknown error occurred'
       logger.error('Failed to reorder worktrees', { error })
       toast.error('Failed to reorder worktrees', { description: message })
     },
@@ -1957,7 +1986,7 @@ export function useCreateFolder() {
     },
     onError: error => {
       const message =
-        error instanceof Error ? error.message : 'Unknown error occurred'
+        error instanceof Error ? error.message : typeof error === 'string' ? error : 'Unknown error occurred'
       logger.error('Failed to create folder', { error })
       toast.error('Failed to create folder', { description: message })
     },
@@ -1992,7 +2021,7 @@ export function useRenameFolder() {
     },
     onError: error => {
       const message =
-        error instanceof Error ? error.message : 'Unknown error occurred'
+        error instanceof Error ? error.message : typeof error === 'string' ? error : 'Unknown error occurred'
       logger.error('Failed to rename folder', { error })
       toast.error('Failed to rename folder', { description: message })
     },
@@ -2021,7 +2050,7 @@ export function useDeleteFolder() {
     },
     onError: error => {
       const message =
-        error instanceof Error ? error.message : 'Unknown error occurred'
+        error instanceof Error ? error.message : typeof error === 'string' ? error : 'Unknown error occurred'
       logger.error('Failed to delete folder', { error })
       toast.error('Failed to delete folder', { description: message })
     },
@@ -2128,7 +2157,7 @@ export function useReorderItems() {
         )
       }
       const message =
-        error instanceof Error ? error.message : 'Unknown error occurred'
+        error instanceof Error ? error.message : typeof error === 'string' ? error : 'Unknown error occurred'
       logger.error('Failed to reorder items', { error })
       toast.error('Failed to reorder items', { description: message })
     },

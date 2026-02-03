@@ -8,6 +8,9 @@
 
 import { useCallback, useEffect, useRef, useMemo } from 'react'
 import { invoke } from '@/lib/transport'
+import { useQueryClient } from '@tanstack/react-query'
+import { ghCliQueryKeys } from '@/services/gh-cli'
+import { githubQueryKeys } from '@/services/github'
 import {
   Dialog,
   DialogContent,
@@ -44,6 +47,7 @@ interface CliLoginModalContentProps {
 }
 
 function CliLoginModalContent({ cliType, command, onClose }: CliLoginModalContentProps) {
+  const queryClient = useQueryClient()
   const initialized = useRef(false)
   const observerRef = useRef<ResizeObserver | null>(null)
   const cliName = cliType === 'claude' ? 'Claude CLI' : 'GitHub CLI'
@@ -129,10 +133,17 @@ function CliLoginModalContent({ cliType, command, onClose }: CliLoginModalConten
         }
         // Dispose xterm instance
         disposeTerminal(terminalId)
+
+        // Invalidate caches so views auto-refetch after login
+        if (cliType === 'gh') {
+          queryClient.invalidateQueries({ queryKey: ghCliQueryKeys.auth() })
+          queryClient.invalidateQueries({ queryKey: githubQueryKeys.all })
+        }
+
         onClose()
       }
     },
-    [terminalId, onClose]
+    [terminalId, onClose, cliType, queryClient]
   )
 
   return (

@@ -8,7 +8,7 @@ export const worktreeCommands: AppCommand[] = [
     description: 'Create a new feature branch worktree',
     icon: Plus,
     group: 'worktrees',
-    shortcut: '⌘+N',
+    shortcut: 'mod+n',
     keywords: ['worktree', 'branch', 'new', 'create', 'feature'],
 
     execute: context => {
@@ -24,7 +24,7 @@ export const worktreeCommands: AppCommand[] = [
     description: 'Switch to the next worktree',
     icon: ChevronDown,
     group: 'worktrees',
-    shortcut: '⌘+⌥+↓',
+    shortcut: 'mod+alt+arrowdown',
     keywords: ['worktree', 'branch', 'next', 'switch', 'down'],
 
     execute: context => {
@@ -40,7 +40,7 @@ export const worktreeCommands: AppCommand[] = [
     description: 'Switch to the previous worktree',
     icon: ChevronUp,
     group: 'worktrees',
-    shortcut: '⌘+⌥+↑',
+    shortcut: 'mod+alt+arrowup',
     keywords: ['worktree', 'branch', 'previous', 'switch', 'up'],
 
     execute: context => {

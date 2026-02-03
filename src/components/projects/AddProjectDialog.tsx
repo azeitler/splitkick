@@ -91,6 +91,19 @@ export function AddProjectDialog() {
       })
 
       if (selected && typeof selected === 'string') {
+        // Check if git identity is configured before init (commit requires it)
+        try {
+          const identity = await invoke<{ name: string | null; email: string | null }>('check_git_identity')
+          if (!identity.name || !identity.email) {
+            // Identity not configured - route through GitInitModal which handles identity setup
+            const { openGitInitModal } = useProjectsStore.getState()
+            openGitInitModal(selected)
+            return
+          }
+        } catch {
+          // If check fails, try anyway and let the error surface naturally
+        }
+
         await initProject.mutateAsync({
           path: selected,
           parentId: addProjectParentFolderId ?? undefined,

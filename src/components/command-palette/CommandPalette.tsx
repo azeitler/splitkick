@@ -3,6 +3,7 @@ import { useUIStore } from '@/store/ui-store'
 import { useCommandContext } from '@/hooks/use-command-context'
 import { usePreferences } from '@/services/preferences'
 import { getAllCommands, executeCommand } from '@/lib/commands'
+import { formatShortcutDisplay } from '@/types/keybindings'
 import {
   CommandDialog,
   CommandInput,
@@ -108,7 +109,7 @@ export function CommandPalette() {
                   </span>
                 )}
                 {command.shortcut && (
-                  <CommandShortcut>{command.shortcut}</CommandShortcut>
+                  <CommandShortcut>{formatShortcutDisplay(command.shortcut)}</CommandShortcut>
                 )}
               </CommandItem>
             ))}

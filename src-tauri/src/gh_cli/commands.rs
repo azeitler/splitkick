@@ -1,5 +1,6 @@
 //! Tauri commands for GitHub CLI management
 
+use crate::platform::silent_command;
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 
@@ -77,9 +78,8 @@ pub async fn check_gh_cli_installed(app: AppHandle) -> Result<GhCliStatus, Strin
     }
 
     // Try to get the version by running gh --version
-    // Use shell wrapper to bypass macOS security restrictions
-    let shell_cmd = format!("{:?} --version", binary_path);
-    let version = match crate::platform::shell_command(&shell_cmd).output() {
+    // Use the binary directly - shell wrapper causes PowerShell parsing issues on Windows
+    let version = match silent_command(&binary_path).arg("--version").output() {
         Ok(output) => {
             if output.status.success() {
                 let version_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -306,10 +306,10 @@ pub async fn install_gh_cli(app: AppHandle, version: Option<String>) -> Result<(
     }
 
     // Verify the binary works
-    // Use shell wrapper to bypass macOS security restrictions
-    let shell_cmd = format!("{:?} --version", binary_path);
-    log::trace!("Running via shell: {:?}", shell_cmd);
-    let version_output = crate::platform::shell_command(&shell_cmd)
+    // Use the binary directly - shell wrapper causes PowerShell parsing issues on Windows
+    log::trace!("Verifying binary at {:?}", binary_path);
+    let version_output = silent_command(&binary_path)
+        .arg("--version")
         .output()
         .map_err(|e| format!("Failed to verify GitHub CLI: {e}"))?;
 
@@ -422,21 +422,33 @@ fn extract_zip(
     }
 
     // The binary is at gh_{version}_{platform}/bin/gh (or gh.exe on Windows)
+    // Some archives (e.g., Windows) don't have the version-platform prefix directory
     #[cfg(not(target_os = "windows"))]
     let binary_name = "gh";
     #[cfg(target_os = "windows")]
     let binary_name = "gh.exe";
 
+    // Try with version-platform prefix directory first (Linux/macOS archives)
     let binary_path = temp_dir
         .join(format!("gh_{version}_{platform}"))
         .join("bin")
         .join(binary_name);
 
-    if !binary_path.exists() {
-        return Err(format!("Binary not found in archive at {:?}", binary_path));
+    if binary_path.exists() {
+        return Ok(binary_path);
     }
 
-    Ok(binary_path)
+    // Try without prefix directory (Windows archives)
+    let binary_path_no_prefix = temp_dir.join("bin").join(binary_name);
+
+    if binary_path_no_prefix.exists() {
+        return Ok(binary_path_no_prefix);
+    }
+
+    Err(format!(
+        "Binary not found in archive at {:?} or {:?}",
+        binary_path, binary_path_no_prefix
+    ))
 }
 
 /// Extract gh binary from a tar.gz archive (Linux)
@@ -495,11 +507,10 @@ pub async fn check_gh_cli_auth(app: AppHandle) -> Result<GhAuthStatus, String> {
     }
 
     // Run gh auth status to check authentication
-    let shell_cmd = format!("{:?} auth status", binary_path);
+    log::trace!("Running auth check: {:?} auth status", binary_path);
 
-    log::trace!("Running auth check: {:?}", shell_cmd);
-
-    let output = crate::platform::shell_command(&shell_cmd)
+    let output = silent_command(&binary_path)
+        .args(["auth", "status"])
         .output()
         .map_err(|e| format!("Failed to execute GitHub CLI: {e}"))?;
 

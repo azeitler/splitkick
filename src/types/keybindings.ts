@@ -219,6 +219,24 @@ export function formatShortcutDisplay(shortcut: ShortcutString): string {
           return isMac ? '⌥' : 'Alt'
         case 'comma':
           return ','
+        case 'period':
+          return '.'
+        case 'arrowup':
+          return '↑'
+        case 'arrowdown':
+          return '↓'
+        case 'arrowleft':
+          return '←'
+        case 'arrowright':
+          return '→'
+        case 'backspace':
+          return isMac ? '⌫' : 'Backspace'
+        case 'enter':
+          return isMac ? '↩' : 'Enter'
+        case 'tab':
+          return 'Tab'
+        case 'escape':
+          return 'Esc'
         default:
           return part.toUpperCase()
       }

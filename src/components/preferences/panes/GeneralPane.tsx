@@ -84,7 +84,7 @@ const InlineField: React.FC<{
     <div className="w-96 shrink-0 space-y-0.5">
       <Label className="text-sm text-foreground">{label}</Label>
       {description && (
-        <div className="text-xs text-muted-foreground">{description}</div>
+        <div className="text-xs text-muted-foreground truncate">{description}</div>
       )}
     </div>
     {children}
@@ -250,7 +250,11 @@ export const GeneralPane: React.FC = () => {
     }
 
     // Not authenticated, open login modal
-    const escapedPath = `'${cliStatus.path.replace(/'/g, "'\\''")}'`
+    // Use & "path" syntax for PowerShell on Windows, single-quote escaping for Unix
+    const isWindows = navigator.userAgent.includes('Windows')
+    const escapedPath = isWindows
+      ? `& "${cliStatus.path}"`
+      : `'${cliStatus.path.replace(/'/g, "'\\''")}'`
     openCliLoginModal('claude', escapedPath)
   }, [cliStatus?.path, openCliLoginModal, queryClient])
 
@@ -273,8 +277,12 @@ export const GeneralPane: React.FC = () => {
     }
 
     // Not authenticated, open login modal
-    const escapedPath = `'${ghStatus.path.replace(/'/g, "'\\''")}'`
-    openCliLoginModal('gh', `${escapedPath} auth login`)
+    // Use & "path" syntax for PowerShell on Windows, single-quote escaping for Unix
+    const isWindows = navigator.userAgent.includes('Windows')
+    const escapedPath = isWindows
+      ? `& "${ghStatus.path}" auth login`
+      : `'${ghStatus.path.replace(/'/g, "'\\''")}'` + ' auth login'
+    openCliLoginModal('gh', escapedPath)
   }, [ghStatus?.path, openCliLoginModal, queryClient])
 
   const claudeStatusDescription = cliStatus?.installed

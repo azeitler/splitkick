@@ -22,7 +22,7 @@ import { parseReviewFindings, getFindingKey } from '../review-finding-utils'
 /** Git commands to auto-approve for magic prompts (no permission prompts needed) */
 export const GIT_ALLOWED_TOOLS = [
   'Bash(git:*)', // All git commands
-  'Bash(gh:*)', // GitHub CLI for PR creation
+  // gh-cli/claude-cli are auto-allowed via --allowedTools in build_claude_args()
 ]
 
 /** Type for the sendMessage mutation */

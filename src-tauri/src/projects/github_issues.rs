@@ -1,10 +1,11 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::Manager;
+use tauri::{AppHandle, Manager};
 
 use super::git::get_repo_identifier;
+use crate::gh_cli::config::resolve_gh_binary;
+use crate::platform::silent_command;
 
 // =============================================================================
 // GitHub Types
@@ -76,15 +77,17 @@ pub struct IssueContext {
 /// - Returns up to 100 issues sorted by creation date (newest first)
 #[tauri::command]
 pub async fn list_github_issues(
+    app: AppHandle,
     project_path: String,
     state: Option<String>,
 ) -> Result<Vec<GitHubIssue>, String> {
     log::trace!("Listing GitHub issues for {project_path} with state: {state:?}");
 
+    let gh = resolve_gh_binary(&app);
     let state_arg = state.unwrap_or_else(|| "open".to_string());
 
     // Run gh issue list
-    let output = Command::new("gh")
+    let output = silent_command(&gh)
         .args([
             "issue",
             "list",
@@ -128,12 +131,14 @@ pub async fn list_github_issues(
 /// This finds issues beyond the default -L 100 limit.
 #[tauri::command]
 pub async fn search_github_issues(
+    app: AppHandle,
     project_path: String,
     query: String,
 ) -> Result<Vec<GitHubIssue>, String> {
     log::trace!("Searching GitHub issues for {project_path} with query: {query}");
 
-    let output = Command::new("gh")
+    let gh = resolve_gh_binary(&app);
+    let output = silent_command(&gh)
         .args([
             "issue",
             "list",
@@ -177,13 +182,15 @@ pub async fn search_github_issues(
 /// Uses `gh issue view` to fetch the issue with comments.
 #[tauri::command]
 pub async fn get_github_issue(
+    app: AppHandle,
     project_path: String,
     issue_number: u32,
 ) -> Result<GitHubIssueDetail, String> {
     log::trace!("Getting GitHub issue #{issue_number} for {project_path}");
 
+    let gh = resolve_gh_binary(&app);
     // Run gh issue view
-    let output = Command::new("gh")
+    let output = silent_command(&gh)
         .args([
             "issue",
             "view",
@@ -648,7 +655,7 @@ pub async fn load_issue_context(
     let repo_key = repo_id.to_key();
 
     // Fetch issue data from GitHub
-    let issue = get_github_issue(project_path, issue_number).await?;
+    let issue = get_github_issue(app.clone(), project_path, issue_number).await?;
 
     // Create issue context
     let ctx = IssueContext {
@@ -885,15 +892,17 @@ pub struct LoadedPullRequestContext {
 /// - Returns up to 100 PRs sorted by creation date (newest first)
 #[tauri::command]
 pub async fn list_github_prs(
+    app: AppHandle,
     project_path: String,
     state: Option<String>,
 ) -> Result<Vec<GitHubPullRequest>, String> {
     log::trace!("Listing GitHub PRs for {project_path} with state: {state:?}");
 
+    let gh = resolve_gh_binary(&app);
     let state_arg = state.unwrap_or_else(|| "open".to_string());
 
     // Run gh pr list
-    let output = Command::new("gh")
+    let output = silent_command(&gh)
         .args([
             "pr",
             "list",
@@ -936,12 +945,14 @@ pub async fn list_github_prs(
 /// This finds PRs beyond the default -L 100 limit.
 #[tauri::command]
 pub async fn search_github_prs(
+    app: AppHandle,
     project_path: String,
     query: String,
 ) -> Result<Vec<GitHubPullRequest>, String> {
     log::trace!("Searching GitHub PRs for {project_path} with query: {query}");
 
-    let output = Command::new("gh")
+    let gh = resolve_gh_binary(&app);
+    let output = silent_command(&gh)
         .args([
             "pr",
             "list",
@@ -985,13 +996,15 @@ pub async fn search_github_prs(
 /// Uses `gh pr view` to fetch the PR with comments and reviews.
 #[tauri::command]
 pub async fn get_github_pr(
+    app: AppHandle,
     project_path: String,
     pr_number: u32,
 ) -> Result<GitHubPullRequestDetail, String> {
     log::trace!("Getting GitHub PR #{pr_number} for {project_path}");
 
+    let gh = resolve_gh_binary(&app);
     // Run gh pr view
-    let output = Command::new("gh")
+    let output = silent_command(&gh)
         .args([
             "pr",
             "view",
@@ -1107,10 +1120,14 @@ pub fn format_pr_context_markdown(ctx: &PullRequestContext) -> String {
 /// Get the diff for a PR using `gh pr diff`
 ///
 /// Returns the diff as a string, truncated to 100KB if too large.
-pub fn get_pr_diff(project_path: &str, pr_number: u32) -> Result<String, String> {
+pub fn get_pr_diff(
+    project_path: &str,
+    pr_number: u32,
+    gh_binary: &std::path::Path,
+) -> Result<String, String> {
     log::debug!("Fetching diff for PR #{pr_number} in {project_path}");
 
-    let output = Command::new("gh")
+    let output = silent_command(gh_binary)
         .args(["pr", "diff", &pr_number.to_string(), "--color", "never"])
         .current_dir(project_path)
         .output()
@@ -1157,11 +1174,13 @@ pub async fn load_pr_context(
     let repo_id = get_repo_identifier(&project_path)?;
     let repo_key = repo_id.to_key();
 
+    let gh = resolve_gh_binary(&app);
+
     // Fetch PR data from GitHub
-    let pr = get_github_pr(project_path.clone(), pr_number).await?;
+    let pr = get_github_pr(app.clone(), project_path.clone(), pr_number).await?;
 
     // Fetch the diff
-    let diff = get_pr_diff(&project_path, pr_number).ok();
+    let diff = get_pr_diff(&project_path, pr_number, &gh).ok();
 
     // Create PR context
     let ctx = PullRequestContext {

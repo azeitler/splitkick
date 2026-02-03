@@ -11,6 +11,9 @@ import {
   Wand2,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { isGhAuthError } from '@/services/github'
+import { useGhLogin } from '@/hooks/useGhLogin'
+import { GhAuthError } from '@/components/shared/GhAuthError'
 import {
   Dialog,
   DialogContent,
@@ -37,6 +40,7 @@ import type { Worktree } from '@/types/projects'
 
 export function CheckoutPRModal() {
   const queryClient = useQueryClient()
+  const { triggerLogin: triggerGhLogin, isGhInstalled } = useGhLogin()
   const { checkoutPRModalOpen, setCheckoutPRModalOpen } = useUIStore()
   const selectedProjectId = useProjectsStore(state => state.selectedProjectId)
 
@@ -281,12 +285,16 @@ export function CheckoutPRModal() {
             )}
 
             {prsError && (
-              <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
-                <AlertCircle className="h-5 w-5 text-destructive mb-2" />
-                <span className="text-sm text-muted-foreground">
-                  {prsError.message || 'Failed to load pull requests'}
-                </span>
-              </div>
+              isGhAuthError(prsError) ? (
+                <GhAuthError onLogin={triggerGhLogin} isGhInstalled={isGhInstalled} />
+              ) : (
+                <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
+                  <AlertCircle className="h-5 w-5 text-destructive mb-2" />
+                  <span className="text-sm text-muted-foreground">
+                    {prsError.message || 'Failed to load pull requests'}
+                  </span>
+                </div>
+              )
             )}
 
             {!isLoadingPRs && !prsError && filteredPRs.length === 0 && !isSearchingPRs && (

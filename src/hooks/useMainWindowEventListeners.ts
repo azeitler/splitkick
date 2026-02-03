@@ -510,7 +510,9 @@ export function useMainWindowEventListeners() {
     }
   }, [commandContext, queryClient])
 
-  // Quit confirmation for running sessions (production only)
+  // Quit confirmation for system-level close events (Alt+F4, taskbar close).
+  // The X button handles its own confirmation via window-close command,
+  // but system close events still go through onCloseRequested.
   useEffect(() => {
     // Skip in development mode - only block quit in production
     if (import.meta.env.DEV) return
@@ -523,7 +525,12 @@ export function useMainWindowEventListeners() {
       getCurrentWindow()
         .onCloseRequested(async event => {
           try {
-            const hasRunning = await invoke<boolean>('has_running_sessions')
+            const hasRunning = await Promise.race([
+              invoke<boolean>('has_running_sessions'),
+              new Promise<boolean>((_, reject) =>
+                setTimeout(() => reject(new Error('timeout')), 2000)
+              ),
+            ])
             if (hasRunning) {
               event.preventDefault()
               window.dispatchEvent(new CustomEvent('quit-confirmation-requested'))

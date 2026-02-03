@@ -9,8 +9,8 @@ import './App.css'
 import MainWindow from './components/layout/MainWindow'
 import { ThemeProvider } from './components/ThemeProvider'
 import ErrorBoundary from './components/ErrorBoundary'
-import { useClaudeCliStatus } from './services/claude-cli'
-import { useGhCliStatus } from './services/gh-cli'
+import { useClaudeCliStatus, useClaudeCliAuth } from './services/claude-cli'
+import { useGhCliStatus, useGhCliAuth } from './services/gh-cli'
 import { useUIStore } from './store/ui-store'
 import { useChatStore } from './store/chat-store'
 import { useFontSettings } from './hooks/use-font-settings'
@@ -96,19 +96,46 @@ function App() {
     useClaudeCliStatus()
   const { data: ghStatus, isLoading: isGhStatusLoading } = useGhCliStatus()
 
-  // Show onboarding if either CLI is not installed
-  useEffect(() => {
-    const isLoading = isClaudeStatusLoading || isGhStatusLoading
-    const needsOnboarding = !claudeStatus?.installed || !ghStatus?.installed
+  // Check CLI authentication status (only when installed)
+  const { data: claudeAuth, isLoading: isClaudeAuthLoading } =
+    useClaudeCliAuth({ enabled: !!claudeStatus?.installed })
+  const { data: ghAuth, isLoading: isGhAuthLoading } = useGhCliAuth({
+    enabled: !!ghStatus?.installed,
+  })
 
-    if (!isLoading && needsOnboarding) {
-      logger.info('CLI(s) not installed, showing onboarding', {
-        claude: claudeStatus?.installed,
-        gh: ghStatus?.installed,
+  // Show onboarding if either CLI is not installed or not authenticated
+  useEffect(() => {
+    const isLoading =
+      isClaudeStatusLoading ||
+      isGhStatusLoading ||
+      (claudeStatus?.installed && isClaudeAuthLoading) ||
+      (ghStatus?.installed && isGhAuthLoading)
+    if (isLoading) return
+
+    const needsInstall = !claudeStatus?.installed || !ghStatus?.installed
+    const needsAuth =
+      (claudeStatus?.installed && !claudeAuth?.authenticated) ||
+      (ghStatus?.installed && !ghAuth?.authenticated)
+
+    if (needsInstall || needsAuth) {
+      logger.info('CLI setup needed, showing onboarding', {
+        claudeInstalled: claudeStatus?.installed,
+        ghInstalled: ghStatus?.installed,
+        claudeAuth: claudeAuth?.authenticated,
+        ghAuth: ghAuth?.authenticated,
       })
       useUIStore.getState().setOnboardingOpen(true)
     }
-  }, [claudeStatus, ghStatus, isClaudeStatusLoading, isGhStatusLoading])
+  }, [
+    claudeStatus,
+    ghStatus,
+    claudeAuth,
+    ghAuth,
+    isClaudeStatusLoading,
+    isGhStatusLoading,
+    isClaudeAuthLoading,
+    isGhAuthLoading,
+  ])
 
   // Kill all terminals on page refresh/close (backup for Rust-side cleanup)
   useEffect(() => {

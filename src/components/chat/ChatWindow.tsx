@@ -85,7 +85,6 @@ import { usePrStatus, usePrStatusEvents } from '@/services/pr-status'
 import type { PrDisplayStatus, CheckStatus } from '@/types/pr-status'
 import type { QueuedMessage, ExecutionMode } from '@/types/chat'
 import type { DiffRequest } from '@/types/git-diff'
-import { isBaseSession } from '@/types/projects'
 import { GitDiffModal } from './GitDiffModal'
 import { FileDiffModal } from './FileDiffModal'
 import { LoadContextModal } from '../magic/LoadContextModal'
@@ -988,6 +987,7 @@ export function ChatWindow() {
       clearPendingSkills(activeSessionId)
       clearPendingTextFiles(activeSessionId)
       setSessionReviewing(activeSessionId, false)
+      useChatStore.getState().clearPendingDigest(activeSessionId)
 
       // Clear question skip state so new questions can be shown
       // Clear waiting state so tab shows "planning" instead of "waiting" when extending a plan
@@ -1043,6 +1043,8 @@ export function ChatWindow() {
   const {
     handleCommit,
     handleCommitAndPush,
+    handlePull,
+    handlePush,
     handleOpenPr,
     handleReview,
     handleMerge,
@@ -1394,6 +1396,8 @@ Begin your investigation now.`
     handleLoadContext,
     handleCommit,
     handleCommitAndPush,
+    handlePull,
+    handlePush,
     handleOpenPr,
     handleReview,
     handleMerge,
@@ -1846,6 +1850,7 @@ Begin your investigation now.`
                             isQuestionAnswered={isQuestionAnswered}
                             getSubmittedAnswers={getSubmittedAnswers}
                             areQuestionsSkipped={areQuestionsSkipped}
+
                             isStreamingPlanApproved={isStreamingPlanApproved}
                             onStreamingPlanApproval={handleStreamingPlanApproval}
                             onStreamingPlanApprovalYolo={handleStreamingPlanApprovalYolo}
@@ -2019,6 +2024,7 @@ Begin your investigation now.`
                         magicModalShortcut={magicModalShortcut}
                         activeWorktreePath={activeWorktreePath}
                         worktreeId={activeWorktreeId ?? null}
+                        projectId={worktree?.project_id}
                         loadedIssueContexts={loadedIssueContexts ?? []}
                         loadedPRContexts={loadedPRContexts ?? []}
                         attachedSavedContexts={attachedSavedContexts ?? []}
@@ -2026,12 +2032,14 @@ Begin your investigation now.`
                         onSaveContext={handleSaveContext}
                         onLoadContext={handleLoadContext}
                         onCommit={handleCommit}
+                        onCommitAndPush={handleCommitAndPush}
                         onOpenPr={handleOpenPr}
                         onReview={handleReview}
+                        onCheckoutPr={handleCheckoutPR}
                         onMerge={handleMerge}
                         onResolvePrConflicts={handleResolvePrConflicts}
                         onResolveConflicts={handleResolveConflicts}
-                        isBaseSession={worktree ? isBaseSession(worktree) : true}
+                        onInvestigate={handleInvestigate}
                         hasOpenPr={Boolean(worktree?.pr_url)}
                         onSetDiffRequest={setDiffRequest}
                         onModelChange={handleToolbarModelChange}
