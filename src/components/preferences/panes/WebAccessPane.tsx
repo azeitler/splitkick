@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { Copy, Eye, EyeOff, RefreshCw } from 'lucide-react'
+import { Copy, Eye, EyeOff, ExternalLink, RefreshCw } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
@@ -42,8 +42,9 @@ const InlineField: React.FC<{
 interface ServerStatus {
   running: boolean
   port: number | null
-  address: string | null
+  url: string | null
   token: string | null
+  localhost_only: boolean | null
 }
 
 export const WebAccessPane: React.FC = () => {
@@ -112,12 +113,40 @@ export const WebAccessPane: React.FC = () => {
     }
   }, [savePreferences, preferences, refreshStatus])
 
-  const handleCopyUrl = useCallback(() => {
-    if (!serverStatus?.address || !serverStatus?.token) return
-    const url = `http://${serverStatus.address}:${serverStatus.port}?token=${serverStatus.token}`
-    navigator.clipboard.writeText(url)
+  const handleCopyUrl = useCallback((url: string) => {
+    if (!serverStatus?.token) return
+    const fullUrl = `${url}?token=${serverStatus.token}`
+    navigator.clipboard.writeText(fullUrl)
     toast.success('URL copied to clipboard')
-  }, [serverStatus])
+  }, [serverStatus?.token])
+
+  const handleLocalhostOnlyChange = useCallback(
+    async (checked: boolean) => {
+      if (!preferences) return
+      savePreferences.mutate({
+        ...preferences,
+        http_server_localhost_only: checked,
+      })
+
+      // Restart server if currently running
+      if (serverStatus?.running) {
+        setIsToggling(true)
+        try {
+          await invoke('stop_http_server')
+          // Small delay to ensure port is released
+          await new Promise(resolve => setTimeout(resolve, 100))
+          await invoke('start_http_server')
+          await refreshStatus()
+          toast.success('Server restarted with new binding')
+        } catch (error) {
+          toast.error(`Failed to restart server: ${error}`)
+        } finally {
+          setIsToggling(false)
+        }
+      }
+    },
+    [preferences, savePreferences, serverStatus?.running, refreshStatus]
+  )
 
   const handleCopyToken = useCallback(() => {
     if (!serverStatus?.token) return
@@ -161,11 +190,10 @@ export const WebAccessPane: React.FC = () => {
               />
               <div className="flex items-center gap-1.5">
                 <div
-                  className={`h-2 w-2 rounded-full ${
-                    serverStatus?.running
+                  className={`h-2 w-2 rounded-full ${serverStatus?.running
                       ? 'bg-green-500'
                       : 'bg-muted-foreground/40'
-                  }`}
+                    }`}
                 />
                 <span className="text-xs text-muted-foreground">
                   {serverStatus?.running ? 'Running' : 'Stopped'}
@@ -203,6 +231,17 @@ export const WebAccessPane: React.FC = () => {
                   })
                 }
               }}
+            />
+          </InlineField>
+
+          <InlineField
+            label="Localhost only"
+            description="Restrict access to this device only (more secure)"
+          >
+            <Switch
+              checked={preferences?.http_server_localhost_only ?? true}
+              onCheckedChange={handleLocalhostOnlyChange}
+              disabled={isToggling}
             />
           </InlineField>
         </div>
@@ -245,18 +284,77 @@ export const WebAccessPane: React.FC = () => {
             </div>
           </InlineField>
 
-          {serverStatus?.running && serverStatus?.address && (
+          {serverStatus?.running && serverStatus?.port && (
             <InlineField
-              label="Access URL"
-              description="Open this URL in a browser on your network"
+              label="Access URLs"
+              description="Open in a browser to access Jean"
             >
-              <div className="flex items-center gap-2">
-                <code className="rounded bg-muted px-2 py-1 text-xs font-mono">
-                  http://{serverStatus.address}:{serverStatus.port}
-                </code>
-                <Button variant="ghost" size="icon" onClick={handleCopyUrl}>
-                  <Copy className="h-4 w-4" />
-                </Button>
+              <div className="flex flex-col gap-2">
+                {/* Localhost URL - always shown */}
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="text"
+                    className="w-64 font-mono text-xs"
+                    value={`http://localhost:${serverStatus.port}`}
+                    readOnly
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() =>
+                      window.open(
+                        `http://localhost:${serverStatus.port}?token=${serverStatus.token}`,
+                        '_blank'
+                      )
+                    }
+                    title="Open in browser"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() =>
+                      handleCopyUrl(`http://localhost:${serverStatus.port}`)
+                    }
+                    title="Copy URL with token"
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                {/* Network URL - only when not localhost-only */}
+                {!serverStatus.localhost_only && serverStatus.url && (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="text"
+                      className="w-64 font-mono text-xs"
+                      value={serverStatus.url}
+                      readOnly
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() =>
+                        window.open(
+                          `${serverStatus.url}?token=${serverStatus.token}`,
+                          '_blank'
+                        )
+                      }
+                      title="Open in browser"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleCopyUrl(serverStatus.url!)}
+                      title="Copy URL with token"
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
               </div>
             </InlineField>
           )}

@@ -67,6 +67,75 @@ export async function listen<T>(
 }
 
 // ---------------------------------------------------------------------------
+// Initial data preloading (used in browser mode)
+// ---------------------------------------------------------------------------
+
+export interface InitialData {
+  projects: unknown[]
+  worktreesByProject: Record<string, unknown[]>
+  sessionsByWorktree: Record<string, unknown>  // worktreeId -> WorktreeSessions
+  activeSessions?: Record<string, unknown>  // sessionId -> Session (with messages)
+  preferences: unknown
+  uiState: unknown
+}
+
+let initialDataPromise: Promise<InitialData | null> | null = null
+let initialDataResolved = false
+
+/**
+ * Preload initial data via HTTP before WebSocket connects.
+ * This allows the web view to show content immediately instead of
+ * waiting for WebSocket connection + command round-trip.
+ *
+ * Returns null if preloading fails (app will fall back to WebSocket).
+ */
+export async function preloadInitialData(): Promise<InitialData | null> {
+  if (isNativeApp()) return null
+  if (initialDataPromise) return initialDataPromise
+
+  initialDataPromise = (async () => {
+    const urlToken = new URLSearchParams(window.location.search).get('token')
+    const token = urlToken || localStorage.getItem('jean-http-token') || ''
+
+    if (!token) {
+      return null
+    }
+
+    try {
+      const response = await fetch(`/api/init?token=${encodeURIComponent(token)}`)
+      if (!response.ok) {
+        return null
+      }
+      const data = await response.json()
+      initialDataResolved = true
+      return data as InitialData
+    } catch {
+      return null
+    }
+  })()
+
+  return initialDataPromise
+}
+
+/**
+ * Check if initial data has been preloaded.
+ */
+export function hasPreloadedData(): boolean {
+  return initialDataResolved
+}
+
+/**
+ * Get the preloaded initial data if available (non-blocking).
+ */
+export function getPreloadedData(): InitialData | null {
+  if (!initialDataResolved || !initialDataPromise) return null
+  // Since initialDataResolved is true, the promise has resolved
+  let result: InitialData | null = null
+  initialDataPromise.then(data => { result = data })
+  return result
+}
+
+// ---------------------------------------------------------------------------
 // WebSocket Transport (used in browser mode)
 // ---------------------------------------------------------------------------
 

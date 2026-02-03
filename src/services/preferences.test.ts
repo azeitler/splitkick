@@ -103,6 +103,7 @@ describe('preferences service', () => {
         http_server_port: 3456,
         http_server_token: null,
         http_server_auto_start: false,
+        http_server_localhost_only: true,
       }
       vi.mocked(invoke).mockResolvedValueOnce(mockPreferences)
 
@@ -184,6 +185,7 @@ describe('preferences service', () => {
         http_server_port: 3456,
         http_server_token: null,
         http_server_auto_start: false,
+        http_server_localhost_only: true,
       }
       vi.mocked(invoke).mockResolvedValueOnce(prefsWithOldBinding)
 
@@ -240,6 +242,7 @@ describe('preferences service', () => {
         http_server_port: 3456,
         http_server_token: null,
         http_server_auto_start: false,
+        http_server_localhost_only: true,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -294,6 +297,7 @@ describe('preferences service', () => {
         http_server_port: 3456,
         http_server_token: null,
         http_server_auto_start: false,
+        http_server_localhost_only: true,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -348,6 +352,7 @@ describe('preferences service', () => {
         http_server_port: 3456,
         http_server_token: null,
         http_server_auto_start: false,
+        http_server_localhost_only: true,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -402,6 +407,7 @@ describe('preferences service', () => {
         http_server_port: 3456,
         http_server_token: null,
         http_server_auto_start: false,
+        http_server_localhost_only: true,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {

@@ -139,6 +139,8 @@ pub struct AppPreferences {
     pub http_server_port: u16, // HTTP server port (default: 3456)
     #[serde(default)]
     pub http_server_token: Option<String>, // Persisted auth token (generated once)
+    #[serde(default)]
+    pub http_server_localhost_only: bool, // Bind to localhost only (more secure)
 }
 
 fn default_auto_branch_naming() -> bool {
@@ -540,6 +542,7 @@ impl Default for AppPreferences {
             http_server_auto_start: false,
             http_server_port: default_http_server_port(),
             http_server_token: None,
+            http_server_localhost_only: true, // Default to localhost-only for security
         }
     }
 }
@@ -978,21 +981,20 @@ async fn start_http_server(
     use std::sync::Arc;
     use tokio::sync::Mutex;
 
-    let actual_port = port.unwrap_or(default_http_server_port());
+    let prefs = load_preferences(app.clone()).await?;
+    let actual_port = port.unwrap_or(prefs.http_server_port);
+    let localhost_only = prefs.http_server_localhost_only;
 
     // Generate or load token
-    let token = {
-        let prefs = load_preferences(app.clone()).await?;
-        match prefs.http_server_token {
-            Some(t) if !t.is_empty() => t,
-            _ => {
-                let new_token = http_server::auth::generate_token();
-                // Persist the token
-                let mut prefs = prefs;
-                prefs.http_server_token = Some(new_token.clone());
-                save_preferences(app.clone(), prefs).await?;
-                new_token
-            }
+    let token = match prefs.http_server_token {
+        Some(t) if !t.is_empty() => t,
+        _ => {
+            let new_token = http_server::auth::generate_token();
+            // Persist the token
+            let mut prefs = prefs.clone();
+            prefs.http_server_token = Some(new_token.clone());
+            save_preferences(app.clone(), prefs).await?;
+            new_token
         }
     };
 
@@ -1008,12 +1010,13 @@ async fn start_http_server(
     }
 
     // Start the server
-    let handle = http_server::server::start_server(app.clone(), actual_port, token).await?;
+    let handle = http_server::server::start_server(app.clone(), actual_port, token, localhost_only).await?;
     let status = http_server::server::ServerStatus {
         running: true,
         url: Some(handle.url.clone()),
         token: Some(handle.token.clone()),
         port: Some(handle.port),
+        localhost_only: Some(handle.localhost_only),
     };
 
     // Store the handle
@@ -1023,7 +1026,7 @@ async fn start_http_server(
         *guard = Some(handle);
     }
 
-    log::info!("HTTP server started: {}", status.url.as_deref().unwrap_or("unknown"));
+    log::info!("HTTP server started: {} (localhost_only: {})", status.url.as_deref().unwrap_or("unknown"), localhost_only);
     Ok(status)
 }
 

@@ -270,6 +270,7 @@ export interface AppPreferences {
   http_server_port: number // HTTP server port (default 3456)
   http_server_token: string | null // Auth token for HTTP/WS access
   http_server_auto_start: boolean // Auto-start HTTP server on launch
+  http_server_localhost_only: boolean // Bind to localhost only (more secure)
 }
 
 export type FileEditMode = 'inline' | 'external'
@@ -476,4 +477,5 @@ export const defaultPreferences: AppPreferences = {
   http_server_port: 3456,
   http_server_token: null,
   http_server_auto_start: false,
+  http_server_localhost_only: true, // Default to localhost-only for security
 }
