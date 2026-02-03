@@ -29,8 +29,8 @@ Jean (Claude haha) is an AI assistant application that helps you to manage multi
 # Platform Support
 
 - **macOS**: Tested
-- **Windows**: Tested
-- **Linux**: Not tested
+- **Windows**: Not fully tested
+- **Linux**: Not tested at all
 
 # Roadmap
 - Add [Opencode](https://opencode.ai/) support
