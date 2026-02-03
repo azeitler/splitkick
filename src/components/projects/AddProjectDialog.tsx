@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { toast } from 'sonner'
 import { isNativeApp } from '@/lib/environment'
+import { invoke } from '@/lib/transport'
 import { FolderOpen, FolderPlus } from 'lucide-react'
 import {
   Dialog,

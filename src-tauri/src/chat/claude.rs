@@ -587,7 +587,7 @@ pub fn execute_claude_detached(
     .map_err(|e| {
         let error_msg = format!("Failed to start Claude CLI: {e}");
         log::error!("{error_msg}");
-        let _ = app.emit(
+        let _ = app.emit_all(
             "chat:error",
             &ErrorEvent {
                 session_id: session_id.to_string(),
@@ -1007,7 +1007,7 @@ pub fn tail_claude_output(
                             session_id: session_id.to_string(),
                             worktree_id: worktree_id.to_string(),
                         };
-                        if let Err(e) = app.emit("chat:compacting", &compacting_event) {
+                        if let Err(e) = app.emit_all("chat:compacting", &compacting_event) {
                             log::error!("Failed to emit compacting: {e}");
                         }
 
@@ -1019,7 +1019,7 @@ pub fn tail_claude_output(
                                     worktree_id: worktree_id.to_string(),
                                     metadata,
                                 };
-                                if let Err(e) = app.emit("chat:compacted", &compacted_event) {
+                                if let Err(e) = app.emit_all("chat:compacted", &compacted_event) {
                                     log::error!("Failed to emit compacted: {e}");
                                 }
                             }
