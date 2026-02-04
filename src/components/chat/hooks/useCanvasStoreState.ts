@@ -19,6 +19,7 @@ export function useCanvasStoreState(): ChatStoreState {
   const pendingPermissionDenials = useChatStore(
     state => state.pendingPermissionDenials
   )
+  const sessionDigests = useChatStore(state => state.sessionDigests)
 
   return useMemo(
     () => ({
@@ -30,6 +31,7 @@ export function useCanvasStoreState(): ChatStoreState {
       waitingForInputSessionIds,
       reviewingSessions,
       pendingPermissionDenials,
+      sessionDigests,
     }),
     [
       sendingSessionIds,
@@ -40,6 +42,7 @@ export function useCanvasStoreState(): ChatStoreState {
       waitingForInputSessionIds,
       reviewingSessions,
       pendingPermissionDenials,
+      sessionDigests,
     ]
   )
 }

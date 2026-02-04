@@ -104,6 +104,8 @@ interface UIState {
   sessionChatModalOpen: boolean
   /** Which worktree the session chat modal is for (for magic command worktree resolution) */
   sessionChatModalWorktreeId: string | null
+  /** Whether a plan dialog is open (blocks canvas approve keybindings) */
+  planDialogOpen: boolean
 
   toggleLeftSidebar: () => void
   setLeftSidebarVisible: (visible: boolean) => void
@@ -139,6 +141,7 @@ interface UIState {
   openSessionBoardModal: (projectId: string) => void
   closeSessionBoardModal: () => void
   setSessionChatModalOpen: (open: boolean, worktreeId?: string | null) => void
+  setPlanDialogOpen: (open: boolean) => void
 }
 
 export const useUIStore = create<UIState>()(
@@ -170,6 +173,7 @@ export const useUIStore = create<UIState>()(
       sessionBoardProjectId: null,
       sessionChatModalOpen: false,
       sessionChatModalWorktreeId: null,
+      planDialogOpen: false,
 
       toggleLeftSidebar: () =>
         set(
@@ -392,6 +396,9 @@ export const useUIStore = create<UIState>()(
           sessionChatModalOpen: open,
           sessionChatModalWorktreeId: open ? (worktreeId ?? null) : null,
         }, undefined, 'setSessionChatModalOpen'),
+
+      setPlanDialogOpen: open =>
+        set({ planDialogOpen: open }, undefined, 'setPlanDialogOpen'),
     }),
     {
       name: 'ui-store',

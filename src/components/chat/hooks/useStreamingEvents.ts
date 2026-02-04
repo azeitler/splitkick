@@ -4,6 +4,7 @@ import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 import type { QueryClient } from '@tanstack/react-query'
 import { useChatStore } from '@/store/chat-store'
+import { useUIStore } from '@/store/ui-store'
 import { chatQueryKeys } from '@/services/chat'
 import { isTauri, saveWorktreePr, projectsQueryKeys } from '@/services/projects'
 import { preferencesQueryKeys } from '@/services/preferences'
@@ -224,7 +225,15 @@ export default function useStreamingEvents({
       // Only skip digest if BOTH the worktree AND session are active (user is looking at it)
       const isActiveWorktree = worktreeId === activeWorktreeId
       const isActiveSession = activeSessionIds[worktreeId] === sessionId
-      const isCurrentlyViewing = isActiveWorktree && isActiveSession
+      const isViewingInFullView = isActiveWorktree && isActiveSession
+
+      // Also check if viewing in modal (modal doesn't change activeWorktreeId)
+      const { sessionChatModalOpen, sessionChatModalWorktreeId } = useUIStore.getState()
+      const isViewingInModal = sessionChatModalOpen &&
+        sessionChatModalWorktreeId === worktreeId &&
+        isActiveSession
+
+      const isCurrentlyViewing = isViewingInFullView || isViewingInModal
 
       // Check if session recap is enabled in preferences
       const preferences = queryClient.getQueryData<AppPreferences>(preferencesQueryKeys.preferences())
@@ -244,6 +253,10 @@ export default function useStreamingEvents({
           .then(digest => {
             useChatStore.getState().setSessionDigest(sessionId, digest)
             console.log('[useStreamingEvents] Digest generated for session:', sessionId)
+            // Persist digest to disk so it survives app reload
+            invoke('update_session_digest', { sessionId, digest }).catch(err => {
+              console.error('[useStreamingEvents] Failed to persist digest:', err)
+            })
           })
           .catch(err => {
             console.error('[useStreamingEvents] Failed to generate digest:', err)
@@ -496,7 +509,15 @@ export default function useStreamingEvents({
       const isActiveSession = sessionWorktreeId
         ? activeSessionIds[sessionWorktreeId] === session_id
         : false
-      const isCurrentlyViewing = isActiveWorktree && isActiveSession
+      const isViewingInFullView = isActiveWorktree && isActiveSession
+
+      // Also check if viewing in modal (modal doesn't change activeWorktreeId)
+      const { sessionChatModalOpen, sessionChatModalWorktreeId } = useUIStore.getState()
+      const isViewingInModal = sessionChatModalOpen &&
+        sessionChatModalWorktreeId === sessionWorktreeId &&
+        isActiveSession
+
+      const isCurrentlyViewing = isViewingInFullView || isViewingInModal
 
       // Check if session recap is enabled in preferences
       const preferences = queryClient.getQueryData<AppPreferences>(preferencesQueryKeys.preferences())
@@ -513,6 +534,10 @@ export default function useStreamingEvents({
         invoke<SessionDigest>('generate_session_digest', { sessionId: session_id })
           .then(digest => {
             useChatStore.getState().setSessionDigest(session_id, digest)
+            // Persist digest to disk so it survives app reload
+            invoke('update_session_digest', { sessionId: session_id, digest }).catch(err => {
+              console.error('[useStreamingEvents] Failed to persist digest:', err)
+            })
           })
           .catch(err => {
             console.error('[useStreamingEvents] Failed to generate digest:', err)
@@ -576,7 +601,15 @@ export default function useStreamingEvents({
         const isActiveSession = sessionWorktreeId
           ? activeSessionIds[sessionWorktreeId] === session_id
           : false
-        const isCurrentlyViewing = isActiveWorktree && isActiveSession
+        const isViewingInFullView = isActiveWorktree && isActiveSession
+
+        // Also check if viewing in modal (modal doesn't change activeWorktreeId)
+        const { sessionChatModalOpen, sessionChatModalWorktreeId } = useUIStore.getState()
+        const isViewingInModal = sessionChatModalOpen &&
+          sessionChatModalWorktreeId === sessionWorktreeId &&
+          isActiveSession
+
+        const isCurrentlyViewing = isViewingInFullView || isViewingInModal
 
         // Check if session recap is enabled in preferences
         const preferences = queryClient.getQueryData<AppPreferences>(preferencesQueryKeys.preferences())
@@ -593,6 +626,10 @@ export default function useStreamingEvents({
           invoke<SessionDigest>('generate_session_digest', { sessionId: session_id })
             .then(digest => {
               useChatStore.getState().setSessionDigest(session_id, digest)
+              // Persist digest to disk so it survives app reload
+              invoke('update_session_digest', { sessionId: session_id, digest }).catch(err => {
+                console.error('[useStreamingEvents] Failed to persist digest:', err)
+              })
             })
             .catch(err => {
               console.error('[useStreamingEvents] Failed to generate digest:', err)

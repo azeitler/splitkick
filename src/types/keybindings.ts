@@ -20,6 +20,7 @@ export type KeybindingAction =
   | 'approve_plan'
   | 'approve_plan_yolo'
   | 'open_plan'
+  | 'open_recap'
   | 'restore_last_archived'
   | 'focus_canvas_search'
 
@@ -61,6 +62,7 @@ export const DEFAULT_KEYBINDINGS: KeybindingsMap = {
   approve_plan: 'mod+enter',
   approve_plan_yolo: 'mod+y',
   open_plan: 'p',
+  open_recap: 'r',
   restore_last_archived: 'mod+shift+t',
   focus_canvas_search: 'slash',
 }
@@ -185,6 +187,13 @@ export const KEYBINDING_DEFINITIONS: KeybindingDefinition[] = [
     label: 'Open plan',
     description: 'Open the plan dialog for the selected session',
     default_shortcut: 'p',
+    category: 'chat',
+  },
+  {
+    action: 'open_recap',
+    label: 'Open recap',
+    description: 'Open the session recap dialog for the selected session',
+    default_shortcut: 'r',
     category: 'chat',
   },
   {

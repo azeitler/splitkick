@@ -26,6 +26,7 @@ import { useMainWindowEventListeners } from '@/hooks/useMainWindowEventListeners
 import { useCloseSessionOrWorktreeKeybinding } from '@/services/chat'
 import { useUIStatePersistence } from '@/hooks/useUIStatePersistence'
 import { useSessionStatePersistence } from '@/hooks/useSessionStatePersistence'
+import { useSessionPrefetch } from '@/hooks/useSessionPrefetch'
 import { useRestoreLastArchived } from '@/hooks/useRestoreLastArchived'
 import { useArchiveCleanup } from '@/hooks/useArchiveCleanup'
 import {
@@ -115,6 +116,10 @@ export function MainWindow() {
 
   // Persist session-specific state (answered questions, fixed findings, etc.)
   useSessionStatePersistence()
+
+  // Prefetch sessions for all projects on startup (regardless of sidebar visibility)
+  // This ensures session statuses (review, waiting) are restored immediately
+  useSessionPrefetch(projects)
 
   // Ref for the sidebar element to update width directly during drag
   const sidebarRef = useRef<HTMLDivElement>(null)

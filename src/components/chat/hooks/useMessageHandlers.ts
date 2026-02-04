@@ -72,8 +72,8 @@ interface MessageHandlers {
     questions: Question[]
   ) => void
   handleSkipQuestion: (toolCallId: string) => void
-  handlePlanApproval: (messageId: string) => void
-  handlePlanApprovalYolo: (messageId: string) => void
+  handlePlanApproval: (messageId: string, updatedPlan?: string) => void
+  handlePlanApprovalYolo: (messageId: string, updatedPlan?: string) => void
   handleStreamingPlanApproval: () => void
   handleStreamingPlanApprovalYolo: () => void
   handlePendingPlanApprovalCallback: () => void
@@ -250,7 +250,7 @@ export function useMessageHandlers({
   // Handle plan approval for ExitPlanMode
   // PERFORMANCE: Uses refs for session/worktree IDs to keep callback stable across session switches
   const handlePlanApproval = useCallback(
-    (messageId: string) => {
+    (messageId: string, updatedPlan?: string) => {
       const sessionId = activeSessionIdRef.current
       const worktreeId = activeWorktreeIdRef.current
       const worktreePath = activeWorktreePathRef.current
@@ -294,10 +294,16 @@ export function useMessageHandlers({
       setSessionReviewing(sessionId, false)
       setWaitingForInput(sessionId, false)
 
+      // Format approval message - include updated plan if provided
+      const message = updatedPlan
+        ? `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
+        : 'Approved'
+      console.log('[useMessageHandlers] handlePlanApproval - message:', message.substring(0, 100))
+
       // Send approval message to Claude so it continues with execution
       // NOTE: setLastSentMessage is critical for permission denial flow - without it,
       // the denied message context won't be set and approval UI won't work
-      setLastSentMessage(sessionId, 'Approved')
+      setLastSentMessage(sessionId, message)
       setError(sessionId, null)
       addSendingSession(sessionId)
       setSelectedModel(sessionId, selectedModelRef.current)
@@ -308,7 +314,7 @@ export function useMessageHandlers({
           sessionId,
           worktreeId,
           worktreePath,
-          message: 'Approved',
+          message,
           model: selectedModelRef.current,
           executionMode: 'build',
           thinkingLevel: selectedThinkingLevelRef.current,
@@ -336,7 +342,7 @@ export function useMessageHandlers({
   // Handle plan approval with yolo mode (auto-approve all future tools)
   // PERFORMANCE: Uses refs for session/worktree IDs to keep callback stable across session switches
   const handlePlanApprovalYolo = useCallback(
-    (messageId: string) => {
+    (messageId: string, updatedPlan?: string) => {
       const sessionId = activeSessionIdRef.current
       const worktreeId = activeWorktreeIdRef.current
       const worktreePath = activeWorktreePathRef.current
@@ -380,8 +386,14 @@ export function useMessageHandlers({
       setSessionReviewing(sessionId, false)
       setWaitingForInput(sessionId, false)
 
+      // Format approval message - include updated plan if provided
+      const message = updatedPlan
+        ? `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
+        : 'Approved - yolo'
+      console.log('[useMessageHandlers] handlePlanApprovalYolo - message:', message.substring(0, 100))
+
       // Send approval message to Claude so it continues with execution
-      setLastSentMessage(sessionId, 'Approved - yolo')
+      setLastSentMessage(sessionId, message)
       setError(sessionId, null)
       addSendingSession(sessionId)
       setSelectedModel(sessionId, selectedModelRef.current)
@@ -392,7 +404,7 @@ export function useMessageHandlers({
           sessionId,
           worktreeId,
           worktreePath,
-          message: 'Approved - yolo',
+          message,
           model: selectedModelRef.current,
           executionMode: 'yolo',
           thinkingLevel: selectedThinkingLevelRef.current,

@@ -9,6 +9,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { useChatStore } from '@/store/chat-store'
 import { useSession } from '@/services/chat'
+import { usePreferences } from '@/services/preferences'
 import { ChatWindow } from './ChatWindow'
 
 interface SessionChatModalProps {
@@ -29,6 +30,8 @@ export function SessionChatModal({
   onOpenFullView,
 }: SessionChatModalProps) {
   const { data: session } = useSession(sessionId, worktreeId, worktreePath)
+  const { data: preferences } = usePreferences()
+  const canvasOnlyMode = preferences?.canvas_only_mode ?? false
 
   // Store the previous active session to restore on close
   const previousSessionRef = useRef<string | undefined>(undefined)
@@ -96,15 +99,17 @@ export function SessionChatModal({
             <DialogTitle className="text-sm font-medium">
               {session?.name ?? 'Session'}
             </DialogTitle>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 px-2 text-xs"
-              onClick={handleOpenFullView}
-            >
-              <Maximize2 className="mr-1 h-3 w-3" />
-              Open Full View
-            </Button>
+{!canvasOnlyMode && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={handleOpenFullView}
+              >
+                <Maximize2 className="mr-1 h-3 w-3" />
+                Open Full View
+              </Button>
+            )}
           </div>
         </DialogHeader>
 

@@ -771,7 +771,10 @@ export function ChatWindow({
   }, [])
 
   // Listen for global open-plan request from keybinding (p key)
+  // Skip when on canvas view - CanvasGrid handles it there
   useEffect(() => {
+    if (isViewingCanvasTab) return
+
     const handleOpenPlan = () => {
       if (latestPlanContent) {
         setPlanDialogContent(latestPlanContent)
@@ -783,7 +786,7 @@ export function ChatWindow({
 
     window.addEventListener('open-plan', handleOpenPlan)
     return () => window.removeEventListener('open-plan', handleOpenPlan)
-  }, [latestPlanContent, latestPlanFilePath])
+  }, [latestPlanContent, latestPlanFilePath, isViewingCanvasTab])
 
   // Listen for global create-new-session event from keybinding (CMD+T)
   // This needs to be in ChatWindow (not SessionTabBar) because SessionTabBar
@@ -2257,7 +2260,7 @@ Begin your investigation now.`
           projectName={worktree?.name ?? 'unknown-project'}
         />
 
-        {/* Plan dialog - read-only view of latest plan */}
+        {/* Plan dialog - editable view of latest plan */}
         {isPlanDialogOpen && (
           planDialogContent ? (
             <PlanDialog
@@ -2267,12 +2270,142 @@ Begin your investigation now.`
                 setIsPlanDialogOpen(false)
                 setPlanDialogContent(null)
               }}
+              editable={true}
+              approvalContext={
+                activeWorktreeId && activeWorktreePath && activeSessionId
+                  ? {
+                      worktreeId: activeWorktreeId,
+                      worktreePath: activeWorktreePath,
+                      sessionId: activeSessionId,
+                      pendingPlanMessageId: pendingPlanMessage?.id ?? null,
+                    }
+                  : undefined
+              }
+              onApprove={(updatedPlan) => {
+                console.log('[ChatWindow] onApprove (content) called with updatedPlan length:', updatedPlan?.length)
+                console.log('[ChatWindow] activeSessionId:', activeSessionId)
+                console.log('[ChatWindow] pendingPlanMessage:', pendingPlanMessage?.id)
+                if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) {
+                  console.log('[ChatWindow] onApprove early return - missing session context')
+                  return
+                }
+                if (pendingPlanMessage) {
+                  console.log('[ChatWindow] calling handlePlanApproval with pending plan')
+                  handlePlanApproval(pendingPlanMessage.id, updatedPlan)
+                } else {
+                  // No pending plan - send updated plan as a fresh message
+                  const message = `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
+                  console.log('[ChatWindow] sendMessage.mutate - no pending plan, sending fresh message')
+                  sendMessage.mutate({
+                    sessionId: activeSessionId,
+                    worktreeId: activeWorktreeId,
+                    worktreePath: activeWorktreePath,
+                    message,
+                    model: selectedModelRef.current,
+                    executionMode: 'build',
+                    thinkingLevel: selectedThinkingLevelRef.current,
+                    disableThinkingForMode: true,
+                  })
+                }
+              }}
+              onApproveYolo={(updatedPlan) => {
+                console.log('[ChatWindow] onApproveYolo (content) called with updatedPlan length:', updatedPlan?.length)
+                console.log('[ChatWindow] activeSessionId:', activeSessionId)
+                console.log('[ChatWindow] pendingPlanMessage:', pendingPlanMessage?.id)
+                if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) {
+                  console.log('[ChatWindow] onApproveYolo early return - missing session context')
+                  return
+                }
+                if (pendingPlanMessage) {
+                  console.log('[ChatWindow] calling handlePlanApprovalYolo with pending plan')
+                  handlePlanApprovalYolo(pendingPlanMessage.id, updatedPlan)
+                } else {
+                  // No pending plan - send updated plan as a fresh message in yolo mode
+                  const message = `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
+                  console.log('[ChatWindow] sendMessage.mutate yolo - no pending plan, sending fresh message')
+                  sendMessage.mutate({
+                    sessionId: activeSessionId,
+                    worktreeId: activeWorktreeId,
+                    worktreePath: activeWorktreePath,
+                    message,
+                    model: selectedModelRef.current,
+                    executionMode: 'yolo',
+                    thinkingLevel: selectedThinkingLevelRef.current,
+                    disableThinkingForMode: true,
+                  })
+                }
+              }}
             />
           ) : latestPlanFilePath ? (
             <PlanDialog
               filePath={latestPlanFilePath}
               isOpen={isPlanDialogOpen}
               onClose={() => setIsPlanDialogOpen(false)}
+              editable={true}
+              approvalContext={
+                activeWorktreeId && activeWorktreePath && activeSessionId
+                  ? {
+                      worktreeId: activeWorktreeId,
+                      worktreePath: activeWorktreePath,
+                      sessionId: activeSessionId,
+                      pendingPlanMessageId: pendingPlanMessage?.id ?? null,
+                    }
+                  : undefined
+              }
+              onApprove={(updatedPlan) => {
+                console.log('[ChatWindow] onApprove (filePath) called with updatedPlan length:', updatedPlan?.length)
+                console.log('[ChatWindow] activeSessionId:', activeSessionId)
+                console.log('[ChatWindow] pendingPlanMessage:', pendingPlanMessage?.id)
+                if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) {
+                  console.log('[ChatWindow] onApprove early return - missing session context')
+                  return
+                }
+                if (pendingPlanMessage) {
+                  console.log('[ChatWindow] calling handlePlanApproval with pending plan')
+                  handlePlanApproval(pendingPlanMessage.id, updatedPlan)
+                } else {
+                  // No pending plan - send updated plan as a fresh message
+                  const message = `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
+                  console.log('[ChatWindow] sendMessage.mutate - no pending plan, sending fresh message')
+                  sendMessage.mutate({
+                    sessionId: activeSessionId,
+                    worktreeId: activeWorktreeId,
+                    worktreePath: activeWorktreePath,
+                    message,
+                    model: selectedModelRef.current,
+                    executionMode: 'build',
+                    thinkingLevel: selectedThinkingLevelRef.current,
+                    disableThinkingForMode: true,
+                  })
+                }
+              }}
+              onApproveYolo={(updatedPlan) => {
+                console.log('[ChatWindow] onApproveYolo (filePath) called with updatedPlan length:', updatedPlan?.length)
+                console.log('[ChatWindow] activeSessionId:', activeSessionId)
+                console.log('[ChatWindow] pendingPlanMessage:', pendingPlanMessage?.id)
+                if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) {
+                  console.log('[ChatWindow] onApproveYolo early return - missing session context')
+                  return
+                }
+                if (pendingPlanMessage) {
+                  console.log('[ChatWindow] calling handlePlanApprovalYolo with pending plan')
+                  handlePlanApprovalYolo(pendingPlanMessage.id, updatedPlan)
+                } else {
+                  // No pending plan - send updated plan as a fresh message in yolo mode
+                  const message = `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
+                  console.log('[ChatWindow] sendMessage.mutate yolo - no pending plan, sending fresh message')
+                  sendMessage.mutate({
+                    sessionId: activeSessionId,
+                    worktreeId: activeWorktreeId,
+                    worktreePath: activeWorktreePath,
+                    message,
+                    model: selectedModelRef.current,
+                    executionMode: 'yolo',
+                    thinkingLevel: selectedThinkingLevelRef.current,
+                    disableThinkingForMode: true,
+                  })
+                }
+              }}
             />
           ) : null
         )}

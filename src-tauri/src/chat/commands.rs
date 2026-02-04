@@ -15,7 +15,7 @@ use super::storage::{
 };
 use super::types::{
     AllSessionsEntry, AllSessionsResponse, ChatMessage, ClaudeContext, MessageRole, RunStatus,
-    Session, ThinkingLevel, WorktreeSessions,
+    Session, SessionDigest, ThinkingLevel, WorktreeSessions,
 };
 use crate::claude_cli::get_cli_binary_path;
 use crate::platform::silent_command;
@@ -2975,6 +2975,31 @@ pub async fn generate_session_digest(
 
     // Call Claude CLI with JSON schema (non-streaming)
     execute_digest_claude(&app, &prompt, &prefs.session_recap_model)
+}
+
+/// Update a session's persisted digest
+///
+/// Called after generating a digest to persist it to disk so it survives app reload.
+#[tauri::command]
+pub async fn update_session_digest(
+    app: AppHandle,
+    session_id: String,
+    digest: SessionDigest,
+) -> Result<(), String> {
+    log::trace!("Persisting digest for session {session_id}");
+
+    // Load existing metadata
+    let metadata = load_metadata(&app, &session_id)?
+        .ok_or_else(|| format!("Session {session_id} not found"))?;
+
+    // Update and save with new digest
+    let mut updated = metadata;
+    updated.digest = Some(digest);
+
+    super::storage::save_metadata(&app, &updated)?;
+
+    log::trace!("Digest persisted for session {session_id}");
+    Ok(())
 }
 
 /// Broadcast a session setting change to all connected clients.

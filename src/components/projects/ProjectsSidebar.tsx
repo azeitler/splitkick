@@ -1,7 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
 import { Plus, Folder, Archive, Briefcase } from 'lucide-react'
-import { invoke } from '@/lib/transport'
-import { useQueryClient } from '@tanstack/react-query'
 import { useSidebarWidth } from '@/components/layout/SidebarWidthContext'
 import {
   DropdownMenu,
@@ -14,20 +12,17 @@ import {
   useCreateFolder,
 } from '@/services/projects'
 import { fetchWorktreesStatus } from '@/services/git-status'
-import { prefetchSessions } from '@/services/chat'
 import { useProjectsStore } from '@/store/projects-store'
 import { ProjectTree } from './ProjectTree'
 import { AddProjectDialog } from './AddProjectDialog'
 import { ProjectSettingsDialog } from './ProjectSettingsDialog'
 import { ArchivedModal } from '@/components/archive/ArchivedModal'
-import type { Worktree } from '@/types/projects'
 
 export function ProjectsSidebar() {
   const { data: projects = [], isLoading } = useProjects()
   const { setAddProjectDialogOpen } = useProjectsStore()
   const [archivedModalOpen, setArchivedModalOpen] = useState(false)
   const createFolder = useCreateFolder()
-  const queryClient = useQueryClient()
   const sidebarWidth = useSidebarWidth()
 
   // Responsive layout threshold
@@ -41,8 +36,9 @@ export function ProjectsSidebar() {
       window.removeEventListener('command:open-archived-modal', handleOpenArchivedModal)
   }, [])
 
-  // Fetch worktree status and sessions for all projects on startup
+  // Fetch worktree git status for all projects on startup
   // Priority: expanded projects first, then all others
+  // Note: Session prefetching is handled by useSessionPrefetch in MainWindow
   const hasFetchedRef = useRef(false)
   useEffect(() => {
     if (hasFetchedRef.current || projects.length === 0) return
@@ -70,55 +66,32 @@ export function ProjectsSidebar() {
       )
     }
 
-    // Fetch sessions for all worktrees in a project
-    const fetchSessionsForProject = async (projectId: string) => {
-      try {
-        const worktrees = await invoke<Worktree[]>('list_worktrees', { projectId })
-        await Promise.all(
-          worktrees.map(w =>
-            prefetchSessions(queryClient, w.id, w.path).catch(err =>
-              console.warn(`[startup] Failed to prefetch sessions for ${w.name}:`, err)
-            )
-          )
-        )
-      } catch (err) {
-        console.warn(`[startup] Failed to list worktrees for project ${projectId}:`, err)
-      }
-    }
-
     const fetchAll = async () => {
       const concurrencyLimit = 3
 
       console.info(
-        '[startup] Fetching worktree status and sessions: expanded=%d, collapsed=%d',
+        '[startup] Fetching worktree git status: expanded=%d, collapsed=%d',
         expandedProjects.length,
         collapsedProjects.length
       )
 
       // First: fetch expanded projects (user sees these immediately)
-      // Fetch both git status and sessions in parallel
       for (let i = 0; i < expandedProjects.length; i += concurrencyLimit) {
         const batch = expandedProjects.slice(i, i + concurrencyLimit)
-        await Promise.all([
-          fetchGitStatusBatch(batch),
-          ...batch.map(p => fetchSessionsForProject(p.id)),
-        ])
+        await fetchGitStatusBatch(batch)
       }
 
       // Then: fetch collapsed projects in background (lazy load for when user expands)
       for (let i = 0; i < collapsedProjects.length; i += concurrencyLimit) {
         const batch = collapsedProjects.slice(i, i + concurrencyLimit)
-        await Promise.all([
-          fetchGitStatusBatch(batch),
-          ...batch.map(p => fetchSessionsForProject(p.id)),
-        ])
+        await fetchGitStatusBatch(batch)
       }
 
-      console.info('[startup] Done fetching worktree status and sessions for all projects')
+      console.info('[startup] Done fetching worktree git status for all projects')
     }
 
     fetchAll()
-  }, [projects, queryClient])
+  }, [projects])
 
   return (
     <div className="flex h-full flex-col">

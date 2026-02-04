@@ -710,9 +710,11 @@ pub fn tail_claude_output(
             }
 
             // Track parent_tool_use_id for sub-agent tool calls
-            if let Some(parent_id) = msg.get("parent_tool_use_id").and_then(|v| v.as_str()) {
-                current_parent_tool_use_id = Some(parent_id.to_string());
-            }
+            // Must reset to None for root-level messages, otherwise parallel Tasks get wrong parent
+            current_parent_tool_use_id = msg
+                .get("parent_tool_use_id")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
 
             let msg_type = msg.get("type").and_then(|v| v.as_str()).unwrap_or("");
 

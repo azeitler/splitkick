@@ -149,6 +149,8 @@ export interface Session {
   plan_file_path?: string
   /** Message ID of the pending plan awaiting approval (for Canvas view) */
   pending_plan_message_id?: string
+  /** Persisted session digest (recap summary) */
+  digest?: SessionDigest
 }
 
 /**

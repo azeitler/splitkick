@@ -1690,6 +1690,7 @@ pub fn run() {
             chat::generate_context_from_session,
             // Chat commands - Session digest (context recall)
             chat::generate_session_digest,
+            chat::update_session_digest,
             // Chat commands - Real-time setting sync
             chat::broadcast_session_setting,
             // Chat commands - Debug info

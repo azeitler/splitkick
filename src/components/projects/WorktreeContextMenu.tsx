@@ -151,6 +151,14 @@ export function WorktreeContextMenu({
       useChatStore.getState().markSessionNeedsDigest(sessionWithMessages.id)
       useChatStore.getState().setSessionDigest(sessionWithMessages.id, digest)
 
+      // Persist digest to disk so it survives app reload
+      invoke('update_session_digest', {
+        sessionId: sessionWithMessages.id,
+        digest,
+      }).catch(err => {
+        console.error('[WorktreeContextMenu] Failed to persist digest:', err)
+      })
+
       toast.success(
         <div className="space-y-1">
           <div className="font-medium">{digest.chat_summary}</div>

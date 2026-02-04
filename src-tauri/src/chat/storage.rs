@@ -402,6 +402,7 @@ pub fn load_sessions(
                 approved_plan_message_ids: vec![],
                 plan_file_path: None,
                 pending_plan_message_id: None,
+                digest: None,
             }
         };
         sessions.push(session);

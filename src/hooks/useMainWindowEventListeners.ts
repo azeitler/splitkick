@@ -274,19 +274,39 @@ function executeKeybindingAction(
       logger.debug('Keybinding: cycle_execution_mode')
       window.dispatchEvent(new CustomEvent('cycle-execution-mode'))
       break
-    case 'approve_plan':
+    case 'approve_plan': {
       logger.debug('Keybinding: approve_plan')
+      const planDialogOpen = useUIStore.getState().planDialogOpen
+      if (planDialogOpen) break // Let PlanDialog handle it directly
       window.dispatchEvent(new CustomEvent('approve-plan'))
       window.dispatchEvent(new CustomEvent('answer-question'))
       break
-    case 'approve_plan_yolo':
+    }
+    case 'approve_plan_yolo': {
       logger.debug('Keybinding: approve_plan_yolo')
+      const planDialogOpenYolo = useUIStore.getState().planDialogOpen
+      if (planDialogOpenYolo) break // Let PlanDialog handle it directly
       window.dispatchEvent(new CustomEvent('approve-plan-yolo'))
       break
-    case 'open_plan':
+    }
+    case 'open_plan': {
       logger.debug('Keybinding: open_plan')
+      const sessionModalOpen = useUIStore.getState().sessionChatModalOpen
+      if (sessionModalOpen) {
+        break
+      }
       window.dispatchEvent(new CustomEvent('open-plan'))
       break
+    }
+    case 'open_recap': {
+      logger.debug('Keybinding: open_recap')
+      const sessionModalOpenForRecap = useUIStore.getState().sessionChatModalOpen
+      if (sessionModalOpenForRecap) {
+        break
+      }
+      window.dispatchEvent(new CustomEvent('open-recap'))
+      break
+    }
     case 'restore_last_archived':
       logger.debug('Keybinding: restore_last_archived')
       window.dispatchEvent(new CustomEvent('restore-last-archived'))

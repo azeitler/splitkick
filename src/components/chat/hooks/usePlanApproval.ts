@@ -12,6 +12,26 @@ interface UsePlanApprovalParams {
 }
 
 /**
+ * Formats the approval message, including updated plan if content was changed.
+ */
+function formatApprovalMessage(
+  baseMessage: string,
+  updatedPlan?: string,
+  originalPlan?: string | null
+): string {
+  // No updated plan provided, or plan unchanged
+  if (!updatedPlan || updatedPlan === originalPlan) {
+    return baseMessage
+  }
+
+  return `I've updated the plan. Please review and execute:
+
+<updated-plan>
+${updatedPlan}
+</updated-plan>`
+}
+
+/**
  * Provides plan approval handlers for canvas session cards.
  */
 export function usePlanApproval({ worktreeId, worktreePath }: UsePlanApprovalParams) {
@@ -34,26 +54,32 @@ export function usePlanApproval({ worktreeId, worktreePath }: UsePlanApprovalPar
   } = useChatStore.getState()
 
   const handlePlanApproval = useCallback(
-    (card: SessionCardData) => {
-      if (!card.pendingPlanMessageId) return
+    (card: SessionCardData, updatedPlan?: string) => {
+      console.log('[usePlanApproval] handlePlanApproval called')
+      console.log('[usePlanApproval] card.pendingPlanMessageId:', card.pendingPlanMessageId)
+      console.log('[usePlanApproval] updatedPlan length:', updatedPlan?.length)
 
       const sessionId = card.session.id
       const messageId = card.pendingPlanMessageId
+      const originalPlan = card.planContent
 
-      markPlanApproved(worktreeId, worktreePath, sessionId, messageId)
+      // If there's a pending plan message, mark it as approved
+      if (messageId) {
+        markPlanApproved(worktreeId, worktreePath, sessionId, messageId)
 
-      queryClient.setQueryData<Session>(
-        chatQueryKeys.session(sessionId),
-        old => {
-          if (!old) return old
-          return {
-            ...old,
-            messages: old.messages.map(msg =>
-              msg.id === messageId ? { ...msg, plan_approved: true } : msg
-            ),
+        queryClient.setQueryData<Session>(
+          chatQueryKeys.session(sessionId),
+          old => {
+            if (!old) return old
+            return {
+              ...old,
+              messages: old.messages.map(msg =>
+                msg.id === messageId ? { ...msg, plan_approved: true } : msg
+              ),
+            }
           }
-        }
-      )
+        )
+      }
 
       setExecutionMode(sessionId, 'build')
       clearToolCalls(sessionId)
@@ -65,7 +91,14 @@ export function usePlanApproval({ worktreeId, worktreePath }: UsePlanApprovalPar
       const model = preferences?.selected_model ?? 'opus'
       const thinkingLevel = preferences?.thinking_level ?? 'off'
 
-      setLastSentMessage(sessionId, 'Approved')
+      // Format message - if no pending plan, always include the updated plan content
+      const message = messageId
+        ? formatApprovalMessage('Approved', updatedPlan, originalPlan)
+        : `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
+
+      console.log('[usePlanApproval] sending message:', message.substring(0, 100))
+
+      setLastSentMessage(sessionId, message)
       setError(sessionId, null)
       addSendingSession(sessionId)
       setSelectedModel(sessionId, model)
@@ -75,7 +108,7 @@ export function usePlanApproval({ worktreeId, worktreePath }: UsePlanApprovalPar
         sessionId,
         worktreeId,
         worktreePath,
-        message: 'Approved',
+        message,
         model,
         executionMode: 'build',
         thinkingLevel,
@@ -103,26 +136,32 @@ export function usePlanApproval({ worktreeId, worktreePath }: UsePlanApprovalPar
   )
 
   const handlePlanApprovalYolo = useCallback(
-    (card: SessionCardData) => {
-      if (!card.pendingPlanMessageId) return
+    (card: SessionCardData, updatedPlan?: string) => {
+      console.log('[usePlanApproval] handlePlanApprovalYolo called')
+      console.log('[usePlanApproval] card.pendingPlanMessageId:', card.pendingPlanMessageId)
+      console.log('[usePlanApproval] updatedPlan length:', updatedPlan?.length)
 
       const sessionId = card.session.id
       const messageId = card.pendingPlanMessageId
+      const originalPlan = card.planContent
 
-      markPlanApproved(worktreeId, worktreePath, sessionId, messageId)
+      // If there's a pending plan message, mark it as approved
+      if (messageId) {
+        markPlanApproved(worktreeId, worktreePath, sessionId, messageId)
 
-      queryClient.setQueryData<Session>(
-        chatQueryKeys.session(sessionId),
-        old => {
-          if (!old) return old
-          return {
-            ...old,
-            messages: old.messages.map(msg =>
-              msg.id === messageId ? { ...msg, plan_approved: true } : msg
-            ),
+        queryClient.setQueryData<Session>(
+          chatQueryKeys.session(sessionId),
+          old => {
+            if (!old) return old
+            return {
+              ...old,
+              messages: old.messages.map(msg =>
+                msg.id === messageId ? { ...msg, plan_approved: true } : msg
+              ),
+            }
           }
-        }
-      )
+        )
+      }
 
       setExecutionMode(sessionId, 'yolo')
       clearToolCalls(sessionId)
@@ -134,7 +173,14 @@ export function usePlanApproval({ worktreeId, worktreePath }: UsePlanApprovalPar
       const model = preferences?.selected_model ?? 'opus'
       const thinkingLevel = preferences?.thinking_level ?? 'off'
 
-      setLastSentMessage(sessionId, 'Approved - yolo')
+      // Format message - if no pending plan, always include the updated plan content
+      const message = messageId
+        ? formatApprovalMessage('Approved - yolo', updatedPlan, originalPlan)
+        : `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
+
+      console.log('[usePlanApproval] sending message:', message.substring(0, 100))
+
+      setLastSentMessage(sessionId, message)
       setError(sessionId, null)
       addSendingSession(sessionId)
       setSelectedModel(sessionId, model)
@@ -144,7 +190,7 @@ export function usePlanApproval({ worktreeId, worktreePath }: UsePlanApprovalPar
         sessionId,
         worktreeId,
         worktreePath,
-        message: 'Approved - yolo',
+        message,
         model,
         executionMode: 'yolo',
         thinkingLevel,

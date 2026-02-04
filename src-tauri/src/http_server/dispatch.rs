@@ -1089,6 +1089,12 @@ pub async fn dispatch_command(
             let result = crate::chat::generate_session_digest(app.clone(), session_id).await?;
             to_value(result)
         }
+        "update_session_digest" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let digest: crate::chat::types::SessionDigest = from_field(&args, "digest")?;
+            crate::chat::update_session_digest(app.clone(), session_id, digest).await?;
+            Ok(Value::Null)
+        }
         "get_session_debug_info" => {
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;

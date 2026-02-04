@@ -16,6 +16,7 @@ import { useUIStore } from '@/store/ui-store'
 import { isBaseSession, type Worktree } from '@/types/projects'
 import type { Session, WorktreeSessions } from '@/types/chat'
 import { PlanDialog } from '@/components/chat/PlanDialog'
+import { RecapDialog } from '@/components/chat/RecapDialog'
 import { SessionChatModal } from '@/components/chat/SessionChatModal'
 import { SessionCard } from '@/components/chat/SessionCard'
 import {
@@ -24,6 +25,8 @@ import {
 } from '@/components/chat/session-card-utils'
 import { useCanvasStoreState } from '@/components/chat/hooks/useCanvasStoreState'
 import { usePlanApproval } from '@/components/chat/hooks/usePlanApproval'
+import { useCanvasKeyboardNav } from '@/components/chat/hooks/useCanvasKeyboardNav'
+import { useCanvasShortcutEvents } from '@/components/chat/hooks/useCanvasShortcutEvents'
 import {
   useArchiveWorktree,
   useCloseBaseSessionClean,
@@ -163,28 +166,22 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     return result
   }, [worktreeSections])
 
-  // Dialog state
-  const [planDialogPath, setPlanDialogPath] = useState<string | null>(null)
-  const [planDialogContent, setPlanDialogContent] = useState<string | null>(null)
+  // Selection state
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
   const [selectedSession, setSelectedSession] = useState<{
     sessionId: string
     worktreeId: string
     worktreePath: string
   } | null>(null)
-
-  // Keyboard navigation state
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
-  const cardRefs = useRef<(HTMLDivElement | null)[]>([])
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   // Get current selected card's worktree info for hooks
-  const selectedCard = selectedIndex !== null ? flatCards[selectedIndex] : null
+  const selectedFlatCard = selectedIndex !== null ? flatCards[selectedIndex] : null
 
   // Use shared hooks - pass the currently selected card's worktree
   const { handlePlanApproval, handlePlanApprovalYolo } = usePlanApproval({
-    worktreeId: selectedCard?.worktreeId ?? '',
-    worktreePath: selectedCard?.worktreePath ?? '',
+    worktreeId: selectedFlatCard?.worktreeId ?? '',
+    worktreePath: selectedFlatCard?.worktreePath ?? '',
   })
 
   // Archive mutations - need to handle per-worktree
@@ -208,6 +205,36 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     )
   }, [selectedSession])
 
+  // Auto-open session modal for newly created worktrees
+  useEffect(() => {
+    for (const [worktreeId, sessionData] of sessionsByWorktreeId) {
+      if (!sessionData.sessions.length) continue
+
+      const shouldAutoOpen = useUIStore.getState().consumeAutoOpenSession(worktreeId)
+      if (!shouldAutoOpen) continue
+
+      const worktree = readyWorktrees.find(w => w.id === worktreeId)
+      if (worktree) {
+        const firstSession = sessionData.sessions[0]
+
+        // Find the index in flatCards for keyboard selection
+        const cardIndex = flatCards.findIndex(
+          fc => fc.worktreeId === worktreeId && fc.card.session.id === firstSession.id
+        )
+        if (cardIndex !== -1) {
+          setSelectedIndex(cardIndex)
+        }
+
+        setSelectedSession({
+          sessionId: firstSession.id,
+          worktreeId,
+          worktreePath: worktree.path,
+        })
+        break // Only one per render cycle
+      }
+    }
+  }, [sessionsByWorktreeId, readyWorktrees, flatCards])
+
   // Projects store actions
   const selectProject = useProjectsStore(state => state.selectProject)
   const selectWorktree = useProjectsStore(state => state.selectWorktree)
@@ -220,54 +247,6 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
   // Actions via getState()
   const { setViewingCanvasTab } = useChatStore.getState()
 
-  // Find the card visually below/above the current one
-  const findVerticalNeighbor = useCallback(
-    (currentIndex: number, direction: 'up' | 'down'): number | null => {
-      const currentRef = cardRefs.current[currentIndex]
-      if (!currentRef) return null
-
-      const currentRect = currentRef.getBoundingClientRect()
-      const currentCenterX = currentRect.left + currentRect.width / 2
-
-      let bestIndex: number | null = null
-      let bestDistance = Infinity
-
-      for (let i = 0; i < cardRefs.current.length; i++) {
-        if (i === currentIndex) continue
-        const ref = cardRefs.current[i]
-        if (!ref) continue
-
-        const rect = ref.getBoundingClientRect()
-
-        // Check if card is in the correct direction
-        if (direction === 'down' && rect.top <= currentRect.bottom) continue
-        if (direction === 'up' && rect.bottom >= currentRect.top) continue
-
-        // Calculate horizontal distance (how aligned it is)
-        const cardCenterX = rect.left + rect.width / 2
-        const horizontalDistance = Math.abs(cardCenterX - currentCenterX)
-
-        // Calculate vertical distance
-        const verticalDistance =
-          direction === 'down'
-            ? rect.top - currentRect.bottom
-            : currentRect.top - rect.bottom
-
-        // Prefer cards that are horizontally aligned and close vertically
-        // Weight horizontal alignment more heavily
-        const distance = horizontalDistance + verticalDistance * 0.5
-
-        if (distance < bestDistance) {
-          bestDistance = distance
-          bestIndex = i
-        }
-      }
-
-      return bestIndex
-    },
-    []
-  )
-
   // Handle clicking on a session card - open modal
   const handleSessionClick = useCallback(
     (worktreeId: string, worktreePath: string, sessionId: string) => {
@@ -276,86 +255,75 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     []
   )
 
-  // Global keyboard navigation
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (selectedSession) return
-      if (
-        document.activeElement?.tagName === 'INPUT' ||
-        document.activeElement?.tagName === 'TEXTAREA' ||
-        (document.activeElement as HTMLElement)?.isContentEditable
-      ) {
-        return
+  // Handle selection from keyboard nav
+  const handleSelect = useCallback(
+    (index: number) => {
+      const item = flatCards[index]
+      if (item) {
+        handleSessionClick(item.worktreeId, item.worktreePath, item.card.session.id)
       }
+    },
+    [flatCards, handleSessionClick]
+  )
 
-      const total = flatCards.length
-      if (total === 0) return
-
-      if (selectedIndex === null) {
-        if (
-          ['ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown'].includes(e.key)
-        ) {
-          setSelectedIndex(0)
-          e.preventDefault()
-        }
-        return
-      }
-
-      switch (e.key) {
-        case 'ArrowRight':
-          e.preventDefault()
-          if (selectedIndex < total - 1) setSelectedIndex(selectedIndex + 1)
-          break
-        case 'ArrowLeft':
-          e.preventDefault()
-          if (selectedIndex > 0) setSelectedIndex(selectedIndex - 1)
-          break
-        case 'ArrowDown': {
-          e.preventDefault()
-          const nextIndex = findVerticalNeighbor(selectedIndex, 'down')
-          if (nextIndex !== null) setSelectedIndex(nextIndex)
-          break
-        }
-        case 'ArrowUp': {
-          e.preventDefault()
-          const prevIndex = findVerticalNeighbor(selectedIndex, 'up')
-          if (prevIndex !== null) setSelectedIndex(prevIndex)
-          break
-        }
-        case 'Enter':
-          // Only handle plain Enter (no modifiers) - CMD+Enter is for approve_plan keybinding
-          if (e.metaKey || e.ctrlKey) return
-          e.preventDefault()
-          if (flatCards[selectedIndex]) {
-            const item = flatCards[selectedIndex]
-            handleSessionClick(
-              item.worktreeId,
-              item.worktreePath,
-              item.card.session.id
-            )
-          }
-          break
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [
+  // Keyboard navigation - use flat cards array
+  const { cardRefs } = useCanvasKeyboardNav({
+    cards: flatCards,
     selectedIndex,
-    selectedSession,
-    flatCards,
-    findVerticalNeighbor,
-    handleSessionClick,
-  ])
+    onSelectedIndexChange: setSelectedIndex,
+    onSelect: handleSelect,
+    enabled: !selectedSession,
+  })
 
-  // Scroll selected card into view when selection changes
-  useEffect(() => {
-    if (selectedIndex === null) return
-    const card = cardRefs.current[selectedIndex]
-    if (card) {
-      card.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-    }
-  }, [selectedIndex])
+  // Get selected card for shortcut events
+  const selectedCard = selectedFlatCard?.card ?? null
+
+  // Shortcut events (plan, recap, approve)
+  const {
+    planDialogPath,
+    planDialogContent,
+    planApprovalContext,
+    planDialogCard,
+    closePlanDialog,
+    recapDialogDigest,
+    closeRecapDialog,
+    handlePlanView,
+    handleRecapView,
+  } = useCanvasShortcutEvents({
+    selectedCard,
+    enabled: !selectedSession && selectedIndex !== null,
+    worktreeId: selectedFlatCard?.worktreeId ?? '',
+    worktreePath: selectedFlatCard?.worktreePath ?? '',
+    onPlanApproval: (card, updatedPlan) => handlePlanApproval(card, updatedPlan),
+    onPlanApprovalYolo: (card, updatedPlan) => handlePlanApprovalYolo(card, updatedPlan),
+  })
+
+  // Handle approve from dialog (with updated plan content)
+  const handleDialogApprove = useCallback(
+    (updatedPlan: string) => {
+      console.log('[WorktreeDashboard] handleDialogApprove called, updatedPlan length:', updatedPlan?.length)
+      console.log('[WorktreeDashboard] planDialogCard:', planDialogCard?.session?.id)
+      if (planDialogCard) {
+        handlePlanApproval(planDialogCard, updatedPlan)
+      } else {
+        console.log('[WorktreeDashboard] handleDialogApprove - planDialogCard is null!')
+      }
+    },
+    [planDialogCard, handlePlanApproval]
+  )
+
+  const handleDialogApproveYolo = useCallback(
+    (updatedPlan: string) => {
+      console.log('[WorktreeDashboard] handleDialogApproveYolo called, updatedPlan length:', updatedPlan?.length)
+      console.log('[WorktreeDashboard] planDialogCard:', planDialogCard?.session?.id)
+      if (planDialogCard) {
+        handlePlanApprovalYolo(planDialogCard, updatedPlan)
+      } else {
+        console.log('[WorktreeDashboard] handleDialogApproveYolo - planDialogCard is null!')
+      }
+    },
+    [planDialogCard, handlePlanApprovalYolo]
+  )
 
   // Handle opening full view from modal
   const handleOpenFullView = useCallback(() => {
@@ -437,17 +405,6 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     [readyWorktrees, sessionsByWorktreeId, project, closeSession, archiveWorktree, closeBaseSessionClean]
   )
 
-  // Handle plan view
-  const handlePlanView = useCallback((card: SessionCardData) => {
-    if (card.planFilePath) {
-      setPlanDialogPath(card.planFilePath)
-      setPlanDialogContent(null)
-    } else if (card.planContent) {
-      setPlanDialogContent(card.planContent)
-      setPlanDialogPath(null)
-    }
-  }, [])
-
   // Listen for close-session-or-worktree event to handle CMD+W
   useEffect(() => {
     const handleCloseSessionOrWorktree = (e: Event) => {
@@ -483,52 +440,6 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
         { capture: true }
       )
   }, [selectedSession, selectedIndex, flatCards, handleArchiveSessionForWorktree])
-
-  // Listen for keyboard shortcut events for selected session
-  useEffect(() => {
-    // Only handle when we have a keyboard-selected session and modal is not open
-    if (selectedSession || selectedIndex === null) return
-
-    const item = flatCards[selectedIndex]
-    if (!item) return
-
-    const { card } = item
-
-    const handleApprovePlanEvent = () => {
-      if (card.hasExitPlanMode && !card.hasQuestion) {
-        handlePlanApproval(card)
-      }
-    }
-
-    const handleApprovePlanYoloEvent = () => {
-      if (card.hasExitPlanMode && !card.hasQuestion) {
-        handlePlanApprovalYolo(card)
-      }
-    }
-
-    const handleOpenPlanEvent = () => {
-      if (card.planFilePath || card.planContent) {
-        handlePlanView(card)
-      }
-    }
-
-    window.addEventListener('approve-plan', handleApprovePlanEvent)
-    window.addEventListener('approve-plan-yolo', handleApprovePlanYoloEvent)
-    window.addEventListener('open-plan', handleOpenPlanEvent)
-
-    return () => {
-      window.removeEventListener('approve-plan', handleApprovePlanEvent)
-      window.removeEventListener('approve-plan-yolo', handleApprovePlanYoloEvent)
-      window.removeEventListener('open-plan', handleOpenPlanEvent)
-    }
-  }, [
-    selectedSession,
-    selectedIndex,
-    flatCards,
-    handlePlanApproval,
-    handlePlanApprovalYolo,
-    handlePlanView,
-  ])
 
   // Listen for create-new-session event to handle CMD+T
   useEffect(() => {
@@ -594,7 +505,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
   let cardIndex = 0
 
   return (
-    <div ref={containerRef} className="flex h-full flex-col p-4">
+    <div className="flex h-full flex-col p-4">
       {/* Header */}
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-semibold">{project.name}</h2>
@@ -681,6 +592,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
                             )
                           }
                           onPlanView={() => handlePlanView(card)}
+                          onRecapView={() => handleRecapView(card)}
                           onApprove={() => handlePlanApproval(card)}
                           onYolo={() => handlePlanApprovalYolo(card)}
                         />
@@ -699,15 +611,30 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
         <PlanDialog
           filePath={planDialogPath}
           isOpen={true}
-          onClose={() => setPlanDialogPath(null)}
+          onClose={closePlanDialog}
+          editable={true}
+          approvalContext={planApprovalContext ?? undefined}
+          onApprove={handleDialogApprove}
+          onApproveYolo={handleDialogApproveYolo}
         />
       ) : planDialogContent ? (
         <PlanDialog
           content={planDialogContent}
           isOpen={true}
-          onClose={() => setPlanDialogContent(null)}
+          onClose={closePlanDialog}
+          editable={true}
+          approvalContext={planApprovalContext ?? undefined}
+          onApprove={handleDialogApprove}
+          onApproveYolo={handleDialogApproveYolo}
         />
       ) : null}
+
+      {/* Recap Dialog */}
+      <RecapDialog
+        digest={recapDialogDigest}
+        isOpen={!!recapDialogDigest}
+        onClose={closeRecapDialog}
+      />
 
       {/* Session Chat Modal */}
       <SessionChatModal

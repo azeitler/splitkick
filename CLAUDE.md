@@ -264,3 +264,27 @@ let output = Command::new("git")
 **For detached processes** that need both `CREATE_NO_WINDOW` and `CREATE_NEW_PROCESS_GROUP`: use `silent_command()` but re-set both flags via `creation_flags()` (it replaces, doesn't merge).
 
 The helper is defined in `src-tauri/src/platform/process.rs` and exported via `pub use process::*` in `platform/mod.rs`.
+
+#### Canvas Views Architecture
+
+**"Canvas"** refers to two distinct grid views that display session cards:
+
+1. **SessionCanvasView** (`src/components/chat/SessionCanvasView.tsx`)
+   - Worktree-level canvas showing sessions within a single worktree
+   - Uses the shared `CanvasGrid` component
+
+2. **WorktreeDashboard** (`src/components/dashboard/WorktreeDashboard.tsx`)
+   - Project-level canvas showing sessions grouped by worktree (with section headers)
+   - Has its own rendering logic but uses shared hooks
+
+**Shared Hooks** (in `src/components/chat/hooks/`):
+- `useCanvasKeyboardNav.ts` - Arrow key navigation, Enter selection, visual-position vertical neighbor finding
+- `useCanvasShortcutEvents.ts` - Event handlers for `open-plan`, `open-recap`, `approve-plan`, etc.
+- `useCanvasStoreState.ts` - Subscribes to chat store state needed for `SessionCardData`
+
+**Shared Components**:
+- `SessionCard.tsx` - Individual card component used by both canvas views
+- `CanvasGrid.tsx` - Shared grid component (used by SessionCanvasView only)
+- `session-card-utils.tsx` - `computeSessionCardData()` function and `SessionCardData` type
+
+When user mentions "Canvas", consider both views and their shared infrastructure.

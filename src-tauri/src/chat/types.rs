@@ -2,6 +2,19 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 // ============================================================================
+// Session Digest Types
+// ============================================================================
+
+/// Session digest (recap summary) for quick session overview
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionDigest {
+    /// One sentence summarizing the overall chat goal and progress
+    pub chat_summary: String,
+    /// One sentence describing what was just completed
+    pub last_action: String,
+}
+
+// ============================================================================
 // Compaction Types
 // ============================================================================
 
@@ -309,6 +322,9 @@ pub struct Session {
     /// Message ID of the pending plan awaiting approval (for Canvas view)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pending_plan_message_id: Option<String>,
+    /// Persisted session digest (recap summary)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub digest: Option<SessionDigest>,
 }
 
 impl Session {
@@ -341,6 +357,7 @@ impl Session {
             approved_plan_message_ids: vec![],
             plan_file_path: None,
             pending_plan_message_id: None,
+            digest: None,
         }
     }
 
@@ -475,6 +492,7 @@ impl SessionMetadata {
             approved_plan_message_ids: self.approved_plan_message_ids.clone(),
             plan_file_path: self.plan_file_path.clone(),
             pending_plan_message_id: self.pending_plan_message_id.clone(),
+            digest: self.digest.clone(),
         }
     }
 
@@ -764,6 +782,9 @@ pub struct SessionMetadata {
     /// Message ID of the pending plan awaiting approval (for Canvas view)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pending_plan_message_id: Option<String>,
+    /// Persisted session digest (recap summary)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub digest: Option<SessionDigest>,
 
     /// Run history - each entry corresponds to one Claude CLI execution
     #[serde(default)]
@@ -848,6 +869,7 @@ impl SessionMetadata {
             approved_plan_message_ids: vec![],
             plan_file_path: None,
             pending_plan_message_id: None,
+            digest: None,
             runs: vec![],
             version: 1,
         }

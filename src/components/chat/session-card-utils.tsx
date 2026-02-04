@@ -1,16 +1,9 @@
-import {
-  Clock,
-  Eye,
-  FileText,
-  MessageSquare,
-  Shield,
-  Sparkles,
-  Zap,
-} from 'lucide-react'
+import type { IndicatorStatus, IndicatorVariant } from '@/components/ui/status-indicator'
 import {
   isAskUserQuestion,
   isExitPlanMode,
   type Session,
+  type SessionDigest,
   type ExecutionMode,
   type ToolCall,
   type PermissionDenial,
@@ -39,58 +32,46 @@ export interface SessionCardData {
   planFilePath: string | null
   planContent: string | null
   pendingPlanMessageId: string | null
+  hasRecap: boolean
+  recapDigest: SessionDigest | null
 }
 
 export const statusConfig: Record<
   SessionStatus,
   {
-    icon: React.ReactNode
     label: string
-    bgClass: string
-    textClass: string
+    indicatorStatus: IndicatorStatus
+    indicatorVariant?: IndicatorVariant
   }
 > = {
   idle: {
-    icon: <MessageSquare className="h-3.5 w-3.5" />,
     label: 'Idle',
-    bgClass: 'bg-muted',
-    textClass: 'text-muted-foreground',
+    indicatorStatus: 'idle',
   },
   planning: {
-    icon: <FileText className="h-3.5 w-3.5" />,
     label: 'Planning',
-    bgClass: 'bg-primary/20',
-    textClass: 'text-primary',
+    indicatorStatus: 'running',
   },
   vibing: {
-    icon: <Sparkles className="h-3.5 w-3.5" />,
     label: 'Vibing',
-    bgClass: 'bg-primary/20',
-    textClass: 'text-primary',
+    indicatorStatus: 'running',
   },
   yoloing: {
-    icon: <Zap className="h-3.5 w-3.5" />,
     label: 'Yoloing',
-    bgClass: 'bg-red-500/20',
-    textClass: 'text-red-600 dark:text-red-400',
+    indicatorStatus: 'running',
+    indicatorVariant: 'destructive',
   },
   waiting: {
-    icon: <Clock className="h-3.5 w-3.5" />,
     label: 'Waiting',
-    bgClass: 'bg-yellow-500/20',
-    textClass: 'text-yellow-600 dark:text-yellow-400',
+    indicatorStatus: 'waiting',
   },
   review: {
-    icon: <Eye className="h-3.5 w-3.5" />,
     label: 'Review',
-    bgClass: 'bg-yellow-500/20',
-    textClass: 'text-yellow-600 dark:text-yellow-400',
+    indicatorStatus: 'review',
   },
   permission: {
-    icon: <Shield className="h-3.5 w-3.5" />,
     label: 'Permission',
-    bgClass: 'bg-yellow-500/20',
-    textClass: 'text-yellow-600 dark:text-yellow-400',
+    indicatorStatus: 'waiting',
   },
 }
 
@@ -103,6 +84,7 @@ export interface ChatStoreState {
   waitingForInputSessionIds: Record<string, boolean>
   reviewingSessions: Record<string, boolean>
   pendingPermissionDenials: Record<string, PermissionDenial[]>
+  sessionDigests: Record<string, SessionDigest>
 }
 
 export function computeSessionCardData(
@@ -118,6 +100,7 @@ export function computeSessionCardData(
     waitingForInputSessionIds,
     reviewingSessions,
     pendingPermissionDenials,
+    sessionDigests,
   } = storeState
 
   const sessionSending = sendingSessionIds[session.id] ?? false
@@ -262,6 +245,11 @@ export function computeSessionCardData(
     status = 'yoloing'
   }
 
+  // Check for session recap/digest
+  // Zustand has priority (freshly generated), fall back to persisted digest
+  const recapDigest = sessionDigests[session.id] ?? session.digest ?? null
+  const hasRecap = recapDigest !== null
+
   return {
     session,
     status,
@@ -275,5 +263,7 @@ export function computeSessionCardData(
     planFilePath,
     planContent,
     pendingPlanMessageId,
+    hasRecap,
+    recapDigest,
   }
 }
