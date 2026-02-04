@@ -370,6 +370,9 @@ export function useMainWindowEventListeners() {
         }
       }
 
+      // Skip when magic modal is open - let it handle its own shortcuts
+      if (useUIStore.getState().magicModalOpen) return
+
       // Look up matching action in keybindings
       const keybindings = keybindingsRef.current
       for (const [action, binding] of Object.entries(keybindings)) {
