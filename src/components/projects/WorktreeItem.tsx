@@ -16,6 +16,7 @@ import {
   gitPull,
   gitPush,
   fetchWorktreesStatus,
+  triggerImmediateGitPoll,
 } from '@/services/git-status'
 import { useSidebarWidth } from '@/components/layout/SidebarWidthContext'
 
@@ -331,6 +332,7 @@ export function WorktreeItem({
       const toastId = toast.loading('Pulling changes...')
       try {
         await gitPull(worktree.path, defaultBranch)
+        triggerImmediateGitPoll()
         fetchWorktreesStatus(projectId)
         toast.success('Changes pulled', { id: toastId })
       } catch (error) {
@@ -364,6 +366,7 @@ export function WorktreeItem({
       const toastId = toast.loading('Pushing changes...')
       try {
         await gitPush(worktree.path, worktree.pr_number)
+        triggerImmediateGitPoll()
         fetchWorktreesStatus(projectId)
         toast.success('Changes pushed', { id: toastId })
       } catch (error) {

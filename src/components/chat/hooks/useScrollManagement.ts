@@ -108,8 +108,16 @@ export function useScrollManagement({
 
     scrollTimeoutRef.current = setTimeout(() => {
       isAutoScrollingRef.current = false
-      // Check findings visibility after scroll completes
+
       if (viewport) {
+        // Correct scroll position if smooth scroll ended at wrong spot
+        // (DOM changes during animation can cause stale scrollHeight targeting)
+        const { scrollTop, scrollHeight, clientHeight } = viewport
+        if (scrollHeight - scrollTop - clientHeight > 2) {
+          viewport.scrollTo({ top: scrollHeight, behavior: 'instant' })
+        }
+
+        // Check findings visibility after scroll completes
         const findingsEl = viewport.querySelector(
           '[data-review-findings="unfixed"]'
         )

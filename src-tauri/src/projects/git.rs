@@ -515,11 +515,11 @@ pub fn git_push(repo_path: &str) -> Result<String, String> {
 /// 1. Query gh pr view for fork info
 /// 2. Same-repo PR: push to origin
 /// 3. Fork PR: add fork remote if needed, fetch, push
-pub fn git_push_to_pr(repo_path: &str, pr_number: u32) -> Result<String, String> {
+pub fn git_push_to_pr(repo_path: &str, pr_number: u32, gh_binary: &std::path::Path) -> Result<String, String> {
     log::trace!("Pushing to PR #{pr_number} remote branch in {repo_path}");
 
     // 1. Query PR info from GitHub
-    let gh_output = silent_command("gh")
+    let gh_output = silent_command(gh_binary)
         .args([
             "pr",
             "view",

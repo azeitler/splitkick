@@ -1,5 +1,7 @@
 import { useCallback, useState, useRef, useEffect, useMemo } from 'react'
 import {
+  ArrowDownToLine,
+  ArrowUpToLine,
   GitBranch,
   GitCommitHorizontal,
   GitMerge,
@@ -19,7 +21,7 @@ import {
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useWorktree } from '@/services/projects'
-import { openUrl } from '@tauri-apps/plugin-opener'
+import { isNativeApp } from '@/lib/environment'
 import { notify } from '@/lib/notifications'
 import { cn } from '@/lib/utils'
 
@@ -28,6 +30,8 @@ type MagicOption =
   | 'load-context'
   | 'commit'
   | 'commit-and-push'
+  | 'pull'
+  | 'push'
   | 'open-pr'
   | 'review'
   | 'merge'
@@ -64,6 +68,13 @@ function buildMagicSections(hasOpenPr: boolean): MagicSection[] {
       ],
     },
     {
+      header: 'Sync',
+      options: [
+        { id: 'pull', label: 'Pull', icon: ArrowDownToLine, key: 'D' },
+        { id: 'push', label: 'Push', icon: ArrowUpToLine, key: 'U' },
+      ],
+    },
+    {
       header: 'Pull Request',
       options: [
         { id: 'open-pr', label: hasOpenPr ? 'Open' : 'Create', icon: GitPullRequest, key: 'O' },
@@ -88,6 +99,8 @@ const KEY_TO_OPTION: Record<string, MagicOption> = {
   l: 'load-context',
   c: 'commit',
   p: 'commit-and-push',
+  d: 'pull',
+  u: 'push',
   o: 'open-pr',
   r: 'review',
   m: 'merge',
@@ -137,7 +150,7 @@ export function MagicModal() {
   const selectedProjectId = useProjectsStore(state => state.selectedProjectId)
 
   const executeAction = useCallback(
-    (option: MagicOption) => {
+    async (option: MagicOption) => {
       // checkout-pr only needs a project selected, not a worktree
       // Handle it directly here since ChatWindow may not be rendered
       if (option === 'checkout-pr') {
@@ -160,7 +173,12 @@ export function MagicModal() {
 
       // If PR already exists, open it in the browser instead of creating a new one
       if (option === 'open-pr' && worktree?.pr_url) {
-        openUrl(worktree.pr_url)
+        if (isNativeApp()) {
+          const { openUrl } = await import('@tauri-apps/plugin-opener')
+          await openUrl(worktree.pr_url)
+        } else {
+          window.open(worktree.pr_url, '_blank')
+        }
         setMagicModalOpen(false)
         return
       }

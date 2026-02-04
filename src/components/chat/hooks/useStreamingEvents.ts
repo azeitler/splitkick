@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
-import { listen } from '@tauri-apps/api/event'
-import { invoke } from '@tauri-apps/api/core'
+import { listen, useWsConnectionStatus } from '@/lib/transport'
+import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 import type { QueryClient } from '@tanstack/react-query'
 import { useChatStore } from '@/store/chat-store'
@@ -21,6 +21,7 @@ import type {
   CancelledEvent,
   ThinkingEvent,
   PermissionDeniedEvent,
+  CompactingEvent,
   CompactedEvent,
   Session,
   SessionDigest,
@@ -41,6 +42,9 @@ interface UseStreamingEventsParams {
 export default function useStreamingEvents({
   queryClient,
 }: UseStreamingEventsParams): void {
+  // Re-run effect when WS connects so listeners are registered in web mode
+  const wsConnected = useWsConnectionStatus()
+
   useEffect(() => {
     if (!isTauri()) return
 
@@ -55,7 +59,21 @@ export default function useStreamingEvents({
       clearToolCalls,
       clearStreamingContentBlocks,
       removeSendingSession,
+      addSendingSession,
     } = useChatStore.getState()
+
+    // Sync sending state across clients (web <-> native)
+    const unlistenSending = listen<{
+      session_id: string
+      worktree_id: string
+    }>('chat:sending', event => {
+      const { session_id } = event.payload
+      addSendingSession(session_id)
+      // Invalidate session query so non-sender loads the user message
+      queryClient.invalidateQueries({
+        queryKey: chatQueryKeys.all,
+      })
+    })
 
     const unlistenChunk = listen<ChunkEvent>('chat:chunk', event => {
       // Log chunks that might contain ExitPlanMode
@@ -244,6 +262,9 @@ export default function useStreamingEvents({
           (isAskUserQuestion(tc) || isExitPlanMode(tc)) &&
           !isQuestionAnswered(sessionId, tc.id)
       )
+
+      // Clear compacting state (safety net in case chat:compacted was missed)
+      useChatStore.getState().setCompacting(sessionId, false)
 
       // CRITICAL: Clear streaming/sending state BEFORE adding optimistic message
       // This prevents double-render where both StreamingMessage and persisted message show
@@ -503,7 +524,8 @@ export default function useStreamingEvents({
             })
         }
 
-        // Clear streaming state for this session
+        // Clear streaming and compacting state for this session
+        useChatStore.getState().setCompacting(session_id, false)
         clearStreamingContent(session_id)
         clearToolCalls(session_id)
         clearStreamingContentBlocks(session_id)
@@ -566,6 +588,14 @@ export default function useStreamingEvents({
           } else {
             toast.info('Request cancelled')
           }
+
+          // Restore review state if session still has messages after undoing the send
+          const updatedSession = queryClient.getQueryData<Session>(
+            chatQueryKeys.session(session_id)
+          )
+          if (updatedSession && updatedSession.messages.length > 0) {
+            setSessionReviewing(session_id, true)
+          }
         } else {
           // Preserve partial response as optimistic message
           // This provides immediate visual feedback; mutation completion will update with persisted version
@@ -606,11 +636,22 @@ export default function useStreamingEvents({
     )
 
     // Handle context compaction events
+    const unlistenCompacting = listen<CompactingEvent>(
+      'chat:compacting',
+      event => {
+        const { session_id } = event.payload
+        const { setCompacting } = useChatStore.getState()
+        setCompacting(session_id, true)
+        toast.info('Compacting context...')
+      }
+    )
+
     const unlistenCompacted = listen<CompactedEvent>(
       'chat:compacted',
       event => {
         const { session_id, metadata } = event.payload
-        const { setLastCompaction } = useChatStore.getState()
+        const { setLastCompaction, setCompacting } = useChatStore.getState()
+        setCompacting(session_id, false)
         setLastCompaction(session_id, metadata.trigger)
         toast.info(
           `Context ${metadata.trigger === 'auto' ? 'auto-' : ''}compacted`
@@ -618,7 +659,30 @@ export default function useStreamingEvents({
       }
     )
 
+    // Handle session setting changes (model, thinking level, execution mode)
+    // Broadcast by other clients via broadcast_session_setting command
+    const unlistenSettingChanged = listen<{
+      session_id: string
+      key: string
+      value: string
+    }>('session:setting-changed', event => {
+      const { session_id, key, value } = event.payload
+      const store = useChatStore.getState()
+      switch (key) {
+        case 'model':
+          store.setSelectedModel(session_id, value)
+          break
+        case 'thinkingLevel':
+          store.setThinkingLevel(session_id, value as 'off' | 'think' | 'megathink' | 'ultrathink')
+          break
+        case 'executionMode':
+          store.setExecutionMode(session_id, value as 'plan' | 'build' | 'yolo')
+          break
+      }
+    })
+
     return () => {
+      unlistenSending.then(f => f())
       unlistenChunk.then(f => f())
       unlistenToolUse.then(f => f())
       unlistenToolBlock.then(f => f())
@@ -628,7 +692,9 @@ export default function useStreamingEvents({
       unlistenDone.then(f => f())
       unlistenError.then(f => f())
       unlistenCancelled.then(f => f())
+      unlistenCompacting.then(f => f())
       unlistenCompacted.then(f => f())
+      unlistenSettingChanged.then(f => f())
     }
-  }, [queryClient])
+  }, [queryClient, wsConnected])
 }
