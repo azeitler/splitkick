@@ -9,11 +9,13 @@
 ### Platform-specific dependencies
 
 **macOS**: Xcode Command Line Tools
+
 ```bash
 xcode-select --install
 ```
 
 **Linux** (Debian/Ubuntu):
+
 ```bash
 sudo apt install libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 ```
@@ -58,23 +60,24 @@ jean/
 
 ## Development Commands
 
-| Command | Description |
-|---------|-------------|
-| `npm run tauri:dev` | Start app in development mode |
+| Command                 | Description                                       |
+| ----------------------- | ------------------------------------------------- |
+| `npm run tauri:dev`     | Start app in development mode                     |
 | `npm run tauri:dev:rdp` | Start in dev mode with RDP/remote desktop support |
-| `npm run check:all` | **Run all quality checks (must pass before PR)** |
-| `npm run typecheck` | TypeScript type checking |
-| `npm run lint` | ESLint (zero warnings enforced) |
-| `npm run lint:fix` | Auto-fix lint issues |
-| `npm run format` | Format code with Prettier |
-| `npm run test` | Run Vitest in watch mode |
-| `npm run test:run` | Run tests once |
-| `npm run rust:clippy` | Rust linting (warnings = errors) |
-| `npm run rust:fmt` | Format Rust code |
+| `npm run check:all`     | **Run all quality checks (must pass before PR)**  |
+| `npm run typecheck`     | TypeScript type checking                          |
+| `npm run lint`          | ESLint (zero warnings enforced)                   |
+| `npm run lint:fix`      | Auto-fix lint issues                              |
+| `npm run format`        | Format code with Prettier                         |
+| `npm run test`          | Run Vitest in watch mode                          |
+| `npm run test:run`      | Run tests once                                    |
+| `npm run rust:clippy`   | Rust linting (warnings = errors)                  |
+| `npm run rust:fmt`      | Format Rust code                                  |
 
 ## Code Style
 
 ### TypeScript/React
+
 - **Strict mode** enabled
 - **ESLint** with zero warnings tolerance
 - **Prettier** formatting:
@@ -84,6 +87,7 @@ jean/
   - Trailing commas (ES5)
 
 ### Rust
+
 - **rustfmt** for formatting
 - **clippy** with warnings as errors
 
@@ -92,12 +96,15 @@ jean/
 Before contributing, familiarize yourself with these patterns (see `docs/developer/` for details):
 
 ### State Management
+
 ```
 useState (component) → Zustand (global UI) → TanStack Query (persistent data)
 ```
 
 ### Callback Pattern (Important!)
+
 Use `getState()` in callbacks to avoid render cascades:
+
 ```typescript
 // Good - stable callback
 const handleAction = useCallback(() => {
@@ -111,6 +118,7 @@ const handleAction = useCallback(() => setData(newData), [data, setData])
 ```
 
 ### Backend Communication
+
 All Tauri commands are wrapped in TanStack Query hooks in `src/services/`.
 
 ## Testing
@@ -122,6 +130,7 @@ All Tauri commands are wrapped in TanStack Query hooks in `src/services/`.
 ## Linux Remote Development (RDP/xrdp)
 
 When developing on Linux via remote desktop (RDP/xrdp), you may encounter noisy EGL/Mesa/ZINK warnings like:
+
 - `libEGL warning: failed to create dri2 screen`
 - `MESA: ZINK: failed to choose pdev`
 
@@ -136,6 +145,7 @@ npm run tauri:dev:rdp -- --force
 ```
 
 Or manually set environment variables:
+
 ```bash
 LIBGL_ALWAYS_SOFTWARE=1 GDK_BACKEND=x11 npm run tauri:dev
 ```

@@ -274,6 +274,7 @@ export interface AppPreferences {
   http_server_auto_start: boolean // Auto-start HTTP server on launch
   http_server_localhost_only: boolean // Bind to localhost only (more secure)
   auto_archive_on_pr_merged: boolean // Auto-archive worktrees when their PR is merged
+  show_keybinding_hints: boolean // Show keyboard shortcut hints at bottom of canvas views
 }
 
 export type FileEditMode = 'inline' | 'external'
@@ -298,7 +299,13 @@ export const thinkingLevelOptions: { value: ThinkingLevel; label: string }[] = [
   { value: 'ultrathink', label: 'Ultrathink (32K)' },
 ]
 
-export type TerminalApp = 'terminal' | 'warp' | 'ghostty' | 'windows-terminal' | 'powershell' | 'cmd'
+export type TerminalApp =
+  | 'terminal'
+  | 'warp'
+  | 'ghostty'
+  | 'windows-terminal'
+  | 'powershell'
+  | 'cmd'
 
 export const terminalOptions: { value: TerminalApp; label: string }[] =
   navigator.platform.startsWith('Win')
@@ -484,4 +491,5 @@ export const defaultPreferences: AppPreferences = {
   http_server_auto_start: false,
   http_server_localhost_only: true, // Default to localhost-only for security
   auto_archive_on_pr_merged: true, // Default: enabled
+  show_keybinding_hints: true, // Default: enabled
 }

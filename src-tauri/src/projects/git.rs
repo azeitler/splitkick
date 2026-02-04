@@ -515,7 +515,11 @@ pub fn git_push(repo_path: &str) -> Result<String, String> {
 /// 1. Query gh pr view for fork info
 /// 2. Same-repo PR: push to origin
 /// 3. Fork PR: add fork remote if needed, fetch, push
-pub fn git_push_to_pr(repo_path: &str, pr_number: u32, gh_binary: &std::path::Path) -> Result<String, String> {
+pub fn git_push_to_pr(
+    repo_path: &str,
+    pr_number: u32,
+    gh_binary: &std::path::Path,
+) -> Result<String, String> {
     log::trace!("Pushing to PR #{pr_number} remote branch in {repo_path}");
 
     // 1. Query PR info from GitHub
@@ -537,8 +541,8 @@ pub fn git_push_to_pr(repo_path: &str, pr_number: u32, gh_binary: &std::path::Pa
         return git_push(repo_path);
     }
 
-    let pr_info: serde_json::Value =
-        serde_json::from_slice(&gh_output.stdout).map_err(|e| format!("Failed to parse gh pr view output: {e}"))?;
+    let pr_info: serde_json::Value = serde_json::from_slice(&gh_output.stdout)
+        .map_err(|e| format!("Failed to parse gh pr view output: {e}"))?;
 
     let head_ref_name = pr_info["headRefName"]
         .as_str()
@@ -584,7 +588,9 @@ pub fn git_push_to_pr(repo_path: &str, pr_number: u32, gh_binary: &std::path::Pa
         .output()
         .map_err(|e| format!("Failed to get origin URL: {e}"))?;
 
-    let origin_url = String::from_utf8_lossy(&origin_url_output.stdout).trim().to_string();
+    let origin_url = String::from_utf8_lossy(&origin_url_output.stdout)
+        .trim()
+        .to_string();
     let fork_url = if origin_url.starts_with("git@") || origin_url.starts_with("ssh://") {
         format!("git@github.com:{fork_owner}/{fork_repo_name}.git")
     } else {
@@ -603,7 +609,9 @@ pub fn git_push_to_pr(repo_path: &str, pr_number: u32, gh_binary: &std::path::Pa
     let remotes_str = String::from_utf8_lossy(&remotes_output.stdout);
     let remote_name = remotes_str
         .lines()
-        .find(|line| line.contains(&fork_url) || line.contains(&format!("{fork_owner}/{fork_repo_name}")))
+        .find(|line| {
+            line.contains(&fork_url) || line.contains(&format!("{fork_owner}/{fork_repo_name}"))
+        })
         .and_then(|line| line.split_whitespace().next())
         .map(|s| s.to_string())
         .unwrap_or_else(|| {

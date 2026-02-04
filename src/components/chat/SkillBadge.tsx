@@ -86,7 +86,12 @@ export function SkillBadge({ skill, onRemove, compact }: SkillBadgeProps) {
             className="ml-0.5 p-0.5 rounded hover:bg-accent/50 transition-colors"
             title="Remove skill"
           >
-            <X className={cn('text-muted-foreground', compact ? 'h-3 w-3' : 'h-3.5 w-3.5')} />
+            <X
+              className={cn(
+                'text-muted-foreground',
+                compact ? 'h-3 w-3' : 'h-3.5 w-3.5'
+              )}
+            />
           </button>
         )}
       </button>

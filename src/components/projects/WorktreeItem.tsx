@@ -1,6 +1,9 @@
 import { useCallback, useState, useRef, useEffect, useMemo } from 'react'
 import { StatusIndicator } from '@/components/ui/status-indicator'
-import type { IndicatorStatus, IndicatorVariant } from '@/components/ui/status-indicator'
+import type {
+  IndicatorStatus,
+  IndicatorVariant,
+} from '@/components/ui/status-indicator'
 import { ArrowDown, ArrowUp, GitBranch } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -191,8 +194,12 @@ export function WorktreeItem({
 
   // Question waiting (blinks) vs plan waiting (solid)
   const isWaitingQuestion =
-    isStreamingWaitingQuestion || hasPendingQuestion || isExplicitlyWaiting || hasPersistedWaitingQuestion
-  const isWaitingPlan = isStreamingWaitingPlan || hasPendingPlan || hasPersistedWaitingPlan
+    isStreamingWaitingQuestion ||
+    hasPendingQuestion ||
+    isExplicitlyWaiting ||
+    hasPersistedWaitingQuestion
+  const isWaitingPlan =
+    isStreamingWaitingPlan || hasPendingPlan || hasPersistedWaitingPlan
 
   // Check if any session in this worktree is in review state (done, needs user review)
   const isReviewing = useMemo(() => {
@@ -230,7 +237,8 @@ export function WorktreeItem({
     if (isChatRunning) {
       return {
         indicatorStatus: 'running',
-        indicatorVariant: runningSessionExecutionMode === 'yolo' ? 'destructive' : 'default',
+        indicatorVariant:
+          runningSessionExecutionMode === 'yolo' ? 'destructive' : 'default',
       }
     }
     if (loadingOperation) {
@@ -240,7 +248,14 @@ export function WorktreeItem({
       return { indicatorStatus: 'review' }
     }
     return { indicatorStatus: 'idle' }
-  }, [isWaitingQuestion, isWaitingPlan, isChatRunning, runningSessionExecutionMode, loadingOperation, isReviewing])
+  }, [
+    isWaitingQuestion,
+    isWaitingPlan,
+    isChatRunning,
+    runningSessionExecutionMode,
+    loadingOperation,
+    isReviewing,
+  ])
 
   // Responsive padding based on sidebar width
   const sidebarWidth = useSidebarWidth()
@@ -357,7 +372,8 @@ export function WorktreeItem({
   const handlePull = useCallback(
     async (e: React.MouseEvent) => {
       e.stopPropagation()
-      const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
+      const { setWorktreeLoading, clearWorktreeLoading } =
+        useChatStore.getState()
       setWorktreeLoading(worktree.id, 'pull')
       const toastId = toast.loading('Pulling changes...')
       try {
@@ -377,7 +393,9 @@ export function WorktreeItem({
           // Small delay to ensure worktree is selected before dispatching
           setTimeout(() => {
             window.dispatchEvent(
-              new CustomEvent('magic-command', { detail: { command: 'resolve-conflicts' } })
+              new CustomEvent('magic-command', {
+                detail: { command: 'resolve-conflicts' },
+              })
             )
           }, 100)
         } else {
@@ -496,7 +514,6 @@ export function WorktreeItem({
             <span className="text-red-500">-{uncommittedRemoved}</span>
           </span>
         )}
-
       </div>
     </WorktreeContextMenu>
   )

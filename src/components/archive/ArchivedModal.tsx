@@ -248,16 +248,16 @@ export function ArchivedModal({ open, onOpenChange }: ArchivedModalProps) {
   // Combined and sorted search results (most recently archived first)
   type SearchResult =
     | {
-      type: 'worktree'
-      worktree: Worktree
-      projectName: string
-      isCurrentContext: boolean
-    }
+        type: 'worktree'
+        worktree: Worktree
+        projectName: string
+        isCurrentContext: boolean
+      }
     | {
-      type: 'session'
-      entry: ArchivedSessionEntry
-      isCurrentContext: boolean
-    }
+        type: 'session'
+        entry: ArchivedSessionEntry
+        isCurrentContext: boolean
+      }
 
   const sortedSearchResults = useMemo((): SearchResult[] => {
     if (!searchQuery) return []
@@ -578,7 +578,7 @@ export function ArchivedModal({ open, onOpenChange }: ArchivedModalProps) {
                         isRestoring={
                           unarchiveSession.isPending &&
                           unarchiveSession.variables?.sessionId ===
-                          result.entry.session.id
+                            result.entry.session.id
                         }
                         disabled={unarchiveSession.isPending}
                       />
@@ -718,15 +718,17 @@ export function ArchivedModal({ open, onOpenChange }: ArchivedModalProps) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeletingAll}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeletingAll}>
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmDelete}
               disabled={isDeletingAll}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {permanentlyDeleteWorktree.isPending ||
-                deleteArchivedSession.isPending ||
-                isDeletingAll ? (
+              deleteArchivedSession.isPending ||
+              isDeletingAll ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
               ) : (
                 <Trash2 className="h-4 w-4 mr-2" />

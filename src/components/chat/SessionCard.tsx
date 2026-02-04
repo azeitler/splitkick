@@ -64,10 +64,10 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
             tabIndex={-1}
             onClick={onSelect}
             className={cn(
-              'group flex w-[260px] flex-col gap-3 rounded-md overflow-hidden bg-muted/30 border p-4 transition-colors text-left cursor-pointer',
+              'group flex w-[260px] flex-col gap-3 rounded-md overflow-hidden bg-muted/30 border p-4 transition-colors text-left cursor-pointer scroll-mt-28 scroll-mb-20',
               'hover:border-foreground/20 hover:bg-muted/50',
               isSelected &&
-              'border-primary bg-primary/5 hover:border-primary hover:bg-primary/10 opacity-100'
+                'border-primary bg-primary/5 hover:border-primary hover:bg-primary/10 opacity-100'
             )}
           >
             {/* Top row: status indicator + plan/recap buttons */}
@@ -81,48 +81,44 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
                 <span>Session</span>
               </div>
               <div className="flex items-center gap-1.5">
-                {/* Recap button - icon only */}
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="relative z-10 h-5 w-5"
-                      disabled={!card.hasRecap}
-                      onClick={e => {
-                        e.stopPropagation()
-                        onRecapView()
-                      }}
-                    >
-                      <Sparkles className="h-3.5 w-3.5" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    {card.hasRecap ? 'View recap (R)' : 'No recap available'}
-                  </TooltipContent>
-                </Tooltip>
-                {/* Plan button - icon only */}
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="relative z-10 h-5 w-5"
-                      disabled={!card.planFilePath && !card.planContent}
-                      onClick={e => {
-                        e.stopPropagation()
-                        onPlanView()
-                      }}
-                    >
-                      <FileText className="h-3.5 w-3.5" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    {card.planFilePath || card.planContent
-                      ? 'View plan (P)'
-                      : 'No plan available'}
-                  </TooltipContent>
-                </Tooltip>
+                {/* Recap button - only shown when recap exists */}
+                {card.hasRecap && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="relative z-10 h-5 w-5"
+                        onClick={e => {
+                          e.stopPropagation()
+                          onRecapView()
+                        }}
+                      >
+                        <Sparkles className="h-3.5 w-3.5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>View recap (R)</TooltipContent>
+                  </Tooltip>
+                )}
+                {/* Plan button - only shown when plan exists */}
+                {(card.planFilePath || card.planContent) && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="relative z-10 h-5 w-5"
+                        onClick={e => {
+                          e.stopPropagation()
+                          onPlanView()
+                        }}
+                      >
+                        <FileText className="h-3.5 w-3.5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>View plan (P)</TooltipContent>
+                  </Tooltip>
+                )}
               </div>
             </div>
 
@@ -135,7 +131,6 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
             <div className="flex flex-col gap-2">
               {/* Status row */}
               <div className="flex items-center gap-1.5">
-
                 {/* Permission denials indicator */}
                 {card.hasPermissionDenials && (
                   <span className="flex items-center h-6 px-2 text-[10px] uppercase tracking-wide border border-yellow-500/50 text-yellow-600 dark:text-yellow-400 rounded">
@@ -146,35 +141,42 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
               </div>
 
               {/* Actions row - Approve buttons for ExitPlanMode */}
-              {card.hasExitPlanMode && !card.hasQuestion && onApprove && onYolo && (
-                <div className="relative z-10 flex items-center gap-1.5">
-                  <Button
-                    className="h-6 px-2 text-xs rounded  "
-                    onClick={e => {
-                      e.stopPropagation()
-                      onApprove()
-                    }}
-                  >
-                    Approve
-                    <Kbd className="ml-1.5 h-4 text-[10px] bg-primary-foreground/20 text-primary-foreground">
-                      {formatShortcutDisplay(DEFAULT_KEYBINDINGS.approve_plan)}
-                    </Kbd>
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    className="h-6 px-2 text-xs rounded"
-                    onClick={e => {
-                      e.stopPropagation()
-                      onYolo()
-                    }}
-                  >
-                    YOLO
-                    <Kbd className="ml-1.5 h-4 text-[10px] bg-destructive-foreground/20 text-destructive-foreground">
-                      {formatShortcutDisplay(DEFAULT_KEYBINDINGS.approve_plan_yolo)}
-                    </Kbd>
-                  </Button>
-                </div>
-              )}
+              {card.hasExitPlanMode &&
+                !card.hasQuestion &&
+                onApprove &&
+                onYolo && (
+                  <div className="relative z-10 flex items-center gap-1.5">
+                    <Button
+                      className="h-6 px-2 text-xs rounded  "
+                      onClick={e => {
+                        e.stopPropagation()
+                        onApprove()
+                      }}
+                    >
+                      Approve
+                      <Kbd className="ml-1.5 h-4 text-[10px] bg-primary-foreground/20 text-primary-foreground">
+                        {formatShortcutDisplay(
+                          DEFAULT_KEYBINDINGS.approve_plan
+                        )}
+                      </Kbd>
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      className="h-6 px-2 text-xs rounded"
+                      onClick={e => {
+                        e.stopPropagation()
+                        onYolo()
+                      }}
+                    >
+                      YOLO
+                      <Kbd className="ml-1.5 h-4 text-[10px] bg-destructive-foreground/20 text-destructive-foreground">
+                        {formatShortcutDisplay(
+                          DEFAULT_KEYBINDINGS.approve_plan_yolo
+                        )}
+                      </Kbd>
+                    </Button>
+                  </div>
+                )}
             </div>
           </div>
         </ContextMenuTrigger>

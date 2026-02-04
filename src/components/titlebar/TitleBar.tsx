@@ -22,7 +22,11 @@ interface TitleBarProps {
   hideTitle?: boolean
 }
 
-export function TitleBar({ className, title = 'Jean', hideTitle = false }: TitleBarProps) {
+export function TitleBar({
+  className,
+  title = 'Jean',
+  hideTitle = false,
+}: TitleBarProps) {
   const { leftSidebarVisible, toggleLeftSidebar } = useUIStore()
   const commandContext = useCommandContext()
   const { data: preferences } = usePreferences()
@@ -42,11 +46,19 @@ export function TitleBar({ className, title = 'Jean', hideTitle = false }: Title
       )}
     >
       {/* Left side - Window Controls + Left Actions */}
-      <div className="flex items-center" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+      <div
+        className="flex items-center"
+        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+      >
         {native && isMacOS && <MacOSWindowControls />}
 
         {/* Left Action Buttons */}
-        <div className={cn('flex items-center gap-1', (!native || !isMacOS) && 'pl-2')}>
+        <div
+          className={cn(
+            'flex items-center gap-1',
+            (!native || !isMacOS) && 'pl-2'
+          )}
+        >
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -72,7 +84,9 @@ export function TitleBar({ className, title = 'Jean', hideTitle = false }: Title
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
-                onClick={() => executeCommand('open-preferences', commandContext)}
+                onClick={() =>
+                  executeCommand('open-preferences', commandContext)
+                }
                 variant="ghost"
                 size="icon"
                 className="h-6 w-6 text-foreground/70 hover:text-foreground"
@@ -81,10 +95,13 @@ export function TitleBar({ className, title = 'Jean', hideTitle = false }: Title
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              Settings <kbd className="ml-1 text-[0.625rem] opacity-60">{formatShortcutDisplay(
-                (preferences?.keybindings?.open_preferences ||
-                  DEFAULT_KEYBINDINGS.open_preferences) as string
-              )}</kbd>
+              Settings{' '}
+              <kbd className="ml-1 text-[0.625rem] opacity-60">
+                {formatShortcutDisplay(
+                  (preferences?.keybindings?.open_preferences ||
+                    DEFAULT_KEYBINDINGS.open_preferences) as string
+                )}
+              </kbd>
             </TooltipContent>
           </Tooltip>
         </div>

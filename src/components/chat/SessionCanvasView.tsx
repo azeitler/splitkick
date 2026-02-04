@@ -9,6 +9,9 @@ import { useCanvasStoreState } from './hooks/useCanvasStoreState'
 import { usePlanApproval } from './hooks/usePlanApproval'
 import { useSessionArchive } from './hooks/useSessionArchive'
 import { CanvasGrid } from './CanvasGrid'
+import { KeybindingHints } from '@/components/ui/keybinding-hints'
+import { usePreferences } from '@/services/preferences'
+import { DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 import { Search } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 
@@ -29,7 +32,11 @@ export function SessionCanvasView({
   const project = worktree
     ? projects?.find(p => p.id === worktree.project_id)
     : null
-  const sessionLabel = worktree && isBaseSession(worktree) ? 'base' : worktree?.name
+  const sessionLabel =
+    worktree && isBaseSession(worktree) ? 'base' : worktree?.name
+
+  // Preferences for keybinding hints
+  const { data: preferences } = usePreferences()
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('')
@@ -37,7 +44,9 @@ export function SessionCanvasView({
 
   // Selection state
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
+    null
+  )
 
   // Use shared hooks
   const storeState = useCanvasStoreState()
@@ -77,8 +86,9 @@ export function SessionCanvasView({
   useEffect(() => {
     if (!sessionsData?.sessions?.length) return
 
-    const shouldAutoOpen =
-      useUIStore.getState().consumeAutoOpenSession(worktreeId)
+    const shouldAutoOpen = useUIStore
+      .getState()
+      .consumeAutoOpenSession(worktreeId)
     if (!shouldAutoOpen) return
 
     const firstSession = sessionsData.sessions[0]
@@ -90,7 +100,9 @@ export function SessionCanvasView({
   // Compute session card data
   const sessionCards = useMemo(() => {
     const sessions = sessionsData?.sessions ?? []
-    const cards = sessions.map(session => computeSessionCardData(session, storeState))
+    const cards = sessions.map(session =>
+      computeSessionCardData(session, storeState)
+    )
 
     // Filter by search query
     if (!searchQuery.trim()) return cards
@@ -108,10 +120,10 @@ export function SessionCanvasView({
   }, [worktreeId, selectedSessionId, setViewingCanvasTab, setActiveSession])
 
   return (
-    <div className="flex h-full flex-col p-4">
-      {/* Header */}
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-semibold">
+    <div className="relative flex min-h-full flex-col overflow-auto">
+      {/* Header with Search - sticky over content */}
+      <div className="sticky top-0 z-10 flex items-center justify-between gap-4 bg-background/60 backdrop-blur-md px-4 py-3 border-b border-border/30">
+        <h2 className="text-lg font-semibold shrink-0">
           {project?.name}
           {sessionLabel && (
             <span className="ml-2 text-sm font-normal text-muted-foreground">
@@ -119,30 +131,26 @@ export function SessionCanvasView({
             </span>
           )}
         </h2>
-        <span className="text-sm text-muted-foreground">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            ref={searchInputRef}
+            placeholder="Search sessions..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="pl-9 bg-transparent border-border/30"
+          />
+        </div>
+        <span className="text-sm text-muted-foreground shrink-0">
           {sessionCards.length} session{sessionCards.length !== 1 ? 's' : ''}
         </span>
       </div>
 
-      {/* Search */}
-      <div className="relative mb-4">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          ref={searchInputRef}
-          placeholder="Search sessions..."
-          value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
-          className="pl-9"
-        />
-      </div>
-
       {/* Canvas View */}
-      <div className="flex-1 min-h-0 overflow-auto">
+      <div className="flex-1 pb-16 pt-6 px-4">
         {sessionCards.length === 0 ? (
           <div className="flex h-full items-center justify-center text-muted-foreground">
-            {searchQuery
-              ? 'No sessions match your search'
-              : 'No sessions yet'}
+            {searchQuery ? 'No sessions match your search' : 'No sessions yet'}
           </div>
         ) : (
           <CanvasGrid
@@ -162,6 +170,20 @@ export function SessionCanvasView({
           />
         )}
       </div>
+
+      {/* Keybinding hints */}
+      {preferences?.show_keybinding_hints !== false && (
+        <KeybindingHints
+          hints={[
+            { shortcut: 'Enter', label: 'open' },
+            { shortcut: 'P', label: 'plan' },
+            { shortcut: 'R', label: 'recap' },
+            { shortcut: DEFAULT_KEYBINDINGS.new_worktree as string, label: 'new worktree' },
+            { shortcut: DEFAULT_KEYBINDINGS.new_session as string, label: 'new session' },
+            { shortcut: DEFAULT_KEYBINDINGS.close_session_or_worktree as string, label: 'close' },
+          ]}
+        />
+      )}
     </div>
   )
 }

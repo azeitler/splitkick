@@ -7,6 +7,7 @@ Claude Code upgraded TodoWrite → Tasks. New format stores tasks in `~/.claude/
 ## Changes
 
 ### 1. Types (`src/types/chat.ts`)
+
 ```ts
 interface ClaudeTask {
   id: string
@@ -18,57 +19,66 @@ interface ClaudeTask {
   blockedBy: string[]
 }
 ```
+
 Add type guards: `isTaskCreate`, `isTaskUpdate`, `isTaskList`, `isTaskGet`
 
 ### 2. Rust Command (`src-tauri/src/chat/commands.rs`)
+
 ```rust
 #[tauri::command]
 async fn read_claude_tasks(claude_session_id: String) -> Result<Vec<ClaudeTask>, String>
 ```
+
 - Read `~/.claude/tasks/<session-id>/*.json`
 - Return sorted by id
 
 ### 3. Tool Utils (`src/components/chat/tool-call-utils.ts`)
+
 - Add `TaskCreate|TaskUpdate|TaskList|TaskGet` to `isSpecialTool()`
 
 ### 4. Separate Widgets Approach
 
 **TodoWidget changes:**
+
 - Rename header from "Tasks" → "Todos"
 - Keep same look and functionality
 
 **New TaskWidget:**
+
 - Same visual style as TodoWidget
 - Header shows "Tasks"
 - Display `subject` instead of `content`
 
 **Layout in ChatWindow:**
+
 - When both exist: side by side, each 50% width
 - When only one: full width (current behavior)
 - Both positioned above textarea
 
 ### 5. ChatWindow (`src/components/chat/ChatWindow.tsx`)
+
 - Detect Task tool calls → call `read_claude_tasks(claude_session_id)`
 - Show TaskWidget when tasks exist, TodoWidget when todos exist
 - Both can coexist for backward compat
 
 ## Files
 
-| File | Change |
-|------|--------|
-| `src/types/chat.ts` | Add ClaudeTask interface + type guards |
-| `src-tauri/src/chat/commands.rs` | Add read_claude_tasks command |
-| `src-tauri/src/chat/types.rs` | Add task_list_id to SessionMetadata |
-| `src-tauri/src/chat/claude.rs` | Pass CLAUDE_CODE_TASK_LIST_ID env var |
-| `src/types/ui-state.ts` | Add task_list_id persistence |
-| `src/components/chat/tool-call-utils.ts` | Add Task tools to isSpecialTool |
-| `src/components/chat/TaskWidget.tsx` | New component |
-| `src/components/chat/TodoWidget.tsx` | Rename header "Tasks" → "Todos" |
-| `src/components/chat/ChatWindow.tsx` | Integrate TaskWidget, side-by-side layout |
+| File                                     | Change                                    |
+| ---------------------------------------- | ----------------------------------------- |
+| `src/types/chat.ts`                      | Add ClaudeTask interface + type guards    |
+| `src-tauri/src/chat/commands.rs`         | Add read_claude_tasks command             |
+| `src-tauri/src/chat/types.rs`            | Add task_list_id to SessionMetadata       |
+| `src-tauri/src/chat/claude.rs`           | Pass CLAUDE_CODE_TASK_LIST_ID env var     |
+| `src/types/ui-state.ts`                  | Add task_list_id persistence              |
+| `src/components/chat/tool-call-utils.ts` | Add Task tools to isSpecialTool           |
+| `src/components/chat/TaskWidget.tsx`     | New component                             |
+| `src/components/chat/TodoWidget.tsx`     | Rename header "Tasks" → "Todos"           |
+| `src/components/chat/ChatWindow.tsx`     | Integrate TaskWidget, side-by-side layout |
 
 ## Task List ID Support
 
 The `CLAUDE_CODE_TASK_LIST_ID` env var allows multiple sessions to share a task list:
+
 - Tasks stored in `~/.claude/tasks/<TASK_LIST_ID>/` instead of session ID
 - Multiple Claude instances can collaborate on same tasks
 

@@ -308,11 +308,18 @@ export const MessageItem = memo(function MessageItem({
             // Extract skill name from path (e.g., /Users/.../skills/react/SKILL.md -> react)
             const parts = normalizePath(path).split('/')
             const skillsIdx = parts.findIndex(p => p === 'skills')
-            const name = skillsIdx >= 0 && parts[skillsIdx + 1] ? parts[skillsIdx + 1] : path
+            const name =
+              skillsIdx >= 0 && parts[skillsIdx + 1]
+                ? parts[skillsIdx + 1]
+                : path
             return (
               <SkillBadge
                 key={`${message.id}-skill-${idx}`}
-                skill={{ id: `${message.id}-skill-${idx}`, name: name ?? path, path }}
+                skill={{
+                  id: `${message.id}-skill-${idx}`,
+                  name: name ?? path,
+                  path,
+                }}
                 compact
               />
             )
@@ -425,7 +432,9 @@ export const MessageItem = memo(function MessageItem({
                 case 'exitPlanMode': {
                   // Render plan inline in its natural position
                   // Extract plan from this specific tool's input (not global search)
-                  const toolInput = item.tool.input as { plan?: string } | undefined
+                  const toolInput = item.tool.input as
+                    | { plan?: string }
+                    | undefined
                   const inlinePlan = toolInput?.plan
                   if (inlinePlan) {
                     return (

@@ -153,11 +153,17 @@ export async function gitPull(
  * @param prNumber - Optional PR number for PR-aware push
  * @returns Output from git push command
  */
-export async function gitPush(worktreePath: string, prNumber?: number): Promise<string> {
+export async function gitPush(
+  worktreePath: string,
+  prNumber?: number
+): Promise<string> {
   if (!isTauri()) {
     throw new Error('Git push only available in Tauri')
   }
-  return invoke<string>('git_push', { worktreePath, prNumber: prNumber ?? null })
+  return invoke<string>('git_push', {
+    worktreePath,
+    prNumber: prNumber ?? null,
+  })
 }
 
 /**
@@ -264,7 +270,12 @@ export function useGitStatusEvents(
     unlistenPromises.push(
       listen<GitStatusEvent>('git:status-update', event => {
         const status = event.payload
-        console.info('[git-status] Received status update for worktree:', status.worktree_id, 'behind:', status.behind_count)
+        console.info(
+          '[git-status] Received status update for worktree:',
+          status.worktree_id,
+          'behind:',
+          status.behind_count
+        )
 
         // Update the query cache
         queryClient.setQueryData(

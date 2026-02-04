@@ -13,7 +13,12 @@ interface FolderTreeItemProps {
   isDropTarget?: boolean
 }
 
-export function FolderTreeItem({ folder, children, depth, isDropTarget }: FolderTreeItemProps) {
+export function FolderTreeItem({
+  folder,
+  children,
+  depth,
+  isDropTarget,
+}: FolderTreeItemProps) {
   const {
     expandedFolderIds,
     toggleFolderExpanded,

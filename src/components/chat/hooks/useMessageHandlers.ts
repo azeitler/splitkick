@@ -149,7 +149,10 @@ export function useMessageHandlers({
         waitingForInput: false,
         waitingForInputType: null,
       }).catch(err => {
-        console.error('[useMessageHandlers] Failed to clear waiting state:', err)
+        console.error(
+          '[useMessageHandlers] Failed to clear waiting state:',
+          err
+        )
       })
 
       // Scroll to bottom to compensate for the question form collapsing
@@ -238,7 +241,10 @@ export function useMessageHandlers({
         waitingForInput: false,
         waitingForInputType: null,
       }).catch(err => {
-        console.error('[useMessageHandlers] Failed to clear waiting state:', err)
+        console.error(
+          '[useMessageHandlers] Failed to clear waiting state:',
+          err
+        )
       })
 
       // Focus input so user can type their next message
@@ -298,7 +304,10 @@ export function useMessageHandlers({
       const message = updatedPlan
         ? `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
         : 'Approved'
-      console.log('[useMessageHandlers] handlePlanApproval - message:', message.substring(0, 100))
+      console.log(
+        '[useMessageHandlers] handlePlanApproval - message:',
+        message.substring(0, 100)
+      )
 
       // Send approval message to Claude so it continues with execution
       // NOTE: setLastSentMessage is critical for permission denial flow - without it,
@@ -390,7 +399,10 @@ export function useMessageHandlers({
       const message = updatedPlan
         ? `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
         : 'Approved - yolo'
-      console.log('[useMessageHandlers] handlePlanApprovalYolo - message:', message.substring(0, 100))
+      console.log(
+        '[useMessageHandlers] handlePlanApprovalYolo - message:',
+        message.substring(0, 100)
+      )
 
       // Send approval message to Claude so it continues with execution
       setLastSentMessage(sessionId, message)

@@ -403,6 +403,8 @@ pub fn load_sessions(
                 plan_file_path: None,
                 pending_plan_message_id: None,
                 digest: None,
+                last_run_status: None,
+                last_run_execution_mode: None,
             }
         };
         sessions.push(session);

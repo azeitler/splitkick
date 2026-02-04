@@ -109,7 +109,9 @@ export function CommandPalette() {
                   </span>
                 )}
                 {command.shortcut && (
-                  <CommandShortcut>{formatShortcutDisplay(command.shortcut)}</CommandShortcut>
+                  <CommandShortcut>
+                    {formatShortcutDisplay(command.shortcut)}
+                  </CommandShortcut>
                 )}
               </CommandItem>
             ))}

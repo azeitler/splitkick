@@ -26,7 +26,12 @@ export function isGhAuthError(error: unknown): boolean {
   const lower = message.toLowerCase()
 
   if (import.meta.env.DEV) {
-    console.log('[isGhAuthError] error type:', typeof error, 'message:', message)
+    console.log(
+      '[isGhAuthError] error type:',
+      typeof error,
+      'message:',
+      message
+    )
   }
 
   return (
@@ -65,7 +70,10 @@ export const githubQueryKeys = {
  * @param projectPath - Path to the git repository
  * @param state - Issue state: "open", "closed", or "all"
  */
-export function useGitHubIssues(projectPath: string | null, state: 'open' | 'closed' | 'all' = 'open') {
+export function useGitHubIssues(
+  projectPath: string | null,
+  state: 'open' | 'closed' | 'all' = 'open'
+) {
   return useQuery({
     queryKey: githubQueryKeys.issues(projectPath ?? '', state),
     queryFn: async (): Promise<GitHubIssue[]> => {
@@ -99,7 +107,10 @@ export function useGitHubIssues(projectPath: string | null, state: 'open' | 'clo
  * @param projectPath - Path to the git repository
  * @param issueNumber - Issue number to fetch
  */
-export function useGitHubIssue(projectPath: string | null, issueNumber: number | null) {
+export function useGitHubIssue(
+  projectPath: string | null,
+  issueNumber: number | null
+) {
   return useQuery({
     queryKey: githubQueryKeys.issue(projectPath ?? '', issueNumber ?? 0),
     queryFn: async (): Promise<GitHubIssueDetail> => {
@@ -108,15 +119,25 @@ export function useGitHubIssue(projectPath: string | null, issueNumber: number |
       }
 
       try {
-        logger.debug('Fetching GitHub issue details', { projectPath, issueNumber })
+        logger.debug('Fetching GitHub issue details', {
+          projectPath,
+          issueNumber,
+        })
         const issue = await invoke<GitHubIssueDetail>('get_github_issue', {
           projectPath,
           issueNumber,
         })
-        logger.info('GitHub issue loaded', { number: issue.number, title: issue.title })
+        logger.info('GitHub issue loaded', {
+          number: issue.number,
+          title: issue.title,
+        })
         return issue
       } catch (error) {
-        logger.error('Failed to load GitHub issue', { error, projectPath, issueNumber })
+        logger.error('Failed to load GitHub issue', {
+          error,
+          projectPath,
+          issueNumber,
+        })
         throw error
       }
     },
@@ -131,7 +152,10 @@ export function useGitHubIssue(projectPath: string | null, issueNumber: number |
  *
  * Used for local filtering in the modal component
  */
-export function filterIssues(issues: GitHubIssue[], query: string): GitHubIssue[] {
+export function filterIssues(
+  issues: GitHubIssue[],
+  query: string
+): GitHubIssue[] {
   if (!query.trim()) {
     return issues
   }
@@ -168,7 +192,10 @@ export function filterIssues(issues: GitHubIssue[], query: string): GitHubIssue[
  * @param projectPath - Path to the git repository
  * @param query - Search query (should be debounced by caller)
  */
-export function useSearchGitHubIssues(projectPath: string | null, query: string) {
+export function useSearchGitHubIssues(
+  projectPath: string | null,
+  query: string
+) {
   return useQuery({
     queryKey: githubQueryKeys.issueSearch(projectPath ?? '', query),
     queryFn: async (): Promise<GitHubIssue[]> => {
@@ -182,10 +209,17 @@ export function useSearchGitHubIssues(projectPath: string | null, query: string)
           projectPath,
           query,
         })
-        logger.info('GitHub issue search results', { count: issues.length, query })
+        logger.info('GitHub issue search results', {
+          count: issues.length,
+          query,
+        })
         return issues
       } catch (error) {
-        logger.error('Failed to search GitHub issues', { error, projectPath, query })
+        logger.error('Failed to search GitHub issues', {
+          error,
+          projectPath,
+          query,
+        })
         throw error
       }
     },
@@ -211,9 +245,12 @@ export function useLoadedIssueContexts(worktreeId: string | null) {
 
       try {
         logger.debug('Fetching loaded issue contexts', { worktreeId })
-        const contexts = await invoke<LoadedIssueContext[]>('list_loaded_issue_contexts', {
-          worktreeId,
-        })
+        const contexts = await invoke<LoadedIssueContext[]>(
+          'list_loaded_issue_contexts',
+          {
+            worktreeId,
+          }
+        )
         logger.info('Loaded issue contexts fetched', { count: contexts.length })
         return contexts
       } catch (error) {
@@ -267,7 +304,10 @@ export async function removeIssueContext(
  * @param projectPath - Path to the git repository
  * @param state - PR state: "open", "closed", "merged", or "all"
  */
-export function useGitHubPRs(projectPath: string | null, state: 'open' | 'closed' | 'merged' | 'all' = 'open') {
+export function useGitHubPRs(
+  projectPath: string | null,
+  state: 'open' | 'closed' | 'merged' | 'all' = 'open'
+) {
   return useQuery({
     queryKey: githubQueryKeys.prs(projectPath ?? '', state),
     queryFn: async (): Promise<GitHubPullRequest[]> => {
@@ -301,7 +341,10 @@ export function useGitHubPRs(projectPath: string | null, state: 'open' | 'closed
  * @param projectPath - Path to the git repository
  * @param prNumber - PR number to fetch
  */
-export function useGitHubPR(projectPath: string | null, prNumber: number | null) {
+export function useGitHubPR(
+  projectPath: string | null,
+  prNumber: number | null
+) {
   return useQuery({
     queryKey: githubQueryKeys.pr(projectPath ?? '', prNumber ?? 0),
     queryFn: async (): Promise<GitHubPullRequestDetail> => {
@@ -318,7 +361,11 @@ export function useGitHubPR(projectPath: string | null, prNumber: number | null)
         logger.info('GitHub PR loaded', { number: pr.number, title: pr.title })
         return pr
       } catch (error) {
-        logger.error('Failed to load GitHub PR', { error, projectPath, prNumber })
+        logger.error('Failed to load GitHub PR', {
+          error,
+          projectPath,
+          prNumber,
+        })
         throw error
       }
     },
@@ -343,9 +390,12 @@ export function useLoadedPRContexts(worktreeId: string | null) {
 
       try {
         logger.debug('Fetching loaded PR contexts', { worktreeId })
-        const contexts = await invoke<LoadedPullRequestContext[]>('list_loaded_pr_contexts', {
-          worktreeId,
-        })
+        const contexts = await invoke<LoadedPullRequestContext[]>(
+          'list_loaded_pr_contexts',
+          {
+            worktreeId,
+          }
+        )
         logger.info('Loaded PR contexts fetched', { count: contexts.length })
         return contexts
       } catch (error) {
@@ -424,7 +474,10 @@ export async function getPRContextContent(
  *
  * Used for local filtering in the modal component
  */
-export function filterPRs(prs: GitHubPullRequest[], query: string): GitHubPullRequest[] {
+export function filterPRs(
+  prs: GitHubPullRequest[],
+  query: string
+): GitHubPullRequest[] {
   if (!query.trim()) {
     return prs
   }
@@ -483,7 +536,11 @@ export function useSearchGitHubPRs(projectPath: string | null, query: string) {
         logger.info('GitHub PR search results', { count: prs.length, query })
         return prs
       } catch (error) {
-        logger.error('Failed to search GitHub PRs', { error, projectPath, query })
+        logger.error('Failed to search GitHub PRs', {
+          error,
+          projectPath,
+          query,
+        })
         throw error
       }
     },
@@ -500,12 +557,14 @@ export function useSearchGitHubPRs(projectPath: string | null, query: string) {
  */
 export function mergeWithSearchResults<T extends { number: number }>(
   localResults: T[],
-  searchResults: T[] | undefined,
+  searchResults: T[] | undefined
 ): T[] {
   if (!searchResults?.length) return localResults
 
   const localNumbers = new Set(localResults.map(item => item.number))
-  const remoteOnly = searchResults.filter(item => !localNumbers.has(item.number))
+  const remoteOnly = searchResults.filter(
+    item => !localNumbers.has(item.number)
+  )
 
   if (remoteOnly.length === 0) return localResults
   return [...localResults, ...remoteOnly]
@@ -530,13 +589,21 @@ export function useAttachedSavedContexts(worktreeId: string | null) {
 
       try {
         logger.debug('Fetching attached saved contexts', { worktreeId })
-        const contexts = await invoke<AttachedSavedContext[]>('list_attached_saved_contexts', {
-          worktreeId,
+        const contexts = await invoke<AttachedSavedContext[]>(
+          'list_attached_saved_contexts',
+          {
+            worktreeId,
+          }
+        )
+        logger.info('Attached saved contexts fetched', {
+          count: contexts.length,
         })
-        logger.info('Attached saved contexts fetched', { count: contexts.length })
         return contexts
       } catch (error) {
-        logger.error('Failed to load attached saved contexts', { error, worktreeId })
+        logger.error('Failed to load attached saved contexts', {
+          error,
+          worktreeId,
+        })
         throw error
       }
     },
@@ -564,7 +631,10 @@ export async function attachSavedContext(
 /**
  * Remove an attached saved context from a worktree
  */
-export async function removeSavedContext(worktreeId: string, slug: string): Promise<void> {
+export async function removeSavedContext(
+  worktreeId: string,
+  slug: string
+): Promise<void> {
   return invoke<void>('remove_saved_context', {
     worktreeId,
     slug,
@@ -574,7 +644,10 @@ export async function removeSavedContext(worktreeId: string, slug: string): Prom
 /**
  * Get the content of an attached saved context file
  */
-export async function getSavedContextContent(worktreeId: string, slug: string): Promise<string> {
+export async function getSavedContextContent(
+  worktreeId: string,
+  slug: string
+): Promise<string> {
   return invoke<string>('get_saved_context_content', {
     worktreeId,
     slug,

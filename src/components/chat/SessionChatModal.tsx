@@ -68,7 +68,11 @@ export function SessionChatModal({
     }
 
     window.addEventListener('cycle-execution-mode', handleCycleExecutionMode)
-    return () => window.removeEventListener('cycle-execution-mode', handleCycleExecutionMode)
+    return () =>
+      window.removeEventListener(
+        'cycle-execution-mode',
+        handleCycleExecutionMode
+      )
   }, [isOpen, sessionId])
 
   // When modal closes, restore the previous session
@@ -99,7 +103,7 @@ export function SessionChatModal({
             <DialogTitle className="text-sm font-medium">
               {session?.name ?? 'Session'}
             </DialogTitle>
-{!canvasOnlyMode && (
+            {!canvasOnlyMode && (
               <Button
                 variant="ghost"
                 size="sm"

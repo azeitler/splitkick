@@ -125,7 +125,9 @@ export function OpenInModal() {
         case 'github': {
           const branch = worktree?.branch
           if (!branch) {
-            notify('No branch found for this worktree', undefined, { type: 'error' })
+            notify('No branch found for this worktree', undefined, {
+              type: 'error',
+            })
             break
           }
           openOnGitHub.mutate({ repoPath: targetPath, branch })

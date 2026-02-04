@@ -18,10 +18,10 @@ use super::types::{
     Session, SessionDigest, ThinkingLevel, WorktreeSessions,
 };
 use crate::claude_cli::get_cli_binary_path;
+use crate::http_server::EmitExt;
 use crate::platform::silent_command;
 use crate::projects::storage::load_projects_data;
 use crate::projects::types::SessionType;
-use crate::http_server::EmitExt;
 
 /// Get current Unix timestamp in seconds
 fn now() -> u64 {
@@ -76,6 +76,16 @@ pub async fn get_sessions(
                 session.message_count = Some(count);
             }
         }
+    }
+
+    // Debug logging for session recovery
+    for session in &sessions.sessions {
+        log::trace!(
+            "get_sessions: session={}, last_run_status={:?}, last_run_mode={:?}",
+            session.id,
+            session.last_run_status,
+            session.last_run_execution_mode
+        );
     }
 
     Ok(sessions)
@@ -945,10 +955,13 @@ pub async fn send_chat_message(
     }
 
     // Notify all clients that a message is being sent (for real-time sync)
-    if let Err(e) = app.emit_all("chat:sending", &serde_json::json!({
-        "session_id": session_id,
-        "worktree_id": worktree_id,
-    })) {
+    if let Err(e) = app.emit_all(
+        "chat:sending",
+        &serde_json::json!({
+            "session_id": session_id,
+            "worktree_id": worktree_id,
+        }),
+    ) {
         log::error!("Failed to emit chat:sending event: {e}");
     }
 
@@ -963,7 +976,7 @@ pub async fn send_chat_message(
             log::error!("{}", error_msg);
 
             // Emit error event so frontend knows what happened
-            
+
             let error_event = super::claude::ErrorEvent {
                 session_id: session_id.clone(),
                 worktree_id: worktree_id.clone(),

@@ -127,7 +127,9 @@ export function PermissionApproval({
     // Extract inner content for containment check (e.g., "Bash(cmd)" → "cmd")
     const innerContent = patterns.map(p => {
       const match = p.match(/^(\w+)\((.+)\)$/)
-      return match ? { tool: match[1] ?? p, content: match[2] ?? p } : { tool: p, content: p }
+      return match
+        ? { tool: match[1] ?? p, content: match[2] ?? p }
+        : { tool: p, content: p }
     })
     const keep = new Set<number>()
 

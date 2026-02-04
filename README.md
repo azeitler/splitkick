@@ -3,6 +3,7 @@
 Jean (Claude haha) is an AI assistant application that helps you to manage multiple projects, worktrees, session with Claude CLI.
 
 # Features
+
 - Automated worktree management
 - Load context from sessions, GitHub Issues / Pull requests
 - Automated (magic) Git commands / prompts (review, commit, open PR, investigate issue/pr)
@@ -33,6 +34,7 @@ Jean (Claude haha) is an AI assistant application that helps you to manage multi
 - **Linux**: Not tested at all
 
 # Roadmap
+
 - Add [Opencode](https://opencode.ai/) support
 - Add remote access support through an API
 

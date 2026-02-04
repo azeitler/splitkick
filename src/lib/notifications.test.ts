@@ -1,6 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { toast } from 'sonner'
-import { notify, notifications, success, error, info, warning } from './notifications'
+import {
+  notify,
+  notifications,
+  success,
+  error,
+  info,
+  warning,
+} from './notifications'
 
 vi.mock('@/lib/transport', () => ({
   invoke: vi.fn(),

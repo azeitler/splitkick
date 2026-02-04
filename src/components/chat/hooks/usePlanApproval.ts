@@ -2,7 +2,11 @@ import { useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useChatStore } from '@/store/chat-store'
 import { usePreferences } from '@/services/preferences'
-import { useSendMessage, markPlanApproved, chatQueryKeys } from '@/services/chat'
+import {
+  useSendMessage,
+  markPlanApproved,
+  chatQueryKeys,
+} from '@/services/chat'
 import type { Session } from '@/types/chat'
 import type { SessionCardData } from '../session-card-utils'
 
@@ -34,7 +38,10 @@ ${updatedPlan}
 /**
  * Provides plan approval handlers for canvas session cards.
  */
-export function usePlanApproval({ worktreeId, worktreePath }: UsePlanApprovalParams) {
+export function usePlanApproval({
+  worktreeId,
+  worktreePath,
+}: UsePlanApprovalParams) {
   const queryClient = useQueryClient()
   const { data: preferences } = usePreferences()
   const sendMessage = useSendMessage()
@@ -56,7 +63,10 @@ export function usePlanApproval({ worktreeId, worktreePath }: UsePlanApprovalPar
   const handlePlanApproval = useCallback(
     (card: SessionCardData, updatedPlan?: string) => {
       console.log('[usePlanApproval] handlePlanApproval called')
-      console.log('[usePlanApproval] card.pendingPlanMessageId:', card.pendingPlanMessageId)
+      console.log(
+        '[usePlanApproval] card.pendingPlanMessageId:',
+        card.pendingPlanMessageId
+      )
       console.log('[usePlanApproval] updatedPlan length:', updatedPlan?.length)
 
       const sessionId = card.session.id
@@ -96,7 +106,10 @@ export function usePlanApproval({ worktreeId, worktreePath }: UsePlanApprovalPar
         ? formatApprovalMessage('Approved', updatedPlan, originalPlan)
         : `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
 
-      console.log('[usePlanApproval] sending message:', message.substring(0, 100))
+      console.log(
+        '[usePlanApproval] sending message:',
+        message.substring(0, 100)
+      )
 
       setLastSentMessage(sessionId, message)
       setError(sessionId, null)
@@ -138,7 +151,10 @@ export function usePlanApproval({ worktreeId, worktreePath }: UsePlanApprovalPar
   const handlePlanApprovalYolo = useCallback(
     (card: SessionCardData, updatedPlan?: string) => {
       console.log('[usePlanApproval] handlePlanApprovalYolo called')
-      console.log('[usePlanApproval] card.pendingPlanMessageId:', card.pendingPlanMessageId)
+      console.log(
+        '[usePlanApproval] card.pendingPlanMessageId:',
+        card.pendingPlanMessageId
+      )
       console.log('[usePlanApproval] updatedPlan length:', updatedPlan?.length)
 
       const sessionId = card.session.id
@@ -178,7 +194,10 @@ export function usePlanApproval({ worktreeId, worktreePath }: UsePlanApprovalPar
         ? formatApprovalMessage('Approved - yolo', updatedPlan, originalPlan)
         : `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
 
-      console.log('[usePlanApproval] sending message:', message.substring(0, 100))
+      console.log(
+        '[usePlanApproval] sending message:',
+        message.substring(0, 100)
+      )
 
       setLastSentMessage(sessionId, message)
       setError(sessionId, null)

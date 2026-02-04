@@ -46,14 +46,17 @@ export function CanvasGrid({
 }: CanvasGridProps) {
   // Track session modal open state for magic command keybindings
   useEffect(() => {
-    useUIStore.getState().setSessionChatModalOpen(
-      !!selectedSessionId,
-      selectedSessionId ? worktreeId : null
-    )
+    useUIStore
+      .getState()
+      .setSessionChatModalOpen(
+        !!selectedSessionId,
+        selectedSessionId ? worktreeId : null
+      )
   }, [selectedSessionId, worktreeId])
 
   // Track canvas selected session for magic menu
-  const setCanvasSelectedSession = useChatStore.getState().setCanvasSelectedSession
+  const setCanvasSelectedSession =
+    useChatStore.getState().setCanvasSelectedSession
 
   // Handle clicking on a session card - open modal
   const handleSessionClick = useCallback(
@@ -97,7 +100,8 @@ export function CanvasGrid({
   })
 
   // Get selected card for shortcut events
-  const selectedCard = selectedIndex !== null ? cards[selectedIndex] ?? null : null
+  const selectedCard =
+    selectedIndex !== null ? (cards[selectedIndex] ?? null) : null
 
   // Shortcut events (plan, recap, approve)
   const {
@@ -122,12 +126,17 @@ export function CanvasGrid({
   // Handle approve from dialog (with updated plan content)
   const handleDialogApprove = useCallback(
     (updatedPlan: string) => {
-      console.log('[CanvasGrid] handleDialogApprove called, updatedPlan length:', updatedPlan?.length)
+      console.log(
+        '[CanvasGrid] handleDialogApprove called, updatedPlan length:',
+        updatedPlan?.length
+      )
       console.log('[CanvasGrid] planDialogCard:', planDialogCard?.session?.id)
       if (planDialogCard) {
         onPlanApproval(planDialogCard, updatedPlan)
       } else {
-        console.log('[CanvasGrid] handleDialogApprove - planDialogCard is null!')
+        console.log(
+          '[CanvasGrid] handleDialogApprove - planDialogCard is null!'
+        )
       }
     },
     [planDialogCard, onPlanApproval]
@@ -135,12 +144,17 @@ export function CanvasGrid({
 
   const handleDialogApproveYolo = useCallback(
     (updatedPlan: string) => {
-      console.log('[CanvasGrid] handleDialogApproveYolo called, updatedPlan length:', updatedPlan?.length)
+      console.log(
+        '[CanvasGrid] handleDialogApproveYolo called, updatedPlan length:',
+        updatedPlan?.length
+      )
       console.log('[CanvasGrid] planDialogCard:', planDialogCard?.session?.id)
       if (planDialogCard) {
         onPlanApprovalYolo(planDialogCard, updatedPlan)
       } else {
-        console.log('[CanvasGrid] handleDialogApproveYolo - planDialogCard is null!')
+        console.log(
+          '[CanvasGrid] handleDialogApproveYolo - planDialogCard is null!'
+        )
       }
     },
     [planDialogCard, onPlanApprovalYolo]
@@ -150,7 +164,8 @@ export function CanvasGrid({
   useEffect(() => {
     const handleFocusSearch = () => searchInputRef?.current?.focus()
     window.addEventListener('focus-canvas-search', handleFocusSearch)
-    return () => window.removeEventListener('focus-canvas-search', handleFocusSearch)
+    return () =>
+      window.removeEventListener('focus-canvas-search', handleFocusSearch)
   }, [searchInputRef])
 
   // Listen for close-session-or-worktree event to handle CMD+W
@@ -178,16 +193,27 @@ export function CanvasGrid({
       }
     }
 
-    window.addEventListener('close-session-or-worktree', handleCloseSessionOrWorktree, {
-      capture: true,
-    })
+    window.addEventListener(
+      'close-session-or-worktree',
+      handleCloseSessionOrWorktree,
+      {
+        capture: true,
+      }
+    )
     return () =>
       window.removeEventListener(
         'close-session-or-worktree',
         handleCloseSessionOrWorktree,
         { capture: true }
       )
-  }, [selectedSessionId, selectedIndex, cards, onArchiveSession, onSelectedIndexChange, onSelectedSessionIdChange])
+  }, [
+    selectedSessionId,
+    selectedIndex,
+    cards,
+    onArchiveSession,
+    onSelectedIndexChange,
+    onSelectedSessionIdChange,
+  ])
 
   return (
     <>

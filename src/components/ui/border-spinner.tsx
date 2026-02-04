@@ -6,7 +6,11 @@ interface BorderSpinnerProps {
   bgClassName?: string
 }
 
-export function BorderSpinner({ shape, className, bgClassName }: BorderSpinnerProps) {
+export function BorderSpinner({
+  shape,
+  className,
+  bgClassName,
+}: BorderSpinnerProps) {
   // Use larger viewBox for better rendering at small sizes
   // Perimeter: circle ≈ 75 (2πr where r=12), square ≈ 88
   const perimeter = shape === 'circle' ? 75 : 88
@@ -21,7 +25,13 @@ export function BorderSpinner({ shape, className, bgClassName }: BorderSpinnerPr
       {shape === 'circle' ? (
         <>
           {/* Background circle */}
-          <circle cx="14" cy="14" r="12" className={bgClassName} fill="transparent" />
+          <circle
+            cx="14"
+            cy="14"
+            r="12"
+            className={bgClassName}
+            fill="transparent"
+          />
           {/* Animated stroke */}
           <circle
             cx="14"
@@ -40,7 +50,15 @@ export function BorderSpinner({ shape, className, bgClassName }: BorderSpinnerPr
       ) : (
         <>
           {/* Background square */}
-          <rect x="2" y="2" width="24" height="24" rx="4" className={bgClassName} fill="transparent" />
+          <rect
+            x="2"
+            y="2"
+            width="24"
+            height="24"
+            rx="4"
+            className={bgClassName}
+            fill="transparent"
+          />
           {/* Animated stroke */}
           <rect
             x="2"

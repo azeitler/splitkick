@@ -30,7 +30,9 @@ export function RecapDialog({ digest, isOpen, onClose }: RecapDialogProps) {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">
-                <span className="font-medium text-foreground">Last action:</span>{' '}
+                <span className="font-medium text-foreground">
+                  Last action:
+                </span>{' '}
                 {digest.last_action}
               </p>
             </div>

@@ -40,7 +40,10 @@ interface ProjectsUIState {
   expandFolder: (id: string) => void
   collapseFolder: (id: string) => void
 
-  setAddProjectDialogOpen: (open: boolean, parentFolderId?: string | null) => void
+  setAddProjectDialogOpen: (
+    open: boolean,
+    parentFolderId?: string | null
+  ) => void
   openProjectSettings: (projectId: string) => void
   closeProjectSettings: () => void
   openGitInitModal: (path: string) => void

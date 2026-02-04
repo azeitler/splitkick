@@ -412,7 +412,10 @@ interface ChatUIState {
   getWorktreeLoadingOperation: (worktreeId: string) => string | null
 
   // Actions - Canvas-selected session (for magic menu targeting)
-  setCanvasSelectedSession: (worktreeId: string, sessionId: string | null) => void
+  setCanvasSelectedSession: (
+    worktreeId: string,
+    sessionId: string | null
+  ) => void
   getCanvasSelectedSession: (worktreeId: string) => string | null
 
   // Legacy actions (deprecated - for backward compatibility)
@@ -724,7 +727,8 @@ export const useChatStore = create<ChatUIState>()(
                 },
               }
             } else {
-              const { [sessionId]: _, ...rest } = state.waitingForInputSessionIds
+              const { [sessionId]: _, ...rest } =
+                state.waitingForInputSessionIds
               return { waitingForInputSessionIds: rest }
             }
           },
@@ -1595,15 +1599,23 @@ export const useChatStore = create<ChatUIState>()(
       clearSessionState: sessionId =>
         set(
           state => {
-            const { [sessionId]: _approved, ...restApproved } = state.approvedTools
-            const { [sessionId]: _denials, ...restDenials } = state.pendingPermissionDenials
-            const { [sessionId]: _denied, ...restDenied } = state.deniedMessageContext
-            const { [sessionId]: _reviewing, ...restReviewing } = state.reviewingSessions
-            const { [sessionId]: _waiting, ...restWaiting } = state.waitingForInputSessionIds
-            const { [sessionId]: _answered, ...restAnswered } = state.answeredQuestions
-            const { [sessionId]: _submitted, ...restSubmitted } = state.submittedAnswers
+            const { [sessionId]: _approved, ...restApproved } =
+              state.approvedTools
+            const { [sessionId]: _denials, ...restDenials } =
+              state.pendingPermissionDenials
+            const { [sessionId]: _denied, ...restDenied } =
+              state.deniedMessageContext
+            const { [sessionId]: _reviewing, ...restReviewing } =
+              state.reviewingSessions
+            const { [sessionId]: _waiting, ...restWaiting } =
+              state.waitingForInputSessionIds
+            const { [sessionId]: _answered, ...restAnswered } =
+              state.answeredQuestions
+            const { [sessionId]: _submitted, ...restSubmitted } =
+              state.submittedAnswers
             const { [sessionId]: _fixed, ...restFixed } = state.fixedFindings
-            const { [sessionId]: _manual, ...restManual } = state.manualThinkingOverrides
+            const { [sessionId]: _manual, ...restManual } =
+              state.manualThinkingOverrides
 
             return {
               approvedTools: restApproved,
@@ -1766,7 +1778,8 @@ export const useChatStore = create<ChatUIState>()(
                 },
               }
             } else {
-              const { [worktreeId]: _, ...rest } = state.canvasSelectedSessionIds
+              const { [worktreeId]: _, ...rest } =
+                state.canvasSelectedSessionIds
               return { canvasSelectedSessionIds: rest }
             }
           },

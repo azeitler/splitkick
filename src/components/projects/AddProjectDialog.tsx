@@ -14,7 +14,11 @@ import { useProjectsStore } from '@/store/projects-store'
 import { useAddProject, useInitProject } from '@/services/projects'
 
 export function AddProjectDialog() {
-  const { addProjectDialogOpen, addProjectParentFolderId, setAddProjectDialogOpen } = useProjectsStore()
+  const {
+    addProjectDialogOpen,
+    addProjectParentFolderId,
+    setAddProjectDialogOpen,
+  } = useProjectsStore()
   const addProject = useAddProject()
   const initProject = useInitProject()
 
@@ -94,7 +98,10 @@ export function AddProjectDialog() {
       if (selected && typeof selected === 'string') {
         // Check if git identity is configured before init (commit requires it)
         try {
-          const identity = await invoke<{ name: string | null; email: string | null }>('check_git_identity')
+          const identity = await invoke<{
+            name: string | null
+            email: string | null
+          }>('check_git_identity')
           if (!identity.name || !identity.email) {
             // Identity not configured - route through GitInitModal which handles identity setup
             const { openGitInitModal } = useProjectsStore.getState()

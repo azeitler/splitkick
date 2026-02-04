@@ -9,12 +9,17 @@ import { SessionBoardView } from './SessionBoardView'
 
 export function SessionBoardModal() {
   const sessionBoardProjectId = useUIStore(state => state.sessionBoardProjectId)
-  const closeSessionBoardModal = useUIStore(state => state.closeSessionBoardModal)
+  const closeSessionBoardModal = useUIStore(
+    state => state.closeSessionBoardModal
+  )
 
   const isOpen = sessionBoardProjectId !== null
 
   return (
-    <Dialog open={isOpen} onOpenChange={open => !open && closeSessionBoardModal()}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={open => !open && closeSessionBoardModal()}
+    >
       <DialogContent className="!w-[90vw] !max-w-[90vw] !h-[85vh] !max-h-[85vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle>Session Board</DialogTitle>

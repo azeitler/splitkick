@@ -154,8 +154,13 @@
 
 /* Blink animation for waiting indicator */
 @keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
 }
 
 .animate-blink {
@@ -164,7 +169,9 @@
 
 /* Border spin animation for running indicator */
 @keyframes border-spin {
-  to { stroke-dashoffset: 0; }
+  to {
+    stroke-dashoffset: 0;
+  }
 }
 
 .animate-border-spin {

@@ -33,8 +33,16 @@ import {
   cancelChatMessage,
 } from '@/services/chat'
 import { useWorktree, useProjects, useRunScript } from '@/services/projects'
-import { githubQueryKeys, useLoadedIssueContexts, useLoadedPRContexts, useAttachedSavedContexts } from '@/services/github'
-import type { LoadedIssueContext, LoadedPullRequestContext } from '@/types/github'
+import {
+  githubQueryKeys,
+  useLoadedIssueContexts,
+  useLoadedPRContexts,
+  useAttachedSavedContexts,
+} from '@/services/github'
+import type {
+  LoadedIssueContext,
+  LoadedPullRequestContext,
+} from '@/types/github'
 import {
   useChatStore,
   DEFAULT_MODEL,
@@ -59,7 +67,11 @@ import { PermissionApproval } from './PermissionApproval'
 import { SetupScriptOutput } from './SetupScriptOutput'
 import { SessionTabBar } from './SessionTabBar'
 import { TodoWidget } from './TodoWidget'
-import { normalizeTodosForDisplay, findPlanFilePath, findPlanContent } from './tool-call-utils'
+import {
+  normalizeTodosForDisplay,
+  findPlanFilePath,
+  findPlanContent,
+} from './tool-call-utils'
 import { ImagePreview } from './ImagePreview'
 import { TextFilePreview } from './TextFilePreview'
 import { SkillBadge } from './SkillBadge'
@@ -103,7 +115,10 @@ import { useTerminalStore } from '@/store/terminal-store'
 import { useScrollManagement } from './hooks/useScrollManagement'
 import { useGitOperations } from './hooks/useGitOperations'
 import { useContextOperations } from './hooks/useContextOperations'
-import { useMessageHandlers, GIT_ALLOWED_TOOLS } from './hooks/useMessageHandlers'
+import {
+  useMessageHandlers,
+  GIT_ALLOWED_TOOLS,
+} from './hooks/useMessageHandlers'
 import { useMagicCommands } from './hooks/useMagicCommands'
 import { useDragAndDropImages } from './hooks/useDragAndDropImages'
 
@@ -150,15 +165,15 @@ export function ChatWindow({
   // This triggers re-render when tabs are clicked (setActiveSession updates activeSessionIds)
   // Without this, ChatWindow wouldn't know when to re-render on tab switch
   let activeSessionId = useChatStore(state =>
-    activeWorktreeId
-      ? state.activeSessionIds[activeWorktreeId]
-      : undefined
+    activeWorktreeId ? state.activeSessionIds[activeWorktreeId] : undefined
   )
 
   // PERF: Direct data subscription for isSending - triggers re-render when sendingSessionIds changes
   // (Previously used function selector which was a stable ref that never triggered re-renders)
   const isSendingForSession = useChatStore(state =>
-    activeSessionId ? (state.sendingSessionIds[activeSessionId] ?? false) : false
+    activeSessionId
+      ? (state.sendingSessionIds[activeSessionId] ?? false)
+      : false
   )
   // Function selectors - these return stable function references
   const isQuestionAnswered = useChatStore(state => state.isQuestionAnswered)
@@ -190,13 +205,17 @@ export function ChatWindow({
   )
   // Manual thinking override per session (user changed thinking while in build/yolo)
   const hasManualThinkingOverride = useChatStore(state =>
-    activeSessionId ? (state.manualThinkingOverrides[activeSessionId] ?? false) : false
+    activeSessionId
+      ? (state.manualThinkingOverrides[activeSessionId] ?? false)
+      : false
   )
 
   // Terminal panel visibility (per-worktree)
   const terminalVisible = useTerminalStore(state => state.terminalVisible)
   const terminalPanelOpen = useTerminalStore(state =>
-    activeWorktreeId ? (state.terminalPanelOpen[activeWorktreeId] ?? false) : false
+    activeWorktreeId
+      ? (state.terminalPanelOpen[activeWorktreeId] ?? false)
+      : false
   )
   const { setTerminalVisible } = useTerminalStore.getState()
 
@@ -285,7 +304,7 @@ export function ChatWindow({
   const canvasEnabled = preferences?.canvas_enabled ?? true
   const canvasOnlyMode = preferences?.canvas_only_mode ?? false
   const isViewingCanvasTab = canvasEnabled
-    ? (canvasOnlyMode || isViewingCanvasTabRaw)
+    ? canvasOnlyMode || isViewingCanvasTabRaw
     : false
   const focusChatShortcut = formatShortcutDisplay(
     (preferences?.keybindings?.focus_chat_input ??
@@ -326,7 +345,9 @@ export function ChatWindow({
   )
 
   // Loaded PR contexts for indicator and investigate PR functionality
-  const { data: loadedPRContexts } = useLoadedPRContexts(activeWorktreeId ?? null)
+  const { data: loadedPRContexts } = useLoadedPRContexts(
+    activeWorktreeId ?? null
+  )
 
   // Emit readiness event for auto-investigate coordination
   // When a worktree is marked for auto-investigate, projects.ts waits for this event
@@ -335,34 +356,43 @@ export function ChatWindow({
     if (!activeWorktreeId || !activeSessionId) return
 
     // Check if this worktree was marked for auto-investigate
-    const { autoInvestigateWorktreeIds, autoInvestigatePRWorktreeIds } = useUIStore.getState()
-    const shouldInvestigateIssue = autoInvestigateWorktreeIds.has(activeWorktreeId)
-    const shouldInvestigatePR = autoInvestigatePRWorktreeIds.has(activeWorktreeId)
+    const { autoInvestigateWorktreeIds, autoInvestigatePRWorktreeIds } =
+      useUIStore.getState()
+    const shouldInvestigateIssue =
+      autoInvestigateWorktreeIds.has(activeWorktreeId)
+    const shouldInvestigatePR =
+      autoInvestigatePRWorktreeIds.has(activeWorktreeId)
 
     if (!shouldInvestigateIssue && !shouldInvestigatePR) return
 
     // Wait for contexts to be loaded
-    const hasIssueContexts = shouldInvestigateIssue && loadedIssueContexts && loadedIssueContexts.length > 0
-    const hasPRContexts = shouldInvestigatePR && loadedPRContexts && loadedPRContexts.length > 0
+    const hasIssueContexts =
+      shouldInvestigateIssue &&
+      loadedIssueContexts &&
+      loadedIssueContexts.length > 0
+    const hasPRContexts =
+      shouldInvestigatePR && loadedPRContexts && loadedPRContexts.length > 0
 
     if (hasIssueContexts) {
       window.dispatchEvent(
         new CustomEvent('chat-ready-for-investigate', {
-          detail: { worktreeId: activeWorktreeId, type: 'issue' }
+          detail: { worktreeId: activeWorktreeId, type: 'issue' },
         })
       )
     }
     if (hasPRContexts) {
       window.dispatchEvent(
         new CustomEvent('chat-ready-for-investigate', {
-          detail: { worktreeId: activeWorktreeId, type: 'pr' }
+          detail: { worktreeId: activeWorktreeId, type: 'pr' },
         })
       )
     }
   }, [activeWorktreeId, activeSessionId, loadedIssueContexts, loadedPRContexts])
 
   // Attached saved contexts for indicator
-  const { data: attachedSavedContexts } = useAttachedSavedContexts(activeWorktreeId ?? null)
+  const { data: attachedSavedContexts } = useAttachedSavedContexts(
+    activeWorktreeId ?? null
+  )
   // Use live status if available, otherwise fall back to cached
   const behindCount =
     gitStatus?.behind_count ?? worktree?.cached_behind_count ?? 0
@@ -710,7 +740,9 @@ export function ChatWindow({
 
   // State for plan dialog
   const [isPlanDialogOpen, setIsPlanDialogOpen] = useState(false)
-  const [planDialogContent, setPlanDialogContent] = useState<string | null>(null)
+  const [planDialogContent, setPlanDialogContent] = useState<string | null>(
+    null
+  )
 
   // Manage dismissal state based on streaming and message ID changes
   useEffect(() => {
@@ -798,11 +830,15 @@ export function ChatWindow({
         { worktreeId: activeWorktreeId, worktreePath: activeWorktreePath },
         {
           onSuccess: session => {
-            useChatStore.getState().setActiveSession(activeWorktreeId, session.id)
+            useChatStore
+              .getState()
+              .setActiveSession(activeWorktreeId, session.id)
             // In canvas-only mode, open the new session in a modal
             if (canvasOnlyMode) {
               window.dispatchEvent(
-                new CustomEvent('open-session-modal', { detail: { sessionId: session.id } })
+                new CustomEvent('open-session-modal', {
+                  detail: { sessionId: session.id },
+                })
               )
             }
           },
@@ -824,7 +860,11 @@ export function ChatWindow({
     }
 
     window.addEventListener('cycle-execution-mode', handleCycleExecutionMode)
-    return () => window.removeEventListener('cycle-execution-mode', handleCycleExecutionMode)
+    return () =>
+      window.removeEventListener(
+        'cycle-execution-mode',
+        handleCycleExecutionMode
+      )
   }, [activeSessionId])
 
   // Listen for global git diff request from keybinding (CMD+G by default)
@@ -854,7 +894,10 @@ export function ChatWindow({
 
     window.addEventListener('toggle-workspace-run', handleToggleWorkspaceRun)
     return () =>
-      window.removeEventListener('toggle-workspace-run', handleToggleWorkspaceRun)
+      window.removeEventListener(
+        'toggle-workspace-run',
+        handleToggleWorkspaceRun
+      )
   }, [activeWorktreeId, runScript])
 
   // Global Cmd+Option+Backspace (Mac) / Ctrl+Alt+Backspace (Windows/Linux) listener for cancellation
@@ -882,43 +925,58 @@ export function ChatWindow({
   // This ensures they stay active even when ChatWindow is unmounted (e.g., session board view)
 
   // Helper to build full message with attachment references for backend
-  const buildMessageWithRefs = useCallback((queuedMsg: QueuedMessage): string => {
-    let message = queuedMsg.message
+  const buildMessageWithRefs = useCallback(
+    (queuedMsg: QueuedMessage): string => {
+      let message = queuedMsg.message
 
-    // Add file references (from @ mentions)
-    if (queuedMsg.pendingFiles.length > 0) {
-      const fileRefs = queuedMsg.pendingFiles
-        .map(f => `[File: ${f.relativePath} - Use the Read tool to view this file]`)
-        .join('\n')
-      message = message ? `${message}\n\n${fileRefs}` : fileRefs
-    }
+      // Add file references (from @ mentions)
+      if (queuedMsg.pendingFiles.length > 0) {
+        const fileRefs = queuedMsg.pendingFiles
+          .map(
+            f =>
+              `[File: ${f.relativePath} - Use the Read tool to view this file]`
+          )
+          .join('\n')
+        message = message ? `${message}\n\n${fileRefs}` : fileRefs
+      }
 
-    // Add skill references (from / mentions)
-    if (queuedMsg.pendingSkills.length > 0) {
-      const skillRefs = queuedMsg.pendingSkills
-        .map(s => `[Skill: ${s.path} - Read and use this skill to guide your response]`)
-        .join('\n')
-      message = message ? `${message}\n\n${skillRefs}` : skillRefs
-    }
+      // Add skill references (from / mentions)
+      if (queuedMsg.pendingSkills.length > 0) {
+        const skillRefs = queuedMsg.pendingSkills
+          .map(
+            s =>
+              `[Skill: ${s.path} - Read and use this skill to guide your response]`
+          )
+          .join('\n')
+        message = message ? `${message}\n\n${skillRefs}` : skillRefs
+      }
 
-    // Add image references
-    if (queuedMsg.pendingImages.length > 0) {
-      const imageRefs = queuedMsg.pendingImages
-        .map(img => `[Image attached: ${img.path} - Use the Read tool to view this image]`)
-        .join('\n')
-      message = message ? `${message}\n\n${imageRefs}` : imageRefs
-    }
+      // Add image references
+      if (queuedMsg.pendingImages.length > 0) {
+        const imageRefs = queuedMsg.pendingImages
+          .map(
+            img =>
+              `[Image attached: ${img.path} - Use the Read tool to view this image]`
+          )
+          .join('\n')
+        message = message ? `${message}\n\n${imageRefs}` : imageRefs
+      }
 
-    // Add text file references
-    if (queuedMsg.pendingTextFiles.length > 0) {
-      const textFileRefs = queuedMsg.pendingTextFiles
-        .map(tf => `[Text file attached: ${tf.path} - Use the Read tool to view this file]`)
-        .join('\n')
-      message = message ? `${message}\n\n${textFileRefs}` : textFileRefs
-    }
+      // Add text file references
+      if (queuedMsg.pendingTextFiles.length > 0) {
+        const textFileRefs = queuedMsg.pendingTextFiles
+          .map(
+            tf =>
+              `[Text file attached: ${tf.path} - Use the Read tool to view this file]`
+          )
+          .join('\n')
+        message = message ? `${message}\n\n${textFileRefs}` : textFileRefs
+      }
 
-    return message
-  }, [])
+      return message
+    },
+    []
+  )
 
   // Helper to send a queued message immediately
   const sendMessageNow = useCallback(
@@ -995,7 +1053,16 @@ export function ChatWindow({
         }
       )
     },
-    [activeSessionId, activeWorktreeId, activeWorktreePath, buildMessageWithRefs, sendMessage, preferences?.parallel_execution_prompt_enabled, preferences?.ai_language, preferences?.allow_web_tools_in_plan_mode]
+    [
+      activeSessionId,
+      activeWorktreeId,
+      activeWorktreePath,
+      buildMessageWithRefs,
+      sendMessage,
+      preferences?.parallel_execution_prompt_enabled,
+      preferences?.ai_language,
+      preferences?.allow_web_tools_in_plan_mode,
+    ]
   )
 
   // GitDiffModal handlers - extracted for performance (prevents child re-renders)
@@ -1005,7 +1072,10 @@ export function ChatWindow({
         const { inputDrafts } = useChatStore.getState()
         const currentInput = inputDrafts[activeSessionId] ?? ''
         const separator = currentInput.length > 0 ? '\n' : ''
-        setInputDraft(activeSessionId, `${currentInput}${separator}${reference}`)
+        setInputDraft(
+          activeSessionId,
+          `${currentInput}${separator}${reference}`
+        )
       }
     },
     [activeSessionId, setInputDraft]
@@ -1040,7 +1110,9 @@ export function ChatWindow({
       setSelectedModel(activeSessionId, model)
       setExecutingMode(activeSessionId, 'build')
 
-      const hasManualOverride = useChatStore.getState().hasManualThinkingOverride(activeSessionId)
+      const hasManualOverride = useChatStore
+        .getState()
+        .hasManualThinkingOverride(activeSessionId)
       sendMessage.mutate(
         {
           sessionId: activeSessionId,
@@ -1050,9 +1122,7 @@ export function ChatWindow({
           model,
           executionMode: 'build',
           thinkingLevel,
-          disableThinkingForMode:
-            thinkingLevel !== 'off' &&
-            !hasManualOverride,
+          disableThinkingForMode: thinkingLevel !== 'off' && !hasManualOverride,
           parallelExecutionPromptEnabled:
             preferences?.parallel_execution_prompt_enabled ?? false,
           aiLanguage: preferences?.ai_language,
@@ -1060,7 +1130,13 @@ export function ChatWindow({
         { onSettled: () => inputRef.current?.focus() }
       )
     },
-    [activeSessionId, activeWorktreeId, activeWorktreePath, preferences, sendMessage]
+    [
+      activeSessionId,
+      activeWorktreeId,
+      activeWorktreePath,
+      preferences,
+      sendMessage,
+    ]
   )
 
   const handleSubmit = useCallback(
@@ -1124,7 +1200,8 @@ export function ChatWindow({
 
       // Clear question skip state so new questions can be shown
       // Clear waiting state so tab shows "planning" instead of "waiting" when extending a plan
-      const { setQuestionsSkipped, setWaitingForInput } = useChatStore.getState()
+      const { setQuestionsSkipped, setWaitingForInput } =
+        useChatStore.getState()
       setQuestionsSkipped(activeSessionId, false)
       setWaitingForInput(activeSessionId, false)
 
@@ -1132,7 +1209,9 @@ export function ChatWindow({
       // Use refs to avoid recreating callback when these settings change
       const mode = executionModeRef.current
       const thinkingLvl = selectedThinkingLevelRef.current
-      const hasManualOverride = useChatStore.getState().hasManualThinkingOverride(activeSessionId)
+      const hasManualOverride = useChatStore
+        .getState()
+        .hasManualThinkingOverride(activeSessionId)
       const queuedMessage: QueuedMessage = {
         id: crypto.randomUUID(),
         message,
@@ -1144,9 +1223,7 @@ export function ChatWindow({
         executionMode: mode,
         thinkingLevel: thinkingLvl,
         disableThinkingForMode:
-          mode !== 'plan' &&
-          thinkingLvl !== 'off' &&
-          !hasManualOverride,
+          mode !== 'plan' && thinkingLvl !== 'off' && !hasManualOverride,
         queuedAt: Date.now(),
       }
 
@@ -1325,12 +1402,18 @@ export function ChatWindow({
     const [loadedIssues, loadedPRs] = await Promise.all([
       queryClient.fetchQuery({
         queryKey: githubQueryKeys.loadedContexts(worktreeId),
-        queryFn: () => invoke<LoadedIssueContext[]>('list_loaded_issue_contexts', { worktreeId }),
+        queryFn: () =>
+          invoke<LoadedIssueContext[]>('list_loaded_issue_contexts', {
+            worktreeId,
+          }),
         staleTime: 1000 * 60,
       }),
       queryClient.fetchQuery({
         queryKey: githubQueryKeys.loadedPrContexts(worktreeId),
-        queryFn: () => invoke<LoadedPullRequestContext[]>('list_loaded_pr_contexts', { worktreeId }),
+        queryFn: () =>
+          invoke<LoadedPullRequestContext[]>('list_loaded_pr_contexts', {
+            worktreeId,
+          }),
         staleTime: 1000 * 60,
       }),
     ])
@@ -1450,16 +1533,16 @@ Begin your investigation now.`
 Begin your investigation now.`
 
       promptParts.push(
-        prTemplate
-          .replace(/\{prRefs\}/g, prRefs)
-          .replace(/\{prWord\}/g, prWord)
+        prTemplate.replace(/\{prRefs\}/g, prRefs).replace(/\{prWord\}/g, prWord)
       )
     }
 
     const prompt = promptParts.join('\n\n---\n\n')
 
     // Send message
-    const investigateModel = preferences?.magic_prompt_models?.investigate_model ?? selectedModelRef.current
+    const investigateModel =
+      preferences?.magic_prompt_models?.investigate_model ??
+      selectedModelRef.current
 
     const {
       addSendingSession,
@@ -1490,33 +1573,54 @@ Begin your investigation now.`
       },
       { onSettled: () => inputRef.current?.focus() }
     )
-  }, [queryClient, sendMessage, setLoadContextModalOpen, preferences?.magic_prompts?.investigate_issue, preferences?.magic_prompts?.investigate_pr, preferences?.magic_prompt_models?.investigate_model, preferences?.parallel_execution_prompt_enabled, preferences?.ai_language])
+  }, [
+    queryClient,
+    sendMessage,
+    setLoadContextModalOpen,
+    preferences?.magic_prompts?.investigate_issue,
+    preferences?.magic_prompts?.investigate_pr,
+    preferences?.magic_prompt_models?.investigate_model,
+    preferences?.parallel_execution_prompt_enabled,
+    preferences?.ai_language,
+  ])
 
   // Wraps modal open/close to auto-trigger investigation after user loads context
-  const handleLoadContextModalChange = useCallback(async (open: boolean) => {
-    setLoadContextModalOpen(open)
-    if (!open && pendingInvestigateRef.current) {
-      pendingInvestigateRef.current = false
-      // Only re-trigger investigate if the user actually loaded contexts
-      const worktreeId = activeWorktreeIdRef.current
-      if (!worktreeId) return
-      const [loadedIssues, loadedPRs] = await Promise.all([
-        queryClient.fetchQuery({
-          queryKey: githubQueryKeys.loadedContexts(worktreeId),
-          queryFn: () => invoke<LoadedIssueContext[]>('list_loaded_issue_contexts', { worktreeId }),
-          staleTime: 1000 * 60,
-        }),
-        queryClient.fetchQuery({
-          queryKey: githubQueryKeys.loadedPrContexts(worktreeId),
-          queryFn: () => invoke<LoadedPullRequestContext[]>('list_loaded_pr_contexts', { worktreeId }),
-          staleTime: 1000 * 60,
-        }),
-      ])
-      if ((loadedIssues && loadedIssues.length > 0) || (loadedPRs && loadedPRs.length > 0)) {
-        handleInvestigate()
+  const handleLoadContextModalChange = useCallback(
+    async (open: boolean) => {
+      setLoadContextModalOpen(open)
+      if (!open && pendingInvestigateRef.current) {
+        pendingInvestigateRef.current = false
+        // Only re-trigger investigate if the user actually loaded contexts
+        const worktreeId = activeWorktreeIdRef.current
+        if (!worktreeId) return
+        const [loadedIssues, loadedPRs] = await Promise.all([
+          queryClient.fetchQuery({
+            queryKey: githubQueryKeys.loadedContexts(worktreeId),
+            queryFn: () =>
+              invoke<LoadedIssueContext[]>('list_loaded_issue_contexts', {
+                worktreeId,
+              }),
+            staleTime: 1000 * 60,
+          }),
+          queryClient.fetchQuery({
+            queryKey: githubQueryKeys.loadedPrContexts(worktreeId),
+            queryFn: () =>
+              invoke<LoadedPullRequestContext[]>('list_loaded_pr_contexts', {
+                worktreeId,
+              }),
+            staleTime: 1000 * 60,
+          }),
+        ])
+        if (
+          (loadedIssues && loadedIssues.length > 0) ||
+          (loadedPRs && loadedPRs.length > 0)
+        ) {
+          handleInvestigate()
+        }
       }
-    }
-  }, [setLoadContextModalOpen, handleInvestigate, queryClient])
+    },
+    [setLoadContextModalOpen, handleInvestigate, queryClient]
+  )
 
   // Handle checkout PR - opens modal to select and checkout a PR to a new worktree
   const handleCheckoutPR = useCallback(() => {
@@ -1664,7 +1768,9 @@ Begin your investigation now.`
         setSelectedModel(targetSessionId, selectedModelRef.current)
         setExecutingMode(targetSessionId, 'build') // Always use build mode for fixes
         const thinkingLvl = selectedThinkingLevelRef.current
-        const hasManualOverride = useChatStore.getState().hasManualThinkingOverride(targetSessionId)
+        const hasManualOverride = useChatStore
+          .getState()
+          .hasManualThinkingOverride(targetSessionId)
         sendMessage.mutate(
           {
             sessionId: targetSessionId,
@@ -1879,14 +1985,20 @@ Begin your investigation now.`
   }
 
   return (
-    <ErrorBoundary fallback={
-      <div className="flex h-full flex-col items-center justify-center gap-4 text-muted-foreground">
-        <span>Something went wrong. Please refresh the page.</span>
-        <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
-          Refresh
-        </Button>
-      </div>
-    }>
+    <ErrorBoundary
+      fallback={
+        <div className="flex h-full flex-col items-center justify-center gap-4 text-muted-foreground">
+          <span>Something went wrong. Please refresh the page.</span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => window.location.reload()}
+          >
+            Refresh
+          </Button>
+        </div>
+      }
+    >
       <div className="flex h-full w-full min-w-0 flex-col overflow-hidden">
         {/* Session tab bar - hidden in modal mode and canvas-only mode */}
         {!isModal && !canvasOnlyMode && (
@@ -1909,7 +2021,10 @@ Begin your investigation now.`
           <ReviewResultsPanel worktreeId={activeWorktreeId} />
         ) : (
           <ResizablePanelGroup direction="vertical" className="flex-1">
-            <ResizablePanel defaultSize={terminalVisible ? 70 : 100} minSize={30}>
+            <ResizablePanel
+              defaultSize={terminalVisible ? 70 : 100}
+              minSize={30}
+            >
               <div className="flex h-full flex-col">
                 {/* Messages area */}
                 <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
@@ -1925,25 +2040,34 @@ Begin your investigation now.`
                     <div className="mx-auto max-w-7xl px-4 py-4 md:px-6 min-w-0 w-full">
                       <div className="select-text space-y-4 font-mono text-sm min-w-0 break-words overflow-x-auto">
                         {/* Debug info (dev mode only) */}
-                        {isDev && activeWorktreeId && activeWorktreePath && activeSessionId && (
-                          <div className="text-[0.625rem] text-muted-foreground/50 bg-muted/30 rounded font-mono">
-                            <SessionDebugPanel
-                              worktreeId={activeWorktreeId}
-                              worktreePath={activeWorktreePath}
-                              sessionId={activeSessionId}
-                              onFileClick={setViewingFilePath}
-                            />
-                          </div>
-                        )}
+                        {isDev &&
+                          activeWorktreeId &&
+                          activeWorktreePath &&
+                          activeSessionId && (
+                            <div className="text-[0.625rem] text-muted-foreground/50 bg-muted/30 rounded font-mono">
+                              <SessionDebugPanel
+                                worktreeId={activeWorktreeId}
+                                worktreePath={activeWorktreePath}
+                                sessionId={activeSessionId}
+                                onFileClick={setViewingFilePath}
+                              />
+                            </div>
+                          )}
                         {/* Setup script output from jean.json */}
                         {setupScriptResult && activeWorktreeId && (
                           <SetupScriptOutput
                             result={setupScriptResult}
-                            onDismiss={() => clearSetupScriptResult(activeWorktreeId)}
+                            onDismiss={() =>
+                              clearSetupScriptResult(activeWorktreeId)
+                            }
                           />
                         )}
-                        {isLoading || isSessionsLoading || isSessionSwitching ? (
-                          <div className="text-muted-foreground">Loading...</div>
+                        {isLoading ||
+                        isSessionsLoading ||
+                        isSessionSwitching ? (
+                          <div className="text-muted-foreground">
+                            Loading...
+                          </div>
                         ) : !session || session.messages.length === 0 ? (
                           <div className="text-muted-foreground">
                             No messages yet. Start a conversation!
@@ -1976,7 +2100,9 @@ Begin your investigation now.`
                             areQuestionsSkipped={areQuestionsSkipped}
                             isFindingFixed={isFindingFixed}
                             shouldScrollToBottom={isAtBottom}
-                            onScrollToBottomHandled={handleScrollToBottomHandled}
+                            onScrollToBottomHandled={
+                              handleScrollToBottomHandled
+                            }
                           />
                         )}
                         {isSending && activeSessionId && (
@@ -1996,10 +2122,13 @@ Begin your investigation now.`
                             isQuestionAnswered={isQuestionAnswered}
                             getSubmittedAnswers={getSubmittedAnswers}
                             areQuestionsSkipped={areQuestionsSkipped}
-
                             isStreamingPlanApproved={isStreamingPlanApproved}
-                            onStreamingPlanApproval={handleStreamingPlanApproval}
-                            onStreamingPlanApprovalYolo={handleStreamingPlanApprovalYolo}
+                            onStreamingPlanApproval={
+                              handleStreamingPlanApproval
+                            }
+                            onStreamingPlanApprovalYolo={
+                              handleStreamingPlanApprovalYolo
+                            }
                           />
                         )}
 
@@ -2126,7 +2255,7 @@ Begin your investigation now.`
                       className={cn(
                         'relative rounded-lg transition-all duration-150',
                         isDragging &&
-                        'ring-2 ring-primary ring-inset bg-primary/5'
+                          'ring-2 ring-primary ring-inset bg-primary/5'
                       )}
                     >
                       {/* Textarea section */}
@@ -2207,25 +2336,28 @@ Begin your investigation now.`
             </ResizablePanel>
 
             {/* Terminal panel - only render when panel is open (native app only, not in modal) */}
-            {!isModal && isNativeApp() && activeWorktreePath && terminalPanelOpen && (
-              <>
-                <ResizableHandle withHandle />
-                <ResizablePanel
-                  ref={terminalPanelRef}
-                  defaultSize={terminalVisible ? 30 : 4}
-                  minSize={terminalVisible ? 15 : 4}
-                  collapsible
-                  collapsedSize={4}
-                  onCollapse={handleTerminalCollapse}
-                  onExpand={handleTerminalExpand}
-                >
-                  <TerminalPanel
-                    isCollapsed={!terminalVisible}
+            {!isModal &&
+              isNativeApp() &&
+              activeWorktreePath &&
+              terminalPanelOpen && (
+                <>
+                  <ResizableHandle withHandle />
+                  <ResizablePanel
+                    ref={terminalPanelRef}
+                    defaultSize={terminalVisible ? 30 : 4}
+                    minSize={terminalVisible ? 15 : 4}
+                    collapsible
+                    collapsedSize={4}
+                    onCollapse={handleTerminalCollapse}
                     onExpand={handleTerminalExpand}
-                  />
-                </ResizablePanel>
-              </>
-            )}
+                  >
+                    <TerminalPanel
+                      isCollapsed={!terminalVisible}
+                      onExpand={handleTerminalExpand}
+                    />
+                  </ResizablePanel>
+                </>
+              )}
           </ResizablePanelGroup>
         )}
 
@@ -2261,8 +2393,8 @@ Begin your investigation now.`
         />
 
         {/* Plan dialog - editable view of latest plan */}
-        {isPlanDialogOpen && (
-          planDialogContent ? (
+        {isPlanDialogOpen &&
+          (planDialogContent ? (
             <PlanDialog
               content={planDialogContent}
               isOpen={isPlanDialogOpen}
@@ -2281,21 +2413,37 @@ Begin your investigation now.`
                     }
                   : undefined
               }
-              onApprove={(updatedPlan) => {
-                console.log('[ChatWindow] onApprove (content) called with updatedPlan length:', updatedPlan?.length)
+              onApprove={updatedPlan => {
+                console.log(
+                  '[ChatWindow] onApprove (content) called with updatedPlan length:',
+                  updatedPlan?.length
+                )
                 console.log('[ChatWindow] activeSessionId:', activeSessionId)
-                console.log('[ChatWindow] pendingPlanMessage:', pendingPlanMessage?.id)
-                if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) {
-                  console.log('[ChatWindow] onApprove early return - missing session context')
+                console.log(
+                  '[ChatWindow] pendingPlanMessage:',
+                  pendingPlanMessage?.id
+                )
+                if (
+                  !activeSessionId ||
+                  !activeWorktreeId ||
+                  !activeWorktreePath
+                ) {
+                  console.log(
+                    '[ChatWindow] onApprove early return - missing session context'
+                  )
                   return
                 }
                 if (pendingPlanMessage) {
-                  console.log('[ChatWindow] calling handlePlanApproval with pending plan')
+                  console.log(
+                    '[ChatWindow] calling handlePlanApproval with pending plan'
+                  )
                   handlePlanApproval(pendingPlanMessage.id, updatedPlan)
                 } else {
                   // No pending plan - send updated plan as a fresh message
                   const message = `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
-                  console.log('[ChatWindow] sendMessage.mutate - no pending plan, sending fresh message')
+                  console.log(
+                    '[ChatWindow] sendMessage.mutate - no pending plan, sending fresh message'
+                  )
                   sendMessage.mutate({
                     sessionId: activeSessionId,
                     worktreeId: activeWorktreeId,
@@ -2308,21 +2456,37 @@ Begin your investigation now.`
                   })
                 }
               }}
-              onApproveYolo={(updatedPlan) => {
-                console.log('[ChatWindow] onApproveYolo (content) called with updatedPlan length:', updatedPlan?.length)
+              onApproveYolo={updatedPlan => {
+                console.log(
+                  '[ChatWindow] onApproveYolo (content) called with updatedPlan length:',
+                  updatedPlan?.length
+                )
                 console.log('[ChatWindow] activeSessionId:', activeSessionId)
-                console.log('[ChatWindow] pendingPlanMessage:', pendingPlanMessage?.id)
-                if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) {
-                  console.log('[ChatWindow] onApproveYolo early return - missing session context')
+                console.log(
+                  '[ChatWindow] pendingPlanMessage:',
+                  pendingPlanMessage?.id
+                )
+                if (
+                  !activeSessionId ||
+                  !activeWorktreeId ||
+                  !activeWorktreePath
+                ) {
+                  console.log(
+                    '[ChatWindow] onApproveYolo early return - missing session context'
+                  )
                   return
                 }
                 if (pendingPlanMessage) {
-                  console.log('[ChatWindow] calling handlePlanApprovalYolo with pending plan')
+                  console.log(
+                    '[ChatWindow] calling handlePlanApprovalYolo with pending plan'
+                  )
                   handlePlanApprovalYolo(pendingPlanMessage.id, updatedPlan)
                 } else {
                   // No pending plan - send updated plan as a fresh message in yolo mode
                   const message = `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
-                  console.log('[ChatWindow] sendMessage.mutate yolo - no pending plan, sending fresh message')
+                  console.log(
+                    '[ChatWindow] sendMessage.mutate yolo - no pending plan, sending fresh message'
+                  )
                   sendMessage.mutate({
                     sessionId: activeSessionId,
                     worktreeId: activeWorktreeId,
@@ -2352,21 +2516,37 @@ Begin your investigation now.`
                     }
                   : undefined
               }
-              onApprove={(updatedPlan) => {
-                console.log('[ChatWindow] onApprove (filePath) called with updatedPlan length:', updatedPlan?.length)
+              onApprove={updatedPlan => {
+                console.log(
+                  '[ChatWindow] onApprove (filePath) called with updatedPlan length:',
+                  updatedPlan?.length
+                )
                 console.log('[ChatWindow] activeSessionId:', activeSessionId)
-                console.log('[ChatWindow] pendingPlanMessage:', pendingPlanMessage?.id)
-                if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) {
-                  console.log('[ChatWindow] onApprove early return - missing session context')
+                console.log(
+                  '[ChatWindow] pendingPlanMessage:',
+                  pendingPlanMessage?.id
+                )
+                if (
+                  !activeSessionId ||
+                  !activeWorktreeId ||
+                  !activeWorktreePath
+                ) {
+                  console.log(
+                    '[ChatWindow] onApprove early return - missing session context'
+                  )
                   return
                 }
                 if (pendingPlanMessage) {
-                  console.log('[ChatWindow] calling handlePlanApproval with pending plan')
+                  console.log(
+                    '[ChatWindow] calling handlePlanApproval with pending plan'
+                  )
                   handlePlanApproval(pendingPlanMessage.id, updatedPlan)
                 } else {
                   // No pending plan - send updated plan as a fresh message
                   const message = `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
-                  console.log('[ChatWindow] sendMessage.mutate - no pending plan, sending fresh message')
+                  console.log(
+                    '[ChatWindow] sendMessage.mutate - no pending plan, sending fresh message'
+                  )
                   sendMessage.mutate({
                     sessionId: activeSessionId,
                     worktreeId: activeWorktreeId,
@@ -2379,21 +2559,37 @@ Begin your investigation now.`
                   })
                 }
               }}
-              onApproveYolo={(updatedPlan) => {
-                console.log('[ChatWindow] onApproveYolo (filePath) called with updatedPlan length:', updatedPlan?.length)
+              onApproveYolo={updatedPlan => {
+                console.log(
+                  '[ChatWindow] onApproveYolo (filePath) called with updatedPlan length:',
+                  updatedPlan?.length
+                )
                 console.log('[ChatWindow] activeSessionId:', activeSessionId)
-                console.log('[ChatWindow] pendingPlanMessage:', pendingPlanMessage?.id)
-                if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) {
-                  console.log('[ChatWindow] onApproveYolo early return - missing session context')
+                console.log(
+                  '[ChatWindow] pendingPlanMessage:',
+                  pendingPlanMessage?.id
+                )
+                if (
+                  !activeSessionId ||
+                  !activeWorktreeId ||
+                  !activeWorktreePath
+                ) {
+                  console.log(
+                    '[ChatWindow] onApproveYolo early return - missing session context'
+                  )
                   return
                 }
                 if (pendingPlanMessage) {
-                  console.log('[ChatWindow] calling handlePlanApprovalYolo with pending plan')
+                  console.log(
+                    '[ChatWindow] calling handlePlanApprovalYolo with pending plan'
+                  )
                   handlePlanApprovalYolo(pendingPlanMessage.id, updatedPlan)
                 } else {
                   // No pending plan - send updated plan as a fresh message in yolo mode
                   const message = `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
-                  console.log('[ChatWindow] sendMessage.mutate yolo - no pending plan, sending fresh message')
+                  console.log(
+                    '[ChatWindow] sendMessage.mutate yolo - no pending plan, sending fresh message'
+                  )
                   sendMessage.mutate({
                     sessionId: activeSessionId,
                     worktreeId: activeWorktreeId,
@@ -2407,8 +2603,7 @@ Begin your investigation now.`
                 }
               }}
             />
-          ) : null
-        )}
+          ) : null)}
 
         {/* Merge options dialog */}
         <AlertDialog open={showMergeDialog} onOpenChange={setShowMergeDialog}>
@@ -2480,7 +2675,6 @@ Begin your investigation now.`
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-
       </div>
     </ErrorBoundary>
   )

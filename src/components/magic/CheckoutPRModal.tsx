@@ -55,7 +55,9 @@ export function CheckoutPRModal() {
   const [searchQuery, setSearchQuery] = useState('')
   const [includeClosed, setIncludeClosed] = useState(false)
   const [selectedItemIndex, setSelectedItemIndex] = useState(0)
-  const [checkingOutNumber, setCheckingOutNumber] = useState<number | null>(null)
+  const [checkingOutNumber, setCheckingOutNumber] = useState<number | null>(
+    null
+  )
 
   const searchInputRef = useRef<HTMLInputElement>(null)
 
@@ -73,17 +75,15 @@ export function CheckoutPRModal() {
   const debouncedSearchQuery = useDebouncedValue(searchQuery, 300)
 
   // GitHub search query (triggered when local filter may miss results)
-  const {
-    data: searchedPRs,
-    isFetching: isSearchingPRs,
-  } = useSearchGitHubPRs(selectedProject?.path ?? null, debouncedSearchQuery)
+  const { data: searchedPRs, isFetching: isSearchingPRs } = useSearchGitHubPRs(
+    selectedProject?.path ?? null,
+    debouncedSearchQuery
+  )
 
   // Filter PRs locally, then merge with remote search results
   const filteredPRs = useMemo(
-    () => mergeWithSearchResults(
-      filterPRs(prs ?? [], searchQuery),
-      searchedPRs,
-    ),
+    () =>
+      mergeWithSearchResults(filterPRs(prs ?? [], searchQuery), searchedPRs),
     [prs, searchQuery, searchedPRs]
   )
 
@@ -145,7 +145,10 @@ export function CheckoutPRModal() {
 
         // Add pending worktree to cache immediately so it appears in sidebar
         // Skip if already present (e.g. restored from archive via worktree:unarchived event)
-        const worktreeWithStatus = { ...pendingWorktree, status: 'pending' as const }
+        const worktreeWithStatus = {
+          ...pendingWorktree,
+          status: 'pending' as const,
+        }
         queryClient.setQueryData<Worktree[]>(
           projectsQueryKeys.worktrees(selectedProjectId),
           old => {
@@ -284,9 +287,12 @@ export function CheckoutPRModal() {
               </div>
             )}
 
-            {prsError && (
-              isGhAuthError(prsError) ? (
-                <GhAuthError onLogin={triggerGhLogin} isGhInstalled={isGhInstalled} />
+            {prsError &&
+              (isGhAuthError(prsError) ? (
+                <GhAuthError
+                  onLogin={triggerGhLogin}
+                  isGhInstalled={isGhInstalled}
+                />
               ) : (
                 <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
                   <AlertCircle className="h-5 w-5 text-destructive mb-2" />
@@ -294,25 +300,32 @@ export function CheckoutPRModal() {
                     {prsError.message || 'Failed to load pull requests'}
                   </span>
                 </div>
-              )
-            )}
+              ))}
 
-            {!isLoadingPRs && !prsError && filteredPRs.length === 0 && !isSearchingPRs && (
-              <div className="flex items-center justify-center py-8">
-                <span className="text-sm text-muted-foreground">
-                  {searchQuery ? 'No PRs match your search' : 'No open pull requests found'}
-                </span>
-              </div>
-            )}
+            {!isLoadingPRs &&
+              !prsError &&
+              filteredPRs.length === 0 &&
+              !isSearchingPRs && (
+                <div className="flex items-center justify-center py-8">
+                  <span className="text-sm text-muted-foreground">
+                    {searchQuery
+                      ? 'No PRs match your search'
+                      : 'No open pull requests found'}
+                  </span>
+                </div>
+              )}
 
-            {!isLoadingPRs && !prsError && filteredPRs.length === 0 && isSearchingPRs && (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                <span className="ml-2 text-sm text-muted-foreground">
-                  Searching GitHub...
-                </span>
-              </div>
-            )}
+            {!isLoadingPRs &&
+              !prsError &&
+              filteredPRs.length === 0 &&
+              isSearchingPRs && (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  <span className="ml-2 text-sm text-muted-foreground">
+                    Searching GitHub...
+                  </span>
+                </div>
+              )}
 
             {!isLoadingPRs && !prsError && filteredPRs.length > 0 && (
               <div className="py-1">
@@ -383,7 +396,11 @@ function CheckoutPRItem({
         <GitPullRequest
           className={cn(
             'h-4 w-4 mt-0.5 flex-shrink-0',
-            pr.state === 'OPEN' ? 'text-green-500' : pr.state === 'MERGED' ? 'text-purple-500' : 'text-red-500'
+            pr.state === 'OPEN'
+              ? 'text-green-500'
+              : pr.state === 'MERGED'
+                ? 'text-purple-500'
+                : 'text-red-500'
           )}
         />
       )}

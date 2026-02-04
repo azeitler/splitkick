@@ -53,32 +53,41 @@ export function useCanvasShortcutEvents({
 }: UseCanvasShortcutEventsOptions): UseCanvasShortcutEventsResult {
   // Plan dialog state
   const [planDialogPath, setPlanDialogPath] = useState<string | null>(null)
-  const [planDialogContent, setPlanDialogContent] = useState<string | null>(null)
-  const [planApprovalContext, setPlanApprovalContext] = useState<ApprovalContext | null>(null)
-  const [planDialogCard, setPlanDialogCard] = useState<SessionCardData | null>(null)
+  const [planDialogContent, setPlanDialogContent] = useState<string | null>(
+    null
+  )
+  const [planApprovalContext, setPlanApprovalContext] =
+    useState<ApprovalContext | null>(null)
+  const [planDialogCard, setPlanDialogCard] = useState<SessionCardData | null>(
+    null
+  )
 
   // Recap dialog state
-  const [recapDialogDigest, setRecapDialogDigest] = useState<SessionDigest | null>(null)
+  const [recapDialogDigest, setRecapDialogDigest] =
+    useState<SessionDigest | null>(null)
 
   // Handle plan view
-  const handlePlanView = useCallback((card: SessionCardData) => {
-    if (card.planFilePath) {
-      setPlanDialogPath(card.planFilePath)
-      setPlanDialogContent(null)
-    } else if (card.planContent) {
-      setPlanDialogContent(card.planContent)
-      setPlanDialogPath(null)
-    }
+  const handlePlanView = useCallback(
+    (card: SessionCardData) => {
+      if (card.planFilePath) {
+        setPlanDialogPath(card.planFilePath)
+        setPlanDialogContent(null)
+      } else if (card.planContent) {
+        setPlanDialogContent(card.planContent)
+        setPlanDialogPath(null)
+      }
 
-    // Set approval context for the dialog
-    setPlanApprovalContext({
-      worktreeId,
-      worktreePath,
-      sessionId: card.session.id,
-      pendingPlanMessageId: card.pendingPlanMessageId,
-    })
-    setPlanDialogCard(card)
-  }, [worktreeId, worktreePath])
+      // Set approval context for the dialog
+      setPlanApprovalContext({
+        worktreeId,
+        worktreePath,
+        sessionId: card.session.id,
+        pendingPlanMessageId: card.pendingPlanMessageId,
+      })
+      setPlanDialogCard(card)
+    },
+    [worktreeId, worktreePath]
+  )
 
   // Handle recap view
   const handleRecapView = useCallback((card: SessionCardData) => {
@@ -134,7 +143,10 @@ export function useCanvasShortcutEvents({
 
     return () => {
       window.removeEventListener('approve-plan', handleApprovePlanEvent)
-      window.removeEventListener('approve-plan-yolo', handleApprovePlanYoloEvent)
+      window.removeEventListener(
+        'approve-plan-yolo',
+        handleApprovePlanYoloEvent
+      )
       window.removeEventListener('open-plan', handleOpenPlanEvent)
       window.removeEventListener('open-recap', handleOpenRecapEvent)
     }

@@ -29,6 +29,7 @@ export const terminalCommands: AppCommand[] = [
       context.runScript()
     },
 
-    isAvailable: context => context.hasActiveWorktree() && context.hasRunScript(),
+    isAvailable: context =>
+      context.hasActiveWorktree() && context.hasRunScript(),
   },
 ]

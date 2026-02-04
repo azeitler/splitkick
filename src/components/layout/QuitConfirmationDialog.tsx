@@ -29,7 +29,10 @@ export function QuitConfirmationDialog() {
 
     window.addEventListener('quit-confirmation-requested', handleQuitRequest)
     return () => {
-      window.removeEventListener('quit-confirmation-requested', handleQuitRequest)
+      window.removeEventListener(
+        'quit-confirmation-requested',
+        handleQuitRequest
+      )
     }
   }, [])
 
@@ -55,7 +58,9 @@ export function QuitConfirmationDialog() {
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction onClick={handleQuit}>Quit Anyway</AlertDialogAction>
+          <AlertDialogAction onClick={handleQuit}>
+            Quit Anyway
+          </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

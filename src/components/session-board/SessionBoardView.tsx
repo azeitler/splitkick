@@ -43,7 +43,10 @@ interface SessionBoardViewProps {
   onSessionClick: (worktreeId: string, sessionId: string) => void
 }
 
-export function SessionBoardView({ projectId, onSessionClick }: SessionBoardViewProps) {
+export function SessionBoardView({
+  projectId,
+  onSessionClick,
+}: SessionBoardViewProps) {
   // Get all projects to find the current one
   const { data: projects = [], isLoading: projectsLoading } = useProjects()
   const project = projects.find(p => p.id === projectId)

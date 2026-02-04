@@ -305,7 +305,13 @@ interface SessionState {
 }
 
 // Collapsible dropdown for grouped sessions
-type GroupType = 'active' | 'planning' | 'vibing' | 'yoloing' | 'waiting' | 'review'
+type GroupType =
+  | 'active'
+  | 'planning'
+  | 'vibing'
+  | 'yoloing'
+  | 'waiting'
+  | 'review'
 
 interface SessionGroupDropdownProps {
   label: string
@@ -441,7 +447,9 @@ function SessionGroupDropdown({
           <span
             className={cn(
               'rounded-full px-1.5 py-0.5 text-[10px] font-medium',
-              isEmpty ? 'bg-muted/50 text-muted-foreground/50' : styles.badgeClass
+              isEmpty
+                ? 'bg-muted/50 text-muted-foreground/50'
+                : styles.badgeClass
             )}
           >
             {sessions.length}
@@ -467,9 +475,7 @@ function SessionGroupDropdown({
       >
         <div className="flex flex-col gap-0.5">
           {sessions.map(state => {
-            const isActive =
-              state.id === activeSessionId &&
-              !isViewingReviewTab
+            const isActive = state.id === activeSessionId && !isViewingReviewTab
             const isSessionReviewing = reviewingSessions[state.id] ?? false
 
             return (
@@ -538,11 +544,10 @@ export function SessionTabBar({
   const canvasEnabled = preferences?.canvas_enabled ?? true
   const canvasOnlyMode = preferences?.canvas_only_mode ?? false
   const isViewingCanvasTab = canvasEnabled
-    ? (canvasOnlyMode || isViewingCanvasTabRaw)
+    ? canvasOnlyMode || isViewingCanvasTabRaw
     : false
   const reviewResults = useChatStore(state => state.reviewResults[worktreeId])
   const reviewingSessions = useChatStore(state => state.reviewingSessions)
-
 
   // Actions via getState() - no subscription, stable references
   const {
@@ -596,7 +601,6 @@ export function SessionTabBar({
       }
     )
   }, [worktreeId, worktreePath, createSession, setActiveSession])
-
 
   // Scroll to pending session after query refetch renders it
   useEffect(() => {
@@ -804,7 +808,9 @@ export function SessionTabBar({
   const executionModes = useChatStore(state => state.executionModes)
   const activeToolCalls = useChatStore(state => state.activeToolCalls)
   const answeredQuestions = useChatStore(state => state.answeredQuestions)
-  const waitingForInputSessionIds = useChatStore(state => state.waitingForInputSessionIds)
+  const waitingForInputSessionIds = useChatStore(
+    state => state.waitingForInputSessionIds
+  )
 
   // PERFORMANCE: Pre-compute session states ONCE per render instead of per-tab-map-iteration
   // This avoids O(n × m) work where n = sessions, m = messages per session
@@ -844,7 +850,8 @@ export function SessionTabBar({
       // Check explicit waiting state (set by useStreamingEvents when AskUserQuestion/ExitPlanMode completes)
       const isExplicitlyWaiting = waitingForInputSessionIds[session.id] ?? false
 
-      const sessionWaiting = isStreamingWaiting || hasPendingQuestion || isExplicitlyWaiting
+      const sessionWaiting =
+        isStreamingWaiting || hasPendingQuestion || isExplicitlyWaiting
 
       // Execution mode - use executingModes when sending for immediate feedback
       const executionMode = sessionSending
@@ -949,7 +956,12 @@ export function SessionTabBar({
       waitingGroupStates: waitingGroupStates.sort(sortByRecentActivity),
       reviewingGroupStates: reviewingGroupStates.sort(sortByRecentActivity),
     }
-  }, [sessionStates, reviewingSessions, sortByRecentActivity, preferences?.session_grouping_enabled])
+  }, [
+    sessionStates,
+    reviewingSessions,
+    sortByRecentActivity,
+    preferences?.session_grouping_enabled,
+  ])
 
   // Compute visual order for keyboard navigation (matches display order)
   const visualOrderSessions = useMemo(() => {
@@ -966,7 +978,16 @@ export function SessionTabBar({
       ...yoloingGroupStates,
       ...reviewingGroupStates,
     ].map(s => s.session)
-  }, [shouldGroup, sessionStates, activeGroupStates, planningGroupStates, waitingGroupStates, vibingGroupStates, yoloingGroupStates, reviewingGroupStates])
+  }, [
+    shouldGroup,
+    sessionStates,
+    activeGroupStates,
+    planningGroupStates,
+    waitingGroupStates,
+    vibingGroupStates,
+    yoloingGroupStates,
+    reviewingGroupStates,
+  ])
 
   // Listen for global switch-session event from keybindings (CMD+Arrow)
   // Use throttle to prevent flickery switching when pressing rapidly
@@ -1192,8 +1213,7 @@ export function SessionTabBar({
                 {/* PERFORMANCE: Use pre-computed sessionStates instead of inline computation */}
                 {sessionStates.map(state => {
                   const isActive =
-                    state.id === activeSessionId &&
-                    !isViewingReviewTab
+                    state.id === activeSessionId && !isViewingReviewTab
                   const isEditing = editingId === state.id
                   const isSessionReviewing =
                     reviewingSessions[state.id] ?? false

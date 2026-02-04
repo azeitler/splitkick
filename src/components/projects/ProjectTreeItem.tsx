@@ -1,5 +1,11 @@
 import { useCallback, useState } from 'react'
-import { ArrowDown, ArrowUp, ChevronDown, MoreHorizontal, Plus } from 'lucide-react'
+import {
+  ArrowDown,
+  ArrowUp,
+  ChevronDown,
+  MoreHorizontal,
+  Plus,
+} from 'lucide-react'
 import { convertFileSrc } from '@/lib/transport'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -63,13 +69,13 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
   // Only show on project line when no base session
   const baseBranchBehindCount = !hasBaseSession
     ? (gitStatus?.base_branch_behind_count ??
-        firstWorktree?.cached_base_branch_behind_count ??
-        0)
+      firstWorktree?.cached_base_branch_behind_count ??
+      0)
     : 0
   const baseBranchAheadCount = !hasBaseSession
     ? (gitStatus?.base_branch_ahead_count ??
-        firstWorktree?.cached_base_branch_ahead_count ??
-        0)
+      firstWorktree?.cached_base_branch_ahead_count ??
+      0)
     : 0
 
   // Get chat store state

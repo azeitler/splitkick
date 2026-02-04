@@ -49,7 +49,10 @@ const PROMPT_CONFIGS: PromptConfig[] = [
     description: 'Prompt for analyzing GitHub issues loaded into the context.',
     variables: [
       { name: '{issueRefs}', description: 'Issue numbers (e.g., #123, #456)' },
-      { name: '{issueWord}', description: '"issue" or "issues" based on count' },
+      {
+        name: '{issueWord}',
+        description: '"issue" or "issues" based on count',
+      },
     ],
     defaultValue: DEFAULT_INVESTIGATE_ISSUE_PROMPT,
     defaultModel: 'opus',
@@ -58,10 +61,14 @@ const PROMPT_CONFIGS: PromptConfig[] = [
     key: 'investigate_pr',
     modelKey: 'investigate_model',
     label: 'Investigate PR',
-    description: 'Prompt for analyzing GitHub pull requests loaded into the context.',
+    description:
+      'Prompt for analyzing GitHub pull requests loaded into the context.',
     variables: [
       { name: '{prRefs}', description: 'PR numbers (e.g., #123, #456)' },
-      { name: '{prWord}', description: '"pull request" or "pull requests" based on count' },
+      {
+        name: '{prWord}',
+        description: '"pull request" or "pull requests" based on count',
+      },
     ],
     defaultValue: DEFAULT_INVESTIGATE_PR_PROMPT,
     defaultModel: 'opus',
@@ -73,7 +80,10 @@ const PROMPT_CONFIGS: PromptConfig[] = [
     description: 'Prompt for generating pull request titles and descriptions.',
     variables: [
       { name: '{current_branch}', description: 'Name of the feature branch' },
-      { name: '{target_branch}', description: 'Branch to merge into (e.g., main)' },
+      {
+        name: '{target_branch}',
+        description: 'Branch to merge into (e.g., main)',
+      },
       { name: '{commit_count}', description: 'Number of commits in the PR' },
       { name: '{commits}', description: 'List of commit messages' },
       { name: '{diff}', description: 'Git diff of all changes' },
@@ -89,7 +99,10 @@ const PROMPT_CONFIGS: PromptConfig[] = [
     variables: [
       { name: '{status}', description: 'Git status output' },
       { name: '{diff}', description: 'Staged changes diff' },
-      { name: '{recent_commits}', description: 'Recent commit messages for style' },
+      {
+        name: '{recent_commits}',
+        description: 'Recent commit messages for style',
+      },
       { name: '{remote_info}', description: 'Remote repository info' },
     ],
     defaultValue: DEFAULT_COMMIT_MESSAGE_PROMPT,
@@ -142,15 +155,19 @@ const MODEL_OPTIONS: { value: ClaudeModel; label: string }[] = [
 export const MagicPromptsPane: React.FC = () => {
   const { data: preferences } = usePreferences()
   const savePreferences = useSavePreferences()
-  const [selectedKey, setSelectedKey] = useState<keyof MagicPrompts>('investigate_issue')
+  const [selectedKey, setSelectedKey] =
+    useState<keyof MagicPrompts>('investigate_issue')
   const [localValue, setLocalValue] = useState('')
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const currentPrompts = preferences?.magic_prompts ?? DEFAULT_MAGIC_PROMPTS
-  const currentModels = preferences?.magic_prompt_models ?? DEFAULT_MAGIC_PROMPT_MODELS
+  const currentModels =
+    preferences?.magic_prompt_models ?? DEFAULT_MAGIC_PROMPT_MODELS
   const selectedConfig = PROMPT_CONFIGS.find(c => c.key === selectedKey)!
-  const currentValue = currentPrompts[selectedKey] ?? selectedConfig.defaultValue
-  const currentModel = currentModels[selectedConfig.modelKey] ?? selectedConfig.defaultModel
+  const currentValue =
+    currentPrompts[selectedKey] ?? selectedConfig.defaultValue
+  const currentModel =
+    currentModels[selectedConfig.modelKey] ?? selectedConfig.defaultModel
   const isModified = currentValue !== selectedConfig.defaultValue
 
   // Sync local value when selection changes or external value updates
@@ -205,7 +222,14 @@ export const MagicPromptsPane: React.FC = () => {
         },
       })
     }
-  }, [localValue, currentValue, preferences, savePreferences, currentPrompts, selectedKey])
+  }, [
+    localValue,
+    currentValue,
+    preferences,
+    savePreferences,
+    currentPrompts,
+    selectedKey,
+  ])
 
   const handleReset = useCallback(() => {
     if (!preferences) return
@@ -216,7 +240,13 @@ export const MagicPromptsPane: React.FC = () => {
         [selectedKey]: selectedConfig.defaultValue,
       },
     })
-  }, [preferences, savePreferences, currentPrompts, selectedKey, selectedConfig.defaultValue])
+  }, [
+    preferences,
+    savePreferences,
+    currentPrompts,
+    selectedKey,
+    selectedConfig.defaultValue,
+  ])
 
   const handleModelChange = useCallback(
     (model: ClaudeModel) => {
@@ -237,8 +267,10 @@ export const MagicPromptsPane: React.FC = () => {
       {/* Prompt selector grid */}
       <div className="grid grid-cols-3 gap-1.5 mb-4 shrink-0">
         {PROMPT_CONFIGS.map(config => {
-          const promptIsModified = currentPrompts[config.key] !== config.defaultValue
-          const promptModel = currentModels[config.modelKey] ?? config.defaultModel
+          const promptIsModified =
+            currentPrompts[config.key] !== config.defaultValue
+          const promptModel =
+            currentModels[config.modelKey] ?? config.defaultModel
           return (
             <button
               key={config.key}
@@ -258,10 +290,12 @@ export const MagicPromptsPane: React.FC = () => {
                     <span className="text-muted-foreground ml-1">*</span>
                   )}
                 </span>
-                <span className={cn(
-                  'text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0',
-                  'bg-muted text-muted-foreground'
-                )}>
+                <span
+                  className={cn(
+                    'text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0',
+                    'bg-muted text-muted-foreground'
+                  )}
+                >
                   {promptModel}
                 </span>
               </div>

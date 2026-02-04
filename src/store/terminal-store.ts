@@ -29,7 +29,11 @@ interface TerminalState {
   setTerminalHeight: (height: number) => void
 
   // Terminal instance management
-  addTerminal: (worktreeId: string, command?: string | null, label?: string) => string
+  addTerminal: (
+    worktreeId: string,
+    command?: string | null,
+    label?: string
+  ) => string
   removeTerminal: (worktreeId: string, terminalId: string) => void
   setActiveTerminal: (worktreeId: string, terminalId: string) => void
   getTerminals: (worktreeId: string) => TerminalInstance[]
@@ -77,7 +81,8 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       },
     })),
 
-  isTerminalPanelOpen: worktreeId => get().terminalPanelOpen[worktreeId] ?? false,
+  isTerminalPanelOpen: worktreeId =>
+    get().terminalPanelOpen[worktreeId] ?? false,
 
   toggleTerminal: worktreeId =>
     set(state => ({

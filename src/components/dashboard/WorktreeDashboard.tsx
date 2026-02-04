@@ -4,11 +4,7 @@ import { invoke } from '@/lib/transport'
 import { Search, GitBranch } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
-import {
-  useWorktrees,
-  useProjects,
-  isTauri,
-} from '@/services/projects'
+import { useWorktrees, useProjects, isTauri } from '@/services/projects'
 import { chatQueryKeys, useCreateSession } from '@/services/chat'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
@@ -32,6 +28,9 @@ import {
   useCloseBaseSessionClean,
 } from '@/services/projects'
 import { useArchiveSession, useCloseSession } from '@/services/chat'
+import { usePreferences } from '@/services/preferences'
+import { KeybindingHints } from '@/components/ui/keybinding-hints'
+import { DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 
 interface WorktreeDashboardProps {
   projectId: string
@@ -50,6 +49,9 @@ interface FlatCard {
 }
 
 export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
+  // Preferences for keybinding hints
+  const { data: preferences } = usePreferences()
+
   const [searchQuery, setSearchQuery] = useState('')
 
   // Get project info
@@ -127,10 +129,11 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
 
       // Filter sessions based on search query
       const filteredSessions = searchQuery.trim()
-        ? sessions.filter(session =>
-            session.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            worktree.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            worktree.branch.toLowerCase().includes(searchQuery.toLowerCase())
+        ? sessions.filter(
+            session =>
+              session.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+              worktree.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+              worktree.branch.toLowerCase().includes(searchQuery.toLowerCase())
           )
         : sessions
 
@@ -176,7 +179,8 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   // Get current selected card's worktree info for hooks
-  const selectedFlatCard = selectedIndex !== null ? flatCards[selectedIndex] : null
+  const selectedFlatCard =
+    selectedIndex !== null ? flatCards[selectedIndex] : null
 
   // Use shared hooks - pass the currently selected card's worktree
   const { handlePlanApproval, handlePlanApprovalYolo } = usePlanApproval({
@@ -194,15 +198,18 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
   useEffect(() => {
     const handleFocusSearch = () => searchInputRef.current?.focus()
     window.addEventListener('focus-canvas-search', handleFocusSearch)
-    return () => window.removeEventListener('focus-canvas-search', handleFocusSearch)
+    return () =>
+      window.removeEventListener('focus-canvas-search', handleFocusSearch)
   }, [])
 
   // Track session modal open state for magic command keybindings
   useEffect(() => {
-    useUIStore.getState().setSessionChatModalOpen(
-      !!selectedSession,
-      selectedSession?.worktreeId ?? null
-    )
+    useUIStore
+      .getState()
+      .setSessionChatModalOpen(
+        !!selectedSession,
+        selectedSession?.worktreeId ?? null
+      )
   }, [selectedSession])
 
   // Auto-open session modal for newly created worktrees
@@ -210,7 +217,9 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     for (const [worktreeId, sessionData] of sessionsByWorktreeId) {
       if (!sessionData.sessions.length) continue
 
-      const shouldAutoOpen = useUIStore.getState().consumeAutoOpenSession(worktreeId)
+      const shouldAutoOpen = useUIStore
+        .getState()
+        .consumeAutoOpenSession(worktreeId)
       if (!shouldAutoOpen) continue
 
       const worktree = readyWorktrees.find(w => w.id === worktreeId)
@@ -219,7 +228,9 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
 
         // Find the index in flatCards for keyboard selection
         const cardIndex = flatCards.findIndex(
-          fc => fc.worktreeId === worktreeId && fc.card.session.id === firstSession.id
+          fc =>
+            fc.worktreeId === worktreeId &&
+            fc.card.session.id === firstSession.id
         )
         if (cardIndex !== -1) {
           setSelectedIndex(cardIndex)
@@ -260,7 +271,11 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     (index: number) => {
       const item = flatCards[index]
       if (item) {
-        handleSessionClick(item.worktreeId, item.worktreePath, item.card.session.id)
+        handleSessionClick(
+          item.worktreeId,
+          item.worktreePath,
+          item.card.session.id
+        )
       }
     },
     [flatCards, handleSessionClick]
@@ -294,19 +309,29 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     enabled: !selectedSession && selectedIndex !== null,
     worktreeId: selectedFlatCard?.worktreeId ?? '',
     worktreePath: selectedFlatCard?.worktreePath ?? '',
-    onPlanApproval: (card, updatedPlan) => handlePlanApproval(card, updatedPlan),
-    onPlanApprovalYolo: (card, updatedPlan) => handlePlanApprovalYolo(card, updatedPlan),
+    onPlanApproval: (card, updatedPlan) =>
+      handlePlanApproval(card, updatedPlan),
+    onPlanApprovalYolo: (card, updatedPlan) =>
+      handlePlanApprovalYolo(card, updatedPlan),
   })
 
   // Handle approve from dialog (with updated plan content)
   const handleDialogApprove = useCallback(
     (updatedPlan: string) => {
-      console.log('[WorktreeDashboard] handleDialogApprove called, updatedPlan length:', updatedPlan?.length)
-      console.log('[WorktreeDashboard] planDialogCard:', planDialogCard?.session?.id)
+      console.log(
+        '[WorktreeDashboard] handleDialogApprove called, updatedPlan length:',
+        updatedPlan?.length
+      )
+      console.log(
+        '[WorktreeDashboard] planDialogCard:',
+        planDialogCard?.session?.id
+      )
       if (planDialogCard) {
         handlePlanApproval(planDialogCard, updatedPlan)
       } else {
-        console.log('[WorktreeDashboard] handleDialogApprove - planDialogCard is null!')
+        console.log(
+          '[WorktreeDashboard] handleDialogApprove - planDialogCard is null!'
+        )
       }
     },
     [planDialogCard, handlePlanApproval]
@@ -314,12 +339,20 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
 
   const handleDialogApproveYolo = useCallback(
     (updatedPlan: string) => {
-      console.log('[WorktreeDashboard] handleDialogApproveYolo called, updatedPlan length:', updatedPlan?.length)
-      console.log('[WorktreeDashboard] planDialogCard:', planDialogCard?.session?.id)
+      console.log(
+        '[WorktreeDashboard] handleDialogApproveYolo called, updatedPlan length:',
+        updatedPlan?.length
+      )
+      console.log(
+        '[WorktreeDashboard] planDialogCard:',
+        planDialogCard?.session?.id
+      )
       if (planDialogCard) {
         handlePlanApprovalYolo(planDialogCard, updatedPlan)
       } else {
-        console.log('[WorktreeDashboard] handleDialogApproveYolo - planDialogCard is null!')
+        console.log(
+          '[WorktreeDashboard] handleDialogApproveYolo - planDialogCard is null!'
+        )
       }
     },
     [planDialogCard, handlePlanApprovalYolo]
@@ -330,7 +363,10 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     if (selectedSession) {
       selectProject(projectId)
       selectWorktree(selectedSession.worktreeId)
-      setActiveWorktree(selectedSession.worktreeId, selectedSession.worktreePath)
+      setActiveWorktree(
+        selectedSession.worktreeId,
+        selectedSession.worktreePath
+      )
       setActiveSession(selectedSession.worktreeId, selectedSession.sessionId)
       setViewingCanvasTab(selectedSession.worktreeId, false)
       setSelectedSession(null)
@@ -350,7 +386,8 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     (worktreeId: string, worktreePath: string, sessionId: string) => {
       const worktree = readyWorktrees.find(w => w.id === worktreeId)
       const sessionData = sessionsByWorktreeId.get(worktreeId)
-      const activeSessions = sessionData?.sessions?.filter(s => !s.archived_at) ?? []
+      const activeSessions =
+        sessionData?.sessions?.filter(s => !s.archived_at) ?? []
 
       if (activeSessions.length <= 1 && worktree && project) {
         if (isBaseSession(worktree)) {
@@ -372,7 +409,14 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
         })
       }
     },
-    [readyWorktrees, sessionsByWorktreeId, project, archiveSession, archiveWorktree, closeBaseSessionClean]
+    [
+      readyWorktrees,
+      sessionsByWorktreeId,
+      project,
+      archiveSession,
+      archiveWorktree,
+      closeBaseSessionClean,
+    ]
   )
 
   // Handle delete session for a specific worktree
@@ -380,7 +424,8 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     (worktreeId: string, worktreePath: string, sessionId: string) => {
       const worktree = readyWorktrees.find(w => w.id === worktreeId)
       const sessionData = sessionsByWorktreeId.get(worktreeId)
-      const activeSessions = sessionData?.sessions?.filter(s => !s.archived_at) ?? []
+      const activeSessions =
+        sessionData?.sessions?.filter(s => !s.archived_at) ?? []
 
       if (activeSessions.length <= 1 && worktree && project) {
         if (isBaseSession(worktree)) {
@@ -402,7 +447,14 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
         })
       }
     },
-    [readyWorktrees, sessionsByWorktreeId, project, closeSession, archiveWorktree, closeBaseSessionClean]
+    [
+      readyWorktrees,
+      sessionsByWorktreeId,
+      project,
+      closeSession,
+      archiveWorktree,
+      closeBaseSessionClean,
+    ]
   )
 
   // Listen for close-session-or-worktree event to handle CMD+W
@@ -418,7 +470,11 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
       if (selectedIndex !== null && flatCards[selectedIndex]) {
         e.stopImmediatePropagation()
         const item = flatCards[selectedIndex]
-        handleArchiveSessionForWorktree(item.worktreeId, item.worktreePath, item.card.session.id)
+        handleArchiveSessionForWorktree(
+          item.worktreeId,
+          item.worktreePath,
+          item.card.session.id
+        )
 
         // Move selection to previous card, or clear if none left
         const total = flatCards.length
@@ -430,16 +486,25 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
       }
     }
 
-    window.addEventListener('close-session-or-worktree', handleCloseSessionOrWorktree, {
-      capture: true,
-    })
+    window.addEventListener(
+      'close-session-or-worktree',
+      handleCloseSessionOrWorktree,
+      {
+        capture: true,
+      }
+    )
     return () =>
       window.removeEventListener(
         'close-session-or-worktree',
         handleCloseSessionOrWorktree,
         { capture: true }
       )
-  }, [selectedSession, selectedIndex, flatCards, handleArchiveSessionForWorktree])
+  }, [
+    selectedSession,
+    selectedIndex,
+    flatCards,
+    handleArchiveSessionForWorktree,
+  ])
 
   // Listen for create-new-session event to handle CMD+T
   useEffect(() => {
@@ -505,29 +570,27 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
   let cardIndex = 0
 
   return (
-    <div className="flex h-full flex-col p-4">
-      {/* Header */}
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-semibold">{project.name}</h2>
-        <span className="text-sm text-muted-foreground">
+    <div className="relative flex min-h-full flex-col overflow-auto">
+      {/* Header with Search - sticky over content */}
+      <div className="sticky top-0 z-10 flex items-center justify-between gap-4 bg-background/60 backdrop-blur-md px-4 py-3 border-b border-border/30">
+        <h2 className="text-lg font-semibold shrink-0">{project.name}</h2>
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            ref={searchInputRef}
+            placeholder="Search worktrees and sessions..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="pl-9 bg-transparent border-border/30"
+          />
+        </div>
+        <span className="text-sm text-muted-foreground shrink-0">
           {totalWorktrees} worktree{totalWorktrees !== 1 ? 's' : ''}
         </span>
       </div>
 
-      {/* Search */}
-      <div className="relative mb-4">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          ref={searchInputRef}
-          placeholder="Search worktrees and sessions..."
-          value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
-          className="pl-9"
-        />
-      </div>
-
       {/* Canvas View */}
-      <div className="flex-1 min-h-0 overflow-auto">
+      <div className="flex-1 pb-16 pt-6 px-4">
         {worktreeSections.length === 0 ? (
           <div className="flex h-full items-center justify-center text-muted-foreground">
             {searchQuery
@@ -645,6 +708,20 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
         onClose={() => setSelectedSession(null)}
         onOpenFullView={handleOpenFullView}
       />
+
+      {/* Keybinding hints */}
+      {preferences?.show_keybinding_hints !== false && (
+        <KeybindingHints
+          hints={[
+            { shortcut: 'Enter', label: 'open' },
+            { shortcut: 'P', label: 'plan' },
+            { shortcut: 'R', label: 'recap' },
+            { shortcut: DEFAULT_KEYBINDINGS.new_worktree as string, label: 'new worktree' },
+            { shortcut: DEFAULT_KEYBINDINGS.new_session as string, label: 'new session' },
+            { shortcut: DEFAULT_KEYBINDINGS.close_session_or_worktree as string, label: 'close' },
+          ]}
+        />
+      )}
     </div>
   )
 }

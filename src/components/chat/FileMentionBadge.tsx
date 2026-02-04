@@ -24,7 +24,10 @@ interface FileMentionBadgeProps {
  * Displays a file mention as a clickable badge that opens a preview dialog
  * Used in chat messages to show @mentioned files
  */
-export function FileMentionBadge({ path, worktreePath }: FileMentionBadgeProps) {
+export function FileMentionBadge({
+  path,
+  worktreePath,
+}: FileMentionBadgeProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [content, setContent] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -74,9 +77,7 @@ export function FileMentionBadge({ path, worktreePath }: FileMentionBadgeProps) 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogContent className="!max-w-[calc(100vw-4rem)] !w-[calc(100vw-4rem)] max-h-[85vh] p-4 bg-background/95 backdrop-blur-sm">
           <DialogTitle className="text-sm font-medium flex items-center gap-2">
-            <FileIcon
-              className={cn('h-4 w-4', getExtensionColor(extension))}
-            />
+            <FileIcon className={cn('h-4 w-4', getExtensionColor(extension))} />
             {path}
           </DialogTitle>
           <ScrollArea className="h-[calc(85vh-6rem)] mt-2">

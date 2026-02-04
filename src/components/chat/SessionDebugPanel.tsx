@@ -91,14 +91,17 @@ export function SessionDebugPanel({
       '',
       `Run logs (${debugInfo.run_log_files.length}):`,
       ...debugInfo.run_log_files.map(
-        (f) => `  ${getStatusText(f.status)} ${f.usage ? `(${formatUsage(f.usage)})` : ''} ${f.user_message_preview}`
+        f =>
+          `  ${getStatusText(f.status)} ${f.usage ? `(${formatUsage(f.usage)})` : ''} ${f.user_message_preview}`
       ),
     ]
 
     try {
       const text = lines.join('\n')
       if (isNativeApp()) {
-        const { writeText } = await import('@tauri-apps/plugin-clipboard-manager')
+        const { writeText } = await import(
+          '@tauri-apps/plugin-clipboard-manager'
+        )
         await writeText(text)
       } else {
         await navigator.clipboard.writeText(text)
@@ -134,7 +137,10 @@ export function SessionDebugPanel({
       <div className="text-muted-foreground">
         session: <span className="text-foreground">{sessionId}</span>
       </div>
-      <div className="text-muted-foreground truncate" title={debugInfo.sessions_file}>
+      <div
+        className="text-muted-foreground truncate"
+        title={debugInfo.sessions_file}
+      >
         sessions file:{' '}
         <span
           className="text-foreground/70 cursor-pointer hover:underline"
@@ -143,10 +149,19 @@ export function SessionDebugPanel({
           ...{debugInfo.sessions_file.slice(-60)}
         </span>
       </div>
-      <div className="text-muted-foreground truncate" title={debugInfo.runs_dir}>
-        runs dir: <span className="text-foreground/70">...{debugInfo.runs_dir.slice(-50)}</span>
+      <div
+        className="text-muted-foreground truncate"
+        title={debugInfo.runs_dir}
+      >
+        runs dir:{' '}
+        <span className="text-foreground/70">
+          ...{debugInfo.runs_dir.slice(-50)}
+        </span>
       </div>
-      <div className="text-muted-foreground truncate" title={debugInfo.manifest_file || undefined}>
+      <div
+        className="text-muted-foreground truncate"
+        title={debugInfo.manifest_file || undefined}
+      >
         manifest:{' '}
         {debugInfo.manifest_file ? (
           <span
@@ -160,7 +175,10 @@ export function SessionDebugPanel({
         )}
       </div>
       {debugInfo.claude_jsonl_file && (
-        <div className="text-muted-foreground truncate" title={debugInfo.claude_jsonl_file}>
+        <div
+          className="text-muted-foreground truncate"
+          title={debugInfo.claude_jsonl_file}
+        >
           claude jsonl:{' '}
           <span
             className="text-foreground/70 cursor-pointer hover:underline"
@@ -172,14 +190,20 @@ export function SessionDebugPanel({
       )}
 
       {/* Total token usage */}
-      {(debugInfo.total_usage.input_tokens > 0 || debugInfo.total_usage.output_tokens > 0) && (
+      {(debugInfo.total_usage.input_tokens > 0 ||
+        debugInfo.total_usage.output_tokens > 0) && (
         <div className="text-muted-foreground">
-          total usage: <span className="text-foreground font-mono">
+          total usage:{' '}
+          <span className="text-foreground font-mono">
             {formatUsage(debugInfo.total_usage)}
           </span>
           {debugInfo.total_usage.cache_read_input_tokens ? (
-            <span className="text-green-500 ml-2" title="Cache hit tokens (cost savings)">
-              ({formatTokens(debugInfo.total_usage.cache_read_input_tokens)} cached)
+            <span
+              className="text-green-500 ml-2"
+              title="Cache hit tokens (cost savings)"
+            >
+              ({formatTokens(debugInfo.total_usage.cache_read_input_tokens)}{' '}
+              cached)
             </span>
           ) : null}
         </div>
@@ -196,14 +220,19 @@ export function SessionDebugPanel({
           </div>
         ) : (
           <div className="space-y-1 ml-2">
-            {debugInfo.run_log_files.map((file) => (
+            {debugInfo.run_log_files.map(file => (
               <div
                 key={file.run_id}
                 className="flex items-center gap-2 cursor-pointer hover:bg-muted/50 rounded px-1 -mx-1"
                 onClick={() => onFileClick?.(file.path)}
               >
                 <FileText className="size-4 text-muted-foreground shrink-0" />
-                <span className={cn('font-medium shrink-0', getStatusColor(file.status))}>
+                <span
+                  className={cn(
+                    'font-medium shrink-0',
+                    getStatusColor(file.status)
+                  )}
+                >
                   {getStatusText(file.status)}
                 </span>
                 {file.usage && (

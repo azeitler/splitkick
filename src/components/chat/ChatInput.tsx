@@ -77,7 +77,9 @@ export const ChatInput = memo(function ChatInput({
     top: number
     left: number
   } | null>(null)
-  const [slashTriggerIndex, setSlashTriggerIndex] = useState<number | null>(null)
+  const [slashTriggerIndex, setSlashTriggerIndex] = useState<number | null>(
+    null
+  )
 
   // Refs to expose navigation methods from popovers
   const fileMentionHandleRef = useRef<FileMentionPopoverHandle | null>(null)
@@ -327,7 +329,10 @@ export const ChatInput = memo(function ChatInput({
 
       // When file mention popover is open, handle navigation
       if (fileMentionOpen) {
-        console.log('[ChatInput] File mention popover open, handling key:', e.key)
+        console.log(
+          '[ChatInput] File mention popover open, handling key:',
+          e.key
+        )
         switch (e.key) {
           case 'ArrowDown':
             e.preventDefault()
@@ -342,7 +347,9 @@ export const ChatInput = memo(function ChatInput({
           case 'Enter':
           case 'Tab':
             e.preventDefault()
-            console.log('[ChatInput] Calling fileMentionHandleRef.selectCurrent()')
+            console.log(
+              '[ChatInput] Calling fileMentionHandleRef.selectCurrent()'
+            )
             fileMentionHandleRef.current?.selectCurrent()
             return
           case 'Escape':
@@ -370,7 +377,9 @@ export const ChatInput = memo(function ChatInput({
           case 'Enter':
           case 'Tab':
             e.preventDefault()
-            console.log('[ChatInput] Calling slashPopoverHandleRef.selectCurrent()')
+            console.log(
+              '[ChatInput] Calling slashPopoverHandleRef.selectCurrent()'
+            )
             slashPopoverHandleRef.current?.selectCurrent()
             return
           case 'Escape':
@@ -414,7 +423,14 @@ export const ChatInput = memo(function ChatInput({
       }
       // Shift+Enter adds a new line (default behavior)
     },
-    [activeSessionId, fileMentionOpen, slashPopoverOpen, isSending, onCancel, onSubmit]
+    [
+      activeSessionId,
+      fileMentionOpen,
+      slashPopoverOpen,
+      isSending,
+      onCancel,
+      onSubmit,
+    ]
   )
 
   // Handle paste events

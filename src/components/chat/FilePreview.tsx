@@ -39,7 +39,10 @@ export function FilePreview({ files, onRemove, disabled }: FilePreviewProps) {
           title={file.relativePath}
         >
           <FileIcon
-            className={cn('h-3.5 w-3.5 shrink-0', getExtensionColor(file.extension))}
+            className={cn(
+              'h-3.5 w-3.5 shrink-0',
+              getExtensionColor(file.extension)
+            )}
           />
           <span className="max-w-32 truncate">
             {getFilename(file.relativePath)}

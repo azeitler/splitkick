@@ -184,6 +184,18 @@ export const AppearancePane: React.FC = () => {
     [savePreferences, preferences]
   )
 
+  const handleKeybindingHintsChange = useCallback(
+    (checked: boolean) => {
+      if (preferences) {
+        savePreferences.mutate({
+          ...preferences,
+          show_keybinding_hints: checked,
+        })
+      }
+    },
+    [savePreferences, preferences]
+  )
+
   const handleSyntaxThemeChange = useCallback(
     (field: 'syntax_theme_dark' | 'syntax_theme_light', value: SyntaxTheme) => {
       if (preferences) {
@@ -233,7 +245,10 @@ export const AppearancePane: React.FC = () => {
             <Select
               value={preferences?.syntax_theme_dark ?? 'vitesse-black'}
               onValueChange={value =>
-                handleSyntaxThemeChange('syntax_theme_dark', value as SyntaxTheme)
+                handleSyntaxThemeChange(
+                  'syntax_theme_dark',
+                  value as SyntaxTheme
+                )
               }
               disabled={savePreferences.isPending}
             >
@@ -257,7 +272,10 @@ export const AppearancePane: React.FC = () => {
             <Select
               value={preferences?.syntax_theme_light ?? 'github-light'}
               onValueChange={value =>
-                handleSyntaxThemeChange('syntax_theme_light', value as SyntaxTheme)
+                handleSyntaxThemeChange(
+                  'syntax_theme_light',
+                  value as SyntaxTheme
+                )
               }
               disabled={savePreferences.isPending}
             >
@@ -369,7 +387,20 @@ export const AppearancePane: React.FC = () => {
             <Switch
               checked={preferences?.canvas_only_mode ?? false}
               onCheckedChange={handleCanvasOnlyChange}
-              disabled={savePreferences.isPending || !preferences?.canvas_enabled}
+              disabled={
+                savePreferences.isPending || !preferences?.canvas_enabled
+              }
+            />
+          </InlineField>
+
+          <InlineField
+            label="Keybinding hints"
+            description="Show keyboard shortcuts at the bottom of canvas views"
+          >
+            <Switch
+              checked={preferences?.show_keybinding_hints ?? true}
+              onCheckedChange={handleKeybindingHintsChange}
+              disabled={savePreferences.isPending}
             />
           </InlineField>
         </div>

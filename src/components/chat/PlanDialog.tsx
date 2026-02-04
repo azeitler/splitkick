@@ -92,7 +92,10 @@ export function PlanDialog({
 
     const timer = setTimeout(async () => {
       try {
-        await invoke('write_file_content', { path: filePath, content: editedContent })
+        await invoke('write_file_content', {
+          path: filePath,
+          content: editedContent,
+        })
         queryClient.invalidateQueries({ queryKey: ['planFile', filePath] })
       } catch (err) {
         console.error('[PlanDialog] Auto-save failed:', err)
@@ -103,7 +106,16 @@ export function PlanDialog({
   }, [filePath, editedContent, hasChanges, isOpen, editable, queryClient])
 
   // Debug logging
-  console.log('[PlanDialog] render - canApprove:', canApprove, 'onApprove:', !!onApprove, 'onApproveYolo:', !!onApproveYolo, 'editable:', editable)
+  console.log(
+    '[PlanDialog] render - canApprove:',
+    canApprove,
+    'onApprove:',
+    !!onApprove,
+    'onApproveYolo:',
+    !!onApproveYolo,
+    'editable:',
+    editable
+  )
 
   const handleReset = useCallback(() => {
     setEditedContent(originalContent)
@@ -176,7 +188,9 @@ export function PlanDialog({
           // Read-only mode: markdown
           <ScrollArea className="flex-1 min-h-0 -mx-6 px-6">
             {!inlineContent && isLoading ? (
-              <div className="text-sm text-muted-foreground">Loading plan...</div>
+              <div className="text-sm text-muted-foreground">
+                Loading plan...
+              </div>
             ) : originalContent ? (
               <Markdown className="text-sm">{originalContent}</Markdown>
             ) : (
@@ -202,10 +216,7 @@ export function PlanDialog({
 
             {/* Right side: Approve buttons */}
             <div className="flex gap-2">
-              <Button
-                onClick={handleApprove}
-                disabled={!canApprove}
-              >
+              <Button onClick={handleApprove} disabled={!canApprove}>
                 Approve
               </Button>
               <Button

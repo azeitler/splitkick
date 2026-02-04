@@ -214,16 +214,25 @@ function executeKeybindingAction(
       logger.debug('Keybinding: open_magic_modal')
       const chatStore = useChatStore.getState()
       const uiStore = useUIStore.getState()
-      const { activeWorktreeId, activeSessionIds, sendingSessionIds, activeWorktreePath } = chatStore
+      const {
+        activeWorktreeId,
+        activeSessionIds,
+        sendingSessionIds,
+        activeWorktreePath,
+      } = chatStore
 
       // Block in canvas views (project dashboard or worktree canvas) UNLESS session modal is open
       const selectedWorktreeId = useProjectsStore.getState().selectedWorktreeId
       const worktreeIdToCheck = selectedWorktreeId ?? activeWorktreeId
-      const isViewingCanvas = worktreeIdToCheck ? chatStore.isViewingCanvasTab(worktreeIdToCheck) : false
+      const isViewingCanvas = worktreeIdToCheck
+        ? chatStore.isViewingCanvasTab(worktreeIdToCheck)
+        : false
       const sessionModalOpen = uiStore.sessionChatModalOpen
 
       if (!sessionModalOpen && (!activeWorktreePath || isViewingCanvas)) {
-        notify('Open a session to use magic commands', undefined, { type: 'error' })
+        notify('Open a session to use magic commands', undefined, {
+          type: 'error',
+        })
         break
       }
 
@@ -300,7 +309,8 @@ function executeKeybindingAction(
     }
     case 'open_recap': {
       logger.debug('Keybinding: open_recap')
-      const sessionModalOpenForRecap = useUIStore.getState().sessionChatModalOpen
+      const sessionModalOpenForRecap =
+        useUIStore.getState().sessionChatModalOpen
       if (sessionModalOpenForRecap) {
         break
       }
@@ -586,7 +596,9 @@ export function useMainWindowEventListeners() {
             ])
             if (hasRunning) {
               event.preventDefault()
-              window.dispatchEvent(new CustomEvent('quit-confirmation-requested'))
+              window.dispatchEvent(
+                new CustomEvent('quit-confirmation-requested')
+              )
             }
           } catch (error) {
             logger.error('Failed to check running sessions', { error })

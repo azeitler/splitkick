@@ -21,7 +21,9 @@ import { gitPull, triggerImmediateGitPoll } from '@/services/git-status'
  * Command context hook - provides essential actions for commands
  * @param preferences - Optional preferences for terminal/editor selection
  */
-export function useCommandContext(preferences?: AppPreferences): CommandContext {
+export function useCommandContext(
+  preferences?: AppPreferences
+): CommandContext {
   const queryClient = useQueryClient()
   const themeContext = useContext(ThemeProviderContext)
 
@@ -567,7 +569,10 @@ export function useCommandContext(preferences?: AppPreferences): CommandContext 
     } catch (error) {
       toast.error(`Failed to review: ${error}`, { id: toastId })
     }
-  }, [preferences?.magic_prompts?.code_review, preferences?.magic_prompt_models?.code_review_model])
+  }, [
+    preferences?.magic_prompts?.code_review,
+    preferences?.magic_prompt_models?.code_review_model,
+  ])
 
   // Terminal - Open terminal panel
   const openTerminalPanel = useCallback(() => {
@@ -579,7 +584,9 @@ export function useCommandContext(preferences?: AppPreferences): CommandContext 
 
     const { addTerminal, setTerminalPanelOpen, setTerminalVisible } =
       useTerminalStore.getState()
-    const terminals = useTerminalStore.getState().getTerminals(selectedWorktreeId)
+    const terminals = useTerminalStore
+      .getState()
+      .getTerminals(selectedWorktreeId)
 
     // Create a new terminal if none exists
     if (terminals.length === 0) {

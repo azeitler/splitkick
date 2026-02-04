@@ -46,7 +46,11 @@ interface CliLoginModalContentProps {
   onClose: () => void
 }
 
-function CliLoginModalContent({ cliType, command, onClose }: CliLoginModalContentProps) {
+function CliLoginModalContent({
+  cliType,
+  command,
+  onClose,
+}: CliLoginModalContentProps) {
   const queryClient = useQueryClient()
   const initialized = useRef(false)
   const observerRef = useRef<ResizeObserver | null>(null)
@@ -59,7 +63,12 @@ function CliLoginModalContent({ cliType, command, onClose }: CliLoginModalConten
     return id
   }, [])
 
-  console.log('[CliLoginModal] Render - terminalId:', terminalId, 'command:', command)
+  console.log(
+    '[CliLoginModal] Render - terminalId:',
+    terminalId,
+    'command:',
+    command
+  )
 
   // Use a synthetic worktreeId for CLI login (not associated with any real worktree)
   const { initTerminal, fit } = useTerminal({
@@ -72,7 +81,12 @@ function CliLoginModalContent({ cliType, command, onClose }: CliLoginModalConten
   // Use callback ref to detect when container is mounted (Dialog uses portal)
   const containerCallbackRef = useCallback(
     (container: HTMLDivElement | null) => {
-      console.log('[CliLoginModal] containerCallbackRef called, container:', !!container, 'initialized:', initialized.current)
+      console.log(
+        '[CliLoginModal] containerCallbackRef called, container:',
+        !!container,
+        'initialized:',
+        initialized.current
+      )
 
       // Cleanup previous observer if any
       if (observerRef.current) {
@@ -84,7 +98,12 @@ function CliLoginModalContent({ cliType, command, onClose }: CliLoginModalConten
 
       const observer = new ResizeObserver(entries => {
         const entry = entries[0]
-        console.log('[CliLoginModal] ResizeObserver fired, width:', entry?.contentRect.width, 'initialized:', initialized.current)
+        console.log(
+          '[CliLoginModal] ResizeObserver fired, width:',
+          entry?.contentRect.width,
+          'initialized:',
+          initialized.current
+        )
 
         if (!entry || entry.contentRect.width === 0) {
           console.log('[CliLoginModal] No entry or width=0, skipping')

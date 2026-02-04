@@ -646,7 +646,9 @@ pub async fn create_worktree(
                         issue_context: issue_context_clone.clone(),
                         pr_context: pr_context_clone.clone(),
                     };
-                    if let Err(e) = app_clone.emit_all("worktree:branch_exists", &branch_exists_event) {
+                    if let Err(e) =
+                        app_clone.emit_all("worktree:branch_exists", &branch_exists_event)
+                    {
                         log::error!("Failed to emit worktree:branch_exists event: {e}");
                     }
 
@@ -830,39 +832,40 @@ pub async fn create_worktree(
         }
 
         // Check for jean.json and run setup script
-        let (setup_output, setup_script) =
-            if let Some(config) = git::read_jean_config(&project_path) {
-                if let Some(script) = config.scripts.setup {
-                    log::trace!("Background: Found jean.json with setup script, executing...");
-                    match git::run_setup_script(
-                        &worktree_path_clone,
-                        &project_path,
-                        &final_branch,
-                        &script,
-                    ) {
-                        Ok(output) => (Some(output), Some(script)),
-                        Err(e) => {
-                            log::error!("Background: Setup script failed: {e}");
-                            // Clean up: remove the worktree since setup failed
-                            let _ = git::remove_worktree(&project_path, &worktree_path_clone);
-                            let _ = git::delete_branch(&project_path, &final_branch);
-                            let error_event = WorktreeCreateErrorEvent {
-                                id: worktree_id_clone,
-                                project_id: project_id_clone,
-                                error: format!("Setup script failed: {e}"),
-                            };
-                            if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
-                                log::error!("Failed to emit worktree:error event: {emit_err}");
-                            }
-                            return;
+        let (setup_output, setup_script) = if let Some(config) =
+            git::read_jean_config(&project_path)
+        {
+            if let Some(script) = config.scripts.setup {
+                log::trace!("Background: Found jean.json with setup script, executing...");
+                match git::run_setup_script(
+                    &worktree_path_clone,
+                    &project_path,
+                    &final_branch,
+                    &script,
+                ) {
+                    Ok(output) => (Some(output), Some(script)),
+                    Err(e) => {
+                        log::error!("Background: Setup script failed: {e}");
+                        // Clean up: remove the worktree since setup failed
+                        let _ = git::remove_worktree(&project_path, &worktree_path_clone);
+                        let _ = git::delete_branch(&project_path, &final_branch);
+                        let error_event = WorktreeCreateErrorEvent {
+                            id: worktree_id_clone,
+                            project_id: project_id_clone,
+                            error: format!("Setup script failed: {e}"),
+                        };
+                        if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
+                            log::error!("Failed to emit worktree:error event: {emit_err}");
                         }
+                        return;
                     }
-                } else {
-                    (None, None)
                 }
             } else {
                 (None, None)
-            };
+            }
+        } else {
+            (None, None)
+        };
 
         // Save to storage
         if let Ok(mut data) = load_projects_data(&app_clone) {
@@ -1164,39 +1167,40 @@ pub async fn create_worktree_from_existing_branch(
         }
 
         // Check for jean.json and run setup script
-        let (setup_output, setup_script) =
-            if let Some(config) = git::read_jean_config(&project_path) {
-                if let Some(script) = config.scripts.setup {
-                    log::trace!("Background: Found jean.json with setup script, executing...");
-                    match git::run_setup_script(
-                        &worktree_path_clone,
-                        &project_path,
-                        &name_clone,
-                        &script,
-                    ) {
-                        Ok(output) => (Some(output), Some(script)),
-                        Err(e) => {
-                            log::error!("Background: Setup script failed: {e}");
-                            // Clean up: remove the worktree since setup failed
-                            // Note: Don't delete the branch since it's an existing branch
-                            let _ = git::remove_worktree(&project_path, &worktree_path_clone);
-                            let error_event = WorktreeCreateErrorEvent {
-                                id: worktree_id_clone,
-                                project_id: project_id_clone,
-                                error: format!("Setup script failed: {e}"),
-                            };
-                            if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
-                                log::error!("Failed to emit worktree:error event: {emit_err}");
-                            }
-                            return;
+        let (setup_output, setup_script) = if let Some(config) =
+            git::read_jean_config(&project_path)
+        {
+            if let Some(script) = config.scripts.setup {
+                log::trace!("Background: Found jean.json with setup script, executing...");
+                match git::run_setup_script(
+                    &worktree_path_clone,
+                    &project_path,
+                    &name_clone,
+                    &script,
+                ) {
+                    Ok(output) => (Some(output), Some(script)),
+                    Err(e) => {
+                        log::error!("Background: Setup script failed: {e}");
+                        // Clean up: remove the worktree since setup failed
+                        // Note: Don't delete the branch since it's an existing branch
+                        let _ = git::remove_worktree(&project_path, &worktree_path_clone);
+                        let error_event = WorktreeCreateErrorEvent {
+                            id: worktree_id_clone,
+                            project_id: project_id_clone,
+                            error: format!("Setup script failed: {e}"),
+                        };
+                        if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
+                            log::error!("Failed to emit worktree:error event: {emit_err}");
                         }
+                        return;
                     }
-                } else {
-                    (None, None)
                 }
             } else {
                 (None, None)
-            };
+            }
+        } else {
+            (None, None)
+        };
 
         // Save to storage
         if let Ok(mut data) = load_projects_data(&app_clone) {
@@ -1499,39 +1503,40 @@ pub async fn checkout_pr(
         );
 
         // Check for jean.json and run setup script
-        let (setup_output, setup_script) =
-            if let Some(config) = git::read_jean_config(&worktree_path_clone) {
-                if let Some(script) = config.scripts.setup {
-                    log::trace!("Background: Found jean.json with setup script, executing...");
-                    match git::run_setup_script(
-                        &worktree_path_clone,
-                        &project_path,
-                        &actual_branch,
-                        &script,
-                    ) {
-                        Ok(output) => (Some(output), Some(script)),
-                        Err(e) => {
-                            log::error!("Background: Setup script failed: {e}");
-                            // Clean up: remove the worktree since setup failed
-                            let _ = git::remove_worktree(&project_path, &worktree_path_clone);
-                            let _ = git::delete_branch(&project_path, &actual_branch);
-                            let error_event = WorktreeCreateErrorEvent {
-                                id: worktree_id_clone,
-                                project_id: project_id_clone,
-                                error: format!("Setup script failed: {e}"),
-                            };
-                            if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
-                                log::error!("Failed to emit worktree:error event: {emit_err}");
-                            }
-                            return;
+        let (setup_output, setup_script) = if let Some(config) =
+            git::read_jean_config(&worktree_path_clone)
+        {
+            if let Some(script) = config.scripts.setup {
+                log::trace!("Background: Found jean.json with setup script, executing...");
+                match git::run_setup_script(
+                    &worktree_path_clone,
+                    &project_path,
+                    &actual_branch,
+                    &script,
+                ) {
+                    Ok(output) => (Some(output), Some(script)),
+                    Err(e) => {
+                        log::error!("Background: Setup script failed: {e}");
+                        // Clean up: remove the worktree since setup failed
+                        let _ = git::remove_worktree(&project_path, &worktree_path_clone);
+                        let _ = git::delete_branch(&project_path, &actual_branch);
+                        let error_event = WorktreeCreateErrorEvent {
+                            id: worktree_id_clone,
+                            project_id: project_id_clone,
+                            error: format!("Setup script failed: {e}"),
+                        };
+                        if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
+                            log::error!("Failed to emit worktree:error event: {emit_err}");
                         }
+                        return;
                     }
-                } else {
-                    (None, None)
                 }
             } else {
                 (None, None)
-            };
+            }
+        } else {
+            (None, None)
+        };
 
         // Write PR context file to shared git-context directory
         if let Ok(repo_id) = get_repo_identifier(&project_path) {
@@ -4474,7 +4479,11 @@ pub async fn git_pull(worktree_path: String, base_branch: String) -> Result<Stri
 /// Push current branch to remote. If pr_number is provided, uses PR-aware push
 /// that handles fork remotes and uses --force-with-lease.
 #[tauri::command]
-pub async fn git_push(app: tauri::AppHandle, worktree_path: String, pr_number: Option<u32>) -> Result<String, String> {
+pub async fn git_push(
+    app: tauri::AppHandle,
+    worktree_path: String,
+    pr_number: Option<u32>,
+) -> Result<String, String> {
     log::trace!("Pushing changes for worktree: {worktree_path}, pr_number: {pr_number:?}");
     match pr_number {
         Some(pr) => git::git_push_to_pr(&worktree_path, pr, &resolve_gh_binary(&app)),

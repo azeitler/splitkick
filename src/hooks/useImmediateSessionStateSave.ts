@@ -28,7 +28,9 @@ export function useImmediateSessionStateSave() {
       } = state
 
       // Check for reviewing changes
-      for (const [sessionId, isReviewing] of Object.entries(reviewingSessions)) {
+      for (const [sessionId, isReviewing] of Object.entries(
+        reviewingSessions
+      )) {
         if (prevReviewingRef.current[sessionId] !== isReviewing) {
           saveSessionStatus(sessionId, sessionWorktreeMap, worktreePaths, {
             isReviewing,

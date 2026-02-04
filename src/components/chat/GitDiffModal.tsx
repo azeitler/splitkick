@@ -265,7 +265,8 @@ const CommentInputBar = memo(function CommentInputBar({
     <div className="flex items-center gap-2 px-3 h-10 bg-muted rounded-md border border-border">
       <MessageSquarePlus className="h-4 w-4 text-muted-foreground shrink-0" />
       <span className="text-xs text-muted-foreground shrink-0">
-        {activeFileName ? getFilename(activeFileName) : ''}:{selectedRange.start}
+        {activeFileName ? getFilename(activeFileName) : ''}:
+        {selectedRange.start}
         {selectedRange.end !== selectedRange.start && `-${selectedRange.end}`}
       </span>
       <input

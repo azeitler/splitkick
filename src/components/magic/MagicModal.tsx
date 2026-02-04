@@ -57,15 +57,30 @@ function buildMagicSections(hasOpenPr: boolean): MagicSection[] {
     {
       header: 'Context',
       options: [
-        { id: 'save-context', label: 'Save Context', icon: BookmarkPlus, key: 'S' },
-        { id: 'load-context', label: 'Load Context', icon: FolderOpen, key: 'L' },
+        {
+          id: 'save-context',
+          label: 'Save Context',
+          icon: BookmarkPlus,
+          key: 'S',
+        },
+        {
+          id: 'load-context',
+          label: 'Load Context',
+          icon: FolderOpen,
+          key: 'L',
+        },
       ],
     },
     {
       header: 'Commit',
       options: [
         { id: 'commit', label: 'Commit', icon: GitCommitHorizontal, key: 'C' },
-        { id: 'commit-and-push', label: 'Commit & Push', icon: GitCommitHorizontal, key: 'P' },
+        {
+          id: 'commit-and-push',
+          label: 'Commit & Push',
+          icon: GitCommitHorizontal,
+          key: 'P',
+        },
       ],
     },
     {
@@ -78,7 +93,12 @@ function buildMagicSections(hasOpenPr: boolean): MagicSection[] {
     {
       header: 'Pull Request',
       options: [
-        { id: 'open-pr', label: hasOpenPr ? 'Open' : 'Create', icon: GitPullRequest, key: 'O' },
+        {
+          id: 'open-pr',
+          label: hasOpenPr ? 'Open' : 'Create',
+          icon: GitPullRequest,
+          key: 'O',
+        },
         { id: 'review', label: 'Review', icon: Eye, key: 'R' },
         { id: 'checkout-pr', label: 'Checkout', icon: GitBranch, key: 'K' },
       ],
@@ -87,8 +107,18 @@ function buildMagicSections(hasOpenPr: boolean): MagicSection[] {
       header: 'Branch',
       options: [
         { id: 'merge', label: 'Merge to Base', icon: GitMerge, key: 'M' },
-        { id: 'resolve-conflicts', label: 'Resolve Conflicts', icon: GitMerge, key: 'F' },
-        { id: 'investigate', label: 'Investigate Context', icon: Search, key: 'I' },
+        {
+          id: 'resolve-conflicts',
+          label: 'Resolve Conflicts',
+          icon: GitMerge,
+          key: 'F',
+        },
+        {
+          id: 'investigate',
+          label: 'Investigate Context',
+          icon: Search,
+          key: 'I',
+        },
       ],
     },
   ]
@@ -111,12 +141,18 @@ const KEY_TO_OPTION: Record<string, MagicOption> = {
 }
 
 export function MagicModal() {
-  const { magicModalOpen, setMagicModalOpen, sessionChatModalWorktreeId } = useUIStore()
-  const selectedWorktreeIdFromProjects = useProjectsStore(state => state.selectedWorktreeId)
+  const { magicModalOpen, setMagicModalOpen, sessionChatModalWorktreeId } =
+    useUIStore()
+  const selectedWorktreeIdFromProjects = useProjectsStore(
+    state => state.selectedWorktreeId
+  )
   const activeWorktreeId = useChatStore(state => state.activeWorktreeId)
   // Fall back chain: projects store → chat store → session modal worktree
   // Session modal worktree is set when user opens a session from canvas view
-  const selectedWorktreeId = selectedWorktreeIdFromProjects ?? activeWorktreeId ?? sessionChatModalWorktreeId
+  const selectedWorktreeId =
+    selectedWorktreeIdFromProjects ??
+    activeWorktreeId ??
+    sessionChatModalWorktreeId
   const { data: worktree } = useWorktree(selectedWorktreeId)
   const hasInitializedRef = useRef(false)
   const [selectedOption, setSelectedOption] =
@@ -125,7 +161,10 @@ export function MagicModal() {
   const hasOpenPr = Boolean(worktree?.pr_url)
 
   // Build sections dynamically based on PR state
-  const magicSections = useMemo(() => buildMagicSections(hasOpenPr), [hasOpenPr])
+  const magicSections = useMemo(
+    () => buildMagicSections(hasOpenPr),
+    [hasOpenPr]
+  )
 
   // Flatten all options for arrow key navigation
   const allOptions = useMemo(
@@ -186,7 +225,9 @@ export function MagicModal() {
       // Block if: no ChatWindow (project dashboard) OR viewing canvas tab within ChatWindow
       // Exception: allow if session modal is open
       if (!sessionModalOpen && (!activeWorktreePath || isViewingCanvas)) {
-        notify('Open a session to use magic commands', undefined, { type: 'error' })
+        notify('Open a session to use magic commands', undefined, {
+          type: 'error',
+        })
         setMagicModalOpen(false)
         return
       }

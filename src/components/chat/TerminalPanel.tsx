@@ -72,7 +72,9 @@ export function TerminalPanel({ isCollapsed, onExpand }: TerminalPanelProps) {
   return (
     <div className="relative h-full w-full">
       {worktreeIdsToRender.map(worktreeId => {
-        const path = worktreePaths[worktreeId] ?? (worktreeId === activeWorktreeId ? activeWorktreePath : undefined)
+        const path =
+          worktreePaths[worktreeId] ??
+          (worktreeId === activeWorktreeId ? activeWorktreePath : undefined)
         if (!path) return null
 
         return (

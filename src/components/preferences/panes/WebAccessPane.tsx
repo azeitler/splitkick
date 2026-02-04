@@ -113,12 +113,15 @@ export const WebAccessPane: React.FC = () => {
     }
   }, [savePreferences, preferences, refreshStatus])
 
-  const handleCopyUrl = useCallback((url: string) => {
-    if (!serverStatus?.token) return
-    const fullUrl = `${url}?token=${serverStatus.token}`
-    navigator.clipboard.writeText(fullUrl)
-    toast.success('URL copied to clipboard')
-  }, [serverStatus?.token])
+  const handleCopyUrl = useCallback(
+    (url: string) => {
+      if (!serverStatus?.token) return
+      const fullUrl = `${url}?token=${serverStatus.token}`
+      navigator.clipboard.writeText(fullUrl)
+      toast.success('URL copied to clipboard')
+    },
+    [serverStatus?.token]
+  )
 
   const handleLocalhostOnlyChange = useCallback(
     async (checked: boolean) => {
@@ -190,10 +193,11 @@ export const WebAccessPane: React.FC = () => {
               />
               <div className="flex items-center gap-1.5">
                 <div
-                  className={`h-2 w-2 rounded-full ${serverStatus?.running
+                  className={`h-2 w-2 rounded-full ${
+                    serverStatus?.running
                       ? 'bg-green-500'
                       : 'bg-muted-foreground/40'
-                    }`}
+                  }`}
                 />
                 <span className="text-xs text-muted-foreground">
                   {serverStatus?.running ? 'Running' : 'Stopped'}

@@ -799,7 +799,9 @@ pub fn tail_claude_output(
                                             worktree_id: worktree_id.to_string(),
                                             tool_call_id: id.clone(),
                                         };
-                                        if let Err(e) = app.emit_all("chat:tool_block", &block_event) {
+                                        if let Err(e) =
+                                            app.emit_all("chat:tool_block", &block_event)
+                                        {
                                             log::error!("Failed to emit tool_block: {e}");
                                         }
 
@@ -1015,7 +1017,9 @@ pub fn tail_claude_output(
 
                         // Emit compacted event with metadata if available
                         if let Some(metadata_val) = msg.get("compactMetadata") {
-                            if let Ok(metadata) = serde_json::from_value::<CompactMetadata>(metadata_val.clone()) {
+                            if let Ok(metadata) =
+                                serde_json::from_value::<CompactMetadata>(metadata_val.clone())
+                            {
                                 let compacted_event = CompactedEvent {
                                     session_id: session_id.to_string(),
                                     worktree_id: worktree_id.to_string(),

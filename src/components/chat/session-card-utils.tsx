@@ -1,4 +1,7 @@
-import type { IndicatorStatus, IndicatorVariant } from '@/components/ui/status-indicator'
+import type {
+  IndicatorStatus,
+  IndicatorVariant,
+} from '@/components/ui/status-indicator'
 import {
   isAskUserQuestion,
   isExitPlanMode,
@@ -107,6 +110,14 @@ export function computeSessionCardData(
   const toolCalls = activeToolCalls[session.id] ?? []
   const answeredSet = answeredQuestions[session.id]
 
+  // Debug logging for session recovery
+  console.log('[session-card] computeSessionCardData:', {
+    sessionId: session.id,
+    sessionSending,
+    last_run_status: session.last_run_status,
+    last_run_execution_mode: session.last_run_execution_mode,
+  })
+
   // Check streaming tool calls for waiting state
   const hasStreamingQuestion = toolCalls.some(
     tc => isAskUserQuestion(tc) && !answeredSet?.has(tc.id)
@@ -206,7 +217,8 @@ export function computeSessionCardData(
   // - If pending_plan_message_id exists → it's a plan
   // - If waiting but no pending_plan_message_id → it's likely a question
   const inferredWaitingType =
-    session.waiting_for_input_type ?? (pendingPlanMessageId ? 'plan' : 'question')
+    session.waiting_for_input_type ??
+    (pendingPlanMessageId ? 'plan' : 'question')
   const hasExitPlanMode =
     hasStreamingExitPlan ||
     hasPendingExitPlan ||
@@ -243,6 +255,17 @@ export function computeSessionCardData(
     status = 'vibing'
   } else if (sessionSending && executionMode === 'yolo') {
     status = 'yoloing'
+  } else if (
+    !sessionSending &&
+    (session.last_run_status === 'running' ||
+      session.last_run_status === 'resumable')
+  ) {
+    // Session has a running/resumable process (detected on app restart)
+    // Show actual execution mode from persisted run data
+    const mode = session.last_run_execution_mode ?? 'plan'
+    if (mode === 'plan') status = 'planning'
+    else if (mode === 'build') status = 'vibing'
+    else if (mode === 'yolo') status = 'yoloing'
   }
 
   // Check for session recap/digest

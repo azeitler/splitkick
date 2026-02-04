@@ -55,7 +55,12 @@ export const FloatingButtons = memo(function FloatingButtons({
     }
     // Also scroll to bottom so user sees the result
     onScrollToBottom()
-  }, [hasStreamingPlan, onStreamingPlanApproval, onPendingPlanApproval, onScrollToBottom])
+  }, [
+    hasStreamingPlan,
+    onStreamingPlanApproval,
+    onPendingPlanApproval,
+    onScrollToBottom,
+  ])
 
   return (
     <>
@@ -77,29 +82,29 @@ export const FloatingButtons = memo(function FloatingButtons({
       <div className="absolute bottom-4 right-4 flex gap-2">
         {/* Floating Approve button - shown when main approve button is not visible */}
         {showApproveButton && (
-        <button
-          type="button"
-          onClick={handleApprove}
-          className="flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-sm text-primary-foreground shadow-md transition-all hover:bg-primary/90"
-        >
-          <Check className="h-3.5 w-3.5" />
-          <span>Approve</span>
-          <Kbd className="ml-0.5 h-4 text-[10px] bg-primary-foreground/20 text-primary-foreground">
-            {approveShortcut}
-          </Kbd>
-        </button>
-      )}
-      {/* Go to findings button - shown when findings exist and are not visible */}
-      {showFindingsButton && (
-        <button
-          type="button"
-          onClick={onScrollToFindings}
-          className="flex h-8 items-center gap-1.5 rounded-lg bg-muted/90 px-3 text-sm text-muted-foreground shadow-md backdrop-blur-sm transition-all hover:bg-muted hover:text-foreground"
-        >
-          <AlertCircle className="h-3.5 w-3.5" />
-          <span>Findings</span>
-        </button>
-      )}
+          <button
+            type="button"
+            onClick={handleApprove}
+            className="flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-sm text-primary-foreground shadow-md transition-all hover:bg-primary/90"
+          >
+            <Check className="h-3.5 w-3.5" />
+            <span>Approve</span>
+            <Kbd className="ml-0.5 h-4 text-[10px] bg-primary-foreground/20 text-primary-foreground">
+              {approveShortcut}
+            </Kbd>
+          </button>
+        )}
+        {/* Go to findings button - shown when findings exist and are not visible */}
+        {showFindingsButton && (
+          <button
+            type="button"
+            onClick={onScrollToFindings}
+            className="flex h-8 items-center gap-1.5 rounded-lg bg-muted/90 px-3 text-sm text-muted-foreground shadow-md backdrop-blur-sm transition-all hover:bg-muted hover:text-foreground"
+          >
+            <AlertCircle className="h-3.5 w-3.5" />
+            <span>Findings</span>
+          </button>
+        )}
         {/* Scroll to bottom button */}
         {!isAtBottom && (
           <button

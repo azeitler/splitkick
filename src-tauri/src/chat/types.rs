@@ -325,6 +325,16 @@ pub struct Session {
     /// Persisted session digest (recap summary)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub digest: Option<SessionDigest>,
+
+    // ========================================================================
+    // Run recovery state (for showing correct status on app restart)
+    // ========================================================================
+    /// Status of the last run (running/resumable/completed/cancelled/crashed)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_run_status: Option<RunStatus>,
+    /// Execution mode of the last run (plan/build/yolo)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_run_execution_mode: Option<String>,
 }
 
 impl Session {
@@ -358,6 +368,8 @@ impl Session {
             plan_file_path: None,
             pending_plan_message_id: None,
             digest: None,
+            last_run_status: None,
+            last_run_execution_mode: None,
         }
     }
 
@@ -469,6 +481,14 @@ impl SessionMetadata {
     /// Convert metadata to a Session API response struct (with empty messages)
     /// Messages should be loaded separately via load_session_messages() and set on the returned Session
     pub fn to_session(&self) -> Session {
+        let last_run = self.runs.last();
+        log::trace!(
+            "to_session: session={}, runs={}, last_run_status={:?}, last_run_mode={:?}",
+            self.id,
+            self.runs.len(),
+            last_run.map(|r| &r.status),
+            last_run.and_then(|r| r.execution_mode.as_ref())
+        );
         Session {
             id: self.id.clone(),
             name: self.name.clone(),
@@ -493,6 +513,9 @@ impl SessionMetadata {
             plan_file_path: self.plan_file_path.clone(),
             pending_plan_message_id: self.pending_plan_message_id.clone(),
             digest: self.digest.clone(),
+            // Populate from last run for status recovery on app restart
+            last_run_status: last_run.map(|r| r.status.clone()),
+            last_run_execution_mode: last_run.and_then(|r| r.execution_mode.clone()),
         }
     }
 

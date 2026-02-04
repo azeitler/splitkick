@@ -151,6 +151,10 @@ export interface Session {
   pending_plan_message_id?: string
   /** Persisted session digest (recap summary) */
   digest?: SessionDigest
+  /** Status of the last run (for immediate status on app restart) */
+  last_run_status?: RunStatus
+  /** Execution mode of the last run (plan/build/yolo) */
+  last_run_execution_mode?: ExecutionMode
 }
 
 /**

@@ -234,7 +234,9 @@ export const KEYBINDING_DEFINITIONS: KeybindingDefinition[] = [
 ]
 
 // Helper to convert shortcut string to display format
-export function formatShortcutDisplay(shortcut: ShortcutString | undefined | null): string {
+export function formatShortcutDisplay(
+  shortcut: ShortcutString | undefined | null
+): string {
   if (!shortcut) return ''
 
   const isMac =

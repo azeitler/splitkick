@@ -1,5 +1,12 @@
 import { useState, useCallback, useEffect } from 'react'
-import { Settings, Palette, Keyboard, Wand2, FlaskConical, Globe } from 'lucide-react'
+import {
+  Settings,
+  Palette,
+  Keyboard,
+  Wand2,
+  FlaskConical,
+  Globe,
+} from 'lucide-react'
 import {
   Breadcrumb,
   BreadcrumbItem,

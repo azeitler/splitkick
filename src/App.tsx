@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { invoke, useWsConnectionStatus, useWsAuthError, preloadInitialData, type InitialData } from '@/lib/transport'
+import {
+  invoke,
+  useWsConnectionStatus,
+  useWsAuthError,
+  preloadInitialData,
+  type InitialData,
+} from '@/lib/transport'
 import { isNativeApp } from '@/lib/environment'
 import { projectsQueryKeys } from '@/services/projects'
 import { chatQueryKeys } from '@/services/chat'
@@ -46,8 +52,16 @@ function WsStatusBadge() {
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/90 backdrop-blur-sm">
         <div className="mx-4 max-w-md rounded-lg border border-destructive/50 bg-background p-6 shadow-lg">
           <div className="flex items-center gap-2 text-destructive">
-            <svg className="size-5 shrink-0" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            <svg
+              className="size-5 shrink-0"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path
+                fillRule="evenodd"
+                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                clipRule="evenodd"
+              />
             </svg>
             <h2 className="text-sm font-semibold">Connection Failed</h2>
           </div>
@@ -85,8 +99,13 @@ function App() {
       }
       // Seed worktrees for each project
       if (data.worktreesByProject) {
-        for (const [projectId, worktrees] of Object.entries(data.worktreesByProject)) {
-          queryClient.setQueryData(projectsQueryKeys.worktrees(projectId), worktrees)
+        for (const [projectId, worktrees] of Object.entries(
+          data.worktreesByProject
+        )) {
+          queryClient.setQueryData(
+            projectsQueryKeys.worktrees(projectId),
+            worktrees
+          )
         }
       }
       // Seed sessions for each worktree (WorktreeSessions struct)
@@ -97,8 +116,13 @@ function App() {
         const sessionMappings: Record<string, string> = {}
         const worktreePaths: Record<string, string> = {}
 
-        for (const [worktreeId, sessionsData] of Object.entries(data.sessionsByWorktree)) {
-          queryClient.setQueryData(chatQueryKeys.sessions(worktreeId), sessionsData)
+        for (const [worktreeId, sessionsData] of Object.entries(
+          data.sessionsByWorktree
+        )) {
+          queryClient.setQueryData(
+            chatQueryKeys.sessions(worktreeId),
+            sessionsData
+          )
 
           // Extract session state for Zustand store
           const wts = sessionsData as WorktreeSessions
@@ -126,19 +150,32 @@ function App() {
 
         // Update Zustand store with session state
         const currentState = useChatStore.getState()
-        const storeUpdates: Partial<ReturnType<typeof useChatStore.getState>> = {}
+        const storeUpdates: Partial<ReturnType<typeof useChatStore.getState>> =
+          {}
 
         if (Object.keys(sessionMappings).length > 0) {
-          storeUpdates.sessionWorktreeMap = { ...currentState.sessionWorktreeMap, ...sessionMappings }
+          storeUpdates.sessionWorktreeMap = {
+            ...currentState.sessionWorktreeMap,
+            ...sessionMappings,
+          }
         }
         if (Object.keys(worktreePaths).length > 0) {
-          storeUpdates.worktreePaths = { ...currentState.worktreePaths, ...worktreePaths }
+          storeUpdates.worktreePaths = {
+            ...currentState.worktreePaths,
+            ...worktreePaths,
+          }
         }
         if (Object.keys(reviewingUpdates).length > 0) {
-          storeUpdates.reviewingSessions = { ...currentState.reviewingSessions, ...reviewingUpdates }
+          storeUpdates.reviewingSessions = {
+            ...currentState.reviewingSessions,
+            ...reviewingUpdates,
+          }
         }
         if (Object.keys(waitingUpdates).length > 0) {
-          storeUpdates.waitingForInputSessionIds = { ...currentState.waitingForInputSessionIds, ...waitingUpdates }
+          storeUpdates.waitingForInputSessionIds = {
+            ...currentState.waitingForInputSessionIds,
+            ...waitingUpdates,
+          }
         }
         if (Object.keys(storeUpdates).length > 0) {
           useChatStore.setState(storeUpdates)
@@ -146,7 +183,9 @@ function App() {
       }
       // Seed active sessions (with full chat history/messages)
       if (data.activeSessions) {
-        for (const [sessionId, session] of Object.entries(data.activeSessions)) {
+        for (const [sessionId, session] of Object.entries(
+          data.activeSessions
+        )) {
           queryClient.setQueryData(chatQueryKeys.session(sessionId), session)
         }
       }
@@ -209,7 +248,12 @@ function App() {
         predicate: query => {
           const key = query.queryKey[0]
           // Skip invalidating preloaded data (projects, worktrees, sessions, chat, preferences, ui-state)
-          return key !== 'projects' && key !== 'preferences' && key !== 'ui-state' && key !== 'chat'
+          return (
+            key !== 'projects' &&
+            key !== 'preferences' &&
+            key !== 'ui-state' &&
+            key !== 'chat'
+          )
         },
       })
     }
@@ -228,8 +272,9 @@ function App() {
   const { data: ghStatus, isLoading: isGhStatusLoading } = useGhCliStatus()
 
   // Check CLI authentication status (only when installed)
-  const { data: claudeAuth, isLoading: isClaudeAuthLoading } =
-    useClaudeCliAuth({ enabled: !!claudeStatus?.installed })
+  const { data: claudeAuth, isLoading: isClaudeAuthLoading } = useClaudeCliAuth(
+    { enabled: !!claudeStatus?.installed }
+  )
   const { data: ghAuth, isLoading: isGhAuthLoading } = useGhCliAuth({
     enabled: !!ghStatus?.installed,
   })
@@ -297,7 +342,9 @@ function App() {
     invoke<number>('kill_all_terminals')
       .then(killed => {
         if (killed > 0) {
-          logger.info(`Cleaned up ${killed} orphaned terminal(s) from previous session`)
+          logger.info(
+            `Cleaned up ${killed} orphaned terminal(s) from previous session`
+          )
         }
       })
       .catch(error => {

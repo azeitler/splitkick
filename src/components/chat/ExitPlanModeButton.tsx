@@ -59,10 +59,7 @@ export function ExitPlanModeButton({
   // Only render the approve button (plan is shown inline in timeline)
   return (
     <div className="mt-3 flex gap-2">
-      <Button
-        ref={buttonRef}
-        onClick={() => onPlanApproval?.()}
-      >
+      <Button ref={buttonRef} onClick={() => onPlanApproval?.()}>
         Approve
         {shortcut && (
           <Kbd className="ml-1.5 h-4 text-[10px] bg-primary-foreground/20 text-primary-foreground">

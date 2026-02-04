@@ -147,6 +147,8 @@ pub struct AppPreferences {
     pub http_server_localhost_only: bool, // Bind to localhost only (more secure)
     #[serde(default = "default_auto_archive_on_pr_merged")]
     pub auto_archive_on_pr_merged: bool, // Auto-archive worktrees when their PR is merged
+    #[serde(default = "default_show_keybinding_hints")]
+    pub show_keybinding_hints: bool, // Show keyboard shortcut hints at bottom of canvas views
 }
 
 fn default_auto_branch_naming() -> bool {
@@ -277,6 +279,10 @@ fn default_http_server_port() -> u16 {
 }
 
 fn default_auto_archive_on_pr_merged() -> bool {
+    true // Enabled by default
+}
+
+fn default_show_keybinding_hints() -> bool {
     true // Enabled by default
 }
 
@@ -560,6 +566,7 @@ impl Default for AppPreferences {
             http_server_token: None,
             http_server_localhost_only: true, // Default to localhost-only for security
             auto_archive_on_pr_merged: default_auto_archive_on_pr_merged(),
+            show_keybinding_hints: default_show_keybinding_hints(),
         }
     }
 }
@@ -1017,7 +1024,8 @@ async fn start_http_server(
 
     // Check if already running
     {
-        let handle_state = app.try_state::<Arc<Mutex<Option<http_server::server::HttpServerHandle>>>>();
+        let handle_state =
+            app.try_state::<Arc<Mutex<Option<http_server::server::HttpServerHandle>>>>();
         if let Some(state) = handle_state {
             let handle = state.lock().await;
             if handle.is_some() {
@@ -1027,7 +1035,8 @@ async fn start_http_server(
     }
 
     // Start the server
-    let handle = http_server::server::start_server(app.clone(), actual_port, token, localhost_only).await?;
+    let handle =
+        http_server::server::start_server(app.clone(), actual_port, token, localhost_only).await?;
     let status = http_server::server::ServerStatus {
         running: true,
         url: Some(handle.url.clone()),
@@ -1043,7 +1052,11 @@ async fn start_http_server(
         *guard = Some(handle);
     }
 
-    log::info!("HTTP server started: {} (localhost_only: {})", status.url.as_deref().unwrap_or("unknown"), localhost_only);
+    log::info!(
+        "HTTP server started: {} (localhost_only: {})",
+        status.url.as_deref().unwrap_or("unknown"),
+        localhost_only
+    );
     Ok(status)
 }
 
@@ -1133,7 +1146,9 @@ async fn start_http_server_headless(
 }
 
 #[tauri::command]
-async fn get_http_server_status(app: AppHandle) -> Result<http_server::server::ServerStatus, String> {
+async fn get_http_server_status(
+    app: AppHandle,
+) -> Result<http_server::server::ServerStatus, String> {
     Ok(http_server::server::get_server_status(app).await)
 }
 
@@ -1298,9 +1313,9 @@ pub fn run() {
     }
 
     // Build log targets conditionally (skip webview in headless mode)
-    let mut log_targets = vec![
-        tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
-    ];
+    let mut log_targets = vec![tauri_plugin_log::Target::new(
+        tauri_plugin_log::TargetKind::Stdout,
+    )];
     if !headless {
         log_targets.push(tauri_plugin_log::Target::new(
             tauri_plugin_log::TargetKind::Webview,

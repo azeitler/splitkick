@@ -366,7 +366,8 @@ function OnboardingDialogContent() {
     if (step === 'complete') {
       return {
         title: 'Setup Complete',
-        description: 'All required tools have been installed and authenticated.',
+        description:
+          'All required tools have been installed and authenticated.',
         showClose: true,
       }
     }
@@ -383,10 +384,7 @@ function OnboardingDialogContent() {
       }
     }
 
-    if (
-      step === 'claude-auth-checking' ||
-      step === 'claude-auth-login'
-    ) {
+    if (step === 'claude-auth-checking' || step === 'claude-auth-login') {
       return {
         title: 'Authenticate Claude CLI',
         description: 'Claude CLI requires authentication to function.',

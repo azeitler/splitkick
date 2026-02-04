@@ -42,7 +42,7 @@ export type UnlistenFn = () => void
  */
 export async function invoke<T>(
   command: string,
-  args?: Record<string, unknown>,
+  args?: Record<string, unknown>
 ): Promise<T> {
   if (isNativeApp()) {
     const { invoke: tauriInvoke } = await import('@tauri-apps/api/core')
@@ -57,7 +57,7 @@ export async function invoke<T>(
  */
 export async function listen<T>(
   event: string,
-  handler: (event: { payload: T }) => void,
+  handler: (event: { payload: T }) => void
 ): Promise<() => void> {
   if (isNativeApp()) {
     const { listen: tauriListen } = await import('@tauri-apps/api/event')
@@ -73,8 +73,8 @@ export async function listen<T>(
 export interface InitialData {
   projects: unknown[]
   worktreesByProject: Record<string, unknown[]>
-  sessionsByWorktree: Record<string, unknown>  // worktreeId -> WorktreeSessions
-  activeSessions?: Record<string, unknown>  // sessionId -> Session (with messages)
+  sessionsByWorktree: Record<string, unknown> // worktreeId -> WorktreeSessions
+  activeSessions?: Record<string, unknown> // sessionId -> Session (with messages)
   preferences: unknown
   uiState: unknown
 }
@@ -102,7 +102,9 @@ export async function preloadInitialData(): Promise<InitialData | null> {
     }
 
     try {
-      const response = await fetch(`/api/init?token=${encodeURIComponent(token)}`)
+      const response = await fetch(
+        `/api/init?token=${encodeURIComponent(token)}`
+      )
       if (!response.ok) {
         return null
       }
@@ -131,7 +133,9 @@ export function getPreloadedData(): InitialData | null {
   if (!initialDataResolved || !initialDataPromise) return null
   // Since initialDataResolved is true, the promise has resolved
   let result: InitialData | null = null
-  initialDataPromise.then(data => { result = data })
+  initialDataPromise.then(data => {
+    result = data
+  })
   return result
 }
 
@@ -157,7 +161,10 @@ interface WsMessage {
 class WsTransport {
   private ws: WebSocket | null = null
   private pending = new Map<string, PendingRequest>()
-  private listeners = new Map<string, Set<(event: { payload: unknown }) => void>>()
+  private listeners = new Map<
+    string,
+    Set<(event: { payload: unknown }) => void>
+  >()
   private reconnectAttempt = 0
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private queue: Array<{ data: string; resolve: () => void }> = []
@@ -230,7 +237,9 @@ class WsTransport {
 
     // Don't attempt connection without a token — it will always be rejected
     if (!token) {
-      this.setAuthError('No access token provided. Use the URL from Jean\'s Web Access settings.')
+      this.setAuthError(
+        "No access token provided. Use the URL from Jean's Web Access settings."
+      )
       return
     }
 
@@ -249,7 +258,9 @@ class WsTransport {
       if (!res.ok) {
         // Invalid token — clear it, set error, don't reconnect
         localStorage.removeItem('jean-http-token')
-        this.setAuthError('Invalid access token. Check the URL in Jean\'s Web Access settings.')
+        this.setAuthError(
+          "Invalid access token. Check the URL in Jean's Web Access settings."
+        )
         return
       }
     } catch {
@@ -284,7 +295,7 @@ class WsTransport {
       this.queue = []
     }
 
-    this.ws.onmessage = (event) => {
+    this.ws.onmessage = event => {
       try {
         const msg: WsMessage = JSON.parse(event.data)
         this.handleMessage(msg)
@@ -338,7 +349,7 @@ class WsTransport {
   /** Register an event listener. Returns an unlisten function. */
   listen<T>(
     event: string,
-    handler: (event: { payload: T }) => void,
+    handler: (event: { payload: T }) => void
   ): () => void {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, new Set())

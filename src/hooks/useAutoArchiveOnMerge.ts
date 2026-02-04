@@ -92,7 +92,9 @@ export function useAutoArchiveOnMerge() {
             })
 
             // Show toast notification
-            toast.success(`Archived "${worktree.name}" (PR #${status.pr_number} merged)`)
+            toast.success(
+              `Archived "${worktree.name}" (PR #${status.pr_number} merged)`
+            )
 
             return
           }

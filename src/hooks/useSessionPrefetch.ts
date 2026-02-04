@@ -30,22 +30,34 @@ export function useSessionPrefetch(projects: Project[] | undefined) {
     const { expandedProjectIds } = useProjectsStore.getState()
 
     // Split into expanded (priority) and collapsed projects
-    const expandedProjects = actualProjects.filter(p => expandedProjectIds.has(p.id))
-    const collapsedProjects = actualProjects.filter(p => !expandedProjectIds.has(p.id))
+    const expandedProjects = actualProjects.filter(p =>
+      expandedProjectIds.has(p.id)
+    )
+    const collapsedProjects = actualProjects.filter(
+      p => !expandedProjectIds.has(p.id)
+    )
 
     // Fetch sessions for all worktrees in a project
     const fetchSessionsForProject = async (projectId: string) => {
       try {
-        const worktrees = await invoke<Worktree[]>('list_worktrees', { projectId })
+        const worktrees = await invoke<Worktree[]>('list_worktrees', {
+          projectId,
+        })
         await Promise.all(
           worktrees.map(w =>
             prefetchSessions(queryClient, w.id, w.path).catch(err =>
-              console.warn(`[startup] Failed to prefetch sessions for ${w.name}:`, err)
+              console.warn(
+                `[startup] Failed to prefetch sessions for ${w.name}:`,
+                err
+              )
             )
           )
         )
       } catch (err) {
-        console.warn(`[startup] Failed to list worktrees for project ${projectId}:`, err)
+        console.warn(
+          `[startup] Failed to list worktrees for project ${projectId}:`,
+          err
+        )
       }
     }
 

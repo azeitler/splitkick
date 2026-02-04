@@ -2,9 +2,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement } from 'react'
-import { usePreferences, useSavePreferences, preferencesQueryKeys } from './preferences'
+import {
+  usePreferences,
+  useSavePreferences,
+  preferencesQueryKeys,
+} from './preferences'
 import type { AppPreferences } from '@/types/preferences'
-import { FONT_SIZE_DEFAULT, DEFAULT_MAGIC_PROMPTS, DEFAULT_MAGIC_PROMPT_MODELS } from '@/types/preferences'
+import {
+  FONT_SIZE_DEFAULT,
+  DEFAULT_MAGIC_PROMPTS,
+  DEFAULT_MAGIC_PROMPT_MODELS,
+} from '@/types/preferences'
 import { DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 
 vi.mock('@/lib/transport', () => ({
@@ -107,6 +115,7 @@ describe('preferences service', () => {
         auto_archive_on_pr_merged: true,
         canvas_enabled: true,
         canvas_only_mode: false,
+        show_keybinding_hints: true,
       }
       vi.mocked(invoke).mockResolvedValueOnce(mockPreferences)
 
@@ -192,6 +201,7 @@ describe('preferences service', () => {
         auto_archive_on_pr_merged: true,
         canvas_enabled: true,
         canvas_only_mode: false,
+        show_keybinding_hints: true,
       }
       vi.mocked(invoke).mockResolvedValueOnce(prefsWithOldBinding)
 
@@ -202,7 +212,9 @@ describe('preferences service', () => {
       await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
       // Should migrate to new default
-      expect(result.current.data?.keybindings?.toggle_left_sidebar).toBe('mod+b')
+      expect(result.current.data?.keybindings?.toggle_left_sidebar).toBe(
+        'mod+b'
+      )
     })
   })
 
@@ -252,6 +264,7 @@ describe('preferences service', () => {
         auto_archive_on_pr_merged: true,
         canvas_enabled: true,
         canvas_only_mode: false,
+        show_keybinding_hints: true,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -262,7 +275,9 @@ describe('preferences service', () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-      expect(invoke).toHaveBeenCalledWith('save_preferences', { preferences: newPrefs })
+      expect(invoke).toHaveBeenCalledWith('save_preferences', {
+        preferences: newPrefs,
+      })
       expect(toast.success).toHaveBeenCalledWith('Preferences saved')
     })
 
@@ -310,6 +325,7 @@ describe('preferences service', () => {
         auto_archive_on_pr_merged: true,
         canvas_enabled: true,
         canvas_only_mode: false,
+        show_keybinding_hints: true,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -320,7 +336,9 @@ describe('preferences service', () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-      const cached = queryClient.getQueryData(preferencesQueryKeys.preferences())
+      const cached = queryClient.getQueryData(
+        preferencesQueryKeys.preferences()
+      )
       expect(cached).toEqual(newPrefs)
     })
 
@@ -368,6 +386,7 @@ describe('preferences service', () => {
         auto_archive_on_pr_merged: true,
         canvas_enabled: true,
         canvas_only_mode: false,
+        show_keybinding_hints: true,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -426,6 +445,7 @@ describe('preferences service', () => {
         auto_archive_on_pr_merged: true,
         canvas_enabled: true,
         canvas_only_mode: false,
+        show_keybinding_hints: true,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
