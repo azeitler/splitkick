@@ -94,21 +94,11 @@ export function CanvasGrid({
     [cards, worktreeId, worktreePath, setCanvasSelectedSession]
   )
 
-  // Keyboard navigation
-  const { cardRefs } = useCanvasKeyboardNav({
-    cards,
-    selectedIndex,
-    onSelectedIndexChange,
-    onSelect: handleSelect,
-    enabled: !selectedSessionId,
-    onSelectionChange: handleSelectionChange,
-  })
-
   // Get selected card for shortcut events
   const selectedCard =
     selectedIndex !== null ? (cards[selectedIndex] ?? null) : null
 
-  // Shortcut events (plan, recap, approve)
+  // Shortcut events (plan, recap, approve) - must be before keyboard nav to get dialog states
   const {
     planDialogPath,
     planDialogContent,
@@ -126,6 +116,18 @@ export function CanvasGrid({
     worktreePath,
     onPlanApproval,
     onPlanApprovalYolo,
+  })
+
+  // Keyboard navigation - disable when any modal/dialog is open
+  const isModalOpen = !!selectedSessionId || !!planDialogPath || !!planDialogContent || !!recapDialogDigest
+  console.log('[CanvasGrid] isModalOpen:', isModalOpen, 'selectedSessionId:', selectedSessionId, 'planDialogPath:', planDialogPath, 'planDialogContent:', !!planDialogContent, 'recapDialogDigest:', !!recapDialogDigest)
+  const { cardRefs } = useCanvasKeyboardNav({
+    cards,
+    selectedIndex,
+    onSelectedIndexChange,
+    onSelect: handleSelect,
+    enabled: !isModalOpen,
+    onSelectionChange: handleSelectionChange,
   })
 
   // Handle approve from dialog (with updated plan content)
@@ -221,7 +223,7 @@ export function CanvasGrid({
   ])
 
   console.log('[CanvasGrid] render - selectedIndex:', selectedIndex, 'cards.length:', cards.length)
-  if (cards.length > 0) {
+  if (cards.length > 0 && cards[0]) {
     console.log('[CanvasGrid] render - cards[0].session.id:', cards[0].session.id)
   }
 

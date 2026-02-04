@@ -308,20 +308,10 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     [flatCards]
   )
 
-  // Keyboard navigation - use flat cards array
-  const { cardRefs } = useCanvasKeyboardNav({
-    cards: flatCards,
-    selectedIndex,
-    onSelectedIndexChange: setSelectedIndex,
-    onSelect: handleSelect,
-    enabled: !selectedSession,
-    onSelectionChange: handleSelectionChange,
-  })
-
   // Get selected card for shortcut events
   const selectedCard = selectedFlatCard?.card ?? null
 
-  // Shortcut events (plan, recap, approve)
+  // Shortcut events (plan, recap, approve) - must be before keyboard nav to get dialog states
   const {
     planDialogPath,
     planDialogContent,
@@ -341,6 +331,17 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
       handlePlanApproval(card, updatedPlan),
     onPlanApprovalYolo: (card, updatedPlan) =>
       handlePlanApprovalYolo(card, updatedPlan),
+  })
+
+  // Keyboard navigation - disable when any modal/dialog is open
+  const isModalOpen = !!selectedSession || !!planDialogPath || !!planDialogContent || !!recapDialogDigest
+  const { cardRefs } = useCanvasKeyboardNav({
+    cards: flatCards,
+    selectedIndex,
+    onSelectedIndexChange: setSelectedIndex,
+    onSelect: handleSelect,
+    enabled: !isModalOpen,
+    onSelectionChange: handleSelectionChange,
   })
 
   // Handle approve from dialog (with updated plan content)
@@ -543,6 +544,8 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
             indexInWorktree < sameWorktreeSessions.length
               ? sameWorktreeSessions[indexInWorktree]
               : sameWorktreeSessions[sameWorktreeSessions.length - 1]
+
+          if (!nextInWorktree) return
 
           // Find global index and adjust for removal
           const newGlobalIndex = flatCards.findIndex(

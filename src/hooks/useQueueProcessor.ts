@@ -117,6 +117,7 @@ export function useQueueProcessor(): void {
         clearStreamingContent,
         clearToolCalls,
         clearStreamingContentBlocks,
+        setSessionReviewing,
       } = useChatStore.getState()
 
       const worktreeId = sessionWorktreeMap[sessionId]
@@ -155,6 +156,7 @@ export function useQueueProcessor(): void {
       setLastSentMessage(sessionId, queuedMsg.message)
       setError(sessionId, null)
       addSendingSession(sessionId)
+      setSessionReviewing(sessionId, false) // Clear stale review state so canvas shows running status
       setExecutingMode(sessionId, queuedMsg.executionMode)
       setSelectedModel(sessionId, queuedMsg.model)
 

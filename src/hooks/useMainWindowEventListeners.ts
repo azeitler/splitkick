@@ -279,10 +279,20 @@ function executeKeybindingAction(
       logger.debug('Keybinding: previous_worktree')
       switchWorktree('previous', queryClient)
       break
-    case 'cycle_execution_mode':
+    case 'cycle_execution_mode': {
+      // Only cycle execution mode when inside a session (modal open or not in canvas view)
+      const chatStore = useChatStore.getState()
+      const activeWorktreeId = chatStore.activeWorktreeId
+      const isViewingCanvas = activeWorktreeId
+        ? chatStore.isViewingCanvasTab(activeWorktreeId)
+        : false
+      const sessionModalOpen = useUIStore.getState().sessionChatModalOpen
+      // Skip if viewing canvas without modal open (no session context)
+      if (isViewingCanvas && !sessionModalOpen) break
       logger.debug('Keybinding: cycle_execution_mode')
       window.dispatchEvent(new CustomEvent('cycle-execution-mode'))
       break
+    }
     case 'approve_plan': {
       logger.debug('Keybinding: approve_plan')
       const planDialogOpen = useUIStore.getState().planDialogOpen

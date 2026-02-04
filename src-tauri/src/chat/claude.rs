@@ -653,7 +653,6 @@ pub fn tail_claude_output(
     let mut claude_session_id = String::new();
     let mut tool_calls: Vec<ToolCall> = Vec::new();
     let mut content_blocks: Vec<ContentBlock> = Vec::new();
-    let mut current_parent_tool_use_id: Option<String> = None;
     let mut completed = false;
     let mut cancelled = false;
     let mut usage: Option<UsageData> = None;
@@ -711,7 +710,7 @@ pub fn tail_claude_output(
 
             // Track parent_tool_use_id for sub-agent tool calls
             // Must reset to None for root-level messages, otherwise parallel Tasks get wrong parent
-            current_parent_tool_use_id = msg
+            let current_parent_tool_use_id = msg
                 .get("parent_tool_use_id")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());

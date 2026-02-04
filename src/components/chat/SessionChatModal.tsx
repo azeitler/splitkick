@@ -59,22 +59,6 @@ export function SessionChatModal({
     }
   }, [isOpen])
 
-  // Listen for cycle-execution-mode event (SHIFT+TAB keybinding)
-  useEffect(() => {
-    if (!isOpen || !sessionId) return
-
-    const handleCycleExecutionMode = () => {
-      useChatStore.getState().cycleExecutionMode(sessionId)
-    }
-
-    window.addEventListener('cycle-execution-mode', handleCycleExecutionMode)
-    return () =>
-      window.removeEventListener(
-        'cycle-execution-mode',
-        handleCycleExecutionMode
-      )
-  }, [isOpen, sessionId])
-
   // When modal closes, restore the previous session
   const handleClose = useCallback(() => {
     if (previousSessionRef.current) {
