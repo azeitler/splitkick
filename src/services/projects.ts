@@ -651,10 +651,17 @@ export function useWorktreeEvents() {
 
         // Select worktree in sidebar
         const { expandProject, selectWorktree } = useProjectsStore.getState()
-        const { activeWorktreePath, setActiveWorktree, addSetupScriptResult } =
-          useChatStore.getState()
+        const {
+          activeWorktreePath,
+          setActiveWorktree,
+          addSetupScriptResult,
+          registerWorktreePath,
+        } = useChatStore.getState()
         expandProject(worktree.project_id)
         selectWorktree(worktree.id)
+
+        // Always register worktree path so it's available for CMD+O etc.
+        registerWorktreePath(worktree.id, worktree.path)
 
         // Only switch to worktree view if already viewing a worktree
         // If on project canvas (activeWorktreePath is null), stay there

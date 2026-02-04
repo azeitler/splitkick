@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from 'react'
 import { useChatStore } from '@/store/chat-store'
+import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
 import { SessionCard } from './SessionCard'
 import { SessionChatModal } from './SessionChatModal'
@@ -84,9 +85,13 @@ export function CanvasGrid({
       const card = cards[index]
       if (card) {
         setCanvasSelectedSession(worktreeId, card.session.id)
+        // Sync projects store so CMD+O uses the correct worktree
+        useProjectsStore.getState().selectWorktree(worktreeId)
+        // Register worktree path so OpenInModal can find it
+        useChatStore.getState().registerWorktreePath(worktreeId, worktreePath)
       }
     },
-    [cards, worktreeId, setCanvasSelectedSession]
+    [cards, worktreeId, worktreePath, setCanvasSelectedSession]
   )
 
   // Keyboard navigation
@@ -214,6 +219,11 @@ export function CanvasGrid({
     onSelectedIndexChange,
     onSelectedSessionIdChange,
   ])
+
+  console.log('[CanvasGrid] render - selectedIndex:', selectedIndex, 'cards.length:', cards.length)
+  if (cards.length > 0) {
+    console.log('[CanvasGrid] render - cards[0].session.id:', cards[0].session.id)
+  }
 
   return (
     <>

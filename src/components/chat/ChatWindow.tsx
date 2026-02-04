@@ -1718,7 +1718,10 @@ Begin your investigation now.`
   })
 
   // Listen for approve-plan keyboard shortcut event
+  // Skip when on canvas view (non-modal) - CanvasGrid handles it there
   useEffect(() => {
+    if (!isModal && isViewingCanvasTab) return
+
     const handleApprovePlanEvent = () => {
       // Check if we have a streaming plan to approve
       if (hasStreamingPlan) {
@@ -1735,10 +1738,41 @@ Begin your investigation now.`
     return () =>
       window.removeEventListener('approve-plan', handleApprovePlanEvent)
   }, [
+    isModal,
+    isViewingCanvasTab,
     hasStreamingPlan,
     pendingPlanMessage,
     handleStreamingPlanApproval,
     handlePlanApproval,
+  ])
+
+  // Listen for approve-plan-yolo keyboard shortcut event
+  // Skip when on canvas view (non-modal) - CanvasGrid handles it there
+  useEffect(() => {
+    if (!isModal && isViewingCanvasTab) return
+
+    const handleApprovePlanYoloEvent = () => {
+      // Check if we have a streaming plan to approve
+      if (hasStreamingPlan) {
+        handleStreamingPlanApprovalYolo()
+        return
+      }
+      // Check if we have a pending (non-streaming) plan to approve
+      if (pendingPlanMessage) {
+        handlePlanApprovalYolo(pendingPlanMessage.id)
+      }
+    }
+
+    window.addEventListener('approve-plan-yolo', handleApprovePlanYoloEvent)
+    return () =>
+      window.removeEventListener('approve-plan-yolo', handleApprovePlanYoloEvent)
+  }, [
+    isModal,
+    isViewingCanvasTab,
+    hasStreamingPlan,
+    pendingPlanMessage,
+    handleStreamingPlanApprovalYolo,
+    handlePlanApprovalYolo,
   ])
 
   // Listen for review-fix-message events from ReviewResultsPanel

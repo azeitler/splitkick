@@ -27,6 +27,8 @@ interface UseCanvasKeyboardNavResult {
  * Shared keyboard navigation hook for canvas views.
  * Handles arrow keys, Enter, and visual-position-based vertical navigation.
  */
+const THROTTLE_MS = 50
+
 export function useCanvasKeyboardNav<T>({
   cards,
   selectedIndex,
@@ -36,6 +38,16 @@ export function useCanvasKeyboardNav<T>({
   onSelectionChange,
 }: UseCanvasKeyboardNavOptions<T>): UseCanvasKeyboardNavResult {
   const cardRefs = useRef<(HTMLDivElement | null)[]>([])
+
+  // Use refs to avoid stale closures in event handler
+  const selectedIndexRef = useRef(selectedIndex)
+  selectedIndexRef.current = selectedIndex
+
+  const cardsLengthRef = useRef(cards.length)
+  cardsLengthRef.current = cards.length
+
+  // Throttle rapid key presses
+  const lastKeyTimeRef = useRef(0)
 
   // Find the card visually below/above the current one (visual-position based)
   const findVerticalNeighbor = useCallback(
@@ -101,10 +113,17 @@ export function useCanvasKeyboardNav<T>({
         return
       }
 
-      const total = cards.length
+      // Throttle rapid key presses to prevent skipping
+      const now = Date.now()
+      if (now - lastKeyTimeRef.current < THROTTLE_MS) return
+      lastKeyTimeRef.current = now
+
+      // Use refs to get current values (avoids stale closures)
+      const currentIndex = selectedIndexRef.current
+      const total = cardsLengthRef.current
       if (total === 0) return
 
-      if (selectedIndex === null) {
+      if (currentIndex === null) {
         if (
           ['ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown'].includes(e.key)
         ) {
@@ -123,19 +142,19 @@ export function useCanvasKeyboardNav<T>({
       switch (e.key) {
         case 'ArrowRight':
           e.preventDefault()
-          if (selectedIndex < total - 1) {
-            updateSelection(selectedIndex + 1)
+          if (currentIndex < total - 1) {
+            updateSelection(currentIndex + 1)
           }
           break
         case 'ArrowLeft':
           e.preventDefault()
-          if (selectedIndex > 0) {
-            updateSelection(selectedIndex - 1)
+          if (currentIndex > 0) {
+            updateSelection(currentIndex - 1)
           }
           break
         case 'ArrowDown': {
           e.preventDefault()
-          const nextIndex = findVerticalNeighbor(selectedIndex, 'down')
+          const nextIndex = findVerticalNeighbor(currentIndex, 'down')
           if (nextIndex !== null) {
             updateSelection(nextIndex)
           }
@@ -143,7 +162,7 @@ export function useCanvasKeyboardNav<T>({
         }
         case 'ArrowUp': {
           e.preventDefault()
-          const prevIndex = findVerticalNeighbor(selectedIndex, 'up')
+          const prevIndex = findVerticalNeighbor(currentIndex, 'up')
           if (prevIndex !== null) {
             updateSelection(prevIndex)
           }
@@ -153,22 +172,14 @@ export function useCanvasKeyboardNav<T>({
           // Only handle plain Enter (no modifiers) - CMD+Enter is for approve_plan keybinding
           if (e.metaKey || e.ctrlKey) return
           e.preventDefault()
-          onSelect(selectedIndex)
+          onSelect(currentIndex)
           break
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [
-    enabled,
-    selectedIndex,
-    cards.length,
-    findVerticalNeighbor,
-    onSelectedIndexChange,
-    onSelect,
-    onSelectionChange,
-  ])
+  }, [enabled, findVerticalNeighbor, onSelectedIndexChange, onSelect, onSelectionChange])
 
   // Scroll selected card into view when selection changes
   const scrollSelectedIntoView = useCallback(() => {

@@ -308,7 +308,23 @@ export function useCreateSession() {
       logger.info('Session created', { sessionId: session.id })
       return session
     },
-    onSuccess: (_, { worktreeId }) => {
+    onSuccess: (newSession, { worktreeId }) => {
+      // Optimistically update cache with new session at front
+      const oldData = queryClient.getQueryData<WorktreeSessions>(
+        chatQueryKeys.sessions(worktreeId)
+      )
+      console.log('[useCreateSession] onSuccess - oldData sessions count:', oldData?.sessions?.length)
+      console.log('[useCreateSession] onSuccess - newSession.id:', newSession.id)
+      queryClient.setQueryData<WorktreeSessions>(
+        chatQueryKeys.sessions(worktreeId),
+        old => (old ? { ...old, sessions: [newSession, ...old.sessions] } : old)
+      )
+      const newData = queryClient.getQueryData<WorktreeSessions>(
+        chatQueryKeys.sessions(worktreeId)
+      )
+      console.log('[useCreateSession] onSuccess - newData sessions count:', newData?.sessions?.length)
+      console.log('[useCreateSession] onSuccess - newData[0].id:', newData?.sessions?.[0]?.id)
+      // Then invalidate for consistency
       queryClient.invalidateQueries({
         queryKey: chatQueryKeys.sessions(worktreeId),
       })

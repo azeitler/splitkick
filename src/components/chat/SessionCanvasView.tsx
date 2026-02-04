@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
-import { useSessions } from '@/services/chat'
+import { useSessions, useCreateSession } from '@/services/chat'
 import { useWorktree, useProjects } from '@/services/projects'
 import { isBaseSession } from '@/types/projects'
 import { computeSessionCardData } from './session-card-utils'
@@ -62,6 +62,9 @@ export function SessionCanvasView({
     project,
   })
 
+  // Session creation
+  const createSession = useCreateSession()
+
   // Actions via getState()
   const { setActiveSession, setViewingCanvasTab } = useChatStore.getState()
 
@@ -97,9 +100,36 @@ export function SessionCanvasView({
     }
   }, [worktreeId, sessionsData?.sessions])
 
-  // Compute session card data
+  // Listen for create-new-session event to handle Cmd+T
+  useEffect(() => {
+    const handleCreateNewSession = () => {
+      console.log('[SessionCanvasView] handleCreateNewSession called')
+      console.log('[SessionCanvasView] selectedSessionId:', selectedSessionId)
+      // Don't create if modal is already open
+      if (selectedSessionId) return
+
+      createSession.mutate(
+        { worktreeId, worktreePath },
+        {
+          onSuccess: session => {
+            console.log('[SessionCanvasView] onSuccess - session.id:', session.id)
+            setSelectedSessionId(session.id)
+            // selectedIndex will be synced reactively by the effect below
+          },
+        }
+      )
+    }
+
+    window.addEventListener('create-new-session', handleCreateNewSession)
+    return () =>
+      window.removeEventListener('create-new-session', handleCreateNewSession)
+  }, [worktreeId, worktreePath, selectedSessionId, createSession])
+
+  // Compute session card data (must be before effects that depend on it)
   const sessionCards = useMemo(() => {
     const sessions = sessionsData?.sessions ?? []
+    console.log('[SessionCanvasView] sessionCards useMemo - sessions count:', sessions.length)
+    console.log('[SessionCanvasView] sessionCards useMemo - first session id:', sessions[0]?.id)
     const cards = sessions.map(session =>
       computeSessionCardData(session, storeState)
     )
@@ -109,6 +139,21 @@ export function SessionCanvasView({
     const q = searchQuery.toLowerCase()
     return cards.filter(card => card.session.name?.toLowerCase().includes(q))
   }, [sessionsData?.sessions, storeState, searchQuery])
+
+  // Sync selectedIndex when selectedSessionId changes and sessionCards updates
+  useEffect(() => {
+    if (!selectedSessionId) return
+    const cardIndex = sessionCards.findIndex(
+      card => card.session.id === selectedSessionId
+    )
+    console.log('[SessionCanvasView] sync selectedIndex - cardIndex:', cardIndex, 'for session:', selectedSessionId)
+    if (cardIndex !== -1 && cardIndex !== selectedIndex) {
+      setSelectedIndex(cardIndex)
+    }
+  }, [selectedSessionId, sessionCards, selectedIndex])
+
+  // Debug: log selectedIndex changes
+  console.log('[SessionCanvasView] render - selectedIndex:', selectedIndex, 'sessionCards.length:', sessionCards.length)
 
   // Handle opening full view from modal
   const handleOpenFullView = useCallback(() => {
@@ -120,9 +165,10 @@ export function SessionCanvasView({
   }, [worktreeId, selectedSessionId, setViewingCanvasTab, setActiveSession])
 
   return (
-    <div className="relative flex min-h-full flex-col overflow-auto">
-      {/* Header with Search - sticky over content */}
-      <div className="sticky top-0 z-10 flex items-center justify-between gap-4 bg-background/60 backdrop-blur-md px-4 py-3 border-b border-border/30">
+    <div className="relative flex h-full flex-col">
+      <div className="flex-1 flex flex-col overflow-auto">
+        {/* Header with Search - sticky over content */}
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-4 bg-background/60 backdrop-blur-md px-4 py-3 border-b border-border/30">
         <h2 className="text-lg font-semibold shrink-0">
           {project?.name}
           {sessionLabel && (
@@ -169,6 +215,7 @@ export function SessionCanvasView({
             searchInputRef={searchInputRef}
           />
         )}
+      </div>
       </div>
 
       {/* Keybinding hints */}

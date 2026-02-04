@@ -1,12 +1,5 @@
 import { forwardRef } from 'react'
-import {
-  Archive,
-  FileText,
-  MessageCircleQuestionMarkIcon,
-  Shield,
-  Sparkles,
-  Trash2,
-} from 'lucide-react'
+import { Archive, FileText, Shield, Sparkles, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Kbd } from '@/components/ui/kbd'
@@ -64,14 +57,14 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
             tabIndex={-1}
             onClick={onSelect}
             className={cn(
-              'group flex w-[260px] flex-col gap-3 rounded-md overflow-hidden bg-muted/30 border p-4 transition-colors text-left cursor-pointer scroll-mt-28 scroll-mb-20',
+              'group flex w-[260px] min-h-[132px] flex-col gap-3 rounded-md overflow-hidden bg-muted/30 border p-4 transition-colors text-left cursor-pointer scroll-mt-28 scroll-mb-20',
               'hover:border-foreground/20 hover:bg-muted/50',
               isSelected &&
-                'border-primary bg-primary/5 hover:border-primary hover:bg-primary/10 opacity-100'
+              'border-primary bg-primary/5 hover:border-primary hover:bg-primary/10 opacity-100'
             )}
           >
             {/* Top row: status indicator + plan/recap buttons */}
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center justify-between gap-2 min-h-5">
               <div className="flex items-center gap-2 text-xs font-medium uppercase">
                 <StatusIndicator
                   status={config.indicatorStatus}
@@ -123,7 +116,7 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
             </div>
 
             {/* Session name */}
-            <div className="text-sm font-medium leading-snug line-clamp-2">
+            <div className="text-sm font-medium leading-snug line-clamp-2 min-h-[2.75em]">
               {card.session.name}
             </div>
 

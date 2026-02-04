@@ -212,6 +212,20 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
       )
   }, [selectedSession])
 
+  // Sync selectedIndex when selectedSession changes and flatCards updates
+  useEffect(() => {
+    if (!selectedSession) return
+    const cardIndex = flatCards.findIndex(
+      fc =>
+        fc.worktreeId === selectedSession.worktreeId &&
+        fc.card.session.id === selectedSession.sessionId
+    )
+    console.log('[WorktreeDashboard] sync selectedIndex - cardIndex:', cardIndex, 'for session:', selectedSession.sessionId)
+    if (cardIndex !== -1 && cardIndex !== selectedIndex) {
+      setSelectedIndex(cardIndex)
+    }
+  }, [selectedSession, flatCards, selectedIndex])
+
   // Auto-open session modal for newly created worktrees
   useEffect(() => {
     for (const [worktreeId, sessionData] of sessionsByWorktreeId) {
@@ -223,9 +237,8 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
       if (!shouldAutoOpen) continue
 
       const worktree = readyWorktrees.find(w => w.id === worktreeId)
-      if (worktree) {
-        const firstSession = sessionData.sessions[0]
-
+      const firstSession = sessionData.sessions[0]
+      if (worktree && firstSession) {
         // Find the index in flatCards for keyboard selection
         const cardIndex = flatCards.findIndex(
           fc =>
@@ -281,6 +294,20 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     [flatCards, handleSessionClick]
   )
 
+  // Handle selection change for tracking in store
+  const handleSelectionChange = useCallback(
+    (index: number) => {
+      const item = flatCards[index]
+      if (item) {
+        // Sync projects store so CMD+O uses the correct worktree
+        useProjectsStore.getState().selectWorktree(item.worktreeId)
+        // Register worktree path so OpenInModal can find it
+        useChatStore.getState().registerWorktreePath(item.worktreeId, item.worktreePath)
+      }
+    },
+    [flatCards]
+  )
+
   // Keyboard navigation - use flat cards array
   const { cardRefs } = useCanvasKeyboardNav({
     cards: flatCards,
@@ -288,6 +315,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     onSelectedIndexChange: setSelectedIndex,
     onSelect: handleSelect,
     enabled: !selectedSession,
+    onSelectionChange: handleSelectionChange,
   })
 
   // Get selected card for shortcut events
@@ -470,18 +498,61 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
       if (selectedIndex !== null && flatCards[selectedIndex]) {
         e.stopImmediatePropagation()
         const item = flatCards[selectedIndex]
+        const closingWorktreeId = item.worktreeId
+
         handleArchiveSessionForWorktree(
           item.worktreeId,
           item.worktreePath,
           item.card.session.id
         )
 
-        // Move selection to previous card, or clear if none left
-        const total = flatCards.length
-        if (total <= 1) {
-          setSelectedIndex(null)
-        } else if (selectedIndex >= total - 1) {
-          setSelectedIndex(selectedIndex - 1)
+        // Find remaining sessions in same worktree (excluding the one being closed)
+        const sameWorktreeSessions = flatCards.filter(
+          fc =>
+            fc.worktreeId === closingWorktreeId &&
+            fc.card.session.id !== item.card.session.id
+        )
+
+        if (sameWorktreeSessions.length === 0) {
+          // No sessions left in worktree - find nearest from any worktree
+          const closingIndex = selectedIndex
+          let nearestIndex: number | null = null
+          let minDistance = Infinity
+          for (let i = 0; i < flatCards.length; i++) {
+            if (i === closingIndex) continue
+            const distance = Math.abs(i - closingIndex)
+            if (distance < minDistance) {
+              minDistance = distance
+              nearestIndex = i
+            }
+          }
+          // Adjust for removed card
+          if (nearestIndex !== null && nearestIndex > closingIndex) {
+            nearestIndex--
+          }
+          setSelectedIndex(nearestIndex)
+        } else {
+          // Sessions remain in same worktree - pick next (or last if closing last)
+          const worktreeSessions = flatCards.filter(
+            fc => fc.worktreeId === closingWorktreeId
+          )
+          const indexInWorktree = worktreeSessions.findIndex(
+            fc => fc.card.session.id === item.card.session.id
+          )
+          const nextInWorktree =
+            indexInWorktree < sameWorktreeSessions.length
+              ? sameWorktreeSessions[indexInWorktree]
+              : sameWorktreeSessions[sameWorktreeSessions.length - 1]
+
+          // Find global index and adjust for removal
+          const newGlobalIndex = flatCards.findIndex(
+            fc =>
+              fc.worktreeId === nextInWorktree.worktreeId &&
+              fc.card.session.id === nextInWorktree.card.session.id
+          )
+          setSelectedIndex(
+            newGlobalIndex > selectedIndex ? newGlobalIndex - 1 : newGlobalIndex
+          )
         }
       }
     }
@@ -509,10 +580,15 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
   // Listen for create-new-session event to handle CMD+T
   useEffect(() => {
     const handleCreateNewSession = (e: Event) => {
-      // Only handle when we have a keyboard-selected session and modal is not open
-      if (selectedSession || selectedIndex === null) return
+      console.log('[WorktreeDashboard] handleCreateNewSession called')
+      console.log('[WorktreeDashboard] selectedSession:', selectedSession)
+      console.log('[WorktreeDashboard] selectedIndex:', selectedIndex)
+      // Don't create if modal is already open
+      if (selectedSession) return
 
-      const item = flatCards[selectedIndex]
+      // Use selected card, or fallback to first card
+      const item =
+        selectedIndex !== null ? flatCards[selectedIndex] : flatCards[0]
       if (!item) return
 
       e.stopImmediatePropagation()
@@ -521,6 +597,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
         { worktreeId: item.worktreeId, worktreePath: item.worktreePath },
         {
           onSuccess: session => {
+            console.log('[WorktreeDashboard] onSuccess - session.id:', session.id)
             setSelectedSession({
               sessionId: session.id,
               worktreeId: item.worktreeId,
@@ -570,9 +647,10 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
   let cardIndex = 0
 
   return (
-    <div className="relative flex min-h-full flex-col overflow-auto">
-      {/* Header with Search - sticky over content */}
-      <div className="sticky top-0 z-10 flex items-center justify-between gap-4 bg-background/60 backdrop-blur-md px-4 py-3 border-b border-border/30">
+    <div className="relative flex h-full flex-col">
+      <div className="flex-1 flex flex-col overflow-auto">
+        {/* Header with Search - sticky over content */}
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-4 bg-background/60 backdrop-blur-md px-4 py-3 border-b border-border/30">
         <h2 className="text-lg font-semibold shrink-0">{project.name}</h2>
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -610,9 +688,11 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
                     <span className="font-medium">
                       {isBase ? 'Base Session' : section.worktree.name}
                     </span>
-                    <span className="text-sm text-muted-foreground">
-                      ({section.worktree.branch})
-                    </span>
+                    {section.worktree.name !== section.worktree.branch && (
+                      <span className="text-sm text-muted-foreground">
+                        ({section.worktree.branch})
+                      </span>
+                    )}
                     {isBase && (
                       <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
                         base
@@ -667,6 +747,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
             })}
           </div>
         )}
+      </div>
       </div>
 
       {/* Plan Dialog */}
