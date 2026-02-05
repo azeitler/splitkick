@@ -288,6 +288,14 @@
   }
 }
 
+/* Ensure toast notifications remain clickable above Radix modal overlays.
+   Radix Dialog (modal mode) sets pointer-events:none on <body>;
+   Sonner already renders at z-index:999999999, we just restore pointer events. */
+[data-sonner-toaster],
+[data-sonner-toaster] [data-sonner-toast] {
+  pointer-events: auto !important;
+}
+
 /* Font overrides - outside @layer to ensure higher specificity */
 body {
   font-family: var(--font-family-sans) !important;

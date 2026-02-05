@@ -273,6 +273,7 @@ export function MainWindow() {
       <QuitConfirmationDialog />
       <Toaster
         position="bottom-right"
+        offset="52px"
         toastOptions={{
           classNames: {
             toast:
