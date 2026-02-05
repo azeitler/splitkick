@@ -100,6 +100,7 @@ const createMockContext = (): CommandContext => ({
   getCurrentModel: vi.fn().mockReturnValue('opus'),
   getCurrentThinkingLevel: vi.fn().mockReturnValue('off'),
   getCurrentExecutionMode: vi.fn().mockReturnValue('plan'),
+  toggleDebugMode: vi.fn(),
 })
 
 describe('Command System', () => {

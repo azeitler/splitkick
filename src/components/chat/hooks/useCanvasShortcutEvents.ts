@@ -118,15 +118,16 @@ export function useCanvasShortcutEvents({
   useEffect(() => {
     if (!recapDialogSessionId) return
 
-    const unsubscribe = useChatStore.subscribe(
-      state => state.sendingSessionIds[recapDialogSessionId] ?? false,
-      isSending => {
-        if (isSending) {
-          setRecapDialogDigest(null)
-          setRecapDialogSessionId(null)
-        }
+    let wasSending = false
+    const unsubscribe = useChatStore.subscribe(state => {
+      const isSending =
+        state.sendingSessionIds[recapDialogSessionId] ?? false
+      if (isSending && !wasSending) {
+        setRecapDialogDigest(null)
+        setRecapDialogSessionId(null)
       }
-    )
+      wasSending = isSending
+    })
 
     return unsubscribe
   }, [recapDialogSessionId])

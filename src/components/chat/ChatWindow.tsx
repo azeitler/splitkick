@@ -124,9 +124,6 @@ import {
 import { useMagicCommands } from './hooks/useMagicCommands'
 import { useDragAndDropImages } from './hooks/useDragAndDropImages'
 
-/** Check if we're in development mode */
-const isDev = import.meta.env.DEV
-
 // PERFORMANCE: Stable empty array references to prevent infinite render loops
 // When Zustand selectors return [], a new reference is created each time
 // Using these constants ensures referential equality for empty states
