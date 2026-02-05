@@ -5,8 +5,10 @@ import { Search, GitBranch } from 'lucide-react'
 import { WorktreeDropdownMenu } from '@/components/projects/WorktreeDropdownMenu'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
+import { GitStatusBadges } from '@/components/ui/git-status-badges'
 import { useWorktrees, useProjects, isTauri } from '@/services/projects'
 import { chatQueryKeys, useCreateSession } from '@/services/chat'
+import { useGitStatus } from '@/services/git-status'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
@@ -33,6 +35,15 @@ import { useArchiveSession, useCloseSession } from '@/services/chat'
 import { usePreferences } from '@/services/preferences'
 import { KeybindingHints } from '@/components/ui/keybinding-hints'
 import { DEFAULT_KEYBINDINGS } from '@/types/keybindings'
+import { GitDiffModal } from '@/components/chat/GitDiffModal'
+import type { DiffRequest } from '@/types/git-diff'
+import { toast } from 'sonner'
+import {
+  gitPull,
+  gitPush,
+  fetchWorktreesStatus,
+  triggerImmediateGitPoll,
+} from '@/services/git-status'
 
 interface WorktreeDashboardProps {
   projectId: string
@@ -50,6 +61,116 @@ interface FlatCard {
   card: SessionCardData | null // null for pending worktrees
   globalIndex: number
   isPending?: boolean
+}
+
+function WorktreeSectionHeader({
+  worktree,
+  projectId,
+  defaultBranch,
+}: {
+  worktree: Worktree
+  projectId: string
+  defaultBranch: string
+}) {
+  const isBase = isBaseSession(worktree)
+  const { data: gitStatus } = useGitStatus(worktree.id)
+  const [diffRequest, setDiffRequest] = useState<DiffRequest | null>(null)
+
+  const behindCount =
+    gitStatus?.behind_count ?? worktree.cached_behind_count ?? 0
+  const unpushedCount =
+    gitStatus?.unpushed_count ?? worktree.cached_unpushed_count ?? 0
+
+  // Non-base: branch diff vs base; base: uncommitted changes
+  const diffAdded = isBase
+    ? (gitStatus?.uncommitted_added ?? worktree.cached_uncommitted_added ?? 0)
+    : (gitStatus?.branch_diff_added ?? worktree.cached_branch_diff_added ?? 0)
+  const diffRemoved = isBase
+    ? (gitStatus?.uncommitted_removed ?? worktree.cached_uncommitted_removed ?? 0)
+    : (gitStatus?.branch_diff_removed ?? worktree.cached_branch_diff_removed ?? 0)
+
+  const handlePull = useCallback(
+    async (e: React.MouseEvent) => {
+      e.stopPropagation()
+      const { setWorktreeLoading, clearWorktreeLoading } =
+        useChatStore.getState()
+      setWorktreeLoading(worktree.id, 'pull')
+      const toastId = toast.loading('Pulling changes...')
+      try {
+        await gitPull(worktree.path, defaultBranch)
+        triggerImmediateGitPoll()
+        fetchWorktreesStatus(projectId)
+        toast.success('Changes pulled', { id: toastId })
+      } catch (error) {
+        toast.error(`Pull failed: ${error}`, { id: toastId })
+      } finally {
+        clearWorktreeLoading(worktree.id)
+      }
+    },
+    [worktree.id, worktree.path, defaultBranch, projectId]
+  )
+
+  const handlePush = useCallback(
+    async (e: React.MouseEvent) => {
+      e.stopPropagation()
+      const toastId = toast.loading('Pushing changes...')
+      try {
+        await gitPush(worktree.path, worktree.pr_number)
+        triggerImmediateGitPoll()
+        fetchWorktreesStatus(projectId)
+        toast.success('Changes pushed', { id: toastId })
+      } catch (error) {
+        toast.error(`Push failed: ${error}`, { id: toastId })
+      }
+    },
+    [worktree.path, worktree.pr_number, projectId]
+  )
+
+  const handleDiffClick = useCallback(() => {
+    setDiffRequest({
+      type: isBase ? 'uncommitted' : 'branch',
+      worktreePath: worktree.path,
+      baseBranch: defaultBranch,
+    })
+  }, [isBase, worktree.path, defaultBranch])
+
+  return (
+    <>
+      <div className="mb-3 flex items-center gap-2">
+        <GitBranch className="h-4 w-4 text-muted-foreground" />
+        <span className="font-medium">
+          {isBase ? 'Base Session' : worktree.name}
+        </span>
+        {worktree.name !== worktree.branch && (
+          <span className="text-sm text-muted-foreground">
+            ({worktree.branch})
+          </span>
+        )}
+        {isBase && (
+          <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+            base
+          </span>
+        )}
+        <WorktreeDropdownMenu
+          worktree={worktree}
+          projectId={projectId}
+        />
+        <GitStatusBadges
+          behindCount={behindCount}
+          unpushedCount={unpushedCount}
+          diffAdded={diffAdded}
+          diffRemoved={diffRemoved}
+          onPull={handlePull}
+          onPush={handlePush}
+          onDiffClick={handleDiffClick}
+        />
+      </div>
+      <GitDiffModal
+        diffRequest={diffRequest}
+        onClose={() => setDiffRequest(null)}
+      />
+    </>
+  )
 }
 
 export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
@@ -714,31 +835,14 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
         ) : (
           <div className="space-y-6">
             {worktreeSections.map(section => {
-              const isBase = isBaseSession(section.worktree)
-
               return (
                 <div key={section.worktree.id}>
                   {/* Worktree header */}
-                  <div className="mb-3 flex items-center gap-2">
-                    <GitBranch className="h-4 w-4 text-muted-foreground" />
-                    <span className="font-medium">
-                      {isBase ? 'Base Session' : section.worktree.name}
-                    </span>
-                    {section.worktree.name !== section.worktree.branch && (
-                      <span className="text-sm text-muted-foreground">
-                        ({section.worktree.branch})
-                      </span>
-                    )}
-                    {isBase && (
-                      <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-                        base
-                      </span>
-                    )}
-                    <WorktreeDropdownMenu
-                      worktree={section.worktree}
-                      projectId={projectId}
-                    />
-                  </div>
+                  <WorktreeSectionHeader
+                    worktree={section.worktree}
+                    projectId={projectId}
+                    defaultBranch={project.default_branch}
+                  />
 
                   {/* Session cards grid */}
                   <div className="flex flex-row flex-wrap gap-3">

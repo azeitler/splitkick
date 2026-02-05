@@ -3,7 +3,18 @@ import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 import { useSessions, useCreateSession } from '@/services/chat'
 import { useWorktree, useProjects } from '@/services/projects'
+import {
+  useGitStatus,
+  gitPull,
+  gitPush,
+  fetchWorktreesStatus,
+  triggerImmediateGitPoll,
+} from '@/services/git-status'
 import { isBaseSession } from '@/types/projects'
+import { GitStatusBadges } from '@/components/ui/git-status-badges'
+import { GitDiffModal } from './GitDiffModal'
+import type { DiffRequest } from '@/types/git-diff'
+import { toast } from 'sonner'
 import { computeSessionCardData } from './session-card-utils'
 import { useCanvasStoreState } from './hooks/useCanvasStoreState'
 import { usePlanApproval } from './hooks/usePlanApproval'
@@ -34,6 +45,69 @@ export function SessionCanvasView({
     : null
   const sessionLabel =
     worktree && isBaseSession(worktree) ? 'base' : worktree?.name
+  const isBase = worktree ? isBaseSession(worktree) : false
+
+  // Git status for header badges
+  const { data: gitStatus } = useGitStatus(worktreeId)
+  const behindCount =
+    gitStatus?.behind_count ?? worktree?.cached_behind_count ?? 0
+  const unpushedCount =
+    gitStatus?.unpushed_count ?? worktree?.cached_unpushed_count ?? 0
+  const diffAdded = isBase
+    ? (gitStatus?.uncommitted_added ?? worktree?.cached_uncommitted_added ?? 0)
+    : (gitStatus?.branch_diff_added ?? worktree?.cached_branch_diff_added ?? 0)
+  const diffRemoved = isBase
+    ? (gitStatus?.uncommitted_removed ?? worktree?.cached_uncommitted_removed ?? 0)
+    : (gitStatus?.branch_diff_removed ?? worktree?.cached_branch_diff_removed ?? 0)
+
+  // Git badge interaction state
+  const [diffRequest, setDiffRequest] = useState<DiffRequest | null>(null)
+  const defaultBranch = project?.default_branch ?? 'main'
+
+  const handlePull = useCallback(
+    async (e: React.MouseEvent) => {
+      e.stopPropagation()
+      const { setWorktreeLoading, clearWorktreeLoading } =
+        useChatStore.getState()
+      setWorktreeLoading(worktreeId, 'pull')
+      const toastId = toast.loading('Pulling changes...')
+      try {
+        await gitPull(worktreePath, defaultBranch)
+        triggerImmediateGitPoll()
+        if (project) fetchWorktreesStatus(project.id)
+        toast.success('Changes pulled', { id: toastId })
+      } catch (error) {
+        toast.error(`Pull failed: ${error}`, { id: toastId })
+      } finally {
+        clearWorktreeLoading(worktreeId)
+      }
+    },
+    [worktreeId, worktreePath, defaultBranch, project]
+  )
+
+  const handlePush = useCallback(
+    async (e: React.MouseEvent) => {
+      e.stopPropagation()
+      const toastId = toast.loading('Pushing changes...')
+      try {
+        await gitPush(worktreePath, worktree?.pr_number)
+        triggerImmediateGitPoll()
+        if (project) fetchWorktreesStatus(project.id)
+        toast.success('Changes pushed', { id: toastId })
+      } catch (error) {
+        toast.error(`Push failed: ${error}`, { id: toastId })
+      }
+    },
+    [worktreePath, worktree?.pr_number, project]
+  )
+
+  const handleDiffClick = useCallback(() => {
+    setDiffRequest({
+      type: isBase ? 'uncommitted' : 'branch',
+      worktreePath,
+      baseBranch: defaultBranch,
+    })
+  }, [isBase, worktreePath, defaultBranch])
 
   // Preferences for keybinding hints
   const { data: preferences } = usePreferences()
@@ -169,14 +243,25 @@ export function SessionCanvasView({
       <div className="flex-1 flex flex-col overflow-auto">
         {/* Header with Search - sticky over content */}
         <div className="sticky top-0 z-10 flex items-center justify-between gap-4 bg-background/60 backdrop-blur-md px-4 py-3 border-b border-border/30">
-        <h2 className="text-lg font-semibold shrink-0">
-          {project?.name}
-          {sessionLabel && (
-            <span className="ml-2 text-sm font-normal text-muted-foreground">
-              ({sessionLabel})
-            </span>
-          )}
-        </h2>
+        <div className="flex items-center gap-2 shrink-0">
+          <h2 className="text-lg font-semibold">
+            {project?.name}
+            {sessionLabel && (
+              <span className="ml-2 text-sm font-normal text-muted-foreground">
+                ({sessionLabel})
+              </span>
+            )}
+          </h2>
+          <GitStatusBadges
+            behindCount={behindCount}
+            unpushedCount={unpushedCount}
+            diffAdded={diffAdded}
+            diffRemoved={diffRemoved}
+            onPull={handlePull}
+            onPush={handlePush}
+            onDiffClick={handleDiffClick}
+          />
+        </div>
 
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -235,6 +320,11 @@ export function SessionCanvasView({
           ]}
         />
       )}
+
+      <GitDiffModal
+        diffRequest={diffRequest}
+        onClose={() => setDiffRequest(null)}
+      />
     </div>
   )
 }
