@@ -23,6 +23,7 @@ export type KeybindingAction =
   | 'open_recap'
   | 'restore_last_archived'
   | 'focus_canvas_search'
+  | 'toggle_modal_terminal'
 
 // Shortcut string format: "mod+key" where mod is cmd/ctrl
 // Examples: "mod+l", "mod+shift+p", "mod+1"
@@ -65,6 +66,7 @@ export const DEFAULT_KEYBINDINGS: KeybindingsMap = {
   open_recap: 'r',
   restore_last_archived: 'mod+shift+t',
   focus_canvas_search: 'slash',
+  toggle_modal_terminal: 'mod+backquote',
 }
 
 // UI definitions for the settings pane
@@ -230,6 +232,13 @@ export const KEYBINDING_DEFINITIONS: KeybindingDefinition[] = [
     description: 'Focus the search input on canvas views',
     default_shortcut: 'slash',
     category: 'navigation',
+  },
+  {
+    action: 'toggle_modal_terminal',
+    label: 'Toggle modal terminal',
+    description: 'Show or hide terminal drawer in session modal',
+    default_shortcut: 'mod+backquote',
+    category: 'chat',
   },
 ]
 

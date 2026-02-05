@@ -6,6 +6,7 @@ import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
+import { useTerminalStore } from '@/store/terminal-store'
 import { projectsQueryKeys } from '@/services/projects'
 import { chatQueryKeys } from '@/services/chat'
 import { setActiveWorktreeForPolling } from '@/services/git-status'
@@ -202,10 +203,48 @@ function executeKeybindingAction(
       logger.debug('Keybinding: open_git_diff')
       window.dispatchEvent(new CustomEvent('open-git-diff'))
       break
-    case 'execute_run':
+    case 'execute_run': {
       logger.debug('Keybinding: execute_run')
-      window.dispatchEvent(new CustomEvent('toggle-workspace-run'))
+      if (!isNativeApp()) break
+
+      const chatStore = useChatStore.getState()
+      const uiStore = useUIStore.getState()
+      const { activeWorktreeId, activeWorktreePath } = chatStore
+      const sessionModalOpen = uiStore.sessionChatModalOpen
+
+      // Project canvas (no worktree selected) → error
+      if (!activeWorktreePath) {
+        notify('Open a worktree to run', undefined, { type: 'error' })
+        break
+      }
+
+      if (!activeWorktreeId) {
+        notify('No active worktree', undefined, { type: 'error' })
+        break
+      }
+
+      // Fetch run script from query cache
+      const runScript = queryClient.getQueryData<string | null>([
+        'run-script',
+        activeWorktreePath,
+      ])
+
+      if (!runScript) {
+        notify('No run script configured in jean.json', undefined, {
+          type: 'error',
+        })
+        break
+      }
+
+      // Start run (works on canvas, modal, or main view)
+      useTerminalStore.getState().startRun(activeWorktreeId, runScript)
+
+      // If modal is open, also open the terminal drawer
+      if (sessionModalOpen) {
+        useTerminalStore.getState().setModalTerminalOpen(activeWorktreeId, true)
+      }
       break
+    }
     case 'open_in_modal':
       logger.debug('Keybinding: open_in_modal')
       useUIStore.getState().setOpenInModalOpen(true)
@@ -335,6 +374,17 @@ function executeKeybindingAction(
       logger.debug('Keybinding: focus_canvas_search')
       window.dispatchEvent(new CustomEvent('focus-canvas-search'))
       break
+    case 'toggle_modal_terminal': {
+      logger.debug('Keybinding: toggle_modal_terminal')
+      // Only works when session modal is open
+      const sessionModalOpen = useUIStore.getState().sessionChatModalOpen
+      if (!sessionModalOpen) break
+      const { activeWorktreeId } = useChatStore.getState()
+      if (activeWorktreeId) {
+        useTerminalStore.getState().toggleModalTerminal(activeWorktreeId)
+      }
+      break
+    }
   }
 }
 

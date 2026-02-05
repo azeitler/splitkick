@@ -16,6 +16,8 @@ interface TerminalViewProps {
   isCollapsed?: boolean
   isWorktreeActive?: boolean
   onExpand?: () => void
+  /** Hide minimize and close-all buttons (for use in drawer) */
+  hideControls?: boolean
 }
 
 /** Individual terminal tab content */
@@ -96,6 +98,7 @@ export function TerminalView({
   isCollapsed = false,
   isWorktreeActive = true,
   onExpand,
+  hideControls = false,
 }: TerminalViewProps) {
   const terminals = useTerminalStore(state => state.terminals[worktreeId] ?? [])
   const activeTerminalId = useTerminalStore(
@@ -203,8 +206,8 @@ export function TerminalView({
 
   return (
     <div className="flex h-full flex-col bg-[#1a1a1a]">
-      {/* Tab bar */}
-      <div className="flex items-center border-b border-neutral-700">
+      {/* Tab bar - fixed height for consistency */}
+      <div className="flex h-8 items-stretch border-b border-neutral-700">
         <div className="flex min-w-0 items-center overflow-x-auto">
           {terminals.map(terminal => {
             const isActive = terminal.id === activeTerminalId
@@ -251,39 +254,44 @@ export function TerminalView({
             )
           })}
 
-          {/* Add terminal button */}
-          <button
-            type="button"
-            onClick={handleAddTerminal}
-            className="flex h-full shrink-0 items-center px-2 text-neutral-400 transition-colors hover:bg-neutral-800/50 hover:text-neutral-300"
-            aria-label="New terminal"
-          >
-            <Plus className="h-3.5 w-3.5" />
-          </button>
         </div>
+
+        {/* Add terminal button - outside scroll container for full height */}
+        <button
+          type="button"
+          onClick={handleAddTerminal}
+          className="flex shrink-0 items-center px-2 text-neutral-400 transition-colors hover:bg-neutral-800/50 hover:text-neutral-300"
+          aria-label="New terminal"
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </button>
 
         {/* Spacer */}
         <div className="flex-1" />
 
-        {/* Minimize button */}
-        <button
-          type="button"
-          onClick={handleMinimize}
-          className="flex h-full shrink-0 items-center px-2 text-neutral-400 transition-colors hover:bg-neutral-800/50 hover:text-neutral-300"
-          aria-label="Minimize terminal"
-        >
-          <Minus className="h-3.5 w-3.5" />
-        </button>
+        {!hideControls && (
+          <>
+            {/* Minimize button */}
+            <button
+              type="button"
+              onClick={handleMinimize}
+              className="flex h-full shrink-0 items-center px-2 text-neutral-400 transition-colors hover:bg-neutral-800/50 hover:text-neutral-300"
+              aria-label="Minimize terminal"
+            >
+              <Minus className="h-3.5 w-3.5" />
+            </button>
 
-        {/* Close all button */}
-        <button
-          type="button"
-          onClick={handleCloseAll}
-          className="flex h-full shrink-0 items-center px-2 text-neutral-400 transition-colors hover:bg-neutral-800/50 hover:text-red-400"
-          aria-label="Close all terminals"
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
+            {/* Close all button */}
+            <button
+              type="button"
+              onClick={handleCloseAll}
+              className="flex h-full shrink-0 items-center px-2 text-neutral-400 transition-colors hover:bg-neutral-800/50 hover:text-red-400"
+              aria-label="Close all terminals"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </>
+        )}
       </div>
 
       {/* Terminal content area */}

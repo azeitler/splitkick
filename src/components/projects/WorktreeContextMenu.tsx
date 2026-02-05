@@ -52,7 +52,6 @@ export function WorktreeContextMenu({
     runScript,
     preferences,
     handleRun,
-    handleOpenTerminalPanel,
     handleOpenInFinder,
     handleOpenInTerminal,
     handleOpenInEditor,
@@ -69,13 +68,6 @@ export function WorktreeContextMenu({
     <ContextMenu>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
       <ContextMenuContent className="w-48">
-        {isNativeApp() && (
-          <ContextMenuItem onClick={handleOpenTerminalPanel}>
-            <Terminal className="mr-2 h-4 w-4" />
-            Terminal
-          </ContextMenuItem>
-        )}
-
         {isNativeApp() && runScript && (
           <ContextMenuItem onClick={handleRun}>
             <Play className="mr-2 h-4 w-4" />

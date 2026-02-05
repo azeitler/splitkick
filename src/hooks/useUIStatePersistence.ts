@@ -4,6 +4,7 @@ import { useProjects } from '@/services/projects'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
+import { useTerminalStore } from '@/store/terminal-store'
 import { logger } from '@/lib/logger'
 import type { UIState } from '@/types/ui-state'
 
@@ -78,6 +79,7 @@ export function useUIStatePersistence() {
     const { expandedProjectIds, expandedFolderIds, selectedProjectId } =
       useProjectsStore.getState()
     const { leftSidebarSize, leftSidebarVisible } = useUIStore.getState()
+    const { modalTerminalOpen, modalTerminalWidth } = useTerminalStore.getState()
 
     return {
       active_worktree_id: activeWorktreeId,
@@ -97,6 +99,9 @@ export function useUIStatePersistence() {
       ),
       // Convert pendingDigestSessionIds record to array of session IDs
       pending_digest_session_ids: Object.keys(pendingDigestSessionIds),
+      // Modal terminal drawer state
+      modal_terminal_open: modalTerminalOpen,
+      modal_terminal_width: modalTerminalWidth,
       version: 1, // Reset for first release
     }
   }, [])
@@ -278,6 +283,21 @@ export function useUIStatePersistence() {
       useChatStore.setState({ pendingDigestSessionIds: converted })
     }
 
+    // Restore modal terminal drawer state
+    const modalTerminalOpen = uiState.modal_terminal_open ?? {}
+    if (Object.keys(modalTerminalOpen).length > 0) {
+      logger.debug('Restoring modal terminal open state', {
+        count: Object.keys(modalTerminalOpen).length,
+      })
+      useTerminalStore.setState({ modalTerminalOpen })
+    }
+    if (uiState.modal_terminal_width != null) {
+      logger.debug('Restoring modal terminal width', {
+        width: uiState.modal_terminal_width,
+      })
+      useTerminalStore.setState({ modalTerminalWidth: uiState.modal_terminal_width })
+    }
+
     queueMicrotask(() => {
       setIsInitialized(true)
     })
@@ -304,6 +324,8 @@ export function useUIStatePersistence() {
     let prevFixedReviewFindings = useChatStore.getState().fixedReviewFindings
     let prevPendingDigestSessionIds =
       useChatStore.getState().pendingDigestSessionIds
+    let prevModalTerminalOpen = useTerminalStore.getState().modalTerminalOpen
+    let prevModalTerminalWidth = useTerminalStore.getState().modalTerminalWidth
 
     // Subscribe to projects-store changes (expanded projects, folders, and selected project)
     const unsubProjects = useProjectsStore.subscribe(state => {
@@ -373,12 +395,26 @@ export function useUIStatePersistence() {
       }
     })
 
+    // Subscribe to terminal-store changes (modal terminal drawer state)
+    const unsubTerminal = useTerminalStore.subscribe(state => {
+      const openChanged = state.modalTerminalOpen !== prevModalTerminalOpen
+      const widthChanged = state.modalTerminalWidth !== prevModalTerminalWidth
+
+      if (openChanged || widthChanged) {
+        prevModalTerminalOpen = state.modalTerminalOpen
+        prevModalTerminalWidth = state.modalTerminalWidth
+        const currentState = getCurrentUIState()
+        debouncedSaveRef.current?.(currentState)
+      }
+    })
+
     logger.debug('UI state persistence subscriptions active')
 
     return () => {
       unsubProjects()
       unsubUI()
       unsubChat()
+      unsubTerminal()
       debouncedSaveRef.current?.cancel()
       logger.debug('UI state persistence subscriptions cleaned up')
     }

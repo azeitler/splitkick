@@ -28,6 +28,10 @@ export interface UIState {
   fixed_review_findings: Record<string, string[]>
   /** Session IDs that completed while out of focus, need digest on open */
   pending_digest_session_ids: string[]
+  /** Modal terminal drawer open state per worktree */
+  modal_terminal_open?: Record<string, boolean>
+  /** Modal terminal drawer width in pixels */
+  modal_terminal_width?: number
   version: number
 }
 
@@ -44,5 +48,7 @@ export const defaultUIState: UIState = {
   viewing_review_tab: {},
   fixed_review_findings: {},
   pending_digest_session_ids: [],
+  modal_terminal_open: {},
+  modal_terminal_width: 400,
   version: 1,
 }

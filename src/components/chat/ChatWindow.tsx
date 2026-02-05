@@ -886,23 +886,6 @@ export function ChatWindow({
     return () => window.removeEventListener('open-git-diff', handleOpenGitDiff)
   }, [activeWorktreePath, gitStatus?.base_branch])
 
-  // Listen for global run command from keybinding (CMD+R by default) - native app only
-  useEffect(() => {
-    if (!isNativeApp()) return
-
-    const handleToggleWorkspaceRun = () => {
-      if (!activeWorktreeId || !runScript) return
-      useTerminalStore.getState().startRun(activeWorktreeId, runScript)
-    }
-
-    window.addEventListener('toggle-workspace-run', handleToggleWorkspaceRun)
-    return () =>
-      window.removeEventListener(
-        'toggle-workspace-run',
-        handleToggleWorkspaceRun
-      )
-  }, [activeWorktreeId, runScript])
-
   // Global Cmd+Option+Backspace (Mac) / Ctrl+Alt+Backspace (Windows/Linux) listener for cancellation
   // (works even when textarea is disabled)
   useEffect(() => {

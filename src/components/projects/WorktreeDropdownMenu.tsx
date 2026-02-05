@@ -50,7 +50,6 @@ export function WorktreeDropdownMenu({
     runScript,
     preferences,
     handleRun,
-    handleOpenTerminalPanel,
     handleOpenInFinder,
     handleOpenInTerminal,
     handleOpenInEditor,
@@ -74,13 +73,6 @@ export function WorktreeDropdownMenu({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-48">
-          {isNativeApp() && (
-            <DropdownMenuItem onClick={handleOpenTerminalPanel}>
-              <Terminal className="mr-2 h-4 w-4" />
-              Terminal
-            </DropdownMenuItem>
-          )}
-
           {isNativeApp() && runScript && (
             <DropdownMenuItem onClick={handleRun}>
               <Play className="mr-2 h-4 w-4" />

@@ -637,6 +637,14 @@ pub struct UIState {
     #[serde(default)]
     pub pending_digest_session_ids: Vec<String>,
 
+    /// Modal terminal drawer open state per worktree
+    #[serde(default)]
+    pub modal_terminal_open: std::collections::HashMap<String, bool>,
+
+    /// Modal terminal drawer width in pixels
+    #[serde(default)]
+    pub modal_terminal_width: Option<f64>,
+
     /// Version for future migration support
     #[serde(default = "default_ui_state_version")]
     pub version: u32,
@@ -661,6 +669,8 @@ impl Default for UIState {
             viewing_review_tab: std::collections::HashMap::new(),
             fixed_review_findings: std::collections::HashMap::new(),
             pending_digest_session_ids: Vec::new(),
+            modal_terminal_open: std::collections::HashMap::new(),
+            modal_terminal_width: None,
             version: default_ui_state_version(),
         }
     }

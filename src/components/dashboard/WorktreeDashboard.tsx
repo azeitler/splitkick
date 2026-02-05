@@ -682,9 +682,6 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     )
   }
 
-  // Count total worktrees
-  const totalWorktrees = worktreeSections.length
-
   // Track global card index for refs
   let cardIndex = 0
 
@@ -704,9 +701,6 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
             className="pl-9 bg-transparent border-border/30"
           />
         </div>
-        <span className="text-sm text-muted-foreground shrink-0">
-          {totalWorktrees} worktree{totalWorktrees !== 1 ? 's' : ''}
-        </span>
       </div>
 
       {/* Canvas View */}

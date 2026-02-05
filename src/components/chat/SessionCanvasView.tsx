@@ -177,6 +177,7 @@ export function SessionCanvasView({
             </span>
           )}
         </h2>
+
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -187,9 +188,7 @@ export function SessionCanvasView({
             className="pl-9 bg-transparent border-border/30"
           />
         </div>
-        <span className="text-sm text-muted-foreground shrink-0">
-          {sessionCards.length} session{sessionCards.length !== 1 ? 's' : ''}
-        </span>
+
       </div>
 
       {/* Canvas View */}
