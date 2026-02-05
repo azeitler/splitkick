@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { FileText, RotateCcw } from 'lucide-react'
+import { FileText, Pencil, RotateCcw } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 import { readPlanFile } from '@/services/chat'
 import { getFilename } from '@/lib/path-utils'
@@ -68,6 +68,7 @@ export function PlanDialog({
 
   const originalContent = inlineContent ?? fetchedContent ?? ''
   const [editedContent, setEditedContent] = useState('')
+  const [isEditMode, setIsEditMode] = useState(false)
 
   // Sync edited content when original changes or dialog opens
   useEffect(() => {
@@ -75,6 +76,11 @@ export function PlanDialog({
       setEditedContent(originalContent)
     }
   }, [isOpen, originalContent])
+
+  // Reset edit mode when dialog closes
+  useEffect(() => {
+    if (!isOpen) setIsEditMode(false)
+  }, [isOpen])
 
   // Track dialog open state in UIStore to block canvas keybindings
   useEffect(() => {
@@ -173,11 +179,11 @@ export function PlanDialog({
                 {filename}
               </code>
             )}
-          </DialogTitle>
+                      </DialogTitle>
         </DialogHeader>
 
-        {editable ? (
-          // Editable mode: textarea
+        {editable && isEditMode ? (
+          // Edit mode: textarea
           <Textarea
             value={editedContent}
             onChange={e => setEditedContent(e.target.value)}
@@ -185,14 +191,16 @@ export function PlanDialog({
             placeholder="Loading plan..."
           />
         ) : (
-          // Read-only mode: markdown
+          // View mode: rendered markdown
           <ScrollArea className="flex-1 min-h-0 -mx-6 px-6">
             {!inlineContent && isLoading ? (
               <div className="text-sm text-muted-foreground">
                 Loading plan...
               </div>
-            ) : originalContent ? (
-              <Markdown className="text-sm">{originalContent}</Markdown>
+            ) : (editable ? editedContent : originalContent) ? (
+              <Markdown className="text-sm">
+                {editable ? editedContent : originalContent}
+              </Markdown>
             ) : (
               <div className="text-sm text-destructive">
                 Failed to load plan file
@@ -203,16 +211,27 @@ export function PlanDialog({
 
         {editable && (
           <DialogFooter className="shrink-0 border-t pt-4 -mx-6 px-6 mt-4 sm:justify-between">
-            {/* Left side: Reset button */}
-            <Button
-              variant="ghost"
-              onClick={handleReset}
-              disabled={!hasChanges}
-              className="sm:mr-auto"
-            >
-              <RotateCcw className="h-4 w-4 mr-2" />
-              Reset
-            </Button>
+            {/* Left side: Edit or Reset button */}
+            {isEditMode ? (
+              <Button
+                variant="ghost"
+                onClick={handleReset}
+                disabled={!hasChanges}
+                className="sm:mr-auto"
+              >
+                <RotateCcw className="h-4 w-4 mr-2" />
+                Reset
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                onClick={() => setIsEditMode(true)}
+                className="sm:mr-auto"
+              >
+                <Pencil className="h-4 w-4 mr-2" />
+                Edit
+              </Button>
+            )}
 
             {/* Right side: Approve buttons */}
             <div className="flex gap-2">

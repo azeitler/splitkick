@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueries } from '@tanstack/react-query'
 import { invoke } from '@/lib/transport'
 import { Search, GitBranch } from 'lucide-react'
+import { WorktreeDropdownMenu } from '@/components/projects/WorktreeDropdownMenu'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { useWorktrees, useProjects, isTauri } from '@/services/projects'
@@ -19,6 +20,7 @@ import {
   type SessionCardData,
   computeSessionCardData,
 } from '@/components/chat/session-card-utils'
+import { WorktreeSetupCard } from '@/components/chat/WorktreeSetupCard'
 import { useCanvasStoreState } from '@/components/chat/hooks/useCanvasStoreState'
 import { usePlanApproval } from '@/components/chat/hooks/usePlanApproval'
 import { useCanvasKeyboardNav } from '@/components/chat/hooks/useCanvasKeyboardNav'
@@ -39,13 +41,15 @@ interface WorktreeDashboardProps {
 interface WorktreeSection {
   worktree: Worktree
   cards: SessionCardData[]
+  isPending?: boolean
 }
 
 interface FlatCard {
   worktreeId: string
   worktreePath: string
-  card: SessionCardData
+  card: SessionCardData | null // null for pending worktrees
   globalIndex: number
+  isPending?: boolean
 }
 
 export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
@@ -62,12 +66,21 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
   const { data: worktrees = [], isLoading: worktreesLoading } =
     useWorktrees(projectId)
 
-  // Filter to ready worktrees only
+  // Filter worktrees: include ready, pending, and error (exclude deleting)
+  const visibleWorktrees = useMemo(() => {
+    return worktrees.filter(wt => wt.status !== 'deleting')
+  }, [worktrees])
+
+  // Separate ready and pending worktrees for different handling
   const readyWorktrees = useMemo(() => {
-    return worktrees.filter(
+    return visibleWorktrees.filter(
       wt => !wt.status || wt.status === 'ready' || wt.status === 'error'
     )
-  }, [worktrees])
+  }, [visibleWorktrees])
+
+  const pendingWorktrees = useMemo(() => {
+    return visibleWorktrees.filter(wt => wt.status === 'pending')
+  }, [visibleWorktrees])
 
   // Load sessions for all worktrees dynamically using useQueries
   const sessionQueries = useQueries({
@@ -114,7 +127,16 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
   const worktreeSections: WorktreeSection[] = useMemo(() => {
     const result: WorktreeSection[] = []
 
-    // Sort worktrees: base sessions first, then by created_at (newest first)
+    // Add pending worktrees first (newest first by created_at)
+    const sortedPending = [...pendingWorktrees].sort(
+      (a, b) => b.created_at - a.created_at
+    )
+    for (const worktree of sortedPending) {
+      // Include pending worktrees even without sessions - show setup card
+      result.push({ worktree, cards: [], isPending: true })
+    }
+
+    // Sort ready worktrees: base sessions first, then by created_at (newest first)
     const sortedWorktrees = [...readyWorktrees].sort((a, b) => {
       const aIsBase = isBaseSession(a)
       const bIsBase = isBaseSession(b)
@@ -149,21 +171,33 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     }
 
     return result
-  }, [readyWorktrees, sessionsByWorktreeId, storeState, searchQuery])
+  }, [readyWorktrees, pendingWorktrees, sessionsByWorktreeId, storeState, searchQuery])
 
   // Build flat array of all cards for keyboard navigation
   const flatCards: FlatCard[] = useMemo(() => {
     const result: FlatCard[] = []
     let globalIndex = 0
     for (const section of worktreeSections) {
-      for (const card of section.cards) {
+      if (section.isPending) {
+        // Add a single entry for the pending worktree's setup card
         result.push({
           worktreeId: section.worktree.id,
           worktreePath: section.worktree.path,
-          card,
+          card: null,
           globalIndex,
+          isPending: true,
         })
         globalIndex++
+      } else {
+        for (const card of section.cards) {
+          result.push({
+            worktreeId: section.worktree.id,
+            worktreePath: section.worktree.path,
+            card,
+            globalIndex,
+          })
+          globalIndex++
+        }
       }
     }
     return result
@@ -218,7 +252,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     const cardIndex = flatCards.findIndex(
       fc =>
         fc.worktreeId === selectedSession.worktreeId &&
-        fc.card.session.id === selectedSession.sessionId
+        fc.card?.session.id === selectedSession.sessionId
     )
     console.log('[WorktreeDashboard] sync selectedIndex - cardIndex:', cardIndex, 'for session:', selectedSession.sessionId)
     if (cardIndex !== -1 && cardIndex !== selectedIndex) {
@@ -243,7 +277,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
         const cardIndex = flatCards.findIndex(
           fc =>
             fc.worktreeId === worktreeId &&
-            fc.card.session.id === firstSession.id
+            fc.card?.session.id === firstSession.id
         )
         if (cardIndex !== -1) {
           setSelectedIndex(cardIndex)
@@ -283,7 +317,8 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
   const handleSelect = useCallback(
     (index: number) => {
       const item = flatCards[index]
-      if (item) {
+      // Skip opening session for pending worktrees (they have no sessions yet)
+      if (item && item.card) {
         handleSessionClick(
           item.worktreeId,
           item.worktreePath,
@@ -496,9 +531,13 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
       }
 
       // If there's a keyboard-selected session, archive it
+      // (skip for pending worktrees which have no sessions)
       if (selectedIndex !== null && flatCards[selectedIndex]) {
-        e.stopImmediatePropagation()
         const item = flatCards[selectedIndex]
+        // Skip if this is a pending worktree setup card (no session to close)
+        if (!item.card) return
+
+        e.stopImmediatePropagation()
         const closingWorktreeId = item.worktreeId
 
         handleArchiveSessionForWorktree(
@@ -511,7 +550,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
         const sameWorktreeSessions = flatCards.filter(
           fc =>
             fc.worktreeId === closingWorktreeId &&
-            fc.card.session.id !== item.card.session.id
+            fc.card?.session.id !== item.card!.session.id
         )
 
         if (sameWorktreeSessions.length === 0) {
@@ -535,23 +574,23 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
         } else {
           // Sessions remain in same worktree - pick next (or last if closing last)
           const worktreeSessions = flatCards.filter(
-            fc => fc.worktreeId === closingWorktreeId
+            fc => fc.worktreeId === closingWorktreeId && fc.card
           )
           const indexInWorktree = worktreeSessions.findIndex(
-            fc => fc.card.session.id === item.card.session.id
+            fc => fc.card?.session.id === item.card!.session.id
           )
           const nextInWorktree =
             indexInWorktree < sameWorktreeSessions.length
               ? sameWorktreeSessions[indexInWorktree]
               : sameWorktreeSessions[sameWorktreeSessions.length - 1]
 
-          if (!nextInWorktree) return
+          if (!nextInWorktree || !nextInWorktree.card) return
 
           // Find global index and adjust for removal
           const newGlobalIndex = flatCards.findIndex(
             fc =>
               fc.worktreeId === nextInWorktree.worktreeId &&
-              fc.card.session.id === nextInWorktree.card.session.id
+              fc.card?.session.id === nextInWorktree.card!.session.id
           )
           setSelectedIndex(
             newGlobalIndex > selectedIndex ? newGlobalIndex - 1 : newGlobalIndex
@@ -701,29 +740,51 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
                         base
                       </span>
                     )}
+                    <WorktreeDropdownMenu
+                      worktree={section.worktree}
+                      projectId={projectId}
+                    />
                   </div>
 
                   {/* Session cards grid */}
                   <div className="flex flex-row flex-wrap gap-3">
-                    {section.cards.map(card => {
-                      const currentIndex = cardIndex++
-                      return (
-                        <SessionCard
-                          key={card.session.id}
-                          ref={el => {
-                            cardRefs.current[currentIndex] = el
-                          }}
-                          card={card}
-                          isSelected={selectedIndex === currentIndex}
-                          onSelect={() => {
-                            setSelectedIndex(currentIndex)
-                            handleSessionClick(
-                              section.worktree.id,
-                              section.worktree.path,
-                              card.session.id
-                            )
-                          }}
-                          onArchive={() =>
+                    {section.isPending ? (
+                      // Pending worktree: show setup card
+                      (() => {
+                        const currentIndex = cardIndex++
+                        return (
+                          <WorktreeSetupCard
+                            key={section.worktree.id}
+                            ref={el => {
+                              cardRefs.current[currentIndex] = el
+                            }}
+                            worktree={section.worktree}
+                            isSelected={selectedIndex === currentIndex}
+                            onSelect={() => setSelectedIndex(currentIndex)}
+                          />
+                        )
+                      })()
+                    ) : (
+                      // Ready worktree: show session cards
+                      section.cards.map(card => {
+                        const currentIndex = cardIndex++
+                        return (
+                          <SessionCard
+                            key={card.session.id}
+                            ref={el => {
+                              cardRefs.current[currentIndex] = el
+                            }}
+                            card={card}
+                            isSelected={selectedIndex === currentIndex}
+                            onSelect={() => {
+                              setSelectedIndex(currentIndex)
+                              handleSessionClick(
+                                section.worktree.id,
+                                section.worktree.path,
+                                card.session.id
+                              )
+                            }}
+                            onArchive={() =>
                             handleArchiveSessionForWorktree(
                               section.worktree.id,
                               section.worktree.path,
@@ -737,13 +798,14 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
                               card.session.id
                             )
                           }
-                          onPlanView={() => handlePlanView(card)}
-                          onRecapView={() => handleRecapView(card)}
-                          onApprove={() => handlePlanApproval(card)}
-                          onYolo={() => handlePlanApprovalYolo(card)}
-                        />
-                      )
-                    })}
+                            onPlanView={() => handlePlanView(card)}
+                            onRecapView={() => handleRecapView(card)}
+                            onApprove={() => handlePlanApproval(card)}
+                            onYolo={() => handlePlanApprovalYolo(card)}
+                          />
+                        )
+                      })
+                    )}
                   </div>
                 </div>
               )

@@ -24,7 +24,7 @@ import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 
-import { hasBackend } from '@/lib/environment'
+import { hasBackend, isNativeApp } from '@/lib/environment'
 
 // Check if a backend is available (Tauri IPC or WebSocket)
 // Kept as `isTauri` for backward compatibility across the codebase
@@ -1575,6 +1575,7 @@ export function useCloseBaseSessionClean() {
 
 /**
  * Hook to open a branch on GitHub
+ * Works in both native (uses tauri-plugin-opener) and web (uses window.open)
  */
 export function useOpenBranchOnGitHub() {
   return useMutation({
@@ -1586,12 +1587,23 @@ export function useOpenBranchOnGitHub() {
       branch: string
     }): Promise<void> => {
       if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+        throw new Error('No backend available')
       }
 
       logger.debug('Opening branch on GitHub', { repoPath, branch })
-      await invoke('open_branch_on_github', { repoPath, branch })
-      logger.info('Opened branch on GitHub')
+
+      // Get the GitHub URL from backend
+      const url = await invoke<string>('get_github_branch_url', { repoPath, branch })
+
+      // Open URL based on environment
+      if (isNativeApp()) {
+        const { openUrl } = await import('@tauri-apps/plugin-opener')
+        await openUrl(url)
+      } else {
+        window.open(url, '_blank')
+      }
+
+      logger.info('Opened branch on GitHub', { url })
     },
     onError: error => {
       const message =
@@ -1789,17 +1801,39 @@ export function useCommitChanges() {
 
 /**
  * Hook to open a project on GitHub
+ * Works in both native (uses tauri-plugin-opener) and web (uses window.open)
  */
 export function useOpenProjectOnGitHub() {
+  const queryClient = useQueryClient()
+
   return useMutation({
     mutationFn: async (projectId: string): Promise<void> => {
       if (!isTauri()) {
-        throw new Error('Not in Tauri context')
+        throw new Error('No backend available')
       }
 
-      logger.debug('Opening project on GitHub', { projectId })
-      await invoke('open_project_on_github', { projectId })
-      logger.info('Opened project on GitHub')
+      // Get project data from cache or fetch
+      const projects = queryClient.getQueryData<Project[]>(projectsQueryKeys.list())
+      const project = projects?.find(p => p.id === projectId)
+
+      if (!project?.path) {
+        throw new Error('Project not found or has no path')
+      }
+
+      logger.debug('Opening project on GitHub', { projectId, path: project.path })
+
+      // Get the GitHub URL from backend
+      const url = await invoke<string>('get_github_repo_url', { repoPath: project.path })
+
+      // Open URL based on environment
+      if (isNativeApp()) {
+        const { openUrl } = await import('@tauri-apps/plugin-opener')
+        await openUrl(url)
+      } else {
+        window.open(url, '_blank')
+      }
+
+      logger.info('Opened project on GitHub', { url })
     },
     onError: error => {
       const message =

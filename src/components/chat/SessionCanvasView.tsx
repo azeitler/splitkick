@@ -12,7 +12,7 @@ import { CanvasGrid } from './CanvasGrid'
 import { KeybindingHints } from '@/components/ui/keybinding-hints'
 import { usePreferences } from '@/services/preferences'
 import { DEFAULT_KEYBINDINGS } from '@/types/keybindings'
-import { Search } from 'lucide-react'
+import { Search, Loader2 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 
 interface SessionCanvasViewProps {
@@ -194,7 +194,12 @@ export function SessionCanvasView({
 
       {/* Canvas View */}
       <div className="flex-1 pb-16 pt-6 px-4">
-        {sessionCards.length === 0 ? (
+        {worktree?.status === 'pending' ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
+            <Loader2 className="h-6 w-6 animate-spin" />
+            <span>Setting up worktree...</span>
+          </div>
+        ) : sessionCards.length === 0 ? (
           <div className="flex h-full items-center justify-center text-muted-foreground">
             {searchQuery ? 'No sessions match your search' : 'No sessions yet'}
           </div>

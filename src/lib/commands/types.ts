@@ -99,6 +99,9 @@ export interface CommandContext {
   openArchivedModal: () => void
   restoreLastArchived: () => void
 
+  // Developer
+  toggleDebugMode: () => void
+
   // State getters for isAvailable checks
   hasActiveSession: () => boolean
   hasActiveWorktree: () => boolean

@@ -2605,7 +2605,22 @@ pub async fn open_worktree_in_editor(
     Ok(())
 }
 
-/// Open a branch on GitHub in the browser
+/// Get the GitHub URL for a branch (for frontend to open)
+#[tauri::command]
+pub async fn get_github_branch_url(repo_path: String, branch: String) -> Result<String, String> {
+    log::trace!("Getting GitHub branch URL: {branch} in {repo_path}");
+    let github_url = git::get_github_url(&repo_path)?;
+    Ok(format!("{github_url}/tree/{branch}"))
+}
+
+/// Get the GitHub URL for a repository (for frontend to open)
+#[tauri::command]
+pub async fn get_github_repo_url(repo_path: String) -> Result<String, String> {
+    log::trace!("Getting GitHub repo URL for: {repo_path}");
+    git::get_github_url(&repo_path)
+}
+
+/// Open a branch on GitHub in the browser (native only)
 #[tauri::command]
 pub async fn open_branch_on_github(repo_path: String, branch: String) -> Result<(), String> {
     log::trace!("Opening branch on GitHub: {branch} in {repo_path}");

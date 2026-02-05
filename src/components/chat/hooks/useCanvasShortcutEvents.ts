@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { SessionCardData } from '../session-card-utils'
 import type { SessionDigest } from '@/types/chat'
 import type { ApprovalContext } from '../PlanDialog'
+import { useChatStore } from '@/store/chat-store'
 
 interface UseCanvasShortcutEventsOptions {
   /** Currently selected card (null if none selected) */
@@ -65,6 +66,9 @@ export function useCanvasShortcutEvents({
   // Recap dialog state
   const [recapDialogDigest, setRecapDialogDigest] =
     useState<SessionDigest | null>(null)
+  const [recapDialogSessionId, setRecapDialogSessionId] = useState<
+    string | null
+  >(null)
 
   // Handle plan view
   const handlePlanView = useCallback(
@@ -93,6 +97,7 @@ export function useCanvasShortcutEvents({
   const handleRecapView = useCallback((card: SessionCardData) => {
     if (card.recapDigest) {
       setRecapDialogDigest(card.recapDigest)
+      setRecapDialogSessionId(card.session.id)
     }
   }, [])
 
@@ -106,7 +111,25 @@ export function useCanvasShortcutEvents({
 
   const closeRecapDialog = useCallback(() => {
     setRecapDialogDigest(null)
+    setRecapDialogSessionId(null)
   }, [])
+
+  // Close recap dialog when the associated session starts sending
+  useEffect(() => {
+    if (!recapDialogSessionId) return
+
+    const unsubscribe = useChatStore.subscribe(
+      state => state.sendingSessionIds[recapDialogSessionId] ?? false,
+      isSending => {
+        if (isSending) {
+          setRecapDialogDigest(null)
+          setRecapDialogSessionId(null)
+        }
+      }
+    )
+
+    return unsubscribe
+  }, [recapDialogSessionId])
 
   // Listen for keyboard shortcut events
   useEffect(() => {

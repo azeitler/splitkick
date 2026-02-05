@@ -13,5 +13,6 @@ export const notificationCommands: AppCommand[] = [
     async execute() {
       await notifications.success('Test Toast', 'This is a test notification')
     },
+    isAvailable: () => import.meta.env.DEV,
   },
 ]

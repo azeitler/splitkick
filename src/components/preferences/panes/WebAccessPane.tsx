@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { Copy, Eye, EyeOff, ExternalLink, RefreshCw } from 'lucide-react'
+import { Copy, Eye, EyeOff, ExternalLink, RefreshCw, ShieldAlert } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
@@ -9,6 +9,7 @@ import { usePreferences, useSavePreferences } from '@/services/preferences'
 import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 import { isNativeApp } from '@/lib/environment'
+import { openUrl } from '@tauri-apps/plugin-opener'
 
 const SettingsSection: React.FC<{
   title: string
@@ -157,6 +158,33 @@ export const WebAccessPane: React.FC = () => {
     toast.success('Token copied to clipboard')
   }, [serverStatus])
 
+  const handleTokenRequiredChange = useCallback(
+    async (checked: boolean) => {
+      if (!preferences) return
+      savePreferences.mutate({
+        ...preferences,
+        http_server_token_required: checked,
+      })
+
+      // Restart server if currently running to apply the change
+      if (serverStatus?.running) {
+        setIsToggling(true)
+        try {
+          await invoke('stop_http_server')
+          await new Promise(resolve => setTimeout(resolve, 100))
+          await invoke('start_http_server')
+          await refreshStatus()
+          toast.success('Server restarted with new authentication setting')
+        } catch (error) {
+          toast.error(`Failed to restart server: ${error}`)
+        } finally {
+          setIsToggling(false)
+        }
+      }
+    },
+    [preferences, savePreferences, serverStatus?.running, refreshStatus]
+  )
+
   if (!isNativeApp()) {
     return (
       <div className="space-y-6">
@@ -254,39 +282,63 @@ export const WebAccessPane: React.FC = () => {
       <SettingsSection title="Authentication">
         <div className="space-y-4">
           <InlineField
-            label="Access token"
-            description="Token required to connect via browser"
+            label="Require access token"
+            description="Require token authentication for web access"
           >
-            <div className="flex items-center gap-2">
-              <Input
-                type={tokenVisible ? 'text' : 'password'}
-                className="w-64 font-mono text-xs"
-                value={serverStatus?.token ?? ''}
-                readOnly
-              />
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setTokenVisible(!tokenVisible)}
-              >
-                {tokenVisible ? (
-                  <EyeOff className="h-4 w-4" />
-                ) : (
-                  <Eye className="h-4 w-4" />
-                )}
-              </Button>
-              <Button variant="ghost" size="icon" onClick={handleCopyToken}>
-                <Copy className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleRegenerateToken}
-              >
-                <RefreshCw className="h-4 w-4" />
-              </Button>
-            </div>
+            <Switch
+              checked={preferences?.http_server_token_required ?? true}
+              onCheckedChange={handleTokenRequiredChange}
+              disabled={isToggling}
+            />
           </InlineField>
+
+          {!(preferences?.http_server_token_required ?? true) && (
+            <div className="flex items-start gap-3 rounded-md border border-amber-500/50 bg-amber-500/10 p-3">
+              <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
+              <div className="text-sm text-amber-600 dark:text-amber-400">
+                <strong>Security Warning:</strong> Anyone on your network can
+                access Jean without authentication. Only disable this on trusted
+                networks.
+              </div>
+            </div>
+          )}
+
+          {(preferences?.http_server_token_required ?? true) && (
+            <InlineField
+              label="Access token"
+              description="Token required to connect via browser"
+            >
+              <div className="flex items-center gap-2">
+                <Input
+                  type={tokenVisible ? 'text' : 'password'}
+                  className="w-64 font-mono text-xs"
+                  value={serverStatus?.token ?? ''}
+                  readOnly
+                />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setTokenVisible(!tokenVisible)}
+                >
+                  {tokenVisible ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </Button>
+                <Button variant="ghost" size="icon" onClick={handleCopyToken}>
+                  <Copy className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleRegenerateToken}
+                >
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
+              </div>
+            </InlineField>
+          )}
 
           {serverStatus?.running && serverStatus?.port && (
             <InlineField
@@ -306,9 +358,8 @@ export const WebAccessPane: React.FC = () => {
                     variant="ghost"
                     size="icon"
                     onClick={() =>
-                      window.open(
-                        `http://localhost:${serverStatus.port}?token=${serverStatus.token}`,
-                        '_blank'
+                      openUrl(
+                        `http://localhost:${serverStatus.port}?token=${serverStatus.token}`
                       )
                     }
                     title="Open in browser"
@@ -340,9 +391,8 @@ export const WebAccessPane: React.FC = () => {
                       variant="ghost"
                       size="icon"
                       onClick={() =>
-                        window.open(
-                          `${serverStatus.url}?token=${serverStatus.token}`,
-                          '_blank'
+                        openUrl(
+                          `${serverStatus.url}?token=${serverStatus.token}`
                         )
                       }
                       title="Open in browser"

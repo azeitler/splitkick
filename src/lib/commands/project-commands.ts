@@ -1,4 +1,4 @@
-import { FolderPlus, FolderGit, Trash2 } from 'lucide-react'
+import { FolderPlus, FolderGit, Bug } from 'lucide-react'
 import type { AppCommand } from './types'
 
 export const projectCommands: AppCommand[] = [
@@ -29,17 +29,15 @@ export const projectCommands: AppCommand[] = [
   },
 
   {
-    id: 'remove-project',
-    label: 'Remove Project',
-    description: 'Remove the current project from the sidebar',
-    icon: Trash2,
-    group: 'projects',
-    keywords: ['project', 'remove', 'delete'],
+    id: 'toggle-debug-mode',
+    label: 'Toggle Debug Mode',
+    description: 'Show/hide session debug panel',
+    icon: Bug,
+    group: 'settings',
+    keywords: ['debug', 'developer', 'dev', 'panel', 'toggle'],
 
     execute: context => {
-      context.removeProject()
+      context.toggleDebugMode()
     },
-
-    isAvailable: context => context.hasSelectedProject(),
   },
 ]

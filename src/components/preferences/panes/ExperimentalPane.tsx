@@ -121,6 +121,25 @@ export const ExperimentalPane: React.FC = () => {
           )}
         </div>
       </SettingsSection>
+
+      <SettingsSection title="Developer Tools">
+        <InlineField
+          label="Debug mode"
+          description="Show session debug panel with file paths, run logs, and token usage"
+        >
+          <Switch
+            checked={preferences?.debug_mode_enabled ?? false}
+            onCheckedChange={checked => {
+              if (preferences) {
+                savePreferences.mutate({
+                  ...preferences,
+                  debug_mode_enabled: checked,
+                })
+              }
+            }}
+          />
+        </InlineField>
+      </SettingsSection>
     </div>
   )
 }

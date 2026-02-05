@@ -1,4 +1,5 @@
 import { memo, useCallback, useState } from 'react'
+import { getModifierSymbol, isMacOS } from '@/lib/platform'
 import { toast } from 'sonner'
 import {
   gitPull,
@@ -16,7 +17,6 @@ import {
   Brain,
   ChevronDown,
   CircleDot,
-  Clock,
   ClipboardList,
   ExternalLink,
   Eye,
@@ -162,7 +162,6 @@ interface ChatToolbarProps {
   selectedModel: ClaudeModel
   selectedThinkingLevel: ThinkingLevel
   thinkingOverrideActive: boolean // True when thinking is disabled in build/yolo due to preference
-  queuedMessageCount: number
 
   // Git state
   hasBranchUpdates: boolean
@@ -228,7 +227,6 @@ export const ChatToolbar = memo(function ChatToolbar({
   selectedModel,
   selectedThinkingLevel,
   thinkingOverrideActive,
-  queuedMessageCount,
   hasBranchUpdates,
   behindCount,
   aheadCount,
@@ -725,17 +723,6 @@ export const ChatToolbar = memo(function ChatToolbar({
                 </DropdownMenuRadioGroup>
               </DropdownMenuSubContent>
             </DropdownMenuSub>
-
-            {/* Queue indicator */}
-            {queuedMessageCount > 0 && (
-              <>
-                <DropdownMenuSeparator />
-                <div className="flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground">
-                  <Clock className="h-4 w-4" />
-                  <span>{queuedMessageCount} queued</span>
-                </div>
-              </>
-            )}
           </DropdownMenuContent>
         </DropdownMenu>
 
@@ -1129,17 +1116,6 @@ export const ChatToolbar = memo(function ChatToolbar({
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* Queue indicator - desktop only */}
-        {queuedMessageCount > 0 && (
-          <>
-            <div className="hidden @md:block h-4 w-px bg-border/50" />
-            <div className="hidden @md:flex h-8 items-center gap-1.5 px-2 text-sm text-muted-foreground">
-              <Clock className="h-3 w-3" />
-              <span>{queuedMessageCount} queued</span>
-            </div>
-          </>
-        )}
-
         {/* Divider */}
         <div className="h-4 w-px bg-border/50" />
 
@@ -1149,11 +1125,11 @@ export const ChatToolbar = memo(function ChatToolbar({
             type="button"
             onClick={onCancel}
             className="flex h-8 items-center justify-center gap-1.5 rounded-r-lg px-3 text-sm transition-colors bg-primary text-primary-foreground hover:bg-primary/90"
-            title="Cancel (Cmd+Option+Backspace)"
+            title={`Cancel (${isMacOS ? `${getModifierSymbol()}+Option+Backspace` : 'Ctrl+Alt+Backspace'})`}
           >
             <span>Cancel</span>
             <Kbd className="ml-0.5 h-4 text-[10px] bg-primary-foreground/20 text-primary-foreground">
-              {navigator.platform.includes('Mac') ? '⌘⌥⌫' : 'Ctrl+Alt+⌫'}
+              {isMacOS ? `${getModifierSymbol()}⌥⌫` : 'Ctrl+Alt+⌫'}
             </Kbd>
           </button>
         ) : (

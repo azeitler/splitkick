@@ -623,6 +623,11 @@ export function useCommandContext(
     window.dispatchEvent(new CustomEvent('restore-last-archived'))
   }, [])
 
+  // Developer - Toggle debug mode
+  const toggleDebugMode = useCallback(() => {
+    window.dispatchEvent(new CustomEvent('command:toggle-debug-mode'))
+  }, [])
+
   // Session - Resume session (reconnect to Claude CLI)
   const resumeSession = useCallback(async () => {
     const { activeWorktreeId, getActiveSession } = useChatStore.getState()
@@ -735,6 +740,9 @@ export function useCommandContext(
       openArchivedModal,
       restoreLastArchived,
 
+      // Developer
+      toggleDebugMode,
+
       // State getters
       hasActiveSession,
       hasActiveWorktree,
@@ -790,6 +798,7 @@ export function useCommandContext(
       loadContext,
       openArchivedModal,
       restoreLastArchived,
+      toggleDebugMode,
       hasActiveSession,
       hasActiveWorktree,
       hasSelectedProject,

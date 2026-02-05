@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { getModifierSymbol } from '@/lib/platform'
 import { invoke } from '@/lib/transport'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -966,7 +967,7 @@ export function LoadContextModal({
             >
               {tab.label}
               <kbd className="ml-2 text-xs text-muted-foreground bg-muted px-1 py-0.5 rounded">
-                {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+{tab.key}
+                {getModifierSymbol()}+{tab.key}
               </kbd>
             </button>
           ))}

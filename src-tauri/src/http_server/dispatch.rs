@@ -922,6 +922,17 @@ pub async fn dispatch_command(
             crate::projects::open_project_on_github(app.clone(), project_id).await?;
             Ok(Value::Null)
         }
+        "get_github_branch_url" => {
+            let repo_path: String = field(&args, "repoPath", "repo_path")?;
+            let branch: String = from_field(&args, "branch")?;
+            let result = crate::projects::get_github_branch_url(repo_path, branch).await?;
+            to_value(result)
+        }
+        "get_github_repo_url" => {
+            let repo_path: String = field(&args, "repoPath", "repo_path")?;
+            let result = crate::projects::get_github_repo_url(repo_path).await?;
+            to_value(result)
+        }
         "get_pr_prompt" => {
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
             let result = crate::projects::get_pr_prompt(app.clone(), worktree_path).await?;

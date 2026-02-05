@@ -31,6 +31,8 @@ import {
   useSetSessionThinkingLevel,
   useCreateSession,
   cancelChatMessage,
+  chatQueryKeys,
+  markPlanApproved as markPlanApprovedService,
 } from '@/services/chat'
 import { useWorktree, useProjects, useRunScript } from '@/services/projects'
 import {
@@ -49,7 +51,7 @@ import {
   DEFAULT_THINKING_LEVEL,
   type ClaudeModel,
 } from '@/store/chat-store'
-import { usePreferences } from '@/services/preferences'
+import { usePreferences, useSavePreferences } from '@/services/preferences'
 import type {
   ToolCall,
   ThinkingLevel,
@@ -97,7 +99,7 @@ import { useGitStatus } from '@/services/git-status'
 import { isNativeApp } from '@/lib/environment'
 import { usePrStatus, usePrStatusEvents } from '@/services/pr-status'
 import type { PrDisplayStatus, CheckStatus } from '@/types/pr-status'
-import type { QueuedMessage, ExecutionMode } from '@/types/chat'
+import type { QueuedMessage, ExecutionMode, Session } from '@/types/chat'
 import type { DiffRequest } from '@/types/git-diff'
 import { GitDiffModal } from './GitDiffModal'
 import { FileDiffModal } from './FileDiffModal'
@@ -300,6 +302,7 @@ export function ChatWindow({
   )
 
   const { data: preferences } = usePreferences()
+  const savePreferences = useSavePreferences()
   // Apply canvas preferences: if canvas disabled, never show; if canvas-only, always show
   const canvasEnabled = preferences?.canvas_enabled ?? true
   const canvasOnlyMode = preferences?.canvas_only_mode ?? false
@@ -1665,6 +1668,25 @@ Begin your investigation now.`
     }
   }, [handleSaveContext, handleLoadContext, activeWorktreeId, runScript])
 
+  // Listen for toggle-debug-mode command
+  useEffect(() => {
+    const handleToggleDebugMode = () => {
+      if (!preferences) return
+      savePreferences.mutate({
+        ...preferences,
+        debug_mode_enabled: !preferences.debug_mode_enabled,
+      })
+    }
+
+    window.addEventListener('command:toggle-debug-mode', handleToggleDebugMode)
+    return () => {
+      window.removeEventListener(
+        'command:toggle-debug-mode',
+        handleToggleDebugMode
+      )
+    }
+  }, [preferences, savePreferences])
+
   // Listen for set-chat-input events (used by conflict resolution flow)
   useEffect(() => {
     const handleSetChatInput = (e: CustomEvent<{ text: string }>) => {
@@ -2073,8 +2095,8 @@ Begin your investigation now.`
                   >
                     <div className="mx-auto max-w-7xl px-4 py-4 md:px-6 min-w-0 w-full">
                       <div className="select-text space-y-4 font-mono text-sm min-w-0 break-words overflow-x-auto">
-                        {/* Debug info (dev mode only) */}
-                        {isDev &&
+                        {/* Debug info (enabled via Settings → Experimental → Debug mode) */}
+                        {preferences?.debug_mode_enabled &&
                           activeWorktreeId &&
                           activeWorktreePath &&
                           activeSessionId && (
@@ -2323,7 +2345,6 @@ Begin your investigation now.`
                           selectedThinkingLevel !== 'off' &&
                           !hasManualThinkingOverride
                         }
-                        queuedMessageCount={currentQueuedMessages.length}
                         hasBranchUpdates={hasBranchUpdates}
                         behindCount={behindCount}
                         aheadCount={aheadCount}
@@ -2448,90 +2469,104 @@ Begin your investigation now.`
                   : undefined
               }
               onApprove={updatedPlan => {
-                console.log(
-                  '[ChatWindow] onApprove (content) called with updatedPlan length:',
-                  updatedPlan?.length
-                )
-                console.log('[ChatWindow] activeSessionId:', activeSessionId)
-                console.log(
-                  '[ChatWindow] pendingPlanMessage:',
-                  pendingPlanMessage?.id
-                )
-                if (
-                  !activeSessionId ||
-                  !activeWorktreeId ||
-                  !activeWorktreePath
-                ) {
-                  console.log(
-                    '[ChatWindow] onApprove early return - missing session context'
-                  )
-                  return
-                }
+                if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
+
+                // Mark plan as approved if there's a pending plan message
                 if (pendingPlanMessage) {
-                  console.log(
-                    '[ChatWindow] calling handlePlanApproval with pending plan'
+                  markPlanApprovedService(activeWorktreeId, activeWorktreePath, activeSessionId, pendingPlanMessage.id)
+                  // Optimistically update query cache
+                  queryClient.setQueryData<Session>(
+                    chatQueryKeys.session(activeSessionId),
+                    old => {
+                      if (!old) return old
+                      return {
+                        ...old,
+                        approved_plan_message_ids: [
+                          ...(old.approved_plan_message_ids ?? []),
+                          pendingPlanMessage.id,
+                        ],
+                        messages: old.messages.map(msg =>
+                          msg.id === pendingPlanMessage.id ? { ...msg, plan_approved: true } : msg
+                        ),
+                      }
+                    }
                   )
-                  handlePlanApproval(pendingPlanMessage.id, updatedPlan)
-                } else {
-                  // No pending plan - send updated plan as a fresh message
-                  const message = `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
-                  console.log(
-                    '[ChatWindow] sendMessage.mutate - no pending plan, sending fresh message'
-                  )
-                  sendMessage.mutate({
-                    sessionId: activeSessionId,
-                    worktreeId: activeWorktreeId,
-                    worktreePath: activeWorktreePath,
-                    message,
-                    model: selectedModelRef.current,
-                    executionMode: 'build',
-                    thinkingLevel: selectedThinkingLevelRef.current,
-                    disableThinkingForMode: true,
-                  })
                 }
+
+                // Build approval message
+                const message = updatedPlan
+                  ? `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
+                  : 'Approved'
+
+                // Queue instead of immediate execution
+                const { enqueueMessage, setExecutionMode } = useChatStore.getState()
+                setExecutionMode(activeSessionId, 'build')
+
+                const queuedMessage: QueuedMessage = {
+                  id: crypto.randomUUID(),
+                  message,
+                  pendingImages: [],
+                  pendingFiles: [],
+                  pendingSkills: [],
+                  pendingTextFiles: [],
+                  model: selectedModelRef.current,
+                  executionMode: 'build',
+                  thinkingLevel: selectedThinkingLevelRef.current,
+                  disableThinkingForMode: true,
+                  queuedAt: Date.now(),
+                }
+
+                enqueueMessage(activeSessionId, queuedMessage)
               }}
               onApproveYolo={updatedPlan => {
-                console.log(
-                  '[ChatWindow] onApproveYolo (content) called with updatedPlan length:',
-                  updatedPlan?.length
-                )
-                console.log('[ChatWindow] activeSessionId:', activeSessionId)
-                console.log(
-                  '[ChatWindow] pendingPlanMessage:',
-                  pendingPlanMessage?.id
-                )
-                if (
-                  !activeSessionId ||
-                  !activeWorktreeId ||
-                  !activeWorktreePath
-                ) {
-                  console.log(
-                    '[ChatWindow] onApproveYolo early return - missing session context'
-                  )
-                  return
-                }
+                if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
+
+                // Mark plan as approved if there's a pending plan message
                 if (pendingPlanMessage) {
-                  console.log(
-                    '[ChatWindow] calling handlePlanApprovalYolo with pending plan'
+                  markPlanApprovedService(activeWorktreeId, activeWorktreePath, activeSessionId, pendingPlanMessage.id)
+                  // Optimistically update query cache
+                  queryClient.setQueryData<Session>(
+                    chatQueryKeys.session(activeSessionId),
+                    old => {
+                      if (!old) return old
+                      return {
+                        ...old,
+                        approved_plan_message_ids: [
+                          ...(old.approved_plan_message_ids ?? []),
+                          pendingPlanMessage.id,
+                        ],
+                        messages: old.messages.map(msg =>
+                          msg.id === pendingPlanMessage.id ? { ...msg, plan_approved: true } : msg
+                        ),
+                      }
+                    }
                   )
-                  handlePlanApprovalYolo(pendingPlanMessage.id, updatedPlan)
-                } else {
-                  // No pending plan - send updated plan as a fresh message in yolo mode
-                  const message = `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
-                  console.log(
-                    '[ChatWindow] sendMessage.mutate yolo - no pending plan, sending fresh message'
-                  )
-                  sendMessage.mutate({
-                    sessionId: activeSessionId,
-                    worktreeId: activeWorktreeId,
-                    worktreePath: activeWorktreePath,
-                    message,
-                    model: selectedModelRef.current,
-                    executionMode: 'yolo',
-                    thinkingLevel: selectedThinkingLevelRef.current,
-                    disableThinkingForMode: true,
-                  })
                 }
+
+                // Build approval message
+                const message = updatedPlan
+                  ? `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
+                  : 'Approved - yolo'
+
+                // Queue instead of immediate execution
+                const { enqueueMessage, setExecutionMode } = useChatStore.getState()
+                setExecutionMode(activeSessionId, 'yolo')
+
+                const queuedMessage: QueuedMessage = {
+                  id: crypto.randomUUID(),
+                  message,
+                  pendingImages: [],
+                  pendingFiles: [],
+                  pendingSkills: [],
+                  pendingTextFiles: [],
+                  model: selectedModelRef.current,
+                  executionMode: 'yolo',
+                  thinkingLevel: selectedThinkingLevelRef.current,
+                  disableThinkingForMode: true,
+                  queuedAt: Date.now(),
+                }
+
+                enqueueMessage(activeSessionId, queuedMessage)
               }}
             />
           ) : latestPlanFilePath ? (
@@ -2551,90 +2586,104 @@ Begin your investigation now.`
                   : undefined
               }
               onApprove={updatedPlan => {
-                console.log(
-                  '[ChatWindow] onApprove (filePath) called with updatedPlan length:',
-                  updatedPlan?.length
-                )
-                console.log('[ChatWindow] activeSessionId:', activeSessionId)
-                console.log(
-                  '[ChatWindow] pendingPlanMessage:',
-                  pendingPlanMessage?.id
-                )
-                if (
-                  !activeSessionId ||
-                  !activeWorktreeId ||
-                  !activeWorktreePath
-                ) {
-                  console.log(
-                    '[ChatWindow] onApprove early return - missing session context'
-                  )
-                  return
-                }
+                if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
+
+                // Mark plan as approved if there's a pending plan message
                 if (pendingPlanMessage) {
-                  console.log(
-                    '[ChatWindow] calling handlePlanApproval with pending plan'
+                  markPlanApprovedService(activeWorktreeId, activeWorktreePath, activeSessionId, pendingPlanMessage.id)
+                  // Optimistically update query cache
+                  queryClient.setQueryData<Session>(
+                    chatQueryKeys.session(activeSessionId),
+                    old => {
+                      if (!old) return old
+                      return {
+                        ...old,
+                        approved_plan_message_ids: [
+                          ...(old.approved_plan_message_ids ?? []),
+                          pendingPlanMessage.id,
+                        ],
+                        messages: old.messages.map(msg =>
+                          msg.id === pendingPlanMessage.id ? { ...msg, plan_approved: true } : msg
+                        ),
+                      }
+                    }
                   )
-                  handlePlanApproval(pendingPlanMessage.id, updatedPlan)
-                } else {
-                  // No pending plan - send updated plan as a fresh message
-                  const message = `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
-                  console.log(
-                    '[ChatWindow] sendMessage.mutate - no pending plan, sending fresh message'
-                  )
-                  sendMessage.mutate({
-                    sessionId: activeSessionId,
-                    worktreeId: activeWorktreeId,
-                    worktreePath: activeWorktreePath,
-                    message,
-                    model: selectedModelRef.current,
-                    executionMode: 'build',
-                    thinkingLevel: selectedThinkingLevelRef.current,
-                    disableThinkingForMode: true,
-                  })
                 }
+
+                // Build approval message
+                const message = updatedPlan
+                  ? `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
+                  : 'Approved'
+
+                // Queue instead of immediate execution
+                const { enqueueMessage, setExecutionMode } = useChatStore.getState()
+                setExecutionMode(activeSessionId, 'build')
+
+                const queuedMessage: QueuedMessage = {
+                  id: crypto.randomUUID(),
+                  message,
+                  pendingImages: [],
+                  pendingFiles: [],
+                  pendingSkills: [],
+                  pendingTextFiles: [],
+                  model: selectedModelRef.current,
+                  executionMode: 'build',
+                  thinkingLevel: selectedThinkingLevelRef.current,
+                  disableThinkingForMode: true,
+                  queuedAt: Date.now(),
+                }
+
+                enqueueMessage(activeSessionId, queuedMessage)
               }}
               onApproveYolo={updatedPlan => {
-                console.log(
-                  '[ChatWindow] onApproveYolo (filePath) called with updatedPlan length:',
-                  updatedPlan?.length
-                )
-                console.log('[ChatWindow] activeSessionId:', activeSessionId)
-                console.log(
-                  '[ChatWindow] pendingPlanMessage:',
-                  pendingPlanMessage?.id
-                )
-                if (
-                  !activeSessionId ||
-                  !activeWorktreeId ||
-                  !activeWorktreePath
-                ) {
-                  console.log(
-                    '[ChatWindow] onApproveYolo early return - missing session context'
-                  )
-                  return
-                }
+                if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
+
+                // Mark plan as approved if there's a pending plan message
                 if (pendingPlanMessage) {
-                  console.log(
-                    '[ChatWindow] calling handlePlanApprovalYolo with pending plan'
+                  markPlanApprovedService(activeWorktreeId, activeWorktreePath, activeSessionId, pendingPlanMessage.id)
+                  // Optimistically update query cache
+                  queryClient.setQueryData<Session>(
+                    chatQueryKeys.session(activeSessionId),
+                    old => {
+                      if (!old) return old
+                      return {
+                        ...old,
+                        approved_plan_message_ids: [
+                          ...(old.approved_plan_message_ids ?? []),
+                          pendingPlanMessage.id,
+                        ],
+                        messages: old.messages.map(msg =>
+                          msg.id === pendingPlanMessage.id ? { ...msg, plan_approved: true } : msg
+                        ),
+                      }
+                    }
                   )
-                  handlePlanApprovalYolo(pendingPlanMessage.id, updatedPlan)
-                } else {
-                  // No pending plan - send updated plan as a fresh message in yolo mode
-                  const message = `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
-                  console.log(
-                    '[ChatWindow] sendMessage.mutate yolo - no pending plan, sending fresh message'
-                  )
-                  sendMessage.mutate({
-                    sessionId: activeSessionId,
-                    worktreeId: activeWorktreeId,
-                    worktreePath: activeWorktreePath,
-                    message,
-                    model: selectedModelRef.current,
-                    executionMode: 'yolo',
-                    thinkingLevel: selectedThinkingLevelRef.current,
-                    disableThinkingForMode: true,
-                  })
                 }
+
+                // Build approval message
+                const message = updatedPlan
+                  ? `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
+                  : 'Approved - yolo'
+
+                // Queue instead of immediate execution
+                const { enqueueMessage, setExecutionMode } = useChatStore.getState()
+                setExecutionMode(activeSessionId, 'yolo')
+
+                const queuedMessage: QueuedMessage = {
+                  id: crypto.randomUUID(),
+                  message,
+                  pendingImages: [],
+                  pendingFiles: [],
+                  pendingSkills: [],
+                  pendingTextFiles: [],
+                  model: selectedModelRef.current,
+                  executionMode: 'yolo',
+                  thinkingLevel: selectedThinkingLevelRef.current,
+                  disableThinkingForMode: true,
+                  queuedAt: Date.now(),
+                }
+
+                enqueueMessage(activeSessionId, queuedMessage)
               }}
             />
           ) : null)}

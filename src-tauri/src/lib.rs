@@ -145,10 +145,14 @@ pub struct AppPreferences {
     pub http_server_token: Option<String>, // Persisted auth token (generated once)
     #[serde(default)]
     pub http_server_localhost_only: bool, // Bind to localhost only (more secure)
+    #[serde(default = "default_http_server_token_required")]
+    pub http_server_token_required: bool, // Require token for web access (default true)
     #[serde(default = "default_auto_archive_on_pr_merged")]
     pub auto_archive_on_pr_merged: bool, // Auto-archive worktrees when their PR is merged
     #[serde(default = "default_show_keybinding_hints")]
     pub show_keybinding_hints: bool, // Show keyboard shortcut hints at bottom of canvas views
+    #[serde(default)]
+    pub debug_mode_enabled: bool, // Show debug panel in chat sessions (default: false)
 }
 
 fn default_auto_branch_naming() -> bool {
@@ -276,6 +280,10 @@ fn default_review_sound() -> String {
 
 fn default_http_server_port() -> u16 {
     3456
+}
+
+fn default_http_server_token_required() -> bool {
+    true // Require token by default for security
 }
 
 fn default_auto_archive_on_pr_merged() -> bool {
@@ -565,8 +573,10 @@ impl Default for AppPreferences {
             http_server_port: default_http_server_port(),
             http_server_token: None,
             http_server_localhost_only: true, // Default to localhost-only for security
+            http_server_token_required: default_http_server_token_required(),
             auto_archive_on_pr_merged: default_auto_archive_on_pr_merged(),
             show_keybinding_hints: default_show_keybinding_hints(),
+            debug_mode_enabled: false,
         }
     }
 }
@@ -1008,6 +1018,7 @@ async fn start_http_server(
     let prefs = load_preferences(app.clone()).await?;
     let actual_port = port.unwrap_or(prefs.http_server_port);
     let localhost_only = prefs.http_server_localhost_only;
+    let token_required = prefs.http_server_token_required;
 
     // Generate or load token
     let token = match prefs.http_server_token {
@@ -1036,7 +1047,7 @@ async fn start_http_server(
 
     // Start the server
     let handle =
-        http_server::server::start_server(app.clone(), actual_port, token, localhost_only).await?;
+        http_server::server::start_server(app.clone(), actual_port, token, localhost_only, token_required).await?;
     let status = http_server::server::ServerStatus {
         running: true,
         url: Some(handle.url.clone()),
@@ -1093,6 +1104,7 @@ async fn start_http_server_headless(
     } else {
         prefs.http_server_localhost_only
     };
+    let token_required = prefs.http_server_token_required;
 
     // Generate or load token
     let token = match prefs.http_server_token {
@@ -1121,7 +1133,7 @@ async fn start_http_server_headless(
 
     // Start the server
     let handle =
-        http_server::server::start_server(app.clone(), port, token, localhost_only).await?;
+        http_server::server::start_server(app.clone(), port, token, localhost_only, token_required).await?;
     let status = http_server::server::ServerStatus {
         running: true,
         url: Some(handle.url.clone()),
@@ -1595,6 +1607,8 @@ pub fn run() {
             projects::commit_changes,
             projects::open_project_on_github,
             projects::open_branch_on_github,
+            projects::get_github_branch_url,
+            projects::get_github_repo_url,
             projects::list_worktree_files,
             projects::get_project_branches,
             projects::update_project_settings,

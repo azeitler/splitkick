@@ -23,6 +23,7 @@ use super::WsBroadcaster;
 struct AppState {
     app: AppHandle,
     token: String,
+    token_required: bool,
 }
 
 /// Server handle for shutdown coordination.
@@ -32,6 +33,7 @@ pub struct HttpServerHandle {
     pub token: String,
     pub url: String,
     pub localhost_only: bool,
+    pub token_required: bool,
 }
 
 /// Status response for the HTTP server.
@@ -96,10 +98,12 @@ pub async fn start_server(
     port: u16,
     token: String,
     localhost_only: bool,
+    token_required: bool,
 ) -> Result<HttpServerHandle, String> {
     let state = AppState {
         app: app.clone(),
         token: token.clone(),
+        token_required,
     };
 
     let cors = CorsLayer::new()
@@ -165,6 +169,7 @@ pub async fn start_server(
         token,
         url,
         localhost_only,
+        token_required,
     })
 }
 
@@ -174,10 +179,12 @@ async fn ws_handler(
     Query(params): Query<WsAuth>,
     State(state): State<AppState>,
 ) -> Response {
-    // Validate token
-    let provided = params.token.unwrap_or_default();
-    if !auth::validate_token(&provided, &state.token) {
-        return (StatusCode::UNAUTHORIZED, "Invalid token").into_response();
+    // Validate token (skip if token not required)
+    if state.token_required {
+        let provided = params.token.unwrap_or_default();
+        if !auth::validate_token(&provided, &state.token) {
+            return (StatusCode::UNAUTHORIZED, "Invalid token").into_response();
+        }
     }
 
     // Get broadcast receiver for this client
@@ -196,6 +203,11 @@ async fn ws_handler(
 /// Token validation endpoint. Returns 200 with { ok: true } on success,
 /// or 401 with { ok: false, error: "..." } on failure.
 async fn auth_handler(Query(params): Query<WsAuth>, State(state): State<AppState>) -> Response {
+    // If token not required, always return success
+    if !state.token_required {
+        return Json(serde_json::json!({ "ok": true, "token_required": false })).into_response();
+    }
+
     let provided = params.token.unwrap_or_default();
     if auth::validate_token(&provided, &state.token) {
         Json(serde_json::json!({ "ok": true })).into_response()
@@ -211,10 +223,12 @@ async fn auth_handler(Query(params): Query<WsAuth>, State(state): State<AppState
 /// Initial data endpoint. Returns all data needed to render the initial view.
 /// This is used by the web view to preload data before WebSocket connects.
 async fn init_handler(Query(params): Query<WsAuth>, State(state): State<AppState>) -> Response {
-    // Validate token
-    let provided = params.token.unwrap_or_default();
-    if !auth::validate_token(&provided, &state.token) {
-        return (StatusCode::UNAUTHORIZED, "Invalid token").into_response();
+    // Validate token (skip if token not required)
+    if state.token_required {
+        let provided = params.token.unwrap_or_default();
+        if !auth::validate_token(&provided, &state.token) {
+            return (StatusCode::UNAUTHORIZED, "Invalid token").into_response();
+        }
     }
 
     // Fetch base data in parallel

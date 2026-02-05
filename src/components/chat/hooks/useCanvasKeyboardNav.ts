@@ -104,8 +104,8 @@ export function useCanvasKeyboardNav<T>({
     const handleKeyDown = (e: KeyboardEvent) => {
       // Skip if any modal is open (magic, plan dialog, etc.)
       const uiState = useUIStore.getState()
-      console.log('[useCanvasKeyboardNav] keydown', e.key, 'magicModalOpen:', uiState.magicModalOpen, 'planDialogOpen:', uiState.planDialogOpen, 'enabled:', enabled)
-      if (uiState.magicModalOpen || uiState.planDialogOpen) return
+      console.log('[useCanvasKeyboardNav] keydown', e.key, 'magicModalOpen:', uiState.magicModalOpen, 'planDialogOpen:', uiState.planDialogOpen, 'commandPaletteOpen:', uiState.commandPaletteOpen, 'enabled:', enabled)
+      if (uiState.magicModalOpen || uiState.planDialogOpen || uiState.commandPaletteOpen) return
 
       if (
         document.activeElement?.tagName === 'INPUT' ||

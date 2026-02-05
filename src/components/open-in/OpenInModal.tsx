@@ -1,4 +1,4 @@
-import { useCallback, useState, useRef, useEffect } from 'react'
+import { useCallback, useState, useRef, useEffect, useMemo } from 'react'
 import { Code, Terminal, Folder, Settings, Github } from 'lucide-react'
 import {
   Dialog,
@@ -21,6 +21,7 @@ import { usePreferences } from '@/services/preferences'
 import { getEditorLabel, getTerminalLabel } from '@/types/preferences'
 import { notify } from '@/lib/notifications'
 import { cn } from '@/lib/utils'
+import { isNativeApp } from '@/lib/environment'
 
 type OpenOption = 'editor' | 'terminal' | 'finder' | 'github'
 
@@ -42,27 +43,38 @@ export function OpenInModal() {
   const { data: preferences } = usePreferences()
 
   // Build options with dynamic labels based on preferences
-  const options: {
-    id: OpenOption
-    label: string
-    icon: typeof Code
-    key: string
-  }[] = [
-    {
-      id: 'editor',
-      label: getEditorLabel(preferences?.editor),
-      icon: Code,
-      key: 'E',
-    },
-    {
-      id: 'terminal',
-      label: getTerminalLabel(preferences?.terminal),
-      icon: Terminal,
-      key: 'T',
-    },
-    { id: 'finder', label: 'Finder', icon: Folder, key: 'F' },
-    { id: 'github', label: 'GitHub', icon: Github, key: 'G' },
-  ]
+  // Native-only options (editor, terminal, finder) are hidden in web view
+  const isNative = isNativeApp()
+
+  const options = useMemo(() => {
+    const allOptions: {
+      id: OpenOption
+      label: string
+      icon: typeof Code
+      key: string
+      nativeOnly: boolean
+    }[] = [
+      {
+        id: 'editor',
+        label: getEditorLabel(preferences?.editor),
+        icon: Code,
+        key: 'E',
+        nativeOnly: true,
+      },
+      {
+        id: 'terminal',
+        label: getTerminalLabel(preferences?.terminal),
+        icon: Terminal,
+        key: 'T',
+        nativeOnly: true,
+      },
+      { id: 'finder', label: 'Finder', icon: Folder, key: 'F', nativeOnly: true },
+      { id: 'github', label: 'GitHub', icon: Github, key: 'G', nativeOnly: false },
+    ]
+
+    // Filter out native-only options in web view
+    return isNative ? allOptions : allOptions.filter(opt => !opt.nativeOnly)
+  }, [preferences?.editor, preferences?.terminal, isNative])
 
   // Reset selection tracking when modal closes
   useEffect(() => {
@@ -75,12 +87,13 @@ export function OpenInModal() {
   const handleOpenChange = useCallback(
     (open: boolean) => {
       if (open && !hasInitializedRef.current) {
-        setSelectedOption('editor')
+        // Default to first available option (editor in native, github in web)
+        setSelectedOption(isNative ? 'editor' : 'github')
         hasInitializedRef.current = true
       }
       setOpenInModalOpen(open)
     },
-    [setOpenInModalOpen]
+    [setOpenInModalOpen, isNative]
   )
 
   const getTargetPath = useCallback(() => {
@@ -153,21 +166,13 @@ export function OpenInModal() {
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       const key = e.key.toLowerCase()
-      const optionIds: OpenOption[] = ['editor', 'terminal', 'finder', 'github']
+      const optionIds = options.map(opt => opt.id)
 
-      // Quick select with e/t/f/g
-      if (key === 'e') {
+      // Quick select with shortcut keys (only for available options)
+      const matchedOption = options.find(opt => opt.key.toLowerCase() === key)
+      if (matchedOption) {
         e.preventDefault()
-        executeAction('editor')
-      } else if (key === 't') {
-        e.preventDefault()
-        executeAction('terminal')
-      } else if (key === 'f') {
-        e.preventDefault()
-        executeAction('finder')
-      } else if (key === 'g') {
-        e.preventDefault()
-        executeAction('github')
+        executeAction(matchedOption.id)
       } else if (key === 'enter') {
         e.preventDefault()
         executeAction(selectedOption)
@@ -184,7 +189,7 @@ export function OpenInModal() {
         }
       }
     },
-    [executeAction, selectedOption]
+    [executeAction, selectedOption, options]
   )
 
   const handleOpenSettings = useCallback(() => {

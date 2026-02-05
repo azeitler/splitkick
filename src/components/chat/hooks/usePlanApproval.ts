@@ -83,6 +83,10 @@ export function usePlanApproval({
             if (!old) return old
             return {
               ...old,
+              approved_plan_message_ids: [
+                ...(old.approved_plan_message_ids ?? []),
+                messageId,
+              ],
               messages: old.messages.map(msg =>
                 msg.id === messageId ? { ...msg, plan_approved: true } : msg
               ),
@@ -171,6 +175,10 @@ export function usePlanApproval({
             if (!old) return old
             return {
               ...old,
+              approved_plan_message_ids: [
+                ...(old.approved_plan_message_ids ?? []),
+                messageId,
+              ],
               messages: old.messages.map(msg =>
                 msg.id === messageId ? { ...msg, plan_approved: true } : msg
               ),
