@@ -1,6 +1,8 @@
 use tauri::Manager;
 
-use super::types::{CompactMetadata, ContentBlock, ThinkingLevel, ToolCall, UsageData};
+use super::types::{
+    CompactMetadata, ContentBlock, EffortLevel, ThinkingLevel, ToolCall, UsageData,
+};
 use crate::http_server::EmitExt;
 use crate::projects::github_issues::{
     get_github_contexts_dir, get_worktree_issue_refs, get_worktree_pr_refs,
@@ -147,6 +149,7 @@ fn build_claude_args(
     model: Option<&str>,
     execution_mode: Option<&str>,
     thinking_level: Option<&ThinkingLevel>,
+    effort_level: Option<&EffortLevel>,
     allowed_tools: Option<&[String]>,
     disable_thinking_in_non_plan_modes: bool,
     parallel_execution_prompt_enabled: bool,
@@ -213,32 +216,47 @@ fn build_claude_args(
     args.push("--permission-mode".to_string());
     args.push(perm_mode.to_string());
 
-    // Thinking configuration
-    // If disable_thinking_in_non_plan_modes is true and mode is build/yolo, force thinking off
-    let effective_thinking_level = if disable_thinking_in_non_plan_modes {
+    // Thinking/Effort configuration
+    // If disable_thinking_in_non_plan_modes is true and mode is build/yolo, force off
+    let is_non_plan_override = disable_thinking_in_non_plan_modes && {
         let mode = execution_mode.unwrap_or("plan");
-        if mode == "build" || mode == "yolo" {
-            // Override to off for non-plan modes
+        mode == "build" || mode == "yolo"
+    };
+
+    if let Some(effort) = effort_level {
+        // Opus 4.6 adaptive thinking: use effort parameter via --settings JSON
+        let effective_effort = if is_non_plan_override {
+            &EffortLevel::Off
+        } else {
+            effort
+        };
+
+        if let Some(effort_value) = effective_effort.effort_value() {
+            let settings = format!(r#"{{"effortLevel": "{effort_value}"}}"#);
+            args.push("--settings".to_string());
+            args.push(settings);
+        }
+        // If Off, don't send any thinking/effort settings
+    } else {
+        // Traditional thinking levels (Opus 4.5, Sonnet, Haiku)
+        let effective_thinking_level = if is_non_plan_override {
             Some(&ThinkingLevel::Off)
         } else {
             thinking_level
-        }
-    } else {
-        thinking_level
-    };
-
-    // Thinking configuration via --settings (only thinking, no permissions to avoid overwriting)
-    if let Some(level) = effective_thinking_level {
-        let settings = if level.is_enabled() {
-            r#"{"alwaysThinkingEnabled": true}"#
-        } else {
-            r#"{"alwaysThinkingEnabled": false}"#
         };
-        args.push("--settings".to_string());
-        args.push(settings.to_string());
 
-        if let Some(tokens) = level.thinking_tokens() {
-            env_vars.push(("MAX_THINKING_TOKENS".to_string(), tokens.to_string()));
+        if let Some(level) = effective_thinking_level {
+            let settings = if level.is_enabled() {
+                r#"{"alwaysThinkingEnabled": true}"#
+            } else {
+                r#"{"alwaysThinkingEnabled": false}"#
+            };
+            args.push("--settings".to_string());
+            args.push(settings.to_string());
+
+            if let Some(tokens) = level.thinking_tokens() {
+                env_vars.push(("MAX_THINKING_TOKENS".to_string(), tokens.to_string()));
+            }
         }
     }
 
@@ -507,6 +525,7 @@ pub fn execute_claude_detached(
     model: Option<&str>,
     execution_mode: Option<&str>,
     thinking_level: Option<&ThinkingLevel>,
+    effort_level: Option<&EffortLevel>,
     allowed_tools: Option<&[String]>,
     disable_thinking_in_non_plan_modes: bool,
     parallel_execution_prompt_enabled: bool,
@@ -556,6 +575,7 @@ pub fn execute_claude_detached(
         model,
         execution_mode,
         thinking_level,
+        effort_level,
         allowed_tools,
         disable_thinking_in_non_plan_modes,
         parallel_execution_prompt_enabled,

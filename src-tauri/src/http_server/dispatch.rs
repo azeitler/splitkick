@@ -536,6 +536,8 @@ pub async fn dispatch_command(
             let ai_language: Option<String> = field_opt(&args, "aiLanguage", "ai_language")?;
             let allowed_tools: Option<Vec<String>> =
                 field_opt(&args, "allowedTools", "allowed_tools")?;
+            let effort_level: Option<crate::chat::types::EffortLevel> =
+                field_opt(&args, "effortLevel", "effort_level")?;
             let result = crate::chat::send_chat_message(
                 app.clone(),
                 session_id,
@@ -545,6 +547,7 @@ pub async fn dispatch_command(
                 model,
                 execution_mode,
                 thinking_level,
+                effort_level,
                 disable_thinking_for_mode,
                 parallel_execution_prompt_enabled,
                 ai_language,

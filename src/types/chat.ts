@@ -14,6 +14,17 @@ export type MessageRole = 'user' | 'assistant'
 export type ThinkingLevel = 'off' | 'think' | 'megathink' | 'ultrathink'
 
 /**
+ * Effort level for Opus 4.6 adaptive thinking
+ * Controls --settings {"effort": "<level>"} via CLI
+ * Replaces ThinkingLevel when model is Opus (latest) on CLI >= 2.1.32
+ * - low: Minimal thinking, skips for simple tasks
+ * - medium: Moderate thinking, may skip for very simple queries
+ * - high: Deep reasoning (default), almost always thinks
+ * - max: No constraints on thinking depth (Opus 4.6 only)
+ */
+export type EffortLevel = 'low' | 'medium' | 'high' | 'max'
+
+/**
  * Execution mode for Claude CLI permission handling
  * - plan: Read-only mode, Claude can't make changes (--permission-mode plan)
  * - build: Auto-approve file edits only (--permission-mode acceptEdits)
@@ -74,6 +85,8 @@ export interface ChatMessage {
   execution_mode?: ExecutionMode
   /** Thinking level when this message was sent (user messages only) */
   thinking_level?: ThinkingLevel
+  /** Effort level when this message was sent (user messages only, Opus 4.6) */
+  effort_level?: EffortLevel
   /** True if this message was recovered from a crash */
   recovered?: boolean
   /** Token usage for this message (assistant messages only) */
@@ -688,6 +701,8 @@ export interface QueuedMessage {
   thinkingLevel: ThinkingLevel
   /** Whether thinking should be disabled for this mode (snapshot at queue time) */
   disableThinkingForMode: boolean
+  /** Effort level for Opus 4.6 adaptive thinking (snapshot at queue time) */
+  effortLevel?: EffortLevel
   /** Timestamp when queued (for display ordering) */
   queuedAt: number
 }

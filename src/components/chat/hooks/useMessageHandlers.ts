@@ -9,6 +9,7 @@ import {
 import { useChatStore } from '@/store/chat-store'
 import type {
   ChatMessage,
+  EffortLevel,
   ExecutionMode,
   Question,
   QuestionAnswer,
@@ -37,6 +38,7 @@ interface SendMessageMutation {
       model?: string
       executionMode?: ExecutionMode
       thinkingLevel?: ThinkingLevel
+      effortLevel?: string
       allowedTools?: string[]
       disableThinkingForMode?: boolean
     },
@@ -55,6 +57,8 @@ interface UseMessageHandlersParams {
   selectedModelRef: RefObject<string>
   executionModeRef: RefObject<ExecutionMode>
   selectedThinkingLevelRef: RefObject<ThinkingLevel>
+  selectedEffortLevelRef: RefObject<EffortLevel>
+  useAdaptiveThinkingRef: RefObject<boolean>
   // Actions
   sendMessage: SendMessageMutation
   queryClient: QueryClient
@@ -107,6 +111,8 @@ export function useMessageHandlers({
   selectedModelRef,
   executionModeRef,
   selectedThinkingLevelRef,
+  selectedEffortLevelRef,
+  useAdaptiveThinkingRef,
   sendMessage,
   queryClient,
   scrollToBottom,
@@ -176,6 +182,9 @@ export function useMessageHandlers({
           model: selectedModelRef.current,
           executionMode: executionModeRef.current,
           thinkingLevel: selectedThinkingLevelRef.current,
+          effortLevel: useAdaptiveThinkingRef.current
+            ? selectedEffortLevelRef.current
+            : undefined,
         },
         {
           onSettled: () => {
@@ -191,6 +200,8 @@ export function useMessageHandlers({
       selectedModelRef,
       executionModeRef,
       selectedThinkingLevelRef,
+      selectedEffortLevelRef,
+      useAdaptiveThinkingRef,
       sendMessage,
       scrollToBottom,
       inputRef,
@@ -331,6 +342,9 @@ export function useMessageHandlers({
           model: selectedModelRef.current,
           executionMode: 'build',
           thinkingLevel: selectedThinkingLevelRef.current,
+          effortLevel: useAdaptiveThinkingRef.current
+            ? selectedEffortLevelRef.current
+            : undefined,
           disableThinkingForMode: true, // Always disable thinking when executing approved plan
         },
         {
@@ -346,6 +360,8 @@ export function useMessageHandlers({
       activeWorktreePathRef,
       selectedModelRef,
       selectedThinkingLevelRef,
+      selectedEffortLevelRef,
+      useAdaptiveThinkingRef,
       sendMessage,
       queryClient,
       inputRef,
@@ -428,6 +444,9 @@ export function useMessageHandlers({
           model: selectedModelRef.current,
           executionMode: 'yolo',
           thinkingLevel: selectedThinkingLevelRef.current,
+          effortLevel: useAdaptiveThinkingRef.current
+            ? selectedEffortLevelRef.current
+            : undefined,
           disableThinkingForMode: true, // Always disable thinking when executing approved plan
         },
         {
@@ -443,6 +462,8 @@ export function useMessageHandlers({
       activeWorktreePathRef,
       selectedModelRef,
       selectedThinkingLevelRef,
+      selectedEffortLevelRef,
+      useAdaptiveThinkingRef,
       sendMessage,
       queryClient,
       inputRef,
@@ -507,6 +528,9 @@ export function useMessageHandlers({
         model: selectedModelRef.current,
         executionMode: 'build',
         thinkingLevel: selectedThinkingLevelRef.current,
+        effortLevel: useAdaptiveThinkingRef.current
+          ? selectedEffortLevelRef.current
+          : undefined,
         disableThinkingForMode: true, // Always disable thinking when executing approved plan
       },
       {
@@ -521,6 +545,8 @@ export function useMessageHandlers({
     activeWorktreePathRef,
     selectedModelRef,
     selectedThinkingLevelRef,
+    selectedEffortLevelRef,
+    useAdaptiveThinkingRef,
     sendMessage,
     inputRef,
   ])
@@ -574,6 +600,9 @@ export function useMessageHandlers({
         model: selectedModelRef.current,
         executionMode: 'yolo',
         thinkingLevel: selectedThinkingLevelRef.current,
+        effortLevel: useAdaptiveThinkingRef.current
+          ? selectedEffortLevelRef.current
+          : undefined,
         disableThinkingForMode: true, // Always disable thinking when executing approved plan
       },
       {
@@ -588,6 +617,8 @@ export function useMessageHandlers({
     activeWorktreePathRef,
     selectedModelRef,
     selectedThinkingLevelRef,
+    selectedEffortLevelRef,
+    useAdaptiveThinkingRef,
     sendMessage,
     inputRef,
   ])
@@ -686,6 +717,9 @@ export function useMessageHandlers({
           executionMode: modeToUse,
           thinkingLevel:
             context.thinkingLevel ?? selectedThinkingLevelRef.current,
+          effortLevel: useAdaptiveThinkingRef.current
+            ? selectedEffortLevelRef.current
+            : undefined,
           allowedTools: [...GIT_ALLOWED_TOOLS, ...allApprovedTools],
         },
         {
@@ -701,6 +735,8 @@ export function useMessageHandlers({
       selectedModelRef,
       executionModeRef,
       selectedThinkingLevelRef,
+      selectedEffortLevelRef,
+      useAdaptiveThinkingRef,
       sendMessage,
       inputRef,
     ]
@@ -799,6 +835,9 @@ export function useMessageHandlers({
           executionMode: 'yolo',
           thinkingLevel:
             context.thinkingLevel ?? selectedThinkingLevelRef.current,
+          effortLevel: useAdaptiveThinkingRef.current
+            ? selectedEffortLevelRef.current
+            : undefined,
         },
         {
           onSettled: () => {
@@ -812,6 +851,8 @@ export function useMessageHandlers({
       activeWorktreePathRef,
       selectedModelRef,
       selectedThinkingLevelRef,
+      selectedEffortLevelRef,
+      useAdaptiveThinkingRef,
       sendMessage,
       inputRef,
     ]
@@ -909,6 +950,9 @@ Please apply this fix to the file.`
           model: selectedModelRef.current,
           executionMode: 'build',
           thinkingLevel: selectedThinkingLevelRef.current,
+          effortLevel: useAdaptiveThinkingRef.current
+            ? selectedEffortLevelRef.current
+            : undefined,
         },
         {
           onSettled: () => {
@@ -923,6 +967,8 @@ Please apply this fix to the file.`
       activeWorktreePathRef,
       selectedModelRef,
       selectedThinkingLevelRef,
+      selectedEffortLevelRef,
+      useAdaptiveThinkingRef,
       sendMessage,
       queryClient,
       inputRef,
@@ -1012,6 +1058,9 @@ Please apply all these fixes to the respective files.`
           model: selectedModelRef.current,
           executionMode: 'build',
           thinkingLevel: selectedThinkingLevelRef.current,
+          effortLevel: useAdaptiveThinkingRef.current
+            ? selectedEffortLevelRef.current
+            : undefined,
         },
         {
           onSettled: () => {
@@ -1026,6 +1075,8 @@ Please apply all these fixes to the respective files.`
       activeWorktreePathRef,
       selectedModelRef,
       selectedThinkingLevelRef,
+      selectedEffortLevelRef,
+      useAdaptiveThinkingRef,
       sendMessage,
       queryClient,
       inputRef,

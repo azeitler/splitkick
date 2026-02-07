@@ -1,4 +1,4 @@
-import type { ThinkingLevel } from './chat'
+import type { ThinkingLevel, EffortLevel } from './chat'
 import { DEFAULT_KEYBINDINGS, type KeybindingsMap } from './keybindings'
 
 // =============================================================================
@@ -238,6 +238,7 @@ export interface AppPreferences {
   theme: string
   selected_model: ClaudeModel // Claude model: 'opus' | 'sonnet' | 'haiku'
   thinking_level: ThinkingLevel // Thinking level: 'off' | 'think' | 'megathink' | 'ultrathink'
+  default_effort_level: EffortLevel // Effort level for Opus 4.6 adaptive thinking: 'low' | 'medium' | 'high' | 'max'
   terminal: TerminalApp // Terminal app: 'terminal' | 'warp' | 'ghostty'
   editor: EditorApp // Editor app: 'vscode' | 'cursor' | 'xcode'
   auto_branch_naming: boolean // Automatically generate branch names from first message
@@ -286,10 +287,11 @@ export const fileEditModeOptions: { value: FileEditMode; label: string }[] = [
   { value: 'external', label: 'External editor' },
 ]
 
-export type ClaudeModel = 'opus' | 'sonnet' | 'haiku'
+export type ClaudeModel = 'opus' | 'opus-4.5' | 'sonnet' | 'haiku'
 
 export const modelOptions: { value: ClaudeModel; label: string }[] = [
   { value: 'opus', label: 'Claude Opus' },
+  { value: 'opus-4.5', label: 'Claude Opus 4.5' },
   { value: 'sonnet', label: 'Claude Sonnet' },
   { value: 'haiku', label: 'Claude Haiku' },
 ]
@@ -299,6 +301,17 @@ export const thinkingLevelOptions: { value: ThinkingLevel; label: string }[] = [
   { value: 'think', label: 'Think (4K)' },
   { value: 'megathink', label: 'Megathink (10K)' },
   { value: 'ultrathink', label: 'Ultrathink (32K)' },
+]
+
+export const effortLevelOptions: {
+  value: EffortLevel
+  label: string
+  description: string
+}[] = [
+  { value: 'low', label: 'Low', description: 'Minimal thinking' },
+  { value: 'medium', label: 'Medium', description: 'Moderate thinking' },
+  { value: 'high', label: 'High', description: 'Deep reasoning' },
+  { value: 'max', label: 'Max', description: 'No limits' },
 ]
 
 export type TerminalApp =
@@ -457,6 +470,7 @@ export const defaultPreferences: AppPreferences = {
   theme: 'system',
   selected_model: 'opus',
   thinking_level: 'ultrathink',
+  default_effort_level: 'high',
   terminal: 'terminal',
   editor: 'vscode',
   auto_branch_naming: true,

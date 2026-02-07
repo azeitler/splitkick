@@ -66,7 +66,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Markdown } from '@/components/ui/markdown'
 import { cn } from '@/lib/utils'
 import type { ClaudeModel } from '@/store/chat-store'
-import type { ThinkingLevel, ExecutionMode } from '@/types/chat'
+import type { ThinkingLevel, EffortLevel, ExecutionMode } from '@/types/chat'
 import type {
   PrDisplayStatus,
   CheckStatus,
@@ -86,8 +86,9 @@ import {
 
 /** Model options with display labels */
 const MODEL_OPTIONS: { value: ClaudeModel; label: string }[] = [
-  { value: 'sonnet', label: 'Sonnet' },
   { value: 'opus', label: 'Opus' },
+  { value: 'opus-4.5', label: 'Opus 4.5' },
+  { value: 'sonnet', label: 'Sonnet' },
   { value: 'haiku', label: 'Haiku' },
 ]
 
@@ -101,6 +102,18 @@ const THINKING_LEVEL_OPTIONS: {
   { value: 'think', label: 'Think', tokens: '4K' },
   { value: 'megathink', label: 'Megathink', tokens: '10K' },
   { value: 'ultrathink', label: 'Ultrathink', tokens: '32K' },
+]
+
+/** Effort level options for Opus 4.6 adaptive thinking */
+const EFFORT_LEVEL_OPTIONS: {
+  value: EffortLevel
+  label: string
+  description: string
+}[] = [
+  { value: 'low', label: 'Low', description: 'Minimal' },
+  { value: 'medium', label: 'Medium', description: 'Moderate' },
+  { value: 'high', label: 'High', description: 'Deep' },
+  { value: 'max', label: 'Max', description: 'No limits' },
 ]
 
 /** Get display label and color for PR status */
@@ -161,7 +174,9 @@ interface ChatToolbarProps {
   executionMode: ExecutionMode
   selectedModel: ClaudeModel
   selectedThinkingLevel: ThinkingLevel
+  selectedEffortLevel: EffortLevel
   thinkingOverrideActive: boolean // True when thinking is disabled in build/yolo due to preference
+  useAdaptiveThinking: boolean // True when model supports effort (Opus on CLI >= 2.1.32)
 
   // Git state
   hasBranchUpdates: boolean
@@ -210,6 +225,7 @@ interface ChatToolbarProps {
   onSetDiffRequest: (request: DiffRequest) => void
   onModelChange: (model: ClaudeModel) => void
   onThinkingLevelChange: (level: ThinkingLevel) => void
+  onEffortLevelChange: (level: EffortLevel) => void
   onSetExecutionMode: (mode: ExecutionMode) => void
   onCancel: () => void
 }
@@ -226,7 +242,9 @@ export const ChatToolbar = memo(function ChatToolbar({
   executionMode,
   selectedModel,
   selectedThinkingLevel,
+  selectedEffortLevel,
   thinkingOverrideActive,
+  useAdaptiveThinking,
   hasBranchUpdates,
   behindCount,
   aheadCount,
@@ -263,6 +281,7 @@ export const ChatToolbar = memo(function ChatToolbar({
   onSetDiffRequest,
   onModelChange,
   onThinkingLevelChange,
+  onEffortLevelChange,
   onSetExecutionMode,
   onCancel,
 }: ChatToolbarProps) {
@@ -279,6 +298,13 @@ export const ChatToolbar = memo(function ChatToolbar({
       onThinkingLevelChange(value as ThinkingLevel)
     },
     [onThinkingLevelChange]
+  )
+
+  const handleEffortLevelChange = useCallback(
+    (value: string) => {
+      onEffortLevelChange(value as EffortLevel)
+    },
+    [onEffortLevelChange]
   )
 
   const loadingOperation = useChatStore(state =>
@@ -654,38 +680,72 @@ export const ChatToolbar = memo(function ChatToolbar({
               </DropdownMenuSubContent>
             </DropdownMenuSub>
 
-            {/* Thinking level as submenu */}
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                <Brain className="mr-2 h-4 w-4" />
-                <span>Thinking</span>
-                <span className="ml-auto text-xs text-muted-foreground">
-                  {thinkingOverrideActive
-                    ? 'Off'
-                    : THINKING_LEVEL_OPTIONS.find(
-                        o => o.value === selectedThinkingLevel
-                      )?.label}
-                </span>
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                <DropdownMenuRadioGroup
-                  value={thinkingOverrideActive ? 'off' : selectedThinkingLevel}
-                  onValueChange={handleThinkingLevelChange}
-                >
-                  {THINKING_LEVEL_OPTIONS.map(option => (
-                    <DropdownMenuRadioItem
-                      key={option.value}
-                      value={option.value}
-                    >
-                      {option.label}
-                      <span className="ml-auto pl-4 text-xs text-muted-foreground">
-                        {option.tokens}
-                      </span>
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
+            {/* Thinking/Effort level as submenu */}
+            {useAdaptiveThinking ? (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <Brain className="mr-2 h-4 w-4" />
+                  <span>Effort</span>
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {thinkingOverrideActive
+                      ? 'Off'
+                      : EFFORT_LEVEL_OPTIONS.find(
+                          o => o.value === selectedEffortLevel
+                        )?.label}
+                  </span>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuRadioGroup
+                    value={thinkingOverrideActive ? '' : selectedEffortLevel}
+                    onValueChange={handleEffortLevelChange}
+                  >
+                    {EFFORT_LEVEL_OPTIONS.map(option => (
+                      <DropdownMenuRadioItem
+                        key={option.value}
+                        value={option.value}
+                      >
+                        {option.label}
+                        <span className="ml-auto pl-4 text-xs text-muted-foreground">
+                          {option.description}
+                        </span>
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            ) : (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <Brain className="mr-2 h-4 w-4" />
+                  <span>Thinking</span>
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {thinkingOverrideActive
+                      ? 'Off'
+                      : THINKING_LEVEL_OPTIONS.find(
+                          o => o.value === selectedThinkingLevel
+                        )?.label}
+                  </span>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuRadioGroup
+                    value={thinkingOverrideActive ? 'off' : selectedThinkingLevel}
+                    onValueChange={handleThinkingLevelChange}
+                  >
+                    {THINKING_LEVEL_OPTIONS.map(option => (
+                      <DropdownMenuRadioItem
+                        key={option.value}
+                        value={option.value}
+                      >
+                        {option.label}
+                        <span className="ml-auto pl-4 text-xs text-muted-foreground">
+                          {option.tokens}
+                        </span>
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            )}
 
             {/* Execution mode as submenu */}
             <DropdownMenuSub>
@@ -1010,52 +1070,99 @@ export const ChatToolbar = memo(function ChatToolbar({
         {/* Divider - desktop only */}
         <div className="hidden @md:block h-4 w-px bg-border/50" />
 
-        {/* Thinking level dropdown - desktop only */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              disabled={hasPendingQuestions}
-              className={cn(
-                'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
-                selectedThinkingLevel !== 'off' &&
+        {/* Thinking/Effort level dropdown - desktop only */}
+        {useAdaptiveThinking ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                disabled={hasPendingQuestions}
+                className={cn(
+                  'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
                   !thinkingOverrideActive &&
-                  'border border-purple-500/50 bg-purple-500/10 text-purple-700 dark:border-purple-400/40 dark:bg-purple-500/10 dark:text-purple-400'
-              )}
-              title={
-                thinkingOverrideActive
-                  ? `Thinking disabled in ${executionMode} mode (change in Settings)`
-                  : `Thinking: ${THINKING_LEVEL_OPTIONS.find(o => o.value === selectedThinkingLevel)?.label}`
-              }
-            >
-              <Brain className="h-3.5 w-3.5" />
-              <span>
-                {thinkingOverrideActive
-                  ? 'Off'
-                  : THINKING_LEVEL_OPTIONS.find(
-                      o => o.value === selectedThinkingLevel
-                    )?.label}
-              </span>
-              <ChevronDown className="h-3 w-3 opacity-50" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuRadioGroup
-              value={thinkingOverrideActive ? 'off' : selectedThinkingLevel}
-              onValueChange={handleThinkingLevelChange}
-            >
-              {THINKING_LEVEL_OPTIONS.map(option => (
-                <DropdownMenuRadioItem key={option.value} value={option.value}>
-                  <Brain className="mr-2 h-4 w-4" />
-                  {option.label}
-                  <span className="ml-auto pl-4 text-xs text-muted-foreground">
-                    {option.tokens}
-                  </span>
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
+                    'border border-purple-500/50 bg-purple-500/10 text-purple-700 dark:border-purple-400/40 dark:bg-purple-500/10 dark:text-purple-400'
+                )}
+                title={
+                  thinkingOverrideActive
+                    ? `Effort disabled in ${executionMode} mode (change in Settings)`
+                    : `Effort: ${EFFORT_LEVEL_OPTIONS.find(o => o.value === selectedEffortLevel)?.label}`
+                }
+              >
+                <Brain className="h-3.5 w-3.5" />
+                <span>
+                  {thinkingOverrideActive
+                    ? 'Off'
+                    : EFFORT_LEVEL_OPTIONS.find(
+                        o => o.value === selectedEffortLevel
+                      )?.label}
+                </span>
+                <ChevronDown className="h-3 w-3 opacity-50" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuRadioGroup
+                value={thinkingOverrideActive ? '' : selectedEffortLevel}
+                onValueChange={handleEffortLevelChange}
+              >
+                {EFFORT_LEVEL_OPTIONS.map(option => (
+                  <DropdownMenuRadioItem key={option.value} value={option.value}>
+                    <Brain className="mr-2 h-4 w-4" />
+                    {option.label}
+                    <span className="ml-auto pl-4 text-xs text-muted-foreground">
+                      {option.description}
+                    </span>
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                disabled={hasPendingQuestions}
+                className={cn(
+                  'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
+                  selectedThinkingLevel !== 'off' &&
+                    !thinkingOverrideActive &&
+                    'border border-purple-500/50 bg-purple-500/10 text-purple-700 dark:border-purple-400/40 dark:bg-purple-500/10 dark:text-purple-400'
+                )}
+                title={
+                  thinkingOverrideActive
+                    ? `Thinking disabled in ${executionMode} mode (change in Settings)`
+                    : `Thinking: ${THINKING_LEVEL_OPTIONS.find(o => o.value === selectedThinkingLevel)?.label}`
+                }
+              >
+                <Brain className="h-3.5 w-3.5" />
+                <span>
+                  {thinkingOverrideActive
+                    ? 'Off'
+                    : THINKING_LEVEL_OPTIONS.find(
+                        o => o.value === selectedThinkingLevel
+                      )?.label}
+                </span>
+                <ChevronDown className="h-3 w-3 opacity-50" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuRadioGroup
+                value={thinkingOverrideActive ? 'off' : selectedThinkingLevel}
+                onValueChange={handleThinkingLevelChange}
+              >
+                {THINKING_LEVEL_OPTIONS.map(option => (
+                  <DropdownMenuRadioItem key={option.value} value={option.value}>
+                    <Brain className="mr-2 h-4 w-4" />
+                    {option.label}
+                    <span className="ml-auto pl-4 text-xs text-muted-foreground">
+                      {option.tokens}
+                    </span>
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
 
         {/* Divider - desktop only */}
         <div className="hidden @md:block h-4 w-px bg-border/50" />

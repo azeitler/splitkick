@@ -77,6 +77,8 @@ pub struct AppPreferences {
     pub selected_model: String, // Claude model: opus, sonnet, haiku
     #[serde(default = "default_thinking_level")]
     pub thinking_level: String, // Thinking level: off, think, megathink, ultrathink
+    #[serde(default = "default_effort_level")]
+    pub default_effort_level: String, // Effort level for Opus 4.6: low, medium, high, max
     #[serde(default = "default_terminal")]
     pub terminal: String, // Terminal app: terminal, warp, ghostty
     #[serde(default = "default_editor")]
@@ -197,6 +199,10 @@ fn default_model() -> String {
 
 fn default_thinking_level() -> String {
     "ultrathink".to_string()
+}
+
+fn default_effort_level() -> String {
+    "high".to_string()
 }
 
 fn default_terminal() -> String {
@@ -577,6 +583,7 @@ impl Default for AppPreferences {
             auto_archive_on_pr_merged: default_auto_archive_on_pr_merged(),
             show_keybinding_hints: default_show_keybinding_hints(),
             debug_mode_enabled: false,
+            default_effort_level: default_effort_level(),
         }
     }
 }
@@ -1056,8 +1063,14 @@ async fn start_http_server(
     }
 
     // Start the server
-    let handle =
-        http_server::server::start_server(app.clone(), actual_port, token, localhost_only, token_required).await?;
+    let handle = http_server::server::start_server(
+        app.clone(),
+        actual_port,
+        token,
+        localhost_only,
+        token_required,
+    )
+    .await?;
     let status = http_server::server::ServerStatus {
         running: true,
         url: Some(handle.url.clone()),
@@ -1143,7 +1156,8 @@ async fn start_http_server_headless(
 
     // Start the server
     let handle =
-        http_server::server::start_server(app.clone(), port, token, localhost_only, token_required).await?;
+        http_server::server::start_server(app.clone(), port, token, localhost_only, token_required)
+            .await?;
     let status = http_server::server::ServerStatus {
         running: true,
         url: Some(handle.url.clone()),

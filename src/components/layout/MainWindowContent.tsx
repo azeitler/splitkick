@@ -33,7 +33,7 @@ export function MainWindowContent({
       {activeWorktreePath ? (
         <ChatWindow />
       ) : selectedProjectId ? (
-        <WorktreeDashboard projectId={selectedProjectId} />
+        <WorktreeDashboard key={selectedProjectId} projectId={selectedProjectId} />
       ) : (
         children || (
           <div className="flex flex-1 flex-col items-center justify-center gap-4 font-sans">

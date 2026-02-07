@@ -38,6 +38,7 @@ import { usePreferences, useSavePreferences } from '@/services/preferences'
 import {
   modelOptions,
   thinkingLevelOptions,
+  effortLevelOptions,
   terminalOptions,
   editorOptions,
   gitPollIntervalOptions,
@@ -50,7 +51,7 @@ import {
   type NotificationSound,
 } from '@/types/preferences'
 import { playNotificationSound } from '@/lib/sounds'
-import type { ThinkingLevel } from '@/types/chat'
+import type { ThinkingLevel, EffortLevel } from '@/types/chat'
 import { isNativeApp } from '@/lib/environment'
 import {
   setGitPollInterval,
@@ -171,6 +172,12 @@ export const GeneralPane: React.FC = () => {
   const handleThinkingLevelChange = (value: ThinkingLevel) => {
     if (preferences) {
       savePreferences.mutate({ ...preferences, thinking_level: value })
+    }
+  }
+
+  const handleEffortLevelChange = (value: EffortLevel) => {
+    if (preferences) {
+      savePreferences.mutate({ ...preferences, default_effort_level: value })
     }
   }
 
@@ -481,6 +488,27 @@ export const GeneralPane: React.FC = () => {
               </SelectTrigger>
               <SelectContent>
                 {thinkingLevelOptions.map(option => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </InlineField>
+
+          <InlineField
+            label="Effort level"
+            description="Effort for Opus (requires CLI 2.1.32+)"
+          >
+            <Select
+              value={preferences?.default_effort_level ?? 'high'}
+              onValueChange={handleEffortLevelChange}
+            >
+              <SelectTrigger className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {effortLevelOptions.map(option => (
                   <SelectItem key={option.value} value={option.value}>
                     {option.label}
                   </SelectItem>

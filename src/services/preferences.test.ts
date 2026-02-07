@@ -118,6 +118,7 @@ describe('preferences service', () => {
         canvas_only_mode: false,
         show_keybinding_hints: true,
         debug_mode_enabled: false,
+        default_effort_level: 'high',
       }
       vi.mocked(invoke).mockResolvedValueOnce(mockPreferences)
 
@@ -206,6 +207,7 @@ describe('preferences service', () => {
         canvas_only_mode: false,
         show_keybinding_hints: true,
         debug_mode_enabled: false,
+        default_effort_level: 'high',
       }
       vi.mocked(invoke).mockResolvedValueOnce(prefsWithOldBinding)
 
@@ -271,6 +273,7 @@ describe('preferences service', () => {
         canvas_only_mode: false,
         show_keybinding_hints: true,
         debug_mode_enabled: false,
+        default_effort_level: 'high',
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -334,6 +337,7 @@ describe('preferences service', () => {
         canvas_only_mode: false,
         show_keybinding_hints: true,
         debug_mode_enabled: false,
+        default_effort_level: 'high',
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -397,6 +401,7 @@ describe('preferences service', () => {
         canvas_only_mode: false,
         show_keybinding_hints: true,
         debug_mode_enabled: false,
+        default_effort_level: 'high',
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -458,6 +463,7 @@ describe('preferences service', () => {
         canvas_only_mode: false,
         show_keybinding_hints: true,
         debug_mode_enabled: false,
+        default_effort_level: 'high',
       }
 
       const { result } = renderHook(() => useSavePreferences(), {

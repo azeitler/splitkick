@@ -71,6 +71,34 @@ pub enum ThinkingLevel {
     Ultrathink,
 }
 
+/// Effort level for Opus 4.6 adaptive thinking
+/// Controls --settings {"effort": "<level>"} via CLI
+/// Replaces ThinkingLevel when model is Opus (latest) on CLI >= 2.1.32
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum EffortLevel {
+    /// Don't send effort (used when thinking is disabled for mode)
+    Off,
+    Low,
+    Medium,
+    #[default]
+    High,
+    Max,
+}
+
+impl EffortLevel {
+    /// Get the effort value string for CLI --settings JSON
+    pub fn effort_value(&self) -> Option<&str> {
+        match self {
+            EffortLevel::Off => None,
+            EffortLevel::Low => Some("low"),
+            EffortLevel::Medium => Some("medium"),
+            EffortLevel::High => Some("high"),
+            EffortLevel::Max => Some("max"),
+        }
+    }
+}
+
 impl ThinkingLevel {
     /// Whether thinking is enabled for this level
     pub fn is_enabled(&self) -> bool {
@@ -168,6 +196,9 @@ pub struct ChatMessage {
     /// Thinking level when this message was sent (user messages only)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking_level: Option<String>,
+    /// Effort level when this message was sent (user messages only, Opus 4.6)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort_level: Option<String>,
     /// True if this message was recovered from a crash
     #[serde(default)]
     pub recovered: bool,
@@ -191,6 +222,7 @@ impl Default for ChatMessage {
             model: None,
             execution_mode: None,
             thinking_level: None,
+            effort_level: None,
             recovered: false,
             usage: None,
         }
@@ -712,6 +744,9 @@ pub struct RunEntry {
     /// Thinking level (off, think, megathink, ultrathink)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking_level: Option<String>,
+    /// Effort level for Opus 4.6 adaptive thinking (low, medium, high, max)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort_level: Option<String>,
     /// Unix timestamp when run started
     pub started_at: u64,
     /// Unix timestamp when run ended (None if still running)
@@ -1244,6 +1279,7 @@ mod tests {
             model: None,
             execution_mode: None,
             thinking_level: None,
+            effort_level: None,
             started_at: 1234567890,
             ended_at: None,
             status: RunStatus::Running,
@@ -1279,6 +1315,7 @@ mod tests {
             model: None,
             execution_mode: None,
             thinking_level: None,
+            effort_level: None,
             started_at: 1234567890,
             ended_at: None,
             status: RunStatus::Completed,
@@ -1300,6 +1337,7 @@ mod tests {
             model: None,
             execution_mode: None,
             thinking_level: None,
+            effort_level: None,
             started_at: 1234567891,
             ended_at: None,
             status: RunStatus::Completed,

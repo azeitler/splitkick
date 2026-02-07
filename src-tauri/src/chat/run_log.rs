@@ -261,6 +261,7 @@ pub fn start_run(
     model: Option<&str>,
     execution_mode: Option<&str>,
     thinking_level: Option<&str>,
+    effort_level: Option<&str>,
 ) -> Result<RunLogWriter, String> {
     let run_id = Uuid::new_v4().to_string();
     let now = now_timestamp();
@@ -303,6 +304,7 @@ pub fn start_run(
         model: model.map(|s| s.to_string()),
         execution_mode: execution_mode.map(|s| s.to_string()),
         thinking_level: thinking_level.map(|s| s.to_string()),
+        effort_level: effort_level.map(|s| s.to_string()),
         started_at: now,
         ended_at: None,
         status: RunStatus::Running,
@@ -583,6 +585,7 @@ pub fn parse_run_to_message(lines: &[String], run: &RunEntry) -> Result<ChatMess
         model: None,
         execution_mode: None,
         thinking_level: None,
+        effort_level: None,
         recovered: run.recovered,
         usage: run.usage.clone(), // Token usage from metadata
     })
@@ -625,6 +628,7 @@ pub fn load_session_messages(
                 model: run.model.clone(),
                 execution_mode: run.execution_mode.clone(),
                 thinking_level: run.thinking_level.clone(),
+                effort_level: run.effort_level.clone(),
                 recovered: false,
                 usage: None, // User messages don't have token usage
             });

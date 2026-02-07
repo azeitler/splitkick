@@ -6,6 +6,7 @@ import {
   type QuestionAnswer,
   type SetupScriptResult,
   type ThinkingLevel,
+  type EffortLevel,
   type PendingImage,
   type PendingFile,
   type PendingSkill,
@@ -22,7 +23,7 @@ import {
 import type { ReviewResponse } from '@/types/projects'
 
 /** Available Claude models */
-export type ClaudeModel = 'sonnet' | 'opus' | 'haiku'
+export type ClaudeModel = 'opus' | 'opus-4.5' | 'sonnet' | 'haiku'
 
 /** Default model to use when none is selected (fallback only - preferences take priority) */
 export const DEFAULT_MODEL: ClaudeModel = 'opus'
@@ -86,6 +87,9 @@ interface ChatUIState {
 
   // Manual thinking override per session (true if user changed thinking while in build/yolo)
   manualThinkingOverrides: Record<string, boolean>
+
+  // Effort level per session (for Opus 4.6 adaptive thinking)
+  effortLevels: Record<string, EffortLevel>
 
   // Selected model per session (for tracking what model was used)
   selectedModels: Record<string, string>
@@ -271,6 +275,10 @@ interface ChatUIState {
   setManualThinkingOverride: (sessionId: string, override: boolean) => void
   hasManualThinkingOverride: (sessionId: string) => boolean
 
+  // Actions - Effort level (session-based, for Opus 4.6 adaptive thinking)
+  setEffortLevel: (sessionId: string, level: EffortLevel) => void
+  getEffortLevel: (sessionId: string) => EffortLevel
+
   // Actions - Selected model (session-based)
   setSelectedModel: (sessionId: string, model: string) => void
 
@@ -448,6 +456,7 @@ export const useChatStore = create<ChatUIState>()(
       executionModes: {},
       thinkingLevels: {},
       manualThinkingOverrides: {},
+      effortLevels: {},
       selectedModels: {},
       answeredQuestions: {},
       submittedAnswers: {},
@@ -1057,6 +1066,21 @@ export const useChatStore = create<ChatUIState>()(
       hasManualThinkingOverride: sessionId =>
         get().manualThinkingOverrides[sessionId] ?? false,
 
+      // Effort level (session-based, for Opus 4.6 adaptive thinking)
+      setEffortLevel: (sessionId, level) =>
+        set(
+          state => ({
+            effortLevels: {
+              ...state.effortLevels,
+              [sessionId]: level,
+            },
+          }),
+          undefined,
+          'setEffortLevel'
+        ),
+
+      getEffortLevel: sessionId => get().effortLevels[sessionId] ?? 'high',
+
       // Selected model (session-based)
       setSelectedModel: (sessionId, model) =>
         set(
@@ -1616,6 +1640,7 @@ export const useChatStore = create<ChatUIState>()(
             const { [sessionId]: _fixed, ...restFixed } = state.fixedFindings
             const { [sessionId]: _manual, ...restManual } =
               state.manualThinkingOverrides
+            const { [sessionId]: _effort, ...restEffort } = state.effortLevels
 
             return {
               approvedTools: restApproved,
@@ -1627,6 +1652,7 @@ export const useChatStore = create<ChatUIState>()(
               submittedAnswers: restSubmitted,
               fixedFindings: restFixed,
               manualThinkingOverrides: restManual,
+              effortLevels: restEffort,
             }
           },
           undefined,

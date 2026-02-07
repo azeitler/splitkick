@@ -55,6 +55,7 @@ import { usePreferences, useSavePreferences } from '@/services/preferences'
 import type {
   ToolCall,
   ThinkingLevel,
+  EffortLevel,
   ContentBlock,
   PendingImage,
   PendingTextFile,
@@ -97,6 +98,8 @@ import {
 import { useUIStore } from '@/store/ui-store'
 import { useGitStatus } from '@/services/git-status'
 import { isNativeApp } from '@/lib/environment'
+import { supportsAdaptiveThinking } from '@/lib/model-utils'
+import { useClaudeCliStatus } from '@/services/claude-cli'
 import { usePrStatus, usePrStatusEvents } from '@/services/pr-status'
 import type { PrDisplayStatus, CheckStatus } from '@/types/pr-status'
 import type { QueuedMessage, ExecutionMode, Session } from '@/types/chat'
@@ -441,6 +444,21 @@ export function ChatWindow({
     sessionThinkingLevel ??
     defaultThinkingLevel
 
+  // Per-session effort level, falls back to preferences default
+  const defaultEffortLevel =
+    (preferences?.default_effort_level as EffortLevel) ?? 'high'
+  const sessionEffortLevel = useChatStore(state =>
+    deferredSessionId ? state.effortLevels[deferredSessionId] : undefined
+  )
+  const selectedEffortLevel: EffortLevel = sessionEffortLevel ?? defaultEffortLevel
+
+  // CLI version for adaptive thinking feature detection
+  const { data: cliStatus } = useClaudeCliStatus()
+  const useAdaptiveThinkingFlag = supportsAdaptiveThinking(
+    selectedModel,
+    cliStatus?.version ?? null
+  )
+
   const isSending = isSendingForSession
 
   // PERFORMANCE: Content selectors use deferredSessionId to prevent sync re-render cascade
@@ -573,6 +591,8 @@ export function ChatWindow({
   const activeWorktreePathRef = useRef(activeWorktreePath)
   const selectedModelRef = useRef(selectedModel)
   const selectedThinkingLevelRef = useRef(selectedThinkingLevel)
+  const selectedEffortLevelRef = useRef(selectedEffortLevel)
+  const useAdaptiveThinkingRef = useRef(useAdaptiveThinkingFlag)
   const executionModeRef = useRef(executionMode)
 
   // Keep refs in sync with current values (runs on every render, but cheap)
@@ -581,6 +601,8 @@ export function ChatWindow({
   activeWorktreePathRef.current = activeWorktreePath
   selectedModelRef.current = selectedModel
   selectedThinkingLevelRef.current = selectedThinkingLevel
+  selectedEffortLevelRef.current = selectedEffortLevel
+  useAdaptiveThinkingRef.current = useAdaptiveThinkingFlag
   executionModeRef.current = executionMode
 
   // Ref for approve button (passed to VirtualizedMessageList)
@@ -1024,6 +1046,7 @@ export function ChatWindow({
           executionMode: queuedMsg.executionMode,
           thinkingLevel: queuedMsg.thinkingLevel,
           disableThinkingForMode: queuedMsg.disableThinkingForMode,
+          effortLevel: queuedMsg.effortLevel,
           parallelExecutionPromptEnabled:
             preferences?.parallel_execution_prompt_enabled ?? false,
           aiLanguage: preferences?.ai_language,
@@ -1106,6 +1129,9 @@ export function ChatWindow({
           executionMode: 'build',
           thinkingLevel,
           disableThinkingForMode: thinkingLevel !== 'off' && !hasManualOverride,
+          effortLevel: useAdaptiveThinkingRef.current
+            ? selectedEffortLevelRef.current
+            : undefined,
           parallelExecutionPromptEnabled:
             preferences?.parallel_execution_prompt_enabled ?? false,
           aiLanguage: preferences?.ai_language,
@@ -1207,6 +1233,9 @@ export function ChatWindow({
         thinkingLevel: thinkingLvl,
         disableThinkingForMode:
           mode !== 'plan' && thinkingLvl !== 'off' && !hasManualOverride,
+        effortLevel: useAdaptiveThinkingRef.current
+          ? selectedEffortLevelRef.current
+          : undefined,
         queuedAt: Date.now(),
       }
 
@@ -1348,6 +1377,15 @@ export function ChatWindow({
       }).catch(() => {})
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mutate is stable, refs used for IDs
+    []
+  )
+
+  const handleToolbarEffortLevelChange = useCallback(
+    (level: EffortLevel) => {
+      const sessionId = activeSessionIdRef.current
+      if (!sessionId) return
+      useChatStore.getState().setEffortLevel(sessionId, level)
+    },
     []
   )
 
@@ -1550,6 +1588,9 @@ Begin your investigation now.`
         model: investigateModel,
         executionMode: executionModeRef.current,
         thinkingLevel: selectedThinkingLevelRef.current,
+        effortLevel: useAdaptiveThinkingRef.current
+          ? selectedEffortLevelRef.current
+          : undefined,
         parallelExecutionPromptEnabled:
           preferences?.parallel_execution_prompt_enabled ?? false,
         aiLanguage: preferences?.ai_language,
@@ -1712,6 +1753,8 @@ Begin your investigation now.`
     selectedModelRef,
     executionModeRef,
     selectedThinkingLevelRef,
+    selectedEffortLevelRef,
+    useAdaptiveThinkingRef,
     sendMessage,
     queryClient,
     scrollToBottom,
@@ -1818,6 +1861,9 @@ Begin your investigation now.`
             thinkingLevel: thinkingLvl,
             // Build mode: disable thinking if preference enabled and no manual override
             disableThinkingForMode: thinkingLvl !== 'off' && !hasManualOverride,
+            effortLevel: useAdaptiveThinkingRef.current
+              ? selectedEffortLevelRef.current
+              : undefined,
             parallelExecutionPromptEnabled:
               preferences?.parallel_execution_prompt_enabled ?? false,
             aiLanguage: preferences?.ai_language,
@@ -1929,6 +1975,9 @@ Begin your investigation now.`
         executionMode: executionModeRef.current,
         thinkingLevel: selectedThinkingLevelRef.current,
         disableThinkingForMode: false,
+        effortLevel: useAdaptiveThinkingRef.current
+          ? selectedEffortLevelRef.current
+          : undefined,
         queuedAt: Date.now(),
       }
 
@@ -2320,11 +2369,13 @@ Begin your investigation now.`
                         executionMode={executionMode}
                         selectedModel={selectedModel}
                         selectedThinkingLevel={selectedThinkingLevel}
+                        selectedEffortLevel={selectedEffortLevel}
                         thinkingOverrideActive={
                           executionMode !== 'plan' &&
-                          selectedThinkingLevel !== 'off' &&
+                          (useAdaptiveThinkingFlag || selectedThinkingLevel !== 'off') &&
                           !hasManualThinkingOverride
                         }
+                        useAdaptiveThinking={useAdaptiveThinkingFlag}
                         hasBranchUpdates={hasBranchUpdates}
                         behindCount={behindCount}
                         aheadCount={aheadCount}
@@ -2361,6 +2412,7 @@ Begin your investigation now.`
                         onSetDiffRequest={setDiffRequest}
                         onModelChange={handleToolbarModelChange}
                         onThinkingLevelChange={handleToolbarThinkingLevelChange}
+                        onEffortLevelChange={handleToolbarEffortLevelChange}
                         onSetExecutionMode={handleToolbarSetExecutionMode}
                         onCancel={handleCancel}
                       />
@@ -2493,6 +2545,9 @@ Begin your investigation now.`
                   executionMode: 'build',
                   thinkingLevel: selectedThinkingLevelRef.current,
                   disableThinkingForMode: true,
+                  effortLevel: useAdaptiveThinkingRef.current
+                    ? selectedEffortLevelRef.current
+                    : undefined,
                   queuedAt: Date.now(),
                 }
 
@@ -2543,6 +2598,9 @@ Begin your investigation now.`
                   executionMode: 'yolo',
                   thinkingLevel: selectedThinkingLevelRef.current,
                   disableThinkingForMode: true,
+                  effortLevel: useAdaptiveThinkingRef.current
+                    ? selectedEffortLevelRef.current
+                    : undefined,
                   queuedAt: Date.now(),
                 }
 
@@ -2610,6 +2668,9 @@ Begin your investigation now.`
                   executionMode: 'build',
                   thinkingLevel: selectedThinkingLevelRef.current,
                   disableThinkingForMode: true,
+                  effortLevel: useAdaptiveThinkingRef.current
+                    ? selectedEffortLevelRef.current
+                    : undefined,
                   queuedAt: Date.now(),
                 }
 
@@ -2660,6 +2721,9 @@ Begin your investigation now.`
                   executionMode: 'yolo',
                   thinkingLevel: selectedThinkingLevelRef.current,
                   disableThinkingForMode: true,
+                  effortLevel: useAdaptiveThinkingRef.current
+                    ? selectedEffortLevelRef.current
+                    : undefined,
                   queuedAt: Date.now(),
                 }
 

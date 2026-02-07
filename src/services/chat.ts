@@ -313,8 +313,14 @@ export function useCreateSession() {
       const oldData = queryClient.getQueryData<WorktreeSessions>(
         chatQueryKeys.sessions(worktreeId)
       )
-      console.log('[useCreateSession] onSuccess - oldData sessions count:', oldData?.sessions?.length)
-      console.log('[useCreateSession] onSuccess - newSession.id:', newSession.id)
+      console.log(
+        '[useCreateSession] onSuccess - oldData sessions count:',
+        oldData?.sessions?.length
+      )
+      console.log(
+        '[useCreateSession] onSuccess - newSession.id:',
+        newSession.id
+      )
       queryClient.setQueryData<WorktreeSessions>(
         chatQueryKeys.sessions(worktreeId),
         old => (old ? { ...old, sessions: [newSession, ...old.sessions] } : old)
@@ -322,8 +328,14 @@ export function useCreateSession() {
       const newData = queryClient.getQueryData<WorktreeSessions>(
         chatQueryKeys.sessions(worktreeId)
       )
-      console.log('[useCreateSession] onSuccess - newData sessions count:', newData?.sessions?.length)
-      console.log('[useCreateSession] onSuccess - newData[0].id:', newData?.sessions?.[0]?.id)
+      console.log(
+        '[useCreateSession] onSuccess - newData sessions count:',
+        newData?.sessions?.length
+      )
+      console.log(
+        '[useCreateSession] onSuccess - newData[0].id:',
+        newData?.sessions?.[0]?.id
+      )
       // Then invalidate for consistency
       queryClient.invalidateQueries({
         queryKey: chatQueryKeys.sessions(worktreeId),
@@ -1106,6 +1118,7 @@ export function useSendMessage() {
       model,
       executionMode,
       thinkingLevel,
+      effortLevel,
       disableThinkingForMode,
       parallelExecutionPromptEnabled,
       aiLanguage,
@@ -1118,6 +1131,7 @@ export function useSendMessage() {
       model?: string
       executionMode?: ExecutionMode
       thinkingLevel?: ThinkingLevel
+      effortLevel?: string
       disableThinkingForMode?: boolean
       parallelExecutionPromptEnabled?: boolean
       aiLanguage?: string
@@ -1133,6 +1147,7 @@ export function useSendMessage() {
         model,
         executionMode,
         thinkingLevel,
+        effortLevel,
         disableThinkingForMode,
         parallelExecutionPromptEnabled,
         aiLanguage,
@@ -1146,6 +1161,7 @@ export function useSendMessage() {
         model,
         executionMode,
         thinkingLevel,
+        effortLevel,
         disableThinkingForMode,
         parallelExecutionPromptEnabled,
         aiLanguage,

@@ -14,8 +14,8 @@ use super::storage::{
     load_sessions, with_sessions_mut,
 };
 use super::types::{
-    AllSessionsEntry, AllSessionsResponse, ChatMessage, ClaudeContext, MessageRole, RunStatus,
-    Session, SessionDigest, ThinkingLevel, WorktreeSessions,
+    AllSessionsEntry, AllSessionsResponse, ChatMessage, ClaudeContext, EffortLevel, MessageRole,
+    RunStatus, Session, SessionDigest, ThinkingLevel, WorktreeSessions,
 };
 use crate::claude_cli::get_cli_binary_path;
 use crate::http_server::EmitExt;
@@ -839,12 +839,13 @@ pub async fn send_chat_message(
     model: Option<String>,
     execution_mode: Option<String>,
     thinking_level: Option<ThinkingLevel>,
+    effort_level: Option<EffortLevel>,
     disable_thinking_for_mode: Option<bool>,
     parallel_execution_prompt_enabled: Option<bool>,
     ai_language: Option<String>,
     allowed_tools: Option<Vec<String>>,
 ) -> Result<ChatMessage, String> {
-    log::trace!("Sending chat message for session: {session_id}, worktree: {worktree_id}, model: {model:?}, execution_mode: {execution_mode:?}, thinking: {thinking_level:?}, disable_thinking_for_mode: {disable_thinking_for_mode:?}, allowed_tools: {allowed_tools:?}");
+    log::trace!("Sending chat message for session: {session_id}, worktree: {worktree_id}, model: {model:?}, execution_mode: {execution_mode:?}, thinking: {thinking_level:?}, effort: {effort_level:?}, disable_thinking_for_mode: {disable_thinking_for_mode:?}, allowed_tools: {allowed_tools:?}");
 
     // Validate inputs
     if message.trim().is_empty() {
@@ -1024,6 +1025,10 @@ pub async fn send_chat_message(
             .as_ref()
             .map(|t| format!("{t:?}").to_lowercase())
             .as_deref(),
+        effort_level
+            .as_ref()
+            .and_then(|e| e.effort_value())
+            .or(None),
     )?;
 
     // Get file paths for detached execution
@@ -1057,6 +1062,7 @@ pub async fn send_chat_message(
             model.as_deref(),
             execution_mode.as_deref(),
             thinking_level.as_ref(),
+            effort_level.as_ref(),
             allowed_tools.as_deref(),
             disable_thinking_in_non_plan_modes,
             parallel_execution_prompt,
@@ -1153,6 +1159,7 @@ pub async fn send_chat_message(
             model: None,
             execution_mode: None,
             thinking_level: None,
+            effort_level: None,
             recovered: false,
             usage: None,
         });
@@ -1173,6 +1180,7 @@ pub async fn send_chat_message(
         model: None,
         execution_mode: None,
         thinking_level: None,
+        effort_level: None,
         recovered: false,
         usage: claude_response.usage.clone(),
     };
