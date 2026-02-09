@@ -1,7 +1,24 @@
 import { useQuery } from '@tanstack/react-query'
 import { invoke } from '@tauri-apps/api/core'
 import { isTauri } from '@/services/projects'
+import { queryClient } from '@/lib/query-client'
 import type { McpServerInfo } from '@/types/chat'
+
+/** Query key prefix for MCP server queries */
+export const MCP_SERVERS_KEY = 'mcp-servers'
+
+/**
+ * Invalidate MCP server queries so they are re-fetched from disk.
+ * If worktreePath is provided, only that specific query is invalidated.
+ * Otherwise all mcp-servers queries are invalidated.
+ */
+export function invalidateMcpServers(worktreePath?: string | null) {
+  if (worktreePath) {
+    queryClient.invalidateQueries({ queryKey: [MCP_SERVERS_KEY, worktreePath] })
+  } else {
+    queryClient.invalidateQueries({ queryKey: [MCP_SERVERS_KEY] })
+  }
+}
 
 /**
  * Fetch available MCP servers from all configuration sources.
@@ -10,7 +27,7 @@ import type { McpServerInfo } from '@/types/chat'
  */
 export function useMcpServers(worktreePath: string | null | undefined) {
   return useQuery({
-    queryKey: ['mcp-servers', worktreePath ?? ''],
+    queryKey: [MCP_SERVERS_KEY, worktreePath ?? ''],
     queryFn: async () => {
       if (!isTauri()) return []
       return invoke<McpServerInfo[]>('get_mcp_servers', {
@@ -20,6 +37,24 @@ export function useMcpServers(worktreePath: string | null | undefined) {
     enabled: !!worktreePath,
     staleTime: 1000 * 60 * 5, // 5 min cache
   })
+}
+
+/**
+ * Find newly discovered MCP servers that should be auto-enabled.
+ * Returns server names that are: (1) not disabled in config, and
+ * (2) not already in the current enabled list.
+ *
+ * This allows newly added MCP servers to be automatically activated
+ * without requiring the user to manually enable each one.
+ */
+export function getNewServersToAutoEnable(
+  allServers: McpServerInfo[],
+  currentEnabled: string[]
+): string[] {
+  const enabledSet = new Set(currentEnabled)
+  return allServers
+    .filter(s => !s.disabled && !enabledSet.has(s.name))
+    .map(s => s.name)
 }
 
 /**

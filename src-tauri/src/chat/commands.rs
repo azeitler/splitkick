@@ -3055,6 +3055,8 @@ pub struct McpServerInfo {
     pub name: String,
     pub config: serde_json::Value,
     pub scope: String, // "user", "local", "project"
+    /// Whether the server is disabled in its config (has "disabled": true)
+    pub disabled: bool,
 }
 
 /// Discover MCP servers from all configuration sources:
@@ -3093,10 +3095,15 @@ pub async fn get_mcp_servers(
                     if let Some(mcp) = project_val.get("mcpServers").and_then(|v| v.as_object()) {
                         for (name, config) in mcp {
                             if seen_names.insert(name.clone()) {
+                                let disabled = config
+                                    .get("disabled")
+                                    .and_then(|v| v.as_bool())
+                                    .unwrap_or(false);
                                 servers.push(McpServerInfo {
                                     name: name.clone(),
                                     config: config.clone(),
                                     scope: "local".to_string(),
+                                    disabled,
                                 });
                             }
                         }
@@ -3115,10 +3122,15 @@ pub async fn get_mcp_servers(
                     if let Some(mcp) = json.get("mcpServers").and_then(|v| v.as_object()) {
                         for (name, config) in mcp {
                             if seen_names.insert(name.clone()) {
+                                let disabled = config
+                                    .get("disabled")
+                                    .and_then(|v| v.as_bool())
+                                    .unwrap_or(false);
                                 servers.push(McpServerInfo {
                                     name: name.clone(),
                                     config: config.clone(),
                                     scope: "project".to_string(),
+                                    disabled,
                                 });
                             }
                         }
@@ -3133,10 +3145,15 @@ pub async fn get_mcp_servers(
         if let Some(mcp) = json.get("mcpServers").and_then(|v| v.as_object()) {
             for (name, config) in mcp {
                 if seen_names.insert(name.clone()) {
+                    let disabled = config
+                        .get("disabled")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
                     servers.push(McpServerInfo {
                         name: name.clone(),
                         config: config.clone(),
                         scope: "user".to_string(),
+                        disabled,
                     });
                 }
             }

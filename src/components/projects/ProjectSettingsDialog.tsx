@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   Loader2,
   GitBranch,
@@ -42,7 +42,11 @@ import {
   useSetProjectAvatar,
   useRemoveProjectAvatar,
 } from '@/services/projects'
-import { useMcpServers } from '@/services/mcp'
+import {
+  useMcpServers,
+  invalidateMcpServers,
+  getNewServersToAutoEnable,
+} from '@/services/mcp'
 
 export function ProjectSettingsDialog() {
   const {
@@ -69,6 +73,23 @@ export function ProjectSettingsDialog() {
   const { data: mcpServers = [], isLoading: mcpLoading } = useMcpServers(
     project?.path
   )
+
+  // Re-read MCP config from disk when the dialog opens
+  useEffect(() => {
+    if (projectSettingsDialogOpen && project?.path) {
+      invalidateMcpServers(project.path)
+    }
+  }, [projectSettingsDialogOpen, project?.path])
+
+  // Auto-enable newly discovered (non-disabled) servers for this project
+  useEffect(() => {
+    if (!projectSettingsDialogOpen || !mcpServers.length) return
+    const currentEnabled = project?.enabled_mcp_servers ?? []
+    const newServers = getNewServersToAutoEnable(mcpServers, currentEnabled)
+    if (newServers.length > 0) {
+      setLocalMcpServers([...currentEnabled, ...newServers])
+    }
+  }, [mcpServers, projectSettingsDialogOpen]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Use project's default_branch as the initial value, allow local overrides
   const [localBranch, setLocalBranch] = useState<string | null>(null)
@@ -317,21 +338,33 @@ export function ProjectSettingsDialog() {
                 {mcpServers.map(server => (
                   <div
                     key={server.name}
-                    className="flex items-center gap-3 rounded-md border px-3 py-2"
+                    className={cn(
+                      'flex items-center gap-3 rounded-md border px-3 py-2',
+                      server.disabled && 'opacity-50'
+                    )}
                   >
                     <Checkbox
                       id={`proj-mcp-${server.name}`}
-                      checked={selectedMcpServers.includes(server.name)}
+                      checked={
+                        !server.disabled &&
+                        selectedMcpServers.includes(server.name)
+                      }
                       onCheckedChange={() => handleToggleMcpServer(server.name)}
+                      disabled={server.disabled}
                     />
                     <Label
                       htmlFor={`proj-mcp-${server.name}`}
-                      className="flex-1 cursor-pointer text-sm"
+                      className={cn(
+                        'flex-1 text-sm',
+                        server.disabled
+                          ? 'cursor-default'
+                          : 'cursor-pointer'
+                      )}
                     >
                       {server.name}
                     </Label>
                     <span className="text-xs text-muted-foreground">
-                      {server.scope}
+                      {server.disabled ? 'disabled' : server.scope}
                     </span>
                   </div>
                 ))}

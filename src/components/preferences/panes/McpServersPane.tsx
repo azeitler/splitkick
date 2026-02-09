@@ -1,10 +1,15 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Checkbox } from '@/components/ui/checkbox'
+import { cn } from '@/lib/utils'
 import { usePreferences, useSavePreferences } from '@/services/preferences'
-import { useMcpServers } from '@/services/mcp'
+import {
+  useMcpServers,
+  invalidateMcpServers,
+  getNewServersToAutoEnable,
+} from '@/services/mcp'
 import { useChatStore } from '@/store/chat-store'
 
 const SettingsSection: React.FC<{
@@ -28,7 +33,24 @@ export const McpServersPane: React.FC = () => {
   const activeWorktreePath = useChatStore(state => state.activeWorktreePath)
   const { data: mcpServers, isLoading } = useMcpServers(activeWorktreePath)
 
+  // Re-read MCP config from disk every time this pane is opened
+  useEffect(() => {
+    invalidateMcpServers()
+  }, [])
+
   const enabledServers = preferences?.default_enabled_mcp_servers ?? []
+
+  // Auto-enable newly discovered (non-disabled) servers
+  useEffect(() => {
+    if (!preferences || !mcpServers) return
+    const newServers = getNewServersToAutoEnable(mcpServers, enabledServers)
+    if (newServers.length > 0) {
+      savePreferences.mutate({
+        ...preferences,
+        default_enabled_mcp_servers: [...enabledServers, ...newServers],
+      })
+    }
+  }, [mcpServers]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleToggle = (serverName: string) => {
     if (!preferences) return
@@ -71,21 +93,33 @@ export const McpServersPane: React.FC = () => {
             {mcpServers.map(server => (
               <div
                 key={server.name}
-                className="flex items-center gap-3 rounded-md border px-4 py-3"
+                className={cn(
+                  'flex items-center gap-3 rounded-md border px-4 py-3',
+                  server.disabled && 'opacity-50'
+                )}
               >
                 <Checkbox
                   id={`mcp-${server.name}`}
-                  checked={enabledServers.includes(server.name)}
+                  checked={
+                    !server.disabled &&
+                    enabledServers.includes(server.name)
+                  }
                   onCheckedChange={() => handleToggle(server.name)}
+                  disabled={server.disabled}
                 />
                 <Label
                   htmlFor={`mcp-${server.name}`}
-                  className="flex-1 cursor-pointer text-sm font-medium"
+                  className={cn(
+                    'flex-1 text-sm font-medium',
+                    server.disabled
+                      ? 'cursor-default'
+                      : 'cursor-pointer'
+                  )}
                 >
                   {server.name}
                 </Label>
                 <span className="text-xs text-muted-foreground">
-                  {server.scope}
+                  {server.disabled ? 'disabled' : server.scope}
                 </span>
               </div>
             ))}

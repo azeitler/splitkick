@@ -97,7 +97,12 @@ import {
 } from './VirtualizedMessageList'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
-import { useMcpServers, buildMcpConfigJson } from '@/services/mcp'
+import {
+  useMcpServers,
+  buildMcpConfigJson,
+  invalidateMcpServers,
+  getNewServersToAutoEnable,
+} from '@/services/mcp'
 import type { McpServerInfo } from '@/types/chat'
 import { useGitStatus } from '@/services/git-status'
 import { isNativeApp } from '@/lib/environment'
@@ -458,16 +463,34 @@ export function ChatWindow({
   // MCP servers: fetch available servers and get per-session enabled state
   const { data: mcpServersData } = useMcpServers(activeWorktreePath)
   const availableMcpServers = mcpServersData ?? []
+
+  // Re-read MCP config when switching worktrees
+  useEffect(() => {
+    if (activeWorktreePath) invalidateMcpServers(activeWorktreePath)
+  }, [activeWorktreePath])
   const sessionEnabledMcpServers = useChatStore(state =>
     deferredSessionId
       ? state.enabledMcpServers[deferredSessionId]
       : undefined
   )
-  const enabledMcpServers =
+  // Resolve enabled servers from session → project → global defaults,
+  // then auto-include any newly discovered (non-disabled) servers
+  const baseEnabledMcpServers =
     sessionEnabledMcpServers ??
     project?.enabled_mcp_servers ??
     preferences?.default_enabled_mcp_servers ??
     []
+  const newAutoEnabled = useMemo(
+    () => getNewServersToAutoEnable(availableMcpServers, baseEnabledMcpServers),
+    [availableMcpServers, baseEnabledMcpServers]
+  )
+  const enabledMcpServers = useMemo(
+    () =>
+      newAutoEnabled.length > 0
+        ? [...baseEnabledMcpServers, ...newAutoEnabled]
+        : baseEnabledMcpServers,
+    [baseEnabledMcpServers, newAutoEnabled]
+  )
 
   // CLI version for adaptive thinking feature detection
   const { data: cliStatus } = useClaudeCliStatus()

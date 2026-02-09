@@ -1091,12 +1091,17 @@ export const ChatToolbar = memo(function ChatToolbar({
                 {availableMcpServers.map(server => (
                   <DropdownMenuCheckboxItem
                     key={server.name}
-                    checked={enabledMcpServers.includes(server.name)}
+                    checked={
+                      !server.disabled &&
+                      enabledMcpServers.includes(server.name)
+                    }
                     onCheckedChange={() => onToggleMcpServer(server.name)}
+                    disabled={server.disabled}
+                    className={server.disabled ? 'opacity-50' : undefined}
                   >
                     {server.name}
                     <span className="ml-auto pl-4 text-xs text-muted-foreground">
-                      {server.scope}
+                      {server.disabled ? 'disabled' : server.scope}
                     </span>
                   </DropdownMenuCheckboxItem>
                 ))}

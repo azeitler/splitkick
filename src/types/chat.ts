@@ -721,6 +721,8 @@ export interface McpServerInfo {
   config: unknown
   /** Configuration scope: user (~/.claude.json global), local (~/.claude.json per-project), project (.mcp.json) */
   scope: 'user' | 'local' | 'project'
+  /** Whether the server has "disabled": true in its config */
+  disabled: boolean
 }
 
 // ============================================================================
