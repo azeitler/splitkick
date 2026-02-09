@@ -92,7 +92,8 @@ export function useGitOperations({
 
     const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
     setWorktreeLoading(activeWorktreeId, 'commit')
-    const toastId = toast.loading('Creating commit...')
+    const branch = worktree?.branch ?? ''
+    const toastId = toast.loading(`Creating commit on ${branch}...`)
 
     try {
       const result = await invoke<CreateCommitResponse>(
@@ -119,6 +120,7 @@ export function useGitOperations({
   }, [
     activeWorktreeId,
     activeWorktreePath,
+    worktree?.branch,
     preferences?.magic_prompts?.commit_message,
     preferences?.magic_prompt_models?.commit_message_model,
   ])
@@ -129,7 +131,8 @@ export function useGitOperations({
 
     const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
     setWorktreeLoading(activeWorktreeId, 'commit')
-    const toastId = toast.loading('Committing and pushing...')
+    const branch = worktree?.branch ?? ''
+    const toastId = toast.loading(`Committing and pushing on ${branch}...`)
 
     try {
       const result = await invoke<CreateCommitResponse>(
@@ -156,6 +159,7 @@ export function useGitOperations({
   }, [
     activeWorktreeId,
     activeWorktreePath,
+    worktree?.branch,
     preferences?.magic_prompts?.commit_message,
     preferences?.magic_prompt_models?.commit_message_model,
   ])
@@ -166,7 +170,8 @@ export function useGitOperations({
 
     const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
     setWorktreeLoading(activeWorktreeId, 'commit')
-    const toastId = toast.loading('Pulling changes...')
+    const branch = worktree?.branch ?? ''
+    const toastId = toast.loading(`Pulling changes on ${branch}...`)
 
     try {
       const baseBranch = project?.default_branch ?? 'main'
@@ -182,7 +187,7 @@ export function useGitOperations({
     } finally {
       clearWorktreeLoading(activeWorktreeId)
     }
-  }, [activeWorktreeId, activeWorktreePath, project?.default_branch])
+  }, [activeWorktreeId, activeWorktreePath, worktree?.branch, project?.default_branch])
 
   // Handle Push - pushes commits to remote
   const handlePush = useCallback(async () => {
@@ -190,7 +195,8 @@ export function useGitOperations({
 
     const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
     setWorktreeLoading(activeWorktreeId, 'commit')
-    const toastId = toast.loading('Pushing changes...')
+    const branch = worktree?.branch ?? ''
+    const toastId = toast.loading(`Pushing ${branch}...`)
 
     try {
       await gitPush(activeWorktreePath, worktree?.pr_number)
@@ -201,7 +207,7 @@ export function useGitOperations({
     } finally {
       clearWorktreeLoading(activeWorktreeId)
     }
-  }, [activeWorktreeId, activeWorktreePath, worktree?.pr_number])
+  }, [activeWorktreeId, activeWorktreePath, worktree?.branch, worktree?.pr_number])
 
   // Handle Open PR - creates PR with AI-generated title and description in background
   const handleOpenPr = useCallback(async () => {
@@ -209,7 +215,8 @@ export function useGitOperations({
 
     const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
     setWorktreeLoading(activeWorktreeId, 'pr')
-    const toastId = toast.loading('Creating PR...')
+    const branch = worktree?.branch ?? ''
+    const toastId = toast.loading(`Creating PR for ${branch}...`)
 
     try {
       const result = await invoke<CreatePrResponse>(
@@ -259,7 +266,8 @@ export function useGitOperations({
 
     const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
     setWorktreeLoading(activeWorktreeId, 'review')
-    const toastId = toast.loading('Running AI code review...')
+    const branch = worktree?.branch ?? ''
+    const toastId = toast.loading(`Reviewing ${branch}...`)
 
     try {
       const result = await invoke<ReviewResponse>('run_review_with_ai', {

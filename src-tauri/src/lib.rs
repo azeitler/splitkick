@@ -1439,6 +1439,7 @@ pub fn run() {
                 // Silence noisy external crates
                 .level_for("globset", log::LevelFilter::Warn)
                 .level_for("ignore", log::LevelFilter::Warn)
+                .level_for("tauri_plugin_updater", log::LevelFilter::Info)
                 .targets(log_targets)
                 .build(),
         )

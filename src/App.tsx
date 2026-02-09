@@ -478,11 +478,19 @@ function App() {
                 await relaunch()
               }
             } catch (updateError) {
-              logger.error(`Update installation failed: ${String(updateError)}`)
-              await message(
-                `Update failed: There was a problem with the automatic download.\n\n${String(updateError)}`,
-                { title: 'Update Failed', kind: 'error' }
-              )
+              const errorStr = String(updateError)
+              logger.error(`Update installation failed: ${errorStr}`)
+              if (errorStr.includes('invalid updater binary format')) {
+                await message(
+                  `A new version (${update.version}) is available, but auto-update is not supported for this installation type.\n\nPlease update manually from the GitHub releases page or your package manager.`,
+                  { title: 'Update Available', kind: 'info' }
+                )
+              } else {
+                await message(
+                  `Update failed: There was a problem with the automatic download.\n\n${errorStr}`,
+                  { title: 'Update Failed', kind: 'error' }
+                )
+              }
             }
           }
         }

@@ -21,10 +21,20 @@ import {
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
-import { useWorktree } from '@/services/projects'
+import { useWorktree, useProjects } from '@/services/projects'
+import { usePreferences } from '@/services/preferences'
+import { invoke } from '@/lib/transport'
 import { openExternal } from '@/lib/platform'
 import { notify } from '@/lib/notifications'
 import { cn } from '@/lib/utils'
+import { toast } from 'sonner'
+import {
+  gitPull,
+  gitPush,
+  triggerImmediateGitPoll,
+  fetchWorktreesStatus,
+} from '@/services/git-status'
+import type { CreateCommitResponse } from '@/types/projects'
 
 type MagicOption =
   | 'save-context'
@@ -209,6 +219,84 @@ export function MagicModal() {
   )
 
   const selectedProjectId = useProjectsStore(state => state.selectedProjectId)
+  const { data: preferences } = usePreferences()
+  const { data: projects } = useProjects()
+  const project = worktree
+    ? projects?.find(p => p.id === worktree.project_id)
+    : null
+
+  // Direct git execution for when ChatWindow isn't rendered (project canvas)
+  const executeGitDirectly = useCallback(
+    async (option: MagicOption) => {
+      if (!selectedWorktreeId || !worktree?.path) return
+
+      const { setWorktreeLoading, clearWorktreeLoading } =
+        useChatStore.getState()
+
+      switch (option) {
+        case 'commit':
+        case 'commit-and-push': {
+          setWorktreeLoading(selectedWorktreeId, 'commit')
+          const isPush = option === 'commit-and-push'
+          const branch = worktree.branch ?? ''
+          const toastId = toast.loading(
+            isPush ? `Committing and pushing on ${branch}...` : `Creating commit on ${branch}...`
+          )
+          try {
+            const result = await invoke<CreateCommitResponse>(
+              'create_commit_with_ai',
+              {
+                worktreePath: worktree.path,
+                customPrompt: preferences?.magic_prompts?.commit_message,
+                push: isPush,
+                model: preferences?.magic_prompt_models?.commit_message_model,
+              }
+            )
+            triggerImmediateGitPoll()
+            if (worktree.project_id) fetchWorktreesStatus(worktree.project_id)
+            const prefix = isPush ? 'Committed and pushed' : 'Committed'
+            toast.success(`${prefix}: ${result.message.split('\n')[0]}`, {
+              id: toastId,
+            })
+          } catch (error) {
+            toast.error(`Failed: ${error}`, { id: toastId })
+          } finally {
+            clearWorktreeLoading(selectedWorktreeId)
+          }
+          break
+        }
+        case 'pull': {
+          setWorktreeLoading(selectedWorktreeId, 'pull')
+          const toastId = toast.loading(`Pulling changes on ${worktree.branch}...`)
+          try {
+            const baseBranch = project?.default_branch ?? 'main'
+            await gitPull(worktree.path, baseBranch)
+            triggerImmediateGitPoll()
+            if (worktree.project_id) fetchWorktreesStatus(worktree.project_id)
+            toast.success('Changes pulled', { id: toastId })
+          } catch (error) {
+            toast.error(`Pull failed: ${error}`, { id: toastId })
+          } finally {
+            clearWorktreeLoading(selectedWorktreeId)
+          }
+          break
+        }
+        case 'push': {
+          const toastId = toast.loading(`Pushing ${worktree.branch}...`)
+          try {
+            await gitPush(worktree.path, worktree.pr_number)
+            triggerImmediateGitPoll()
+            if (worktree.project_id) fetchWorktreesStatus(worktree.project_id)
+            toast.success('Changes pushed', { id: toastId })
+          } catch (error) {
+            toast.error(`Push failed: ${error}`, { id: toastId })
+          }
+          break
+        }
+      }
+    },
+    [selectedWorktreeId, worktree, preferences, project]
+  )
 
   const executeAction = useCallback(
     async (option: MagicOption) => {
@@ -244,6 +332,16 @@ export function MagicModal() {
         return
       }
 
+      // For canvas-allowed git ops: if no ChatWindow rendered, execute directly
+      if (
+        CANVAS_ALLOWED_OPTIONS.has(option) &&
+        !useChatStore.getState().activeWorktreePath
+      ) {
+        setMagicModalOpen(false)
+        executeGitDirectly(option)
+        return
+      }
+
       // Dispatch magic command for ChatWindow to handle
       window.dispatchEvent(
         new CustomEvent('magic-command', { detail: { command: option } })
@@ -251,7 +349,7 @@ export function MagicModal() {
 
       setMagicModalOpen(false)
     },
-    [selectedWorktreeId, selectedProjectId, setMagicModalOpen, worktree?.pr_url, isOnCanvas]
+    [selectedWorktreeId, selectedProjectId, setMagicModalOpen, worktree?.pr_url, isOnCanvas, executeGitDirectly]
   )
 
   // Handle keyboard navigation

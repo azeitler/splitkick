@@ -54,12 +54,23 @@ struct WsAuth {
 /// Resolve the dist directory path at runtime.
 /// Checks multiple locations for development and production scenarios.
 fn resolve_dist_path(app: &AppHandle) -> std::path::PathBuf {
-    // 1. Check if app has a resource dir with dist/
+    // 1. Check if app has a resource dir with dist/ (bundled via resources config)
     if let Ok(resource_dir) = app.path().resource_dir() {
+        log::info!("Resource dir: {}", resource_dir.display());
+
         let dist = resource_dir.join("dist");
         if dist.exists() && dist.join("index.html").exists() {
             log::info!("Serving frontend from resource dir: {}", dist.display());
             return dist;
+        }
+
+        // 1b. Check resource dir itself (flat resources on some platforms)
+        if resource_dir.join("index.html").exists() {
+            log::info!(
+                "Serving frontend from resource dir (flat): {}",
+                resource_dir.display()
+            );
+            return resource_dir;
         }
     }
 
