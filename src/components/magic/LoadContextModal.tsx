@@ -941,7 +941,7 @@ export function LoadContextModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="overflow-hidden p-0 !max-w-[calc(100vw-4rem)] !w-[calc(100vw-4rem)] !h-[calc(100vh-4rem)] font-sans rounded-xl flex flex-col"
+        className="overflow-hidden p-0 !w-screen !h-dvh !max-w-screen !max-h-none !rounded-none sm:!w-[calc(100vw-4rem)] sm:!max-w-[calc(100vw-4rem)] sm:!h-[calc(100vh-4rem)] sm:!rounded-xl font-sans flex flex-col"
         onKeyDown={handleKeyDown}
       >
         <DialogHeader className="px-4 pt-4 pb-2">
@@ -1077,7 +1077,7 @@ export function LoadContextModal({
         {/* Context viewer modal */}
         {viewingContext && (
           <Dialog open={true} onOpenChange={() => setViewingContext(null)}>
-            <DialogContent className="!max-w-[calc(100vw-8rem)] !w-[calc(100vw-8rem)] !h-[calc(100vh-8rem)] flex flex-col">
+            <DialogContent className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none sm:!w-[calc(100vw-8rem)] sm:!max-w-[calc(100vw-8rem)] sm:!h-[calc(100vh-8rem)] sm:!rounded-lg flex flex-col">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
                   {viewingContext.type === 'issue' && (

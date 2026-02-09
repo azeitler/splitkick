@@ -9,9 +9,7 @@ import {
 } from '@/services/git-status'
 import { useChatStore } from '@/store/chat-store'
 import {
-  ArrowDown,
   ArrowDownToLine,
-  ArrowUp,
   ArrowUpToLine,
   BookmarkPlus,
   Brain,
@@ -39,7 +37,7 @@ import {
   XCircle,
   Zap,
 } from 'lucide-react'
-import { openUrl } from '@tauri-apps/plugin-opener'
+import { openExternal } from '@/lib/platform'
 import { Kbd } from '@/components/ui/kbd'
 import {
   Select,
@@ -187,9 +185,6 @@ interface ChatToolbarProps {
   useAdaptiveThinking: boolean // True when model supports effort (Opus on CLI >= 2.1.32)
 
   // Git state
-  hasBranchUpdates: boolean
-  behindCount: number
-  aheadCount: number
   baseBranch: string
   uncommittedAdded: number
   uncommittedRemoved: number
@@ -302,9 +297,6 @@ export const ChatToolbar = memo(function ChatToolbar({
   selectedEffortLevel,
   thinkingOverrideActive,
   useAdaptiveThinking,
-  hasBranchUpdates,
-  behindCount,
-  aheadCount,
   baseBranch,
   uncommittedAdded,
   uncommittedRemoved,
@@ -390,12 +382,6 @@ export const ChatToolbar = memo(function ChatToolbar({
     },
     [onEffortLevelChange]
   )
-
-  const loadingOperation = useChatStore(state =>
-    worktreeId ? (state.worktreeLoadingOperations[worktreeId] ?? null) : null
-  )
-  const isPulling = loadingOperation === 'pull'
-  const isPushing = loadingOperation === 'push'
 
   const handlePullClick = useCallback(async () => {
     if (!activeWorktreePath || !worktreeId) return
@@ -936,7 +922,7 @@ export const ChatToolbar = memo(function ChatToolbar({
                           className="ml-auto shrink-0 rounded p-0.5 hover:bg-accent"
                           onClick={e => {
                             e.stopPropagation()
-                            openUrl(
+                            openExternal(
                               `https://github.com/${ctx.repoOwner}/${ctx.repoName}/issues/${ctx.number}`
                             )
                           }}
@@ -970,7 +956,7 @@ export const ChatToolbar = memo(function ChatToolbar({
                           className="ml-auto shrink-0 rounded p-0.5 hover:bg-accent"
                           onClick={e => {
                             e.stopPropagation()
-                            openUrl(
+                            openExternal(
                               `https://github.com/${ctx.repoOwner}/${ctx.repoName}/pull/${ctx.number}`
                             )
                           }}
@@ -1010,76 +996,6 @@ export const ChatToolbar = memo(function ChatToolbar({
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-          </>
-        )}
-
-        {/* Pull button - shown when behind base branch (desktop only) */}
-        {hasBranchUpdates && (
-          <>
-            <div className="hidden @md:block h-4 w-px bg-border/50" />
-            <button
-              type="button"
-              className="hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-              onClick={handlePullClick}
-              disabled={isPulling}
-              title={`${behindCount} commit${behindCount === 1 ? '' : 's'} behind ${baseBranch}`}
-            >
-              <ArrowDown className="h-3.5 w-3.5" />
-              <span>Pull {behindCount}</span>
-            </button>
-          </>
-        )}
-
-        {/* Push button - shown when ahead of remote (desktop only) */}
-        {aheadCount > 0 && (
-          <>
-            <div className="hidden @md:block h-4 w-px bg-border/50" />
-            <button
-              type="button"
-              className="hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-orange-500 transition-colors hover:bg-muted/80 hover:text-orange-400 disabled:pointer-events-none disabled:opacity-50"
-              onClick={handlePushClick}
-              disabled={isPushing}
-              title={`${aheadCount} unpushed commit${aheadCount === 1 ? '' : 's'}`}
-            >
-              <ArrowUp className="h-3.5 w-3.5" />
-              <span>Push {aheadCount}</span>
-            </button>
-          </>
-        )}
-
-        {/* Uncommitted diff stats - desktop only */}
-        {(uncommittedAdded > 0 || uncommittedRemoved > 0) && (
-          <>
-            <div className="hidden @md:block h-4 w-px bg-border/50" />
-            <button
-              type="button"
-              className="hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground hover:bg-muted/80 transition-colors cursor-pointer"
-              title="Click to view uncommitted changes"
-              onClick={handleUncommittedDiffClick}
-            >
-              <Pencil className="h-3 w-3" />
-              <span className="text-green-500">+{uncommittedAdded}</span>
-              <span>/</span>
-              <span className="text-red-500">-{uncommittedRemoved}</span>
-            </button>
-          </>
-        )}
-
-        {/* Branch diff stats - desktop only */}
-        {(branchDiffAdded > 0 || branchDiffRemoved > 0) && (
-          <>
-            <div className="hidden @md:block h-4 w-px bg-border/50" />
-            <button
-              type="button"
-              className="hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground hover:bg-muted/80 transition-colors cursor-pointer"
-              title={`Click to view diff vs ${baseBranch}`}
-              onClick={handleBranchDiffClick}
-            >
-              <GitBranch className="h-3 w-3" />
-              <span className="text-green-500">+{branchDiffAdded}</span>
-              <span>/</span>
-              <span className="text-red-500">-{branchDiffRemoved}</span>
-            </button>
           </>
         )}
 
@@ -1439,7 +1355,7 @@ export const ChatToolbar = memo(function ChatToolbar({
       {/* Context viewer dialog */}
       {viewingContext && (
         <Dialog open={true} onOpenChange={() => setViewingContext(null)}>
-          <DialogContent className="!max-w-[calc(100vw-8rem)] !w-[calc(100vw-8rem)] !h-[calc(100vh-8rem)] flex flex-col">
+          <DialogContent className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none sm:!w-[calc(100vw-8rem)] sm:!max-w-[calc(100vw-8rem)] sm:!h-[calc(100vh-8rem)] sm:!rounded-lg flex flex-col">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 {viewingContext.type === 'issue' && (

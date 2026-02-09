@@ -261,16 +261,12 @@ function executeKeybindingAction(
         activeWorktreePath,
       } = chatStore
 
-      // Block in canvas views (project dashboard or worktree canvas) UNLESS session modal is open
+      // Block only when there's no worktree context at all (e.g., project dashboard with nothing selected)
       const selectedWorktreeId = useProjectsStore.getState().selectedWorktreeId
       const worktreeIdToCheck = selectedWorktreeId ?? activeWorktreeId
-      const isViewingCanvas = worktreeIdToCheck
-        ? chatStore.isViewingCanvasTab(worktreeIdToCheck)
-        : false
-      const sessionModalOpen = uiStore.sessionChatModalOpen
 
-      if (!sessionModalOpen && (!activeWorktreePath || isViewingCanvas)) {
-        notify('Open a session to use magic commands', undefined, {
+      if (!worktreeIdToCheck && !activeWorktreePath) {
+        notify('Select a worktree to use magic commands', undefined, {
           type: 'error',
         })
         break

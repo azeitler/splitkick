@@ -324,23 +324,25 @@ fn default_show_keybinding_hints() -> bool {
 // Magic Prompts - Customizable prompts for AI-powered features
 // =============================================================================
 
-/// Customizable prompts for AI-powered features
+/// Customizable prompts for AI-powered features.
+/// Fields are Option<String>: None = use current app default (auto-updates on new versions),
+/// Some(text) = user customization (preserved across updates).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MagicPrompts {
-    #[serde(default = "default_investigate_issue_prompt")]
-    pub investigate_issue: String,
-    #[serde(default = "default_investigate_pr_prompt")]
-    pub investigate_pr: String,
-    #[serde(default = "default_pr_content_prompt")]
-    pub pr_content: String,
-    #[serde(default = "default_commit_message_prompt")]
-    pub commit_message: String,
-    #[serde(default = "default_code_review_prompt")]
-    pub code_review: String,
-    #[serde(default = "default_context_summary_prompt")]
-    pub context_summary: String,
-    #[serde(default = "default_resolve_conflicts_prompt")]
-    pub resolve_conflicts: String,
+    #[serde(default)]
+    pub investigate_issue: Option<String>,
+    #[serde(default)]
+    pub investigate_pr: Option<String>,
+    #[serde(default)]
+    pub pr_content: Option<String>,
+    #[serde(default)]
+    pub commit_message: Option<String>,
+    #[serde(default)]
+    pub code_review: Option<String>,
+    #[serde(default)]
+    pub context_summary: Option<String>,
+    #[serde(default)]
+    pub resolve_conflicts: Option<String>,
 }
 
 fn default_investigate_issue_prompt() -> String {
@@ -548,13 +550,37 @@ impl Default for MagicPromptModels {
 impl Default for MagicPrompts {
     fn default() -> Self {
         Self {
-            investigate_issue: default_investigate_issue_prompt(),
-            investigate_pr: default_investigate_pr_prompt(),
-            pr_content: default_pr_content_prompt(),
-            commit_message: default_commit_message_prompt(),
-            code_review: default_code_review_prompt(),
-            context_summary: default_context_summary_prompt(),
-            resolve_conflicts: default_resolve_conflicts_prompt(),
+            investigate_issue: None,
+            investigate_pr: None,
+            pr_content: None,
+            commit_message: None,
+            code_review: None,
+            context_summary: None,
+            resolve_conflicts: None,
+        }
+    }
+}
+
+impl MagicPrompts {
+    /// Migrate prompts that match the current default to None.
+    /// This ensures users who never customized a prompt get auto-updated defaults.
+    fn migrate_defaults(&mut self) {
+        let defaults: [(fn() -> String, &mut Option<String>); 7] = [
+            (default_investigate_issue_prompt, &mut self.investigate_issue),
+            (default_investigate_pr_prompt, &mut self.investigate_pr),
+            (default_pr_content_prompt, &mut self.pr_content),
+            (default_commit_message_prompt, &mut self.commit_message),
+            (default_code_review_prompt, &mut self.code_review),
+            (default_context_summary_prompt, &mut self.context_summary),
+            (default_resolve_conflicts_prompt, &mut self.resolve_conflicts),
+        ];
+
+        for (default_fn, field) in defaults {
+            if let Some(ref value) = field {
+                if value == &default_fn() {
+                    *field = None;
+                }
+            }
         }
     }
 }
@@ -740,10 +766,14 @@ async fn load_preferences(app: AppHandle) -> Result<AppPreferences, String> {
         format!("Failed to read preferences file: {e}")
     })?;
 
-    let preferences: AppPreferences = serde_json::from_str(&contents).map_err(|e| {
+    let mut preferences: AppPreferences = serde_json::from_str(&contents).map_err(|e| {
         log::error!("Failed to parse preferences JSON: {e}");
         format!("Failed to parse preferences: {e}")
     })?;
+
+    // Migrate magic prompts: convert prompts matching current defaults to None
+    // so they auto-update when new defaults are shipped
+    preferences.magic_prompts.migrate_defaults();
 
     log::trace!("Successfully loaded preferences");
     Ok(preferences)

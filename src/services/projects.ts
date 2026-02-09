@@ -24,7 +24,8 @@ import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 
-import { hasBackend, isNativeApp } from '@/lib/environment'
+import { hasBackend } from '@/lib/environment'
+import { openExternal } from '@/lib/platform'
 
 // Check if a backend is available (Tauri IPC or WebSocket)
 // Kept as `isTauri` for backward compatibility across the codebase
@@ -1598,13 +1599,7 @@ export function useOpenBranchOnGitHub() {
         branch,
       })
 
-      // Open URL based on environment
-      if (isNativeApp()) {
-        const { openUrl } = await import('@tauri-apps/plugin-opener')
-        await openUrl(url)
-      } else {
-        window.open(url, '_blank')
-      }
+      await openExternal(url)
 
       logger.info('Opened branch on GitHub', { url })
     },
@@ -1835,13 +1830,7 @@ export function useOpenProjectOnGitHub() {
         repoPath: project.path,
       })
 
-      // Open URL based on environment
-      if (isNativeApp()) {
-        const { openUrl } = await import('@tauri-apps/plugin-opener')
-        await openUrl(url)
-      } else {
-        window.open(url, '_blank')
-      }
+      await openExternal(url)
 
       logger.info('Opened project on GitHub', { url })
     },

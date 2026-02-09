@@ -24,12 +24,13 @@ import { CanvasGrid } from './CanvasGrid'
 import { KeybindingHints } from '@/components/ui/keybinding-hints'
 import { usePreferences } from '@/services/preferences'
 import { DEFAULT_KEYBINDINGS } from '@/types/keybindings'
-import { Search, Loader2, MoreHorizontal, Settings } from 'lucide-react'
+import { Search, Loader2, MoreHorizontal, Settings, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
@@ -307,6 +308,15 @@ export function SessionCanvasView({
                   projectId={worktree.project_id}
                 />
               )}
+              <GitStatusBadges
+                behindCount={behindCount}
+                unpushedCount={unpushedCount}
+                diffAdded={diffAdded}
+                diffRemoved={diffRemoved}
+                onPull={handlePull}
+                onPush={handlePush}
+                onDiffClick={handleDiffClick}
+              />
               {worktree?.project_id && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -321,6 +331,17 @@ export function SessionCanvasView({
                   <DropdownMenuContent align="start">
                     <DropdownMenuItem
                       onSelect={() =>
+                        window.dispatchEvent(
+                          new CustomEvent('create-new-session')
+                        )
+                      }
+                    >
+                      <Plus className="h-4 w-4" />
+                      New Session
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onSelect={() =>
                         useProjectsStore
                           .getState()
                           .openProjectSettings(worktree.project_id)
@@ -333,15 +354,6 @@ export function SessionCanvasView({
                 </DropdownMenu>
               )}
             </div>
-            <GitStatusBadges
-              behindCount={behindCount}
-              unpushedCount={unpushedCount}
-              diffAdded={diffAdded}
-              diffRemoved={diffRemoved}
-              onPull={handlePull}
-              onPush={handlePush}
-              onDiffClick={handleDiffClick}
-            />
           </div>
 
           <div className="relative flex-1 max-w-md">

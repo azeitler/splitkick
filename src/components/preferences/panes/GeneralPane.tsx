@@ -85,8 +85,8 @@ const InlineField: React.FC<{
   description?: React.ReactNode
   children: React.ReactNode
 }> = ({ label, description, children }) => (
-  <div className="flex items-center gap-4">
-    <div className="w-96 shrink-0 space-y-0.5">
+  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+    <div className="space-y-0.5 sm:w-96 sm:shrink-0">
       <Label className="text-sm text-foreground">{label}</Label>
       {description && (
         <div className="text-xs text-muted-foreground truncate">
@@ -462,7 +462,7 @@ export const GeneralPane: React.FC = () => {
               value={preferences?.selected_model ?? 'opus'}
               onValueChange={handleModelChange}
             >
-              <SelectTrigger className="w-40">
+              <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -483,7 +483,7 @@ export const GeneralPane: React.FC = () => {
               value={preferences?.thinking_level ?? 'off'}
               onValueChange={handleThinkingLevelChange}
             >
-              <SelectTrigger className="w-40">
+              <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -504,7 +504,7 @@ export const GeneralPane: React.FC = () => {
               value={preferences?.default_effort_level ?? 'high'}
               onValueChange={handleEffortLevelChange}
             >
-              <SelectTrigger className="w-40">
+              <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -593,7 +593,7 @@ export const GeneralPane: React.FC = () => {
                 value={preferences?.editor ?? 'vscode'}
                 onValueChange={handleEditorChange}
               >
-                <SelectTrigger className="w-40">
+                <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -616,7 +616,7 @@ export const GeneralPane: React.FC = () => {
                 value={preferences?.terminal ?? 'terminal'}
                 onValueChange={handleTerminalChange}
               >
-                <SelectTrigger className="w-40">
+                <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -638,7 +638,7 @@ export const GeneralPane: React.FC = () => {
               value={String(preferences?.git_poll_interval ?? 60)}
               onValueChange={handleGitPollIntervalChange}
             >
-              <SelectTrigger className="w-40">
+              <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -659,7 +659,7 @@ export const GeneralPane: React.FC = () => {
               value={String(preferences?.remote_poll_interval ?? 60)}
               onValueChange={handleRemotePollIntervalChange}
             >
-              <SelectTrigger className="w-40">
+              <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -684,7 +684,7 @@ export const GeneralPane: React.FC = () => {
               value={preferences?.waiting_sound ?? 'none'}
               onValueChange={handleWaitingSoundChange}
             >
-              <SelectTrigger className="w-40">
+              <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -705,7 +705,7 @@ export const GeneralPane: React.FC = () => {
               value={preferences?.review_sound ?? 'none'}
               onValueChange={handleReviewSoundChange}
             >
-              <SelectTrigger className="w-40">
+              <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -770,7 +770,7 @@ export const GeneralPane: React.FC = () => {
               value={String(preferences?.archive_retention_days ?? 30)}
               onValueChange={handleArchiveRetentionChange}
             >
-              <SelectTrigger className="w-48">
+              <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

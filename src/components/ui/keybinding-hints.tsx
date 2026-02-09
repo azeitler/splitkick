@@ -24,7 +24,7 @@ export function KeybindingHints({ hints, className }: KeybindingHintsProps) {
   return (
     <div
       className={cn(
-        'absolute bottom-4 left-4 z-10 inline-flex w-fit items-center gap-4 rounded border border-border/30 bg-background/60 px-3 py-1.5 backdrop-blur-md',
+        'absolute bottom-4 left-4 z-10 hidden sm:inline-flex w-fit items-center gap-4 rounded border border-border/30 bg-background/60 px-3 py-1.5 backdrop-blur-md',
         className
       )}
     >

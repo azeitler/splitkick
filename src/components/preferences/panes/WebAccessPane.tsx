@@ -16,7 +16,7 @@ import { usePreferences, useSavePreferences } from '@/services/preferences'
 import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 import { isNativeApp } from '@/lib/environment'
-import { openUrl } from '@tauri-apps/plugin-opener'
+import { openExternal } from '@/lib/platform'
 
 const SettingsSection: React.FC<{
   title: string
@@ -36,8 +36,8 @@ const InlineField: React.FC<{
   description?: React.ReactNode
   children: React.ReactNode
 }> = ({ label, description, children }) => (
-  <div className="flex items-center gap-4">
-    <div className="w-96 shrink-0 space-y-0.5">
+  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+    <div className="space-y-0.5 sm:w-96 sm:shrink-0">
       <Label className="text-sm text-foreground">{label}</Label>
       {description && (
         <div className="text-xs text-muted-foreground">{description}</div>
@@ -132,14 +132,18 @@ export const WebAccessPane: React.FC = () => {
     }
   }, [savePreferences, preferences, refreshStatus])
 
+  const tokenRequired = preferences?.http_server_token_required ?? true
+
   const handleCopyUrl = useCallback(
     (url: string) => {
-      if (!serverStatus?.token) return
-      const fullUrl = `${url}?token=${serverStatus.token}`
+      const fullUrl =
+        tokenRequired && serverStatus?.token
+          ? `${url}?token=${serverStatus.token}`
+          : url
       navigator.clipboard.writeText(fullUrl)
       toast.success('URL copied to clipboard')
     },
-    [serverStatus?.token]
+    [serverStatus?.token, tokenRequired]
   )
 
   const handleLocalhostOnlyChange = useCallback(
@@ -171,10 +175,11 @@ export const WebAccessPane: React.FC = () => {
   )
 
   const handleCopyToken = useCallback(() => {
-    if (!serverStatus?.token) return
-    navigator.clipboard.writeText(serverStatus.token)
+    const token = serverStatus?.token ?? preferences?.http_server_token
+    if (!token) return
+    navigator.clipboard.writeText(token)
     toast.success('Token copied to clipboard')
-  }, [serverStatus])
+  }, [serverStatus, preferences?.http_server_token])
 
   const handleTokenRequiredChange = useCallback(
     async (checked: boolean) => {
@@ -217,8 +222,9 @@ export const WebAccessPane: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-lg border border-muted p-4">
+      <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 p-4">
         <p className="text-sm text-muted-foreground">
+          <strong className="text-yellow-600 dark:text-yellow-400">Experimental.</strong>{' '}
           Enable HTTP server to access Jean from a web browser on your local
           network. All commands are routed over WebSocket with token
           authentication.
@@ -311,7 +317,7 @@ export const WebAccessPane: React.FC = () => {
             />
           </InlineField>
 
-          {!(preferences?.http_server_token_required ?? true) && (
+          {!tokenRequired && (
             <div className="flex items-start gap-3 rounded-md border border-amber-500/50 bg-amber-500/10 p-3">
               <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
               <div className="text-sm text-amber-600 dark:text-amber-400">
@@ -322,7 +328,7 @@ export const WebAccessPane: React.FC = () => {
             </div>
           )}
 
-          {(preferences?.http_server_token_required ?? true) && (
+          {tokenRequired && (
             <InlineField
               label="Access token"
               description="Token required to connect via browser"
@@ -331,7 +337,7 @@ export const WebAccessPane: React.FC = () => {
                 <Input
                   type={tokenVisible ? 'text' : 'password'}
                   className="w-64 font-mono text-xs"
-                  value={serverStatus?.token ?? ''}
+                  value={serverStatus?.token ?? preferences?.http_server_token ?? ''}
                   readOnly
                 />
                 <Button
@@ -376,11 +382,14 @@ export const WebAccessPane: React.FC = () => {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() =>
-                      openUrl(
-                        `http://localhost:${serverStatus.port}?token=${serverStatus.token}`
+                    onClick={() => {
+                      const base = `http://localhost:${serverStatus.port}`
+                      openExternal(
+                        tokenRequired && serverStatus.token
+                          ? `${base}?token=${serverStatus.token}`
+                          : base
                       )
-                    }
+                    }}
                     title="Open in browser"
                   >
                     <ExternalLink className="h-4 w-4" />
@@ -391,7 +400,7 @@ export const WebAccessPane: React.FC = () => {
                     onClick={() =>
                       handleCopyUrl(`http://localhost:${serverStatus.port}`)
                     }
-                    title="Copy URL with token"
+                    title="Copy URL"
                   >
                     <Copy className="h-4 w-4" />
                   </Button>
@@ -409,11 +418,14 @@ export const WebAccessPane: React.FC = () => {
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() =>
-                        openUrl(
-                          `${serverStatus.url}?token=${serverStatus.token}`
+                      onClick={() => {
+                        const base = serverStatus.url!
+                        openExternal(
+                          tokenRequired && serverStatus.token
+                            ? `${base}?token=${serverStatus.token}`
+                            : base
                         )
-                      }
+                      }}
                       title="Open in browser"
                     >
                       <ExternalLink className="h-4 w-4" />
@@ -423,7 +435,7 @@ export const WebAccessPane: React.FC = () => {
                       size="icon"
                       // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
                       onClick={() => handleCopyUrl(serverStatus.url!)}
-                      title="Copy URL with token"
+                      title="Copy URL"
                     >
                       <Copy className="h-4 w-4" />
                     </Button>

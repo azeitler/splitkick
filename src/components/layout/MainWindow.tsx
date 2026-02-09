@@ -219,7 +219,7 @@ export function MainWindow() {
 
   return (
     <div
-      className={`flex h-screen w-full flex-col overflow-hidden bg-background ${isNativeApp() ? 'rounded-xl' : ''}`}
+      className={`flex h-dvh w-full flex-col overflow-hidden bg-background ${isNativeApp() ? 'rounded-xl' : ''}`}
     >
       {/* Dev Mode Banner */}
       <DevModeBanner />

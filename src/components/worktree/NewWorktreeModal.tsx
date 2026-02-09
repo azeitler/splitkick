@@ -12,7 +12,9 @@ import {
   CircleDot,
   AlertCircle,
   Wand2,
+  Zap,
 } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { isGhAuthError, isNewIssue } from '@/services/github'
 import { useGhLogin } from '@/hooks/useGhLogin'
@@ -61,12 +63,13 @@ interface Tab {
   id: TabId
   label: string
   key: string
+  icon: LucideIcon
 }
 
 const TABS: Tab[] = [
-  { id: 'quick', label: 'Quick Actions', key: 'Q' },
-  { id: 'issues', label: 'Issues', key: 'I' },
-  { id: 'prs', label: 'Pull Requests', key: 'P' },
+  { id: 'quick', label: 'Actions', key: 'Q', icon: Zap },
+  { id: 'issues', label: 'Issues', key: 'I', icon: CircleDot },
+  { id: 'prs', label: 'PRs', key: 'P', icon: GitPullRequest },
 ]
 
 export function NewWorktreeModal() {
@@ -631,7 +634,7 @@ export function NewWorktreeModal() {
   return (
     <Dialog open={newWorktreeModalOpen} onOpenChange={handleOpenChange}>
       <DialogContent
-        className="!w-[90vw] !max-w-[90vw] !h-[85vh] !max-h-[85vh] p-0 flex flex-col overflow-hidden"
+        className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none sm:!w-[90vw] sm:!max-w-[90vw] sm:!h-[85vh] sm:!max-h-[85vh] sm:!rounded-lg p-0 flex flex-col overflow-hidden"
         onKeyDown={handleKeyDown}
       >
         <DialogHeader className="px-4 pt-4 pb-2">
@@ -648,6 +651,7 @@ export function NewWorktreeModal() {
               onClick={() => setActiveTab(tab.id)}
               className={cn(
                 'flex-1 px-4 py-2 text-sm font-medium transition-colors',
+                'flex items-center justify-center gap-1.5',
                 'hover:bg-accent focus:outline-none',
                 'border-b-2',
                 activeTab === tab.id
@@ -655,8 +659,9 @@ export function NewWorktreeModal() {
                   : 'border-transparent text-muted-foreground'
               )}
             >
-              {tab.label}
-              <kbd className="ml-2 text-xs text-muted-foreground bg-muted px-1 py-0.5 rounded">
+              <tab.icon className="h-4 w-4" />
+              <span className="text-xs sm:text-sm">{tab.label}</span>
+              <kbd className="hidden sm:inline ml-0.5 text-xs text-muted-foreground bg-muted px-1 py-0.5 rounded">
                 {getModifierSymbol()}+{tab.key}
               </kbd>
             </button>
@@ -741,14 +746,14 @@ function QuickActionsTab({
   isCreating,
 }: QuickActionsTabProps) {
   return (
-    <div className="flex items-center justify-center flex-1 p-10">
-      <div className="grid grid-cols-2 gap-6 w-full max-w-xl">
+    <div className="flex items-center justify-center flex-1 p-4 sm:p-10">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 w-full max-w-xl">
         {/* Base Session button */}
         <button
           onClick={onBaseSession}
           disabled={isCreating}
           className={cn(
-            'relative flex flex-col items-center justify-center gap-4 aspect-square p-8 rounded-xl text-sm transition-colors',
+            'relative flex flex-col items-center justify-center gap-4 sm:aspect-square p-4 sm:p-8 rounded-xl text-sm transition-colors',
             'hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring',
             'border border-border'
           )}
@@ -762,7 +767,7 @@ function QuickActionsTab({
               Work directly on the project folder
             </span>
           </div>
-          <kbd className="absolute top-3 right-3 text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+          <kbd className="hidden sm:block absolute top-3 right-3 text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
             B
           </kbd>
         </button>
@@ -772,7 +777,7 @@ function QuickActionsTab({
           onClick={onCreateWorktree}
           disabled={isCreating}
           className={cn(
-            'relative flex flex-col items-center justify-center gap-4 aspect-square p-8 rounded-xl text-sm transition-colors',
+            'relative flex flex-col items-center justify-center gap-4 sm:aspect-square p-4 sm:p-8 rounded-xl text-sm transition-colors',
             'hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring',
             'border border-border'
           )}
@@ -788,7 +793,7 @@ function QuickActionsTab({
               Create an isolated branch for your task
             </span>
           </div>
-          <kbd className="absolute top-3 right-3 text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+          <kbd className="hidden sm:block absolute top-3 right-3 text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
             N
           </kbd>
         </button>
@@ -1145,7 +1150,7 @@ function IssueItem({
       data-item-index={index}
       onMouseEnter={onMouseEnter}
       className={cn(
-        'group w-full flex items-start gap-3 px-3 py-2 text-left transition-colors',
+        'group w-full flex items-start gap-3 px-3 py-2.5 sm:py-2 text-left transition-colors',
         'hover:bg-accent',
         isSelected && 'bg-accent',
         isCreating && 'opacity-50'
@@ -1208,7 +1213,7 @@ function IssueItem({
         title="Create worktree and investigate issue"
         className={cn(
           'opacity-50 hover:opacity-100 transition-opacity',
-          'p-1.5 rounded-md hover:bg-accent-foreground/10',
+          'p-2.5 sm:p-1.5 rounded-md hover:bg-accent-foreground/10',
           'focus:outline-none focus:opacity-100',
           'disabled:opacity-30 disabled:cursor-not-allowed'
         )}
@@ -1243,7 +1248,7 @@ function PRItem({
       data-item-index={index}
       onMouseEnter={onMouseEnter}
       className={cn(
-        'group w-full flex items-start gap-3 px-3 py-2 text-left transition-colors',
+        'group w-full flex items-start gap-3 px-3 py-2.5 sm:py-2 text-left transition-colors',
         'hover:bg-accent',
         isSelected && 'bg-accent',
         isCreating && 'opacity-50'
@@ -1315,7 +1320,7 @@ function PRItem({
         title="Create worktree and investigate PR"
         className={cn(
           'opacity-50 hover:opacity-100 transition-opacity',
-          'p-1.5 rounded-md hover:bg-accent-foreground/10',
+          'p-2.5 sm:p-1.5 rounded-md hover:bg-accent-foreground/10',
           'focus:outline-none focus:opacity-100',
           'disabled:opacity-30 disabled:cursor-not-allowed'
         )}

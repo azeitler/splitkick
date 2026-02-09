@@ -18,6 +18,7 @@ import { Popover, PopoverContent, PopoverAnchor } from '@/components/ui/popover'
 import { useClaudeSkills, useClaudeCommands } from '@/services/skills'
 import type { ClaudeSkill, ClaudeCommand, PendingSkill } from '@/types/chat'
 import { cn } from '@/lib/utils'
+import { generateId } from '@/lib/uuid'
 
 export interface SlashPopoverHandle {
   moveUp: () => void
@@ -108,7 +109,7 @@ export function SlashPopover({
   const handleSelectSkill = useCallback(
     (skill: ClaudeSkill) => {
       const pendingSkill: PendingSkill = {
-        id: crypto.randomUUID(),
+        id: generateId(),
         name: skill.name,
         path: skill.path,
       }

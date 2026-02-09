@@ -22,7 +22,7 @@ import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
 import { useWorktree } from '@/services/projects'
-import { isNativeApp } from '@/lib/environment'
+import { openExternal } from '@/lib/platform'
 import { notify } from '@/lib/notifications'
 import { cn } from '@/lib/utils'
 
@@ -39,6 +39,14 @@ type MagicOption =
   | 'resolve-conflicts'
   | 'investigate'
   | 'checkout-pr'
+
+/** Options that work on canvas without an open session (git-only operations) */
+const CANVAS_ALLOWED_OPTIONS = new Set<MagicOption>([
+  'commit',
+  'commit-and-push',
+  'pull',
+  'push',
+])
 
 interface MagicOptionItem {
   id: MagicOption
@@ -160,6 +168,15 @@ export function MagicModal() {
 
   const hasOpenPr = Boolean(worktree?.pr_url)
 
+  // Detect if we're on a canvas view (without a session modal open)
+  const isViewingCanvasTab = useChatStore(state => {
+    const wtId =
+      selectedWorktreeIdFromProjects ?? state.activeWorktreeId
+    return wtId ? (state.viewingCanvasTab[wtId] ?? true) : false
+  })
+  const sessionModalOpen = useUIStore(state => state.sessionChatModalOpen)
+  const isOnCanvas = isViewingCanvasTab && !sessionModalOpen
+
   // Build sections dynamically based on PR state
   const magicSections = useMemo(
     () => buildMagicSections(hasOpenPr),
@@ -183,18 +200,23 @@ export function MagicModal() {
   const handleOpenChange = useCallback(
     (open: boolean) => {
       if (open && !hasInitializedRef.current) {
-        setSelectedOption('save-context')
+        setSelectedOption(isOnCanvas ? 'commit' : 'save-context')
         hasInitializedRef.current = true
       }
       setMagicModalOpen(open)
     },
-    [setMagicModalOpen]
+    [setMagicModalOpen, isOnCanvas]
   )
 
   const selectedProjectId = useProjectsStore(state => state.selectedProjectId)
 
   const executeAction = useCallback(
     async (option: MagicOption) => {
+      // Block disabled options on canvas
+      if (isOnCanvas && !CANVAS_ALLOWED_OPTIONS.has(option)) {
+        return
+      }
+
       // checkout-pr only needs a project selected, not a worktree
       // Handle it directly here since ChatWindow may not be rendered
       if (option === 'checkout-pr') {
@@ -215,31 +237,9 @@ export function MagicModal() {
         return
       }
 
-      // Magic commands only work in full view (ChatWindow), not in canvas views
-      // UNLESS a session modal is open
-      const chatStore = useChatStore.getState()
-      const activeWorktreePath = chatStore.activeWorktreePath
-      const isViewingCanvas = chatStore.isViewingCanvasTab(selectedWorktreeId)
-      const sessionModalOpen = useUIStore.getState().sessionChatModalOpen
-
-      // Block if: no ChatWindow (project dashboard) OR viewing canvas tab within ChatWindow
-      // Exception: allow if session modal is open
-      if (!sessionModalOpen && (!activeWorktreePath || isViewingCanvas)) {
-        notify('Open a session to use magic commands', undefined, {
-          type: 'error',
-        })
-        setMagicModalOpen(false)
-        return
-      }
-
       // If PR already exists, open it in the browser instead of creating a new one
       if (option === 'open-pr' && worktree?.pr_url) {
-        if (isNativeApp()) {
-          const { openUrl } = await import('@tauri-apps/plugin-opener')
-          await openUrl(worktree.pr_url)
-        } else {
-          window.open(worktree.pr_url, '_blank')
-        }
+        await openExternal(worktree.pr_url)
         setMagicModalOpen(false)
         return
       }
@@ -251,7 +251,7 @@ export function MagicModal() {
 
       setMagicModalOpen(false)
     },
-    [selectedWorktreeId, selectedProjectId, setMagicModalOpen, worktree?.pr_url]
+    [selectedWorktreeId, selectedProjectId, setMagicModalOpen, worktree?.pr_url, isOnCanvas]
   )
 
   // Handle keyboard navigation
@@ -308,16 +308,21 @@ export function MagicModal() {
               {section.options.map(option => {
                 const Icon = option.icon
                 const isSelected = selectedOption === option.id
+                const isDisabled =
+                  isOnCanvas && !CANVAS_ALLOWED_OPTIONS.has(option.id)
 
                 return (
                   <button
                     key={option.id}
-                    onClick={() => executeAction(option.id)}
+                    onClick={() => !isDisabled && executeAction(option.id)}
                     onMouseEnter={() => setSelectedOption(option.id)}
                     className={cn(
                       'w-full flex items-center justify-between px-4 py-2 text-sm transition-colors',
-                      'hover:bg-accent focus:outline-none',
-                      isSelected && 'bg-accent'
+                      'focus:outline-none',
+                      isDisabled
+                        ? 'opacity-40 cursor-not-allowed'
+                        : 'hover:bg-accent',
+                      isSelected && !isDisabled && 'bg-accent'
                     )}
                   >
                     <div className="flex items-center gap-3">

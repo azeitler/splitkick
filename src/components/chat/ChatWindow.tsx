@@ -8,6 +8,7 @@ import {
 } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { invoke } from '@/lib/transport'
+import { generateId } from '@/lib/uuid'
 import { toast } from 'sonner'
 import { formatShortcutDisplay, DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -53,6 +54,7 @@ import {
 } from '@/store/chat-store'
 import { usePreferences, useSavePreferences } from '@/services/preferences'
 import type {
+  ChatMessage,
   ToolCall,
   ThinkingLevel,
   EffortLevel,
@@ -64,7 +66,7 @@ import type {
   PendingFile,
 } from '@/types/chat'
 import { isAskUserQuestion, isExitPlanMode, isTodoWrite } from '@/types/chat'
-import { getFilename } from '@/lib/path-utils'
+import { getFilename, normalizePath } from '@/lib/path-utils'
 import { cn } from '@/lib/utils'
 import { PermissionApproval } from './PermissionApproval'
 import { SetupScriptOutput } from './SetupScriptOutput'
@@ -95,6 +97,13 @@ import {
   VirtualizedMessageList,
   type VirtualizedMessageListHandle,
 } from './VirtualizedMessageList'
+import {
+  extractImagePaths,
+  extractTextFilePaths,
+  extractFileMentionPaths,
+  extractSkillPaths,
+  stripAllMarkers,
+} from './message-content-utils'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
 import {
@@ -317,6 +326,7 @@ export function ChatWindow({
   const isViewingCanvasTab = canvasEnabled
     ? canvasOnlyMode || isViewingCanvasTabRaw
     : false
+  const sessionModalOpen = useUIStore(state => state.sessionChatModalOpen)
   const focusChatShortcut = formatShortcutDisplay(
     (preferences?.keybindings?.focus_chat_input ??
       DEFAULT_KEYBINDINGS.focus_chat_input) as string
@@ -404,12 +414,6 @@ export function ChatWindow({
   const { data: attachedSavedContexts } = useAttachedSavedContexts(
     activeWorktreeId ?? null
   )
-  // Use live status if available, otherwise fall back to cached
-  const behindCount =
-    gitStatus?.behind_count ?? worktree?.cached_behind_count ?? 0
-  const aheadCount =
-    gitStatus?.unpushed_count ?? worktree?.cached_unpushed_count ?? 0
-  const hasBranchUpdates = behindCount > 0
   // Diff stats with cached fallback
   const uncommittedAdded =
     gitStatus?.uncommitted_added ?? worktree?.cached_uncommitted_added ?? 0
@@ -1081,6 +1085,11 @@ export function ChatWindow({
       setLastSentMessage(activeSessionId, queuedMsg.message)
       setError(activeSessionId, null)
       addSendingSession(activeSessionId)
+      // Invalidate sessions list so canvas cards pick up running state
+      // even if Zustand re-render is deferred during dialog close
+      queryClient.invalidateQueries({
+        queryKey: chatQueryKeys.sessions(activeWorktreeId),
+      })
       // Capture the execution mode this message is being sent with
       setExecutingMode(activeSessionId, queuedMsg.executionMode)
       // Track the model being used for this session (needed for permission approval flow)
@@ -1136,6 +1145,7 @@ export function ChatWindow({
       activeWorktreePath,
       buildMessageWithRefs,
       sendMessage,
+      queryClient,
       preferences?.parallel_execution_prompt_enabled,
       preferences?.chrome_enabled,
       preferences?.ai_language,
@@ -1299,7 +1309,7 @@ export function ChatWindow({
         .getState()
         .hasManualThinkingOverride(activeSessionId)
       const queuedMessage: QueuedMessage = {
-        id: crypto.randomUUID(),
+        id: generateId(),
         message,
         pendingImages: images,
         pendingFiles: files,
@@ -1769,6 +1779,7 @@ Begin your investigation now.`
     handleCheckoutPR,
     isModal,
     isViewingCanvasTab,
+    sessionModalOpen,
   })
 
   // Listen for command palette context events
@@ -1863,6 +1874,56 @@ Begin your investigation now.`
     inputRef,
     pendingPlanMessage,
   })
+
+  // Copy a sent user message to the clipboard with attachment metadata
+  // When pasted back, ChatInput detects the custom format and restores attachments
+  const handleCopyToInput = useCallback(async (message: ChatMessage) => {
+    // Extract clean text (without attachment markers)
+    const cleanText = stripAllMarkers(message.content)
+
+    // Extract attachment paths from the raw message content
+    const imagePaths = extractImagePaths(message.content)
+    const textFilePaths = extractTextFilePaths(message.content)
+    const fileMentionPaths = extractFileMentionPaths(message.content)
+    const skillPaths = extractSkillPaths(message.content)
+
+    // Build metadata for skill names
+    const skills = skillPaths.map(path => {
+      const parts = normalizePath(path).split('/')
+      const skillsIdx = parts.findIndex(p => p === 'skills')
+      const name =
+        skillsIdx >= 0 && parts[skillsIdx + 1]
+          ? (parts[skillsIdx + 1] ?? getFilename(path))
+          : getFilename(path)
+      return { name, path }
+    })
+
+    // Build JSON metadata for attachments
+    const metadata = JSON.stringify({
+      images: imagePaths,
+      textFiles: textFilePaths,
+      files: fileMentionPaths,
+      skills,
+    })
+
+    // Write to clipboard: plain text + HTML with embedded metadata
+    // The HTML contains a hidden span with JSON so ChatInput can detect it on paste
+    const htmlContent = `<span data-jean-prompt="${encodeURIComponent(metadata)}">${cleanText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>`
+
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'text/plain': new Blob([cleanText], { type: 'text/plain' }),
+          'text/html': new Blob([htmlContent], { type: 'text/html' }),
+        }),
+      ])
+      toast.success('Prompt copied')
+    } catch {
+      // Fallback to plain text
+      await navigator.clipboard.writeText(cleanText)
+      toast.success('Text copied (without attachments)')
+    }
+  }, [])
 
   // Listen for approve-plan keyboard shortcut event
   // Skip when on canvas view (non-modal) - CanvasGrid handles it there
@@ -2081,7 +2142,7 @@ Begin your investigation now.`
       // Commands are executed immediately by sending as the message
       // The command name (e.g., "/commit") is sent directly, Claude CLI interprets it
       const queuedMessage: QueuedMessage = {
-        id: crypto.randomUUID(),
+        id: generateId(),
         message: commandName,
         pendingImages: [],
         pendingFiles: [],
@@ -2304,6 +2365,7 @@ Begin your investigation now.`
                             getSubmittedAnswers={getSubmittedAnswers}
                             areQuestionsSkipped={areQuestionsSkipped}
                             isFindingFixed={isFindingFixed}
+                            onCopyToInput={handleCopyToInput}
                             shouldScrollToBottom={isAtBottom}
                             onScrollToBottomHandled={
                               handleScrollToBottomHandled
@@ -2397,72 +2459,72 @@ Begin your investigation now.`
                 {/* Input container - full width, centered content */}
                 <div className="bg-sidebar">
                   <div className="mx-auto max-w-7xl">
-                    {/* Pending file preview (@ mentions) */}
-                    <FilePreview
-                      files={currentPendingFiles}
-                      onRemove={handleRemovePendingFile}
-                      disabled={isSending}
-                    />
-
-                    {/* Pending image preview */}
-                    <ImagePreview
-                      images={currentPendingImages}
-                      onRemove={handleRemovePendingImage}
-                      disabled={isSending}
-                    />
-
-                    {/* Pending text file preview */}
-                    <TextFilePreview
-                      textFiles={currentPendingTextFiles}
-                      onRemove={handleRemovePendingTextFile}
-                      disabled={isSending}
-                    />
-
-                    {/* Pending skills preview */}
-                    {currentPendingSkills.length > 0 && (
-                      <div className="px-4 md:px-6 pt-2 flex flex-wrap gap-2">
-                        {currentPendingSkills.map(skill => (
-                          <SkillBadge
-                            key={skill.id}
-                            skill={skill}
-                            onRemove={() => handleRemovePendingSkill(skill.id)}
-                          />
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Task widget - shows current session's active todos */}
-                    {/* Show if: has todos AND (no dismissal OR source differs from dismissed message) */}
-                    {activeTodos.length > 0 &&
-                      (dismissedTodoMessageId === null ||
-                        (todoSourceMessageId !== null &&
-                          todoSourceMessageId !== dismissedTodoMessageId)) && (
-                        <div className="px-4 md:px-6 pt-2">
-                          <TodoWidget
-                            todos={normalizeTodosForDisplay(
-                              activeTodos,
-                              isFromStreaming
-                            )}
-                            isStreaming={isSending}
-                            onClose={() =>
-                              setDismissedTodoMessageId(
-                                todoSourceMessageId ?? '__streaming__'
-                              )
-                            }
-                          />
-                        </div>
-                      )}
-
                     {/* Input area - unified container with textarea and toolbar */}
                     <form
                       ref={formRef}
                       onSubmit={handleSubmit}
                       className={cn(
-                        'relative rounded-lg transition-all duration-150',
+                        'relative overflow-hidden rounded-lg transition-all duration-150',
                         isDragging &&
                           'ring-2 ring-primary ring-inset bg-primary/5'
                       )}
                     >
+                      {/* Pending file preview (@ mentions) */}
+                      <FilePreview
+                        files={currentPendingFiles}
+                        onRemove={handleRemovePendingFile}
+                        disabled={isSending}
+                      />
+
+                      {/* Pending image preview */}
+                      <ImagePreview
+                        images={currentPendingImages}
+                        onRemove={handleRemovePendingImage}
+                        disabled={isSending}
+                      />
+
+                      {/* Pending text file preview */}
+                      <TextFilePreview
+                        textFiles={currentPendingTextFiles}
+                        onRemove={handleRemovePendingTextFile}
+                        disabled={isSending}
+                      />
+
+                      {/* Pending skills preview */}
+                      {currentPendingSkills.length > 0 && (
+                        <div className="px-4 md:px-6 pt-2 flex flex-wrap gap-2">
+                          {currentPendingSkills.map(skill => (
+                            <SkillBadge
+                              key={skill.id}
+                              skill={skill}
+                              onRemove={() => handleRemovePendingSkill(skill.id)}
+                            />
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Task widget - shows current session's active todos */}
+                      {/* Show if: has todos AND (no dismissal OR source differs from dismissed message) */}
+                      {activeTodos.length > 0 &&
+                        (dismissedTodoMessageId === null ||
+                          (todoSourceMessageId !== null &&
+                            todoSourceMessageId !== dismissedTodoMessageId)) && (
+                          <div className="px-4 md:px-6 pt-2">
+                            <TodoWidget
+                              todos={normalizeTodosForDisplay(
+                                activeTodos,
+                                isFromStreaming
+                              )}
+                              isStreaming={isSending}
+                              onClose={() =>
+                                setDismissedTodoMessageId(
+                                  todoSourceMessageId ?? '__streaming__'
+                                )
+                              }
+                            />
+                          </div>
+                        )}
+
                       {/* Textarea section */}
                       <div className="px-4 pt-3 pb-2 md:px-6">
                         <ChatInput
@@ -2497,9 +2559,6 @@ Begin your investigation now.`
                           !hasManualThinkingOverride
                         }
                         useAdaptiveThinking={useAdaptiveThinkingFlag}
-                        hasBranchUpdates={hasBranchUpdates}
-                        behindCount={behindCount}
-                        aheadCount={aheadCount}
                         baseBranch={gitStatus?.base_branch ?? 'main'}
                         uncommittedAdded={uncommittedAdded}
                         uncommittedRemoved={uncommittedRemoved}
@@ -2673,7 +2732,7 @@ Begin your investigation now.`
                 setExecutionMode(activeSessionId, 'build')
 
                 const queuedMessage: QueuedMessage = {
-                  id: crypto.randomUUID(),
+                  id: generateId(),
                   message,
                   pendingImages: [],
                   pendingFiles: [],
@@ -2743,7 +2802,7 @@ Begin your investigation now.`
                 setExecutionMode(activeSessionId, 'yolo')
 
                 const queuedMessage: QueuedMessage = {
-                  id: crypto.randomUUID(),
+                  id: generateId(),
                   message,
                   pendingImages: [],
                   pendingFiles: [],
@@ -2830,7 +2889,7 @@ Begin your investigation now.`
                 setExecutionMode(activeSessionId, 'build')
 
                 const queuedMessage: QueuedMessage = {
-                  id: crypto.randomUUID(),
+                  id: generateId(),
                   message,
                   pendingImages: [],
                   pendingFiles: [],
@@ -2900,7 +2959,7 @@ Begin your investigation now.`
                 setExecutionMode(activeSessionId, 'yolo')
 
                 const queuedMessage: QueuedMessage = {
-                  id: crypto.randomUUID(),
+                  id: generateId(),
                   message,
                   pendingImages: [],
                   pendingFiles: [],

@@ -90,6 +90,8 @@ interface VirtualizedMessageListProps {
   areQuestionsSkipped: (sessionId: string) => boolean
   /** Check if a finding has been fixed */
   isFindingFixed: (sessionId: string, key: string) => boolean
+  /** Callback to copy a user message back to the input field */
+  onCopyToInput?: (message: ChatMessage) => void
   /** Whether we should scroll to bottom (new message arrived while at bottom) */
   shouldScrollToBottom?: boolean
   /** Callback when scroll-to-bottom is handled */
@@ -128,6 +130,7 @@ export const VirtualizedMessageList = memo(
         getSubmittedAnswers,
         areQuestionsSkipped,
         isFindingFixed,
+        onCopyToInput,
         shouldScrollToBottom,
         onScrollToBottomHandled,
       },
@@ -304,6 +307,7 @@ export const VirtualizedMessageList = memo(
                   getSubmittedAnswers={getSubmittedAnswers}
                   areQuestionsSkipped={areQuestionsSkipped}
                   isFindingFixed={isFindingFixed}
+                  onCopyToInput={onCopyToInput}
                 />
               </div>
             )

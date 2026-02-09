@@ -5,6 +5,7 @@ import {
   FolderOpen,
   MoreHorizontal,
   Play,
+  Plus,
   Sparkles,
   Terminal,
   Trash2,
@@ -73,6 +74,15 @@ export function WorktreeDropdownMenu({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-48">
+          <DropdownMenuItem
+            onClick={() =>
+              window.dispatchEvent(new CustomEvent('create-new-session'))
+            }
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            New Session
+          </DropdownMenuItem>
+
           {isNativeApp() && runScript && (
             <DropdownMenuItem onClick={handleRun}>
               <Play className="mr-2 h-4 w-4" />

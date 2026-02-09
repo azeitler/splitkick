@@ -20,6 +20,8 @@ interface UseMagicCommandsOptions extends MagicCommandHandlers {
   isModal?: boolean
   /** Whether the main ChatWindow is currently showing canvas tab */
   isViewingCanvasTab?: boolean
+  /** Whether the session chat modal is currently open */
+  sessionModalOpen?: boolean
 }
 
 /**
@@ -46,6 +48,7 @@ export function useMagicCommands({
   handleCheckoutPR,
   isModal = false,
   isViewingCanvasTab = false,
+  sessionModalOpen = false,
 }: UseMagicCommandsOptions): void {
   // Store handlers in ref so event listener always has access to current versions
   const handlersRef = useRef<MagicCommandHandlers>({
@@ -83,10 +86,10 @@ export function useMagicCommands({
   })
 
   useEffect(() => {
-    // If main ChatWindow is showing canvas view, don't register listener here.
-    // The modal ChatWindow (inside SessionChatModal) will handle events instead.
-    // This prevents duplicate event handling when both ChatWindow instances exist.
-    if (!isModal && isViewingCanvasTab) {
+    // If main ChatWindow is showing canvas view AND a session modal is open,
+    // don't register listener here — the modal ChatWindow will handle events instead.
+    // When on canvas WITHOUT a modal, the main ChatWindow still listens (for canvas-allowed commands).
+    if (!isModal && isViewingCanvasTab && sessionModalOpen) {
       return
     }
 
@@ -142,5 +145,5 @@ export function useMagicCommands({
         'magic-command',
         handleMagicCommand as EventListener
       )
-  }, [isModal, isViewingCanvasTab]) // Re-register when modal/canvas state changes
+  }, [isModal, isViewingCanvasTab, sessionModalOpen]) // Re-register when modal/canvas state changes
 }

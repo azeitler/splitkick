@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
+import { generateId } from '@/lib/uuid'
 import type {
   AllSessionsResponse,
   ArchivedSessionEntry,
@@ -1216,7 +1217,7 @@ export function useSendMessage() {
             messages: [
               ...old.messages,
               {
-                id: crypto.randomUUID(),
+                id: generateId(),
                 session_id: sessionId,
                 role: 'user' as const,
                 content: message,

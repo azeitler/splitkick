@@ -24,7 +24,7 @@ export const WorktreeSetupCard = forwardRef<
       tabIndex={-1}
       onClick={onSelect}
       className={cn(
-        'group flex w-[260px] min-h-[132px] flex-col gap-3 rounded-md overflow-hidden bg-muted/30 border p-4 transition-colors text-left cursor-default scroll-mt-28 scroll-mb-20',
+        'group flex w-full sm:w-[260px] min-h-[132px] flex-col gap-3 rounded-md overflow-hidden bg-muted/30 border p-4 transition-colors text-left cursor-default scroll-mt-28 scroll-mb-20',
         'animate-pulse',
         isSelected &&
           'border-primary bg-primary/5 hover:border-primary hover:bg-primary/10'

@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import { cn } from '@/lib/utils'
 import { MacOSWindowControls } from './MacOSWindowControls'
 import { WindowsWindowControls } from './WindowsWindowControls'
-import { isMacOS } from '@/lib/platform'
+import { isMacOS, openExternal } from '@/lib/platform'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -13,7 +13,6 @@ import {
 import { useUIStore } from '@/store/ui-store'
 import { useCommandContext } from '@/lib/commands'
 import { Heart, PanelLeft, PanelLeftClose, Plus, Settings } from 'lucide-react'
-import { openUrl } from '@tauri-apps/plugin-opener'
 import { usePreferences } from '@/services/preferences'
 import { formatShortcutDisplay, DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 import { isNativeApp } from '@/lib/environment'
@@ -135,7 +134,7 @@ export function TitleBar({
             <TooltipTrigger asChild>
               <Button
                 onClick={() =>
-                  openUrl('https://jean.build/sponsorships/')
+                  openExternal('https://jean.build/sponsorships/')
                 }
                 variant="ghost"
                 size="icon"

@@ -13,6 +13,7 @@ import { triggerImmediateGitPoll } from '@/services/git-status'
 import { isAskUserQuestion, isExitPlanMode } from '@/types/chat'
 import { playNotificationSound } from '@/lib/sounds'
 import { findPlanFilePath } from '@/components/chat/tool-call-utils'
+import { generateId } from '@/lib/uuid'
 import type {
   ChunkEvent,
   ToolUseEvent,
@@ -366,7 +367,7 @@ export default function useStreamingEvents({
             const hasExitPlanModeCall = toolCalls.some(tc => isExitPlanMode(tc))
             if (hasExitPlanModeCall) {
               // Generate message ID now so we can persist it before the optimistic message is created
-              const pendingMessageId = crypto.randomUUID()
+              const pendingMessageId = generateId()
               useChatStore
                 .getState()
                 .setPendingPlanMessageId(sessionId, pendingMessageId)
@@ -449,7 +450,7 @@ export default function useStreamingEvents({
         const preGeneratedId = (window as unknown as Record<string, string>)[
           pendingIdKey
         ]
-        const messageId = preGeneratedId ?? crypto.randomUUID()
+        const messageId = preGeneratedId ?? generateId()
         // Clean up the temporary storage
         if (preGeneratedId) {
           // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
@@ -799,7 +800,7 @@ export default function useStreamingEvents({
                 messages: [
                   ...old.messages,
                   {
-                    id: crypto.randomUUID(),
+                    id: generateId(),
                     session_id,
                     role: 'assistant' as const,
                     content: content ?? '',

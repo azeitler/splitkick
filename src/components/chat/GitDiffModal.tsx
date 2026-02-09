@@ -28,6 +28,7 @@ import {
 } from '@pierre/diffs'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
+import { generateId } from '@/lib/uuid'
 import { getFilename } from '@/lib/path-utils'
 import { getGitDiff } from '@/services/git-status'
 import { useTheme } from '@/hooks/use-theme'
@@ -434,7 +435,7 @@ export function GitDiffModal({
       if (!selectedRange || !activeFileName || !commentText) return
 
       const newComment: DiffComment = {
-        id: crypto.randomUUID(),
+        id: generateId(),
         fileName: activeFileName,
         side: selectedRange.side ?? 'additions',
         startLine: Math.min(selectedRange.start, selectedRange.end),
@@ -653,7 +654,7 @@ export function GitDiffModal({
     <Dialog open={!!diffRequest} onOpenChange={open => !open && onClose()}>
       <DialogContent
         ref={dialogContentRef}
-        className="!max-w-[calc(100vw-4rem)] !w-[calc(100vw-4rem)] h-[85vh] p-4 bg-background/95 backdrop-blur-sm overflow-hidden flex flex-col"
+        className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none p-0 sm:!w-[calc(100vw-4rem)] sm:!max-w-[calc(100vw-4rem)] sm:!h-[85vh] sm:!rounded-lg sm:p-4 bg-background/95 backdrop-blur-sm overflow-hidden flex flex-col"
         style={{ fontSize: 'var(--ui-font-size)' }}
       >
         <DialogTitle className="flex items-center gap-2 shrink-0">

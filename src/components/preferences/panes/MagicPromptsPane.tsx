@@ -169,7 +169,7 @@ export const MagicPromptsPane: React.FC = () => {
     currentPrompts[selectedKey] ?? selectedConfig.defaultValue
   const currentModel =
     currentModels[selectedConfig.modelKey] ?? selectedConfig.defaultModel
-  const isModified = currentValue !== selectedConfig.defaultValue
+  const isModified = currentPrompts[selectedKey] !== null
 
   // Sync local value when selection changes or external value updates
   useEffect(() => {
@@ -198,16 +198,19 @@ export const MagicPromptsPane: React.FC = () => {
       // Set new timeout for debounced save
       saveTimeoutRef.current = setTimeout(() => {
         if (!preferences) return
+        // Save null if matches default (auto-updates on new versions), otherwise save the value
+        const valueToSave =
+          newValue === selectedConfig.defaultValue ? null : newValue
         savePreferences.mutate({
           ...preferences,
           magic_prompts: {
             ...currentPrompts,
-            [selectedKey]: newValue,
+            [selectedKey]: valueToSave,
           },
         })
       }, 500)
     },
-    [preferences, savePreferences, currentPrompts, selectedKey]
+    [preferences, savePreferences, currentPrompts, selectedKey, selectedConfig.defaultValue]
   )
 
   const handleBlur = useCallback(() => {
@@ -216,11 +219,13 @@ export const MagicPromptsPane: React.FC = () => {
       saveTimeoutRef.current = null
     }
     if (localValue !== currentValue && preferences) {
+      const valueToSave =
+        localValue === selectedConfig.defaultValue ? null : localValue
       savePreferences.mutate({
         ...preferences,
         magic_prompts: {
           ...currentPrompts,
-          [selectedKey]: localValue,
+          [selectedKey]: valueToSave,
         },
       })
     }
@@ -231,6 +236,7 @@ export const MagicPromptsPane: React.FC = () => {
     savePreferences,
     currentPrompts,
     selectedKey,
+    selectedConfig.defaultValue,
   ])
 
   const handleReset = useCallback(() => {
@@ -239,16 +245,10 @@ export const MagicPromptsPane: React.FC = () => {
       ...preferences,
       magic_prompts: {
         ...currentPrompts,
-        [selectedKey]: selectedConfig.defaultValue,
+        [selectedKey]: null,
       },
     })
-  }, [
-    preferences,
-    savePreferences,
-    currentPrompts,
-    selectedKey,
-    selectedConfig.defaultValue,
-  ])
+  }, [preferences, savePreferences, currentPrompts, selectedKey])
 
   const handleModelChange = useCallback(
     (model: ClaudeModel) => {
@@ -265,12 +265,11 @@ export const MagicPromptsPane: React.FC = () => {
   )
 
   return (
-    <div className="flex flex-col" style={{ height: 'calc(85vh - 8rem)' }}>
+    <div className="flex flex-col min-h-0 flex-1">
       {/* Prompt selector grid */}
-      <div className="grid grid-cols-3 gap-1.5 mb-4 shrink-0">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 mb-4 shrink-0">
         {PROMPT_CONFIGS.map(config => {
-          const promptIsModified =
-            currentPrompts[config.key] !== config.defaultValue
+          const promptIsModified = currentPrompts[config.key] !== null
           const promptModel =
             currentModels[config.modelKey] ?? config.defaultModel
           return (

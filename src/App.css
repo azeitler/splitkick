@@ -234,11 +234,15 @@
     box-sizing: border-box;
   }
 
+  html {
+    @apply bg-background;
+  }
+
   body {
     @apply text-foreground;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    min-height: 100vh;
+    min-height: 100dvh;
     min-width: 100vw;
     position: relative;
   }

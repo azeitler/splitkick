@@ -18,6 +18,7 @@ import { Popover, PopoverContent, PopoverAnchor } from '@/components/ui/popover'
 import { useWorktreeFiles } from '@/services/files'
 import type { WorktreeFile, PendingFile } from '@/types/chat'
 import { cn } from '@/lib/utils'
+import { generateId } from '@/lib/uuid'
 import { getExtensionColor } from '@/lib/file-colors'
 
 export interface FileMentionPopoverHandle {
@@ -79,7 +80,7 @@ export function FileMentionPopover({
   const handleSelect = useCallback(
     (file: WorktreeFile) => {
       const pendingFile: PendingFile = {
-        id: crypto.randomUUID(),
+        id: generateId(),
         relativePath: file.relative_path,
         extension: file.extension,
       }

@@ -1,13 +1,16 @@
-import { ArrowDown, ArrowUp } from 'lucide-react'
+import { ArrowDown, ArrowUp, GitBranch, Pencil } from 'lucide-react'
 
 interface GitStatusBadgesProps {
   behindCount: number
   unpushedCount: number
   diffAdded: number
   diffRemoved: number
+  branchDiffAdded?: number
+  branchDiffRemoved?: number
   onPull?: (e: React.MouseEvent) => void
   onPush?: (e: React.MouseEvent) => void
   onDiffClick?: (e: React.MouseEvent) => void
+  onBranchDiffClick?: (e: React.MouseEvent) => void
 }
 
 export function GitStatusBadges({
@@ -15,12 +18,16 @@ export function GitStatusBadges({
   unpushedCount,
   diffAdded,
   diffRemoved,
+  branchDiffAdded = 0,
+  branchDiffRemoved = 0,
   onPull,
   onPush,
   onDiffClick,
+  onBranchDiffClick,
 }: GitStatusBadgesProps) {
   const hasDiff = diffAdded > 0 || diffRemoved > 0
-  if (!behindCount && !unpushedCount && !hasDiff) return null
+  const hasBranchDiff = branchDiffAdded > 0 || branchDiffRemoved > 0
+  if (!behindCount && !unpushedCount && !hasDiff && !hasBranchDiff) return null
 
   return (
     <span className="inline-flex items-center gap-1.5">
@@ -28,12 +35,26 @@ export function GitStatusBadges({
         <button
           type="button"
           onClick={onDiffClick}
-          className="shrink-0 cursor-pointer text-[11px] font-medium hover:opacity-70 transition-opacity"
+          className="inline-flex shrink-0 cursor-pointer items-center gap-0.5 text-[11px] font-medium hover:opacity-70 transition-opacity"
           title={`+${diffAdded}/-${diffRemoved} lines — click to view diff`}
         >
+          <Pencil className="h-2.5 w-2.5 text-muted-foreground" />
           <span className="text-green-500">+{diffAdded}</span>
           <span className="text-muted-foreground">/</span>
           <span className="text-red-500">-{diffRemoved}</span>
+        </button>
+      )}
+      {hasBranchDiff && (
+        <button
+          type="button"
+          onClick={onBranchDiffClick}
+          className="inline-flex shrink-0 cursor-pointer items-center gap-0.5 text-[11px] font-medium hover:opacity-70 transition-opacity"
+          title={`+${branchDiffAdded}/-${branchDiffRemoved} lines vs base — click to view diff`}
+        >
+          <GitBranch className="h-2.5 w-2.5 text-muted-foreground" />
+          <span className="text-green-500">+{branchDiffAdded}</span>
+          <span className="text-muted-foreground">/</span>
+          <span className="text-red-500">-{branchDiffRemoved}</span>
         </button>
       )}
       {behindCount > 0 && (

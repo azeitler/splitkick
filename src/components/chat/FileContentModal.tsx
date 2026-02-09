@@ -232,7 +232,7 @@ export function FileContentModal({ filePath, onClose }: FileContentModalProps) {
 
   return (
     <Dialog open={!!filePath} onOpenChange={handleOpenChange}>
-      <DialogContent className="!max-w-[calc(100vw-4rem)] !w-[calc(100vw-4rem)] max-h-[85vh] p-4 bg-background/95 backdrop-blur-sm">
+      <DialogContent className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none p-0 sm:!w-[calc(100vw-4rem)] sm:!max-w-[calc(100vw-4rem)] sm:!h-auto sm:max-h-[85vh] sm:!rounded-lg sm:p-4 bg-background/95 backdrop-blur-sm">
         <DialogTitle className="flex flex-col gap-1 pr-8">
           <div className="flex items-center gap-2">
             {isImage ? (

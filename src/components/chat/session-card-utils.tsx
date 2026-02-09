@@ -227,14 +227,17 @@ export function computeSessionCardData(
   const inferredWaitingType =
     session.waiting_for_input_type ??
     (pendingPlanMessageId ? 'plan' : 'question')
-  const hasExitPlanMode =
-    hasStreamingExitPlan ||
-    hasPendingExitPlan ||
-    (persistedWaitingForInput && inferredWaitingType === 'plan')
-  const hasQuestion =
-    hasStreamingQuestion ||
-    hasPendingQuestion ||
-    (persistedWaitingForInput && inferredWaitingType === 'question')
+  // When sessionSending is true, persisted waiting flags are stale (same as isWaiting above)
+  const hasExitPlanMode = sessionSending
+    ? hasStreamingExitPlan || hasPendingExitPlan
+    : hasStreamingExitPlan ||
+      hasPendingExitPlan ||
+      (persistedWaitingForInput && inferredWaitingType === 'plan')
+  const hasQuestion = sessionSending
+    ? hasStreamingQuestion || hasPendingQuestion
+    : hasStreamingQuestion ||
+      hasPendingQuestion ||
+      (persistedWaitingForInput && inferredWaitingType === 'question')
 
   // Check for pending permission denials
   const sessionDenials = pendingPermissionDenials[session.id] ?? []

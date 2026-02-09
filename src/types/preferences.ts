@@ -27,21 +27,26 @@ export const notificationSoundOptions: {
  * Default prompts for magic commands. These can be customized in Settings.
  * Field names use snake_case to match Rust struct exactly.
  */
+/**
+ * Customizable prompts for AI-powered features.
+ * null = use current app default (auto-updates on new versions).
+ * string = user customization (preserved across updates).
+ */
 export interface MagicPrompts {
   /** Prompt for investigating GitHub issues */
-  investigate_issue: string
+  investigate_issue: string | null
   /** Prompt for investigating GitHub pull requests */
-  investigate_pr: string
+  investigate_pr: string | null
   /** Prompt for generating PR title/body */
-  pr_content: string
+  pr_content: string | null
   /** Prompt for generating commit messages */
-  commit_message: string
+  commit_message: string | null
   /** Prompt for AI code review */
-  code_review: string
+  code_review: string | null
   /** Prompt for context summarization */
-  context_summary: string
+  context_summary: string | null
   /** Prompt for resolving git conflicts (appended to conflict resolution messages) */
-  resolve_conflicts: string
+  resolve_conflicts: string | null
 }
 
 /** Default prompt for investigating GitHub issues */
@@ -202,15 +207,15 @@ export const DEFAULT_RESOLVE_CONFLICTS_PROMPT = `Please help me resolve these co
 
 After resolving each file's conflicts, stage it with \`git add\`. Then run the appropriate continue command (\`git rebase --continue\`, \`git merge --continue\`, or \`git cherry-pick --continue\`). If more conflicts appear, resolve those too. Keep going until the operation is fully complete and the branch is ready to push.`
 
-/** Default values for all magic prompts */
+/** Default values for all magic prompts (null = use current app default) */
 export const DEFAULT_MAGIC_PROMPTS: MagicPrompts = {
-  investigate_issue: DEFAULT_INVESTIGATE_ISSUE_PROMPT,
-  investigate_pr: DEFAULT_INVESTIGATE_PR_PROMPT,
-  pr_content: DEFAULT_PR_CONTENT_PROMPT,
-  commit_message: DEFAULT_COMMIT_MESSAGE_PROMPT,
-  code_review: DEFAULT_CODE_REVIEW_PROMPT,
-  context_summary: DEFAULT_CONTEXT_SUMMARY_PROMPT,
-  resolve_conflicts: DEFAULT_RESOLVE_CONFLICTS_PROMPT,
+  investigate_issue: null,
+  investigate_pr: null,
+  pr_content: null,
+  commit_message: null,
+  code_review: null,
+  context_summary: null,
+  resolve_conflicts: null,
 }
 
 /**

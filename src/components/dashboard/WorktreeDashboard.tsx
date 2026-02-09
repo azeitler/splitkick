@@ -16,6 +16,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
@@ -177,7 +178,6 @@ function WorktreeSectionHeader({
             base
           </span>
         )}
-        <WorktreeDropdownMenu worktree={worktree} projectId={projectId} />
         <GitStatusBadges
           behindCount={behindCount}
           unpushedCount={unpushedCount}
@@ -187,6 +187,7 @@ function WorktreeSectionHeader({
           onPush={handlePush}
           onDiffClick={handleDiffClick}
         />
+        <WorktreeDropdownMenu worktree={worktree} projectId={projectId} />
       </div>
       <GitDiffModal
         diffRequest={diffRequest}
@@ -1009,6 +1010,17 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
               <DropdownMenuContent align="start">
                 <DropdownMenuItem
                   onSelect={() =>
+                    window.dispatchEvent(
+                      new CustomEvent('create-new-worktree')
+                    )
+                  }
+                >
+                  <Plus className="h-4 w-4" />
+                  New Worktree
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onSelect={() =>
                     useProjectsStore.getState().openProjectSettings(projectId)
                   }
                 >
@@ -1060,7 +1072,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
                     />
 
                     {/* Session cards grid */}
-                    <div className="flex flex-row flex-wrap gap-3">
+                    <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3">
                       {section.isPending
                         ? // Pending worktree: show setup card
                           (() => {

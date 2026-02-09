@@ -168,7 +168,7 @@ function CliLoginModalContent({
 
   return (
     <Dialog open={true} onOpenChange={handleOpenChange}>
-      <DialogContent className="!w-[calc(100vw-64px)] !max-w-[calc(100vw-64px)] h-[calc(100vh-64px)] flex flex-col">
+      <DialogContent className="!w-screen !h-dvh !max-w-screen !rounded-none sm:!w-[calc(100vw-64px)] sm:!max-w-[calc(100vw-64px)] sm:!h-[calc(100vh-64px)] sm:!rounded-lg flex flex-col">
         <DialogHeader>
           <DialogTitle>{cliName} Login</DialogTitle>
           <DialogDescription>

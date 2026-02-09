@@ -8,6 +8,7 @@
 
 import { useSyncExternalStore } from 'react'
 import { isNativeApp, setWsConnected } from './environment'
+import { generateId } from './uuid'
 
 // ---------------------------------------------------------------------------
 // File source URL conversion (drop-in for Tauri's convertFileSrc)
@@ -97,14 +98,11 @@ export async function preloadInitialData(): Promise<InitialData | null> {
     const urlToken = new URLSearchParams(window.location.search).get('token')
     const token = urlToken || localStorage.getItem('jean-http-token') || ''
 
-    if (!token) {
-      return null
-    }
-
     try {
-      const response = await fetch(
-        `/api/init?token=${encodeURIComponent(token)}`
-      )
+      const url = token
+        ? `/api/init?token=${encodeURIComponent(token)}`
+        : '/api/init'
+      const response = await fetch(url)
       if (!response.ok) {
         return null
       }
@@ -235,14 +233,6 @@ class WsTransport {
       window.history.replaceState({}, '', url.toString())
     }
 
-    // Don't attempt connection without a token — it will always be rejected
-    if (!token) {
-      this.setAuthError(
-        "No access token provided. Use the URL from Jean's Web Access settings."
-      )
-      return
-    }
-
     // Validate token via HTTP before establishing WebSocket
     this._connecting = true
     this.validateAndConnect(token).finally(() => {
@@ -251,7 +241,9 @@ class WsTransport {
   }
 
   private async validateAndConnect(token: string): Promise<void> {
-    const authUrl = `${window.location.origin}/api/auth?token=${encodeURIComponent(token)}`
+    const authUrl = token
+      ? `${window.location.origin}/api/auth?token=${encodeURIComponent(token)}`
+      : `${window.location.origin}/api/auth`
 
     try {
       const res = await fetch(authUrl)
@@ -259,7 +251,9 @@ class WsTransport {
         // Invalid token — clear it, set error, don't reconnect
         localStorage.removeItem('jean-http-token')
         this.setAuthError(
-          "Invalid access token. Check the URL in Jean's Web Access settings."
+          token
+            ? "Invalid access token. Check the URL in Jean's Web Access settings."
+            : "No access token provided. Use the URL from Jean's Web Access settings."
         )
         return
       }
@@ -270,7 +264,7 @@ class WsTransport {
       return
     }
 
-    // Token valid — clear any previous auth error and connect WebSocket
+    // Token valid (or not required) — clear any previous auth error and connect
     this.setAuthError(null)
     this.connectWs(token)
   }
@@ -316,7 +310,7 @@ class WsTransport {
 
   /** Call a backend command over WebSocket. */
   async invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
-    const id = crypto.randomUUID()
+    const id = generateId()
     const data = JSON.stringify({
       type: 'invoke',
       id,

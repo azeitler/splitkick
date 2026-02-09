@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { invoke } from '@/lib/transport'
-import { isNativeApp } from '@/lib/environment'
+import { openExternal } from '@/lib/platform'
 import type { QueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useChatStore } from '@/store/chat-store'
@@ -236,14 +236,7 @@ export function useGitOperations({
         id: toastId,
         action: {
           label: 'Open',
-          onClick: async () => {
-            if (isNativeApp()) {
-              const { openUrl } = await import('@tauri-apps/plugin-opener')
-              await openUrl(result.pr_url)
-            } else {
-              window.open(result.pr_url, '_blank')
-            }
-          },
+          onClick: () => openExternal(result.pr_url),
         },
       })
     } catch (error) {

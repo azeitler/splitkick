@@ -276,7 +276,7 @@ export function CanvasGrid({
 
   return (
     <>
-      <div className="flex flex-row flex-wrap gap-3">
+      <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3">
         {cards.map((card, index) => (
           <SessionCard
             key={card.session.id}

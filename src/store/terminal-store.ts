@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { getFilename } from '@/lib/path-utils'
+import { generateId } from '@/lib/uuid'
 
 /** A single terminal instance */
 export interface TerminalInstance {
@@ -60,7 +61,7 @@ interface TerminalState {
 }
 
 function generateTerminalId(): string {
-  return crypto.randomUUID()
+  return generateId()
 }
 
 function getDefaultLabel(command: string | null): string {
