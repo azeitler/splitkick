@@ -297,7 +297,7 @@ export const fileEditModeOptions: { value: FileEditMode; label: string }[] = [
 export type ClaudeModel = 'opus' | 'opus-4.5' | 'sonnet' | 'haiku'
 
 export const modelOptions: { value: ClaudeModel; label: string }[] = [
-  { value: 'opus', label: 'Claude Opus' },
+  { value: 'opus', label: 'Claude Opus 4.6' },
   { value: 'opus-4.5', label: 'Claude Opus 4.5' },
   { value: 'sonnet', label: 'Claude Sonnet' },
   { value: 'haiku', label: 'Claude Haiku' },

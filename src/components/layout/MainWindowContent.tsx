@@ -43,6 +43,9 @@ export function MainWindowContent({
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't intercept if a modal is open
       if (useUIStore.getState().featureTourOpen) return
+      // Don't intercept Enter from input elements (e.g. preferences font size)
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable) return
       if (e.key === 'Enter') {
         e.preventDefault()
         setAddProjectDialogOpen(true)

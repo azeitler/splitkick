@@ -93,7 +93,9 @@ export function SetupState({
           </Select>
         )}
         <p className="text-xs text-muted-foreground">
-          {cliName} will be installed in Jean&apos;s application data folder.
+          {cliName} will be installed separately in Jean&apos;s application data
+          folder — it won&apos;t affect your global installation. Authentication
+          and configuration from your global {cliName} setup will be used.
         </p>
       </div>
 

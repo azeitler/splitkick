@@ -34,7 +34,7 @@ export function useMcpServers(worktreePath: string | null | undefined) {
         worktreePath: worktreePath ?? null,
       })
     },
-    enabled: !!worktreePath,
+    enabled: isTauri(),
     staleTime: 1000 * 60 * 5, // 5 min cache
   })
 }

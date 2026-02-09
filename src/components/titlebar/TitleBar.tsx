@@ -57,6 +57,7 @@ export function TitleBar({
       {...(native ? { 'data-tauri-drag-region': true } : {})}
       className={cn(
         'relative flex h-8 w-full shrink-0 items-center justify-between bg-sidebar',
+        native && !isMacOS && 'z-[60]',
         className
       )}
     >

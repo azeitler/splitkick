@@ -89,7 +89,7 @@ import {
 
 /** Model options with display labels */
 const MODEL_OPTIONS: { value: ClaudeModel; label: string }[] = [
-  { value: 'opus', label: 'Opus' },
+  { value: 'opus', label: 'Opus 4.6' },
   { value: 'opus-4.5', label: 'Opus 4.5' },
   { value: 'sonnet', label: 'Sonnet' },
   { value: 'haiku', label: 'Haiku' },
