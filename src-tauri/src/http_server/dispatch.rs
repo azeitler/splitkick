@@ -540,6 +540,8 @@ pub async fn dispatch_command(
                 field_opt(&args, "effortLevel", "effort_level")?;
             let mcp_config: Option<String> =
                 field_opt(&args, "mcpConfig", "mcp_config")?;
+            let chrome_enabled: Option<bool> =
+                field_opt(&args, "chromeEnabled", "chrome_enabled")?;
             let result = crate::chat::send_chat_message(
                 app.clone(),
                 session_id,
@@ -555,6 +557,7 @@ pub async fn dispatch_command(
                 ai_language,
                 allowed_tools,
                 mcp_config,
+                chrome_enabled,
             )
             .await?;
             to_value(result)

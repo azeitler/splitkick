@@ -845,6 +845,7 @@ pub async fn send_chat_message(
     ai_language: Option<String>,
     allowed_tools: Option<Vec<String>>,
     mcp_config: Option<String>,
+    chrome_enabled: Option<bool>,
 ) -> Result<ChatMessage, String> {
     log::trace!("Sending chat message for session: {session_id}, worktree: {worktree_id}, model: {model:?}, execution_mode: {execution_mode:?}, thinking: {thinking_level:?}, effort: {effort_level:?}, disable_thinking_for_mode: {disable_thinking_for_mode:?}, allowed_tools: {allowed_tools:?}");
 
@@ -1046,6 +1047,9 @@ pub async fn send_chat_message(
     // Use passed parameter for parallel execution prompt (default false - experimental)
     let parallel_execution_prompt = parallel_execution_prompt_enabled.unwrap_or(false);
 
+    // Use passed parameter for Chrome browser integration (default false - beta)
+    let chrome = chrome_enabled.unwrap_or(false);
+
     // Execute Claude CLI in detached mode
     // If resume fails with "session not found", retry without the session ID
     let mut claude_session_id_for_call = claude_session_id.clone();
@@ -1069,6 +1073,7 @@ pub async fn send_chat_message(
             parallel_execution_prompt,
             ai_language.as_deref(),
             mcp_config.as_deref(),
+            chrome,
         ) {
             Ok((pid, response)) => {
                 log::trace!("execute_claude_detached succeeded (PID: {pid})");

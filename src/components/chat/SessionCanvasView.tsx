@@ -12,6 +12,7 @@ import {
 } from '@/services/git-status'
 import { isBaseSession } from '@/types/projects'
 import { GitStatusBadges } from '@/components/ui/git-status-badges'
+import { NewIssuesBadge } from '@/components/shared/NewIssuesBadge'
 import { GitDiffModal } from './GitDiffModal'
 import type { DiffRequest } from '@/types/git-diff'
 import { toast } from 'sonner'
@@ -242,8 +243,11 @@ export function SessionCanvasView({
     const firstCard = sessionCards[0]
     if (firstCard) {
       useChatStore.getState().setCanvasSelectedSession(worktreeId, firstCard.session.id)
+      // Sync projects store so commands (CMD+O, open terminal, etc.) work immediately
+      useProjectsStore.getState().selectWorktree(worktreeId)
+      useChatStore.getState().registerWorktreePath(worktreeId, worktreePath)
     }
-  }, [sessionCards, selectedIndex, selectedSessionId, worktreeId])
+  }, [sessionCards, selectedIndex, selectedSessionId, worktreeId, worktreePath])
 
   // Debug: log selectedIndex changes
   console.log('[SessionCanvasView] render - selectedIndex:', selectedIndex, 'sessionCards.length:', sessionCards.length)
@@ -272,6 +276,9 @@ export function SessionCanvasView({
                 </span>
               )}
             </h2>
+            {project && worktree && (
+              <NewIssuesBadge projectPath={project.path} projectId={worktree.project_id} />
+            )}
             {worktree?.project_id && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

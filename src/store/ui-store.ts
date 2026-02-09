@@ -89,6 +89,7 @@ interface UIState {
   openInModalOpen: boolean
   magicModalOpen: boolean
   newWorktreeModalOpen: boolean
+  newWorktreeModalDefaultTab: 'quick' | 'issues' | 'prs' | null
   checkoutPRModalOpen: boolean
   cliUpdateModalOpen: boolean
   cliUpdateModalType: CliUpdateModalType
@@ -132,6 +133,7 @@ interface UIState {
   setOpenInModalOpen: (open: boolean) => void
   setMagicModalOpen: (open: boolean) => void
   setNewWorktreeModalOpen: (open: boolean) => void
+  setNewWorktreeModalDefaultTab: (tab: 'quick' | 'issues' | 'prs' | null) => void
   setCheckoutPRModalOpen: (open: boolean) => void
   openCliUpdateModal: (type: 'claude' | 'gh') => void
   closeCliUpdateModal: () => void
@@ -169,6 +171,7 @@ export const useUIStore = create<UIState>()(
       openInModalOpen: false,
       magicModalOpen: false,
       newWorktreeModalOpen: false,
+      newWorktreeModalDefaultTab: null,
       checkoutPRModalOpen: false,
       cliUpdateModalOpen: false,
       cliUpdateModalType: null,
@@ -265,9 +268,19 @@ export const useUIStore = create<UIState>()(
 
       setNewWorktreeModalOpen: open =>
         set(
-          { newWorktreeModalOpen: open },
+          {
+            newWorktreeModalOpen: open,
+            ...(open ? {} : { newWorktreeModalDefaultTab: null }),
+          },
           undefined,
           'setNewWorktreeModalOpen'
+        ),
+
+      setNewWorktreeModalDefaultTab: tab =>
+        set(
+          { newWorktreeModalDefaultTab: tab },
+          undefined,
+          'setNewWorktreeModalDefaultTab'
         ),
 
       setCheckoutPRModalOpen: open =>

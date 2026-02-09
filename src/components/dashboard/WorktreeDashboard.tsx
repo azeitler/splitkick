@@ -22,6 +22,7 @@ import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
 import { isBaseSession, type Worktree } from '@/types/projects'
 import type { Session, WorktreeSessions } from '@/types/chat'
+import { NewIssuesBadge } from '@/components/shared/NewIssuesBadge'
 import { PlanDialog } from '@/components/chat/PlanDialog'
 import { RecapDialog } from '@/components/chat/RecapDialog'
 import { SessionChatModal } from '@/components/chat/SessionChatModal'
@@ -454,6 +455,9 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     setSelectedIndex(firstCardIndex)
     if (firstCard?.card) {
       useChatStore.getState().setCanvasSelectedSession(firstCard.worktreeId, firstCard.card.session.id)
+      // Sync projects store so commands (CMD+O, open terminal, etc.) work immediately
+      useProjectsStore.getState().selectWorktree(firstCard.worktreeId)
+      useChatStore.getState().registerWorktreePath(firstCard.worktreeId, firstCard.worktreePath)
     }
   }, [flatCards, selectedIndex, selectedSession])
 
@@ -944,6 +948,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
         <div className="sticky top-0 z-10 flex items-center justify-between gap-4 bg-background/60 backdrop-blur-md px-4 py-3 border-b border-border/30">
         <div className="flex items-center gap-1 shrink-0">
           <h2 className="text-lg font-semibold">{project.name}</h2>
+          <NewIssuesBadge projectPath={project.path} projectId={projectId} />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -1147,6 +1152,14 @@ function EmptyDashboard({
   useEffect(() => {
     if (isCreating) return
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't intercept when typing in inputs or when a dialog/modal is open
+      const tag = document.activeElement?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || (document.activeElement as HTMLElement)?.isContentEditable) return
+
+      const { projectSettingsDialogOpen } = useProjectsStore.getState()
+      const { newWorktreeModalOpen, commandPaletteOpen, preferencesOpen, magicModalOpen } = useUIStore.getState()
+      if (projectSettingsDialogOpen || newWorktreeModalOpen || commandPaletteOpen || preferencesOpen || magicModalOpen) return
+
       const key = e.key.toLowerCase()
       if (key === 'b') {
         e.preventDefault()

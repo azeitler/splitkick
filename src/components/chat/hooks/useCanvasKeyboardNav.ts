@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react'
+import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
 
 interface UseCanvasKeyboardNavOptions<T> {
@@ -105,7 +106,8 @@ export function useCanvasKeyboardNav<T>({
       // Skip if any modal is open (magic, plan dialog, etc.)
       const uiState = useUIStore.getState()
       console.log('[useCanvasKeyboardNav] keydown', e.key, 'magicModalOpen:', uiState.magicModalOpen, 'planDialogOpen:', uiState.planDialogOpen, 'commandPaletteOpen:', uiState.commandPaletteOpen, 'enabled:', enabled)
-      if (uiState.magicModalOpen || uiState.planDialogOpen || uiState.commandPaletteOpen) return
+      if (uiState.magicModalOpen || uiState.planDialogOpen || uiState.commandPaletteOpen || uiState.preferencesOpen) return
+      if (useProjectsStore.getState().projectSettingsDialogOpen) return
 
       if (
         document.activeElement?.tagName === 'INPUT' ||

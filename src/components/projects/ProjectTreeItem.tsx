@@ -22,6 +22,7 @@ import {
   gitPush,
   fetchWorktreesStatus,
 } from '@/services/git-status'
+import { NewIssuesBadge } from '@/components/shared/NewIssuesBadge'
 import { WorktreeList } from './WorktreeList'
 import { ProjectContextMenu } from './ProjectContextMenu'
 
@@ -212,6 +213,9 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
               </span>
             </button>
           )}
+
+          {/* New issues indicator */}
+          <NewIssuesBadge projectPath={project.path} projectId={project.id} />
 
           {/* Settings */}
           <button

@@ -1104,6 +1104,7 @@ export function ChatWindow({
           mcpConfig: queuedMsg.mcpConfig,
           parallelExecutionPromptEnabled:
             preferences?.parallel_execution_prompt_enabled ?? false,
+          chromeEnabled: preferences?.chrome_enabled ?? false,
           aiLanguage: preferences?.ai_language,
           allowedTools,
         },
@@ -1121,6 +1122,7 @@ export function ChatWindow({
       buildMessageWithRefs,
       sendMessage,
       preferences?.parallel_execution_prompt_enabled,
+      preferences?.chrome_enabled,
       preferences?.ai_language,
       preferences?.allow_web_tools_in_plan_mode,
     ]
@@ -1193,6 +1195,7 @@ export function ChatWindow({
           ),
           parallelExecutionPromptEnabled:
             preferences?.parallel_execution_prompt_enabled ?? false,
+          chromeEnabled: preferences?.chrome_enabled ?? false,
           aiLanguage: preferences?.ai_language,
         },
         { onSettled: () => inputRef.current?.focus() }
@@ -1674,6 +1677,7 @@ Begin your investigation now.`
         ),
         parallelExecutionPromptEnabled:
           preferences?.parallel_execution_prompt_enabled ?? false,
+        chromeEnabled: preferences?.chrome_enabled ?? false,
         aiLanguage: preferences?.ai_language,
       },
       { onSettled: () => inputRef.current?.focus() }
@@ -1686,6 +1690,7 @@ Begin your investigation now.`
     preferences?.magic_prompts?.investigate_pr,
     preferences?.magic_prompt_models?.investigate_model,
     preferences?.parallel_execution_prompt_enabled,
+    preferences?.chrome_enabled,
     preferences?.ai_language,
   ])
 
@@ -1952,6 +1957,7 @@ Begin your investigation now.`
             ),
             parallelExecutionPromptEnabled:
               preferences?.parallel_execution_prompt_enabled ?? false,
+            chromeEnabled: preferences?.chrome_enabled ?? false,
             aiLanguage: preferences?.ai_language,
           },
           {

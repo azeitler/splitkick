@@ -159,6 +159,8 @@ pub struct AppPreferences {
     pub default_enabled_mcp_servers: Vec<String>, // MCP server names enabled by default (empty = none)
     #[serde(default)]
     pub has_seen_feature_tour: bool, // Whether user has seen the feature tour onboarding
+    #[serde(default = "default_chrome_enabled")]
+    pub chrome_enabled: bool, // Enable browser automation via Chrome extension
 }
 
 fn default_auto_branch_naming() -> bool {
@@ -278,6 +280,10 @@ fn default_session_recap_model() -> String {
 
 fn default_parallel_execution_prompt_enabled() -> bool {
     false // Disabled by default (experimental)
+}
+
+fn default_chrome_enabled() -> bool {
+    true // Enabled by default
 }
 
 fn default_allow_web_tools_in_plan_mode() -> bool {
@@ -594,6 +600,7 @@ impl Default for AppPreferences {
             default_effort_level: default_effort_level(),
             default_enabled_mcp_servers: Vec::new(),
             has_seen_feature_tour: false,
+            chrome_enabled: default_chrome_enabled(),
         }
     }
 }

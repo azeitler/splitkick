@@ -72,7 +72,8 @@ export const githubQueryKeys = {
  */
 export function useGitHubIssues(
   projectPath: string | null,
-  state: 'open' | 'closed' | 'all' = 'open'
+  state: 'open' | 'closed' | 'all' = 'open',
+  options?: { enabled?: boolean; staleTime?: number }
 ) {
   return useQuery({
     queryKey: githubQueryKeys.issues(projectPath ?? '', state),
@@ -94,8 +95,8 @@ export function useGitHubIssues(
         throw error
       }
     },
-    enabled: !!projectPath,
-    staleTime: 1000 * 60 * 2, // 2 minutes - issues can change more frequently
+    enabled: (options?.enabled ?? true) && !!projectPath,
+    staleTime: options?.staleTime ?? 1000 * 60 * 2, // default 2 minutes
     gcTime: 1000 * 60 * 10, // 10 minutes
     retry: 1, // Only retry once for API errors
   })
@@ -145,6 +146,19 @@ export function useGitHubIssue(
     staleTime: 1000 * 60 * 5, // 5 minutes
     gcTime: 1000 * 60 * 15, // 15 minutes
   })
+}
+
+const NEW_ISSUE_CUTOFF_MS = 24 * 60 * 60 * 1000
+
+/** Check if an issue was created within the last 24 hours */
+export function isNewIssue(createdAt: string): boolean {
+  return Date.now() - new Date(createdAt).getTime() < NEW_ISSUE_CUTOFF_MS
+}
+
+/** Count issues created within the last 24 hours */
+export function countNewIssues(issues: GitHubIssue[]): number {
+  const cutoff = Date.now() - NEW_ISSUE_CUTOFF_MS
+  return issues.filter(i => new Date(i.created_at).getTime() > cutoff).length
 }
 
 /**
@@ -306,7 +320,8 @@ export async function removeIssueContext(
  */
 export function useGitHubPRs(
   projectPath: string | null,
-  state: 'open' | 'closed' | 'merged' | 'all' = 'open'
+  state: 'open' | 'closed' | 'merged' | 'all' = 'open',
+  options?: { enabled?: boolean; staleTime?: number }
 ) {
   return useQuery({
     queryKey: githubQueryKeys.prs(projectPath ?? '', state),
@@ -328,8 +343,8 @@ export function useGitHubPRs(
         throw error
       }
     },
-    enabled: !!projectPath,
-    staleTime: 1000 * 60 * 2, // 2 minutes - PRs can change more frequently
+    enabled: (options?.enabled ?? true) && !!projectPath,
+    staleTime: options?.staleTime ?? 1000 * 60 * 2, // default 2 minutes
     gcTime: 1000 * 60 * 10, // 10 minutes
     retry: 1, // Only retry once for API errors
   })

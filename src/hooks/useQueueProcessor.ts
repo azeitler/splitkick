@@ -185,6 +185,7 @@ export function useQueueProcessor(): void {
           mcpConfig: queuedMsg.mcpConfig,
           parallelExecutionPromptEnabled:
             preferences?.parallel_execution_prompt_enabled ?? false,
+          chromeEnabled: preferences?.chrome_enabled ?? false,
           allowedTools,
         },
         {
@@ -201,6 +202,7 @@ export function useQueueProcessor(): void {
     waitingForInputSessionIds,
     sendMessage,
     preferences?.parallel_execution_prompt_enabled,
+    preferences?.chrome_enabled,
     wsConnected,
   ])
 }

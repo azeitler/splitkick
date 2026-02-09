@@ -570,6 +570,23 @@ export const GeneralPane: React.FC = () => {
             />
           </InlineField>
 
+          <InlineField
+            label="Chrome browser integration"
+            description="Enable browser automation via Chrome extension"
+          >
+            <Switch
+              checked={preferences?.chrome_enabled ?? true}
+              onCheckedChange={checked => {
+                if (preferences) {
+                  savePreferences.mutate({
+                    ...preferences,
+                    chrome_enabled: checked,
+                  })
+                }
+              }}
+            />
+          </InlineField>
+
           {isNativeApp() && (
             <InlineField label="Editor" description="App to open worktrees in">
               <Select

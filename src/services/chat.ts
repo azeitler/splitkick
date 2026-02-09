@@ -1124,6 +1124,7 @@ export function useSendMessage() {
       aiLanguage,
       allowedTools,
       mcpConfig,
+      chromeEnabled,
     }: {
       sessionId: string
       worktreeId: string
@@ -1138,6 +1139,7 @@ export function useSendMessage() {
       aiLanguage?: string
       allowedTools?: string[]
       mcpConfig?: string
+      chromeEnabled?: boolean
     }): Promise<ChatMessage> => {
       if (!isTauri()) {
         throw new Error('Not in Tauri context')
@@ -1155,6 +1157,7 @@ export function useSendMessage() {
         aiLanguage,
         allowedTools,
         mcpConfig: mcpConfig ? '(set)' : undefined,
+        chromeEnabled,
       })
       const response = await invoke<ChatMessage>('send_chat_message', {
         sessionId,
@@ -1170,6 +1173,7 @@ export function useSendMessage() {
         aiLanguage,
         allowedTools,
         mcpConfig,
+        chromeEnabled,
       })
       logger.info('Chat message sent', { responseId: response.id })
       return response

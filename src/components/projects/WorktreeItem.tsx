@@ -140,30 +140,32 @@ export function WorktreeItem({
   }, [sessionsData?.sessions, sendingSessionIds, isQuestionAnswered])
 
   // Check if any session has unanswered ExitPlanMode in persisted messages (solid)
+  // Uses plan_approved / approved_plan_message_ids (matching session-card-utils.tsx)
   const hasPendingPlan = useMemo(() => {
     const sessions = sessionsData?.sessions ?? []
     for (const session of sessions) {
       // Skip sessions that are currently streaming (handled by isStreamingWaitingPlan)
       if (sendingSessionIds[session.id]) continue
 
+      const approvedPlanIds = new Set(session.approved_plan_message_ids ?? [])
+
       // Find last assistant message by iterating from end (avoids array copy from .reverse())
-      let lastAssistantMsg = null
       for (let i = session.messages.length - 1; i >= 0; i--) {
-        if (session.messages[i]?.role === 'assistant') {
-          lastAssistantMsg = session.messages[i]
+        const msg = session.messages[i]
+        if (msg?.role === 'assistant') {
+          if (
+            msg.tool_calls?.some(isExitPlanMode) &&
+            !msg.plan_approved &&
+            !approvedPlanIds.has(msg.id)
+          ) {
+            return true
+          }
           break
         }
       }
-      if (
-        lastAssistantMsg?.tool_calls?.some(
-          tc => isExitPlanMode(tc) && !isQuestionAnswered(session.id, tc.id)
-        )
-      ) {
-        return true
-      }
     }
     return false
-  }, [sessionsData?.sessions, sendingSessionIds, isQuestionAnswered])
+  }, [sessionsData?.sessions, sendingSessionIds])
 
   // Check if any session is explicitly waiting for user input
   const isExplicitlyWaiting = useMemo(() => {

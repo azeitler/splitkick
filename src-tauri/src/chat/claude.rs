@@ -155,6 +155,7 @@ fn build_claude_args(
     parallel_execution_prompt_enabled: bool,
     ai_language: Option<&str>,
     mcp_config: Option<&str>,
+    chrome_enabled: bool,
 ) -> (Vec<String>, Vec<(String, String)>) {
     let mut args = Vec::new();
     let mut env_vars = Vec::new();
@@ -283,7 +284,23 @@ fn build_claude_args(
         if !config.is_empty() {
             args.push("--mcp-config".to_string());
             args.push(config.to_string());
+
+            // Auto-allow all tools from configured MCP servers
+            // Pattern "mcp__<name>" matches all tools from that server
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(config) {
+                if let Some(servers) = parsed.get("mcpServers").and_then(|v| v.as_object()) {
+                    for server_name in servers.keys() {
+                        args.push("--allowedTools".to_string());
+                        args.push(format!("mcp__{server_name}"));
+                    }
+                }
+            }
         }
+    }
+
+    // Chrome browser integration (beta)
+    if chrome_enabled {
+        args.push("--chrome".to_string());
     }
 
     // Build combined system prompt parts
@@ -540,6 +557,7 @@ pub fn execute_claude_detached(
     parallel_execution_prompt_enabled: bool,
     ai_language: Option<&str>,
     mcp_config: Option<&str>,
+    chrome_enabled: bool,
 ) -> Result<(u32, ClaudeResponse), String> {
     use super::detached::spawn_detached_claude;
     use crate::claude_cli::get_cli_binary_path;
@@ -591,6 +609,7 @@ pub fn execute_claude_detached(
         parallel_execution_prompt_enabled,
         ai_language,
         mcp_config,
+        chrome_enabled,
     );
 
     // Log the full Claude CLI command for debugging

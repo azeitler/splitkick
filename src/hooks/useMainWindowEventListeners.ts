@@ -442,8 +442,10 @@ export function useMainWindowEventListeners() {
         }
       }
 
-      // Skip when magic modal is open - let it handle its own shortcuts
-      if (useUIStore.getState().magicModalOpen) return
+      // Skip when a modal/dialog is open - let it handle its own shortcuts
+      const uiState = useUIStore.getState()
+      if (uiState.magicModalOpen || uiState.newWorktreeModalOpen || uiState.commandPaletteOpen || uiState.preferencesOpen) return
+      if (useProjectsStore.getState().projectSettingsDialogOpen) return
 
       // Look up matching action in keybindings
       const keybindings = keybindingsRef.current

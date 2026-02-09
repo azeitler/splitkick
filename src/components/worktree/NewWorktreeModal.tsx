@@ -14,7 +14,7 @@ import {
   Wand2,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { isGhAuthError } from '@/services/github'
+import { isGhAuthError, isNewIssue } from '@/services/github'
 import { useGhLogin } from '@/hooks/useGhLogin'
 import { GhAuthError } from '@/components/shared/GhAuthError'
 import {
@@ -157,6 +157,18 @@ export function NewWorktreeModal() {
   const createWorktree = useCreateWorktree()
   const createBaseSession = useCreateBaseSession()
 
+  // Apply store-provided default tab when modal opens (e.g. from NewIssuesBadge click)
+  useEffect(() => {
+    if (newWorktreeModalOpen) {
+      const { newWorktreeModalDefaultTab, setNewWorktreeModalDefaultTab } =
+        useUIStore.getState()
+      if (newWorktreeModalDefaultTab) {
+        setActiveTab(newWorktreeModalDefaultTab)
+        setNewWorktreeModalDefaultTab(null)
+      }
+    }
+  }, [newWorktreeModalOpen])
+
   // Focus search input when switching to issues or prs tab
   useEffect(() => {
     if (
@@ -186,8 +198,14 @@ export function NewWorktreeModal() {
 
       if (open) {
         // Reset other state when modal opens
-        // Default to issues tab if a project is selected, otherwise quick actions
-        setActiveTab(selectedProjectId ? 'issues' : 'quick')
+        // Use store-provided default tab (e.g. from NewIssuesBadge click), fallback to issues/quick
+        const { newWorktreeModalDefaultTab, setNewWorktreeModalDefaultTab } =
+          useUIStore.getState()
+        setActiveTab(
+          newWorktreeModalDefaultTab ??
+            (selectedProjectId ? 'issues' : 'quick')
+        )
+        setNewWorktreeModalDefaultTab(null)
         setIncludeClosed(false)
 
         // Invalidate GitHub caches to fetch fresh data
@@ -530,17 +548,20 @@ export function NewWorktreeModal() {
         }
       }
 
-      // Quick actions shortcuts
+      // Quick actions shortcuts (skip when typing in an input)
       if (activeTab === 'quick') {
-        if (key === 'n') {
-          e.preventDefault()
-          handleCreateWorktree()
-          return
-        }
-        if (key === 'b') {
-          e.preventDefault()
-          handleBaseSession()
-          return
+        const tag = (e.target as HTMLElement)?.tagName
+        if (tag !== 'INPUT' && tag !== 'TEXTAREA') {
+          if (key === 'n') {
+            e.preventDefault()
+            handleCreateWorktree()
+            return
+          }
+          if (key === 'b') {
+            e.preventDefault()
+            handleBaseSession()
+            return
+          }
         }
       }
 
@@ -1147,6 +1168,11 @@ function IssueItem({
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground">#{issue.number}</span>
           <span className="text-sm font-medium truncate">{issue.title}</span>
+          {isNewIssue(issue.created_at) && (
+            <span className="shrink-0 rounded-full bg-green-500/10 px-1.5 py-0.5 text-[10px] font-medium text-green-600 border border-green-500/20">
+              New
+            </span>
+          )}
         </div>
         {issue.labels.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-1">

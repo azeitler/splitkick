@@ -1070,27 +1070,6 @@ pub fn commit_changes(repo_path: &str, message: &str, stage_all: bool) -> Result
 
 /// Open a pull request using the GitHub CLI (gh)
 ///
-/// # Arguments
-/// Returns platform-specific installation instructions for GitHub CLI
-fn get_gh_install_hint() -> &'static str {
-    #[cfg(target_os = "macos")]
-    {
-        "Install it with: brew install gh"
-    }
-    #[cfg(target_os = "windows")]
-    {
-        "Install it with: winget install GitHub.cli"
-    }
-    #[cfg(target_os = "linux")]
-    {
-        "Install it from: https://github.com/cli/cli/releases"
-    }
-    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
-    {
-        "Install GitHub CLI from: https://cli.github.com"
-    }
-}
-
 /// * `repo_path` - Path to the repository
 /// * `title` - Optional PR title (if None, gh will prompt or use default)
 /// * `body` - Optional PR body
@@ -1105,35 +1084,6 @@ pub fn open_pull_request(
     gh_binary: &std::path::Path,
 ) -> Result<String, String> {
     log::trace!("Opening pull request from {repo_path}");
-
-    // First check if gh is installed
-    let gh_check = silent_command(gh_binary)
-        .args(["--version"])
-        .output()
-        .map_err(|_| {
-            format!(
-                "GitHub CLI (gh) is not installed. {}",
-                get_gh_install_hint()
-            )
-        })?;
-
-    if !gh_check.status.success() {
-        return Err(format!(
-            "GitHub CLI (gh) is not installed. {}",
-            get_gh_install_hint()
-        ));
-    }
-
-    // Check if user is authenticated
-    let auth_check = silent_command(gh_binary)
-        .args(["auth", "status"])
-        .current_dir(repo_path)
-        .output()
-        .map_err(|e| format!("Failed to check gh auth status: {e}"))?;
-
-    if !auth_check.status.success() {
-        return Err("Not authenticated with GitHub. Run: gh auth login".to_string());
-    }
 
     // Push current branch to remote first
     log::trace!("Pushing current branch to remote...");
