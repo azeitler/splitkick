@@ -1,4 +1,5 @@
 import type React from 'react'
+import { useState, useEffect } from 'react'
 import { cn } from '@/lib/utils'
 import { MacOSWindowControls } from './MacOSWindowControls'
 import { WindowsWindowControls } from './WindowsWindowControls'
@@ -41,6 +42,15 @@ export function TitleBar({
       DEFAULT_KEYBINDINGS.toggle_left_sidebar) as string
   )
   const native = isNativeApp()
+
+  const [appVersion, setAppVersion] = useState<string>('')
+  useEffect(() => {
+    if (native) {
+      import('@tauri-apps/api/app').then(({ getVersion }) =>
+        getVersion().then(setAppVersion)
+      )
+    }
+  }, [native])
 
   return (
     <div
@@ -147,8 +157,15 @@ export function TitleBar({
         </div>
       )}
 
-      {/* Right side - Windows/Linux window controls */}
-      {native && !isMacOS && <WindowsWindowControls />}
+      {/* Right side - Version + Windows/Linux window controls */}
+      <div className="flex items-center">
+        {appVersion && (
+          <span className="pr-2 text-[0.625rem] text-foreground/40">
+            v{appVersion}
+          </span>
+        )}
+        {native && !isMacOS && <WindowsWindowControls />}
+      </div>
     </div>
   )
 }

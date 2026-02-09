@@ -93,6 +93,11 @@ export function usePlanApproval({
             }
           }
         )
+
+        // Invalidate sessions list so canvas cards update
+        queryClient.invalidateQueries({
+          queryKey: chatQueryKeys.sessions(worktreeId),
+        })
       }
 
       setExecutionMode(sessionId, 'build')
@@ -185,6 +190,11 @@ export function usePlanApproval({
             }
           }
         )
+
+        // Invalidate sessions list so canvas cards update
+        queryClient.invalidateQueries({
+          queryKey: chatQueryKeys.sessions(worktreeId),
+        })
       }
 
       setExecutionMode(sessionId, 'yolo')

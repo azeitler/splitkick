@@ -299,6 +299,11 @@ export function useMessageHandlers({
         }
       )
 
+      // Invalidate sessions list so canvas cards update
+      queryClient.invalidateQueries({
+        queryKey: chatQueryKeys.sessions(worktreeId),
+      })
+
       // Explicitly set to build mode (not toggle, to avoid switching back to plan if already in build)
       const {
         setExecutionMode: setMode,
@@ -403,6 +408,11 @@ export function useMessageHandlers({
           }
         }
       )
+
+      // Invalidate sessions list so canvas cards update
+      queryClient.invalidateQueries({
+        queryKey: chatQueryKeys.sessions(worktreeId),
+      })
 
       // Set to yolo mode for auto-approval of all future tools
       const {

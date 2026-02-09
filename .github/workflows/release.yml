@@ -1,8 +1,8 @@
 name: 'Release Jean'
 
 on:
-  push:
-    tags: ['v*']
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       version:
@@ -32,6 +32,16 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Patch version from release tag
+        shell: bash
+        run: |
+          TAG="${{ github.event.release.tag_name || inputs.version }}"
+          VERSION="${TAG#v}"
+          echo "Patching version to $VERSION"
+          node -e "const p=require('./package.json'); p.version='$VERSION'; require('fs').writeFileSync('package.json', JSON.stringify(p,null,2)+'\n')"
+          node -e "const c=require('./src-tauri/tauri.conf.json'); c.version='$VERSION'; require('fs').writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(c,null,2)+'\n')"
+          sed -i.bak "s/^version = \"[^\"]*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml && rm -f src-tauri/Cargo.toml.bak
 
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-22.04'
@@ -74,21 +84,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tauriScript: npm run tauri
-          tagName: ${{ github.ref_name || inputs.version }}
-          releaseName: 'Jean ${{ github.ref_name || inputs.version }}'
-          releaseBody: |
-            ## Jean ${{ github.ref_name || inputs.version }}
-
-            ### Installation
-            - **macOS**: Download `.dmg` (universal binary for Intel + Apple Silicon)
-            - **Windows**: Download `.msi` or `.exe` installer
-            - **Linux**: Download `.deb` (Debian/Ubuntu), `.rpm` (Fedora), or `.AppImage` (universal)
-
-            ### Auto-Updates
-            Existing users will receive automatic update notifications.
-
-            **Full Changelog**: https://github.com/${{ github.repository }}/commits/${{ github.ref_name || inputs.version }}
-          releaseDraft: true
-          prerelease: false
+          tagName: ${{ github.event.release.tag_name || inputs.version }}
+          releaseId: ${{ github.event.release.id }}
           includeUpdaterJson: true
           args: ${{ matrix.args }} -vv
