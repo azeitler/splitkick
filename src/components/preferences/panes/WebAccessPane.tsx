@@ -98,15 +98,26 @@ export const WebAccessPane: React.FC = () => {
     }
   }, [preferences, serverStatus?.running, refreshStatus])
 
-  const handlePortChange = useCallback(
-    (value: string) => {
-      const port = parseInt(value, 10)
-      if (preferences && !isNaN(port) && port >= 1024 && port <= 65535) {
-        savePreferences.mutate({ ...preferences, http_server_port: port })
-      }
-    },
-    [savePreferences, preferences]
+  const [portInput, setPortInput] = useState(
+    String(preferences?.http_server_port ?? 3456)
   )
+
+  // Sync local state when preferences load/change externally
+  useEffect(() => {
+    if (preferences?.http_server_port != null) {
+      setPortInput(String(preferences.http_server_port))
+    }
+  }, [preferences?.http_server_port])
+
+  const handlePortBlur = useCallback(() => {
+    const port = parseInt(portInput, 10)
+    if (preferences && !isNaN(port) && port >= 1024 && port <= 65535) {
+      savePreferences.mutate({ ...preferences, http_server_port: port })
+    } else {
+      // Reset to current preference value on invalid input
+      setPortInput(String(preferences?.http_server_port ?? 3456))
+    }
+  }, [portInput, savePreferences, preferences])
 
   const handleRegenerateToken = useCallback(async () => {
     try {
@@ -250,8 +261,9 @@ export const WebAccessPane: React.FC = () => {
               min={1024}
               max={65535}
               className="w-28"
-              value={preferences?.http_server_port ?? 3456}
-              onChange={e => handlePortChange(e.target.value)}
+              value={portInput}
+              onChange={e => setPortInput(e.target.value)}
+              onBlur={handlePortBlur}
               disabled={serverStatus?.running}
             />
           </InlineField>
