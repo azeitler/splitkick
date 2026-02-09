@@ -1288,9 +1288,12 @@ fn fix_macos_path() {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
 
     // Spawn a login (-l) + interactive (-i) shell to source all config files
-    // including .zshrc where tools like bun, nvm add their PATH entries
+    // including .zshrc where tools like bun, nvm add their PATH entries.
+    // Use `printenv PATH` instead of `echo $PATH` because fish shell prints
+    // $PATH as space-separated (it's a list in fish), while printenv always
+    // outputs the raw colon-separated environment variable.
     let output = silent_command(&shell)
-        .args(["-l", "-i", "-c", "echo $PATH"])
+        .args(["-l", "-i", "-c", "/usr/bin/printenv PATH"])
         .output();
 
     if let Ok(output) = output {
