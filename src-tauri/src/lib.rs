@@ -161,6 +161,8 @@ pub struct AppPreferences {
     pub has_seen_feature_tour: bool, // Whether user has seen the feature tour onboarding
     #[serde(default = "default_chrome_enabled")]
     pub chrome_enabled: bool, // Enable browser automation via Chrome extension
+    #[serde(default = "default_zoom_level")]
+    pub zoom_level: u32, // Zoom level percentage (50-200, default 100)
 }
 
 fn default_auto_branch_naming() -> bool {
@@ -284,6 +286,10 @@ fn default_parallel_execution_prompt_enabled() -> bool {
 
 fn default_chrome_enabled() -> bool {
     true // Enabled by default
+}
+
+fn default_zoom_level() -> u32 {
+    100 // 100% = no zoom
 }
 
 fn default_allow_web_tools_in_plan_mode() -> bool {
@@ -601,6 +607,7 @@ impl Default for AppPreferences {
             default_enabled_mcp_servers: Vec::new(),
             has_seen_feature_tour: false,
             chrome_enabled: default_chrome_enabled(),
+            zoom_level: default_zoom_level(),
         }
     }
 }

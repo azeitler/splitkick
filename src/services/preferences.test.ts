@@ -124,6 +124,7 @@ describe('preferences service', () => {
         default_enabled_mcp_servers: [],
         has_seen_feature_tour: false,
         chrome_enabled: true,
+        zoom_level: 100,
       }
       vi.mocked(invoke).mockResolvedValueOnce(mockPreferences)
 
@@ -216,6 +217,7 @@ describe('preferences service', () => {
         default_enabled_mcp_servers: [],
         has_seen_feature_tour: false,
         chrome_enabled: true,
+        zoom_level: 100,
       }
       vi.mocked(invoke).mockResolvedValueOnce(prefsWithOldBinding)
 
@@ -285,6 +287,7 @@ describe('preferences service', () => {
         default_enabled_mcp_servers: [],
         has_seen_feature_tour: false,
         chrome_enabled: true,
+        zoom_level: 100,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -352,6 +355,7 @@ describe('preferences service', () => {
         default_enabled_mcp_servers: [],
         has_seen_feature_tour: false,
         chrome_enabled: true,
+        zoom_level: 100,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -419,6 +423,7 @@ describe('preferences service', () => {
         default_enabled_mcp_servers: [],
         has_seen_feature_tour: false,
         chrome_enabled: true,
+        zoom_level: 100,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -484,6 +489,7 @@ describe('preferences service', () => {
         default_enabled_mcp_servers: [],
         has_seen_feature_tour: false,
         chrome_enabled: true,
+        zoom_level: 100,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {

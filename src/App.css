@@ -341,3 +341,23 @@ kbd {
   font-size: var(--chat-font-size) !important;
   line-height: var(--chat-line-height) !important;
 }
+
+/* Inside chat context (.font-mono), text sizes scale relative to chat font */
+.font-mono .text-xs {
+  font-size: calc(var(--chat-font-size) * 0.85) !important;
+}
+.font-mono .text-sm {
+  font-size: var(--chat-font-size) !important;
+}
+.font-mono .text-base {
+  font-size: var(--chat-font-size) !important;
+}
+.font-mono .text-lg {
+  font-size: calc(var(--chat-font-size) * 1.15) !important;
+}
+.font-mono .text-xl {
+  font-size: calc(var(--chat-font-size) * 1.25) !important;
+}
+.font-mono .text-2xl {
+  font-size: calc(var(--chat-font-size) * 1.5) !important;
+}

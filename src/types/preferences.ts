@@ -285,6 +285,7 @@ export interface AppPreferences {
   default_enabled_mcp_servers: string[] // MCP server names enabled by default (empty = none)
   has_seen_feature_tour: boolean // Whether user has seen the feature tour onboarding
   chrome_enabled: boolean // Enable browser automation via Chrome extension
+  zoom_level: number // Zoom level percentage (50-200, default 100)
 }
 
 export type FileEditMode = 'inline' | 'external'
@@ -354,6 +355,41 @@ export const editorOptions: { value: EditorApp; label: string }[] = [
 export type FontSize = number
 
 export const FONT_SIZE_DEFAULT = 16
+export const ZOOM_LEVEL_DEFAULT = 100
+
+export const uiFontScaleTicks = [
+  { value: 12, label: '12px' },
+  { value: 14, label: '14px' },
+  { value: 15, label: '15px' },
+  { value: 16, label: '16px' },
+  { value: 18, label: '18px' },
+  { value: 20, label: '20px' },
+  { value: 24, label: '24px' },
+]
+
+export const chatFontScaleTicks = [
+  { value: 12, label: '12px' },
+  { value: 14, label: '14px' },
+  { value: 15, label: '15px' },
+  { value: 16, label: '16px' },
+  { value: 18, label: '18px' },
+  { value: 20, label: '20px' },
+  { value: 24, label: '24px' },
+]
+
+export const zoomLevelTicks = [
+  { value: 50, label: '50' },
+  { value: 67, label: '67' },
+  { value: 75, label: '75' },
+  { value: 80, label: '80' },
+  { value: 90, label: '90' },
+  { value: 100, label: '100' },
+  { value: 110, label: '110' },
+  { value: 125, label: '125' },
+  { value: 150, label: '150' },
+  { value: 175, label: '175' },
+  { value: 200, label: '200' },
+]
 
 export type UIFont = 'inter' | 'geist' | 'roboto' | 'lato' | 'system'
 export type ChatFont =
@@ -520,4 +556,5 @@ export const defaultPreferences: AppPreferences = {
   default_enabled_mcp_servers: [], // Default: no MCP servers enabled
   has_seen_feature_tour: false, // Default: not seen
   chrome_enabled: true, // Default: enabled
+  zoom_level: ZOOM_LEVEL_DEFAULT,
 }

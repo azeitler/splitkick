@@ -24,6 +24,7 @@ import { useUIStore } from './store/ui-store'
 import type { AppPreferences } from './types/preferences'
 import { useChatStore } from './store/chat-store'
 import { useFontSettings } from './hooks/use-font-settings'
+import { useZoom } from './hooks/use-zoom'
 import { useImmediateSessionStateSave } from './hooks/useImmediateSessionStateSave'
 import { useCliVersionCheck } from './hooks/useCliVersionCheck'
 import { useQueueProcessor } from './hooks/useQueueProcessor'
@@ -220,6 +221,9 @@ function App() {
 
   // Apply font settings from preferences
   useFontSettings()
+
+  // Apply zoom level from preferences + keyboard shortcuts
+  useZoom()
 
   // Save reviewing/waiting state immediately (no debounce) to ensure persistence on reload
   useImmediateSessionStateSave()
