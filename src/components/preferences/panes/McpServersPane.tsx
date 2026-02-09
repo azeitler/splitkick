@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react'
-import { Loader2 } from 'lucide-react'
+import { CheckCircle, Loader2, ShieldAlert, XCircle } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -9,8 +9,10 @@ import {
   useMcpServers,
   invalidateMcpServers,
   getNewServersToAutoEnable,
+  useMcpHealthCheck,
 } from '@/services/mcp'
 import { useChatStore } from '@/store/chat-store'
+import type { McpHealthStatus } from '@/types/chat'
 
 const SettingsSection: React.FC<{
   title: string
@@ -25,6 +27,62 @@ const SettingsSection: React.FC<{
   </div>
 )
 
+function HealthIndicator({
+  status,
+  isChecking,
+}: {
+  status: McpHealthStatus | undefined
+  isChecking: boolean
+}) {
+  if (isChecking) {
+    return (
+      <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Loader2 className="size-3.5 animate-spin" />
+        checking...
+      </span>
+    )
+  }
+
+  if (!status) return null
+
+  switch (status) {
+    case 'connected':
+      return (
+        <span
+          className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400"
+          title="Server is connected and ready"
+        >
+          <CheckCircle className="size-3.5" />
+          connected
+        </span>
+      )
+    case 'needsAuthentication':
+      return (
+        <span
+          className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400"
+          title="Run 'claude /mcp' in your terminal to authenticate"
+        >
+          <ShieldAlert className="size-3.5" />
+          needs auth
+        </span>
+      )
+    case 'couldNotConnect':
+      return (
+        <span
+          className="flex items-center gap-1.5 text-xs text-red-600 dark:text-red-400"
+          title="Could not connect — check that the server is running"
+        >
+          <XCircle className="size-3.5" />
+          connection failed
+        </span>
+      )
+    case 'disabled':
+      return null // Already shown via opacity + "disabled" label
+    default:
+      return null
+  }
+}
+
 export const McpServersPane: React.FC = () => {
   const { data: preferences } = usePreferences()
   const savePreferences = useSavePreferences()
@@ -33,10 +91,18 @@ export const McpServersPane: React.FC = () => {
   const activeWorktreePath = useChatStore(state => state.activeWorktreePath)
   const { data: mcpServers, isLoading } = useMcpServers(activeWorktreePath)
 
-  // Re-read MCP config from disk every time this pane is opened
+  // Health check — triggered on mount
+  const {
+    data: healthResult,
+    isFetching: isHealthChecking,
+    refetch: checkHealth,
+  } = useMcpHealthCheck()
+
+  // Re-read MCP config from disk and trigger health check every time this pane is opened
   useEffect(() => {
     invalidateMcpServers()
-  }, [])
+    checkHealth()
+  }, [checkHealth])
 
   const enabledServers = preferences?.default_enabled_mcp_servers ?? []
 
@@ -115,6 +181,10 @@ export const McpServersPane: React.FC = () => {
                 >
                   {server.name}
                 </Label>
+                <HealthIndicator
+                  status={healthResult?.statuses[server.name]}
+                  isChecking={isHealthChecking}
+                />
                 <span className="text-xs text-muted-foreground">
                   {server.disabled ? 'disabled' : server.scope}
                 </span>

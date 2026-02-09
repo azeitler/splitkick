@@ -21,6 +21,7 @@ export type SessionStatus =
   | 'waiting'
   | 'review'
   | 'permission'
+  | 'completed'
 
 export interface SessionCardData {
   session: Session
@@ -75,6 +76,10 @@ export const statusConfig: Record<
   permission: {
     label: 'Permission',
     indicatorStatus: 'waiting',
+  },
+  completed: {
+    label: 'Completed',
+    indicatorStatus: 'completed',
   },
 }
 
@@ -208,8 +213,11 @@ export function computeSessionCardData(
     hasStreamingExitPlan ||
     hasPendingQuestion ||
     hasPendingExitPlan
-  const isWaiting =
-    isWaitingFromMessages || isExplicitlyWaiting || persistedWaitingForInput
+  // When sessionSending is true, persisted waiting_for_input from TanStack Query
+  // may be stale (not yet refetched after approval). Only use it as fallback when idle.
+  const isWaiting = sessionSending
+    ? isWaitingFromMessages || isExplicitlyWaiting
+    : isWaitingFromMessages || isExplicitlyWaiting || persistedWaitingForInput
 
   // hasExitPlanMode should also consider persisted state
   // Use waiting_for_input_type to disambiguate when messages haven't loaded yet
@@ -242,19 +250,20 @@ export function computeSessionCardData(
     : (executionModes[session.id] ?? 'plan')
 
   // Determine status
+  // Priority: permission > waiting > sending (active) > review > restart recovery > completed > idle
   let status: SessionStatus = 'idle'
   if (hasPermissionDenials) {
     status = 'permission'
   } else if (isWaiting) {
     status = 'waiting'
-  } else if (reviewingSessions[session.id]) {
-    status = 'review'
   } else if (sessionSending && executionMode === 'plan') {
     status = 'planning'
   } else if (sessionSending && executionMode === 'build') {
     status = 'vibing'
   } else if (sessionSending && executionMode === 'yolo') {
     status = 'yoloing'
+  } else if (reviewingSessions[session.id]) {
+    status = 'review'
   } else if (
     !sessionSending &&
     (session.last_run_status === 'running' ||
@@ -266,6 +275,8 @@ export function computeSessionCardData(
     if (mode === 'plan') status = 'planning'
     else if (mode === 'build') status = 'vibing'
     else if (mode === 'yolo') status = 'yoloing'
+  } else if (!sessionSending && session.last_run_status === 'completed') {
+    status = 'completed'
   }
 
   // Check for session recap/digest

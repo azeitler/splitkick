@@ -1,4 +1,4 @@
-import { memo, useCallback, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { getModifierSymbol, isMacOS } from '@/lib/platform'
 import { toast } from 'sonner'
 import {
@@ -15,6 +15,7 @@ import {
   ArrowUpToLine,
   BookmarkPlus,
   Brain,
+  CheckCircle,
   ChevronDown,
   CircleDot,
   ClipboardList,
@@ -26,13 +27,16 @@ import {
   GitMerge,
   GitPullRequest,
   Hammer,
+  Loader2,
   MoreHorizontal,
   Pencil,
   Plug,
   Search,
   Send,
+  ShieldAlert,
   Sparkles,
   Wand2,
+  XCircle,
   Zap,
 } from 'lucide-react'
 import { openUrl } from '@tauri-apps/plugin-opener'
@@ -68,7 +72,8 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Markdown } from '@/components/ui/markdown'
 import { cn } from '@/lib/utils'
 import type { ClaudeModel } from '@/store/chat-store'
-import type { McpServerInfo } from '@/types/chat'
+import { useMcpHealthCheck } from '@/services/mcp'
+import type { McpServerInfo, McpHealthStatus } from '@/types/chat'
 import type { ThinkingLevel, EffortLevel, ExecutionMode } from '@/types/chat'
 import type {
   PrDisplayStatus,
@@ -239,6 +244,49 @@ interface ChatToolbarProps {
   onOpenProjectSettings?: () => void
 }
 
+/** Compact health status dot for the toolbar MCP dropdown */
+/** Hover hint for MCP server health status in the toolbar dropdown */
+function mcpStatusHint(status: McpHealthStatus | undefined): string | undefined {
+  switch (status) {
+    case 'needsAuthentication':
+      return "Needs authentication — run 'claude /mcp' to authenticate"
+    case 'couldNotConnect':
+      return 'Could not connect to server'
+    case 'connected':
+      return 'Connected'
+    default:
+      return undefined
+  }
+}
+
+/** Compact health status dot for the toolbar MCP dropdown */
+function McpStatusDot({ status }: { status: McpHealthStatus | undefined }) {
+  if (!status) return null
+
+  switch (status) {
+    case 'connected':
+      return (
+        <span title="Connected">
+          <CheckCircle className="size-3 text-green-600 dark:text-green-400" />
+        </span>
+      )
+    case 'needsAuthentication':
+      return (
+        <span title="Needs authentication — run 'claude /mcp' to authenticate">
+          <ShieldAlert className="size-3 text-amber-600 dark:text-amber-400" />
+        </span>
+      )
+    case 'couldNotConnect':
+      return (
+        <span title="Could not connect to server">
+          <XCircle className="size-3 text-red-600 dark:text-red-400" />
+        </span>
+      )
+    default:
+      return null
+  }
+}
+
 /**
  * Memoized toolbar component to prevent re-renders when parent state changes.
  * This component only re-renders when its props change.
@@ -298,6 +346,29 @@ export const ChatToolbar = memo(function ChatToolbar({
   onToggleMcpServer,
   onOpenProjectSettings,
 }: ChatToolbarProps) {
+  // MCP health check — triggered when dropdown opens, shared cache with settings pane
+  const {
+    data: healthResult,
+    isFetching: isHealthChecking,
+    refetch: checkHealth,
+  } = useMcpHealthCheck()
+
+  const [mcpDropdownOpen, setMcpDropdownOpen] = useState(false)
+
+  useEffect(() => {
+    if (mcpDropdownOpen) {
+      checkHealth()
+    }
+  }, [mcpDropdownOpen, checkHealth])
+
+  // Count only enabled servers that actually exist and aren't disabled
+  const activeMcpCount = useMemo(() => {
+    const availableNames = new Set(
+      availableMcpServers.filter(s => !s.disabled).map(s => s.name)
+    )
+    return enabledMcpServers.filter(name => availableNames.has(name)).length
+  }, [availableMcpServers, enabledMcpServers])
+
   // Memoize callbacks to prevent Select re-renders
   const handleModelChange = useCallback(
     (value: string) => {
@@ -1061,36 +1132,42 @@ export const ChatToolbar = memo(function ChatToolbar({
         )}
 
         {/* MCP servers button - desktop only */}
-        {availableMcpServers.length > 0 && (
-          <>
-            <div className="hidden @md:block h-4 w-px bg-border/50" />
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  disabled={hasPendingQuestions}
-                  className={cn(
-                    'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
-                    enabledMcpServers.length > 0 &&
-                      'border border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:border-emerald-400/40 dark:bg-emerald-500/10 dark:text-emerald-400'
-                  )}
-                  title={
-                    enabledMcpServers.length > 0
-                      ? `${enabledMcpServers.length} MCP server(s) enabled`
-                      : 'No MCP servers enabled'
-                  }
-                >
-                  <Plug className="h-3.5 w-3.5" />
-                  {enabledMcpServers.length > 0 && (
-                    <span>{enabledMcpServers.length}</span>
-                  )}
-                  <ChevronDown className="h-3 w-3 opacity-50" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                <DropdownMenuLabel>MCP Servers</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {availableMcpServers.map(server => (
+        <div className="hidden @md:block h-4 w-px bg-border/50" />
+        <DropdownMenu open={mcpDropdownOpen} onOpenChange={setMcpDropdownOpen}>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              disabled={hasPendingQuestions}
+              className={cn(
+                'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
+                activeMcpCount > 0 &&
+                  'border border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:border-emerald-400/40 dark:bg-emerald-500/10 dark:text-emerald-400'
+              )}
+              title={
+                activeMcpCount > 0
+                  ? `${activeMcpCount} MCP server(s) enabled`
+                  : 'No MCP servers enabled'
+              }
+            >
+              <Plug className="h-3.5 w-3.5" />
+              {activeMcpCount > 0 && (
+                <span>{activeMcpCount}</span>
+              )}
+              <ChevronDown className="h-3 w-3 opacity-50" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuLabel className="flex items-center gap-2">
+              MCP Servers
+              {isHealthChecking && (
+                <Loader2 className="size-3 animate-spin text-muted-foreground" />
+              )}
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {availableMcpServers.length > 0 ? (
+              availableMcpServers.map(server => {
+                const status = healthResult?.statuses[server.name]
+                return (
                   <DropdownMenuCheckboxItem
                     key={server.name}
                     checked={
@@ -1100,27 +1177,37 @@ export const ChatToolbar = memo(function ChatToolbar({
                     onCheckedChange={() => onToggleMcpServer(server.name)}
                     disabled={server.disabled}
                     className={server.disabled ? 'opacity-50' : undefined}
+                    title={mcpStatusHint(status)}
                   >
-                    {server.name}
+                    <span className="flex items-center gap-1.5">
+                      <McpStatusDot status={status} />
+                      {server.name}
+                    </span>
                     <span className="ml-auto pl-4 text-xs text-muted-foreground">
                       {server.disabled ? 'disabled' : server.scope}
                     </span>
                   </DropdownMenuCheckboxItem>
-                ))}
-                {onOpenProjectSettings && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onSelect={onOpenProjectSettings}>
-                      <span className="text-xs text-muted-foreground">
-                        Set defaults in project settings
-                      </span>
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </>
-        )}
+                )
+              })
+            ) : (
+              <DropdownMenuItem disabled>
+                <span className="text-xs text-muted-foreground">
+                  No MCP servers configured
+                </span>
+              </DropdownMenuItem>
+            )}
+            {onOpenProjectSettings && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={onOpenProjectSettings}>
+                  <span className="text-xs text-muted-foreground">
+                    Set defaults in project settings
+                  </span>
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         {/* Divider - desktop only */}
         <div className="hidden @md:block h-4 w-px bg-border/50" />

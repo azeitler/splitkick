@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { invoke } from '@tauri-apps/api/core'
 import { isTauri } from '@/services/projects'
 import { queryClient } from '@/lib/query-client'
-import type { McpServerInfo } from '@/types/chat'
+import type { McpServerInfo, McpHealthResult } from '@/types/chat'
 
 /** Query key prefix for MCP server queries */
 export const MCP_SERVERS_KEY = 'mcp-servers'
@@ -36,6 +36,27 @@ export function useMcpServers(worktreePath: string | null | undefined) {
     },
     enabled: isTauri(),
     staleTime: 1000 * 60 * 5, // 5 min cache
+  })
+}
+
+/** Query key for MCP health check */
+export const MCP_HEALTH_KEY = 'mcp-health'
+
+/**
+ * Check health status of all MCP servers via `claude mcp list`.
+ * Manual trigger only (enabled: false) — call refetch() to run.
+ * Results are cached for 30s to avoid redundant health checks.
+ */
+export function useMcpHealthCheck() {
+  return useQuery({
+    queryKey: [MCP_HEALTH_KEY],
+    queryFn: async () => {
+      if (!isTauri()) return { statuses: {} } as McpHealthResult
+      return invoke<McpHealthResult>('check_mcp_health')
+    },
+    enabled: false,
+    staleTime: 30_000,
+    retry: 1,
   })
 }
 

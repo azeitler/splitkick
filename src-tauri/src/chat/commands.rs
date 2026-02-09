@@ -3064,6 +3064,24 @@ pub struct McpServerInfo {
     pub disabled: bool,
 }
 
+/// Health status of an MCP server as reported by `claude mcp list`
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub enum McpHealthStatus {
+    Connected,
+    NeedsAuthentication,
+    CouldNotConnect,
+    Disabled,
+    Unknown,
+}
+
+/// Result of a health check across all MCP servers
+#[derive(serde::Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct McpHealthResult {
+    pub statuses: std::collections::HashMap<String, McpHealthStatus>,
+}
+
 /// Discover MCP servers from all configuration sources:
 /// - User scope: ~/.claude.json top-level mcpServers
 /// - Local scope: ~/.claude.json under projects[worktreePath].mcpServers
@@ -3166,6 +3184,81 @@ pub async fn get_mcp_servers(worktree_path: Option<String>) -> Result<Vec<McpSer
     Ok(servers)
 }
 
+/// Parse `claude mcp list` text output into server health statuses.
+///
+/// Expected format per line: `name: url/path (Type) - Status`
+/// Examples:
+///   `notion: https://mcp.notion.com/mcp (HTTP) - ! Needs authentication`
+///   `filesystem: /usr/bin/fs (STDIO) - connected`
+fn parse_mcp_list_output(output: &str) -> std::collections::HashMap<String, McpHealthStatus> {
+    let mut statuses = std::collections::HashMap::new();
+
+    for line in output.lines() {
+        let line = line.trim();
+
+        // Skip header/empty lines
+        if line.is_empty() || line.starts_with("Checking MCP") {
+            continue;
+        }
+
+        // Extract server name (everything before first ':')
+        let Some((name, rest)) = line.split_once(':') else {
+            continue;
+        };
+        let name = name.trim().to_string();
+
+        // Extract status (everything after last " - ")
+        let status_str = rest.rsplit_once(" - ").map(|(_, s)| s.trim()).unwrap_or("");
+
+        let status = if status_str.contains("connected") {
+            McpHealthStatus::Connected
+        } else if status_str.contains("Needs authentication") {
+            McpHealthStatus::NeedsAuthentication
+        } else if status_str.contains("Could not connect") {
+            McpHealthStatus::CouldNotConnect
+        } else if status_str.contains("disabled") {
+            McpHealthStatus::Disabled
+        } else {
+            McpHealthStatus::Unknown
+        };
+
+        statuses.insert(name, status);
+    }
+
+    statuses
+}
+
+/// Check health status of all MCP servers by running `claude mcp list`.
+#[tauri::command]
+pub async fn check_mcp_health(app: AppHandle) -> Result<McpHealthResult, String> {
+    let cli_path = get_cli_binary_path(&app)?;
+
+    if !cli_path.exists() {
+        return Err("Claude CLI not installed".to_string());
+    }
+
+    log::debug!("Running: claude mcp list");
+
+    let output = silent_command(&cli_path)
+        .args(["mcp", "list"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| format!("Failed to run claude mcp list: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("claude mcp list failed: {stderr}"));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let statuses = parse_mcp_list_output(&stdout);
+
+    log::debug!("MCP health check: {} servers", statuses.len());
+
+    Ok(McpHealthResult { statuses })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3255,5 +3348,42 @@ also not json"#;
         let result = extract_text_from_stream_json(output);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "After tool");
+    }
+
+    #[test]
+    fn test_parse_mcp_list_output() {
+        let output = "\
+Checking MCP server health...
+
+notion: https://mcp.notion.com/mcp (HTTP) - ! Needs authentication
+filesystem: /usr/bin/fs-server (STDIO) - connected
+broken: http://localhost:9999 (HTTP) - ! Could not connect
+my-disabled: /usr/bin/disabled (STDIO) - disabled";
+
+        let statuses = parse_mcp_list_output(output);
+        assert_eq!(statuses.len(), 4);
+        assert_eq!(
+            statuses.get("notion"),
+            Some(&McpHealthStatus::NeedsAuthentication)
+        );
+        assert_eq!(
+            statuses.get("filesystem"),
+            Some(&McpHealthStatus::Connected)
+        );
+        assert_eq!(
+            statuses.get("broken"),
+            Some(&McpHealthStatus::CouldNotConnect)
+        );
+        assert_eq!(
+            statuses.get("my-disabled"),
+            Some(&McpHealthStatus::Disabled)
+        );
+    }
+
+    #[test]
+    fn test_parse_mcp_list_output_empty() {
+        let output = "Checking MCP server health...\n\n";
+        let statuses = parse_mcp_list_output(output);
+        assert!(statuses.is_empty());
     }
 }

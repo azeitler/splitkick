@@ -135,7 +135,7 @@ export function TitleBar({
             <TooltipTrigger asChild>
               <Button
                 onClick={() =>
-                  openUrl('https://coollabs.io/sponsorships/?utm_source=jean')
+                  openUrl('https://jean.build/sponsorships/')
                 }
                 variant="ghost"
                 size="icon"

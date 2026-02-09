@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils'
 
-export type IndicatorStatus = 'idle' | 'running' | 'waiting' | 'review'
+export type IndicatorStatus = 'idle' | 'running' | 'waiting' | 'review' | 'completed'
 export type IndicatorVariant = 'default' | 'destructive' | 'loading'
 export type IndicatorShape = 'circle' | 'square'
 
@@ -44,7 +44,7 @@ export function StatusIndicator({
   const colorClass =
     status === 'waiting'
       ? 'text-yellow-500 animate-blink '
-      : status === 'review'
+      : status === 'review' || status === 'completed'
         ? 'text-green-500'
         : 'text-muted-foreground/50'
 

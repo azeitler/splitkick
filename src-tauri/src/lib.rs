@@ -1746,6 +1746,7 @@ pub fn run() {
             // Chat commands - Session-based messaging
             chat::send_chat_message,
             chat::get_mcp_servers,
+            chat::check_mcp_health,
             chat::clear_session_history,
             chat::set_session_model,
             chat::set_session_thinking_level,

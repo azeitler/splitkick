@@ -725,6 +725,19 @@ export interface McpServerInfo {
   disabled: boolean
 }
 
+/** Health status of an MCP server as reported by `claude mcp list` */
+export type McpHealthStatus =
+  | 'connected'
+  | 'needsAuthentication'
+  | 'couldNotConnect'
+  | 'disabled'
+  | 'unknown'
+
+/** Result of a health check across all MCP servers */
+export interface McpHealthResult {
+  statuses: Record<string, McpHealthStatus>
+}
+
 // ============================================================================
 // Saved Context Types (for Save/Load Context magic commands)
 // ============================================================================

@@ -1,11 +1,14 @@
 import { useState, useMemo, useEffect } from 'react'
 import {
+  CheckCircle,
   Loader2,
   GitBranch,
   Check,
   ChevronsUpDown,
   ImageIcon,
+  ShieldAlert,
   X,
+  XCircle,
 } from 'lucide-react'
 import { convertFileSrc } from '@/lib/transport'
 import {
@@ -46,7 +49,45 @@ import {
   useMcpServers,
   invalidateMcpServers,
   getNewServersToAutoEnable,
+  useMcpHealthCheck,
 } from '@/services/mcp'
+import type { McpHealthStatus } from '@/types/chat'
+
+function ProjectMcpHealthIndicator({
+  status,
+  isChecking,
+}: {
+  status: McpHealthStatus | undefined
+  isChecking: boolean
+}) {
+  if (isChecking) {
+    return <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
+  }
+  if (!status) return null
+
+  switch (status) {
+    case 'connected':
+      return (
+        <span title="Server is connected and ready">
+          <CheckCircle className="size-3.5 text-green-600 dark:text-green-400" />
+        </span>
+      )
+    case 'needsAuthentication':
+      return (
+        <span title="Run 'claude /mcp' in your terminal to authenticate">
+          <ShieldAlert className="size-3.5 text-amber-600 dark:text-amber-400" />
+        </span>
+      )
+    case 'couldNotConnect':
+      return (
+        <span title="Could not connect — check that the server is running">
+          <XCircle className="size-3.5 text-red-600 dark:text-red-400" />
+        </span>
+      )
+    default:
+      return null
+  }
+}
 
 export function ProjectSettingsDialog() {
   const {
@@ -74,12 +115,20 @@ export function ProjectSettingsDialog() {
     project?.path
   )
 
-  // Re-read MCP config from disk when the dialog opens
+  // Health check — triggered when dialog opens
+  const {
+    data: healthResult,
+    isFetching: isHealthChecking,
+    refetch: checkHealth,
+  } = useMcpHealthCheck()
+
+  // Re-read MCP config from disk and trigger health check when the dialog opens
   useEffect(() => {
     if (projectSettingsDialogOpen && project?.path) {
       invalidateMcpServers(project.path)
+      checkHealth()
     }
-  }, [projectSettingsDialogOpen, project?.path])
+  }, [projectSettingsDialogOpen, project?.path, checkHealth])
 
   // Use project's default_branch as the initial value, allow local overrides
   const [localBranch, setLocalBranch] = useState<string | null>(null)
@@ -363,6 +412,10 @@ export function ProjectSettingsDialog() {
                     >
                       {server.name}
                     </Label>
+                    <ProjectMcpHealthIndicator
+                      status={healthResult?.statuses[server.name]}
+                      isChecking={isHealthChecking}
+                    />
                     <span className="text-xs text-muted-foreground">
                       {server.disabled ? 'disabled' : server.scope}
                     </span>
