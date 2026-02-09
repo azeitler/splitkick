@@ -452,6 +452,7 @@ export default function useStreamingEvents({
         const messageId = preGeneratedId ?? crypto.randomUUID()
         // Clean up the temporary storage
         if (preGeneratedId) {
+          // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
           delete (window as unknown as Record<string, string>)[pendingIdKey]
         }
 

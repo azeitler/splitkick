@@ -3069,9 +3069,7 @@ pub struct McpServerInfo {
 /// - Local scope: ~/.claude.json under projects[worktreePath].mcpServers
 /// - Project scope: <worktree_path>/.mcp.json mcpServers
 #[tauri::command]
-pub async fn get_mcp_servers(
-    worktree_path: Option<String>,
-) -> Result<Vec<McpServerInfo>, String> {
+pub async fn get_mcp_servers(worktree_path: Option<String>) -> Result<Vec<McpServerInfo>, String> {
     let mut servers = Vec::new();
     let mut seen_names = std::collections::HashSet::new();
 

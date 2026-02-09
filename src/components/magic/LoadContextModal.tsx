@@ -251,7 +251,7 @@ export function LoadContextModal({
     const attachedSlugs = new Set(attachedSavedContexts?.map(c => c.slug) ?? [])
 
     // Filter out already-attached contexts
-    let filtered = contextsData.contexts.filter(
+    const filtered = contextsData.contexts.filter(
       ctx => !attachedSlugs.has(ctx.slug)
     )
 
@@ -415,7 +415,7 @@ export function LoadContextModal({
 
   // Handle loading/refreshing an issue
   const handleLoadIssue = useCallback(
-    async (issueNumber: number, isRefresh: boolean = false) => {
+    async (issueNumber: number, isRefresh = false) => {
       if (!worktreeId || !worktreePath) {
         toast.error('No active worktree')
         return
@@ -457,7 +457,7 @@ export function LoadContextModal({
 
   // Handle loading/refreshing a PR
   const handleLoadPR = useCallback(
-    async (prNumber: number, isRefresh: boolean = false) => {
+    async (prNumber: number, isRefresh = false) => {
       if (!worktreeId || !worktreePath) {
         toast.error('No active worktree')
         return
@@ -1706,6 +1706,7 @@ function ContextsTab({
                       setSelectedIndex={setSelectedIndex}
                     />
                   )
+                  // eslint-disable-next-line react-hooks/immutability
                   sessionStartIndex += entry.sessions.length
                   return entryElement
                 })}

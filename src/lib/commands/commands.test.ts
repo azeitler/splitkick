@@ -1,19 +1,18 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import type { CommandContext, AppCommand } from './types'
 
-const {
-  registerCommands,
-  getAllCommands,
-  executeCommand,
-  clearRegistry,
-} = await import('./registry')
+const { registerCommands, getAllCommands, executeCommand, clearRegistry } =
+  await import('./registry')
 const { notificationCommands } = await import('./notification-commands')
 const { projectCommands } = await import('./project-commands')
 
 const createMockContext = (): CommandContext => ({
-  // Query client
+  // Query client - return debug_mode_enabled for notification commands
   queryClient: {
-    getQueryData: vi.fn(),
+    getQueryData: vi.fn().mockImplementation((key: string[]) => {
+      if (key[0] === 'preferences') return { debug_mode_enabled: true }
+      return undefined
+    }),
   } as unknown as CommandContext['queryClient'],
 
   // Preferences

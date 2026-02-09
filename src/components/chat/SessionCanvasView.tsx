@@ -66,8 +66,12 @@ export function SessionCanvasView({
     ? (gitStatus?.uncommitted_added ?? worktree?.cached_uncommitted_added ?? 0)
     : (gitStatus?.branch_diff_added ?? worktree?.cached_branch_diff_added ?? 0)
   const diffRemoved = isBase
-    ? (gitStatus?.uncommitted_removed ?? worktree?.cached_uncommitted_removed ?? 0)
-    : (gitStatus?.branch_diff_removed ?? worktree?.cached_branch_diff_removed ?? 0)
+    ? (gitStatus?.uncommitted_removed ??
+      worktree?.cached_uncommitted_removed ??
+      0)
+    : (gitStatus?.branch_diff_removed ??
+      worktree?.cached_branch_diff_removed ??
+      0)
 
   // Git badge interaction state
   const [diffRequest, setDiffRequest] = useState<DiffRequest | null>(null)
@@ -195,7 +199,10 @@ export function SessionCanvasView({
         { worktreeId, worktreePath },
         {
           onSuccess: session => {
-            console.log('[SessionCanvasView] onSuccess - session.id:', session.id)
+            console.log(
+              '[SessionCanvasView] onSuccess - session.id:',
+              session.id
+            )
             setSelectedSessionId(session.id)
             // selectedIndex will be synced reactively by the effect below
           },
@@ -211,8 +218,14 @@ export function SessionCanvasView({
   // Compute session card data (must be before effects that depend on it)
   const sessionCards = useMemo(() => {
     const sessions = sessionsData?.sessions ?? []
-    console.log('[SessionCanvasView] sessionCards useMemo - sessions count:', sessions.length)
-    console.log('[SessionCanvasView] sessionCards useMemo - first session id:', sessions[0]?.id)
+    console.log(
+      '[SessionCanvasView] sessionCards useMemo - sessions count:',
+      sessions.length
+    )
+    console.log(
+      '[SessionCanvasView] sessionCards useMemo - first session id:',
+      sessions[0]?.id
+    )
     const cards = sessions.map(session =>
       computeSessionCardData(session, storeState)
     )
@@ -229,7 +242,12 @@ export function SessionCanvasView({
     const cardIndex = sessionCards.findIndex(
       card => card.session.id === selectedSessionId
     )
-    console.log('[SessionCanvasView] sync selectedIndex - cardIndex:', cardIndex, 'for session:', selectedSessionId)
+    console.log(
+      '[SessionCanvasView] sync selectedIndex - cardIndex:',
+      cardIndex,
+      'for session:',
+      selectedSessionId
+    )
     if (cardIndex !== -1 && cardIndex !== selectedIndex) {
       setSelectedIndex(cardIndex)
     }
@@ -242,7 +260,9 @@ export function SessionCanvasView({
     setSelectedIndex(0)
     const firstCard = sessionCards[0]
     if (firstCard) {
-      useChatStore.getState().setCanvasSelectedSession(worktreeId, firstCard.session.id)
+      useChatStore
+        .getState()
+        .setCanvasSelectedSession(worktreeId, firstCard.session.id)
       // Sync projects store so commands (CMD+O, open terminal, etc.) work immediately
       useProjectsStore.getState().selectWorktree(worktreeId)
       useChatStore.getState().registerWorktreePath(worktreeId, worktreePath)
@@ -250,7 +270,12 @@ export function SessionCanvasView({
   }, [sessionCards, selectedIndex, selectedSessionId, worktreeId, worktreePath])
 
   // Debug: log selectedIndex changes
-  console.log('[SessionCanvasView] render - selectedIndex:', selectedIndex, 'sessionCards.length:', sessionCards.length)
+  console.log(
+    '[SessionCanvasView] render - selectedIndex:',
+    selectedIndex,
+    'sessionCards.length:',
+    sessionCards.length
+  )
 
   // Handle opening full view from modal
   const handleOpenFullView = useCallback(() => {
@@ -266,98 +291,102 @@ export function SessionCanvasView({
       <div className="flex-1 flex flex-col overflow-auto">
         {/* Header with Search - sticky over content */}
         <div className="sticky top-0 z-10 flex items-center justify-between gap-4 bg-background/60 backdrop-blur-md px-4 py-3 border-b border-border/30">
-        <div className="flex items-center gap-2 shrink-0">
-          <div className="flex items-center gap-1">
-            <h2 className="text-lg font-semibold">
-              {project?.name}
-              {sessionLabel && (
-                <span className="ml-2 text-sm font-normal text-muted-foreground">
-                  ({sessionLabel})
-                </span>
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-1">
+              <h2 className="text-lg font-semibold">
+                {project?.name}
+                {sessionLabel && (
+                  <span className="ml-2 text-sm font-normal text-muted-foreground">
+                    ({sessionLabel})
+                  </span>
+                )}
+              </h2>
+              {project && worktree && (
+                <NewIssuesBadge
+                  projectPath={project.path}
+                  projectId={worktree.project_id}
+                />
               )}
-            </h2>
-            {project && worktree && (
-              <NewIssuesBadge projectPath={project.path} projectId={worktree.project_id} />
-            )}
-            {worktree?.project_id && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-muted-foreground"
-                  >
-                    <MoreHorizontal className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  <DropdownMenuItem
-                    onSelect={() =>
-                      useProjectsStore
-                        .getState()
-                        .openProjectSettings(worktree.project_id)
-                    }
-                  >
-                    <Settings className="h-4 w-4" />
-                    Project Settings
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
+              {worktree?.project_id && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground"
+                    >
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    <DropdownMenuItem
+                      onSelect={() =>
+                        useProjectsStore
+                          .getState()
+                          .openProjectSettings(worktree.project_id)
+                      }
+                    >
+                      <Settings className="h-4 w-4" />
+                      Project Settings
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
+            <GitStatusBadges
+              behindCount={behindCount}
+              unpushedCount={unpushedCount}
+              diffAdded={diffAdded}
+              diffRemoved={diffRemoved}
+              onPull={handlePull}
+              onPush={handlePush}
+              onDiffClick={handleDiffClick}
+            />
           </div>
-          <GitStatusBadges
-            behindCount={behindCount}
-            unpushedCount={unpushedCount}
-            diffAdded={diffAdded}
-            diffRemoved={diffRemoved}
-            onPull={handlePull}
-            onPush={handlePush}
-            onDiffClick={handleDiffClick}
-          />
+
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              ref={searchInputRef}
+              placeholder="Search sessions..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="pl-9 bg-transparent border-border/30"
+            />
+          </div>
         </div>
 
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            ref={searchInputRef}
-            placeholder="Search sessions..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className="pl-9 bg-transparent border-border/30"
-          />
+        {/* Canvas View */}
+        <div className="flex-1 pb-16 pt-6 px-4">
+          {worktree?.status === 'pending' ? (
+            <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
+              <Loader2 className="h-6 w-6 animate-spin" />
+              <span>Setting up worktree...</span>
+            </div>
+          ) : sessionCards.length === 0 ? (
+            <div className="flex h-full items-center justify-center text-muted-foreground">
+              {searchQuery
+                ? 'No sessions match your search'
+                : 'No sessions yet'}
+            </div>
+          ) : (
+            <CanvasGrid
+              cards={sessionCards}
+              worktreeId={worktreeId}
+              worktreePath={worktreePath}
+              selectedIndex={selectedIndex}
+              onSelectedIndexChange={setSelectedIndex}
+              selectedSessionId={selectedSessionId}
+              onSelectedSessionIdChange={setSelectedSessionId}
+              onOpenFullView={handleOpenFullView}
+              onArchiveSession={handleArchiveSession}
+              onDeleteSession={handleDeleteSession}
+              onPlanApproval={handlePlanApproval}
+              onPlanApprovalYolo={handlePlanApprovalYolo}
+              searchInputRef={searchInputRef}
+            />
+          )}
         </div>
-
-      </div>
-
-      {/* Canvas View */}
-      <div className="flex-1 pb-16 pt-6 px-4">
-        {worktree?.status === 'pending' ? (
-          <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
-            <Loader2 className="h-6 w-6 animate-spin" />
-            <span>Setting up worktree...</span>
-          </div>
-        ) : sessionCards.length === 0 ? (
-          <div className="flex h-full items-center justify-center text-muted-foreground">
-            {searchQuery ? 'No sessions match your search' : 'No sessions yet'}
-          </div>
-        ) : (
-          <CanvasGrid
-            cards={sessionCards}
-            worktreeId={worktreeId}
-            worktreePath={worktreePath}
-            selectedIndex={selectedIndex}
-            onSelectedIndexChange={setSelectedIndex}
-            selectedSessionId={selectedSessionId}
-            onSelectedSessionIdChange={setSelectedSessionId}
-            onOpenFullView={handleOpenFullView}
-            onArchiveSession={handleArchiveSession}
-            onDeleteSession={handleDeleteSession}
-            onPlanApproval={handlePlanApproval}
-            onPlanApprovalYolo={handlePlanApprovalYolo}
-            searchInputRef={searchInputRef}
-          />
-        )}
-      </div>
       </div>
 
       {/* Keybinding hints */}
@@ -367,9 +396,18 @@ export function SessionCanvasView({
             { shortcut: 'Enter', label: 'open' },
             { shortcut: 'P', label: 'plan' },
             { shortcut: 'R', label: 'recap' },
-            { shortcut: DEFAULT_KEYBINDINGS.new_worktree as string, label: 'new worktree' },
-            { shortcut: DEFAULT_KEYBINDINGS.new_session as string, label: 'new session' },
-            { shortcut: DEFAULT_KEYBINDINGS.close_session_or_worktree as string, label: 'close' },
+            {
+              shortcut: DEFAULT_KEYBINDINGS.new_worktree as string,
+              label: 'new worktree',
+            },
+            {
+              shortcut: DEFAULT_KEYBINDINGS.new_session as string,
+              label: 'new session',
+            },
+            {
+              shortcut: DEFAULT_KEYBINDINGS.close_session_or_worktree as string,
+              label: 'close',
+            },
           ]}
         />
       )}

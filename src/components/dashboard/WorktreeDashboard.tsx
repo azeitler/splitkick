@@ -2,7 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { useQueries } from '@tanstack/react-query'
 import { invoke } from '@/lib/transport'
-import { Search, GitBranch, MoreHorizontal, Settings, Plus, Loader2 } from 'lucide-react'
+import {
+  Search,
+  GitBranch,
+  MoreHorizontal,
+  Settings,
+  Plus,
+  Loader2,
+} from 'lucide-react'
 import { WorktreeDropdownMenu } from '@/components/projects/WorktreeDropdownMenu'
 import { Button } from '@/components/ui/button'
 import {
@@ -14,7 +21,13 @@ import {
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { GitStatusBadges } from '@/components/ui/git-status-badges'
-import { useWorktrees, useProjects, useCreateWorktree, useCreateBaseSession, isTauri } from '@/services/projects'
+import {
+  useWorktrees,
+  useProjects,
+  useCreateWorktree,
+  useCreateBaseSession,
+  isTauri,
+} from '@/services/projects'
 import { chatQueryKeys, useCreateSession } from '@/services/chat'
 import { useGitStatus } from '@/services/git-status'
 import { useChatStore } from '@/store/chat-store'
@@ -95,8 +108,12 @@ function WorktreeSectionHeader({
     ? (gitStatus?.uncommitted_added ?? worktree.cached_uncommitted_added ?? 0)
     : (gitStatus?.branch_diff_added ?? worktree.cached_branch_diff_added ?? 0)
   const diffRemoved = isBase
-    ? (gitStatus?.uncommitted_removed ?? worktree.cached_uncommitted_removed ?? 0)
-    : (gitStatus?.branch_diff_removed ?? worktree.cached_branch_diff_removed ?? 0)
+    ? (gitStatus?.uncommitted_removed ??
+      worktree.cached_uncommitted_removed ??
+      0)
+    : (gitStatus?.branch_diff_removed ??
+      worktree.cached_branch_diff_removed ??
+      0)
 
   const handlePull = useCallback(
     async (e: React.MouseEvent) => {
@@ -160,10 +177,7 @@ function WorktreeSectionHeader({
             base
           </span>
         )}
-        <WorktreeDropdownMenu
-          worktree={worktree}
-          projectId={projectId}
-        />
+        <WorktreeDropdownMenu worktree={worktree} projectId={projectId} />
         <GitStatusBadges
           behindCount={behindCount}
           unpushedCount={unpushedCount}
@@ -324,7 +338,13 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     }
 
     return result
-  }, [readyWorktrees, pendingWorktrees, sessionsByWorktreeId, storeState, searchQuery])
+  }, [
+    readyWorktrees,
+    pendingWorktrees,
+    sessionsByWorktreeId,
+    storeState,
+    searchQuery,
+  ])
 
   // Build flat array of all cards for keyboard navigation
   const flatCards: FlatCard[] = useMemo(() => {
@@ -407,7 +427,12 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
         fc.worktreeId === selectedSession.worktreeId &&
         fc.card?.session.id === selectedSession.sessionId
     )
-    console.log('[WorktreeDashboard] sync selectedIndex - cardIndex:', cardIndex, 'for session:', selectedSession.sessionId)
+    console.log(
+      '[WorktreeDashboard] sync selectedIndex - cardIndex:',
+      cardIndex,
+      'for session:',
+      selectedSession.sessionId
+    )
     if (cardIndex !== -1 && cardIndex !== selectedIndex) {
       setSelectedIndex(cardIndex)
     }
@@ -449,15 +474,24 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
   // Auto-select first session when dashboard opens (visual selection only, no modal)
   useEffect(() => {
     if (selectedIndex !== null || selectedSession) return
-    const firstCardIndex = flatCards.findIndex(fc => fc.card !== null && !fc.isPending)
+    const firstCardIndex = flatCards.findIndex(
+      fc => fc.card !== null && !fc.isPending
+    )
     if (firstCardIndex === -1) return
     const firstCard = flatCards[firstCardIndex]
     setSelectedIndex(firstCardIndex)
     if (firstCard?.card) {
-      useChatStore.getState().setCanvasSelectedSession(firstCard.worktreeId, firstCard.card.session.id)
+      useChatStore
+        .getState()
+        .setCanvasSelectedSession(
+          firstCard.worktreeId,
+          firstCard.card.session.id
+        )
       // Sync projects store so commands (CMD+O, open terminal, etc.) work immediately
       useProjectsStore.getState().selectWorktree(firstCard.worktreeId)
-      useChatStore.getState().registerWorktreePath(firstCard.worktreeId, firstCard.worktreePath)
+      useChatStore
+        .getState()
+        .registerWorktreePath(firstCard.worktreeId, firstCard.worktreePath)
     }
   }, [flatCards, selectedIndex, selectedSession])
 
@@ -505,7 +539,9 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
         // Sync projects store so CMD+O uses the correct worktree
         useProjectsStore.getState().selectWorktree(item.worktreeId)
         // Register worktree path so OpenInModal can find it
-        useChatStore.getState().registerWorktreePath(item.worktreeId, item.worktreePath)
+        useChatStore
+          .getState()
+          .registerWorktreePath(item.worktreeId, item.worktreePath)
       }
     },
     [flatCards]
@@ -537,7 +573,11 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
   })
 
   // Keyboard navigation - disable when any modal/dialog is open
-  const isModalOpen = !!selectedSession || !!planDialogPath || !!planDialogContent || !!recapDialogDigest
+  const isModalOpen =
+    !!selectedSession ||
+    !!planDialogPath ||
+    !!planDialogContent ||
+    !!recapDialogDigest
   const { cardRefs } = useCanvasKeyboardNav({
     cards: flatCards,
     selectedIndex,
@@ -751,6 +791,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
             const newGlobalIndex = flatCards.findIndex(
               fc =>
                 fc.worktreeId === nextCard.worktreeId &&
+                // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
                 fc.card?.session.id === nextCard.card!.session.id
             )
             const closingGlobalIndex = flatCards.findIndex(
@@ -786,6 +827,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
         const sameWorktreeSessions = flatCards.filter(
           fc =>
             fc.worktreeId === closingWorktreeId &&
+            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
             fc.card?.session.id !== item.card!.session.id
         )
 
@@ -813,6 +855,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
             fc => fc.worktreeId === closingWorktreeId && fc.card
           )
           const indexInWorktree = worktreeSessions.findIndex(
+            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
             fc => fc.card?.session.id === item.card!.session.id
           )
           const nextInWorktree =
@@ -826,6 +869,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
           const newGlobalIndex = flatCards.findIndex(
             fc =>
               fc.worktreeId === nextInWorktree.worktreeId &&
+              // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
               fc.card?.session.id === nextInWorktree.card!.session.id
           )
           setSelectedIndex(
@@ -875,7 +919,10 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
         { worktreeId: item.worktreeId, worktreePath: item.worktreePath },
         {
           onSuccess: session => {
-            console.log('[WorktreeDashboard] onSuccess - session.id:', session.id)
+            console.log(
+              '[WorktreeDashboard] onSuccess - session.id:',
+              session.id
+            )
             setSelectedSession({
               sessionId: session.id,
               worktreeId: item.worktreeId,
@@ -946,137 +993,137 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
       <div className="flex-1 flex flex-col overflow-auto">
         {/* Header with Search - sticky over content */}
         <div className="sticky top-0 z-10 flex items-center justify-between gap-4 bg-background/60 backdrop-blur-md px-4 py-3 border-b border-border/30">
-        <div className="flex items-center gap-1 shrink-0">
-          <h2 className="text-lg font-semibold">{project.name}</h2>
-          <NewIssuesBadge projectPath={project.path} projectId={projectId} />
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-muted-foreground"
-              >
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              <DropdownMenuItem
-                onSelect={() =>
-                  useProjectsStore.getState().openProjectSettings(projectId)
-                }
-              >
-                <Settings className="h-4 w-4" />
-                Project Settings
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            ref={searchInputRef}
-            placeholder="Search worktrees and sessions..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className="pl-9 bg-transparent border-border/30"
-          />
-        </div>
-      </div>
-
-      {/* Canvas View */}
-      <div className="flex-1 pb-16 pt-6 px-4">
-        {worktreeSections.length === 0 ? (
-          searchQuery ? (
-            <div className="flex h-full items-center justify-center text-muted-foreground">
-              No worktrees or sessions match your search
-            </div>
-          ) : (
-            <EmptyDashboard
-              hasBaseSession={hasBaseSession}
-              onCreateWorktree={handleEmptyCreateWorktree}
-              onBaseSession={handleEmptyBaseSession}
-              isCreating={createWorktree.isPending || createBaseSession.isPending}
-            />
-          )
-        ) : (
-          <div className="space-y-6">
-            {worktreeSections.map(section => {
-              return (
-                <div key={section.worktree.id}>
-                  {/* Worktree header */}
-                  <WorktreeSectionHeader
-                    worktree={section.worktree}
-                    projectId={projectId}
-                    defaultBranch={project.default_branch}
-                  />
-
-                  {/* Session cards grid */}
-                  <div className="flex flex-row flex-wrap gap-3">
-                    {section.isPending ? (
-                      // Pending worktree: show setup card
-                      (() => {
-                        const currentIndex = cardIndex++
-                        return (
-                          <WorktreeSetupCard
-                            key={section.worktree.id}
-                            ref={el => {
-                              cardRefs.current[currentIndex] = el
-                            }}
-                            worktree={section.worktree}
-                            isSelected={selectedIndex === currentIndex}
-                            onSelect={() => setSelectedIndex(currentIndex)}
-                          />
-                        )
-                      })()
-                    ) : (
-                      // Ready worktree: show session cards
-                      section.cards.map(card => {
-                        const currentIndex = cardIndex++
-                        return (
-                          <SessionCard
-                            key={card.session.id}
-                            ref={el => {
-                              cardRefs.current[currentIndex] = el
-                            }}
-                            card={card}
-                            isSelected={selectedIndex === currentIndex}
-                            onSelect={() => {
-                              setSelectedIndex(currentIndex)
-                              handleSessionClick(
-                                section.worktree.id,
-                                section.worktree.path,
-                                card.session.id
-                              )
-                            }}
-                            onArchive={() =>
-                            handleArchiveSessionForWorktree(
-                              section.worktree.id,
-                              section.worktree.path,
-                              card.session.id
-                            )
-                          }
-                          onDelete={() =>
-                            handleDeleteSessionForWorktree(
-                              section.worktree.id,
-                              section.worktree.path,
-                              card.session.id
-                            )
-                          }
-                            onPlanView={() => handlePlanView(card)}
-                            onRecapView={() => handleRecapView(card)}
-                            onApprove={() => handlePlanApproval(card)}
-                            onYolo={() => handlePlanApprovalYolo(card)}
-                          />
-                        )
-                      })
-                    )}
-                  </div>
-                </div>
-              )
-            })}
+          <div className="flex items-center gap-1 shrink-0">
+            <h2 className="text-lg font-semibold">{project.name}</h2>
+            <NewIssuesBadge projectPath={project.path} projectId={projectId} />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground"
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuItem
+                  onSelect={() =>
+                    useProjectsStore.getState().openProjectSettings(projectId)
+                  }
+                >
+                  <Settings className="h-4 w-4" />
+                  Project Settings
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-        )}
-      </div>
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              ref={searchInputRef}
+              placeholder="Search worktrees and sessions..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="pl-9 bg-transparent border-border/30"
+            />
+          </div>
+        </div>
+
+        {/* Canvas View */}
+        <div className="flex-1 pb-16 pt-6 px-4">
+          {worktreeSections.length === 0 ? (
+            searchQuery ? (
+              <div className="flex h-full items-center justify-center text-muted-foreground">
+                No worktrees or sessions match your search
+              </div>
+            ) : (
+              <EmptyDashboard
+                hasBaseSession={hasBaseSession}
+                onCreateWorktree={handleEmptyCreateWorktree}
+                onBaseSession={handleEmptyBaseSession}
+                isCreating={
+                  createWorktree.isPending || createBaseSession.isPending
+                }
+              />
+            )
+          ) : (
+            <div className="space-y-6">
+              {worktreeSections.map(section => {
+                return (
+                  <div key={section.worktree.id}>
+                    {/* Worktree header */}
+                    <WorktreeSectionHeader
+                      worktree={section.worktree}
+                      projectId={projectId}
+                      defaultBranch={project.default_branch}
+                    />
+
+                    {/* Session cards grid */}
+                    <div className="flex flex-row flex-wrap gap-3">
+                      {section.isPending
+                        ? // Pending worktree: show setup card
+                          (() => {
+                            const currentIndex = cardIndex++
+                            return (
+                              <WorktreeSetupCard
+                                key={section.worktree.id}
+                                ref={el => {
+                                  cardRefs.current[currentIndex] = el
+                                }}
+                                worktree={section.worktree}
+                                isSelected={selectedIndex === currentIndex}
+                                onSelect={() => setSelectedIndex(currentIndex)}
+                              />
+                            )
+                          })()
+                        : // Ready worktree: show session cards
+                          section.cards.map(card => {
+                            const currentIndex = cardIndex++
+                            return (
+                              <SessionCard
+                                key={card.session.id}
+                                ref={el => {
+                                  cardRefs.current[currentIndex] = el
+                                }}
+                                card={card}
+                                isSelected={selectedIndex === currentIndex}
+                                onSelect={() => {
+                                  setSelectedIndex(currentIndex)
+                                  handleSessionClick(
+                                    section.worktree.id,
+                                    section.worktree.path,
+                                    card.session.id
+                                  )
+                                }}
+                                onArchive={() =>
+                                  handleArchiveSessionForWorktree(
+                                    section.worktree.id,
+                                    section.worktree.path,
+                                    card.session.id
+                                  )
+                                }
+                                onDelete={() =>
+                                  handleDeleteSessionForWorktree(
+                                    section.worktree.id,
+                                    section.worktree.path,
+                                    card.session.id
+                                  )
+                                }
+                                onPlanView={() => handlePlanView(card)}
+                                onRecapView={() => handleRecapView(card)}
+                                onApprove={() => handlePlanApproval(card)}
+                                onYolo={() => handlePlanApprovalYolo(card)}
+                              />
+                            )
+                          })}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Plan Dialog */}
@@ -1126,9 +1173,18 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
             { shortcut: 'Enter', label: 'open' },
             { shortcut: 'P', label: 'plan' },
             { shortcut: 'R', label: 'recap' },
-            { shortcut: DEFAULT_KEYBINDINGS.new_worktree as string, label: 'new worktree' },
-            { shortcut: DEFAULT_KEYBINDINGS.new_session as string, label: 'new session' },
-            { shortcut: DEFAULT_KEYBINDINGS.close_session_or_worktree as string, label: 'close' },
+            {
+              shortcut: DEFAULT_KEYBINDINGS.new_worktree as string,
+              label: 'new worktree',
+            },
+            {
+              shortcut: DEFAULT_KEYBINDINGS.new_session as string,
+              label: 'new session',
+            },
+            {
+              shortcut: DEFAULT_KEYBINDINGS.close_session_or_worktree as string,
+              label: 'close',
+            },
           ]}
         />
       )}
@@ -1154,11 +1210,28 @@ function EmptyDashboard({
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't intercept when typing in inputs or when a dialog/modal is open
       const tag = document.activeElement?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || (document.activeElement as HTMLElement)?.isContentEditable) return
+      if (
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        (document.activeElement as HTMLElement)?.isContentEditable
+      )
+        return
 
       const { projectSettingsDialogOpen } = useProjectsStore.getState()
-      const { newWorktreeModalOpen, commandPaletteOpen, preferencesOpen, magicModalOpen } = useUIStore.getState()
-      if (projectSettingsDialogOpen || newWorktreeModalOpen || commandPaletteOpen || preferencesOpen || magicModalOpen) return
+      const {
+        newWorktreeModalOpen,
+        commandPaletteOpen,
+        preferencesOpen,
+        magicModalOpen,
+      } = useUIStore.getState()
+      if (
+        projectSettingsDialogOpen ||
+        newWorktreeModalOpen ||
+        commandPaletteOpen ||
+        preferencesOpen ||
+        magicModalOpen
+      )
+        return
 
       const key = e.key.toLowerCase()
       if (key === 'b') {

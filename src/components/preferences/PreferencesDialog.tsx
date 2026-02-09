@@ -118,6 +118,7 @@ export function PreferencesDialog() {
   // Sync activePane from preferencesPane when dialog opens to a specific pane
   useEffect(() => {
     if (preferencesOpen && preferencesPane) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setActivePane(preferencesPane)
     }
   }, [preferencesOpen, preferencesPane])

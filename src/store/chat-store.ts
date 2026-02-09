@@ -1680,8 +1680,7 @@ export const useChatStore = create<ChatUIState>()(
             const { [sessionId]: _manual, ...restManual } =
               state.manualThinkingOverrides
             const { [sessionId]: _effort, ...restEffort } = state.effortLevels
-            const { [sessionId]: _mcp, ...restMcp } =
-              state.enabledMcpServers
+            const { [sessionId]: _mcp, ...restMcp } = state.enabledMcpServers
 
             return {
               approvedTools: restApproved,

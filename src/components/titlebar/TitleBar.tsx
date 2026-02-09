@@ -32,7 +32,7 @@ export function TitleBar({
 }: TitleBarProps) {
   const { leftSidebarVisible, toggleLeftSidebar } = useUIStore()
   const setAddProjectDialogOpen = useProjectsStore(
-    (s) => s.setAddProjectDialogOpen
+    s => s.setAddProjectDialogOpen
   )
   const commandContext = useCommandContext()
   const { data: preferences } = usePreferences()

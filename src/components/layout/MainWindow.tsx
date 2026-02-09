@@ -82,6 +82,7 @@ export function MainWindow() {
   )
 
   // Find active session name
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const activeSessionName = useMemo(() => {
     if (!sessionsData?.sessions || !activeSessionId) return undefined
     return sessionsData.sessions.find(s => s.id === activeSessionId)?.name

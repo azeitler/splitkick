@@ -253,7 +253,6 @@ export function TerminalView({
               </button>
             )
           })}
-
         </div>
 
         {/* Add terminal button - outside scroll container for full height */}

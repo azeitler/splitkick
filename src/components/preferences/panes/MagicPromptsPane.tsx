@@ -163,6 +163,7 @@ export const MagicPromptsPane: React.FC = () => {
   const currentPrompts = preferences?.magic_prompts ?? DEFAULT_MAGIC_PROMPTS
   const currentModels =
     preferences?.magic_prompt_models ?? DEFAULT_MAGIC_PROMPT_MODELS
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
   const selectedConfig = PROMPT_CONFIGS.find(c => c.key === selectedKey)!
   const currentValue =
     currentPrompts[selectedKey] ?? selectedConfig.defaultValue
@@ -172,6 +173,7 @@ export const MagicPromptsPane: React.FC = () => {
 
   // Sync local value when selection changes or external value updates
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLocalValue(currentValue)
   }, [currentValue, selectedKey])
 

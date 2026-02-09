@@ -141,7 +141,7 @@ function App() {
         // Get worktree paths from worktreesByProject
         if (data.worktreesByProject) {
           for (const worktrees of Object.values(data.worktreesByProject)) {
-            for (const wt of worktrees as Array<{ id: string; path: string }>) {
+            for (const wt of worktrees as { id: string; path: string }[]) {
               if (wt.id && wt.path) {
                 worktreePaths[wt.id] = wt.path
               }
@@ -348,7 +348,9 @@ function App() {
       // Best-effort sync cleanup for refresh scenarios
       // Note: async operations may not complete, but Rust-side RunEvent::Exit
       // will handle proper cleanup on app quit
-      invoke('kill_all_terminals').catch(() => {})
+      invoke('kill_all_terminals').catch(() => {
+        /* noop */
+      })
     }
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)

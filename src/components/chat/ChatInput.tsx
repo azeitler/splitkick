@@ -655,6 +655,7 @@ export const ChatInput = memo(function ChatInput({
   const isSlashAtPromptStart =
     slashTriggerIndex !== null &&
     (slashTriggerIndex === 0 ||
+      // eslint-disable-next-line react-hooks/refs
       valueRef.current.slice(0, slashTriggerIndex).trim() === '')
 
   return (

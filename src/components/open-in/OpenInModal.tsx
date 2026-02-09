@@ -68,8 +68,20 @@ export function OpenInModal() {
         key: 'T',
         nativeOnly: true,
       },
-      { id: 'finder', label: 'Finder', icon: Folder, key: 'F', nativeOnly: true },
-      { id: 'github', label: 'GitHub', icon: Github, key: 'G', nativeOnly: false },
+      {
+        id: 'finder',
+        label: 'Finder',
+        icon: Folder,
+        key: 'F',
+        nativeOnly: true,
+      },
+      {
+        id: 'github',
+        label: 'GitHub',
+        icon: Github,
+        key: 'G',
+        nativeOnly: false,
+      },
     ]
 
     // Filter out native-only options in web view

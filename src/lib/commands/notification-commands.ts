@@ -6,7 +6,9 @@ import { useUIStore } from '@/store/ui-store'
 import type { AppPreferences } from '@/types/preferences'
 
 function isDebugMode(context: CommandContext): boolean {
-  const prefs = context.queryClient.getQueryData<AppPreferences>(['preferences'])
+  const prefs = context.queryClient.getQueryData<AppPreferences>([
+    'preferences',
+  ])
   return prefs?.debug_mode_enabled ?? false
 }
 
@@ -21,7 +23,7 @@ export const notificationCommands: AppCommand[] = [
     async execute() {
       await notifications.success('Test Toast', 'This is a test notification')
     },
-    isAvailable: (context) => isDebugMode(context),
+    isAvailable: context => isDebugMode(context),
   },
   {
     id: 'notification.test-cli-update',
@@ -53,6 +55,6 @@ export const notificationCommands: AppCommand[] = [
         },
       })
     },
-    isAvailable: (context) => isDebugMode(context),
+    isAvailable: context => isDebugMode(context),
   },
 ]

@@ -81,20 +81,21 @@ export function ProjectSettingsDialog() {
     }
   }, [projectSettingsDialogOpen, project?.path])
 
+  // Use project's default_branch as the initial value, allow local overrides
+  const [localBranch, setLocalBranch] = useState<string | null>(null)
+  const [localMcpServers, setLocalMcpServers] = useState<string[] | null>(null)
+  const [branchPopoverOpen, setBranchPopoverOpen] = useState(false)
+
   // Auto-enable newly discovered (non-disabled) servers for this project
   useEffect(() => {
     if (!projectSettingsDialogOpen || !mcpServers.length) return
     const currentEnabled = project?.enabled_mcp_servers ?? []
     const newServers = getNewServersToAutoEnable(mcpServers, currentEnabled)
     if (newServers.length > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional: sync local state with newly discovered servers on dialog open
       setLocalMcpServers([...currentEnabled, ...newServers])
     }
   }, [mcpServers, projectSettingsDialogOpen]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Use project's default_branch as the initial value, allow local overrides
-  const [localBranch, setLocalBranch] = useState<string | null>(null)
-  const [localMcpServers, setLocalMcpServers] = useState<string[] | null>(null)
-  const [branchPopoverOpen, setBranchPopoverOpen] = useState(false)
 
   // Track image load errors - use avatar_path as key to reset error state when it changes
   const [imgErrorKey, setImgErrorKey] = useState<string | null>(null)
@@ -118,7 +119,8 @@ export function ProjectSettingsDialog() {
 
   // If user hasn't made a selection, use project's default
   const selectedBranch = localBranch ?? project?.default_branch ?? ''
-  const selectedMcpServers = localMcpServers ?? project?.enabled_mcp_servers ?? []
+  const selectedMcpServers =
+    localMcpServers ?? project?.enabled_mcp_servers ?? []
 
   const setSelectedBranch = (branch: string) => {
     setLocalBranch(branch)
@@ -356,9 +358,7 @@ export function ProjectSettingsDialog() {
                       htmlFor={`proj-mcp-${server.name}`}
                       className={cn(
                         'flex-1 text-sm',
-                        server.disabled
-                          ? 'cursor-default'
-                          : 'cursor-pointer'
+                        server.disabled ? 'cursor-default' : 'cursor-pointer'
                       )}
                     >
                       {server.name}

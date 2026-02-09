@@ -30,32 +30,29 @@ export const ModalTerminalDrawer = memo(function ModalTerminalDrawer({
     useTerminalStore.getState().setModalTerminalOpen(worktreeId, false)
   }, [worktreeId])
 
-  const handleResizeStart = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault()
-      isResizing.current = true
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    isResizing.current = true
 
-      const handleMouseMove = (e: MouseEvent) => {
-        if (!isResizing.current) return
-        const newWidth = window.innerWidth - e.clientX
-        // Clamp between 300px and 95% of viewport
-        const maxWidth = Math.floor(window.innerWidth * 0.95)
-        useTerminalStore
-          .getState()
-          .setModalTerminalWidth(Math.max(300, Math.min(maxWidth, newWidth)))
-      }
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing.current) return
+      const newWidth = window.innerWidth - e.clientX
+      // Clamp between 300px and 95% of viewport
+      const maxWidth = Math.floor(window.innerWidth * 0.95)
+      useTerminalStore
+        .getState()
+        .setModalTerminalWidth(Math.max(300, Math.min(maxWidth, newWidth)))
+    }
 
-      const handleMouseUp = () => {
-        isResizing.current = false
-        document.removeEventListener('mousemove', handleMouseMove)
-        document.removeEventListener('mouseup', handleMouseUp)
-      }
+    const handleMouseUp = () => {
+      isResizing.current = false
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
 
-      document.addEventListener('mousemove', handleMouseMove)
-      document.addEventListener('mouseup', handleMouseUp)
-    },
-    []
-  )
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+  }, [])
 
   return (
     <Sheet open={isOpen} onOpenChange={open => !open && handleClose()}>

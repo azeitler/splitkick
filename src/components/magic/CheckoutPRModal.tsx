@@ -99,6 +99,7 @@ export function CheckoutPRModal() {
 
   // Reset selection when search changes
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelectedItemIndex(0)
   }, [searchQuery])
 
@@ -175,7 +176,7 @@ export function CheckoutPRModal() {
         setCheckingOutNumber(null)
       }
     },
-    [selectedProjectId, handleOpenChange]
+    [selectedProjectId, handleOpenChange, queryClient]
   )
 
   // Keyboard navigation

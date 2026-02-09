@@ -312,7 +312,11 @@ function executeKeybindingAction(
           const termStore = useTerminalStore.getState()
           const activeTerminalId = termStore.activeTerminalIds[wId]
           if (activeTerminalId) {
-            invoke('stop_terminal', { terminalId: activeTerminalId }).catch(() => {})
+            invoke('stop_terminal', { terminalId: activeTerminalId }).catch(
+              () => {
+                /* noop */
+              }
+            )
             disposeTerminal(activeTerminalId)
             termStore.removeTerminal(wId, activeTerminalId)
             const remaining = termStore.terminals[wId] ?? []
@@ -444,7 +448,13 @@ export function useMainWindowEventListeners() {
 
       // Skip when a modal/dialog is open - let it handle its own shortcuts
       const uiState = useUIStore.getState()
-      if (uiState.magicModalOpen || uiState.newWorktreeModalOpen || uiState.commandPaletteOpen || uiState.preferencesOpen) return
+      if (
+        uiState.magicModalOpen ||
+        uiState.newWorktreeModalOpen ||
+        uiState.commandPaletteOpen ||
+        uiState.preferencesOpen
+      )
+        return
       if (useProjectsStore.getState().projectSettingsDialogOpen) return
 
       // Look up matching action in keybindings

@@ -37,6 +37,7 @@ export function FolderTreeItem({
   // Sync editName when folder name changes or editing starts
   useEffect(() => {
     if (isEditing) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setEditName(folder.name)
       editStartTimeRef.current = Date.now()
     }

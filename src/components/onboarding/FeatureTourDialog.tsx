@@ -10,10 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Kbd } from '@/components/ui/kbd'
 import { useUIStore } from '@/store/ui-store'
 import { usePreferences, useSavePreferences } from '@/services/preferences'
-import {
-  formatShortcutDisplay,
-  type ShortcutString,
-} from '@/types/keybindings'
+import { formatShortcutDisplay, type ShortcutString } from '@/types/keybindings'
 
 interface ShortcutRow {
   shortcut: ShortcutString
@@ -25,7 +22,10 @@ const steps = [
     title: 'Getting Started',
     description: 'Essential shortcuts to start working',
     shortcuts: [
-      { shortcut: 'mod+n' as ShortcutString, label: 'New worktree (own branch)' },
+      {
+        shortcut: 'mod+n' as ShortcutString,
+        label: 'New worktree (own branch)',
+      },
       { shortcut: 'mod+t' as ShortcutString, label: 'New session in worktree' },
       { shortcut: 'mod+k' as ShortcutString, label: 'Command palette' },
     ] satisfies ShortcutRow[],
@@ -34,8 +34,14 @@ const steps = [
     title: 'Canvas Navigation',
     description: 'Move between sessions on the canvas',
     shortcuts: [
-      { shortcut: 'ArrowLeft/ArrowRight' as ShortcutString, label: 'Navigate left / right' },
-      { shortcut: 'ArrowUp/ArrowDown' as ShortcutString, label: 'Navigate up / down' },
+      {
+        shortcut: 'ArrowLeft/ArrowRight' as ShortcutString,
+        label: 'Navigate left / right',
+      },
+      {
+        shortcut: 'ArrowUp/ArrowDown' as ShortcutString,
+        label: 'Navigate up / down',
+      },
       { shortcut: 'Enter' as ShortcutString, label: 'Open selected session' },
       { shortcut: '/' as ShortcutString, label: 'Search sessions' },
     ] satisfies ShortcutRow[],
@@ -54,7 +60,10 @@ const steps = [
     title: 'Magic & Git',
     description: 'Quick access to git and tooling commands',
     shortcuts: [
-      { shortcut: 'mod+m' as ShortcutString, label: 'Open magic commands menu' },
+      {
+        shortcut: 'mod+m' as ShortcutString,
+        label: 'Open magic commands menu',
+      },
       { shortcut: 'mod+shift+c' as ShortcutString, label: 'Commit' },
       { shortcut: 'mod+shift+p' as ShortcutString, label: 'Pull request' },
       { shortcut: 'mod+g' as ShortcutString, label: 'Git diff' },
@@ -177,7 +186,8 @@ function FeatureTourDialogContent() {
             <Kbd className="h-5 px-1 text-[10px]">→</Kbd>
           </div>
           <Button size="sm" className="w-18" onClick={handleNext}>
-            {isLastStep ? 'Done' : 'Next'} <Kbd className="ml-1 h-4 px-1 text-[10px]">↵</Kbd>
+            {isLastStep ? 'Done' : 'Next'}{' '}
+            <Kbd className="ml-1 h-4 px-1 text-[10px]">↵</Kbd>
           </Button>
         </div>
       </DialogContent>

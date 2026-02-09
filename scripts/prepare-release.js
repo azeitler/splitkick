@@ -130,7 +130,9 @@ async function prepareRelease() {
     console.log(`   2. git commit -m "chore: release ${tagVersion}"`)
     console.log(`   3. git push origin main`)
     console.log(`   4. Go to GitHub > Releases > "Create a new release"`)
-    console.log(`   5. Create tag ${tagVersion}, write release notes, and publish`)
+    console.log(
+      `   5. Create tag ${tagVersion}, write release notes, and publish`
+    )
     console.log('\n🚀 After publishing the GitHub Release:')
     console.log('   • GitHub Actions will automatically build all platforms')
     console.log('   • Artifacts will be uploaded to the release')
@@ -154,7 +156,9 @@ async function prepareRelease() {
 
       console.log(`\n✅ Changes pushed! Now create the release on GitHub:`)
       console.log(`   → Create tag ${tagVersion} and publish the release`)
-      console.log('   → GitHub Actions will build and upload artifacts automatically')
+      console.log(
+        '   → GitHub Actions will build and upload artifacts automatically'
+      )
     } else {
       console.log('\n📝 Commands saved for manual execution.')
       console.log("   Run them when you're ready to release.")

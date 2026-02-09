@@ -458,28 +458,37 @@ export function ChatWindow({
   const sessionEffortLevel = useChatStore(state =>
     deferredSessionId ? state.effortLevels[deferredSessionId] : undefined
   )
-  const selectedEffortLevel: EffortLevel = sessionEffortLevel ?? defaultEffortLevel
+  const selectedEffortLevel: EffortLevel =
+    sessionEffortLevel ?? defaultEffortLevel
 
   // MCP servers: fetch available servers and get per-session enabled state
   const { data: mcpServersData } = useMcpServers(activeWorktreePath)
-  const availableMcpServers = mcpServersData ?? []
+  const availableMcpServers = useMemo(
+    () => mcpServersData ?? [],
+    [mcpServersData]
+  )
 
   // Re-read MCP config when switching worktrees
   useEffect(() => {
     if (activeWorktreePath) invalidateMcpServers(activeWorktreePath)
   }, [activeWorktreePath])
   const sessionEnabledMcpServers = useChatStore(state =>
-    deferredSessionId
-      ? state.enabledMcpServers[deferredSessionId]
-      : undefined
+    deferredSessionId ? state.enabledMcpServers[deferredSessionId] : undefined
   )
   // Resolve enabled servers from session → project → global defaults,
   // then auto-include any newly discovered (non-disabled) servers
-  const baseEnabledMcpServers =
-    sessionEnabledMcpServers ??
-    project?.enabled_mcp_servers ??
-    preferences?.default_enabled_mcp_servers ??
-    []
+  const baseEnabledMcpServers = useMemo(
+    () =>
+      sessionEnabledMcpServers ??
+      project?.enabled_mcp_servers ??
+      preferences?.default_enabled_mcp_servers ??
+      [],
+    [
+      sessionEnabledMcpServers,
+      project?.enabled_mcp_servers,
+      preferences?.default_enabled_mcp_servers,
+    ]
+  )
   const newAutoEnabled = useMemo(
     () => getNewServersToAutoEnable(availableMcpServers, baseEnabledMcpServers),
     [availableMcpServers, baseEnabledMcpServers]
@@ -925,7 +934,13 @@ export function ChatWindow({
     window.addEventListener('create-new-session', handleCreateNewSession)
     return () =>
       window.removeEventListener('create-new-session', handleCreateNewSession)
-  }, [activeWorktreeId, activeWorktreePath, createSession, isModal, canvasOnlyMode])
+  }, [
+    activeWorktreeId,
+    activeWorktreePath,
+    createSession,
+    isModal,
+    canvasOnlyMode,
+  ])
 
   // Listen for cycle-execution-mode event from keybinding (SHIFT+TAB)
   useEffect(() => {
@@ -1403,7 +1418,9 @@ export function ChatWindow({
           sessionId: activeSessionId,
           key: 'model',
           value: model,
-        }).catch(() => {})
+        }).catch(() => {
+          /* noop */
+        })
       }
     },
     [activeSessionId, activeWorktreeId, activeWorktreePath, setSessionModel]
@@ -1440,29 +1457,25 @@ export function ChatWindow({
         sessionId,
         key: 'thinkingLevel',
         value: level,
-      }).catch(() => {})
+      }).catch(() => {
+        /* noop */
+      })
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mutate is stable, refs used for IDs
     []
   )
 
-  const handleToolbarEffortLevelChange = useCallback(
-    (level: EffortLevel) => {
-      const sessionId = activeSessionIdRef.current
-      if (!sessionId) return
-      useChatStore.getState().setEffortLevel(sessionId, level)
-    },
-    []
-  )
+  const handleToolbarEffortLevelChange = useCallback((level: EffortLevel) => {
+    const sessionId = activeSessionIdRef.current
+    if (!sessionId) return
+    useChatStore.getState().setEffortLevel(sessionId, level)
+  }, [])
 
-  const handleToggleMcpServer = useCallback(
-    (serverName: string) => {
-      const sessionId = activeSessionIdRef.current
-      if (!sessionId) return
-      useChatStore.getState().toggleMcpServer(sessionId, serverName)
-    },
-    []
-  )
+  const handleToggleMcpServer = useCallback((serverName: string) => {
+    const sessionId = activeSessionIdRef.current
+    if (!sessionId) return
+    useChatStore.getState().toggleMcpServer(sessionId, serverName)
+  }, [])
 
   const handleOpenProjectSettings = useCallback(() => {
     if (!worktree?.project_id) return
@@ -1478,7 +1491,9 @@ export function ChatWindow({
           sessionId: activeSessionId,
           key: 'executionMode',
           value: mode,
-        }).catch(() => {})
+        }).catch(() => {
+          /* noop */
+        })
       }
     },
     [activeSessionId, setExecutionMode]
@@ -1897,7 +1912,10 @@ Begin your investigation now.`
 
     window.addEventListener('approve-plan-yolo', handleApprovePlanYoloEvent)
     return () =>
-      window.removeEventListener('approve-plan-yolo', handleApprovePlanYoloEvent)
+      window.removeEventListener(
+        'approve-plan-yolo',
+        handleApprovePlanYoloEvent
+      )
   }, [
     isModal,
     isViewingCanvasTab,
@@ -1997,7 +2015,13 @@ Begin your investigation now.`
         'review-fix-message',
         handleReviewFixMessage as EventListener
       )
-  }, [sendMessage, createSession])
+  }, [
+    sendMessage,
+    createSession,
+    preferences?.parallel_execution_prompt_enabled,
+    preferences?.chrome_enabled,
+    preferences?.ai_language,
+  ])
 
   // Handle removing a queued message
   const handleRemoveQueuedMessage = useCallback(
@@ -2468,7 +2492,8 @@ Begin your investigation now.`
                         selectedEffortLevel={selectedEffortLevel}
                         thinkingOverrideActive={
                           executionMode !== 'plan' &&
-                          (useAdaptiveThinkingFlag || selectedThinkingLevel !== 'off') &&
+                          (useAdaptiveThinkingFlag ||
+                            selectedThinkingLevel !== 'off') &&
                           !hasManualThinkingOverride
                         }
                         useAdaptiveThinking={useAdaptiveThinkingFlag}
@@ -2601,11 +2626,21 @@ Begin your investigation now.`
                   : undefined
               }
               onApprove={updatedPlan => {
-                if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
+                if (
+                  !activeSessionId ||
+                  !activeWorktreeId ||
+                  !activeWorktreePath
+                )
+                  return
 
                 // Mark plan as approved if there's a pending plan message
                 if (pendingPlanMessage) {
-                  markPlanApprovedService(activeWorktreeId, activeWorktreePath, activeSessionId, pendingPlanMessage.id)
+                  markPlanApprovedService(
+                    activeWorktreeId,
+                    activeWorktreePath,
+                    activeSessionId,
+                    pendingPlanMessage.id
+                  )
                   // Optimistically update query cache
                   queryClient.setQueryData<Session>(
                     chatQueryKeys.session(activeSessionId),
@@ -2618,7 +2653,9 @@ Begin your investigation now.`
                           pendingPlanMessage.id,
                         ],
                         messages: old.messages.map(msg =>
-                          msg.id === pendingPlanMessage.id ? { ...msg, plan_approved: true } : msg
+                          msg.id === pendingPlanMessage.id
+                            ? { ...msg, plan_approved: true }
+                            : msg
                         ),
                       }
                     }
@@ -2631,7 +2668,8 @@ Begin your investigation now.`
                   : 'Approved'
 
                 // Queue instead of immediate execution
-                const { enqueueMessage, setExecutionMode } = useChatStore.getState()
+                const { enqueueMessage, setExecutionMode } =
+                  useChatStore.getState()
                 setExecutionMode(activeSessionId, 'build')
 
                 const queuedMessage: QueuedMessage = {
@@ -2658,11 +2696,21 @@ Begin your investigation now.`
                 enqueueMessage(activeSessionId, queuedMessage)
               }}
               onApproveYolo={updatedPlan => {
-                if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
+                if (
+                  !activeSessionId ||
+                  !activeWorktreeId ||
+                  !activeWorktreePath
+                )
+                  return
 
                 // Mark plan as approved if there's a pending plan message
                 if (pendingPlanMessage) {
-                  markPlanApprovedService(activeWorktreeId, activeWorktreePath, activeSessionId, pendingPlanMessage.id)
+                  markPlanApprovedService(
+                    activeWorktreeId,
+                    activeWorktreePath,
+                    activeSessionId,
+                    pendingPlanMessage.id
+                  )
                   // Optimistically update query cache
                   queryClient.setQueryData<Session>(
                     chatQueryKeys.session(activeSessionId),
@@ -2675,7 +2723,9 @@ Begin your investigation now.`
                           pendingPlanMessage.id,
                         ],
                         messages: old.messages.map(msg =>
-                          msg.id === pendingPlanMessage.id ? { ...msg, plan_approved: true } : msg
+                          msg.id === pendingPlanMessage.id
+                            ? { ...msg, plan_approved: true }
+                            : msg
                         ),
                       }
                     }
@@ -2688,7 +2738,8 @@ Begin your investigation now.`
                   : 'Approved - yolo'
 
                 // Queue instead of immediate execution
-                const { enqueueMessage, setExecutionMode } = useChatStore.getState()
+                const { enqueueMessage, setExecutionMode } =
+                  useChatStore.getState()
                 setExecutionMode(activeSessionId, 'yolo')
 
                 const queuedMessage: QueuedMessage = {
@@ -2732,11 +2783,21 @@ Begin your investigation now.`
                   : undefined
               }
               onApprove={updatedPlan => {
-                if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
+                if (
+                  !activeSessionId ||
+                  !activeWorktreeId ||
+                  !activeWorktreePath
+                )
+                  return
 
                 // Mark plan as approved if there's a pending plan message
                 if (pendingPlanMessage) {
-                  markPlanApprovedService(activeWorktreeId, activeWorktreePath, activeSessionId, pendingPlanMessage.id)
+                  markPlanApprovedService(
+                    activeWorktreeId,
+                    activeWorktreePath,
+                    activeSessionId,
+                    pendingPlanMessage.id
+                  )
                   // Optimistically update query cache
                   queryClient.setQueryData<Session>(
                     chatQueryKeys.session(activeSessionId),
@@ -2749,7 +2810,9 @@ Begin your investigation now.`
                           pendingPlanMessage.id,
                         ],
                         messages: old.messages.map(msg =>
-                          msg.id === pendingPlanMessage.id ? { ...msg, plan_approved: true } : msg
+                          msg.id === pendingPlanMessage.id
+                            ? { ...msg, plan_approved: true }
+                            : msg
                         ),
                       }
                     }
@@ -2762,7 +2825,8 @@ Begin your investigation now.`
                   : 'Approved'
 
                 // Queue instead of immediate execution
-                const { enqueueMessage, setExecutionMode } = useChatStore.getState()
+                const { enqueueMessage, setExecutionMode } =
+                  useChatStore.getState()
                 setExecutionMode(activeSessionId, 'build')
 
                 const queuedMessage: QueuedMessage = {
@@ -2789,11 +2853,21 @@ Begin your investigation now.`
                 enqueueMessage(activeSessionId, queuedMessage)
               }}
               onApproveYolo={updatedPlan => {
-                if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
+                if (
+                  !activeSessionId ||
+                  !activeWorktreeId ||
+                  !activeWorktreePath
+                )
+                  return
 
                 // Mark plan as approved if there's a pending plan message
                 if (pendingPlanMessage) {
-                  markPlanApprovedService(activeWorktreeId, activeWorktreePath, activeSessionId, pendingPlanMessage.id)
+                  markPlanApprovedService(
+                    activeWorktreeId,
+                    activeWorktreePath,
+                    activeSessionId,
+                    pendingPlanMessage.id
+                  )
                   // Optimistically update query cache
                   queryClient.setQueryData<Session>(
                     chatQueryKeys.session(activeSessionId),
@@ -2806,7 +2880,9 @@ Begin your investigation now.`
                           pendingPlanMessage.id,
                         ],
                         messages: old.messages.map(msg =>
-                          msg.id === pendingPlanMessage.id ? { ...msg, plan_approved: true } : msg
+                          msg.id === pendingPlanMessage.id
+                            ? { ...msg, plan_approved: true }
+                            : msg
                         ),
                       }
                     }
@@ -2819,7 +2895,8 @@ Begin your investigation now.`
                   : 'Approved - yolo'
 
                 // Queue instead of immediate execution
-                const { enqueueMessage, setExecutionMode } = useChatStore.getState()
+                const { enqueueMessage, setExecutionMode } =
+                  useChatStore.getState()
                 setExecutionMode(activeSessionId, 'yolo')
 
                 const queuedMessage: QueuedMessage = {

@@ -167,7 +167,7 @@ class WsTransport {
   >()
   private reconnectAttempt = 0
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
-  private queue: Array<{ data: string; resolve: () => void }> = []
+  private queue: { data: string; resolve: () => void }[] = []
   private _connected = false
   private _connecting = false
   private _authError: string | null = null
@@ -340,7 +340,12 @@ class WsTransport {
         this.ws.send(data)
       } else {
         // Queue for when connection is established
-        this.queue.push({ data, resolve: () => {} })
+        this.queue.push({
+          data,
+          resolve() {
+            /* noop */
+          },
+        })
         this.connect()
       }
     })
@@ -355,6 +360,7 @@ class WsTransport {
       this.listeners.set(event, new Set())
     }
     const typedHandler = handler as (event: { payload: unknown }) => void
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     this.listeners.get(event)!.add(typedHandler)
 
     // Ensure connected

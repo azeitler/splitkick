@@ -123,6 +123,8 @@ export function useMessageHandlers({
   inputRef,
   pendingPlanMessage,
 }: UseMessageHandlersParams): MessageHandlers {
+  'use no memo'
+
   // Handle answer submission for AskUserQuestion
   // PERFORMANCE: Uses refs for session/worktree IDs to keep callback stable across session switches
   const handleQuestionAnswer = useCallback(
@@ -207,6 +209,7 @@ export function useMessageHandlers({
       selectedThinkingLevelRef,
       selectedEffortLevelRef,
       useAdaptiveThinkingRef,
+      getMcpConfig,
       sendMessage,
       scrollToBottom,
       inputRef,
@@ -373,6 +376,7 @@ export function useMessageHandlers({
       selectedThinkingLevelRef,
       selectedEffortLevelRef,
       useAdaptiveThinkingRef,
+      getMcpConfig,
       sendMessage,
       queryClient,
       inputRef,
@@ -481,6 +485,7 @@ export function useMessageHandlers({
       selectedThinkingLevelRef,
       selectedEffortLevelRef,
       useAdaptiveThinkingRef,
+      getMcpConfig,
       sendMessage,
       queryClient,
       inputRef,
@@ -565,6 +570,7 @@ export function useMessageHandlers({
     selectedThinkingLevelRef,
     selectedEffortLevelRef,
     useAdaptiveThinkingRef,
+    getMcpConfig,
     sendMessage,
     inputRef,
   ])
@@ -638,6 +644,7 @@ export function useMessageHandlers({
     selectedThinkingLevelRef,
     selectedEffortLevelRef,
     useAdaptiveThinkingRef,
+    getMcpConfig,
     sendMessage,
     inputRef,
   ])
@@ -757,6 +764,7 @@ export function useMessageHandlers({
       selectedThinkingLevelRef,
       selectedEffortLevelRef,
       useAdaptiveThinkingRef,
+      getMcpConfig,
       sendMessage,
       inputRef,
     ]
@@ -874,6 +882,7 @@ export function useMessageHandlers({
       selectedThinkingLevelRef,
       selectedEffortLevelRef,
       useAdaptiveThinkingRef,
+      getMcpConfig,
       sendMessage,
       inputRef,
     ]
@@ -991,6 +1000,7 @@ Please apply this fix to the file.`
       selectedThinkingLevelRef,
       selectedEffortLevelRef,
       useAdaptiveThinkingRef,
+      getMcpConfig,
       sendMessage,
       queryClient,
       inputRef,
@@ -1100,6 +1110,7 @@ Please apply all these fixes to the respective files.`
       selectedThinkingLevelRef,
       selectedEffortLevelRef,
       useAdaptiveThinkingRef,
+      getMcpConfig,
       sendMessage,
       queryClient,
       inputRef,

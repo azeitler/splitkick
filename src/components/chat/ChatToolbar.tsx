@@ -741,7 +741,9 @@ export const ChatToolbar = memo(function ChatToolbar({
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent>
                   <DropdownMenuRadioGroup
-                    value={thinkingOverrideActive ? 'off' : selectedThinkingLevel}
+                    value={
+                      thinkingOverrideActive ? 'off' : selectedThinkingLevel
+                    }
                     onValueChange={handleThinkingLevelChange}
                   >
                     {THINKING_LEVEL_OPTIONS.map(option => (
@@ -1180,7 +1182,10 @@ export const ChatToolbar = memo(function ChatToolbar({
                 onValueChange={handleEffortLevelChange}
               >
                 {EFFORT_LEVEL_OPTIONS.map(option => (
-                  <DropdownMenuRadioItem key={option.value} value={option.value}>
+                  <DropdownMenuRadioItem
+                    key={option.value}
+                    value={option.value}
+                  >
                     <Brain className="mr-2 h-4 w-4" />
                     {option.label}
                     <span className="ml-auto pl-4 text-xs text-muted-foreground">
@@ -1226,7 +1231,10 @@ export const ChatToolbar = memo(function ChatToolbar({
                 onValueChange={handleThinkingLevelChange}
               >
                 {THINKING_LEVEL_OPTIONS.map(option => (
-                  <DropdownMenuRadioItem key={option.value} value={option.value}>
+                  <DropdownMenuRadioItem
+                    key={option.value}
+                    value={option.value}
+                  >
                     <Brain className="mr-2 h-4 w-4" />
                     {option.label}
                     <span className="ml-auto pl-4 text-xs text-muted-foreground">

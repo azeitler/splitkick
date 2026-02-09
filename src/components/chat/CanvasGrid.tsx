@@ -119,8 +119,23 @@ export function CanvasGrid({
   })
 
   // Keyboard navigation - disable when any modal/dialog is open
-  const isModalOpen = !!selectedSessionId || !!planDialogPath || !!planDialogContent || !!recapDialogDigest
-  console.log('[CanvasGrid] isModalOpen:', isModalOpen, 'selectedSessionId:', selectedSessionId, 'planDialogPath:', planDialogPath, 'planDialogContent:', !!planDialogContent, 'recapDialogDigest:', !!recapDialogDigest)
+  const isModalOpen =
+    !!selectedSessionId ||
+    !!planDialogPath ||
+    !!planDialogContent ||
+    !!recapDialogDigest
+  console.log(
+    '[CanvasGrid] isModalOpen:',
+    isModalOpen,
+    'selectedSessionId:',
+    selectedSessionId,
+    'planDialogPath:',
+    planDialogPath,
+    'planDialogContent:',
+    !!planDialogContent,
+    'recapDialogDigest:',
+    !!recapDialogDigest
+  )
   const { cardRefs } = useCanvasKeyboardNav({
     cards,
     selectedIndex,
@@ -246,9 +261,17 @@ export function CanvasGrid({
     onSelectedSessionIdChange,
   ])
 
-  console.log('[CanvasGrid] render - selectedIndex:', selectedIndex, 'cards.length:', cards.length)
+  console.log(
+    '[CanvasGrid] render - selectedIndex:',
+    selectedIndex,
+    'cards.length:',
+    cards.length
+  )
   if (cards.length > 0 && cards[0]) {
-    console.log('[CanvasGrid] render - cards[0].session.id:', cards[0].session.id)
+    console.log(
+      '[CanvasGrid] render - cards[0].session.id:',
+      cards[0].session.id
+    )
   }
 
   return (

@@ -121,8 +121,7 @@ export function useCanvasShortcutEvents({
     let wasSending =
       useChatStore.getState().sendingSessionIds[recapDialogSessionId] ?? false
     const unsubscribe = useChatStore.subscribe(state => {
-      const isSending =
-        state.sendingSessionIds[recapDialogSessionId] ?? false
+      const isSending = state.sendingSessionIds[recapDialogSessionId] ?? false
       if (isSending && !wasSending) {
         setRecapDialogDigest(null)
         setRecapDialogSessionId(null)
@@ -138,13 +137,21 @@ export function useCanvasShortcutEvents({
     if (!enabled || !selectedCard) return
 
     const handleApprovePlanEvent = () => {
-      if (selectedCard.hasExitPlanMode && !selectedCard.hasQuestion && !selectedCard.isSending) {
+      if (
+        selectedCard.hasExitPlanMode &&
+        !selectedCard.hasQuestion &&
+        !selectedCard.isSending
+      ) {
         onPlanApproval(selectedCard)
       }
     }
 
     const handleApprovePlanYoloEvent = () => {
-      if (selectedCard.hasExitPlanMode && !selectedCard.hasQuestion && !selectedCard.isSending) {
+      if (
+        selectedCard.hasExitPlanMode &&
+        !selectedCard.hasQuestion &&
+        !selectedCard.isSending
+      ) {
         onPlanApprovalYolo(selectedCard)
       }
     }

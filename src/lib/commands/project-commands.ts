@@ -48,7 +48,14 @@ export const projectCommands: AppCommand[] = [
     description: 'Learn essential keyboard shortcuts',
     icon: Keyboard,
     group: 'help',
-    keywords: ['tour', 'onboarding', 'shortcuts', 'keybindings', 'help', 'keyboard'],
+    keywords: [
+      'tour',
+      'onboarding',
+      'shortcuts',
+      'keybindings',
+      'help',
+      'keyboard',
+    ],
 
     execute: () => {
       useUIStore.getState().setFeatureTourOpen(true)

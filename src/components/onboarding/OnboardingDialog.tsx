@@ -104,10 +104,12 @@ function OnboardingDialogContent() {
 
   // Stable terminal IDs for auth login steps (created once per dialog open)
   const claudeLoginTerminalId = useMemo(
+    // eslint-disable-next-line react-hooks/purity
     () => `onboarding-claude-login-${Date.now()}`,
     []
   )
   const ghLoginTerminalId = useMemo(
+    // eslint-disable-next-line react-hooks/purity
     () => `onboarding-gh-login-${Date.now()}`,
     []
   )

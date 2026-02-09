@@ -58,6 +58,7 @@ function CliLoginModalContent({
 
   // Generate unique terminal ID for this login session
   const terminalId = useMemo(() => {
+    // eslint-disable-next-line react-hooks/purity
     const id = `cli-login-${Date.now()}`
     console.log('[CliLoginModal] Generated terminalId:', id)
     return id

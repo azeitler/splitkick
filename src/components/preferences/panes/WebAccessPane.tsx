@@ -1,5 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { Copy, Eye, EyeOff, ExternalLink, RefreshCw, ShieldAlert } from 'lucide-react'
+import {
+  Copy,
+  Eye,
+  EyeOff,
+  ExternalLink,
+  RefreshCw,
+  ShieldAlert,
+} from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
@@ -402,6 +409,7 @@ export const WebAccessPane: React.FC = () => {
                     <Button
                       variant="ghost"
                       size="icon"
+                      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
                       onClick={() => handleCopyUrl(serverStatus.url!)}
                       title="Copy URL with token"
                     >

@@ -42,9 +42,11 @@ export function useCanvasKeyboardNav<T>({
 
   // Use refs to avoid stale closures in event handler
   const selectedIndexRef = useRef(selectedIndex)
+  // eslint-disable-next-line react-hooks/refs
   selectedIndexRef.current = selectedIndex
 
   const cardsLengthRef = useRef(cards.length)
+  // eslint-disable-next-line react-hooks/refs
   cardsLengthRef.current = cards.length
 
   // Throttle rapid key presses
@@ -105,8 +107,25 @@ export function useCanvasKeyboardNav<T>({
     const handleKeyDown = (e: KeyboardEvent) => {
       // Skip if any modal is open (magic, plan dialog, etc.)
       const uiState = useUIStore.getState()
-      console.log('[useCanvasKeyboardNav] keydown', e.key, 'magicModalOpen:', uiState.magicModalOpen, 'planDialogOpen:', uiState.planDialogOpen, 'commandPaletteOpen:', uiState.commandPaletteOpen, 'enabled:', enabled)
-      if (uiState.magicModalOpen || uiState.planDialogOpen || uiState.commandPaletteOpen || uiState.preferencesOpen) return
+      console.log(
+        '[useCanvasKeyboardNav] keydown',
+        e.key,
+        'magicModalOpen:',
+        uiState.magicModalOpen,
+        'planDialogOpen:',
+        uiState.planDialogOpen,
+        'commandPaletteOpen:',
+        uiState.commandPaletteOpen,
+        'enabled:',
+        enabled
+      )
+      if (
+        uiState.magicModalOpen ||
+        uiState.planDialogOpen ||
+        uiState.commandPaletteOpen ||
+        uiState.preferencesOpen
+      )
+        return
       if (useProjectsStore.getState().projectSettingsDialogOpen) return
 
       if (
@@ -183,7 +202,13 @@ export function useCanvasKeyboardNav<T>({
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [enabled, findVerticalNeighbor, onSelectedIndexChange, onSelect, onSelectionChange])
+  }, [
+    enabled,
+    findVerticalNeighbor,
+    onSelectedIndexChange,
+    onSelect,
+    onSelectionChange,
+  ])
 
   // Scroll selected card into view when selection changes
   const scrollSelectedIntoView = useCallback(() => {

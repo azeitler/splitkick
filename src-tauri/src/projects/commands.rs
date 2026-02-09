@@ -3929,10 +3929,10 @@ pub async fn create_pr_with_ai_content(
     }
 
     // Gather issue/PR context for this worktree
-    let context_content = get_worktree_context_content(&app, &worktree.id, &project.path)
-        .unwrap_or_default();
-    let (issue_nums, pr_nums) = get_worktree_context_numbers(&app, &worktree.id)
-        .unwrap_or_default();
+    let context_content =
+        get_worktree_context_content(&app, &worktree.id, &project.path).unwrap_or_default();
+    let (issue_nums, pr_nums) =
+        get_worktree_context_numbers(&app, &worktree.id).unwrap_or_default();
 
     // Generate PR content using Claude CLI
     log::trace!("Generating PR content with AI");

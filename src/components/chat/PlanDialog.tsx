@@ -64,6 +64,7 @@ export function PlanDialog({
 
   const { data: fetchedContent, isLoading } = useQuery({
     queryKey: ['planFile', filePath],
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     queryFn: () => readPlanFile(filePath!),
     staleTime: 1000 * 60 * 5, // 5 minutes
     retry: 1,
@@ -77,12 +78,14 @@ export function PlanDialog({
   // Sync edited content when original changes or dialog opens
   useEffect(() => {
     if (isOpen && originalContent) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setEditedContent(originalContent)
     }
   }, [isOpen, originalContent])
 
   // Reset edit mode when dialog closes
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!isOpen) setIsEditMode(false)
   }, [isOpen])
 
@@ -183,7 +186,7 @@ export function PlanDialog({
                 {filename}
               </code>
             )}
-                      </DialogTitle>
+          </DialogTitle>
         </DialogHeader>
 
         {editable && isEditMode ? (

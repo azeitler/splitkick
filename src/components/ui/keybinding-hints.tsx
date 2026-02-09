@@ -1,8 +1,5 @@
 import { Kbd } from '@/components/ui/kbd'
-import {
-  formatShortcutDisplay,
-  type ShortcutString,
-} from '@/types/keybindings'
+import { formatShortcutDisplay, type ShortcutString } from '@/types/keybindings'
 import { cn } from '@/lib/utils'
 
 export interface KeybindingHint {

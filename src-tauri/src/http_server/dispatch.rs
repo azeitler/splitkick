@@ -101,9 +101,13 @@ pub async fn dispatch_command(
             let project_id: String = field(&args, "projectId", "project_id")?;
             let default_branch: Option<String> =
                 field_opt(&args, "defaultBranch", "default_branch")?;
-            let result =
-                crate::projects::update_project_settings(app.clone(), project_id, default_branch, None)
-                    .await?;
+            let result = crate::projects::update_project_settings(
+                app.clone(),
+                project_id,
+                default_branch,
+                None,
+            )
+            .await?;
             to_value(result)
         }
         "reorder_projects" => {
@@ -121,8 +125,8 @@ pub async fn dispatch_command(
         }
         "fetch_worktrees_status" => {
             let project_id: String = field(&args, "projectId", "project_id")?;
-            let result = crate::projects::fetch_worktrees_status(app.clone(), project_id).await?;
-            to_value(result)
+            crate::projects::fetch_worktrees_status(app.clone(), project_id).await?;
+            to_value(())
         }
         "archive_worktree" => {
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
@@ -538,10 +542,8 @@ pub async fn dispatch_command(
                 field_opt(&args, "allowedTools", "allowed_tools")?;
             let effort_level: Option<crate::chat::types::EffortLevel> =
                 field_opt(&args, "effortLevel", "effort_level")?;
-            let mcp_config: Option<String> =
-                field_opt(&args, "mcpConfig", "mcp_config")?;
-            let chrome_enabled: Option<bool> =
-                field_opt(&args, "chromeEnabled", "chrome_enabled")?;
+            let mcp_config: Option<String> = field_opt(&args, "mcpConfig", "mcp_config")?;
+            let chrome_enabled: Option<bool> = field_opt(&args, "chromeEnabled", "chrome_enabled")?;
             let result = crate::chat::send_chat_message(
                 app.clone(),
                 session_id,

@@ -101,8 +101,7 @@ export const McpServersPane: React.FC = () => {
                 <Checkbox
                   id={`mcp-${server.name}`}
                   checked={
-                    !server.disabled &&
-                    enabledServers.includes(server.name)
+                    !server.disabled && enabledServers.includes(server.name)
                   }
                   onCheckedChange={() => handleToggle(server.name)}
                   disabled={server.disabled}
@@ -111,9 +110,7 @@ export const McpServersPane: React.FC = () => {
                   htmlFor={`mcp-${server.name}`}
                   className={cn(
                     'flex-1 text-sm font-medium',
-                    server.disabled
-                      ? 'cursor-default'
-                      : 'cursor-pointer'
+                    server.disabled ? 'cursor-default' : 'cursor-pointer'
                   )}
                 >
                   {server.name}

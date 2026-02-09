@@ -135,10 +135,12 @@ export function PermissionApproval({
 
     for (let i = 0; i < denials.length; i++) {
       let shouldKeep = true
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       const itemI = innerContent[i]!
 
       for (let j = 0; j < denials.length; j++) {
         if (i === j) continue
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
         const itemJ = innerContent[j]!
 
         // Only compare containment for same tool type

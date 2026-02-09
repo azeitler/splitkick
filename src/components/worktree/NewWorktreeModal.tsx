@@ -163,6 +163,7 @@ export function NewWorktreeModal() {
       const { newWorktreeModalDefaultTab, setNewWorktreeModalDefaultTab } =
         useUIStore.getState()
       if (newWorktreeModalDefaultTab) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setActiveTab(newWorktreeModalDefaultTab)
         setNewWorktreeModalDefaultTab(null)
       }
@@ -185,6 +186,7 @@ export function NewWorktreeModal() {
 
   // Reset selection when switching tabs
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelectedItemIndex(0)
     setSearchQuery('')
   }, [activeTab])
@@ -202,8 +204,7 @@ export function NewWorktreeModal() {
         const { newWorktreeModalDefaultTab, setNewWorktreeModalDefaultTab } =
           useUIStore.getState()
         setActiveTab(
-          newWorktreeModalDefaultTab ??
-            (selectedProjectId ? 'issues' : 'quick')
+          newWorktreeModalDefaultTab ?? (selectedProjectId ? 'issues' : 'quick')
         )
         setNewWorktreeModalDefaultTab(null)
         setIncludeClosed(false)

@@ -15,7 +15,7 @@ import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import {
   syntaxHighlighting,
   defaultHighlightStyle,
-  LanguageSupport,
+  type LanguageSupport,
 } from '@codemirror/language'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { javascript } from '@codemirror/lang-javascript'

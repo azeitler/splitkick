@@ -24,6 +24,8 @@ import { gitPull, triggerImmediateGitPoll } from '@/services/git-status'
 export function useCommandContext(
   preferences?: AppPreferences
 ): CommandContext {
+  'use no memo'
+
   const queryClient = useQueryClient()
   const themeContext = useContext(ThemeProviderContext)
 
@@ -268,6 +270,7 @@ export function useCommandContext(
   }, [getTargetPath])
 
   // Open In - Terminal
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const openInTerminal = useCallback(async () => {
     const worktreePath = getTargetPath()
     if (!worktreePath) {
@@ -287,6 +290,7 @@ export function useCommandContext(
   }, [getTargetPath, preferences?.terminal])
 
   // Open In - Editor
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const openInEditor = useCallback(async () => {
     const worktreePath = getTargetPath()
     if (!worktreePath) {
@@ -535,6 +539,7 @@ export function useCommandContext(
   }, [])
 
   // AI - Run code review
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const runAIReview = useCallback(async () => {
     const { activeWorktreeId, activeWorktreePath } = useChatStore.getState()
     if (!activeWorktreeId || !activeWorktreePath) {

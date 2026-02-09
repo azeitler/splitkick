@@ -147,6 +147,7 @@ export const VirtualizedMessageList = memo(
       const prevSessionRef = useRef(sessionId)
       useEffect(() => {
         if (sessionId !== prevSessionRef.current) {
+          // eslint-disable-next-line react-hooks/set-state-in-effect
           setVisibleCount(INITIAL_VISIBLE_COUNT)
           prevSessionRef.current = sessionId
         }

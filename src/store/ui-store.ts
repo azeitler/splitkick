@@ -30,11 +30,11 @@ export interface PathConflictData {
     number: number
     title: string
     body?: string
-    comments: Array<{
+    comments: {
       author: { login: string }
       body: string
       createdAt: string
-    }>
+    }[]
   }
 }
 
@@ -48,11 +48,11 @@ export interface BranchConflictData {
     number: number
     title: string
     body?: string
-    comments: Array<{
+    comments: {
       author: { login: string }
       body: string
       createdAt: string
-    }>
+    }[]
   }
   /** PR context to pass when creating a new worktree */
   prContext?: {
@@ -61,17 +61,17 @@ export interface BranchConflictData {
     body?: string
     headRefName: string
     baseRefName: string
-    comments: Array<{
+    comments: {
       author: { login: string }
       body: string
       createdAt: string
-    }>
-    reviews: Array<{
+    }[]
+    reviews: {
       author: { login: string }
       body: string
       state: string
       submittedAt: string
-    }>
+    }[]
     diff?: string
   }
 }
@@ -133,7 +133,9 @@ interface UIState {
   setOpenInModalOpen: (open: boolean) => void
   setMagicModalOpen: (open: boolean) => void
   setNewWorktreeModalOpen: (open: boolean) => void
-  setNewWorktreeModalDefaultTab: (tab: 'quick' | 'issues' | 'prs' | null) => void
+  setNewWorktreeModalDefaultTab: (
+    tab: 'quick' | 'issues' | 'prs' | null
+  ) => void
   setCheckoutPRModalOpen: (open: boolean) => void
   openCliUpdateModal: (type: 'claude' | 'gh') => void
   closeCliUpdateModal: () => void

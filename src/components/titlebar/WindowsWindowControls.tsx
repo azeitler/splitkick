@@ -15,7 +15,7 @@ export function WindowsWindowControls() {
     appWindow
       .isMaximized()
       .then(setIsMaximized)
-      .catch(() => {})
+      .catch(() => undefined)
 
     // Listen for resize events to detect maximize state changes
     let unlisten: (() => void) | null = null

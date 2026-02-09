@@ -1593,7 +1593,10 @@ export function useOpenBranchOnGitHub() {
       logger.debug('Opening branch on GitHub', { repoPath, branch })
 
       // Get the GitHub URL from backend
-      const url = await invoke<string>('get_github_branch_url', { repoPath, branch })
+      const url = await invoke<string>('get_github_branch_url', {
+        repoPath,
+        branch,
+      })
 
       // Open URL based on environment
       if (isNativeApp()) {
@@ -1813,17 +1816,24 @@ export function useOpenProjectOnGitHub() {
       }
 
       // Get project data from cache or fetch
-      const projects = queryClient.getQueryData<Project[]>(projectsQueryKeys.list())
+      const projects = queryClient.getQueryData<Project[]>(
+        projectsQueryKeys.list()
+      )
       const project = projects?.find(p => p.id === projectId)
 
       if (!project?.path) {
         throw new Error('Project not found or has no path')
       }
 
-      logger.debug('Opening project on GitHub', { projectId, path: project.path })
+      logger.debug('Opening project on GitHub', {
+        projectId,
+        path: project.path,
+      })
 
       // Get the GitHub URL from backend
-      const url = await invoke<string>('get_github_repo_url', { repoPath: project.path })
+      const url = await invoke<string>('get_github_repo_url', {
+        repoPath: project.path,
+      })
 
       // Open URL based on environment
       if (isNativeApp()) {

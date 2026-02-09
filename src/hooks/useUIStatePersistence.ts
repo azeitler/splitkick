@@ -83,7 +83,8 @@ export function useUIStatePersistence() {
       projectAccessTimestamps,
     } = useProjectsStore.getState()
     const { leftSidebarSize, leftSidebarVisible } = useUIStore.getState()
-    const { modalTerminalOpen, modalTerminalWidth } = useTerminalStore.getState()
+    const { modalTerminalOpen, modalTerminalWidth } =
+      useTerminalStore.getState()
 
     return {
       active_worktree_id: activeWorktreeId,
@@ -295,7 +296,9 @@ export function useUIStatePersistence() {
       logger.debug('Restoring modal terminal width', {
         width: uiState.modal_terminal_width,
       })
-      useTerminalStore.setState({ modalTerminalWidth: uiState.modal_terminal_width })
+      useTerminalStore.setState({
+        modalTerminalWidth: uiState.modal_terminal_width,
+      })
     }
 
     // Restore project access timestamps
@@ -304,7 +307,9 @@ export function useUIStatePersistence() {
       logger.debug('Restoring project access timestamps', {
         count: Object.keys(projectAccessTimestamps).length,
       })
-      useProjectsStore.getState().setProjectAccessTimestamps(projectAccessTimestamps)
+      useProjectsStore
+        .getState()
+        .setProjectAccessTimestamps(projectAccessTimestamps)
     }
 
     queueMicrotask(() => {
