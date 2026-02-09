@@ -102,7 +102,7 @@ pub async fn dispatch_command(
             let default_branch: Option<String> =
                 field_opt(&args, "defaultBranch", "default_branch")?;
             let result =
-                crate::projects::update_project_settings(app.clone(), project_id, default_branch)
+                crate::projects::update_project_settings(app.clone(), project_id, default_branch, None)
                     .await?;
             to_value(result)
         }
@@ -538,6 +538,8 @@ pub async fn dispatch_command(
                 field_opt(&args, "allowedTools", "allowed_tools")?;
             let effort_level: Option<crate::chat::types::EffortLevel> =
                 field_opt(&args, "effortLevel", "effort_level")?;
+            let mcp_config: Option<String> =
+                field_opt(&args, "mcpConfig", "mcp_config")?;
             let result = crate::chat::send_chat_message(
                 app.clone(),
                 session_id,
@@ -552,6 +554,7 @@ pub async fn dispatch_command(
                 parallel_execution_prompt_enabled,
                 ai_language,
                 allowed_tools,
+                mcp_config,
             )
             .await?;
             to_value(result)

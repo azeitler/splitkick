@@ -76,8 +76,12 @@ export function useUIStatePersistence() {
       fixedReviewFindings,
       pendingDigestSessionIds,
     } = useChatStore.getState()
-    const { expandedProjectIds, expandedFolderIds, selectedProjectId } =
-      useProjectsStore.getState()
+    const {
+      expandedProjectIds,
+      expandedFolderIds,
+      selectedProjectId,
+      projectAccessTimestamps,
+    } = useProjectsStore.getState()
     const { leftSidebarSize, leftSidebarVisible } = useUIStore.getState()
     const { modalTerminalOpen, modalTerminalWidth } = useTerminalStore.getState()
 
@@ -102,6 +106,8 @@ export function useUIStatePersistence() {
       // Modal terminal drawer state
       modal_terminal_open: modalTerminalOpen,
       modal_terminal_width: modalTerminalWidth,
+      // Project access timestamps for recency sorting
+      project_access_timestamps: projectAccessTimestamps,
       version: 1, // Reset for first release
     }
   }, [])
@@ -174,12 +180,6 @@ export function useUIStatePersistence() {
         visible: uiState.left_sidebar_visible,
       })
       useUIStore.getState().setLeftSidebarVisible(uiState.left_sidebar_visible)
-    }
-
-    // Force sidebar open when no projects exist (first-time launch)
-    if (projects.length === 0) {
-      logger.debug('No projects found, forcing sidebar open')
-      useUIStore.getState().setLeftSidebarVisible(true)
     }
 
     // Restore active project first (selectProject clears selectedWorktreeId)
@@ -298,6 +298,15 @@ export function useUIStatePersistence() {
       useTerminalStore.setState({ modalTerminalWidth: uiState.modal_terminal_width })
     }
 
+    // Restore project access timestamps
+    const projectAccessTimestamps = uiState.project_access_timestamps ?? {}
+    if (Object.keys(projectAccessTimestamps).length > 0) {
+      logger.debug('Restoring project access timestamps', {
+        count: Object.keys(projectAccessTimestamps).length,
+      })
+      useProjectsStore.getState().setProjectAccessTimestamps(projectAccessTimestamps)
+    }
+
     queueMicrotask(() => {
       setIsInitialized(true)
     })
@@ -313,6 +322,8 @@ export function useUIStatePersistence() {
     let prevExpandedProjectIds = useProjectsStore.getState().expandedProjectIds
     let prevExpandedFolderIds = useProjectsStore.getState().expandedFolderIds
     let prevSelectedProjectId = useProjectsStore.getState().selectedProjectId
+    let prevProjectAccessTimestamps =
+      useProjectsStore.getState().projectAccessTimestamps
     let prevLeftSidebarSize = useUIStore.getState().leftSidebarSize
     let prevLeftSidebarVisible = useUIStore.getState().leftSidebarVisible
     let prevWorktreeId = useChatStore.getState().activeWorktreeId
@@ -335,11 +346,19 @@ export function useUIStatePersistence() {
       const folderIdsChanged = state.expandedFolderIds !== prevExpandedFolderIds
       const selectedProjectChanged =
         state.selectedProjectId !== prevSelectedProjectId
+      const accessTimestampsChanged =
+        state.projectAccessTimestamps !== prevProjectAccessTimestamps
 
-      if (projectIdsChanged || folderIdsChanged || selectedProjectChanged) {
+      if (
+        projectIdsChanged ||
+        folderIdsChanged ||
+        selectedProjectChanged ||
+        accessTimestampsChanged
+      ) {
         prevExpandedProjectIds = state.expandedProjectIds
         prevExpandedFolderIds = state.expandedFolderIds
         prevSelectedProjectId = state.selectedProjectId
+        prevProjectAccessTimestamps = state.projectAccessTimestamps
         const currentState = getCurrentUIState()
         debouncedSaveRef.current?.(currentState)
       }

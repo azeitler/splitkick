@@ -38,10 +38,11 @@ export const ModalTerminalDrawer = memo(function ModalTerminalDrawer({
       const handleMouseMove = (e: MouseEvent) => {
         if (!isResizing.current) return
         const newWidth = window.innerWidth - e.clientX
-        // Clamp between 300 and 800px
+        // Clamp between 300px and 95% of viewport
+        const maxWidth = Math.floor(window.innerWidth * 0.95)
         useTerminalStore
           .getState()
-          .setModalTerminalWidth(Math.max(300, Math.min(800, newWidth)))
+          .setModalTerminalWidth(Math.max(300, Math.min(maxWidth, newWidth)))
       }
 
       const handleMouseUp = () => {
@@ -63,7 +64,7 @@ export const ModalTerminalDrawer = memo(function ModalTerminalDrawer({
         modal={false}
         showCloseButton={false}
         className="flex flex-col gap-0 p-0"
-        style={{ width: `${width}px`, maxWidth: '80vw' }}
+        style={{ width: `${width}px`, maxWidth: '95vw' }}
       >
         {/* Resize handle on left edge */}
         <div

@@ -1,5 +1,6 @@
-import { FolderPlus, FolderGit, Bug } from 'lucide-react'
+import { FolderPlus, FolderGit, Bug, Keyboard } from 'lucide-react'
 import type { AppCommand } from './types'
+import { useUIStore } from '@/store/ui-store'
 
 export const projectCommands: AppCommand[] = [
   {
@@ -38,6 +39,19 @@ export const projectCommands: AppCommand[] = [
 
     execute: context => {
       context.toggleDebugMode()
+    },
+  },
+
+  {
+    id: 'help.feature-tour',
+    label: 'Show Feature Tour',
+    description: 'Learn essential keyboard shortcuts',
+    icon: Keyboard,
+    group: 'help',
+    keywords: ['tour', 'onboarding', 'shortcuts', 'keybindings', 'help', 'keyboard'],
+
+    execute: () => {
+      useUIStore.getState().setFeatureTourOpen(true)
     },
   },
 ]

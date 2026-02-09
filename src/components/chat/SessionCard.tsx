@@ -141,6 +141,7 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
                   <div className="relative z-10 flex items-center gap-1.5">
                     <Button
                       className="h-6 px-2 text-xs rounded  "
+                      disabled={card.isSending}
                       onClick={e => {
                         e.stopPropagation()
                         onApprove()
@@ -156,6 +157,7 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
                     <Button
                       variant="destructive"
                       className="h-6 px-2 text-xs rounded"
+                      disabled={card.isSending}
                       onClick={e => {
                         e.stopPropagation()
                         onYolo()

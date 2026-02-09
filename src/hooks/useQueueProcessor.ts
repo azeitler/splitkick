@@ -182,6 +182,7 @@ export function useQueueProcessor(): void {
           thinkingLevel: queuedMsg.thinkingLevel,
           disableThinkingForMode: queuedMsg.disableThinkingForMode,
           effortLevel: queuedMsg.effortLevel,
+          mcpConfig: queuedMsg.mcpConfig,
           parallelExecutionPromptEnabled:
             preferences?.parallel_execution_prompt_enabled ?? false,
           allowedTools,

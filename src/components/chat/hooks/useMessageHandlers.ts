@@ -41,6 +41,7 @@ interface SendMessageMutation {
       effortLevel?: string
       allowedTools?: string[]
       disableThinkingForMode?: boolean
+      mcpConfig?: string
     },
     options?: {
       onSettled?: () => void
@@ -59,6 +60,8 @@ interface UseMessageHandlersParams {
   selectedThinkingLevelRef: RefObject<ThinkingLevel>
   selectedEffortLevelRef: RefObject<EffortLevel>
   useAdaptiveThinkingRef: RefObject<boolean>
+  // MCP config builder (reads current refs internally)
+  getMcpConfig: () => string | undefined
   // Actions
   sendMessage: SendMessageMutation
   queryClient: QueryClient
@@ -113,6 +116,7 @@ export function useMessageHandlers({
   selectedThinkingLevelRef,
   selectedEffortLevelRef,
   useAdaptiveThinkingRef,
+  getMcpConfig,
   sendMessage,
   queryClient,
   scrollToBottom,
@@ -185,6 +189,7 @@ export function useMessageHandlers({
           effortLevel: useAdaptiveThinkingRef.current
             ? selectedEffortLevelRef.current
             : undefined,
+          mcpConfig: getMcpConfig(),
         },
         {
           onSettled: () => {
@@ -346,6 +351,7 @@ export function useMessageHandlers({
             ? selectedEffortLevelRef.current
             : undefined,
           disableThinkingForMode: true, // Always disable thinking when executing approved plan
+          mcpConfig: getMcpConfig(),
         },
         {
           onSettled: () => {
@@ -448,6 +454,7 @@ export function useMessageHandlers({
             ? selectedEffortLevelRef.current
             : undefined,
           disableThinkingForMode: true, // Always disable thinking when executing approved plan
+          mcpConfig: getMcpConfig(),
         },
         {
           onSettled: () => {
@@ -532,6 +539,7 @@ export function useMessageHandlers({
           ? selectedEffortLevelRef.current
           : undefined,
         disableThinkingForMode: true, // Always disable thinking when executing approved plan
+        mcpConfig: getMcpConfig(),
       },
       {
         onSettled: () => {
@@ -604,6 +612,7 @@ export function useMessageHandlers({
           ? selectedEffortLevelRef.current
           : undefined,
         disableThinkingForMode: true, // Always disable thinking when executing approved plan
+        mcpConfig: getMcpConfig(),
       },
       {
         onSettled: () => {
@@ -721,6 +730,7 @@ export function useMessageHandlers({
             ? selectedEffortLevelRef.current
             : undefined,
           allowedTools: [...GIT_ALLOWED_TOOLS, ...allApprovedTools],
+          mcpConfig: getMcpConfig(),
         },
         {
           onSettled: () => {
@@ -838,6 +848,7 @@ export function useMessageHandlers({
           effortLevel: useAdaptiveThinkingRef.current
             ? selectedEffortLevelRef.current
             : undefined,
+          mcpConfig: getMcpConfig(),
         },
         {
           onSettled: () => {
@@ -953,6 +964,7 @@ Please apply this fix to the file.`
           effortLevel: useAdaptiveThinkingRef.current
             ? selectedEffortLevelRef.current
             : undefined,
+          mcpConfig: getMcpConfig(),
         },
         {
           onSettled: () => {
@@ -1061,6 +1073,7 @@ Please apply all these fixes to the respective files.`
           effortLevel: useAdaptiveThinkingRef.current
             ? selectedEffortLevelRef.current
             : undefined,
+          mcpConfig: getMcpConfig(),
         },
         {
           onSettled: () => {

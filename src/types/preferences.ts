@@ -111,6 +111,10 @@ export const DEFAULT_PR_CONTENT_PROMPT = `<task>Generate a pull request title an
 <commit_count>{commit_count}</commit_count>
 </context>
 
+<related_context>
+{context}
+</related_context>
+
 <commits>
 {commits}
 </commits>
@@ -278,6 +282,8 @@ export interface AppPreferences {
   auto_archive_on_pr_merged: boolean // Auto-archive worktrees when their PR is merged
   show_keybinding_hints: boolean // Show keyboard shortcut hints at bottom of canvas views
   debug_mode_enabled: boolean // Show debug panel in chat sessions
+  default_enabled_mcp_servers: string[] // MCP server names enabled by default (empty = none)
+  has_seen_feature_tour: boolean // Whether user has seen the feature tour onboarding
 }
 
 export type FileEditMode = 'inline' | 'external'
@@ -487,7 +493,7 @@ export const defaultPreferences: AppPreferences = {
   archive_retention_days: 30,
   session_grouping_enabled: true,
   canvas_enabled: true,
-  canvas_only_mode: false,
+  canvas_only_mode: true,
   syntax_theme_dark: 'vitesse-black',
   syntax_theme_light: 'github-light',
   disable_thinking_in_non_plan_modes: true, // Default: only plan mode uses thinking
@@ -510,4 +516,6 @@ export const defaultPreferences: AppPreferences = {
   auto_archive_on_pr_merged: true, // Default: enabled
   show_keybinding_hints: true, // Default: enabled
   debug_mode_enabled: false, // Default: disabled
+  default_enabled_mcp_servers: [], // Default: no MCP servers enabled
+  has_seen_feature_tour: false, // Default: not seen
 }

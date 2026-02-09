@@ -178,9 +178,33 @@ export function CanvasGrid({
   // Listen for close-session-or-worktree event to handle CMD+W
   useEffect(() => {
     const handleCloseSessionOrWorktree = (e: Event) => {
-      // If modal is open, close it
+      // If modal is open, archive the session and close modal with next card pre-selected
       if (selectedSessionId) {
+        e.stopImmediatePropagation()
+        onArchiveSession(selectedSessionId)
         onSelectedSessionIdChange(null)
+
+        const closingIndex = cards.findIndex(
+          c => c.session.id === selectedSessionId
+        )
+        const remaining = cards.filter(c => c.session.id !== selectedSessionId)
+
+        if (remaining.length === 0) {
+          onSelectedIndexChange(null)
+        } else {
+          const nextCard =
+            closingIndex < remaining.length
+              ? remaining[closingIndex]
+              : remaining[remaining.length - 1]
+          if (nextCard) {
+            const newIndex = cards.findIndex(
+              c => c.session.id === nextCard.session.id
+            )
+            onSelectedIndexChange(
+              newIndex > closingIndex ? newIndex - 1 : newIndex
+            )
+          }
+        }
         return
       }
 
@@ -259,6 +283,7 @@ export function CanvasGrid({
           isOpen={true}
           onClose={closePlanDialog}
           editable={true}
+          disabled={planDialogCard?.isSending}
           approvalContext={planApprovalContext ?? undefined}
           onApprove={handleDialogApprove}
           onApproveYolo={handleDialogApproveYolo}
@@ -269,6 +294,7 @@ export function CanvasGrid({
           isOpen={true}
           onClose={closePlanDialog}
           editable={true}
+          disabled={planDialogCard?.isSending}
           approvalContext={planApprovalContext ?? undefined}
           onApprove={handleDialogApprove}
           onApproveYolo={handleDialogApproveYolo}

@@ -39,10 +39,22 @@ export function CommandPalette() {
   const { data: projects = [] } = useProjects()
   const { data: appDataDir } = useAppDataDir()
 
-  // Create dynamic project commands
+  // Get project access timestamps for recency sorting
+  const projectAccessTimestamps = useProjectsStore(
+    state => state.projectAccessTimestamps
+  )
+  const selectedProjectId = useProjectsStore(state => state.selectedProjectId)
+
+  // Create dynamic project commands (sorted by last-accessed, most recent first)
+  // Current project is excluded so the previous project is first (quick CMD+K → Enter switching)
   const projectCommands = useMemo((): ProjectCommand[] => {
     return projects
-      .filter(p => !p.is_folder)
+      .filter(p => !p.is_folder && p.id !== selectedProjectId)
+      .sort((a, b) => {
+        const aTime = projectAccessTimestamps[a.id] ?? 0
+        const bTime = projectAccessTimestamps[b.id] ?? 0
+        return bTime - aTime
+      })
       .map(project => ({
         id: `goto-project-${project.id}`,
         label: project.name,
@@ -59,7 +71,7 @@ export function CommandPalette() {
           useProjectsStore.getState().selectProject(project.id)
         },
       }))
-  }, [projects, appDataDir])
+  }, [projects, appDataDir, projectAccessTimestamps, selectedProjectId])
 
   // Get all available commands (memoized to prevent re-filtering on every render)
   const commandGroups = useMemo(() => {

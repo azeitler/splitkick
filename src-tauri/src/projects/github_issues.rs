@@ -502,6 +502,77 @@ pub fn get_worktree_pr_refs(
         .collect())
 }
 
+/// Extract the number from a context ref key (format: "{owner}-{repo}-{number}")
+fn extract_number_from_ref_key(key: &str) -> Option<u32> {
+    key.rsplit('-').next()?.parse().ok()
+}
+
+/// Get all issue and PR numbers referenced by a worktree
+/// Returns (issue_numbers, pr_numbers)
+pub fn get_worktree_context_numbers(
+    app: &AppHandle,
+    worktree_id: &str,
+) -> Result<(Vec<u32>, Vec<u32>), String> {
+    let issue_keys = get_worktree_issue_refs(app, worktree_id)?;
+    let pr_keys = get_worktree_pr_refs(app, worktree_id)?;
+
+    let issue_nums: Vec<u32> = issue_keys
+        .iter()
+        .filter_map(|k| extract_number_from_ref_key(k))
+        .collect();
+    let pr_nums: Vec<u32> = pr_keys
+        .iter()
+        .filter_map(|k| extract_number_from_ref_key(k))
+        .collect();
+
+    Ok((issue_nums, pr_nums))
+}
+
+/// Get all loaded context markdown content for a worktree
+/// Returns concatenated markdown of all issue and PR context files, or empty string if none
+pub fn get_worktree_context_content(
+    app: &AppHandle,
+    worktree_id: &str,
+    project_path: &str,
+) -> Result<String, String> {
+    let repo_id = get_repo_identifier(project_path)?;
+    let repo_key = repo_id.to_key();
+    let contexts_dir = get_github_contexts_dir(app)?;
+
+    let issue_keys = get_worktree_issue_refs(app, worktree_id)?;
+    let pr_keys = get_worktree_pr_refs(app, worktree_id)?;
+
+    if issue_keys.is_empty() && pr_keys.is_empty() {
+        return Ok(String::new());
+    }
+
+    let mut parts: Vec<String> = Vec::new();
+
+    for key in &issue_keys {
+        if let Some(number) = extract_number_from_ref_key(key) {
+            let file = contexts_dir.join(format!("{repo_key}-issue-{number}.md"));
+            if file.exists() {
+                if let Ok(content) = std::fs::read_to_string(&file) {
+                    parts.push(format!("### Issue #{number}\n\n{content}"));
+                }
+            }
+        }
+    }
+
+    for key in &pr_keys {
+        if let Some(number) = extract_number_from_ref_key(key) {
+            let file = contexts_dir.join(format!("{repo_key}-pr-{number}.md"));
+            if file.exists() {
+                if let Ok(content) = std::fs::read_to_string(&file) {
+                    parts.push(format!("### PR #{number}\n\n{content}"));
+                }
+            }
+        }
+    }
+
+    Ok(parts.join("\n\n"))
+}
+
 /// Remove all references for a worktree
 /// Returns (orphaned_issue_keys, orphaned_pr_keys)
 pub fn remove_all_worktree_references(

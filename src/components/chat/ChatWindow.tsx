@@ -96,6 +96,9 @@ import {
   type VirtualizedMessageListHandle,
 } from './VirtualizedMessageList'
 import { useUIStore } from '@/store/ui-store'
+import { useProjectsStore } from '@/store/projects-store'
+import { useMcpServers, buildMcpConfigJson } from '@/services/mcp'
+import type { McpServerInfo } from '@/types/chat'
 import { useGitStatus } from '@/services/git-status'
 import { isNativeApp } from '@/lib/environment'
 import { supportsAdaptiveThinking } from '@/lib/model-utils'
@@ -452,6 +455,20 @@ export function ChatWindow({
   )
   const selectedEffortLevel: EffortLevel = sessionEffortLevel ?? defaultEffortLevel
 
+  // MCP servers: fetch available servers and get per-session enabled state
+  const { data: mcpServersData } = useMcpServers(activeWorktreePath)
+  const availableMcpServers = mcpServersData ?? []
+  const sessionEnabledMcpServers = useChatStore(state =>
+    deferredSessionId
+      ? state.enabledMcpServers[deferredSessionId]
+      : undefined
+  )
+  const enabledMcpServers =
+    sessionEnabledMcpServers ??
+    project?.enabled_mcp_servers ??
+    preferences?.default_enabled_mcp_servers ??
+    []
+
   // CLI version for adaptive thinking feature detection
   const { data: cliStatus } = useClaudeCliStatus()
   const useAdaptiveThinkingFlag = supportsAdaptiveThinking(
@@ -594,6 +611,8 @@ export function ChatWindow({
   const selectedEffortLevelRef = useRef(selectedEffortLevel)
   const useAdaptiveThinkingRef = useRef(useAdaptiveThinkingFlag)
   const executionModeRef = useRef(executionMode)
+  const enabledMcpServersRef = useRef(enabledMcpServers)
+  const mcpServersDataRef = useRef<McpServerInfo[]>(availableMcpServers)
 
   // Keep refs in sync with current values (runs on every render, but cheap)
   activeSessionIdRef.current = activeSessionId
@@ -604,6 +623,18 @@ export function ChatWindow({
   selectedEffortLevelRef.current = selectedEffortLevel
   useAdaptiveThinkingRef.current = useAdaptiveThinkingFlag
   executionModeRef.current = executionMode
+  enabledMcpServersRef.current = enabledMcpServers
+  mcpServersDataRef.current = availableMcpServers
+
+  // Stable callback for useMessageHandlers to build MCP config from current refs
+  const getMcpConfig = useCallback(
+    () =>
+      buildMcpConfigJson(
+        mcpServersDataRef.current,
+        enabledMcpServersRef.current
+      ),
+    []
+  )
 
   // Ref for approve button (passed to VirtualizedMessageList)
   const approveButtonRef = useRef<HTMLButtonElement>(null)
@@ -855,8 +886,8 @@ export function ChatWindow({
             useChatStore
               .getState()
               .setActiveSession(activeWorktreeId, session.id)
-            // In canvas-only mode, open the new session in a modal
-            if (canvasOnlyMode) {
+            // When in a modal or canvas-only mode, notify parent to update modal session
+            if (isModal || canvasOnlyMode) {
               window.dispatchEvent(
                 new CustomEvent('open-session-modal', {
                   detail: { sessionId: session.id },
@@ -871,7 +902,7 @@ export function ChatWindow({
     window.addEventListener('create-new-session', handleCreateNewSession)
     return () =>
       window.removeEventListener('create-new-session', handleCreateNewSession)
-  }, [activeWorktreeId, activeWorktreePath, createSession, canvasOnlyMode])
+  }, [activeWorktreeId, activeWorktreePath, createSession, isModal, canvasOnlyMode])
 
   // Listen for cycle-execution-mode event from keybinding (SHIFT+TAB)
   useEffect(() => {
@@ -1047,6 +1078,7 @@ export function ChatWindow({
           thinkingLevel: queuedMsg.thinkingLevel,
           disableThinkingForMode: queuedMsg.disableThinkingForMode,
           effortLevel: queuedMsg.effortLevel,
+          mcpConfig: queuedMsg.mcpConfig,
           parallelExecutionPromptEnabled:
             preferences?.parallel_execution_prompt_enabled ?? false,
           aiLanguage: preferences?.ai_language,
@@ -1132,6 +1164,10 @@ export function ChatWindow({
           effortLevel: useAdaptiveThinkingRef.current
             ? selectedEffortLevelRef.current
             : undefined,
+          mcpConfig: buildMcpConfigJson(
+            mcpServersDataRef.current,
+            enabledMcpServersRef.current
+          ),
           parallelExecutionPromptEnabled:
             preferences?.parallel_execution_prompt_enabled ?? false,
           aiLanguage: preferences?.ai_language,
@@ -1236,6 +1272,10 @@ export function ChatWindow({
         effortLevel: useAdaptiveThinkingRef.current
           ? selectedEffortLevelRef.current
           : undefined,
+        mcpConfig: buildMcpConfigJson(
+          mcpServersDataRef.current,
+          enabledMcpServersRef.current
+        ),
         queuedAt: Date.now(),
       }
 
@@ -1388,6 +1428,20 @@ export function ChatWindow({
     },
     []
   )
+
+  const handleToggleMcpServer = useCallback(
+    (serverName: string) => {
+      const sessionId = activeSessionIdRef.current
+      if (!sessionId) return
+      useChatStore.getState().toggleMcpServer(sessionId, serverName)
+    },
+    []
+  )
+
+  const handleOpenProjectSettings = useCallback(() => {
+    if (!worktree?.project_id) return
+    useProjectsStore.getState().openProjectSettings(worktree.project_id)
+  }, [worktree?.project_id])
 
   const handleToolbarSetExecutionMode = useCallback(
     (mode: ExecutionMode) => {
@@ -1591,6 +1645,10 @@ Begin your investigation now.`
         effortLevel: useAdaptiveThinkingRef.current
           ? selectedEffortLevelRef.current
           : undefined,
+        mcpConfig: buildMcpConfigJson(
+          mcpServersDataRef.current,
+          enabledMcpServersRef.current
+        ),
         parallelExecutionPromptEnabled:
           preferences?.parallel_execution_prompt_enabled ?? false,
         aiLanguage: preferences?.ai_language,
@@ -1755,6 +1813,7 @@ Begin your investigation now.`
     selectedThinkingLevelRef,
     selectedEffortLevelRef,
     useAdaptiveThinkingRef,
+    getMcpConfig,
     sendMessage,
     queryClient,
     scrollToBottom,
@@ -1864,6 +1923,10 @@ Begin your investigation now.`
             effortLevel: useAdaptiveThinkingRef.current
               ? selectedEffortLevelRef.current
               : undefined,
+            mcpConfig: buildMcpConfigJson(
+              mcpServersDataRef.current,
+              enabledMcpServersRef.current
+            ),
             parallelExecutionPromptEnabled:
               preferences?.parallel_execution_prompt_enabled ?? false,
             aiLanguage: preferences?.ai_language,
@@ -1978,6 +2041,10 @@ Begin your investigation now.`
         effortLevel: useAdaptiveThinkingRef.current
           ? selectedEffortLevelRef.current
           : undefined,
+        mcpConfig: buildMcpConfigJson(
+          mcpServersDataRef.current,
+          enabledMcpServersRef.current
+        ),
         queuedAt: Date.now(),
       }
 
@@ -2415,6 +2482,10 @@ Begin your investigation now.`
                         onEffortLevelChange={handleToolbarEffortLevelChange}
                         onSetExecutionMode={handleToolbarSetExecutionMode}
                         onCancel={handleCancel}
+                        availableMcpServers={availableMcpServers}
+                        enabledMcpServers={enabledMcpServers}
+                        onToggleMcpServer={handleToggleMcpServer}
+                        onOpenProjectSettings={handleOpenProjectSettings}
                       />
                     </form>
                   </div>
@@ -2548,6 +2619,10 @@ Begin your investigation now.`
                   effortLevel: useAdaptiveThinkingRef.current
                     ? selectedEffortLevelRef.current
                     : undefined,
+                  mcpConfig: buildMcpConfigJson(
+                    mcpServersDataRef.current,
+                    enabledMcpServersRef.current
+                  ),
                   queuedAt: Date.now(),
                 }
 
@@ -2601,6 +2676,10 @@ Begin your investigation now.`
                   effortLevel: useAdaptiveThinkingRef.current
                     ? selectedEffortLevelRef.current
                     : undefined,
+                  mcpConfig: buildMcpConfigJson(
+                    mcpServersDataRef.current,
+                    enabledMcpServersRef.current
+                  ),
                   queuedAt: Date.now(),
                 }
 
@@ -2671,6 +2750,10 @@ Begin your investigation now.`
                   effortLevel: useAdaptiveThinkingRef.current
                     ? selectedEffortLevelRef.current
                     : undefined,
+                  mcpConfig: buildMcpConfigJson(
+                    mcpServersDataRef.current,
+                    enabledMcpServersRef.current
+                  ),
                   queuedAt: Date.now(),
                 }
 
@@ -2724,6 +2807,10 @@ Begin your investigation now.`
                   effortLevel: useAdaptiveThinkingRef.current
                     ? selectedEffortLevelRef.current
                     : undefined,
+                  mcpConfig: buildMcpConfigJson(
+                    mcpServersDataRef.current,
+                    enabledMcpServersRef.current
+                  ),
                   queuedAt: Date.now(),
                 }
 

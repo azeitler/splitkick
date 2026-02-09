@@ -154,6 +154,7 @@ fn build_claude_args(
     disable_thinking_in_non_plan_modes: bool,
     parallel_execution_prompt_enabled: bool,
     ai_language: Option<&str>,
+    mcp_config: Option<&str>,
 ) -> (Vec<String>, Vec<(String, String)>) {
     let mut args = Vec::new();
     let mut env_vars = Vec::new();
@@ -276,6 +277,14 @@ fn build_claude_args(
     args.push("Bash(*gh-cli/gh*)".to_string());
     args.push("--allowedTools".to_string());
     args.push("Bash(*claude-cli/claude*)".to_string());
+
+    // MCP server configuration
+    if let Some(config) = mcp_config {
+        if !config.is_empty() {
+            args.push("--mcp-config".to_string());
+            args.push(config.to_string());
+        }
+    }
 
     // Build combined system prompt parts
     // Claude CLI only uses the LAST --append-system-prompt, so we must combine all prompts
@@ -530,6 +539,7 @@ pub fn execute_claude_detached(
     disable_thinking_in_non_plan_modes: bool,
     parallel_execution_prompt_enabled: bool,
     ai_language: Option<&str>,
+    mcp_config: Option<&str>,
 ) -> Result<(u32, ClaudeResponse), String> {
     use super::detached::spawn_detached_claude;
     use crate::claude_cli::get_cli_binary_path;
@@ -580,6 +590,7 @@ pub fn execute_claude_detached(
         disable_thinking_in_non_plan_modes,
         parallel_execution_prompt_enabled,
         ai_language,
+        mcp_config,
     );
 
     // Log the full Claude CLI command for debugging

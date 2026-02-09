@@ -11,8 +11,6 @@ import { useProjects, useCreateFolder } from '@/services/projects'
 import { fetchWorktreesStatus } from '@/services/git-status'
 import { useProjectsStore } from '@/store/projects-store'
 import { ProjectTree } from './ProjectTree'
-import { AddProjectDialog } from './AddProjectDialog'
-import { ProjectSettingsDialog } from './ProjectSettingsDialog'
 import { ArchivedModal } from '@/components/archive/ArchivedModal'
 
 export function ProjectsSidebar() {
@@ -165,8 +163,6 @@ export function ProjectsSidebar() {
       </div>
 
       {/* Dialogs */}
-      <AddProjectDialog />
-      <ProjectSettingsDialog />
       <ArchivedModal
         open={archivedModalOpen}
         onOpenChange={setArchivedModalOpen}

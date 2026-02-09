@@ -16,6 +16,8 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Markdown } from '@/components/ui/markdown'
+import { Kbd } from '@/components/ui/kbd'
+import { formatShortcutDisplay, DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 
 export interface ApprovalContext {
   worktreeId: string
@@ -28,6 +30,7 @@ interface PlanDialogBaseProps {
   isOpen: boolean
   onClose: () => void
   editable?: boolean
+  disabled?: boolean
   approvalContext?: ApprovalContext
   onApprove?: (updatedPlan: string) => void
   onApproveYolo?: (updatedPlan: string) => void
@@ -51,6 +54,7 @@ export function PlanDialog({
   isOpen,
   onClose,
   editable = false,
+  disabled = false,
   approvalContext: _approvalContext,
   onApprove,
   onApproveYolo,
@@ -89,8 +93,8 @@ export function PlanDialog({
   }, [isOpen])
 
   const hasChanges = editedContent !== originalContent
-  // Enable approve buttons when callbacks are provided (caller decides when approval is valid)
-  const canApprove = !!onApprove && !!onApproveYolo
+  // Enable approve buttons when callbacks are provided and not disabled (session still running)
+  const canApprove = !!onApprove && !!onApproveYolo && !disabled
 
   // Auto-save plan file with debounce when content changes
   useEffect(() => {
@@ -237,6 +241,9 @@ export function PlanDialog({
             <div className="flex gap-2">
               <Button onClick={handleApprove} disabled={!canApprove}>
                 Approve
+                <Kbd className="ml-1.5 h-4 text-[10px] bg-primary-foreground/20 text-primary-foreground">
+                  {formatShortcutDisplay(DEFAULT_KEYBINDINGS.approve_plan)}
+                </Kbd>
               </Button>
               <Button
                 variant="destructive"
@@ -244,6 +251,9 @@ export function PlanDialog({
                 disabled={!canApprove}
               >
                 Approve (yolo)
+                <Kbd className="ml-1.5 h-4 text-[10px] bg-destructive-foreground/20 text-destructive-foreground">
+                  {formatShortcutDisplay(DEFAULT_KEYBINDINGS.approve_plan_yolo)}
+                </Kbd>
               </Button>
             </div>
           </DialogFooter>

@@ -21,6 +21,7 @@ import ErrorBoundary from './components/ErrorBoundary'
 import { useClaudeCliStatus, useClaudeCliAuth } from './services/claude-cli'
 import { useGhCliStatus, useGhCliAuth } from './services/gh-cli'
 import { useUIStore } from './store/ui-store'
+import type { AppPreferences } from './types/preferences'
 import { useChatStore } from './store/chat-store'
 import { useFontSettings } from './hooks/use-font-settings'
 import { useImmediateSessionStateSave } from './hooks/useImmediateSessionStateSave'
@@ -304,6 +305,12 @@ function App() {
         ghAuth: ghAuth?.authenticated,
       })
       useUIStore.getState().setOnboardingOpen(true)
+    } else {
+      // CLIs already set up — show feature tour if not yet seen
+      const prefs = queryClient.getQueryData<AppPreferences>(['preferences'])
+      if (prefs && !prefs.has_seen_feature_tour) {
+        useUIStore.getState().setFeatureTourOpen(true)
+      }
     }
   }, [
     claudeStatus,
@@ -314,7 +321,26 @@ function App() {
     isGhStatusLoading,
     isClaudeAuthLoading,
     isGhAuthLoading,
+    queryClient,
   ])
+
+  // Show feature tour after CLI onboarding completes (first launch only)
+  useEffect(() => {
+    let wasOpen = useUIStore.getState().onboardingOpen
+    const unsub = useUIStore.subscribe(state => {
+      const isOpen = state.onboardingOpen
+      if (wasOpen && !isOpen) {
+        const prefs = queryClient.getQueryData<AppPreferences>(['preferences'])
+        if (prefs && !prefs.has_seen_feature_tour) {
+          setTimeout(() => {
+            useUIStore.getState().setFeatureTourOpen(true)
+          }, 300)
+        }
+      }
+      wasOpen = isOpen
+    })
+    return unsub
+  }, [queryClient])
 
   // Kill all terminals on page refresh/close (backup for Rust-side cleanup)
   useEffect(() => {

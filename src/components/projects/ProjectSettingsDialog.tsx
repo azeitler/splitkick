@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import {
   Loader2,
   GitBranch,
@@ -30,6 +30,8 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { useProjectsStore } from '@/store/projects-store'
 import {
@@ -40,6 +42,7 @@ import {
   useSetProjectAvatar,
   useRemoveProjectAvatar,
 } from '@/services/projects'
+import { useMcpServers } from '@/services/mcp'
 
 export function ProjectSettingsDialog() {
   const {
@@ -62,8 +65,14 @@ export function ProjectSettingsDialog() {
   const setProjectAvatar = useSetProjectAvatar()
   const removeProjectAvatar = useRemoveProjectAvatar()
 
+  // MCP servers for this project
+  const { data: mcpServers = [], isLoading: mcpLoading } = useMcpServers(
+    project?.path
+  )
+
   // Use project's default_branch as the initial value, allow local overrides
   const [localBranch, setLocalBranch] = useState<string | null>(null)
+  const [localMcpServers, setLocalMcpServers] = useState<string[] | null>(null)
   const [branchPopoverOpen, setBranchPopoverOpen] = useState(false)
 
   // Track image load errors - use avatar_path as key to reset error state when it changes
@@ -88,9 +97,18 @@ export function ProjectSettingsDialog() {
 
   // If user hasn't made a selection, use project's default
   const selectedBranch = localBranch ?? project?.default_branch ?? ''
+  const selectedMcpServers = localMcpServers ?? project?.enabled_mcp_servers ?? []
 
   const setSelectedBranch = (branch: string) => {
     setLocalBranch(branch)
+  }
+
+  const handleToggleMcpServer = (serverName: string) => {
+    const current = localMcpServers ?? project?.enabled_mcp_servers ?? []
+    const updated = current.includes(serverName)
+      ? current.filter(n => n !== serverName)
+      : [...current, serverName]
+    setLocalMcpServers(updated)
   }
 
   const handleSave = async () => {
@@ -99,6 +117,7 @@ export function ProjectSettingsDialog() {
     await updateSettings.mutateAsync({
       projectId: projectSettingsProjectId,
       defaultBranch: selectedBranch,
+      enabledMcpServers: localMcpServers ?? undefined,
     })
 
     closeProjectSettings()
@@ -107,11 +126,21 @@ export function ProjectSettingsDialog() {
   const handleOpenChange = (open: boolean) => {
     if (!open) {
       setLocalBranch(null) // Reset local state when closing
+      setLocalMcpServers(null)
       closeProjectSettings()
     }
   }
 
-  const hasChanges = project && selectedBranch !== project.default_branch
+  const projectMcpServers = useMemo(
+    () => project?.enabled_mcp_servers ?? [],
+    [project?.enabled_mcp_servers]
+  )
+  const branchChanged = project && selectedBranch !== project.default_branch
+  const mcpChanged =
+    localMcpServers !== null &&
+    JSON.stringify(localMcpServers.slice().sort()) !==
+      JSON.stringify(projectMcpServers.slice().sort())
+  const hasChanges = branchChanged || mcpChanged
   const isPending = updateSettings.isPending
 
   return (
@@ -262,6 +291,51 @@ export function ProjectSettingsDialog() {
                   </Command>
                 </PopoverContent>
               </Popover>
+            )}
+          </div>
+
+          {/* MCP Servers Section */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium leading-none">
+              MCP Servers
+            </label>
+            <p className="text-xs text-muted-foreground">
+              Servers enabled by default for sessions in this project
+            </p>
+
+            {mcpLoading ? (
+              <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading servers...
+              </div>
+            ) : mcpServers.length === 0 ? (
+              <div className="py-2 text-sm text-muted-foreground">
+                No MCP servers found
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {mcpServers.map(server => (
+                  <div
+                    key={server.name}
+                    className="flex items-center gap-3 rounded-md border px-3 py-2"
+                  >
+                    <Checkbox
+                      id={`proj-mcp-${server.name}`}
+                      checked={selectedMcpServers.includes(server.name)}
+                      onCheckedChange={() => handleToggleMcpServer(server.name)}
+                    />
+                    <Label
+                      htmlFor={`proj-mcp-${server.name}`}
+                      className="flex-1 cursor-pointer text-sm"
+                    >
+                      {server.name}
+                    </Label>
+                    <span className="text-xs text-muted-foreground">
+                      {server.scope}
+                    </span>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>

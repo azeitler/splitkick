@@ -703,8 +703,24 @@ export interface QueuedMessage {
   disableThinkingForMode: boolean
   /** Effort level for Opus 4.6 adaptive thinking (snapshot at queue time) */
   effortLevel?: EffortLevel
+  /** MCP config JSON to pass to CLI (snapshot at queue time) */
+  mcpConfig?: string
   /** Timestamp when queued (for display ordering) */
   queuedAt: number
+}
+
+// ============================================================================
+// MCP Server Types
+// ============================================================================
+
+/** Information about a configured MCP server (from Claude CLI config) */
+export interface McpServerInfo {
+  /** Server name (key in mcpServers config) */
+  name: string
+  /** Full server config object (type, command, args, env, url, etc.) */
+  config: unknown
+  /** Configuration scope: user (~/.claude.json global), local (~/.claude.json per-project), project (.mcp.json) */
+  scope: 'user' | 'local' | 'project'
 }
 
 // ============================================================================

@@ -6,6 +6,7 @@ export type PreferencePane =
   | 'appearance'
   | 'keybindings'
   | 'magic-prompts'
+  | 'mcp-servers'
   | 'experimental'
   | 'web-access'
 
@@ -112,6 +113,8 @@ interface UIState {
   sessionChatModalWorktreeId: string | null
   /** Whether a plan dialog is open (blocks canvas approve keybindings) */
   planDialogOpen: boolean
+  /** Whether the feature tour dialog is open */
+  featureTourOpen: boolean
 
   toggleLeftSidebar: () => void
   setLeftSidebarVisible: (visible: boolean) => void
@@ -148,12 +151,13 @@ interface UIState {
   closeSessionBoardModal: () => void
   setSessionChatModalOpen: (open: boolean, worktreeId?: string | null) => void
   setPlanDialogOpen: (open: boolean) => void
+  setFeatureTourOpen: (open: boolean) => void
 }
 
 export const useUIStore = create<UIState>()(
   devtools(
     set => ({
-      leftSidebarVisible: true,
+      leftSidebarVisible: false,
       leftSidebarSize: 250, // Default width in pixels
       rightSidebarVisible: false,
       commandPaletteOpen: false,
@@ -180,6 +184,7 @@ export const useUIStore = create<UIState>()(
       sessionChatModalOpen: false,
       sessionChatModalWorktreeId: null,
       planDialogOpen: false,
+      featureTourOpen: false,
 
       toggleLeftSidebar: () =>
         set(
@@ -433,6 +438,9 @@ export const useUIStore = create<UIState>()(
 
       setPlanDialogOpen: open =>
         set({ planDialogOpen: open }, undefined, 'setPlanDialogOpen'),
+
+      setFeatureTourOpen: open =>
+        set({ featureTourOpen: open }, undefined, 'setFeatureTourOpen'),
     }),
     {
       name: 'ui-store',

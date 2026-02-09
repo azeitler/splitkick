@@ -118,7 +118,8 @@ export function useCanvasShortcutEvents({
   useEffect(() => {
     if (!recapDialogSessionId) return
 
-    let wasSending = false
+    let wasSending =
+      useChatStore.getState().sendingSessionIds[recapDialogSessionId] ?? false
     const unsubscribe = useChatStore.subscribe(state => {
       const isSending =
         state.sendingSessionIds[recapDialogSessionId] ?? false
@@ -137,13 +138,13 @@ export function useCanvasShortcutEvents({
     if (!enabled || !selectedCard) return
 
     const handleApprovePlanEvent = () => {
-      if (selectedCard.hasExitPlanMode && !selectedCard.hasQuestion) {
+      if (selectedCard.hasExitPlanMode && !selectedCard.hasQuestion && !selectedCard.isSending) {
         onPlanApproval(selectedCard)
       }
     }
 
     const handleApprovePlanYoloEvent = () => {
-      if (selectedCard.hasExitPlanMode && !selectedCard.hasQuestion) {
+      if (selectedCard.hasExitPlanMode && !selectedCard.hasQuestion && !selectedCard.isSending) {
         onPlanApprovalYolo(selectedCard)
       }
     }

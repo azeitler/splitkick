@@ -119,6 +119,8 @@ describe('preferences service', () => {
         show_keybinding_hints: true,
         debug_mode_enabled: false,
         default_effort_level: 'high',
+        default_enabled_mcp_servers: [],
+        has_seen_feature_tour: false,
       }
       vi.mocked(invoke).mockResolvedValueOnce(mockPreferences)
 
@@ -208,6 +210,8 @@ describe('preferences service', () => {
         show_keybinding_hints: true,
         debug_mode_enabled: false,
         default_effort_level: 'high',
+        default_enabled_mcp_servers: [],
+        has_seen_feature_tour: false,
       }
       vi.mocked(invoke).mockResolvedValueOnce(prefsWithOldBinding)
 
@@ -274,6 +278,8 @@ describe('preferences service', () => {
         show_keybinding_hints: true,
         debug_mode_enabled: false,
         default_effort_level: 'high',
+        default_enabled_mcp_servers: [],
+        has_seen_feature_tour: false,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -338,6 +344,8 @@ describe('preferences service', () => {
         show_keybinding_hints: true,
         debug_mode_enabled: false,
         default_effort_level: 'high',
+        default_enabled_mcp_servers: [],
+        has_seen_feature_tour: false,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -402,6 +410,8 @@ describe('preferences service', () => {
         show_keybinding_hints: true,
         debug_mode_enabled: false,
         default_effort_level: 'high',
+        default_enabled_mcp_servers: [],
+        has_seen_feature_tour: false,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -464,6 +474,8 @@ describe('preferences service', () => {
         show_keybinding_hints: true,
         debug_mode_enabled: false,
         default_effort_level: 'high',
+        default_enabled_mcp_servers: [],
+        has_seen_feature_tour: false,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {

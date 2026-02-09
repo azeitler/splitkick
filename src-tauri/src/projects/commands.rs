@@ -14,7 +14,8 @@ use super::git::get_repo_identifier;
 use super::github_issues::{
     add_issue_reference, add_pr_reference, format_issue_context_markdown,
     format_pr_context_markdown, generate_branch_name_from_issue, generate_branch_name_from_pr,
-    get_github_contexts_dir, get_github_pr, get_pr_diff, IssueContext, PullRequestContext,
+    get_github_contexts_dir, get_github_pr, get_pr_diff, get_worktree_context_content,
+    get_worktree_context_numbers, IssueContext, PullRequestContext,
 };
 use super::names::generate_unique_workspace_name;
 use super::storage::{get_project_worktrees_dir, load_projects_data, save_projects_data};
@@ -141,6 +142,7 @@ pub async fn add_project(
         parent_id,
         is_folder: false,
         avatar_path: None,
+        enabled_mcp_servers: Vec::new(),
     };
 
     data.add_project(project.clone());
@@ -291,6 +293,7 @@ pub async fn init_project(
         parent_id,
         is_folder: false,
         avatar_path: None,
+        enabled_mcp_servers: Vec::new(),
     };
 
     data.add_project(project.clone());
@@ -2952,12 +2955,13 @@ pub async fn get_project_branches(
     Ok(branches)
 }
 
-/// Update project settings (currently just default_branch)
+/// Update project settings
 #[tauri::command]
 pub async fn update_project_settings(
     app: AppHandle,
     project_id: String,
     default_branch: Option<String>,
+    enabled_mcp_servers: Option<Vec<String>>,
 ) -> Result<Project, String> {
     log::trace!("Updating settings for project: {project_id}");
 
@@ -2974,6 +2978,11 @@ pub async fn update_project_settings(
             branch
         );
         project.default_branch = branch;
+    }
+
+    if let Some(servers) = enabled_mcp_servers {
+        log::trace!("Updating enabled MCP servers: {servers:?}");
+        project.enabled_mcp_servers = servers;
     }
 
     let updated_project = project.clone();
@@ -3583,6 +3592,10 @@ const PR_CONTENT_PROMPT: &str = r#"Generate a pull request title and description
 Branch: {current_branch} → {target_branch}
 Commits: {commit_count}
 
+## Related Context
+
+{context}
+
 ## Commit Messages
 
 {commits}
@@ -3716,6 +3729,7 @@ fn generate_pr_content(
     target_branch: &str,
     custom_prompt: Option<&str>,
     model: Option<&str>,
+    context: &str,
 ) -> Result<PrContentResponse, String> {
     let cli_path = get_cli_binary_path(app)?;
 
@@ -3741,6 +3755,7 @@ fn generate_pr_content(
         .replace("{current_branch}", current_branch)
         .replace("{target_branch}", target_branch)
         .replace("{commit_count}", &commit_count.to_string())
+        .replace("{context}", context)
         .replace("{commits}", &commits)
         .replace("{diff}", &diff);
 
@@ -3913,16 +3928,35 @@ pub async fn create_pr_with_ai_content(
         }
     }
 
+    // Gather issue/PR context for this worktree
+    let context_content = get_worktree_context_content(&app, &worktree.id, &project.path)
+        .unwrap_or_default();
+    let (issue_nums, pr_nums) = get_worktree_context_numbers(&app, &worktree.id)
+        .unwrap_or_default();
+
     // Generate PR content using Claude CLI
     log::trace!("Generating PR content with AI");
-    let pr_content = generate_pr_content(
+    let mut pr_content = generate_pr_content(
         &app,
         &worktree_path,
         &current_branch,
         target_branch,
         custom_prompt.as_deref(),
         model.as_deref(),
+        &context_content,
     )?;
+
+    // Append unconditional issue/PR references to the body
+    let mut refs: Vec<String> = Vec::new();
+    for num in &issue_nums {
+        refs.push(format!("Closes #{num}"));
+    }
+    for num in &pr_nums {
+        refs.push(format!("Related to #{num}"));
+    }
+    if !refs.is_empty() {
+        pr_content.body = format!("{}\n\n---\n\n{}", pr_content.body, refs.join("\n"));
+    }
 
     log::trace!("Generated PR title: {}", pr_content.title);
 
@@ -5190,6 +5224,7 @@ pub async fn create_folder(
         parent_id,
         is_folder: true,
         avatar_path: None,
+        enabled_mcp_servers: Vec::new(),
     };
 
     data.add_project(folder.clone());

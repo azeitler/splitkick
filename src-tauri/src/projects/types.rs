@@ -64,6 +64,9 @@ pub struct Project {
     /// Path to custom avatar image (relative to app data dir, e.g., "avatars/abc123.png")
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub avatar_path: Option<String>,
+    /// MCP server names enabled by default for this project
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub enabled_mcp_servers: Vec<String>,
 }
 
 /// A git worktree created for a project

@@ -844,6 +844,7 @@ pub async fn send_chat_message(
     parallel_execution_prompt_enabled: Option<bool>,
     ai_language: Option<String>,
     allowed_tools: Option<Vec<String>>,
+    mcp_config: Option<String>,
 ) -> Result<ChatMessage, String> {
     log::trace!("Sending chat message for session: {session_id}, worktree: {worktree_id}, model: {model:?}, execution_mode: {execution_mode:?}, thinking: {thinking_level:?}, effort: {effort_level:?}, disable_thinking_for_mode: {disable_thinking_for_mode:?}, allowed_tools: {allowed_tools:?}");
 
@@ -1067,6 +1068,7 @@ pub async fn send_chat_message(
             disable_thinking_in_non_plan_modes,
             parallel_execution_prompt,
             ai_language.as_deref(),
+            mcp_config.as_deref(),
         ) {
             Ok((pid, response)) => {
                 log::trace!("execute_claude_detached succeeded (PID: {pid})");
@@ -3040,6 +3042,108 @@ pub async fn broadcast_session_setting(
             "value": value,
         }),
     )
+}
+
+// ============================================================================
+// MCP Server Discovery Commands
+// ============================================================================
+
+/// Information about a configured MCP server
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct McpServerInfo {
+    pub name: String,
+    pub config: serde_json::Value,
+    pub scope: String, // "user", "local", "project"
+}
+
+/// Discover MCP servers from all configuration sources:
+/// - User scope: ~/.claude.json top-level mcpServers
+/// - Local scope: ~/.claude.json under projects[worktreePath].mcpServers
+/// - Project scope: <worktree_path>/.mcp.json mcpServers
+#[tauri::command]
+pub async fn get_mcp_servers(
+    worktree_path: Option<String>,
+) -> Result<Vec<McpServerInfo>, String> {
+    let mut servers = Vec::new();
+    let mut seen_names = std::collections::HashSet::new();
+
+    // Read ~/.claude.json once for both user and local scope
+    let claude_json_data = if let Some(home) = dirs::home_dir() {
+        let claude_json = home.join(".claude.json");
+        if claude_json.exists() {
+            std::fs::read_to_string(&claude_json)
+                .ok()
+                .and_then(|content| serde_json::from_str::<serde_json::Value>(&content).ok())
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    // 1. Local scope (highest precedence): project-specific servers in ~/.claude.json
+    if let (Some(ref json), Some(ref wt_path)) = (&claude_json_data, &worktree_path) {
+        if let Some(projects) = json.get("projects").and_then(|v| v.as_object()) {
+            // Look for the worktree path key (may need to check with/without trailing slash)
+            let path_key = wt_path.trim_end_matches('/');
+            for (key, project_val) in projects {
+                let key_normalized = key.trim_end_matches('/');
+                if key_normalized == path_key {
+                    if let Some(mcp) = project_val.get("mcpServers").and_then(|v| v.as_object()) {
+                        for (name, config) in mcp {
+                            if seen_names.insert(name.clone()) {
+                                servers.push(McpServerInfo {
+                                    name: name.clone(),
+                                    config: config.clone(),
+                                    scope: "local".to_string(),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Project scope: .mcp.json in worktree root
+    if let Some(ref wt_path) = worktree_path {
+        let mcp_json_path = std::path::PathBuf::from(wt_path).join(".mcp.json");
+        if mcp_json_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&mcp_json_path) {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if let Some(mcp) = json.get("mcpServers").and_then(|v| v.as_object()) {
+                        for (name, config) in mcp {
+                            if seen_names.insert(name.clone()) {
+                                servers.push(McpServerInfo {
+                                    name: name.clone(),
+                                    config: config.clone(),
+                                    scope: "project".to_string(),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. User scope (lowest precedence): top-level mcpServers in ~/.claude.json
+    if let Some(ref json) = claude_json_data {
+        if let Some(mcp) = json.get("mcpServers").and_then(|v| v.as_object()) {
+            for (name, config) in mcp {
+                if seen_names.insert(name.clone()) {
+                    servers.push(McpServerInfo {
+                        name: name.clone(),
+                        config: config.clone(),
+                        scope: "user".to_string(),
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(servers)
 }
 
 #[cfg(test)]

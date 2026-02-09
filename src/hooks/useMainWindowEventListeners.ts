@@ -10,6 +10,7 @@ import { useTerminalStore } from '@/store/terminal-store'
 import { projectsQueryKeys } from '@/services/projects'
 import { chatQueryKeys } from '@/services/chat'
 import { setActiveWorktreeForPolling } from '@/services/git-status'
+import { disposeTerminal } from '@/lib/terminal-instances'
 import { useCommandContext } from './use-command-context'
 import { usePreferences } from '@/services/preferences'
 import { logger } from '@/lib/logger'
@@ -302,10 +303,31 @@ function executeKeybindingAction(
         new CustomEvent('switch-session', { detail: { direction: 'previous' } })
       )
       break
-    case 'close_session_or_worktree':
+    case 'close_session_or_worktree': {
+      // If terminal is focused, close the active terminal tab instead
+      if (document.activeElement?.closest('.xterm')) {
+        const chatStore = useChatStore.getState()
+        const wId = chatStore.activeWorktreeId
+        if (wId) {
+          const termStore = useTerminalStore.getState()
+          const activeTerminalId = termStore.activeTerminalIds[wId]
+          if (activeTerminalId) {
+            invoke('stop_terminal', { terminalId: activeTerminalId }).catch(() => {})
+            disposeTerminal(activeTerminalId)
+            termStore.removeTerminal(wId, activeTerminalId)
+            const remaining = termStore.terminals[wId] ?? []
+            if (remaining.length === 0) {
+              termStore.setTerminalPanelOpen(wId, false)
+            }
+            break
+          }
+        }
+      }
+      // Default: close session/worktree
       logger.debug('Keybinding: close_session_or_worktree')
       window.dispatchEvent(new CustomEvent('close-session-or-worktree'))
       break
+    }
     case 'new_worktree':
       logger.debug('Keybinding: new_worktree')
       window.dispatchEvent(new CustomEvent('create-new-worktree'))

@@ -23,8 +23,16 @@ import { CanvasGrid } from './CanvasGrid'
 import { KeybindingHints } from '@/components/ui/keybinding-hints'
 import { usePreferences } from '@/services/preferences'
 import { DEFAULT_KEYBINDINGS } from '@/types/keybindings'
-import { Search, Loader2 } from 'lucide-react'
+import { Search, Loader2, MoreHorizontal, Settings } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
+import { useProjectsStore } from '@/store/projects-store'
 
 interface SessionCanvasViewProps {
   worktreeId: string
@@ -226,6 +234,17 @@ export function SessionCanvasView({
     }
   }, [selectedSessionId, sessionCards, selectedIndex])
 
+  // Auto-select first session when canvas opens (visual selection only, no modal)
+  useEffect(() => {
+    if (selectedIndex !== null || selectedSessionId) return
+    if (sessionCards.length === 0) return
+    setSelectedIndex(0)
+    const firstCard = sessionCards[0]
+    if (firstCard) {
+      useChatStore.getState().setCanvasSelectedSession(worktreeId, firstCard.session.id)
+    }
+  }, [sessionCards, selectedIndex, selectedSessionId, worktreeId])
+
   // Debug: log selectedIndex changes
   console.log('[SessionCanvasView] render - selectedIndex:', selectedIndex, 'sessionCards.length:', sessionCards.length)
 
@@ -244,14 +263,41 @@ export function SessionCanvasView({
         {/* Header with Search - sticky over content */}
         <div className="sticky top-0 z-10 flex items-center justify-between gap-4 bg-background/60 backdrop-blur-md px-4 py-3 border-b border-border/30">
         <div className="flex items-center gap-2 shrink-0">
-          <h2 className="text-lg font-semibold">
-            {project?.name}
-            {sessionLabel && (
-              <span className="ml-2 text-sm font-normal text-muted-foreground">
-                ({sessionLabel})
-              </span>
+          <div className="flex items-center gap-1">
+            <h2 className="text-lg font-semibold">
+              {project?.name}
+              {sessionLabel && (
+                <span className="ml-2 text-sm font-normal text-muted-foreground">
+                  ({sessionLabel})
+                </span>
+              )}
+            </h2>
+            {worktree?.project_id && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground"
+                  >
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      useProjectsStore
+                        .getState()
+                        .openProjectSettings(worktree.project_id)
+                    }
+                  >
+                    <Settings className="h-4 w-4" />
+                    Project Settings
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
-          </h2>
+          </div>
           <GitStatusBadges
             behindCount={behindCount}
             unpushedCount={unpushedCount}

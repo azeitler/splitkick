@@ -2007,9 +2007,11 @@ export function useUpdateProjectSettings() {
     mutationFn: async ({
       projectId,
       defaultBranch,
+      enabledMcpServers,
     }: {
       projectId: string
       defaultBranch?: string
+      enabledMcpServers?: string[]
     }): Promise<Project> => {
       if (!isTauri()) {
         throw new Error('Not in Tauri context')
@@ -2019,6 +2021,7 @@ export function useUpdateProjectSettings() {
       const project = await invoke<Project>('update_project_settings', {
         projectId,
         defaultBranch,
+        enabledMcpServers,
       })
       logger.info('Project settings updated', { project })
       return project

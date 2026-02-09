@@ -39,6 +39,14 @@ export function SessionChatModal({
   const { data: runScript } = useRunScript(worktreePath)
   const canvasOnlyMode = preferences?.canvas_only_mode ?? false
 
+  console.log('[SessionChatModal] render', {
+    sessionId,
+    isOpen,
+    'session?.id': session?.id,
+    'session?.name': session?.name,
+    match: session?.id === sessionId,
+  })
+
   // Store the previous active session to restore on close
   const previousSessionRef = useRef<string | undefined>(undefined)
   const hasSetActiveRef = useRef<string | null>(null)
@@ -96,6 +104,7 @@ export function SessionChatModal({
   return (
     <Dialog open={isOpen} onOpenChange={open => !open && handleClose()}>
       <DialogContent
+        key={sessionId}
         className="!w-[calc(100vw-48px)] !h-[calc(100vh-48px)] !max-w-[calc(100vw-48px)] !max-h-none flex flex-col p-0 gap-0 overflow-hidden"
         showCloseButton={false}
       >

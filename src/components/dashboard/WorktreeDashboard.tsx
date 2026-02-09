@@ -1,12 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { cn } from '@/lib/utils'
 import { useQueries } from '@tanstack/react-query'
 import { invoke } from '@/lib/transport'
-import { Search, GitBranch } from 'lucide-react'
+import { Search, GitBranch, MoreHorizontal, Settings, Plus, Loader2 } from 'lucide-react'
 import { WorktreeDropdownMenu } from '@/components/projects/WorktreeDropdownMenu'
+import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { GitStatusBadges } from '@/components/ui/git-status-badges'
-import { useWorktrees, useProjects, isTauri } from '@/services/projects'
+import { useWorktrees, useProjects, useCreateWorktree, useCreateBaseSession, isTauri } from '@/services/projects'
 import { chatQueryKeys, useCreateSession } from '@/services/chat'
 import { useGitStatus } from '@/services/git-status'
 import { useChatStore } from '@/store/chat-store'
@@ -241,6 +249,29 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     return map
   }, [sessionQueries])
 
+  // Create worktree/base session for empty state
+  const createWorktree = useCreateWorktree()
+  const createBaseSession = useCreateBaseSession()
+  const hasBaseSession = worktrees.some(wt => isBaseSession(wt))
+
+  const handleEmptyCreateWorktree = useCallback(() => {
+    createWorktree.mutate({ projectId })
+  }, [projectId, createWorktree])
+
+  const handleEmptyBaseSession = useCallback(() => {
+    if (hasBaseSession) {
+      const base = worktrees.find(wt => isBaseSession(wt))
+      if (base) {
+        const { selectWorktree } = useProjectsStore.getState()
+        const { setActiveWorktree } = useChatStore.getState()
+        selectWorktree(base.id)
+        setActiveWorktree(base.id, base.path)
+      }
+    } else {
+      createBaseSession.mutate(projectId)
+    }
+  }, [projectId, hasBaseSession, worktrees, createBaseSession])
+
   // Use shared store state hook
   const storeState = useCanvasStoreState()
 
@@ -413,6 +444,18 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
       }
     }
   }, [sessionsByWorktreeId, readyWorktrees, flatCards])
+
+  // Auto-select first session when dashboard opens (visual selection only, no modal)
+  useEffect(() => {
+    if (selectedIndex !== null || selectedSession) return
+    const firstCardIndex = flatCards.findIndex(fc => fc.card !== null && !fc.isPending)
+    if (firstCardIndex === -1) return
+    const firstCard = flatCards[firstCardIndex]
+    setSelectedIndex(firstCardIndex)
+    if (firstCard?.card) {
+      useChatStore.getState().setCanvasSelectedSession(firstCard.worktreeId, firstCard.card.session.id)
+    }
+  }, [flatCards, selectedIndex, selectedSession])
 
   // Projects store actions
   const selectProject = useProjectsStore(state => state.selectProject)
@@ -645,9 +688,77 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
   // Listen for close-session-or-worktree event to handle CMD+W
   useEffect(() => {
     const handleCloseSessionOrWorktree = (e: Event) => {
-      // If modal is open, close it
+      // If modal is open, archive the session, close modal, pre-select next on canvas
       if (selectedSession) {
+        e.stopImmediatePropagation()
+        const closingWorktreeId = selectedSession.worktreeId
+        const closingSessionId = selectedSession.sessionId
+
+        handleArchiveSessionForWorktree(
+          selectedSession.worktreeId,
+          selectedSession.worktreePath,
+          closingSessionId
+        )
         setSelectedSession(null)
+
+        // Find remaining sessions in same worktree
+        const sameWorktreeSessions = flatCards.filter(
+          fc =>
+            fc.worktreeId === closingWorktreeId &&
+            fc.card &&
+            fc.card.session.id !== closingSessionId
+        )
+
+        if (sameWorktreeSessions.length === 0) {
+          // No sessions left in worktree - select nearest card from any worktree
+          const closingIndex = flatCards.findIndex(
+            fc => fc.card?.session.id === closingSessionId
+          )
+          if (closingIndex >= 0) {
+            let nearestIndex: number | null = null
+            let minDistance = Infinity
+            for (let i = 0; i < flatCards.length; i++) {
+              if (i === closingIndex) continue
+              const distance = Math.abs(i - closingIndex)
+              if (distance < minDistance) {
+                minDistance = distance
+                nearestIndex = i
+              }
+            }
+            if (nearestIndex !== null && nearestIndex > closingIndex) {
+              nearestIndex--
+            }
+            setSelectedIndex(nearestIndex)
+          }
+        } else {
+          // Pick next session in same worktree and pre-select on canvas
+          const worktreeCards = flatCards.filter(
+            fc => fc.worktreeId === closingWorktreeId && fc.card
+          )
+          const indexInWorktree = worktreeCards.findIndex(
+            fc => fc.card?.session.id === closingSessionId
+          )
+          const nextCard =
+            indexInWorktree < sameWorktreeSessions.length
+              ? sameWorktreeSessions[indexInWorktree]
+              : sameWorktreeSessions[sameWorktreeSessions.length - 1]
+
+          if (nextCard?.card) {
+            const newGlobalIndex = flatCards.findIndex(
+              fc =>
+                fc.worktreeId === nextCard.worktreeId &&
+                fc.card?.session.id === nextCard.card!.session.id
+            )
+            const closingGlobalIndex = flatCards.findIndex(
+              fc => fc.card?.session.id === closingSessionId
+            )
+            setSelectedIndex(
+              newGlobalIndex > closingGlobalIndex
+                ? newGlobalIndex - 1
+                : newGlobalIndex
+            )
+          }
+        }
         return
       }
 
@@ -780,6 +891,26 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
       })
   }, [selectedSession, selectedIndex, flatCards, createSession])
 
+  // Listen for open-session-modal event (fired by ChatWindow when creating new session inside modal)
+  useEffect(() => {
+    const handleOpenSessionModal = (e: CustomEvent<{ sessionId: string }>) => {
+      setSelectedSession(prev => {
+        if (!prev) return prev
+        return { ...prev, sessionId: e.detail.sessionId }
+      })
+    }
+
+    window.addEventListener(
+      'open-session-modal',
+      handleOpenSessionModal as EventListener
+    )
+    return () =>
+      window.removeEventListener(
+        'open-session-modal',
+        handleOpenSessionModal as EventListener
+      )
+  }, [])
+
   // Check if loading
   const isLoading =
     projectsLoading ||
@@ -811,7 +942,30 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
       <div className="flex-1 flex flex-col overflow-auto">
         {/* Header with Search - sticky over content */}
         <div className="sticky top-0 z-10 flex items-center justify-between gap-4 bg-background/60 backdrop-blur-md px-4 py-3 border-b border-border/30">
-        <h2 className="text-lg font-semibold shrink-0">{project.name}</h2>
+        <div className="flex items-center gap-1 shrink-0">
+          <h2 className="text-lg font-semibold">{project.name}</h2>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-muted-foreground"
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem
+                onSelect={() =>
+                  useProjectsStore.getState().openProjectSettings(projectId)
+                }
+              >
+                <Settings className="h-4 w-4" />
+                Project Settings
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -827,11 +981,18 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
       {/* Canvas View */}
       <div className="flex-1 pb-16 pt-6 px-4">
         {worktreeSections.length === 0 ? (
-          <div className="flex h-full items-center justify-center text-muted-foreground">
-            {searchQuery
-              ? 'No worktrees or sessions match your search'
-              : 'No worktrees yet'}
-          </div>
+          searchQuery ? (
+            <div className="flex h-full items-center justify-center text-muted-foreground">
+              No worktrees or sessions match your search
+            </div>
+          ) : (
+            <EmptyDashboard
+              hasBaseSession={hasBaseSession}
+              onCreateWorktree={handleEmptyCreateWorktree}
+              onBaseSession={handleEmptyBaseSession}
+              isCreating={createWorktree.isPending || createBaseSession.isPending}
+            />
+          )
         ) : (
           <div className="space-y-6">
             {worktreeSections.map(section => {
@@ -966,6 +1127,90 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
           ]}
         />
       )}
+    </div>
+  )
+}
+
+interface EmptyDashboardProps {
+  hasBaseSession: boolean
+  onCreateWorktree: () => void
+  onBaseSession: () => void
+  isCreating: boolean
+}
+
+function EmptyDashboard({
+  hasBaseSession,
+  onCreateWorktree,
+  onBaseSession,
+  isCreating,
+}: EmptyDashboardProps) {
+  useEffect(() => {
+    if (isCreating) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase()
+      if (key === 'b') {
+        e.preventDefault()
+        onBaseSession()
+      } else if (key === 'n') {
+        e.preventDefault()
+        onCreateWorktree()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isCreating, onBaseSession, onCreateWorktree])
+
+  return (
+    <div className="flex h-full items-center justify-center">
+      <div className="grid grid-cols-2 gap-6 w-full max-w-xl">
+        <button
+          onClick={onBaseSession}
+          disabled={isCreating}
+          className={cn(
+            'relative flex flex-col items-center justify-center gap-4 aspect-square p-8 rounded-xl text-sm transition-colors',
+            'hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring',
+            'border border-border'
+          )}
+        >
+          <GitBranch className="h-10 w-10 text-muted-foreground" />
+          <div className="flex flex-col items-center gap-1.5">
+            <span className="font-medium text-base">
+              {hasBaseSession ? 'Switch to Base Session' : 'New Base Session'}
+            </span>
+            <span className="text-xs text-muted-foreground text-center">
+              Work directly on the project folder
+            </span>
+          </div>
+          <kbd className="absolute top-3 right-3 text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+            B
+          </kbd>
+        </button>
+
+        <button
+          onClick={onCreateWorktree}
+          disabled={isCreating}
+          className={cn(
+            'relative flex flex-col items-center justify-center gap-4 aspect-square p-8 rounded-xl text-sm transition-colors',
+            'hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring',
+            'border border-border'
+          )}
+        >
+          {isCreating ? (
+            <Loader2 className="h-10 w-10 text-muted-foreground animate-spin" />
+          ) : (
+            <Plus className="h-10 w-10 text-muted-foreground" />
+          )}
+          <div className="flex flex-col items-center gap-1.5">
+            <span className="font-medium text-base">New Worktree</span>
+            <span className="text-xs text-muted-foreground text-center">
+              Create an isolated branch for your task
+            </span>
+          </div>
+          <kbd className="absolute top-3 right-3 text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+            N
+          </kbd>
+        </button>
+      </div>
     </div>
   )
 }

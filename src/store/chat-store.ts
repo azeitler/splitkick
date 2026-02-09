@@ -94,6 +94,9 @@ interface ChatUIState {
   // Selected model per session (for tracking what model was used)
   selectedModels: Record<string, string>
 
+  // Enabled MCP servers per session (server names that are active)
+  enabledMcpServers: Record<string, string[]>
+
   // Answered questions per session (to make them read-only after answering)
   answeredQuestions: Record<string, Set<string>>
 
@@ -282,6 +285,10 @@ interface ChatUIState {
   // Actions - Selected model (session-based)
   setSelectedModel: (sessionId: string, model: string) => void
 
+  // Actions - MCP servers (session-based)
+  setEnabledMcpServers: (sessionId: string, servers: string[]) => void
+  toggleMcpServer: (sessionId: string, serverName: string) => void
+
   // Actions - Question answering (session-based)
   markQuestionAnswered: (
     sessionId: string,
@@ -458,6 +465,7 @@ export const useChatStore = create<ChatUIState>()(
       manualThinkingOverrides: {},
       effortLevels: {},
       selectedModels: {},
+      enabledMcpServers: {},
       answeredQuestions: {},
       submittedAnswers: {},
       errors: {},
@@ -1094,6 +1102,37 @@ export const useChatStore = create<ChatUIState>()(
           'setSelectedModel'
         ),
 
+      // MCP servers (session-based)
+      setEnabledMcpServers: (sessionId, servers) =>
+        set(
+          state => ({
+            enabledMcpServers: {
+              ...state.enabledMcpServers,
+              [sessionId]: servers,
+            },
+          }),
+          undefined,
+          'setEnabledMcpServers'
+        ),
+
+      toggleMcpServer: (sessionId, serverName) =>
+        set(
+          state => {
+            const current = state.enabledMcpServers[sessionId] ?? []
+            const updated = current.includes(serverName)
+              ? current.filter(n => n !== serverName)
+              : [...current, serverName]
+            return {
+              enabledMcpServers: {
+                ...state.enabledMcpServers,
+                [sessionId]: updated,
+              },
+            }
+          },
+          undefined,
+          'toggleMcpServer'
+        ),
+
       // Question answering (session-based)
       markQuestionAnswered: (sessionId, toolCallId, answers) =>
         set(
@@ -1641,6 +1680,8 @@ export const useChatStore = create<ChatUIState>()(
             const { [sessionId]: _manual, ...restManual } =
               state.manualThinkingOverrides
             const { [sessionId]: _effort, ...restEffort } = state.effortLevels
+            const { [sessionId]: _mcp, ...restMcp } =
+              state.enabledMcpServers
 
             return {
               approvedTools: restApproved,
@@ -1653,6 +1694,7 @@ export const useChatStore = create<ChatUIState>()(
               fixedFindings: restFixed,
               manualThinkingOverrides: restManual,
               effortLevels: restEffort,
+              enabledMcpServers: restMcp,
             }
           },
           undefined,

@@ -111,7 +111,7 @@ pub struct AppPreferences {
     pub session_grouping_enabled: bool, // Group session tabs by status when >3 sessions
     #[serde(default = "default_canvas_enabled")]
     pub canvas_enabled: bool, // Show the canvas tab for session overview
-    #[serde(default)]
+    #[serde(default = "default_canvas_only_mode")]
     pub canvas_only_mode: bool, // Always show canvas view, hide session tabs
     #[serde(default = "default_syntax_theme_dark")]
     pub syntax_theme_dark: String, // Syntax highlighting theme for dark mode
@@ -155,6 +155,10 @@ pub struct AppPreferences {
     pub show_keybinding_hints: bool, // Show keyboard shortcut hints at bottom of canvas views
     #[serde(default)]
     pub debug_mode_enabled: bool, // Show debug panel in chat sessions (default: false)
+    #[serde(default)]
+    pub default_enabled_mcp_servers: Vec<String>, // MCP server names enabled by default (empty = none)
+    #[serde(default)]
+    pub has_seen_feature_tour: bool, // Whether user has seen the feature tour onboarding
 }
 
 fn default_auto_branch_naming() -> bool {
@@ -175,6 +179,10 @@ fn default_session_grouping_enabled() -> bool {
 
 fn default_canvas_enabled() -> bool {
     true // Enabled by default
+}
+
+fn default_canvas_only_mode() -> bool {
+    true // Canvas-only by default for new installations
 }
 
 fn default_session_naming_model() -> String {
@@ -561,7 +569,7 @@ impl Default for AppPreferences {
             archive_retention_days: default_archive_retention_days(),
             session_grouping_enabled: default_session_grouping_enabled(),
             canvas_enabled: default_canvas_enabled(),
-            canvas_only_mode: false,
+            canvas_only_mode: default_canvas_only_mode(),
             syntax_theme_dark: default_syntax_theme_dark(),
             syntax_theme_light: default_syntax_theme_light(),
             disable_thinking_in_non_plan_modes: default_disable_thinking_in_non_plan_modes(),
@@ -584,6 +592,8 @@ impl Default for AppPreferences {
             show_keybinding_hints: default_show_keybinding_hints(),
             debug_mode_enabled: false,
             default_effort_level: default_effort_level(),
+            default_enabled_mcp_servers: Vec::new(),
+            has_seen_feature_tour: false,
         }
     }
 }
@@ -620,7 +630,7 @@ pub struct UIState {
     #[serde(default)]
     pub left_sidebar_size: Option<f64>,
 
-    /// Left sidebar visibility, defaults to true
+    /// Left sidebar visibility, defaults to false
     #[serde(default)]
     pub left_sidebar_visible: Option<bool>,
 
@@ -652,6 +662,10 @@ pub struct UIState {
     #[serde(default)]
     pub modal_terminal_width: Option<f64>,
 
+    /// Last-accessed timestamps per project for recency sorting (projectId → unix ms)
+    #[serde(default)]
+    pub project_access_timestamps: std::collections::HashMap<String, f64>,
+
     /// Version for future migration support
     #[serde(default = "default_ui_state_version")]
     pub version: u32,
@@ -678,6 +692,7 @@ impl Default for UIState {
             pending_digest_session_ids: Vec::new(),
             modal_terminal_open: std::collections::HashMap::new(),
             modal_terminal_width: None,
+            project_access_timestamps: std::collections::HashMap::new(),
             version: default_ui_state_version(),
         }
     }
@@ -1713,6 +1728,7 @@ pub fn run() {
             chat::set_active_session,
             // Chat commands - Session-based messaging
             chat::send_chat_message,
+            chat::get_mcp_servers,
             chat::clear_session_history,
             chat::set_session_model,
             chat::set_session_thinking_level,

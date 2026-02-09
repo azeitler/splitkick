@@ -28,6 +28,7 @@ import {
   Hammer,
   MoreHorizontal,
   Pencil,
+  Plug,
   Search,
   Send,
   Sparkles,
@@ -51,6 +52,7 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuCheckboxItem,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -66,6 +68,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Markdown } from '@/components/ui/markdown'
 import { cn } from '@/lib/utils'
 import type { ClaudeModel } from '@/store/chat-store'
+import type { McpServerInfo } from '@/types/chat'
 import type { ThinkingLevel, EffortLevel, ExecutionMode } from '@/types/chat'
 import type {
   PrDisplayStatus,
@@ -228,6 +231,12 @@ interface ChatToolbarProps {
   onEffortLevelChange: (level: EffortLevel) => void
   onSetExecutionMode: (mode: ExecutionMode) => void
   onCancel: () => void
+
+  // MCP servers
+  availableMcpServers: McpServerInfo[]
+  enabledMcpServers: string[]
+  onToggleMcpServer: (serverName: string) => void
+  onOpenProjectSettings?: () => void
 }
 
 /**
@@ -284,6 +293,10 @@ export const ChatToolbar = memo(function ChatToolbar({
   onEffortLevelChange,
   onSetExecutionMode,
   onCancel,
+  availableMcpServers,
+  enabledMcpServers,
+  onToggleMcpServer,
+  onOpenProjectSettings,
 }: ChatToolbarProps) {
   // Memoize callbacks to prevent Select re-renders
   const handleModelChange = useCallback(
@@ -1042,6 +1055,63 @@ export const ChatToolbar = memo(function ChatToolbar({
               <GitMerge className="h-3 w-3" />
               <span>Conflicts</span>
             </button>
+          </>
+        )}
+
+        {/* MCP servers button - desktop only */}
+        {availableMcpServers.length > 0 && (
+          <>
+            <div className="hidden @md:block h-4 w-px bg-border/50" />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  disabled={hasPendingQuestions}
+                  className={cn(
+                    'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
+                    enabledMcpServers.length > 0 &&
+                      'border border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:border-emerald-400/40 dark:bg-emerald-500/10 dark:text-emerald-400'
+                  )}
+                  title={
+                    enabledMcpServers.length > 0
+                      ? `${enabledMcpServers.length} MCP server(s) enabled`
+                      : 'No MCP servers enabled'
+                  }
+                >
+                  <Plug className="h-3.5 w-3.5" />
+                  {enabledMcpServers.length > 0 && (
+                    <span>{enabledMcpServers.length}</span>
+                  )}
+                  <ChevronDown className="h-3 w-3 opacity-50" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuLabel>MCP Servers</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {availableMcpServers.map(server => (
+                  <DropdownMenuCheckboxItem
+                    key={server.name}
+                    checked={enabledMcpServers.includes(server.name)}
+                    onCheckedChange={() => onToggleMcpServer(server.name)}
+                  >
+                    {server.name}
+                    <span className="ml-auto pl-4 text-xs text-muted-foreground">
+                      {server.scope}
+                    </span>
+                  </DropdownMenuCheckboxItem>
+                ))}
+                {onOpenProjectSettings && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onSelect={onOpenProjectSettings}>
+                      <span className="text-xs text-muted-foreground">
+                        Set defaults in project settings
+                      </span>
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </>
         )}
 

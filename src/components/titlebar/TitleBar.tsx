@@ -10,11 +10,13 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { useUIStore } from '@/store/ui-store'
-import { executeCommand, useCommandContext } from '@/lib/commands'
-import { PanelLeft, PanelLeftClose, Settings } from 'lucide-react'
+import { useCommandContext } from '@/lib/commands'
+import { Heart, PanelLeft, PanelLeftClose, Plus, Settings } from 'lucide-react'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import { usePreferences } from '@/services/preferences'
 import { formatShortcutDisplay, DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 import { isNativeApp } from '@/lib/environment'
+import { useProjectsStore } from '@/store/projects-store'
 
 interface TitleBarProps {
   className?: string
@@ -28,6 +30,9 @@ export function TitleBar({
   hideTitle = false,
 }: TitleBarProps) {
   const { leftSidebarVisible, toggleLeftSidebar } = useUIStore()
+  const setAddProjectDialogOpen = useProjectsStore(
+    (s) => s.setAddProjectDialogOpen
+  )
   const commandContext = useCommandContext()
   const { data: preferences } = usePreferences()
 
@@ -84,9 +89,7 @@ export function TitleBar({
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
-                onClick={() =>
-                  executeCommand('open-preferences', commandContext)
-                }
+                onClick={commandContext.openPreferences}
                 variant="ghost"
                 size="icon"
                 className="h-6 w-6 text-foreground/70 hover:text-foreground"
@@ -103,6 +106,34 @@ export function TitleBar({
                 )}
               </kbd>
             </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                onClick={() => setAddProjectDialogOpen(true)}
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-foreground/70 hover:text-foreground"
+              >
+                <Plus className="h-3 w-3" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Add Project</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                onClick={() =>
+                  openUrl('https://coollabs.io/sponsorships/?utm_source=jean')
+                }
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-pink-500 hover:text-pink-400"
+              >
+                <Heart className="h-3 w-3" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Sponsor</TooltipContent>
           </Tooltip>
         </div>
       </div>

@@ -6,8 +6,10 @@ import { SidebarWidthProvider } from './SidebarWidthContext'
 import { MainWindowContent } from './MainWindowContent'
 import { CommandPalette } from '@/components/command-palette/CommandPalette'
 import { PreferencesDialog } from '@/components/preferences/PreferencesDialog'
+import { ProjectSettingsDialog } from '@/components/projects/ProjectSettingsDialog'
 import { CommitModal } from '@/components/commit/CommitModal'
 import { OnboardingDialog } from '@/components/onboarding/OnboardingDialog'
+import { FeatureTourDialog } from '@/components/onboarding/FeatureTourDialog'
 import { CliUpdateModal } from '@/components/layout/CliUpdateModal'
 import { CliLoginModal } from '@/components/preferences/CliLoginModal'
 import { OpenInModal } from '@/components/open-in/OpenInModal'
@@ -17,6 +19,7 @@ import { NewWorktreeModal } from '@/components/worktree/NewWorktreeModal'
 import { PathConflictModal } from '@/components/worktree/PathConflictModal'
 import { BranchConflictModal } from '@/components/worktree/BranchConflictModal'
 import { SessionBoardModal } from '@/components/session-board'
+import { AddProjectDialog } from '@/components/projects/AddProjectDialog'
 import { GitInitModal } from '@/components/projects/GitInitModal'
 import { QuitConfirmationDialog } from './QuitConfirmationDialog'
 import { Toaster } from '@/components/ui/sonner'
@@ -258,8 +261,10 @@ export function MainWindow() {
       {/* Global UI Components (hidden until triggered) */}
       <CommandPalette />
       <PreferencesDialog />
+      <ProjectSettingsDialog />
       <CommitModal />
       <OnboardingDialog />
+      <FeatureTourDialog />
       <CliUpdateModal />
       <CliLoginModal />
       <OpenInModal />
@@ -269,6 +274,7 @@ export function MainWindow() {
       <PathConflictModal />
       <BranchConflictModal />
       <SessionBoardModal />
+      <AddProjectDialog />
       <GitInitModal />
       <QuitConfirmationDialog />
       <Toaster

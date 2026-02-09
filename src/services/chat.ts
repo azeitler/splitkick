@@ -1123,6 +1123,7 @@ export function useSendMessage() {
       parallelExecutionPromptEnabled,
       aiLanguage,
       allowedTools,
+      mcpConfig,
     }: {
       sessionId: string
       worktreeId: string
@@ -1136,6 +1137,7 @@ export function useSendMessage() {
       parallelExecutionPromptEnabled?: boolean
       aiLanguage?: string
       allowedTools?: string[]
+      mcpConfig?: string
     }): Promise<ChatMessage> => {
       if (!isTauri()) {
         throw new Error('Not in Tauri context')
@@ -1152,6 +1154,7 @@ export function useSendMessage() {
         parallelExecutionPromptEnabled,
         aiLanguage,
         allowedTools,
+        mcpConfig: mcpConfig ? '(set)' : undefined,
       })
       const response = await invoke<ChatMessage>('send_chat_message', {
         sessionId,
@@ -1166,6 +1169,7 @@ export function useSendMessage() {
         parallelExecutionPromptEnabled,
         aiLanguage,
         allowedTools,
+        mcpConfig,
       })
       logger.info('Chat message sent', { responseId: response.id })
       return response

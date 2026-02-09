@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
 import { toast } from 'sonner'
 import { isNativeApp } from '@/lib/environment'
 import { invoke } from '@/lib/transport'
@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Kbd } from '@/components/ui/kbd'
 import { useProjectsStore } from '@/store/projects-store'
 import { useAddProject, useInitProject } from '@/services/projects'
 
@@ -127,6 +128,22 @@ export function AddProjectDialog() {
     }
   }, [initProject, addProjectParentFolderId, setAddProjectDialogOpen])
 
+  // Keyboard shortcuts: A = add existing, I = initialize new
+  useEffect(() => {
+    if (!addProjectDialogOpen || isPending) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'a' || e.key === 'A') {
+        e.preventDefault()
+        handleAddExisting()
+      } else if (e.key === 'i' || e.key === 'I') {
+        e.preventDefault()
+        handleInitNew()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [addProjectDialogOpen, isPending, handleAddExisting, handleInitNew])
+
   return (
     <Dialog open={addProjectDialogOpen} onOpenChange={setAddProjectDialogOpen}>
       <DialogContent className="sm:max-w-md">
@@ -146,7 +163,7 @@ export function AddProjectDialog() {
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
               <FolderOpen className="h-5 w-5 text-muted-foreground" />
             </div>
-            <div className="space-y-1">
+            <div className="flex-1 space-y-1">
               <p className="text-sm font-medium leading-none">
                 Add Existing Project
               </p>
@@ -154,6 +171,7 @@ export function AddProjectDialog() {
                 Select a git repository from your computer
               </p>
             </div>
+            <Kbd className="mt-1 h-6 px-1.5 text-xs shrink-0">A</Kbd>
           </button>
 
           <button
@@ -164,7 +182,7 @@ export function AddProjectDialog() {
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
               <FolderPlus className="h-5 w-5 text-muted-foreground" />
             </div>
-            <div className="space-y-1">
+            <div className="flex-1 space-y-1">
               <p className="text-sm font-medium leading-none">
                 Initialize New Project
               </p>
@@ -172,6 +190,7 @@ export function AddProjectDialog() {
                 Create a new directory with git initialized
               </p>
             </div>
+            <Kbd className="mt-1 h-6 px-1.5 text-xs shrink-0">I</Kbd>
           </button>
         </div>
       </DialogContent>

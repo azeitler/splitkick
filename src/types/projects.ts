@@ -37,6 +37,8 @@ export interface Project {
   is_folder?: boolean
   /** Path to custom avatar image (relative to app data dir, e.g., "avatars/abc123.png") */
   avatar_path?: string
+  /** MCP server names enabled by default for this project */
+  enabled_mcp_servers?: string[]
 }
 
 /**
