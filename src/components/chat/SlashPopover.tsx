@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { Terminal, Wand2 } from 'lucide-react'
 import {
   Command,
@@ -11,6 +18,7 @@ import { Popover, PopoverContent, PopoverAnchor } from '@/components/ui/popover'
 import { useClaudeSkills, useClaudeCommands } from '@/services/skills'
 import type { ClaudeSkill, ClaudeCommand, PendingSkill } from '@/types/chat'
 import { cn } from '@/lib/utils'
+import { generateId } from '@/lib/uuid'
 
 export interface SlashPopoverHandle {
   moveUp: () => void
@@ -101,7 +109,7 @@ export function SlashPopover({
   const handleSelectSkill = useCallback(
     (skill: ClaudeSkill) => {
       const pendingSkill: PendingSkill = {
-        id: crypto.randomUUID(),
+        id: generateId(),
         name: skill.name,
         path: skill.path,
       }
@@ -129,30 +137,50 @@ export function SlashPopover({
     } else {
       handleSelectSkill(item.data)
     }
-  }, [filteredItems, clampedSelectedIndex, handleSelectCommand, handleSelectSkill])
+  }, [
+    filteredItems,
+    clampedSelectedIndex,
+    handleSelectCommand,
+    handleSelectSkill,
+  ])
 
   // Expose navigation methods via ref for parent to call
-  useImperativeHandle(
-    handleRef,
-    () => {
-      console.log('[SlashPopover] useImperativeHandle creating handle, filteredItems.length:', filteredItems.length)
-      return {
-        moveUp: () => {
-          console.log('[SlashPopover] moveUp called, current selectedIndex:', selectedIndex)
-          setSelectedIndex(i => Math.max(i - 1, 0))
-        },
-        moveDown: () => {
-          console.log('[SlashPopover] moveDown called, current selectedIndex:', selectedIndex, 'max:', filteredItems.length - 1)
-          setSelectedIndex(i => Math.min(i + 1, filteredItems.length - 1))
-        },
-        selectCurrent: () => {
-          console.log('[SlashPopover] selectCurrent called, clampedSelectedIndex:', clampedSelectedIndex)
-          selectHighlighted()
-        },
-      }
-    },
-    [filteredItems.length, selectHighlighted, selectedIndex, clampedSelectedIndex]
-  )
+  useImperativeHandle(handleRef, () => {
+    console.log(
+      '[SlashPopover] useImperativeHandle creating handle, filteredItems.length:',
+      filteredItems.length
+    )
+    return {
+      moveUp: () => {
+        console.log(
+          '[SlashPopover] moveUp called, current selectedIndex:',
+          selectedIndex
+        )
+        setSelectedIndex(i => Math.max(i - 1, 0))
+      },
+      moveDown: () => {
+        console.log(
+          '[SlashPopover] moveDown called, current selectedIndex:',
+          selectedIndex,
+          'max:',
+          filteredItems.length - 1
+        )
+        setSelectedIndex(i => Math.min(i + 1, filteredItems.length - 1))
+      },
+      selectCurrent: () => {
+        console.log(
+          '[SlashPopover] selectCurrent called, clampedSelectedIndex:',
+          clampedSelectedIndex
+        )
+        selectHighlighted()
+      },
+    }
+  }, [
+    filteredItems.length,
+    selectHighlighted,
+    selectedIndex,
+    clampedSelectedIndex,
+  ])
 
   // Scroll selected item into view
   useEffect(() => {

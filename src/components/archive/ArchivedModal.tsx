@@ -1,5 +1,5 @@
 import { useMemo, useState, useCallback } from 'react'
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 import {
   Archive,
@@ -29,6 +29,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import {
   useArchivedWorktrees,
@@ -248,16 +249,16 @@ export function ArchivedModal({ open, onOpenChange }: ArchivedModalProps) {
   // Combined and sorted search results (most recently archived first)
   type SearchResult =
     | {
-      type: 'worktree'
-      worktree: Worktree
-      projectName: string
-      isCurrentContext: boolean
-    }
+        type: 'worktree'
+        worktree: Worktree
+        projectName: string
+        isCurrentContext: boolean
+      }
     | {
-      type: 'session'
-      entry: ArchivedSessionEntry
-      isCurrentContext: boolean
-    }
+        type: 'session'
+        entry: ArchivedSessionEntry
+        isCurrentContext: boolean
+      }
 
   const sortedSearchResults = useMemo((): SearchResult[] => {
     if (!searchQuery) return []
@@ -473,7 +474,7 @@ export function ArchivedModal({ open, onOpenChange }: ArchivedModalProps) {
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="!w-[90vw] !max-w-[90vw] !h-[85vh] !max-h-[85vh] flex flex-col overflow-hidden">
+        <DialogContent className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none sm:!w-[90vw] sm:!max-w-[90vw] sm:!h-[85vh] sm:!max-h-[85vh] sm:!rounded-lg flex flex-col overflow-hidden">
           <DialogHeader className="shrink-0">
             <DialogTitle className="flex items-center gap-2">
               <Archive className="h-4 w-4" />
@@ -578,7 +579,7 @@ export function ArchivedModal({ open, onOpenChange }: ArchivedModalProps) {
                         isRestoring={
                           unarchiveSession.isPending &&
                           unarchiveSession.variables?.sessionId ===
-                          result.entry.session.id
+                            result.entry.session.id
                         }
                         disabled={unarchiveSession.isPending}
                       />
@@ -718,15 +719,17 @@ export function ArchivedModal({ open, onOpenChange }: ArchivedModalProps) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeletingAll}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeletingAll}>
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmDelete}
               disabled={isDeletingAll}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {permanentlyDeleteWorktree.isPending ||
-                deleteArchivedSession.isPending ||
-                isDeletingAll ? (
+              deleteArchivedSession.isPending ||
+              isDeletingAll ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
               ) : (
                 <Trash2 className="h-4 w-4 mr-2" />
@@ -804,30 +807,38 @@ function WorktreeProjectGroup({
                   </div>
                 </div>
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onRestore(worktree)}
-                    disabled={isRestoring}
-                    title="Restore worktree"
-                  >
-                    {isCurrentlyRestoring ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <RotateCcw className="h-4 w-4" />
-                    )}
-                    <span className="ml-1">Restore</span>
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => onDeleteForever(worktree)}
-                    disabled={isRestoring}
-                    title="Delete forever"
-                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onRestore(worktree)}
+                        disabled={isRestoring}
+                      >
+                        {isCurrentlyRestoring ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <RotateCcw className="h-4 w-4" />
+                        )}
+                        <span className="ml-1">Restore</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Restore worktree</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => onDeleteForever(worktree)}
+                        disabled={isRestoring}
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Delete forever</TooltipContent>
+                  </Tooltip>
                 </div>
               </div>
             </div>
@@ -906,30 +917,38 @@ function SessionWorktreeGroup({
                   </div>
                 </div>
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onRestore(entry)}
-                    disabled={isRestoring}
-                    title="Restore session"
-                  >
-                    {isCurrentlyRestoring ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <RotateCcw className="h-4 w-4" />
-                    )}
-                    <span className="ml-1">Restore</span>
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => onDeleteForever(entry)}
-                    disabled={isRestoring}
-                    title="Delete forever"
-                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onRestore(entry)}
+                        disabled={isRestoring}
+                      >
+                        {isCurrentlyRestoring ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <RotateCcw className="h-4 w-4" />
+                        )}
+                        <span className="ml-1">Restore</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Restore session</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => onDeleteForever(entry)}
+                        disabled={isRestoring}
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Delete forever</TooltipContent>
+                  </Tooltip>
                 </div>
               </div>
             </div>
@@ -1011,30 +1030,38 @@ function SearchResultItem({
         </div>
 
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onRestore}
-            disabled={disabled}
-            title={`Restore ${type}`}
-          >
-            {isRestoring ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RotateCcw className="h-4 w-4" />
-            )}
-            <span className="ml-1">Restore</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onDelete}
-            disabled={disabled}
-            title="Delete forever"
-            className="h-8 w-8 text-muted-foreground hover:text-destructive"
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onRestore}
+                disabled={disabled}
+              >
+                {isRestoring ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RotateCcw className="h-4 w-4" />
+                )}
+                <span className="ml-1">Restore</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{`Restore ${type}`}</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onDelete}
+                disabled={disabled}
+                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Delete forever</TooltipContent>
+          </Tooltip>
         </div>
       </div>
     </div>

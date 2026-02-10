@@ -350,8 +350,23 @@ export function buildTimeline(
 }
 
 /**
+ * Find the plan content from ExitPlanMode tool calls
+ * This is the primary source for plan content (inline in tool input)
+ *
+ * @param toolCalls - All tool calls from the message
+ * @returns The plan content if found, null otherwise
+ */
+export function findPlanContent(toolCalls: ToolCall[]): string | null {
+  const exitPlanTool = toolCalls.find(tc => tc.name === 'ExitPlanMode')
+  if (!exitPlanTool) return null
+  const input = exitPlanTool.input as { plan?: string } | undefined
+  return input?.plan ?? null
+}
+
+/**
  * Find the plan file path from tool calls
  * Looks for Write tool calls that target ~/.claude/plans/*.md files
+ * (Fallback for old-style file-based plans)
  *
  * @param toolCalls - All tool calls from the message
  * @returns The plan file path if found, null otherwise

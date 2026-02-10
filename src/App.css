@@ -154,8 +154,13 @@
 
 /* Blink animation for waiting indicator */
 @keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
 }
 
 .animate-blink {
@@ -164,7 +169,9 @@
 
 /* Border spin animation for running indicator */
 @keyframes border-spin {
-  to { stroke-dashoffset: 0; }
+  to {
+    stroke-dashoffset: 0;
+  }
 }
 
 .animate-border-spin {
@@ -223,24 +230,35 @@
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border outline-ring/50 outline-none;
     box-sizing: border-box;
-    cursor: default;
+  }
+
+  html {
+    @apply bg-background;
   }
 
   body {
     @apply text-foreground;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    min-height: 100dvh;
+    min-width: 100vw;
+    position: relative;
+  }
+
+  /* Desktop-only styles — applied when body has .native-app class */
+  body.native-app {
     user-select: none;
     -webkit-user-select: none;
     -moz-user-select: none;
     -ms-user-select: none;
-    overscroll-behavior: none;
-    min-height: 100vh;
-    min-width: 100vw;
     overflow: hidden;
-    position: relative;
+    overscroll-behavior: none;
+  }
+
+  body.native-app * {
+    cursor: default;
   }
 
   svg {
@@ -272,6 +290,14 @@
   .cursor-pointer * {
     cursor: pointer !important;
   }
+}
+
+/* Ensure toast notifications remain clickable above Radix modal overlays.
+   Radix Dialog (modal mode) sets pointer-events:none on <body>;
+   Sonner already renders at z-index:999999999, we just restore pointer events. */
+[data-sonner-toaster],
+[data-sonner-toaster] [data-sonner-toast] {
+  pointer-events: auto !important;
 }
 
 /* Font overrides - outside @layer to ensure higher specificity */
@@ -318,4 +344,24 @@ kbd {
   font-family: var(--font-family-chat) !important;
   font-size: var(--chat-font-size) !important;
   line-height: var(--chat-line-height) !important;
+}
+
+/* Inside chat context (.font-mono), text sizes scale relative to chat font */
+.font-mono .text-xs {
+  font-size: calc(var(--chat-font-size) * 0.85) !important;
+}
+.font-mono .text-sm {
+  font-size: var(--chat-font-size) !important;
+}
+.font-mono .text-base {
+  font-size: var(--chat-font-size) !important;
+}
+.font-mono .text-lg {
+  font-size: calc(var(--chat-font-size) * 1.15) !important;
+}
+.font-mono .text-xl {
+  font-size: calc(var(--chat-font-size) * 1.25) !important;
+}
+.font-mono .text-2xl {
+  font-size: calc(var(--chat-font-size) * 1.5) !important;
 }

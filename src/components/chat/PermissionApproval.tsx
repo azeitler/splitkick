@@ -127,16 +127,20 @@ export function PermissionApproval({
     // Extract inner content for containment check (e.g., "Bash(cmd)" → "cmd")
     const innerContent = patterns.map(p => {
       const match = p.match(/^(\w+)\((.+)\)$/)
-      return match ? { tool: match[1] ?? p, content: match[2] ?? p } : { tool: p, content: p }
+      return match
+        ? { tool: match[1] ?? p, content: match[2] ?? p }
+        : { tool: p, content: p }
     })
     const keep = new Set<number>()
 
     for (let i = 0; i < denials.length; i++) {
       let shouldKeep = true
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       const itemI = innerContent[i]!
 
       for (let j = 0; j < denials.length; j++) {
         if (i === j) continue
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
         const itemJ = innerContent[j]!
 
         // Only compare containment for same tool type
@@ -323,6 +327,11 @@ export function PermissionApproval({
           >
             <Play className="h-3 w-3" />
             Approve (yolo)
+            <Kbd className="ml-1.5 h-4 text-[10px] bg-destructive-foreground/20 text-destructive-foreground">
+              {formatShortcutDisplay(
+                DEFAULT_KEYBINDINGS.approve_plan_yolo ?? 'mod+y'
+              )}
+            </Kbd>
           </Button>
         )}
         {onDeny && (

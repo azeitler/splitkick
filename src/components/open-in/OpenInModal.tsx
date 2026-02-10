@@ -1,11 +1,12 @@
-import { useCallback, useState, useRef, useEffect } from 'react'
-import { Code, Terminal, Folder, Settings } from 'lucide-react'
+import { useCallback, useState, useRef, useEffect, useMemo } from 'react'
+import { Code, Terminal, Folder, Settings, Github } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { invoke } from '@/lib/transport'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
@@ -13,14 +14,17 @@ import {
   useOpenWorktreeInFinder,
   useOpenWorktreeInTerminal,
   useOpenWorktreeInEditor,
+  useOpenBranchOnGitHub,
   useProjects,
+  useWorktree,
 } from '@/services/projects'
 import { usePreferences } from '@/services/preferences'
 import { getEditorLabel, getTerminalLabel } from '@/types/preferences'
 import { notify } from '@/lib/notifications'
 import { cn } from '@/lib/utils'
+import { isNativeApp } from '@/lib/environment'
 
-type OpenOption = 'editor' | 'terminal' | 'finder'
+type OpenOption = 'editor' | 'terminal' | 'finder' | 'github'
 
 export function OpenInModal() {
   const { openInModalOpen, setOpenInModalOpen, openPreferencesPane } =
@@ -32,32 +36,58 @@ export function OpenInModal() {
   const hasInitializedRef = useRef(false)
   const [selectedOption, setSelectedOption] = useState<OpenOption>('editor')
 
+  const { data: worktree } = useWorktree(selectedWorktreeId)
   const openInFinder = useOpenWorktreeInFinder()
   const openInTerminal = useOpenWorktreeInTerminal()
   const openInEditor = useOpenWorktreeInEditor()
+  const openOnGitHub = useOpenBranchOnGitHub()
   const { data: preferences } = usePreferences()
 
   // Build options with dynamic labels based on preferences
-  const options: {
-    id: OpenOption
-    label: string
-    icon: typeof Code
-    key: string
-  }[] = [
-    {
-      id: 'editor',
-      label: getEditorLabel(preferences?.editor),
-      icon: Code,
-      key: 'E',
-    },
-    {
-      id: 'terminal',
-      label: getTerminalLabel(preferences?.terminal),
-      icon: Terminal,
-      key: 'T',
-    },
-    { id: 'finder', label: 'Finder', icon: Folder, key: 'F' },
-  ]
+  // Native-only options (editor, terminal, finder) are hidden in web view
+  const isNative = isNativeApp()
+
+  const options = useMemo(() => {
+    const allOptions: {
+      id: OpenOption
+      label: string
+      icon: typeof Code
+      key: string
+      nativeOnly: boolean
+    }[] = [
+      {
+        id: 'editor',
+        label: getEditorLabel(preferences?.editor),
+        icon: Code,
+        key: 'E',
+        nativeOnly: true,
+      },
+      {
+        id: 'terminal',
+        label: getTerminalLabel(preferences?.terminal),
+        icon: Terminal,
+        key: 'T',
+        nativeOnly: true,
+      },
+      {
+        id: 'finder',
+        label: 'Finder',
+        icon: Folder,
+        key: 'F',
+        nativeOnly: true,
+      },
+      {
+        id: 'github',
+        label: 'GitHub',
+        icon: Github,
+        key: 'G',
+        nativeOnly: false,
+      },
+    ]
+
+    // Filter out native-only options in web view
+    return isNative ? allOptions : allOptions.filter(opt => !opt.nativeOnly)
+  }, [preferences?.editor, preferences?.terminal, isNative])
 
   // Reset selection tracking when modal closes
   useEffect(() => {
@@ -70,12 +100,13 @@ export function OpenInModal() {
   const handleOpenChange = useCallback(
     (open: boolean) => {
       if (open && !hasInitializedRef.current) {
-        setSelectedOption('editor')
+        // Default to first available option (editor in native, github in web)
+        setSelectedOption(isNative ? 'editor' : 'github')
         hasInitializedRef.current = true
       }
       setOpenInModalOpen(open)
     },
-    [setOpenInModalOpen]
+    [setOpenInModalOpen, isNative]
   )
 
   const getTargetPath = useCallback(() => {
@@ -117,6 +148,20 @@ export function OpenInModal() {
         case 'finder':
           openInFinder.mutate(targetPath)
           break
+        case 'github': {
+          const branch = worktree?.branch
+          if (!branch) {
+            // No worktree branch - open project GitHub page instead
+            if (selectedProjectId) {
+              invoke('open_project_on_github', { projectId: selectedProjectId })
+            } else {
+              notify('No project selected', undefined, { type: 'error' })
+            }
+            break
+          }
+          openOnGitHub.mutate({ repoPath: targetPath, branch })
+          break
+        }
       }
 
       setOpenInModalOpen(false)
@@ -126,8 +171,11 @@ export function OpenInModal() {
       openInEditor,
       openInTerminal,
       openInFinder,
+      openOnGitHub,
+      worktree,
       preferences,
       setOpenInModalOpen,
+      selectedProjectId,
     ]
   )
 
@@ -135,18 +183,13 @@ export function OpenInModal() {
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       const key = e.key.toLowerCase()
-      const optionIds: OpenOption[] = ['editor', 'terminal', 'finder']
+      const optionIds = options.map(opt => opt.id)
 
-      // Quick select with e/t/f
-      if (key === 'e') {
+      // Quick select with shortcut keys (only for available options)
+      const matchedOption = options.find(opt => opt.key.toLowerCase() === key)
+      if (matchedOption) {
         e.preventDefault()
-        executeAction('editor')
-      } else if (key === 't') {
-        e.preventDefault()
-        executeAction('terminal')
-      } else if (key === 'f') {
-        e.preventDefault()
-        executeAction('finder')
+        executeAction(matchedOption.id)
       } else if (key === 'enter') {
         e.preventDefault()
         executeAction(selectedOption)
@@ -163,7 +206,7 @@ export function OpenInModal() {
         }
       }
     },
-    [executeAction, selectedOption]
+    [executeAction, selectedOption, options]
   )
 
   const handleOpenSettings = useCallback(() => {

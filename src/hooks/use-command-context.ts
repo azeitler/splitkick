@@ -1,5 +1,5 @@
 import { useCallback, useContext, useMemo } from 'react'
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
@@ -21,7 +21,11 @@ import { gitPull, triggerImmediateGitPoll } from '@/services/git-status'
  * Command context hook - provides essential actions for commands
  * @param preferences - Optional preferences for terminal/editor selection
  */
-export function useCommandContext(preferences?: AppPreferences): CommandContext {
+export function useCommandContext(
+  preferences?: AppPreferences
+): CommandContext {
+  'use no memo'
+
   const queryClient = useQueryClient()
   const themeContext = useContext(ThemeProviderContext)
 
@@ -266,6 +270,7 @@ export function useCommandContext(preferences?: AppPreferences): CommandContext 
   }, [getTargetPath])
 
   // Open In - Terminal
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const openInTerminal = useCallback(async () => {
     const worktreePath = getTargetPath()
     if (!worktreePath) {
@@ -285,6 +290,7 @@ export function useCommandContext(preferences?: AppPreferences): CommandContext 
   }, [getTargetPath, preferences?.terminal])
 
   // Open In - Editor
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const openInEditor = useCallback(async () => {
     const worktreePath = getTargetPath()
     if (!worktreePath) {
@@ -533,6 +539,7 @@ export function useCommandContext(preferences?: AppPreferences): CommandContext 
   }, [])
 
   // AI - Run code review
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const runAIReview = useCallback(async () => {
     const { activeWorktreeId, activeWorktreePath } = useChatStore.getState()
     if (!activeWorktreeId || !activeWorktreePath) {
@@ -545,6 +552,7 @@ export function useCommandContext(preferences?: AppPreferences): CommandContext 
       const result = await invoke<ReviewResponse>('run_review_with_ai', {
         worktreePath: activeWorktreePath,
         customPrompt: preferences?.magic_prompts?.code_review,
+        model: preferences?.magic_prompt_models?.code_review_model,
       })
 
       // Store review results in Zustand (also activates review tab)
@@ -566,7 +574,10 @@ export function useCommandContext(preferences?: AppPreferences): CommandContext 
     } catch (error) {
       toast.error(`Failed to review: ${error}`, { id: toastId })
     }
-  }, [preferences?.magic_prompts?.code_review])
+  }, [
+    preferences?.magic_prompts?.code_review,
+    preferences?.magic_prompt_models?.code_review_model,
+  ])
 
   // Terminal - Open terminal panel
   const openTerminalPanel = useCallback(() => {
@@ -578,14 +589,16 @@ export function useCommandContext(preferences?: AppPreferences): CommandContext 
 
     const { addTerminal, setTerminalPanelOpen, setTerminalVisible } =
       useTerminalStore.getState()
-    const terminals = useTerminalStore.getState().getTerminals(selectedWorktreeId)
+    const terminals = useTerminalStore
+      .getState()
+      .getTerminals(selectedWorktreeId)
 
     // Create a new terminal if none exists
     if (terminals.length === 0) {
       addTerminal(selectedWorktreeId)
     } else {
       // Just show the panel
-      setTerminalPanelOpen(true)
+      setTerminalPanelOpen(selectedWorktreeId, true)
       setTerminalVisible(true)
     }
   }, [])
@@ -613,6 +626,11 @@ export function useCommandContext(preferences?: AppPreferences): CommandContext 
   // Archive - Restore last archived
   const restoreLastArchived = useCallback(() => {
     window.dispatchEvent(new CustomEvent('restore-last-archived'))
+  }, [])
+
+  // Developer - Toggle debug mode
+  const toggleDebugMode = useCallback(() => {
+    window.dispatchEvent(new CustomEvent('command:toggle-debug-mode'))
   }, [])
 
   // Session - Resume session (reconnect to Claude CLI)
@@ -727,6 +745,9 @@ export function useCommandContext(preferences?: AppPreferences): CommandContext 
       openArchivedModal,
       restoreLastArchived,
 
+      // Developer
+      toggleDebugMode,
+
       // State getters
       hasActiveSession,
       hasActiveWorktree,
@@ -782,6 +803,7 @@ export function useCommandContext(preferences?: AppPreferences): CommandContext 
       loadContext,
       openArchivedModal,
       restoreLastArchived,
+      toggleDebugMode,
       hasActiveSession,
       hasActiveWorktree,
       hasSelectedProject,

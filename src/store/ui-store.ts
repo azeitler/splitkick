@@ -1,7 +1,14 @@
 import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
 
-export type PreferencePane = 'general' | 'appearance' | 'keybindings' | 'magic-prompts' | 'experimental'
+export type PreferencePane =
+  | 'general'
+  | 'appearance'
+  | 'keybindings'
+  | 'magic-prompts'
+  | 'mcp-servers'
+  | 'experimental'
+  | 'web-access'
 
 export type OnboardingStartStep = 'claude' | 'gh' | null
 
@@ -23,11 +30,11 @@ export interface PathConflictData {
     number: number
     title: string
     body?: string
-    comments: Array<{
+    comments: {
       author: { login: string }
       body: string
       createdAt: string
-    }>
+    }[]
   }
 }
 
@@ -41,11 +48,11 @@ export interface BranchConflictData {
     number: number
     title: string
     body?: string
-    comments: Array<{
+    comments: {
       author: { login: string }
       body: string
       createdAt: string
-    }>
+    }[]
   }
   /** PR context to pass when creating a new worktree */
   prContext?: {
@@ -54,17 +61,17 @@ export interface BranchConflictData {
     body?: string
     headRefName: string
     baseRefName: string
-    comments: Array<{
+    comments: {
       author: { login: string }
       body: string
       createdAt: string
-    }>
-    reviews: Array<{
+    }[]
+    reviews: {
       author: { login: string }
       body: string
       state: string
       submittedAt: string
-    }>
+    }[]
     diff?: string
   }
 }
@@ -82,6 +89,12 @@ interface UIState {
   openInModalOpen: boolean
   magicModalOpen: boolean
   newWorktreeModalOpen: boolean
+  newWorktreeModalDefaultTab: 'quick' | 'issues' | 'prs' | null
+  checkoutPRModalOpen: boolean
+  releaseNotesModalOpen: boolean
+  workflowRunsModalOpen: boolean
+  workflowRunsModalProjectPath: string | null
+  workflowRunsModalBranch: string | null
   cliUpdateModalOpen: boolean
   cliUpdateModalType: CliUpdateModalType
   cliLoginModalOpen: boolean
@@ -95,8 +108,20 @@ interface UIState {
   autoInvestigateWorktreeIds: Set<string>
   /** Worktree IDs that should auto-trigger investigate-pr when created */
   autoInvestigatePRWorktreeIds: Set<string>
+  /** Worktree IDs that should auto-open first session modal when canvas mounts */
+  autoOpenSessionWorktreeIds: Set<string>
   /** Project ID for the Session Board modal (null = closed) */
   sessionBoardProjectId: string | null
+  /** Whether a session chat modal is open (for magic command keybinding checks) */
+  sessionChatModalOpen: boolean
+  /** Which worktree the session chat modal is for (for magic command worktree resolution) */
+  sessionChatModalWorktreeId: string | null
+  /** Whether a plan dialog is open (blocks canvas approve keybindings) */
+  planDialogOpen: boolean
+  /** Whether the feature tour dialog is open */
+  featureTourOpen: boolean
+  /** Whether UI state has been restored from persisted storage */
+  uiStateInitialized: boolean
 
   toggleLeftSidebar: () => void
   setLeftSidebarVisible: (visible: boolean) => void
@@ -114,6 +139,16 @@ interface UIState {
   setOpenInModalOpen: (open: boolean) => void
   setMagicModalOpen: (open: boolean) => void
   setNewWorktreeModalOpen: (open: boolean) => void
+  setNewWorktreeModalDefaultTab: (
+    tab: 'quick' | 'issues' | 'prs' | null
+  ) => void
+  setCheckoutPRModalOpen: (open: boolean) => void
+  setReleaseNotesModalOpen: (open: boolean) => void
+  setWorkflowRunsModalOpen: (
+    open: boolean,
+    projectPath?: string | null,
+    branch?: string | null
+  ) => void
   openCliUpdateModal: (type: 'claude' | 'gh') => void
   closeCliUpdateModal: () => void
   openCliLoginModal: (type: 'claude' | 'gh', command: string) => void
@@ -126,14 +161,20 @@ interface UIState {
   consumeAutoInvestigate: (worktreeId: string) => boolean
   markWorktreeForAutoInvestigatePR: (worktreeId: string) => void
   consumeAutoInvestigatePR: (worktreeId: string) => boolean
+  markWorktreeForAutoOpenSession: (worktreeId: string) => void
+  consumeAutoOpenSession: (worktreeId: string) => boolean
   openSessionBoardModal: (projectId: string) => void
   closeSessionBoardModal: () => void
+  setSessionChatModalOpen: (open: boolean, worktreeId?: string | null) => void
+  setPlanDialogOpen: (open: boolean) => void
+  setFeatureTourOpen: (open: boolean) => void
+  setUIStateInitialized: (initialized: boolean) => void
 }
 
 export const useUIStore = create<UIState>()(
   devtools(
     set => ({
-      leftSidebarVisible: true,
+      leftSidebarVisible: false,
       leftSidebarSize: 250, // Default width in pixels
       rightSidebarVisible: false,
       commandPaletteOpen: false,
@@ -145,6 +186,12 @@ export const useUIStore = create<UIState>()(
       openInModalOpen: false,
       magicModalOpen: false,
       newWorktreeModalOpen: false,
+      newWorktreeModalDefaultTab: null,
+      checkoutPRModalOpen: false,
+      releaseNotesModalOpen: false,
+      workflowRunsModalOpen: false,
+      workflowRunsModalProjectPath: null,
+      workflowRunsModalBranch: null,
       cliUpdateModalOpen: false,
       cliUpdateModalType: null,
       cliLoginModalOpen: false,
@@ -154,7 +201,13 @@ export const useUIStore = create<UIState>()(
       branchConflictData: null,
       autoInvestigateWorktreeIds: new Set(),
       autoInvestigatePRWorktreeIds: new Set(),
+      autoOpenSessionWorktreeIds: new Set(),
       sessionBoardProjectId: null,
+      sessionChatModalOpen: false,
+      sessionChatModalWorktreeId: null,
+      planDialogOpen: false,
+      featureTourOpen: false,
+      uiStateInitialized: false,
 
       toggleLeftSidebar: () =>
         set(
@@ -234,7 +287,42 @@ export const useUIStore = create<UIState>()(
         set({ magicModalOpen: open }, undefined, 'setMagicModalOpen'),
 
       setNewWorktreeModalOpen: open =>
-        set({ newWorktreeModalOpen: open }, undefined, 'setNewWorktreeModalOpen'),
+        set(
+          {
+            newWorktreeModalOpen: open,
+            ...(open ? {} : { newWorktreeModalDefaultTab: null }),
+          },
+          undefined,
+          'setNewWorktreeModalOpen'
+        ),
+
+      setNewWorktreeModalDefaultTab: tab =>
+        set(
+          { newWorktreeModalDefaultTab: tab },
+          undefined,
+          'setNewWorktreeModalDefaultTab'
+        ),
+
+      setCheckoutPRModalOpen: open =>
+        set({ checkoutPRModalOpen: open }, undefined, 'setCheckoutPRModalOpen'),
+
+      setReleaseNotesModalOpen: open =>
+        set(
+          { releaseNotesModalOpen: open },
+          undefined,
+          'setReleaseNotesModalOpen'
+        ),
+
+      setWorkflowRunsModalOpen: (open, projectPath, branch) =>
+        set(
+          {
+            workflowRunsModalOpen: open,
+            workflowRunsModalProjectPath: open ? (projectPath ?? null) : null,
+            workflowRunsModalBranch: open ? (branch ?? null) : null,
+          },
+          undefined,
+          'setWorkflowRunsModalOpen'
+        ),
 
       openCliUpdateModal: type =>
         set(
@@ -252,14 +340,22 @@ export const useUIStore = create<UIState>()(
 
       openCliLoginModal: (type, command) =>
         set(
-          { cliLoginModalOpen: true, cliLoginModalType: type, cliLoginModalCommand: command },
+          {
+            cliLoginModalOpen: true,
+            cliLoginModalType: type,
+            cliLoginModalCommand: command,
+          },
           undefined,
           'openCliLoginModal'
         ),
 
       closeCliLoginModal: () =>
         set(
-          { cliLoginModalOpen: false, cliLoginModalType: null, cliLoginModalCommand: null },
+          {
+            cliLoginModalOpen: false,
+            cliLoginModalType: null,
+            cliLoginModalCommand: null,
+          },
           undefined,
           'closeCliLoginModal'
         ),
@@ -274,7 +370,11 @@ export const useUIStore = create<UIState>()(
         set({ branchConflictData: data }, undefined, 'openBranchConflictModal'),
 
       closeBranchConflictModal: () =>
-        set({ branchConflictData: null }, undefined, 'closeBranchConflictModal'),
+        set(
+          { branchConflictData: null },
+          undefined,
+          'closeBranchConflictModal'
+        ),
 
       markWorktreeForAutoInvestigate: worktreeId =>
         set(
@@ -334,11 +434,67 @@ export const useUIStore = create<UIState>()(
         return false
       },
 
+      markWorktreeForAutoOpenSession: worktreeId =>
+        set(
+          state => ({
+            autoOpenSessionWorktreeIds: new Set([
+              ...state.autoOpenSessionWorktreeIds,
+              worktreeId,
+            ]),
+          }),
+          undefined,
+          'markWorktreeForAutoOpenSession'
+        ),
+
+      consumeAutoOpenSession: worktreeId => {
+        const state = useUIStore.getState()
+        if (state.autoOpenSessionWorktreeIds.has(worktreeId)) {
+          set(
+            state => {
+              const newSet = new Set(state.autoOpenSessionWorktreeIds)
+              newSet.delete(worktreeId)
+              return { autoOpenSessionWorktreeIds: newSet }
+            },
+            undefined,
+            'consumeAutoOpenSession'
+          )
+          return true
+        }
+        return false
+      },
+
       openSessionBoardModal: projectId =>
-        set({ sessionBoardProjectId: projectId }, undefined, 'openSessionBoardModal'),
+        set(
+          { sessionBoardProjectId: projectId },
+          undefined,
+          'openSessionBoardModal'
+        ),
 
       closeSessionBoardModal: () =>
-        set({ sessionBoardProjectId: null }, undefined, 'closeSessionBoardModal'),
+        set(
+          { sessionBoardProjectId: null },
+          undefined,
+          'closeSessionBoardModal'
+        ),
+
+      setSessionChatModalOpen: (open, worktreeId) =>
+        set(
+          {
+            sessionChatModalOpen: open,
+            sessionChatModalWorktreeId: open ? (worktreeId ?? null) : null,
+          },
+          undefined,
+          'setSessionChatModalOpen'
+        ),
+
+      setPlanDialogOpen: open =>
+        set({ planDialogOpen: open }, undefined, 'setPlanDialogOpen'),
+
+      setFeatureTourOpen: open =>
+        set({ featureTourOpen: open }, undefined, 'setFeatureTourOpen'),
+
+      setUIStateInitialized: initialized =>
+        set({ uiStateInitialized: initialized }, undefined, 'setUIStateInitialized'),
     }),
     {
       name: 'ui-store',

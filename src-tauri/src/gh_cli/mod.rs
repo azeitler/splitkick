@@ -4,6 +4,6 @@
 //! embedded within the Jean application.
 
 mod commands;
-mod config;
+pub(crate) mod config;
 
 pub use commands::*;

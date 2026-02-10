@@ -1,4 +1,4 @@
-use std::process::Command;
+use crate::platform::silent_command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
@@ -37,13 +37,17 @@ pub struct GitBranchStatus {
     pub base_branch_ahead_count: u32,
     /// Commits the local base branch is behind origin
     pub base_branch_behind_count: u32,
+    /// Commits unique to this worktree (ahead of local base branch, not origin)
+    pub worktree_ahead_count: u32,
+    /// Commits in HEAD not yet pushed to origin/{current_branch}
+    pub unpushed_count: u32,
 }
 
 /// Fetch the latest changes from origin for a specific branch
 fn fetch_origin_branch(repo_path: &str, branch: &str) -> Result<(), String> {
     log::trace!("Fetching origin/{branch} in {repo_path}");
 
-    let output = Command::new("git")
+    let output = silent_command("git")
         .args(["fetch", "origin", branch])
         .current_dir(repo_path)
         .output()
@@ -68,7 +72,7 @@ fn fetch_origin_branch(repo_path: &str, branch: &str) -> Result<(), String> {
 
 /// Get the current branch name
 fn get_current_branch(repo_path: &str) -> Result<String, String> {
-    let output = Command::new("git")
+    let output = silent_command("git")
         .args(["rev-parse", "--abbrev-ref", "HEAD"])
         .current_dir(repo_path)
         .output()
@@ -91,7 +95,7 @@ fn get_uncommitted_diff_stats(repo_path: &str) -> (u32, u32) {
 
     // 1. Get diff stats for unstaged changes (working directory vs index)
     // git diff --numstat outputs: "added<tab>removed<tab>filename" per line
-    let unstaged_output = Command::new("git")
+    let unstaged_output = silent_command("git")
         .args(["diff", "--numstat"])
         .current_dir(repo_path)
         .output();
@@ -112,7 +116,7 @@ fn get_uncommitted_diff_stats(repo_path: &str) -> (u32, u32) {
 
     // 2. Get diff stats for staged changes (index vs HEAD)
     // git diff --cached --numstat shows changes that have been `git add`ed
-    let staged_output = Command::new("git")
+    let staged_output = silent_command("git")
         .args(["diff", "--cached", "--numstat"])
         .current_dir(repo_path)
         .output();
@@ -133,7 +137,7 @@ fn get_uncommitted_diff_stats(repo_path: &str) -> (u32, u32) {
 
     // 3. Get stats for untracked (new) files
     // List all untracked files
-    let untracked_output = Command::new("git")
+    let untracked_output = silent_command("git")
         .args(["ls-files", "--others", "--exclude-standard"])
         .current_dir(repo_path)
         .output();
@@ -168,7 +172,7 @@ fn get_untracked_files_raw_patch(repo_path: &str) -> String {
     let mut raw_patch = String::new();
 
     // List all untracked files
-    let output = Command::new("git")
+    let output = silent_command("git")
         .args(["ls-files", "--others", "--exclude-standard"])
         .current_dir(repo_path)
         .output();
@@ -218,7 +222,7 @@ fn get_untracked_files_diff(repo_path: &str) -> Vec<DiffFile> {
     let mut untracked_files: Vec<DiffFile> = Vec::new();
 
     // List all untracked files
-    let output = Command::new("git")
+    let output = silent_command("git")
         .args(["ls-files", "--others", "--exclude-standard"])
         .current_dir(repo_path)
         .output();
@@ -299,7 +303,7 @@ fn get_untracked_files_diff(repo_path: &str) -> Vec<DiffFile> {
 fn get_branch_diff_stats(repo_path: &str, base_branch: &str) -> (u32, u32) {
     // git diff --numstat origin/main...HEAD shows changes in current branch vs base
     let origin_ref = format!("origin/{base_branch}");
-    let output = Command::new("git")
+    let output = silent_command("git")
         .args(["diff", "--numstat", &format!("{origin_ref}...HEAD")])
         .current_dir(repo_path)
         .output();
@@ -323,10 +327,20 @@ fn get_branch_diff_stats(repo_path: &str, base_branch: &str) -> (u32, u32) {
     }
 }
 
+/// Check if a git ref exists
+fn ref_exists(repo_path: &str, git_ref: &str) -> bool {
+    silent_command("git")
+        .args(["rev-parse", "--verify", "--quiet", git_ref])
+        .current_dir(repo_path)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
 /// Count commits between two refs
 /// Returns 0 if either ref doesn't exist
 fn count_commits_between(repo_path: &str, from_ref: &str, to_ref: &str) -> u32 {
-    let output = Command::new("git")
+    let output = silent_command("git")
         .args(["rev-list", "--count", &format!("{from_ref}..{to_ref}")])
         .current_dir(repo_path)
         .output();
@@ -465,7 +479,7 @@ pub fn get_git_diff(
         _ => return Err(format!("Invalid diff_type: {diff_type}")),
     };
 
-    let output = Command::new("git")
+    let output = silent_command("git")
         .args(&args)
         .current_dir(repo_path)
         .output()
@@ -674,6 +688,26 @@ pub fn get_branch_status(info: &ActiveWorktreeInfo) -> Result<GitBranchStatus, S
     let base_branch_ahead_count = count_commits_between(repo_path, &origin_ref, base_branch);
     let base_branch_behind_count = count_commits_between(repo_path, base_branch, &origin_ref);
 
+    // Commits unique to this worktree (ahead of local base branch)
+    let worktree_ahead_count = count_commits_between(repo_path, base_branch, "HEAD");
+
+    // Commits not yet pushed to origin/{current_branch}
+    // If the remote branch doesn't exist (never pushed), all worktree commits are unpushed
+    let origin_current_ref = format!("origin/{current_branch}");
+    let unpushed_count = if current_branch != *base_branch {
+        // Fetch origin/{current_branch} so we have up-to-date remote info
+        let _ = fetch_origin_branch(repo_path, &current_branch);
+        if ref_exists(repo_path, &origin_current_ref) {
+            count_commits_between(repo_path, &origin_current_ref, "HEAD")
+        } else {
+            // Never pushed — all worktree-unique commits are unpushed
+            worktree_ahead_count
+        }
+    } else {
+        // On the base branch itself, unpushed = base_branch_ahead_count
+        base_branch_ahead_count
+    };
+
     // Get current timestamp
     let checked_at = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -694,6 +728,8 @@ pub fn get_branch_status(info: &ActiveWorktreeInfo) -> Result<GitBranchStatus, S
         branch_diff_removed,
         base_branch_ahead_count,
         base_branch_behind_count,
+        worktree_ahead_count,
+        unpushed_count,
     })
 }
 
@@ -717,6 +753,8 @@ mod tests {
             branch_diff_removed: 42,
             base_branch_ahead_count: 2,
             base_branch_behind_count: 0,
+            worktree_ahead_count: 3,
+            unpushed_count: 1,
         };
 
         let json = serde_json::to_string(&status).unwrap();

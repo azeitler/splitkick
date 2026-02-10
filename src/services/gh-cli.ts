@@ -6,8 +6,8 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { invoke } from '@tauri-apps/api/core'
-import { listen } from '@tauri-apps/api/event'
+import { invoke, useWsConnectionStatus } from '@/lib/transport'
+import { listen } from '@/lib/transport'
 import { toast } from 'sonner'
 import { useCallback, useEffect, useState } from 'react'
 import { logger } from '@/lib/logger'
@@ -18,9 +18,9 @@ import type {
   GhInstallProgress,
 } from '@/types/gh-cli'
 
-// Check if running in Tauri context (vs plain browser)
-const isTauri = () =>
-  typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+import { hasBackend } from '@/lib/environment'
+
+const isTauri = hasBackend
 
 // Query keys for GitHub CLI
 export const ghCliQueryKeys = {
@@ -54,6 +54,7 @@ export function useGhCliStatus() {
     },
     staleTime: 1000 * 60 * 5, // 5 minutes
     gcTime: 1000 * 60 * 10, // 10 minutes
+    refetchInterval: 1000 * 60 * 60, // Re-check every hour
   })
 }
 
@@ -125,6 +126,7 @@ export function useAvailableGhVersions() {
     },
     staleTime: 1000 * 60 * 15, // 15 minutes
     gcTime: 1000 * 60 * 30, // 30 minutes
+    refetchInterval: 1000 * 60 * 60, // Re-check every hour
   })
 }
 
@@ -165,6 +167,7 @@ export function useInstallGhCli() {
  */
 export function useGhInstallProgress(): [GhInstallProgress | null, () => void] {
   const [progress, setProgress] = useState<GhInstallProgress | null>(null)
+  const wsConnected = useWsConnectionStatus()
 
   const resetProgress = useCallback(() => {
     setProgress(null)
@@ -178,7 +181,9 @@ export function useGhInstallProgress(): [GhInstallProgress | null, () => void] {
 
     const setupListener = async () => {
       try {
-        logger.info('[useGhInstallProgress] Setting up listener', { listenerId })
+        logger.info('[useGhInstallProgress] Setting up listener', {
+          listenerId,
+        })
         unlistenFn = await listen<GhInstallProgress>(
           'gh-cli:install-progress',
           event => {
@@ -192,7 +197,10 @@ export function useGhInstallProgress(): [GhInstallProgress | null, () => void] {
           }
         )
       } catch (error) {
-        logger.error('[useGhInstallProgress] Failed to setup listener', { listenerId, error })
+        logger.error('[useGhInstallProgress] Failed to setup listener', {
+          listenerId,
+          error,
+        })
       }
     }
 
@@ -204,7 +212,7 @@ export function useGhInstallProgress(): [GhInstallProgress | null, () => void] {
         unlistenFn()
       }
     }
-  }, [])
+  }, [wsConnected])
 
   return [progress, resetProgress]
 }

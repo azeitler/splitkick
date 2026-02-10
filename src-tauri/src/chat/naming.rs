@@ -4,15 +4,17 @@
 //! based on the first message in a session.
 
 use crate::claude_cli::get_cli_binary_path;
+use crate::platform::silent_command;
 use crate::projects::git;
 use crate::projects::storage::{load_projects_data, save_projects_data};
 
 use super::storage::with_sessions_mut;
+use crate::http_server::EmitExt;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
-use tauri::{AppHandle, Emitter, Manager};
+use std::process::Stdio;
+use tauri::{AppHandle, Manager};
 
 /// Request for combined naming (session + branch)
 #[derive(Debug, Clone)]
@@ -82,6 +84,11 @@ fn contains_image_attachment(message: &str) -> bool {
 fn contains_text_attachment(message: &str) -> bool {
     message.contains("[Text file attached:")
         && message.contains("Use the Read tool to view this file]")
+}
+
+/// Check if the message contains file mentions (@ mentions) that require Read tool
+fn contains_file_mention(message: &str) -> bool {
+    message.contains("[File:") && message.contains("Use the Read tool to view this file]")
 }
 
 /// Extract a JSON object from text that may contain surrounding prose
@@ -217,6 +224,15 @@ Base your naming on both the user's message AND the content of the attached text
 
 "#;
 
+/// File mention instruction prefix - added to prompts when @ file mentions are present
+const FILE_MENTION_INSTRUCTION_PREFIX: &str = r#"<file_handling>
+The user's request includes file references. You MUST read each file using the Read tool BEFORE generating names.
+For each "[File: PATH - Use the Read tool to view this file]" marker, call Read with that exact PATH.
+Base your naming on both the user's message AND the content of the referenced files.
+</file_handling>
+
+"#;
+
 /// Convert a model preference to a Claude CLI model alias
 fn get_cli_model_alias(model: &str) -> &'static str {
     match model {
@@ -283,7 +299,8 @@ fn generate_names(app: &AppHandle, request: &NamingRequest) -> Result<NamingOutp
     // Detect if attachments are present to enable Read tool
     let has_images = contains_image_attachment(&request.first_message);
     let has_text_files = contains_text_attachment(&request.first_message);
-    let has_attachments = has_images || has_text_files;
+    let has_file_mentions = contains_file_mention(&request.first_message);
+    let has_attachments = has_images || has_text_files || has_file_mentions;
 
     // Build prompt based on what we need to generate
     let base_prompt = if request.generate_session_name && request.generate_branch_name {
@@ -309,20 +326,24 @@ fn generate_names(app: &AppHandle, request: &NamingRequest) -> Result<NamingOutp
     };
 
     // Prepend attachment instructions if attachments are present
-    let prompt = match (has_images, has_text_files) {
-        (true, true) => format!("{IMAGE_INSTRUCTION_PREFIX}{TEXT_INSTRUCTION_PREFIX}{base_prompt}"),
-        (true, false) => format!("{IMAGE_INSTRUCTION_PREFIX}{base_prompt}"),
-        (false, true) => format!("{TEXT_INSTRUCTION_PREFIX}{base_prompt}"),
-        (false, false) => base_prompt,
+    let prompt = match (has_images, has_text_files, has_file_mentions) {
+        (true, true, true) => format!("{IMAGE_INSTRUCTION_PREFIX}{TEXT_INSTRUCTION_PREFIX}{FILE_MENTION_INSTRUCTION_PREFIX}{base_prompt}"),
+        (true, true, false) => format!("{IMAGE_INSTRUCTION_PREFIX}{TEXT_INSTRUCTION_PREFIX}{base_prompt}"),
+        (true, false, true) => format!("{IMAGE_INSTRUCTION_PREFIX}{FILE_MENTION_INSTRUCTION_PREFIX}{base_prompt}"),
+        (true, false, false) => format!("{IMAGE_INSTRUCTION_PREFIX}{base_prompt}"),
+        (false, true, true) => format!("{TEXT_INSTRUCTION_PREFIX}{FILE_MENTION_INSTRUCTION_PREFIX}{base_prompt}"),
+        (false, true, false) => format!("{TEXT_INSTRUCTION_PREFIX}{base_prompt}"),
+        (false, false, true) => format!("{FILE_MENTION_INSTRUCTION_PREFIX}{base_prompt}"),
+        (false, false, false) => base_prompt,
     };
 
     let model_alias = get_cli_model_alias(&request.model);
 
     log::trace!(
-        "Generating names with Claude CLI using model {model_alias}, has_images: {has_images}, has_text_files: {has_text_files}"
+        "Generating names with Claude CLI using model {model_alias}, has_images: {has_images}, has_text_files: {has_text_files}, has_file_mentions: {has_file_mentions}"
     );
 
-    let mut cmd = Command::new(&cli_path);
+    let mut cmd = silent_command(&cli_path);
     cmd.args([
         "--print",
         "--input-format",
@@ -346,6 +367,13 @@ fn generate_names(app: &AppHandle, request: &NamingRequest) -> Result<NamingOutp
             if cfg!(debug_assertions) {
                 cmd.arg("--add-dir").arg(&app_data_dir);
                 log::trace!("Added full app data directory to naming scope: {app_data_dir:?}");
+                if has_file_mentions {
+                    cmd.arg("--add-dir").arg(&request.worktree_path);
+                    log::trace!(
+                        "Added worktree directory for file mentions: {:?}",
+                        request.worktree_path
+                    );
+                }
             } else {
                 if has_images {
                     let pasted_images = app_data_dir.join("pasted-images");
@@ -356,6 +384,14 @@ fn generate_names(app: &AppHandle, request: &NamingRequest) -> Result<NamingOutp
                     let pasted_texts = app_data_dir.join("pasted-texts");
                     cmd.arg("--add-dir").arg(&pasted_texts);
                     log::trace!("Added pasted-texts directory to naming scope: {pasted_texts:?}");
+                }
+                if has_file_mentions {
+                    // File mentions reference files in the worktree
+                    cmd.arg("--add-dir").arg(&request.worktree_path);
+                    log::trace!(
+                        "Added worktree directory for file mentions: {:?}",
+                        request.worktree_path
+                    );
                 }
                 // Always allow session-context for context loading
                 let saved_contexts = app_data_dir.join("session-context");
@@ -626,7 +662,7 @@ fn execute_naming(app: &AppHandle, request: &NamingRequest) {
                 error: e,
                 stage: NamingStage::Generation,
             };
-            let _ = app.emit("naming-failed", &error);
+            let _ = app.emit_all("naming-failed", &error);
             return;
         }
     };
@@ -642,11 +678,11 @@ fn execute_naming(app: &AppHandle, request: &NamingRequest) {
                             result.old_name,
                             result.new_name
                         );
-                        let _ = app.emit("session-renamed", &result);
+                        let _ = app.emit_all("session-renamed", &result);
                     }
                     Err(error) => {
                         log::warn!("Session naming storage failed: {}", error.error);
-                        let _ = app.emit("session-naming-failed", &error);
+                        let _ = app.emit_all("session-naming-failed", &error);
                     }
                 },
                 Err(e) => {
@@ -657,7 +693,7 @@ fn execute_naming(app: &AppHandle, request: &NamingRequest) {
                         error: e,
                         stage: NamingStage::Validation,
                     };
-                    let _ = app.emit("session-naming-failed", &error);
+                    let _ = app.emit_all("session-naming-failed", &error);
                 }
             }
         } else {
@@ -676,11 +712,11 @@ fn execute_naming(app: &AppHandle, request: &NamingRequest) {
                             result.old_branch,
                             result.new_branch
                         );
-                        let _ = app.emit("branch-renamed", &result);
+                        let _ = app.emit_all("branch-renamed", &result);
                     }
                     Err(error) => {
                         log::warn!("Branch naming failed: {}", error.error);
-                        let _ = app.emit("branch-naming-failed", &error);
+                        let _ = app.emit_all("branch-naming-failed", &error);
                     }
                 },
                 Err(e) => {
@@ -691,7 +727,7 @@ fn execute_naming(app: &AppHandle, request: &NamingRequest) {
                         error: e,
                         stage: NamingStage::Validation,
                     };
-                    let _ = app.emit("branch-naming-failed", &error);
+                    let _ = app.emit_all("branch-naming-failed", &error);
                 }
             }
         } else {

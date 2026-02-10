@@ -1,12 +1,8 @@
 import { memo, useCallback } from 'react'
+import { Copy } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { normalizePath } from '@/lib/path-utils'
 import { Markdown } from '@/components/ui/markdown'
-import {
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-} from '@/components/ui/tooltip'
 import type {
   ChatMessage,
   Question,
@@ -24,6 +20,11 @@ import { SkillBadge } from './SkillBadge'
 import { ToolCallsDisplay } from './ToolCallsDisplay'
 import { ExitPlanModeButton } from './ExitPlanModeButton'
 import { EditedFilesDisplay } from './EditedFilesDisplay'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip'
 import { ThinkingBlock } from './ThinkingBlock'
 import {
   parseReviewFindings,
@@ -31,103 +32,13 @@ import {
   stripFindingBlocks,
 } from './review-finding-utils'
 import { ReviewFindingsList } from './ReviewFindingBlock'
-
-/** Format timestamp for tooltip display */
-const formatTimestamp = (timestamp: number) => {
-  return new Date(timestamp * 1000).toLocaleString()
-}
-
-/** Regex to extract image paths from message content */
-const IMAGE_ATTACHMENT_REGEX =
-  /\[Image attached: (.+?) - Use the Read tool to view this image\]/g
-
-/** Regex to extract text file paths from message content */
-const TEXT_FILE_ATTACHMENT_REGEX =
-  /\[Text file attached: (.+?) - Use the Read tool to view this file\]/g
-
-/** Extract image paths from message content */
-function extractImagePaths(content: string): string[] {
-  const paths: string[] = []
-  let match
-  while ((match = IMAGE_ATTACHMENT_REGEX.exec(content)) !== null) {
-    if (match[1]) {
-      paths.push(match[1])
-    }
-  }
-  // Reset regex lastIndex for next use
-  IMAGE_ATTACHMENT_REGEX.lastIndex = 0
-  return paths
-}
-
-/** Extract text file paths from message content */
-function extractTextFilePaths(content: string): string[] {
-  const paths: string[] = []
-  let match
-  while ((match = TEXT_FILE_ATTACHMENT_REGEX.exec(content)) !== null) {
-    if (match[1]) {
-      paths.push(match[1])
-    }
-  }
-  // Reset regex lastIndex for next use
-  TEXT_FILE_ATTACHMENT_REGEX.lastIndex = 0
-  return paths
-}
-
-/** Remove image attachment markers from content for cleaner display */
-function stripImageMarkers(content: string): string {
-  return content.replace(IMAGE_ATTACHMENT_REGEX, '').trim()
-}
-
-/** Remove text file attachment markers from content for cleaner display */
-function stripTextFileMarkers(content: string): string {
-  return content.replace(TEXT_FILE_ATTACHMENT_REGEX, '').trim()
-}
-
-/** Regex to extract file mention paths from message content */
-const FILE_MENTION_REGEX =
-  /\[File: (.+?) - Use the Read tool to view this file\]/g
-
-/** Regex to extract skill paths from message content */
-const SKILL_ATTACHMENT_REGEX =
-  /\[Skill: (.+?) - Read and use this skill to guide your response\]/g
-
-/** Extract file mention paths from message content */
-function extractFileMentionPaths(content: string): string[] {
-  const paths: string[] = []
-  let match
-  while ((match = FILE_MENTION_REGEX.exec(content)) !== null) {
-    if (match[1]) {
-      paths.push(match[1])
-    }
-  }
-  // Reset regex lastIndex for next use
-  FILE_MENTION_REGEX.lastIndex = 0
-  return paths
-}
-
-/** Remove file mention markers from content for cleaner display */
-function stripFileMentionMarkers(content: string): string {
-  return content.replace(FILE_MENTION_REGEX, '').trim()
-}
-
-/** Extract skill paths from message content */
-function extractSkillPaths(content: string): string[] {
-  const paths: string[] = []
-  let match
-  while ((match = SKILL_ATTACHMENT_REGEX.exec(content)) !== null) {
-    if (match[1]) {
-      paths.push(match[1])
-    }
-  }
-  // Reset regex lastIndex for next use
-  SKILL_ATTACHMENT_REGEX.lastIndex = 0
-  return paths
-}
-
-/** Remove skill attachment markers from content for cleaner display */
-function stripSkillMarkers(content: string): string {
-  return content.replace(SKILL_ATTACHMENT_REGEX, '').trim()
-}
+import {
+  extractImagePaths,
+  extractTextFilePaths,
+  extractFileMentionPaths,
+  extractSkillPaths,
+  stripAllMarkers,
+} from './message-content-utils'
 
 interface MessageItemProps {
   /** The message to render */
@@ -146,6 +57,8 @@ interface MessageItemProps {
   worktreePath: string
   /** Keyboard shortcut to display on approve button */
   approveShortcut: string
+  /** Keyboard shortcut to display on approve yolo button */
+  approveShortcutYolo?: string
   /** Ref to attach to approve button for visibility tracking */
   approveButtonRef?: React.RefObject<HTMLButtonElement | null>
   /** Whether Claude is currently streaming (affects last message rendering) */
@@ -183,6 +96,8 @@ interface MessageItemProps {
   areQuestionsSkipped: (sessionId: string) => boolean
   /** Check if a finding has been fixed */
   isFindingFixed: (sessionId: string, key: string) => boolean
+  /** Callback to copy a user message back to the input field */
+  onCopyToInput?: (message: ChatMessage) => void
 }
 
 /**
@@ -198,6 +113,7 @@ export const MessageItem = memo(function MessageItem({
   sessionId,
   worktreePath,
   approveShortcut,
+  approveShortcutYolo,
   approveButtonRef,
   isSending,
   onPlanApproval,
@@ -212,6 +128,7 @@ export const MessageItem = memo(function MessageItem({
   getSubmittedAnswers,
   areQuestionsSkipped,
   isFindingFixed,
+  onCopyToInput,
 }: MessageItemProps) {
   // Only show Approve button for the last message with ExitPlanMode
   const isLatestPlanRequest = messageIndex === lastPlanMessageIndex
@@ -227,11 +144,7 @@ export const MessageItem = memo(function MessageItem({
     message.role === 'user' ? extractSkillPaths(message.content) : []
   const displayContent =
     message.role === 'user'
-      ? stripSkillMarkers(
-          stripFileMentionMarkers(
-            stripTextFileMarkers(stripImageMarkers(message.content))
-          )
-        )
+      ? stripAllMarkers(message.content)
       : message.content
 
   // Show content if it's not empty
@@ -258,6 +171,11 @@ export const MessageItem = memo(function MessageItem({
     (findingKey: string) => isFindingFixed(sessionId, findingKey),
     [isFindingFixed, sessionId]
   )
+
+  // Stable callback for copying message to input
+  const handleCopyToInput = useCallback(() => {
+    onCopyToInput?.(message)
+  }, [onCopyToInput, message])
 
   // Content for the message box (shared between user and assistant)
   const messageBoxContent = (
@@ -305,11 +223,18 @@ export const MessageItem = memo(function MessageItem({
             // Extract skill name from path (e.g., /Users/.../skills/react/SKILL.md -> react)
             const parts = normalizePath(path).split('/')
             const skillsIdx = parts.findIndex(p => p === 'skills')
-            const name = skillsIdx >= 0 && parts[skillsIdx + 1] ? parts[skillsIdx + 1] : path
+            const name =
+              skillsIdx >= 0 && parts[skillsIdx + 1]
+                ? parts[skillsIdx + 1]
+                : path
             return (
               <SkillBadge
                 key={`${message.id}-skill-${idx}`}
-                skill={{ id: `${message.id}-skill-${idx}`, name: name ?? path, path }}
+                skill={{
+                  id: `${message.id}-skill-${idx}`,
+                  name: name ?? path,
+                  path,
+                }}
                 compact
               />
             )
@@ -367,6 +292,7 @@ export const MessageItem = memo(function MessageItem({
                       key={item.key}
                       taskToolCall={item.taskTool}
                       subToolCalls={item.subTools}
+                      allToolCalls={message.tool_calls ?? []}
                       onFileClick={onFileClick}
                       isStreaming={false}
                     />
@@ -421,7 +347,9 @@ export const MessageItem = memo(function MessageItem({
                 case 'exitPlanMode': {
                   // Render plan inline in its natural position
                   // Extract plan from this specific tool's input (not global search)
-                  const toolInput = item.tool.input as { plan?: string } | undefined
+                  const toolInput = item.tool.input as
+                    | { plan?: string }
+                    | undefined
                   const inlinePlan = toolInput?.plan
                   if (inlinePlan) {
                     return (
@@ -464,6 +392,7 @@ export const MessageItem = memo(function MessageItem({
             onPlanApprovalYolo={handlePlanApprovalYolo}
             buttonRef={isLatestPlanRequest ? approveButtonRef : undefined}
             shortcut={approveShortcut}
+            shortcutYolo={approveShortcutYolo}
           />
         </>
       ) : (
@@ -517,6 +446,7 @@ export const MessageItem = memo(function MessageItem({
                 onPlanApprovalYolo={handlePlanApprovalYolo}
                 buttonRef={isLatestPlanRequest ? approveButtonRef : undefined}
                 shortcut={approveShortcut}
+                shortcutYolo={approveShortcutYolo}
               />
             )}
         </>
@@ -540,30 +470,6 @@ export const MessageItem = memo(function MessageItem({
     </>
   )
 
-  // User message tooltip content
-  const userMessageTooltip = (
-    <TooltipContent side="left" align="start" className="text-xs">
-      <div className="space-y-0.5">
-        <div>
-          <span className="text-muted font-bold">Model:</span>{' '}
-          {message.model ?? 'N/A'}
-        </div>
-        <div>
-          <span className="text-muted font-bold">Think:</span>{' '}
-          {message.thinking_level ?? 'N/A'}
-        </div>
-        <div>
-          <span className="text-muted font-bold">Mode:</span>{' '}
-          {message.execution_mode ?? 'N/A'}
-        </div>
-        <div>
-          <span className="text-muted font-bold">Time:</span>{' '}
-          {formatTimestamp(message.timestamp)}
-        </div>
-      </div>
-    </TooltipContent>
-  )
-
   return (
     <div
       className={cn(
@@ -572,19 +478,31 @@ export const MessageItem = memo(function MessageItem({
       )}
     >
       {message.role === 'user' ? (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div
-              className={cn(
-                'text-foreground border border-border rounded-lg px-3 py-2 max-w-[70%] bg-muted/20 min-w-0 break-words',
-                message.cancelled && 'opacity-60'
-              )}
-            >
-              {messageBoxContent}
-            </div>
-          </TooltipTrigger>
-          {userMessageTooltip}
-        </Tooltip>
+        <div className="relative group flex items-start gap-1 max-w-[85%] sm:max-w-[70%]">
+          {/* Copy to input button - appears on hover */}
+          {onCopyToInput && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={handleCopyToInput}
+                  className="shrink-0 mt-2 p-1 rounded cursor-pointer text-muted-foreground/0 hover:text-muted-foreground hover:bg-muted/50 group-hover:text-muted-foreground/50 transition-colors"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Copy to input</TooltipContent>
+            </Tooltip>
+          )}
+          <div
+            className={cn(
+              'text-foreground border border-border rounded-lg px-3 py-2 bg-muted/20 min-w-0 break-words',
+              message.cancelled && 'opacity-60'
+            )}
+          >
+            {messageBoxContent}
+          </div>
+        </div>
       ) : (
         <div
           className={cn(

@@ -1,5 +1,5 @@
 import { memo, useCallback } from 'react'
-import { AlertCircle, ArrowDown, Check } from 'lucide-react'
+import { AlertCircle, ArrowDown, Check, FileText } from 'lucide-react'
 import { Kbd } from '@/components/ui/kbd'
 
 interface FloatingButtonsProps {
@@ -13,6 +13,8 @@ interface FloatingButtonsProps {
   isAtBottom: boolean
   /** Keyboard shortcut for approve */
   approveShortcut: string
+  /** Whether a plan is available (content or file) */
+  hasPlan: boolean
   /** Callback for streaming plan approval */
   onStreamingPlanApproval: () => void
   /** Callback for pending plan approval (needs message ID) */
@@ -21,6 +23,8 @@ interface FloatingButtonsProps {
   onScrollToFindings: () => void
   /** Callback to scroll to bottom */
   onScrollToBottom: () => void
+  /** Callback to open plan dialog */
+  onOpenPlan: () => void
 }
 
 /**
@@ -33,10 +37,12 @@ export const FloatingButtons = memo(function FloatingButtons({
   showFindingsButton,
   isAtBottom,
   approveShortcut,
+  hasPlan,
   onStreamingPlanApproval,
   onPendingPlanApproval,
   onScrollToFindings,
   onScrollToBottom,
+  onOpenPlan,
 }: FloatingButtonsProps) {
   // Show floating approve button when user scrolls up (same as "Go to bottom" button)
   const showApproveButton = (hasPendingPlan || hasStreamingPlan) && !isAtBottom
@@ -49,46 +55,68 @@ export const FloatingButtons = memo(function FloatingButtons({
     }
     // Also scroll to bottom so user sees the result
     onScrollToBottom()
-  }, [hasStreamingPlan, onStreamingPlanApproval, onPendingPlanApproval, onScrollToBottom])
+  }, [
+    hasStreamingPlan,
+    onStreamingPlanApproval,
+    onPendingPlanApproval,
+    onScrollToBottom,
+  ])
 
   return (
-    <div className="absolute bottom-4 right-4 flex gap-2">
-      {/* Floating Approve button - shown when main approve button is not visible */}
-      {showApproveButton && (
-        <button
-          type="button"
-          onClick={handleApprove}
-          className="flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-sm text-primary-foreground shadow-md transition-all hover:bg-primary/90"
-        >
-          <Check className="h-3.5 w-3.5" />
-          <span>Approve</span>
-          <Kbd className="ml-0.5 h-4 text-[10px] bg-primary-foreground/20 text-primary-foreground">
-            {approveShortcut}
-          </Kbd>
-        </button>
+    <>
+      {/* Left side - Plan button */}
+      {hasPlan && (
+        <div className="absolute bottom-4 left-4">
+          <button
+            type="button"
+            onClick={onOpenPlan}
+            className="flex h-8 items-center gap-1.5 rounded-lg bg-muted/90 px-3 text-sm text-muted-foreground shadow-md backdrop-blur-sm transition-all hover:bg-muted hover:text-foreground"
+          >
+            <FileText className="h-3.5 w-3.5" />
+            <span>Plan</span>
+          </button>
+        </div>
       )}
-      {/* Go to findings button - shown when findings exist and are not visible */}
-      {showFindingsButton && (
-        <button
-          type="button"
-          onClick={onScrollToFindings}
-          className="flex h-8 items-center gap-1.5 rounded-lg bg-muted/90 px-3 text-sm text-muted-foreground shadow-md backdrop-blur-sm transition-all hover:bg-muted hover:text-foreground"
-        >
-          <AlertCircle className="h-3.5 w-3.5" />
-          <span>Findings</span>
-        </button>
-      )}
-      {/* Scroll to bottom button */}
-      {!isAtBottom && (
-        <button
-          type="button"
-          onClick={onScrollToBottom}
-          className="flex h-8 items-center gap-1.5 rounded-lg bg-muted/90 px-3 text-sm text-muted-foreground shadow-md backdrop-blur-sm transition-all hover:bg-muted hover:text-foreground"
-        >
-          <ArrowDown className="h-3.5 w-3.5" />
-          <span>Bottom</span>
-        </button>
-      )}
-    </div>
+
+      {/* Right side - Approve, Findings, Bottom buttons */}
+      <div className="absolute bottom-4 right-4 flex gap-2">
+        {/* Floating Approve button - shown when main approve button is not visible */}
+        {showApproveButton && (
+          <button
+            type="button"
+            onClick={handleApprove}
+            className="flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-sm text-primary-foreground shadow-md transition-all hover:bg-primary/90"
+          >
+            <Check className="h-3.5 w-3.5" />
+            <span>Approve</span>
+            <Kbd className="ml-0.5 h-4 text-[10px] bg-primary-foreground/20 text-primary-foreground">
+              {approveShortcut}
+            </Kbd>
+          </button>
+        )}
+        {/* Go to findings button - shown when findings exist and are not visible */}
+        {showFindingsButton && (
+          <button
+            type="button"
+            onClick={onScrollToFindings}
+            className="flex h-8 items-center gap-1.5 rounded-lg bg-muted/90 px-3 text-sm text-muted-foreground shadow-md backdrop-blur-sm transition-all hover:bg-muted hover:text-foreground"
+          >
+            <AlertCircle className="h-3.5 w-3.5" />
+            <span>Findings</span>
+          </button>
+        )}
+        {/* Scroll to bottom button */}
+        {!isAtBottom && (
+          <button
+            type="button"
+            onClick={onScrollToBottom}
+            className="flex h-8 items-center gap-1.5 rounded-lg bg-muted/90 px-3 text-sm text-muted-foreground shadow-md backdrop-blur-sm transition-all hover:bg-muted hover:text-foreground"
+          >
+            <ArrowDown className="h-3.5 w-3.5" />
+            <span>Bottom</span>
+          </button>
+        )}
+      </div>
+    </>
   )
 })

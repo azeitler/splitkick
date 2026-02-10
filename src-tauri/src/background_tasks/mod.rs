@@ -13,8 +13,10 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 
+use crate::gh_cli::config::resolve_gh_binary;
+use crate::http_server::EmitExt;
 use crate::projects::git_status::{get_branch_status, ActiveWorktreeInfo, GitBranchStatus};
 use crate::projects::pr_status::{get_pr_status, PrStatus};
 
@@ -229,11 +231,13 @@ impl BackgroundTaskManager {
                                 times.insert(info.worktree_id.clone(), now);
                             }
 
+                            let gh = resolve_gh_binary(&app);
                             match get_pr_status(
                                 &info.worktree_path,
                                 *pr_number,
                                 pr_url,
                                 &info.worktree_id,
+                                &gh,
                             ) {
                                 Ok(status) => {
                                     log::trace!(
@@ -311,10 +315,9 @@ impl BackgroundTaskManager {
                     MIN_LOCAL_POLL_DEBOUNCE
                 );
 
-                // If enough time has passed, trigger immediate poll
-                if time_since >= MIN_LOCAL_POLL_DEBOUNCE {
-                    self.immediate_poll.store(true, Ordering::Relaxed);
-                }
+                // Always trigger immediate local poll on focus regain
+                // Branch changes happen while the app is unfocused, so we need fresh data
+                self.immediate_poll.store(true, Ordering::Relaxed);
             } else {
                 log::trace!("App gained focus: no active worktree");
             }
@@ -395,12 +398,12 @@ impl BackgroundTaskManager {
 
 /// Emit a git status event to the frontend
 fn emit_git_status(app: &AppHandle, status: GitBranchStatus) -> Result<(), String> {
-    app.emit("git:status-update", &status)
+    app.emit_all("git:status-update", &status)
         .map_err(|e| format!("Failed to emit git:status-update event: {e}"))
 }
 
 /// Emit a PR status event to the frontend
 fn emit_pr_status(app: &AppHandle, status: PrStatus) -> Result<(), String> {
-    app.emit("pr:status-update", &status)
+    app.emit_all("pr:status-update", &status)
         .map_err(|e| format!("Failed to emit pr:status-update event: {e}"))
 }

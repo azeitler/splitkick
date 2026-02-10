@@ -18,6 +18,8 @@ interface ExitPlanModeButtonProps {
   buttonRef?: React.RefObject<HTMLButtonElement | null>
   /** Keyboard shortcut to display on the button */
   shortcut?: string
+  /** Keyboard shortcut to display on the yolo button */
+  shortcutYolo?: string
 }
 
 /**
@@ -37,6 +39,7 @@ export function ExitPlanModeButton({
   onPlanApprovalYolo,
   buttonRef,
   shortcut,
+  shortcutYolo,
 }: ExitPlanModeButtonProps) {
   if (!toolCalls) return null
 
@@ -56,10 +59,7 @@ export function ExitPlanModeButton({
   // Only render the approve button (plan is shown inline in timeline)
   return (
     <div className="mt-3 flex gap-2">
-      <Button
-        ref={buttonRef}
-        onClick={() => onPlanApproval?.()}
-      >
+      <Button ref={buttonRef} onClick={() => onPlanApproval?.()}>
         Approve
         {shortcut && (
           <Kbd className="ml-1.5 h-4 text-[10px] bg-primary-foreground/20 text-primary-foreground">
@@ -74,6 +74,11 @@ export function ExitPlanModeButton({
         }}
       >
         Approve (yolo)
+        {shortcutYolo && (
+          <Kbd className="ml-1.5 h-4 text-[10px] bg-destructive-foreground/20 text-destructive-foreground">
+            {shortcutYolo}
+          </Kbd>
+        )}
       </Button>
     </div>
   )

@@ -1,9 +1,11 @@
 # Plan: Add "Plan" Tab Next to Sessions
 
 ## Overview
+
 Add a persistent "Plan" tab (like the existing Review tab) that displays the latest plan sent by Claude Code via `ExitPlanMode`. The tab appears next to session tabs and shows the plan content with approval controls.
 
 ## Architecture Decision
+
 - **Worktree-scoped** (like Review tab) - plans are relevant to the entire worktree
 - **Shows only the latest plan** - new plan replaces previous
 - **Persists until explicitly closed** - user dismisses with close button
@@ -11,20 +13,24 @@ Add a persistent "Plan" tab (like the existing Review tab) that displays the lat
 ## Implementation Steps
 
 ### 1. Add Types (src/types/chat.ts)
+
 Add plan content interface:
+
 ```typescript
 export interface PlanContent {
-  content: string        // markdown content (inline or fetched from file)
-  filePath?: string      // optional file path if from ~/.claude/plans/
-  toolCallId: string     // for tracking approval status
-  messageId?: string     // source message ID for persisted plans
-  timestamp: number      // when plan was received
-  approved?: boolean     // true after user approves (tab stays open)
+  content: string // markdown content (inline or fetched from file)
+  filePath?: string // optional file path if from ~/.claude/plans/
+  toolCallId: string // for tracking approval status
+  messageId?: string // source message ID for persisted plans
+  timestamp: number // when plan was received
+  approved?: boolean // true after user approves (tab stays open)
 }
 ```
 
 ### 2. Add Store State (src/store/chat-store.ts)
+
 Add to `ChatUIState` interface:
+
 ```typescript
 // Plan content per worktree (latest plan only)
 planContent: Record<string, PlanContent>
@@ -33,13 +39,16 @@ viewingPlanTab: Record<string, boolean>
 ```
 
 Add actions:
+
 - `setPlanContent(worktreeId, content)` - stores plan and auto-switches to tab
 - `clearPlanContent(worktreeId)` - removes plan and tab
 - `setViewingPlanTab(worktreeId, viewing)` - toggle view
 - `markPlanApproved(worktreeId)` - marks plan as approved (tab stays open)
 
 ### 3. Detect Plans in useStreamingEvents.ts
+
 In `chat:done` event handler, after checking for blocking tools:
+
 ```typescript
 // Detect ExitPlanMode and store plan content
 const exitPlanTool = toolCalls?.find(isExitPlanMode)
@@ -60,7 +69,9 @@ if (exitPlanTool) {
 ```
 
 ### 4. Create PlanResultsPanel.tsx
+
 New component similar to ReviewResultsPanel:
+
 - Subscribe to `planContent[worktreeId]`
 - Display plan using existing `PlanDisplay` component
 - Include "Approve" button (reuse handlePlanApproval logic via custom event)
@@ -68,7 +79,9 @@ New component similar to ReviewResultsPanel:
 - Close button clears plan
 
 ### 5. Update SessionTabBar.tsx
+
 Add Plan tab next to Review tab (before sessions):
+
 ```typescript
 {planContent && (
   <div onClick={handlePlanTabClick} className={...}>
@@ -80,11 +93,14 @@ Add Plan tab next to Review tab (before sessions):
 ```
 
 Wire handlers:
+
 - `handlePlanTabClick` → `setViewingPlanTab(worktreeId, true)`
 - `handleClosePlanTab` → `clearPlanContent(worktreeId)`
 
 ### 6. Update ChatWindow.tsx
+
 Add selector and conditional render:
+
 ```typescript
 const isViewingPlanTab = useChatStore(state =>
   state.activeWorktreeId
@@ -103,6 +119,7 @@ const isViewingPlanTab = useChatStore(state =>
 ```
 
 Add event listener for plan approval from panel:
+
 ```typescript
 useEffect(() => {
   const handlePlanApproveFromTab = (e: CustomEvent) => {

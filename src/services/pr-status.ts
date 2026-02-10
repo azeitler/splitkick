@@ -5,7 +5,7 @@
  * Rust backend and cache them using TanStack Query.
  */
 
-import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { listen, type UnlistenFn, useWsConnectionStatus } from '@/lib/transport'
 import { useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
@@ -36,6 +36,7 @@ export function usePrStatusEvents(
   onStatusUpdate?: (status: PrStatusEvent) => void
 ) {
   const queryClient = useQueryClient()
+  const wsConnected = useWsConnectionStatus()
 
   useEffect(() => {
     if (!isTauri()) return
@@ -57,6 +58,7 @@ export function usePrStatusEvents(
         // Persist to worktree cached status (fire and forget)
         updateWorktreeCachedStatus(
           status.worktree_id,
+          null, // branch - handled by git-status service
           status.display_status,
           status.check_status,
           null, // behind_count - handled by git-status service
@@ -77,7 +79,7 @@ export function usePrStatusEvents(
     return () => {
       unlistens.forEach(unlisten => unlisten())
     }
-  }, [queryClient, onStatusUpdate])
+  }, [queryClient, onStatusUpdate, wsConnected])
 }
 
 /**

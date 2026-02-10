@@ -1,15 +1,23 @@
-import { memo, useCallback, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+import { getModifierSymbol, isMacOS } from '@/lib/platform'
 import { toast } from 'sonner'
-import { gitPull, gitPush, triggerImmediateGitPoll } from '@/services/git-status'
 import {
-  ArrowDown,
-  ArrowUp,
+  gitPull,
+  gitPush,
+  triggerImmediateGitPoll,
+  fetchWorktreesStatus,
+} from '@/services/git-status'
+import { useChatStore } from '@/store/chat-store'
+import {
+  ArrowDownToLine,
+  ArrowUpToLine,
   BookmarkPlus,
   Brain,
+  CheckCircle,
   ChevronDown,
   CircleDot,
-  Clock,
   ClipboardList,
+  ExternalLink,
   Eye,
   FolderOpen,
   GitBranch,
@@ -17,14 +25,25 @@ import {
   GitMerge,
   GitPullRequest,
   Hammer,
+  Loader2,
   MoreHorizontal,
   Pencil,
+  Plug,
+  Search,
   Send,
+  ShieldAlert,
   Sparkles,
   Wand2,
+  XCircle,
   Zap,
 } from 'lucide-react'
+import { openExternal } from '@/lib/platform'
 import { Kbd } from '@/components/ui/kbd'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip'
 import {
   Select,
   SelectContent,
@@ -40,6 +59,7 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuCheckboxItem,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -52,10 +72,17 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Markdown } from '@/components/ui/markdown'
 import { cn } from '@/lib/utils'
 import type { ClaudeModel } from '@/store/chat-store'
-import type { ThinkingLevel, ExecutionMode } from '@/types/chat'
-import type { PrDisplayStatus, CheckStatus } from '@/types/pr-status'
+import { useMcpHealthCheck } from '@/services/mcp'
+import type { McpServerInfo, McpHealthStatus } from '@/types/chat'
+import type { ThinkingLevel, EffortLevel, ExecutionMode } from '@/types/chat'
+import type {
+  PrDisplayStatus,
+  CheckStatus,
+  MergeableStatus,
+} from '@/types/pr-status'
 import type { DiffRequest } from '@/types/git-diff'
 import type {
   LoadedIssueContext,
@@ -69,14 +96,15 @@ import {
 } from '@/services/github'
 
 /** Model options with display labels */
-const MODEL_OPTIONS: { value: ClaudeModel; label: string }[] = [
+export const MODEL_OPTIONS: { value: ClaudeModel; label: string }[] = [
+  { value: 'opus', label: 'Opus 4.6' },
+  { value: 'opus-4.5', label: 'Opus 4.5' },
   { value: 'sonnet', label: 'Sonnet' },
-  { value: 'opus', label: 'Opus' },
   { value: 'haiku', label: 'Haiku' },
 ]
 
 /** Thinking level options with display labels and token counts */
-const THINKING_LEVEL_OPTIONS: {
+export const THINKING_LEVEL_OPTIONS: {
   value: ThinkingLevel
   label: string
   tokens: string
@@ -85,6 +113,18 @@ const THINKING_LEVEL_OPTIONS: {
   { value: 'think', label: 'Think', tokens: '4K' },
   { value: 'megathink', label: 'Megathink', tokens: '10K' },
   { value: 'ultrathink', label: 'Ultrathink', tokens: '32K' },
+]
+
+/** Effort level options for Opus 4.6 adaptive thinking */
+export const EFFORT_LEVEL_OPTIONS: {
+  value: EffortLevel
+  label: string
+  description: string
+}[] = [
+  { value: 'low', label: 'Low', description: 'Minimal' },
+  { value: 'medium', label: 'Medium', description: 'Moderate' },
+  { value: 'high', label: 'High', description: 'Deep' },
+  { value: 'max', label: 'Max', description: 'No limits' },
 ]
 
 /** Get display label and color for PR status */
@@ -119,17 +159,21 @@ function CheckStatusIcon({ status }: { status: CheckStatus | null }) {
     case 'failure':
     case 'error':
       return (
-        <span
-          className="ml-1 h-2 w-2 rounded-full bg-red-500"
-          title="Checks failing"
-        />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="ml-1 h-2 w-2 rounded-full bg-red-500" />
+          </TooltipTrigger>
+          <TooltipContent>Checks failing</TooltipContent>
+        </Tooltip>
       )
     case 'pending':
       return (
-        <span
-          className="ml-1 h-2 w-2 rounded-full bg-yellow-500 animate-pulse"
-          title="Checks pending"
-        />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="ml-1 h-2 w-2 rounded-full bg-yellow-500 animate-pulse" />
+          </TooltipTrigger>
+          <TooltipContent>Checks pending</TooltipContent>
+        </Tooltip>
       )
     default:
       return null
@@ -145,13 +189,11 @@ interface ChatToolbarProps {
   executionMode: ExecutionMode
   selectedModel: ClaudeModel
   selectedThinkingLevel: ThinkingLevel
+  selectedEffortLevel: EffortLevel
   thinkingOverrideActive: boolean // True when thinking is disabled in build/yolo due to preference
-  queuedMessageCount: number
+  useAdaptiveThinking: boolean // True when model supports effort (Opus on CLI >= 2.1.32)
 
   // Git state
-  hasBranchUpdates: boolean
-  behindCount: number
-  aheadCount: number
   baseBranch: string
   uncommittedAdded: number
   uncommittedRemoved: number
@@ -163,6 +205,7 @@ interface ChatToolbarProps {
   prNumber: number | undefined
   displayStatus: PrDisplayStatus | undefined
   checkStatus: CheckStatus | undefined
+  mergeableStatus: MergeableStatus | undefined
 
   // Shortcuts
   magicModalShortcut: string
@@ -170,6 +213,7 @@ interface ChatToolbarProps {
   // Worktree info
   activeWorktreePath: string | undefined
   worktreeId: string | null
+  projectId: string | undefined
 
   // Issue/PR/Saved context
   loadedIssueContexts: LoadedIssueContext[]
@@ -181,16 +225,85 @@ interface ChatToolbarProps {
   onSaveContext: () => void
   onLoadContext: () => void
   onCommit: () => void
+  onCommitAndPush: () => void
   onOpenPr: () => void
   onReview: () => void
+  onCheckoutPr: () => void
   onMerge: () => void
-  isBaseSession: boolean
+  onResolvePrConflicts: () => void
+  onResolveConflicts: () => void
+  onInvestigate: () => void
   hasOpenPr: boolean
   onSetDiffRequest: (request: DiffRequest) => void
   onModelChange: (model: ClaudeModel) => void
   onThinkingLevelChange: (level: ThinkingLevel) => void
+  onEffortLevelChange: (level: EffortLevel) => void
   onSetExecutionMode: (mode: ExecutionMode) => void
   onCancel: () => void
+
+  // MCP servers
+  availableMcpServers: McpServerInfo[]
+  enabledMcpServers: string[]
+  onToggleMcpServer: (serverName: string) => void
+  onOpenProjectSettings?: () => void
+}
+
+/** Compact health status dot for the toolbar MCP dropdown */
+/** Hover hint for MCP server health status in the toolbar dropdown */
+function mcpStatusHint(status: McpHealthStatus | undefined): string | undefined {
+  switch (status) {
+    case 'needsAuthentication':
+      return "Needs authentication — run 'claude /mcp' to authenticate"
+    case 'couldNotConnect':
+      return 'Could not connect to server'
+    case 'connected':
+      return 'Connected'
+    default:
+      return undefined
+  }
+}
+
+/** Compact health status dot for the toolbar MCP dropdown */
+function McpStatusDot({ status }: { status: McpHealthStatus | undefined }) {
+  if (!status) return null
+
+  switch (status) {
+    case 'connected':
+      return (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span>
+              <CheckCircle className="size-3 text-green-600 dark:text-green-400" />
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>Connected</TooltipContent>
+        </Tooltip>
+      )
+    case 'needsAuthentication':
+      return (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span>
+              <ShieldAlert className="size-3 text-amber-600 dark:text-amber-400" />
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>{"Needs authentication — run 'claude /mcp' to authenticate"}</TooltipContent>
+        </Tooltip>
+      )
+    case 'couldNotConnect':
+      return (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span>
+              <XCircle className="size-3 text-red-600 dark:text-red-400" />
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>Could not connect to server</TooltipContent>
+        </Tooltip>
+      )
+    default:
+      return null
+  }
 }
 
 /**
@@ -205,11 +318,9 @@ export const ChatToolbar = memo(function ChatToolbar({
   executionMode,
   selectedModel,
   selectedThinkingLevel,
+  selectedEffortLevel,
   thinkingOverrideActive,
-  queuedMessageCount,
-  hasBranchUpdates,
-  behindCount,
-  aheadCount,
+  useAdaptiveThinking,
   baseBranch,
   uncommittedAdded,
   uncommittedRemoved,
@@ -219,9 +330,11 @@ export const ChatToolbar = memo(function ChatToolbar({
   prNumber,
   displayStatus,
   checkStatus,
+  mergeableStatus,
   magicModalShortcut,
   activeWorktreePath,
   worktreeId,
+  projectId,
   loadedIssueContexts,
   loadedPRContexts,
   attachedSavedContexts,
@@ -229,17 +342,49 @@ export const ChatToolbar = memo(function ChatToolbar({
   onSaveContext,
   onLoadContext,
   onCommit,
+  onCommitAndPush,
   onOpenPr,
   onReview,
+  onCheckoutPr,
   onMerge,
-  isBaseSession,
+  onResolvePrConflicts,
+  onResolveConflicts,
+  onInvestigate,
   hasOpenPr,
   onSetDiffRequest,
   onModelChange,
   onThinkingLevelChange,
+  onEffortLevelChange,
   onSetExecutionMode,
   onCancel,
+  availableMcpServers,
+  enabledMcpServers,
+  onToggleMcpServer,
+  onOpenProjectSettings,
 }: ChatToolbarProps) {
+  // MCP health check — triggered when dropdown opens, shared cache with settings pane
+  const {
+    data: healthResult,
+    isFetching: isHealthChecking,
+    refetch: checkHealth,
+  } = useMcpHealthCheck()
+
+  const [mcpDropdownOpen, setMcpDropdownOpen] = useState(false)
+
+  useEffect(() => {
+    if (mcpDropdownOpen) {
+      checkHealth()
+    }
+  }, [mcpDropdownOpen, checkHealth])
+
+  // Count only enabled servers that actually exist and aren't disabled
+  const activeMcpCount = useMemo(() => {
+    const availableNames = new Set(
+      availableMcpServers.filter(s => !s.disabled).map(s => s.name)
+    )
+    return enabledMcpServers.filter(name => availableNames.has(name)).length
+  }, [availableMcpServers, enabledMcpServers])
+
   // Memoize callbacks to prevent Select re-renders
   const handleModelChange = useCallback(
     (value: string) => {
@@ -255,37 +400,61 @@ export const ChatToolbar = memo(function ChatToolbar({
     [onThinkingLevelChange]
   )
 
-  const [isPulling, setIsPulling] = useState(false)
+  const handleEffortLevelChange = useCallback(
+    (value: string) => {
+      onEffortLevelChange(value as EffortLevel)
+    },
+    [onEffortLevelChange]
+  )
+
   const handlePullClick = useCallback(async () => {
-    if (!activeWorktreePath) return
-    setIsPulling(true)
+    if (!activeWorktreePath || !worktreeId) return
+    const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
+    setWorktreeLoading(worktreeId, 'pull')
     const toastId = toast.loading('Pulling changes...')
     try {
       await gitPull(activeWorktreePath, baseBranch)
       triggerImmediateGitPoll()
+      if (projectId) fetchWorktreesStatus(projectId)
       toast.success('Changes pulled', { id: toastId })
     } catch (error) {
-      toast.error(`Pull failed: ${error}`, { id: toastId })
+      const errorStr = String(error)
+      if (errorStr.includes('Merge conflicts in:')) {
+        toast.warning('Pull resulted in conflicts', {
+          id: toastId,
+          description: 'Opening conflict resolution...',
+        })
+        onResolveConflicts()
+      } else {
+        toast.error(`Pull failed: ${errorStr}`, { id: toastId })
+      }
     } finally {
-      setIsPulling(false)
+      clearWorktreeLoading(worktreeId)
     }
-  }, [activeWorktreePath, baseBranch])
+  }, [
+    activeWorktreePath,
+    baseBranch,
+    worktreeId,
+    projectId,
+    onResolveConflicts,
+  ])
 
-  const [isPushing, setIsPushing] = useState(false)
   const handlePushClick = useCallback(async () => {
-    if (!activeWorktreePath) return
-    setIsPushing(true)
+    if (!activeWorktreePath || !worktreeId) return
+    const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
+    setWorktreeLoading(worktreeId, 'push')
     const toastId = toast.loading('Pushing changes...')
     try {
-      await gitPush(activeWorktreePath)
+      await gitPush(activeWorktreePath, prNumber)
       triggerImmediateGitPoll()
+      if (projectId) fetchWorktreesStatus(projectId)
       toast.success('Changes pushed', { id: toastId })
     } catch (error) {
       toast.error(`Push failed: ${error}`, { id: toastId })
     } finally {
-      setIsPushing(false)
+      clearWorktreeLoading(worktreeId)
     }
-  }, [activeWorktreePath])
+  }, [activeWorktreePath, worktreeId, projectId, prNumber])
 
   const handleUncommittedDiffClick = useCallback(() => {
     onSetDiffRequest({
@@ -316,8 +485,17 @@ export const ChatToolbar = memo(function ChatToolbar({
     async (ctx: LoadedIssueContext) => {
       if (!worktreeId || !activeWorktreePath) return
       try {
-        const content = await getIssueContextContent(worktreeId, ctx.number, activeWorktreePath)
-        setViewingContext({ type: 'issue', number: ctx.number, title: ctx.title, content })
+        const content = await getIssueContextContent(
+          worktreeId,
+          ctx.number,
+          activeWorktreePath
+        )
+        setViewingContext({
+          type: 'issue',
+          number: ctx.number,
+          title: ctx.title,
+          content,
+        })
       } catch (error) {
         toast.error(`Failed to load context: ${error}`)
       }
@@ -329,8 +507,17 @@ export const ChatToolbar = memo(function ChatToolbar({
     async (ctx: LoadedPullRequestContext) => {
       if (!worktreeId || !activeWorktreePath) return
       try {
-        const content = await getPRContextContent(worktreeId, ctx.number, activeWorktreePath)
-        setViewingContext({ type: 'pr', number: ctx.number, title: ctx.title, content })
+        const content = await getPRContextContent(
+          worktreeId,
+          ctx.number,
+          activeWorktreePath
+        )
+        setViewingContext({
+          type: 'pr',
+          number: ctx.number,
+          title: ctx.title,
+          content,
+        })
       } catch (error) {
         toast.error(`Failed to load context: ${error}`)
       }
@@ -380,73 +567,129 @@ export const ChatToolbar = memo(function ChatToolbar({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-56">
-            {/* Core section */}
-            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
-              Core
+            {/* Context section */}
+            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Context
             </div>
             <DropdownMenuItem onClick={onSaveContext}>
               <BookmarkPlus className="h-4 w-4" />
               Save Context
+              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                S
+              </span>
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onLoadContext}>
               <FolderOpen className="h-4 w-4" />
               Load Context
-              {(loadedIssueCount > 0 || loadedPRCount > 0 || loadedContextCount > 0) && (
-                <span className="ml-auto text-xs text-muted-foreground">
-                  {loadedIssueCount + loadedPRCount + loadedContextCount} loaded
-                </span>
-              )}
+              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                L
+              </span>
             </DropdownMenuItem>
 
             <DropdownMenuSeparator />
 
-            {/* Git section */}
-            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
-              Git
+            {/* Commit section */}
+            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Commit
             </div>
             <DropdownMenuItem onClick={onCommit}>
               <GitCommitHorizontal className="h-4 w-4" />
               Commit
+              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                C
+              </span>
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={onCommitAndPush}>
+              <GitCommitHorizontal className="h-4 w-4" />
+              Commit & Push
+              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                P
+              </span>
+            </DropdownMenuItem>
+
+            <DropdownMenuSeparator />
+
+            {/* Sync section */}
+            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Sync
+            </div>
+            <DropdownMenuItem onClick={handlePullClick}>
+              <ArrowDownToLine className="h-4 w-4" />
+              Pull
+              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                D
+              </span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handlePushClick}>
+              <ArrowUpToLine className="h-4 w-4" />
+              Push
+              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                U
+              </span>
+            </DropdownMenuItem>
+
+            <DropdownMenuSeparator />
+
+            {/* Pull Request section */}
+            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Pull Request
+            </div>
             <DropdownMenuItem onClick={onOpenPr}>
               <GitPullRequest className="h-4 w-4" />
-              Open PR
+              {hasOpenPr ? 'Open' : 'Create'}
+              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                O
+              </span>
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onReview}>
               <Eye className="h-4 w-4" />
               Review
+              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                R
+              </span>
             </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={onMerge}
-              disabled={isBaseSession || hasOpenPr}
-            >
+            <DropdownMenuItem onClick={onCheckoutPr}>
+              <GitBranch className="h-4 w-4" />
+              Checkout
+              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                K
+              </span>
+            </DropdownMenuItem>
+
+            <DropdownMenuSeparator />
+
+            {/* Branch section */}
+            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Branch
+            </div>
+            <DropdownMenuItem onClick={onMerge}>
               <GitMerge className="h-4 w-4" />
               Merge to Base
+              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                M
+              </span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onResolveConflicts}>
+              <GitMerge className="h-4 w-4" />
+              Resolve Conflicts
+              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                F
+              </span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onInvestigate}>
+              <Search className="h-4 w-4" />
+              Investigate Context
+              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                I
+              </span>
             </DropdownMenuItem>
 
             {/* Git stats section - conditional */}
-            {(hasBranchUpdates ||
-              uncommittedAdded > 0 ||
+            {(uncommittedAdded > 0 ||
               uncommittedRemoved > 0 ||
               branchDiffAdded > 0 ||
               branchDiffRemoved > 0 ||
               prUrl) && <DropdownMenuSeparator />}
-
-            {/* Pull button */}
-            {hasBranchUpdates && (
-              <DropdownMenuItem onClick={handlePullClick} disabled={isPulling}>
-                <ArrowDown className="h-4 w-4" />
-                Pull {behindCount} commit{behindCount === 1 ? '' : 's'}
-              </DropdownMenuItem>
-            )}
-
-            {/* Push button */}
-            {aheadCount > 0 && (
-              <DropdownMenuItem onClick={handlePushClick} disabled={isPushing}>
-                <ArrowUp className="h-4 w-4" />
-                Push {aheadCount} commit{aheadCount === 1 ? '' : 's'}
-              </DropdownMenuItem>
-            )}
 
             {/* Uncommitted diff */}
             {(uncommittedAdded > 0 || uncommittedRemoved > 0) && (
@@ -531,38 +774,74 @@ export const ChatToolbar = memo(function ChatToolbar({
               </DropdownMenuSubContent>
             </DropdownMenuSub>
 
-            {/* Thinking level as submenu */}
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                <Brain className="mr-2 h-4 w-4" />
-                <span>Thinking</span>
-                <span className="ml-auto text-xs text-muted-foreground">
-                  {thinkingOverrideActive
-                    ? 'Off'
-                    : THINKING_LEVEL_OPTIONS.find(
-                        o => o.value === selectedThinkingLevel
-                      )?.label}
-                </span>
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                <DropdownMenuRadioGroup
-                  value={thinkingOverrideActive ? 'off' : selectedThinkingLevel}
-                  onValueChange={handleThinkingLevelChange}
-                >
-                  {THINKING_LEVEL_OPTIONS.map(option => (
-                    <DropdownMenuRadioItem
-                      key={option.value}
-                      value={option.value}
-                    >
-                      {option.label}
-                      <span className="ml-auto pl-4 text-xs text-muted-foreground">
-                        {option.tokens}
-                      </span>
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
+            {/* Thinking/Effort level as submenu */}
+            {useAdaptiveThinking ? (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <Brain className="mr-2 h-4 w-4" />
+                  <span>Effort</span>
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {thinkingOverrideActive
+                      ? 'Off'
+                      : EFFORT_LEVEL_OPTIONS.find(
+                          o => o.value === selectedEffortLevel
+                        )?.label}
+                  </span>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuRadioGroup
+                    value={thinkingOverrideActive ? '' : selectedEffortLevel}
+                    onValueChange={handleEffortLevelChange}
+                  >
+                    {EFFORT_LEVEL_OPTIONS.map(option => (
+                      <DropdownMenuRadioItem
+                        key={option.value}
+                        value={option.value}
+                      >
+                        {option.label}
+                        <span className="ml-auto pl-4 text-xs text-muted-foreground">
+                          {option.description}
+                        </span>
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            ) : (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <Brain className="mr-2 h-4 w-4" />
+                  <span>Thinking</span>
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {thinkingOverrideActive
+                      ? 'Off'
+                      : THINKING_LEVEL_OPTIONS.find(
+                          o => o.value === selectedThinkingLevel
+                        )?.label}
+                  </span>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuRadioGroup
+                    value={
+                      thinkingOverrideActive ? 'off' : selectedThinkingLevel
+                    }
+                    onValueChange={handleThinkingLevelChange}
+                  >
+                    {THINKING_LEVEL_OPTIONS.map(option => (
+                      <DropdownMenuRadioItem
+                        key={option.value}
+                        value={option.value}
+                      >
+                        {option.label}
+                        <span className="ml-auto pl-4 text-xs text-muted-foreground">
+                          {option.tokens}
+                        </span>
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            )}
 
             {/* Execution mode as submenu */}
             <DropdownMenuSub>
@@ -600,17 +879,6 @@ export const ChatToolbar = memo(function ChatToolbar({
                 </DropdownMenuRadioGroup>
               </DropdownMenuSubContent>
             </DropdownMenuSub>
-
-            {/* Queue indicator */}
-            {queuedMessageCount > 0 && (
-              <>
-                <DropdownMenuSeparator />
-                <div className="flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground">
-                  <Clock className="h-4 w-4" />
-                  <span>{queuedMessageCount} queued</span>
-                </div>
-              </>
-            )}
           </DropdownMenuContent>
         </DropdownMenu>
 
@@ -631,7 +899,9 @@ export const ChatToolbar = memo(function ChatToolbar({
         </button>
 
         {/* Issue/PR/Context dropdown - desktop only */}
-        {(loadedIssueCount > 0 || loadedPRCount > 0 || loadedContextCount > 0) && (
+        {(loadedIssueCount > 0 ||
+          loadedPRCount > 0 ||
+          loadedContextCount > 0) && (
           <>
             <div className="hidden @md:block h-4 w-px bg-border/50" />
             <DropdownMenu>
@@ -644,8 +914,11 @@ export const ChatToolbar = memo(function ChatToolbar({
                   <span>
                     {loadedIssueCount > 0 &&
                       `${loadedIssueCount} Issue${loadedIssueCount > 1 ? 's' : ''}`}
-                    {loadedIssueCount > 0 && (loadedPRCount > 0 || loadedContextCount > 0) && ', '}
-                    {loadedPRCount > 0 && `${loadedPRCount} PR${loadedPRCount > 1 ? 's' : ''}`}
+                    {loadedIssueCount > 0 &&
+                      (loadedPRCount > 0 || loadedContextCount > 0) &&
+                      ', '}
+                    {loadedPRCount > 0 &&
+                      `${loadedPRCount} PR${loadedPRCount > 1 ? 's' : ''}`}
                     {loadedPRCount > 0 && loadedContextCount > 0 && ', '}
                     {loadedContextCount > 0 &&
                       `${loadedContextCount} Context${loadedContextCount > 1 ? 's' : ''}`}
@@ -660,12 +933,26 @@ export const ChatToolbar = memo(function ChatToolbar({
                     <DropdownMenuLabel className="text-xs text-muted-foreground">
                       Issues
                     </DropdownMenuLabel>
-                    {loadedIssueContexts.map((ctx) => (
-                      <DropdownMenuItem key={ctx.number} onClick={() => handleViewIssue(ctx)}>
+                    {loadedIssueContexts.map(ctx => (
+                      <DropdownMenuItem
+                        key={ctx.number}
+                        onClick={() => handleViewIssue(ctx)}
+                      >
                         <CircleDot className="h-4 w-4 text-green-500" />
                         <span className="truncate">
                           #{ctx.number} {ctx.title}
                         </span>
+                        <button
+                          className="ml-auto shrink-0 rounded p-0.5 hover:bg-accent"
+                          onClick={e => {
+                            e.stopPropagation()
+                            openExternal(
+                              `https://github.com/${ctx.repoOwner}/${ctx.repoName}/issues/${ctx.number}`
+                            )
+                          }}
+                        >
+                          <ExternalLink className="h-3.5 w-3.5 opacity-60" />
+                        </button>
                       </DropdownMenuItem>
                     ))}
                   </>
@@ -674,16 +961,32 @@ export const ChatToolbar = memo(function ChatToolbar({
                 {/* PRs section */}
                 {loadedPRContexts.length > 0 && (
                   <>
-                    {loadedIssueContexts.length > 0 && <DropdownMenuSeparator />}
+                    {loadedIssueContexts.length > 0 && (
+                      <DropdownMenuSeparator />
+                    )}
                     <DropdownMenuLabel className="text-xs text-muted-foreground">
                       Pull Requests
                     </DropdownMenuLabel>
-                    {loadedPRContexts.map((ctx) => (
-                      <DropdownMenuItem key={ctx.number} onClick={() => handleViewPR(ctx)}>
+                    {loadedPRContexts.map(ctx => (
+                      <DropdownMenuItem
+                        key={ctx.number}
+                        onClick={() => handleViewPR(ctx)}
+                      >
                         <GitPullRequest className="h-4 w-4 text-green-500" />
                         <span className="truncate">
                           #{ctx.number} {ctx.title}
                         </span>
+                        <button
+                          className="ml-auto shrink-0 rounded p-0.5 hover:bg-accent"
+                          onClick={e => {
+                            e.stopPropagation()
+                            openExternal(
+                              `https://github.com/${ctx.repoOwner}/${ctx.repoName}/pull/${ctx.number}`
+                            )
+                          }}
+                        >
+                          <ExternalLink className="h-3.5 w-3.5 opacity-60" />
+                        </button>
                       </DropdownMenuItem>
                     ))}
                   </>
@@ -692,13 +995,12 @@ export const ChatToolbar = memo(function ChatToolbar({
                 {/* Saved contexts section */}
                 {attachedSavedContexts.length > 0 && (
                   <>
-                    {(loadedIssueContexts.length > 0 || loadedPRContexts.length > 0) && (
-                      <DropdownMenuSeparator />
-                    )}
+                    {(loadedIssueContexts.length > 0 ||
+                      loadedPRContexts.length > 0) && <DropdownMenuSeparator />}
                     <DropdownMenuLabel className="text-xs text-muted-foreground">
                       Contexts
                     </DropdownMenuLabel>
-                    {attachedSavedContexts.map((ctx) => (
+                    {attachedSavedContexts.map(ctx => (
                       <DropdownMenuItem
                         key={ctx.slug}
                         onClick={() => handleViewSavedContext(ctx)}
@@ -721,107 +1023,146 @@ export const ChatToolbar = memo(function ChatToolbar({
           </>
         )}
 
-        {/* Pull button - shown when behind base branch (desktop only) */}
-        {hasBranchUpdates && (
-          <>
-            <div className="hidden @md:block h-4 w-px bg-border/50" />
-            <button
-              type="button"
-              className="hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-              onClick={handlePullClick}
-              disabled={isPulling}
-              title={`${behindCount} commit${behindCount === 1 ? '' : 's'} behind ${baseBranch}`}
-            >
-              <ArrowDown className="h-3.5 w-3.5" />
-              <span>Pull {behindCount}</span>
-            </button>
-          </>
-        )}
-
-        {/* Push button - shown when ahead of remote (desktop only) */}
-        {aheadCount > 0 && (
-          <>
-            <div className="hidden @md:block h-4 w-px bg-border/50" />
-            <button
-              type="button"
-              className="hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-orange-500 transition-colors hover:bg-muted/80 hover:text-orange-400 disabled:pointer-events-none disabled:opacity-50"
-              onClick={handlePushClick}
-              disabled={isPushing}
-              title={`${aheadCount} unpushed commit${aheadCount === 1 ? '' : 's'}`}
-            >
-              <ArrowUp className="h-3.5 w-3.5" />
-              <span>Push {aheadCount}</span>
-            </button>
-          </>
-        )}
-
-        {/* Uncommitted diff stats - desktop only */}
-        {(uncommittedAdded > 0 || uncommittedRemoved > 0) && (
-          <>
-            <div className="hidden @md:block h-4 w-px bg-border/50" />
-            <button
-              type="button"
-              className="hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground hover:bg-muted/80 transition-colors cursor-pointer"
-              title="Click to view uncommitted changes"
-              onClick={handleUncommittedDiffClick}
-            >
-              <Pencil className="h-3 w-3" />
-              <span className="text-green-500">+{uncommittedAdded}</span>
-              <span>/</span>
-              <span className="text-red-500">-{uncommittedRemoved}</span>
-            </button>
-          </>
-        )}
-
-        {/* Branch diff stats - desktop only */}
-        {(branchDiffAdded > 0 || branchDiffRemoved > 0) && (
-          <>
-            <div className="hidden @md:block h-4 w-px bg-border/50" />
-            <button
-              type="button"
-              className="hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground hover:bg-muted/80 transition-colors cursor-pointer"
-              title={`Click to view diff vs ${baseBranch}`}
-              onClick={handleBranchDiffClick}
-            >
-              <GitBranch className="h-3 w-3" />
-              <span className="text-green-500">+{branchDiffAdded}</span>
-              <span>/</span>
-              <span className="text-red-500">-{branchDiffRemoved}</span>
-            </button>
-          </>
-        )}
-
         {/* PR link indicator - desktop only */}
         {prUrl && prNumber && (
           <>
             <div className="hidden @md:block h-4 w-px bg-border/50" />
-            <a
-              href={prUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={cn(
-                'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm transition-colors select-none hover:bg-muted/80 hover:text-foreground',
-                displayStatus
-                  ? getPrStatusDisplay(displayStatus).className
-                  : 'text-muted-foreground'
-              )}
-              title={`Open PR #${prNumber} on GitHub`}
-            >
-              {displayStatus === 'merged' ? (
-                <GitMerge className="h-3.5 w-3.5" />
-              ) : (
-                <GitPullRequest className="h-3.5 w-3.5" />
-              )}
-              <span>
-                {displayStatus
-                  ? getPrStatusDisplay(displayStatus).label
-                  : 'Open'}{' '}
-                #{prNumber}
-              </span>
-              <CheckStatusIcon status={checkStatus ?? null} />
-            </a>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <a
+                  href={prUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={cn(
+                    'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm transition-colors select-none hover:bg-muted/80 hover:text-foreground',
+                    displayStatus
+                      ? getPrStatusDisplay(displayStatus).className
+                      : 'text-muted-foreground'
+                  )}
+                >
+                  {displayStatus === 'merged' ? (
+                    <GitMerge className="h-3.5 w-3.5" />
+                  ) : (
+                    <GitPullRequest className="h-3.5 w-3.5" />
+                  )}
+                  <span>
+                    {displayStatus
+                      ? getPrStatusDisplay(displayStatus).label
+                      : 'Open'}{' '}
+                    #{prNumber}
+                  </span>
+                  <CheckStatusIcon status={checkStatus ?? null} />
+                </a>
+              </TooltipTrigger>
+              <TooltipContent>{`Open PR #${prNumber} on GitHub`}</TooltipContent>
+            </Tooltip>
           </>
         )}
+
+        {/* PR conflicts indicator - desktop only */}
+        {mergeableStatus === 'conflicting' && (
+          <>
+            <div className="hidden @md:block h-4 w-px bg-border/50" />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className="hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-amber-600 dark:text-amber-400 transition-colors cursor-pointer hover:bg-muted/80"
+                  onClick={onResolvePrConflicts}
+                >
+                  <GitMerge className="h-3 w-3" />
+                  <span>Conflicts</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>PR has merge conflicts — click to resolve</TooltipContent>
+            </Tooltip>
+          </>
+        )}
+
+        {/* MCP servers button - desktop only */}
+        <div className="hidden @md:block h-4 w-px bg-border/50" />
+        <DropdownMenu open={mcpDropdownOpen} onOpenChange={setMcpDropdownOpen}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  disabled={hasPendingQuestions}
+                  className={cn(
+                    'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
+                    activeMcpCount > 0 &&
+                      'border border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:border-emerald-400/40 dark:bg-emerald-500/10 dark:text-emerald-400'
+                  )}
+                >
+                  <Plug className="h-3.5 w-3.5" />
+                  {activeMcpCount > 0 && (
+                    <span>{activeMcpCount}</span>
+                  )}
+                  <ChevronDown className="h-3 w-3 opacity-50" />
+                </button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent>
+              {activeMcpCount > 0
+                ? `${activeMcpCount} MCP server(s) enabled`
+                : 'No MCP servers enabled'}
+            </TooltipContent>
+          </Tooltip>
+          <DropdownMenuContent align="start">
+            <DropdownMenuLabel className="flex items-center gap-2">
+              MCP Servers
+              {isHealthChecking && (
+                <Loader2 className="size-3 animate-spin text-muted-foreground" />
+              )}
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {availableMcpServers.length > 0 ? (
+              availableMcpServers.map(server => {
+                const status = healthResult?.statuses[server.name]
+                return (
+                  <Tooltip key={server.name}>
+                    <TooltipTrigger asChild>
+                      <DropdownMenuCheckboxItem
+                        checked={
+                          !server.disabled &&
+                          enabledMcpServers.includes(server.name)
+                        }
+                        onCheckedChange={() => onToggleMcpServer(server.name)}
+                        disabled={server.disabled}
+                        className={server.disabled ? 'opacity-50' : undefined}
+                      >
+                    <span className="flex items-center gap-1.5">
+                      <McpStatusDot status={status} />
+                      {server.name}
+                    </span>
+                    <span className="ml-auto pl-4 text-xs text-muted-foreground">
+                      {server.disabled ? 'disabled' : server.scope}
+                    </span>
+                      </DropdownMenuCheckboxItem>
+                    </TooltipTrigger>
+                    <TooltipContent side="left">{mcpStatusHint(status)}</TooltipContent>
+                  </Tooltip>
+                )
+              })
+            ) : (
+              <DropdownMenuItem disabled>
+                <span className="text-xs text-muted-foreground">
+                  No MCP servers configured
+                </span>
+              </DropdownMenuItem>
+            )}
+            {onOpenProjectSettings && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={onOpenProjectSettings}>
+                  <span className="text-xs text-muted-foreground">
+                    Set defaults in project settings
+                  </span>
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         {/* Divider - desktop only */}
         <div className="hidden @md:block h-4 w-px bg-border/50" />
@@ -848,80 +1189,145 @@ export const ChatToolbar = memo(function ChatToolbar({
         {/* Divider - desktop only */}
         <div className="hidden @md:block h-4 w-px bg-border/50" />
 
-        {/* Thinking level dropdown - desktop only */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              disabled={hasPendingQuestions}
-              className={cn(
-                'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
-                selectedThinkingLevel !== 'off' &&
-                  !thinkingOverrideActive &&
-                  'rounded border border-dashed border-purple-500 bg-purple-500/10 text-purple-700 dark:border-purple-400/60 dark:bg-purple-500/10 dark:text-purple-400'
-              )}
-              title={
-                thinkingOverrideActive
-                  ? `Thinking disabled in ${executionMode} mode (change in Settings)`
-                  : `Thinking: ${THINKING_LEVEL_OPTIONS.find(o => o.value === selectedThinkingLevel)?.label}`
-              }
-            >
-              <Brain className="h-3.5 w-3.5" />
-              <span>
+        {/* Thinking/Effort level dropdown - desktop only */}
+        {useAdaptiveThinking ? (
+          <DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    disabled={hasPendingQuestions}
+                    className={cn(
+                      'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
+                      !thinkingOverrideActive &&
+                        'border border-purple-500/50 bg-purple-500/10 text-purple-700 dark:border-purple-400/40 dark:bg-purple-500/10 dark:text-purple-400'
+                    )}
+                  >
+                    <Brain className="h-3.5 w-3.5" />
+                    <span>
+                      {thinkingOverrideActive
+                        ? 'Off'
+                        : EFFORT_LEVEL_OPTIONS.find(
+                            o => o.value === selectedEffortLevel
+                          )?.label}
+                    </span>
+                    <ChevronDown className="h-3 w-3 opacity-50" />
+                  </button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent>
                 {thinkingOverrideActive
-                  ? 'Off'
-                  : THINKING_LEVEL_OPTIONS.find(
-                      o => o.value === selectedThinkingLevel
-                    )?.label}
-              </span>
-              <ChevronDown className="h-3 w-3 opacity-50" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuRadioGroup
-              value={thinkingOverrideActive ? 'off' : selectedThinkingLevel}
-              onValueChange={handleThinkingLevelChange}
-            >
-              {THINKING_LEVEL_OPTIONS.map(option => (
-                <DropdownMenuRadioItem key={option.value} value={option.value}>
-                  <Brain className="mr-2 h-4 w-4" />
-                  {option.label}
-                  <span className="ml-auto pl-4 text-xs text-muted-foreground">
-                    {option.tokens}
-                  </span>
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
+                  ? `Effort disabled in ${executionMode} mode (change in Settings)`
+                  : `Effort: ${EFFORT_LEVEL_OPTIONS.find(o => o.value === selectedEffortLevel)?.label}`}
+              </TooltipContent>
+            </Tooltip>
+            <DropdownMenuContent align="start">
+              <DropdownMenuRadioGroup
+                value={thinkingOverrideActive ? '' : selectedEffortLevel}
+                onValueChange={handleEffortLevelChange}
+              >
+                {EFFORT_LEVEL_OPTIONS.map(option => (
+                  <DropdownMenuRadioItem
+                    key={option.value}
+                    value={option.value}
+                  >
+                    <Brain className="mr-2 h-4 w-4" />
+                    {option.label}
+                    <span className="ml-auto pl-4 text-xs text-muted-foreground">
+                      {option.description}
+                    </span>
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    disabled={hasPendingQuestions}
+                    className={cn(
+                      'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
+                      selectedThinkingLevel !== 'off' &&
+                        !thinkingOverrideActive &&
+                        'border border-purple-500/50 bg-purple-500/10 text-purple-700 dark:border-purple-400/40 dark:bg-purple-500/10 dark:text-purple-400'
+                    )}
+                  >
+                    <Brain className="h-3.5 w-3.5" />
+                    <span>
+                      {thinkingOverrideActive
+                        ? 'Off'
+                        : THINKING_LEVEL_OPTIONS.find(
+                            o => o.value === selectedThinkingLevel
+                          )?.label}
+                    </span>
+                    <ChevronDown className="h-3 w-3 opacity-50" />
+                  </button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent>
+                {thinkingOverrideActive
+                  ? `Thinking disabled in ${executionMode} mode (change in Settings)`
+                  : `Thinking: ${THINKING_LEVEL_OPTIONS.find(o => o.value === selectedThinkingLevel)?.label}`}
+              </TooltipContent>
+            </Tooltip>
+            <DropdownMenuContent align="start">
+              <DropdownMenuRadioGroup
+                value={thinkingOverrideActive ? 'off' : selectedThinkingLevel}
+                onValueChange={handleThinkingLevelChange}
+              >
+                {THINKING_LEVEL_OPTIONS.map(option => (
+                  <DropdownMenuRadioItem
+                    key={option.value}
+                    value={option.value}
+                  >
+                    <Brain className="mr-2 h-4 w-4" />
+                    {option.label}
+                    <span className="ml-auto pl-4 text-xs text-muted-foreground">
+                      {option.tokens}
+                    </span>
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
 
         {/* Divider - desktop only */}
         <div className="hidden @md:block h-4 w-px bg-border/50" />
 
         {/* Execution mode dropdown - desktop only */}
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              disabled={hasPendingQuestions}
-              className={cn(
-                'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
-                executionMode === 'plan' &&
-                  'rounded border border-dashed border-yellow-600 bg-yellow-500/10 text-yellow-700 dark:border-yellow-500/60 dark:bg-yellow-500/10 dark:text-yellow-400',
-                executionMode === 'yolo' &&
-                  'rounded border border-dashed border-red-500 bg-red-500/10 text-red-600 dark:text-red-400'
-              )}
-              title={`${executionMode.charAt(0).toUpperCase() + executionMode.slice(1)} mode (Shift+Tab to cycle)`}
-            >
-              {executionMode === 'plan' && (
-                <ClipboardList className="h-3.5 w-3.5" />
-              )}
-              {executionMode === 'build' && <Hammer className="h-3.5 w-3.5" />}
-              {executionMode === 'yolo' && <Zap className="h-3.5 w-3.5" />}
-              <span className="capitalize">{executionMode}</span>
-              <ChevronDown className="h-3 w-3 opacity-50" />
-            </button>
-          </DropdownMenuTrigger>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  disabled={hasPendingQuestions}
+                  className={cn(
+                    'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
+                    executionMode === 'plan' &&
+                      'border border-yellow-600/50 bg-yellow-500/10 text-yellow-700 dark:border-yellow-500/40 dark:bg-yellow-500/10 dark:text-yellow-400',
+                    executionMode === 'yolo' &&
+                      'border border-red-500/50 bg-red-500/10 text-red-600 dark:border-red-400/40 dark:text-red-400'
+                  )}
+                >
+                  {executionMode === 'plan' && (
+                    <ClipboardList className="h-3.5 w-3.5" />
+                  )}
+                  {executionMode === 'build' && <Hammer className="h-3.5 w-3.5" />}
+                  {executionMode === 'yolo' && <Zap className="h-3.5 w-3.5" />}
+                  <span className="capitalize">{executionMode}</span>
+                  <ChevronDown className="h-3 w-3 opacity-50" />
+                </button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent>{`${executionMode.charAt(0).toUpperCase() + executionMode.slice(1)} mode (Shift+Tab to cycle)`}</TooltipContent>
+          </Tooltip>
           <DropdownMenuContent align="start">
             <DropdownMenuRadioGroup
               value={executionMode}
@@ -954,64 +1360,61 @@ export const ChatToolbar = memo(function ChatToolbar({
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* Queue indicator - desktop only */}
-        {queuedMessageCount > 0 && (
-          <>
-            <div className="hidden @md:block h-4 w-px bg-border/50" />
-            <div className="hidden @md:flex h-8 items-center gap-1.5 px-2 text-sm text-muted-foreground">
-              <Clock className="h-3 w-3" />
-              <span>{queuedMessageCount} queued</span>
-            </div>
-          </>
-        )}
-
         {/* Divider */}
         <div className="h-4 w-px bg-border/50" />
 
         {/* Send/Cancel button */}
         {isSending ? (
-          <button
-            type="button"
-            onClick={onCancel}
-            className="flex h-8 items-center justify-center gap-1.5 rounded-r-lg px-3 text-sm transition-colors bg-primary text-primary-foreground hover:bg-primary/90"
-            title="Cancel (Cmd+Option+Backspace)"
-          >
-            <span>Cancel</span>
-            <Kbd className="ml-0.5 h-4 text-[10px] bg-primary-foreground/20 text-primary-foreground">
-              {navigator.platform.includes('Mac') ? '⌘⌥⌫' : 'Ctrl+Alt+⌫'}
-            </Kbd>
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={onCancel}
+                className="flex h-8 items-center justify-center gap-1.5 rounded-r-lg px-3 text-sm transition-colors bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                <span>Cancel</span>
+                <Kbd className="ml-0.5 h-4 text-[10px] bg-primary-foreground/20 text-primary-foreground">
+                  {isMacOS ? `${getModifierSymbol()}⌥⌫` : 'Ctrl+Alt+⌫'}
+                </Kbd>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>{`Cancel (${isMacOS ? `${getModifierSymbol()}+Option+Backspace` : 'Ctrl+Alt+Backspace'})`}</TooltipContent>
+          </Tooltip>
         ) : (
-          <button
-            type="submit"
-            disabled={hasPendingQuestions || !canSend}
-            className={cn(
-              'flex h-8 items-center justify-center gap-1.5 rounded-r-lg px-3 text-sm transition-colors disabled:pointer-events-none disabled:opacity-50',
-              canSend
-                ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                : 'text-muted-foreground hover:bg-muted/80 hover:text-foreground'
-            )}
-            title="Send message (Enter)"
-          >
-            <Send className="h-3.5 w-3.5" />
-            <Kbd
-              className={cn(
-                'ml-0.5 h-4 text-[10px]',
-                canSend
-                  ? 'bg-primary-foreground/20 text-primary-foreground'
-                  : 'opacity-50'
-              )}
-            >
-              Enter
-            </Kbd>
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="submit"
+                disabled={hasPendingQuestions || !canSend}
+                className={cn(
+                  'flex h-8 items-center justify-center gap-1.5 rounded-r-lg px-3 text-sm transition-colors disabled:pointer-events-none disabled:opacity-50',
+                  canSend
+                    ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                    : 'text-muted-foreground hover:bg-muted/80 hover:text-foreground'
+                )}
+              >
+                <Send className="h-3.5 w-3.5" />
+                <Kbd
+                  className={cn(
+                    'ml-0.5 h-4 text-[10px]',
+                    canSend
+                      ? 'bg-primary-foreground/20 text-primary-foreground'
+                      : 'opacity-50'
+                  )}
+                >
+                  Enter
+                </Kbd>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Send message (Enter)</TooltipContent>
+          </Tooltip>
         )}
       </div>
 
       {/* Context viewer dialog */}
       {viewingContext && (
         <Dialog open={true} onOpenChange={() => setViewingContext(null)}>
-          <DialogContent className="!max-w-[calc(100vw-8rem)] !w-[calc(100vw-8rem)] !h-[calc(100vh-8rem)] flex flex-col">
+          <DialogContent className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none sm:!w-[calc(100vw-8rem)] sm:!max-w-[calc(100vw-8rem)] sm:!h-[calc(100vh-8rem)] sm:!rounded-lg flex flex-col">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 {viewingContext.type === 'issue' && (
@@ -1028,9 +1431,7 @@ export const ChatToolbar = memo(function ChatToolbar({
               </DialogTitle>
             </DialogHeader>
             <ScrollArea className="flex-1 min-h-0">
-              <pre className="text-xs font-mono whitespace-pre-wrap p-4 bg-muted rounded-md">
-                {viewingContext.content}
-              </pre>
+              <Markdown className="p-4">{viewingContext.content}</Markdown>
             </ScrollArea>
           </DialogContent>
         </Dialog>

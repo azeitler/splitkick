@@ -48,12 +48,22 @@ pub fn spawn_terminal(
     let mut cmd = if let Some(ref run_command) = command {
         // Run the command in shell, then keep shell open for inspection
         let mut c = CommandBuilder::new(&shell);
-        c.arg("-c");
-        // Run the command; if it exits, show message and wait for user
-        // Note: Caller is responsible for properly quoting paths with spaces
-        c.arg(format!(
-            "{run_command}; echo ''; echo '[Command finished. Press Ctrl+D to close]'; cat"
-        ));
+        #[cfg(windows)]
+        {
+            c.arg("-Command");
+            c.arg(format!(
+                "{run_command}; Write-Host ''; Write-Host '[Command finished. Press Ctrl+D to close]'; Read-Host"
+            ));
+        }
+        #[cfg(not(windows))]
+        {
+            c.arg("-c");
+            // Run the command; if it exits, show message and wait for user
+            // Note: Caller is responsible for properly quoting paths with spaces
+            c.arg(format!(
+                "{run_command}; echo ''; echo '[Command finished. Press Ctrl+D to close]'; cat"
+            ));
+        }
         c
     } else {
         CommandBuilder::new(&shell)

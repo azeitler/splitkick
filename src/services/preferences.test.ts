@@ -2,12 +2,20 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement } from 'react'
-import { usePreferences, useSavePreferences, preferencesQueryKeys } from './preferences'
+import {
+  usePreferences,
+  useSavePreferences,
+  preferencesQueryKeys,
+} from './preferences'
 import type { AppPreferences } from '@/types/preferences'
-import { FONT_SIZE_DEFAULT, DEFAULT_MAGIC_PROMPTS } from '@/types/preferences'
+import {
+  FONT_SIZE_DEFAULT,
+  DEFAULT_MAGIC_PROMPTS,
+  DEFAULT_MAGIC_PROMPT_MODELS,
+} from '@/types/preferences'
 import { DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 
-vi.mock('@tauri-apps/api/core', () => ({
+vi.mock('@/lib/transport', () => ({
   invoke: vi.fn(),
 }))
 
@@ -37,8 +45,10 @@ const createTestQueryClient = () =>
   })
 
 const createWrapper = (queryClient: QueryClient) => {
-  return ({ children }: { children: React.ReactNode }) =>
+  const Wrapper = ({ children }: { children: React.ReactNode }) =>
     createElement(QueryClientProvider, { client: queryClient }, children)
+  Wrapper.displayName = 'TestQueryClientWrapper'
+  return Wrapper
 }
 
 describe('preferences service', () => {
@@ -66,7 +76,7 @@ describe('preferences service', () => {
 
   describe('usePreferences', () => {
     it('loads preferences from backend', async () => {
-      const { invoke } = await import('@tauri-apps/api/core')
+      const { invoke } = await import('@/lib/transport')
       const mockPreferences: AppPreferences = {
         theme: 'dark',
         selected_model: 'opus',
@@ -90,9 +100,31 @@ describe('preferences service', () => {
         syntax_theme_light: 'github-light',
         disable_thinking_in_non_plan_modes: true,
         session_recap_enabled: false,
+        session_recap_model: 'haiku',
         parallel_execution_prompt_enabled: false,
         magic_prompts: DEFAULT_MAGIC_PROMPTS,
+        magic_prompt_models: DEFAULT_MAGIC_PROMPT_MODELS,
         file_edit_mode: 'external',
+        ai_language: '',
+        allow_web_tools_in_plan_mode: true,
+        waiting_sound: 'none',
+        review_sound: 'none',
+        http_server_enabled: false,
+        http_server_port: 3456,
+        http_server_token: null,
+        http_server_auto_start: false,
+        http_server_localhost_only: true,
+        http_server_token_required: true,
+        auto_archive_on_pr_merged: true,
+        canvas_enabled: true,
+        canvas_only_mode: false,
+        show_keybinding_hints: true,
+        debug_mode_enabled: false,
+        default_effort_level: 'high',
+        default_enabled_mcp_servers: [],
+        has_seen_feature_tour: false,
+        chrome_enabled: true,
+        zoom_level: 100,
       }
       vi.mocked(invoke).mockResolvedValueOnce(mockPreferences)
 
@@ -121,7 +153,7 @@ describe('preferences service', () => {
     })
 
     it('returns defaults on backend error', async () => {
-      const { invoke } = await import('@tauri-apps/api/core')
+      const { invoke } = await import('@/lib/transport')
       vi.mocked(invoke).mockRejectedValueOnce(new Error('File not found'))
 
       const { result } = renderHook(() => usePreferences(), {
@@ -134,7 +166,7 @@ describe('preferences service', () => {
     })
 
     it('migrates old keybindings to new defaults', async () => {
-      const { invoke } = await import('@tauri-apps/api/core')
+      const { invoke } = await import('@/lib/transport')
       const prefsWithOldBinding: AppPreferences = {
         theme: 'dark',
         selected_model: 'opus',
@@ -161,9 +193,31 @@ describe('preferences service', () => {
         syntax_theme_light: 'github-light',
         disable_thinking_in_non_plan_modes: true,
         session_recap_enabled: false,
+        session_recap_model: 'haiku',
         parallel_execution_prompt_enabled: false,
         magic_prompts: DEFAULT_MAGIC_PROMPTS,
+        magic_prompt_models: DEFAULT_MAGIC_PROMPT_MODELS,
         file_edit_mode: 'external',
+        ai_language: '',
+        allow_web_tools_in_plan_mode: true,
+        waiting_sound: 'none',
+        review_sound: 'none',
+        http_server_enabled: false,
+        http_server_port: 3456,
+        http_server_token: null,
+        http_server_auto_start: false,
+        http_server_localhost_only: true,
+        http_server_token_required: true,
+        auto_archive_on_pr_merged: true,
+        canvas_enabled: true,
+        canvas_only_mode: false,
+        show_keybinding_hints: true,
+        debug_mode_enabled: false,
+        default_effort_level: 'high',
+        default_enabled_mcp_servers: [],
+        has_seen_feature_tour: false,
+        chrome_enabled: true,
+        zoom_level: 100,
       }
       vi.mocked(invoke).mockResolvedValueOnce(prefsWithOldBinding)
 
@@ -174,13 +228,15 @@ describe('preferences service', () => {
       await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
       // Should migrate to new default
-      expect(result.current.data?.keybindings?.toggle_left_sidebar).toBe('mod+b')
+      expect(result.current.data?.keybindings?.toggle_left_sidebar).toBe(
+        'mod+b'
+      )
     })
   })
 
   describe('useSavePreferences', () => {
     it('saves preferences to backend', async () => {
-      const { invoke } = await import('@tauri-apps/api/core')
+      const { invoke } = await import('@/lib/transport')
       const { toast } = await import('sonner')
       vi.mocked(invoke).mockResolvedValueOnce(undefined)
 
@@ -207,9 +263,31 @@ describe('preferences service', () => {
         syntax_theme_light: 'github-light',
         disable_thinking_in_non_plan_modes: false,
         session_recap_enabled: false,
+        session_recap_model: 'haiku',
         parallel_execution_prompt_enabled: false,
         magic_prompts: DEFAULT_MAGIC_PROMPTS,
+        magic_prompt_models: DEFAULT_MAGIC_PROMPT_MODELS,
         file_edit_mode: 'external',
+        ai_language: '',
+        allow_web_tools_in_plan_mode: true,
+        waiting_sound: 'none',
+        review_sound: 'none',
+        http_server_enabled: false,
+        http_server_port: 3456,
+        http_server_token: null,
+        http_server_auto_start: false,
+        http_server_localhost_only: true,
+        http_server_token_required: true,
+        auto_archive_on_pr_merged: true,
+        canvas_enabled: true,
+        canvas_only_mode: false,
+        show_keybinding_hints: true,
+        debug_mode_enabled: false,
+        default_effort_level: 'high',
+        default_enabled_mcp_servers: [],
+        has_seen_feature_tour: false,
+        chrome_enabled: true,
+        zoom_level: 100,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -220,12 +298,14 @@ describe('preferences service', () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-      expect(invoke).toHaveBeenCalledWith('save_preferences', { preferences: newPrefs })
+      expect(invoke).toHaveBeenCalledWith('save_preferences', {
+        preferences: newPrefs,
+      })
       expect(toast.success).toHaveBeenCalledWith('Preferences saved')
     })
 
     it('updates cache on success', async () => {
-      const { invoke } = await import('@tauri-apps/api/core')
+      const { invoke } = await import('@/lib/transport')
       vi.mocked(invoke).mockResolvedValueOnce(undefined)
 
       const newPrefs: AppPreferences = {
@@ -251,9 +331,31 @@ describe('preferences service', () => {
         syntax_theme_light: 'github-light',
         disable_thinking_in_non_plan_modes: true,
         session_recap_enabled: false,
+        session_recap_model: 'haiku',
         parallel_execution_prompt_enabled: false,
         magic_prompts: DEFAULT_MAGIC_PROMPTS,
+        magic_prompt_models: DEFAULT_MAGIC_PROMPT_MODELS,
         file_edit_mode: 'external',
+        ai_language: '',
+        allow_web_tools_in_plan_mode: true,
+        waiting_sound: 'none',
+        review_sound: 'none',
+        http_server_enabled: false,
+        http_server_port: 3456,
+        http_server_token: null,
+        http_server_auto_start: false,
+        http_server_localhost_only: true,
+        http_server_token_required: true,
+        auto_archive_on_pr_merged: true,
+        canvas_enabled: true,
+        canvas_only_mode: false,
+        show_keybinding_hints: true,
+        debug_mode_enabled: false,
+        default_effort_level: 'high',
+        default_enabled_mcp_servers: [],
+        has_seen_feature_tour: false,
+        chrome_enabled: true,
+        zoom_level: 100,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -264,12 +366,14 @@ describe('preferences service', () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-      const cached = queryClient.getQueryData(preferencesQueryKeys.preferences())
+      const cached = queryClient.getQueryData(
+        preferencesQueryKeys.preferences()
+      )
       expect(cached).toEqual(newPrefs)
     })
 
     it('skips persistence when not in Tauri context', async () => {
-      const { invoke } = await import('@tauri-apps/api/core')
+      const { invoke } = await import('@/lib/transport')
       delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__
 
       const newPrefs: AppPreferences = {
@@ -295,9 +399,31 @@ describe('preferences service', () => {
         syntax_theme_light: 'github-light',
         disable_thinking_in_non_plan_modes: true,
         session_recap_enabled: false,
+        session_recap_model: 'haiku',
         parallel_execution_prompt_enabled: false,
         magic_prompts: DEFAULT_MAGIC_PROMPTS,
+        magic_prompt_models: DEFAULT_MAGIC_PROMPT_MODELS,
         file_edit_mode: 'external',
+        ai_language: '',
+        allow_web_tools_in_plan_mode: true,
+        waiting_sound: 'none',
+        review_sound: 'none',
+        http_server_enabled: false,
+        http_server_port: 3456,
+        http_server_token: null,
+        http_server_auto_start: false,
+        http_server_localhost_only: true,
+        http_server_token_required: true,
+        auto_archive_on_pr_merged: true,
+        canvas_enabled: true,
+        canvas_only_mode: false,
+        show_keybinding_hints: true,
+        debug_mode_enabled: false,
+        default_effort_level: 'high',
+        default_enabled_mcp_servers: [],
+        has_seen_feature_tour: false,
+        chrome_enabled: true,
+        zoom_level: 100,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -312,7 +438,7 @@ describe('preferences service', () => {
     })
 
     it('shows error toast on failure', async () => {
-      const { invoke } = await import('@tauri-apps/api/core')
+      const { invoke } = await import('@/lib/transport')
       const { toast } = await import('sonner')
       vi.mocked(invoke).mockRejectedValueOnce(new Error('Save failed'))
 
@@ -339,9 +465,31 @@ describe('preferences service', () => {
         syntax_theme_light: 'github-light',
         disable_thinking_in_non_plan_modes: true,
         session_recap_enabled: false,
+        session_recap_model: 'haiku',
         parallel_execution_prompt_enabled: false,
         magic_prompts: DEFAULT_MAGIC_PROMPTS,
+        magic_prompt_models: DEFAULT_MAGIC_PROMPT_MODELS,
         file_edit_mode: 'external',
+        ai_language: '',
+        allow_web_tools_in_plan_mode: true,
+        waiting_sound: 'none',
+        review_sound: 'none',
+        http_server_enabled: false,
+        http_server_port: 3456,
+        http_server_token: null,
+        http_server_auto_start: false,
+        http_server_localhost_only: true,
+        http_server_token_required: true,
+        auto_archive_on_pr_merged: true,
+        canvas_enabled: true,
+        canvas_only_mode: false,
+        show_keybinding_hints: true,
+        debug_mode_enabled: false,
+        default_effort_level: 'high',
+        default_enabled_mcp_servers: [],
+        has_seen_feature_tour: false,
+        chrome_enabled: true,
+        zoom_level: 100,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {

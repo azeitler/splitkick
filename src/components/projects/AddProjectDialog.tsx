@@ -1,6 +1,7 @@
-import { useCallback } from 'react'
-import { open, save } from '@tauri-apps/plugin-dialog'
+import { useCallback, useEffect } from 'react'
 import { toast } from 'sonner'
+import { isNativeApp } from '@/lib/environment'
+import { invoke } from '@/lib/transport'
 import { FolderOpen, FolderPlus } from 'lucide-react'
 import {
   Dialog,
@@ -9,18 +10,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Kbd } from '@/components/ui/kbd'
 import { useProjectsStore } from '@/store/projects-store'
-import { useAddProject, useInitProject, isTauri } from '@/services/projects'
+import { useAddProject, useInitProject } from '@/services/projects'
 
 export function AddProjectDialog() {
-  const { addProjectDialogOpen, addProjectParentFolderId, setAddProjectDialogOpen } = useProjectsStore()
+  const {
+    addProjectDialogOpen,
+    addProjectParentFolderId,
+    setAddProjectDialogOpen,
+  } = useProjectsStore()
   const addProject = useAddProject()
   const initProject = useInitProject()
 
   const isPending = addProject.isPending || initProject.isPending
 
   const handleAddExisting = useCallback(async () => {
-    if (!isTauri()) {
+    if (!isNativeApp()) {
       toast.error('Not running in Tauri', {
         description:
           'Run the app with "npm run tauri:dev" to use native features.',
@@ -29,6 +35,7 @@ export function AddProjectDialog() {
     }
 
     try {
+      const { open } = await import('@tauri-apps/plugin-dialog')
       const selected = await open({
         directory: true,
         multiple: false,
@@ -73,7 +80,7 @@ export function AddProjectDialog() {
   }, [addProject, addProjectParentFolderId, setAddProjectDialogOpen])
 
   const handleInitNew = useCallback(async () => {
-    if (!isTauri()) {
+    if (!isNativeApp()) {
       toast.error('Not running in Tauri', {
         description:
           'Run the app with "npm run tauri:dev" to use native features.',
@@ -83,12 +90,29 @@ export function AddProjectDialog() {
 
     try {
       // Use save dialog to let user pick location and name for new project
+      const { save } = await import('@tauri-apps/plugin-dialog')
       const selected = await save({
         title: 'Create new project',
         defaultPath: 'my-project',
       })
 
       if (selected && typeof selected === 'string') {
+        // Check if git identity is configured before init (commit requires it)
+        try {
+          const identity = await invoke<{
+            name: string | null
+            email: string | null
+          }>('check_git_identity')
+          if (!identity.name || !identity.email) {
+            // Identity not configured - route through GitInitModal which handles identity setup
+            const { openGitInitModal } = useProjectsStore.getState()
+            openGitInitModal(selected)
+            return
+          }
+        } catch {
+          // If check fails, try anyway and let the error surface naturally
+        }
+
         await initProject.mutateAsync({
           path: selected,
           parentId: addProjectParentFolderId ?? undefined,
@@ -103,6 +127,22 @@ export function AddProjectDialog() {
       // Other errors handled by mutation
     }
   }, [initProject, addProjectParentFolderId, setAddProjectDialogOpen])
+
+  // Keyboard shortcuts: A = add existing, I = initialize new
+  useEffect(() => {
+    if (!addProjectDialogOpen || isPending) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'a' || e.key === 'A') {
+        e.preventDefault()
+        handleAddExisting()
+      } else if (e.key === 'i' || e.key === 'I') {
+        e.preventDefault()
+        handleInitNew()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [addProjectDialogOpen, isPending, handleAddExisting, handleInitNew])
 
   return (
     <Dialog open={addProjectDialogOpen} onOpenChange={setAddProjectDialogOpen}>
@@ -123,7 +163,7 @@ export function AddProjectDialog() {
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
               <FolderOpen className="h-5 w-5 text-muted-foreground" />
             </div>
-            <div className="space-y-1">
+            <div className="flex-1 space-y-1">
               <p className="text-sm font-medium leading-none">
                 Add Existing Project
               </p>
@@ -131,6 +171,7 @@ export function AddProjectDialog() {
                 Select a git repository from your computer
               </p>
             </div>
+            <Kbd className="mt-1 h-6 px-1.5 text-xs shrink-0">A</Kbd>
           </button>
 
           <button
@@ -141,7 +182,7 @@ export function AddProjectDialog() {
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
               <FolderPlus className="h-5 w-5 text-muted-foreground" />
             </div>
-            <div className="space-y-1">
+            <div className="flex-1 space-y-1">
               <p className="text-sm font-medium leading-none">
                 Initialize New Project
               </p>
@@ -149,6 +190,7 @@ export function AddProjectDialog() {
                 Create a new directory with git initialized
               </p>
             </div>
+            <Kbd className="mt-1 h-6 px-1.5 text-xs shrink-0">I</Kbd>
           </button>
         </div>
       </DialogContent>

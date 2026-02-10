@@ -1,174 +1,79 @@
 import { useEffect, useRef, useCallback } from 'react'
-import { Terminal } from '@xterm/xterm'
-import { FitAddon } from '@xterm/addon-fit'
-import { invoke } from '@tauri-apps/api/core'
-import { listen, type UnlistenFn } from '@tauri-apps/api/event'
-import { useTerminalStore } from '@/store/terminal-store'
-import type {
-  TerminalOutputEvent,
-  TerminalStartedEvent,
-  TerminalStoppedEvent,
-} from '@/types/terminal'
+import {
+  getOrCreateTerminal,
+  attachToContainer,
+  detachFromContainer,
+  fitTerminal,
+  focusTerminal,
+} from '@/lib/terminal-instances'
 
 interface UseTerminalOptions {
   terminalId: string
+  worktreeId: string
   worktreePath: string
   command?: string | null
 }
 
-export function useTerminal({ terminalId, worktreePath, command }: UseTerminalOptions) {
-  const terminalRef = useRef<Terminal | null>(null)
-  const fitAddonRef = useRef<FitAddon | null>(null)
+/**
+ * Hook for managing terminal UI attachment.
+ *
+ * Terminal instances are stored in a module-level Map (terminal-instances.ts)
+ * and persist across React mount/unmount cycles. This hook just handles
+ * attaching/detaching the terminal to/from a DOM container.
+ */
+export function useTerminal({
+  terminalId,
+  worktreeId,
+  worktreePath,
+  command,
+}: UseTerminalOptions) {
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const unlistenersRef = useRef<UnlistenFn[]>([])
-
-  const { setTerminalRunning } = useTerminalStore.getState()
+  const attachedRef = useRef(false)
 
   const initTerminal = useCallback(
     async (container: HTMLDivElement) => {
-      console.log('[useTerminal] initTerminal called, terminalId:', terminalId, 'existing terminal:', !!terminalRef.current)
-
-      if (terminalRef.current) {
-        console.log('[useTerminal] Terminal already exists, returning early')
+      if (attachedRef.current) {
+        // Already attached to this container
         return
       }
 
       containerRef.current = container
-      console.log('[useTerminal] Creating new Terminal instance')
 
-      const terminal = new Terminal({
-        cursorBlink: true,
-        fontSize: 13,
-        fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace',
-        theme: {
-          background: '#1a1a1a',
-          foreground: '#e5e5e5',
-          cursor: '#e5e5e5',
-          selectionBackground: '#404040',
-        },
-        allowProposedApi: true,
-      })
+      // Get or create persistent terminal instance
+      // (creates xterm + listeners if new, returns existing otherwise)
+      getOrCreateTerminal(terminalId, { worktreeId, worktreePath, command })
 
-      const fitAddon = new FitAddon()
-      terminal.loadAddon(fitAddon)
+      // Attach terminal to this container
+      // (opens if first time, moves DOM element if re-attaching)
+      await attachToContainer(terminalId, container)
 
-      console.log('[useTerminal] Opening terminal in container')
-      terminal.open(container)
-      console.log('[useTerminal] Terminal opened, element:', terminal.element)
-
-      terminalRef.current = terminal
-      fitAddonRef.current = fitAddon
-
-      // Handle user input
-      terminal.onData(data => {
-        invoke('terminal_write', { terminalId, data }).catch(console.error)
-      })
-
-      // Listen for terminal output
-      console.log('[useTerminal] Setting up event listeners for:', terminalId)
-      const unlistenOutput = await listen<TerminalOutputEvent>('terminal:output', event => {
-        if (event.payload.terminal_id === terminalId) {
-          console.log('[useTerminal] Received output for', terminalId, '- length:', event.payload.data.length)
-          terminal.write(event.payload.data)
-        }
-      })
-
-      const unlistenStarted = await listen<TerminalStartedEvent>('terminal:started', event => {
-        console.log('[useTerminal] Received terminal:started event:', event.payload.terminal_id)
-        if (event.payload.terminal_id === terminalId) {
-          console.log('[useTerminal] Terminal started:', terminalId)
-          setTerminalRunning(terminalId, true)
-        }
-      })
-
-      const unlistenStopped = await listen<TerminalStoppedEvent>('terminal:stopped', event => {
-        console.log('[useTerminal] Received terminal:stopped event:', event.payload.terminal_id)
-        if (event.payload.terminal_id === terminalId) {
-          setTerminalRunning(terminalId, false)
-          const exitCode = event.payload.exit_code
-          terminal.writeln(`\r\n\x1b[90m[Process exited with code ${exitCode ?? 'unknown'}]\x1b[0m`)
-        }
-      })
-      console.log('[useTerminal] Event listeners set up')
-
-      unlistenersRef.current = [unlistenOutput, unlistenStarted, unlistenStopped]
-
-      // Delay initial fit and start to ensure container dimensions are settled
-      requestAnimationFrame(() => {
-        console.log('[useTerminal] RAF executing, fitting terminal')
-        fitAddon.fit()
-        const { cols, rows } = terminal
-        console.log('[useTerminal] Invoking start_terminal:', { terminalId, worktreePath, cols, rows, command })
-        invoke('start_terminal', {
-          terminalId,
-          worktreePath,
-          cols,
-          rows,
-          command: command ?? null,
-        }).then(() => {
-          console.log('[useTerminal] start_terminal invoke succeeded')
-        }).catch(error => {
-          console.error('[useTerminal] start_terminal invoke failed:', error)
-          terminal.writeln(`\x1b[31mFailed to start terminal: ${error}\x1b[0m`)
-        })
-        // Focus the terminal so user can start typing immediately
-        terminal.focus()
-        console.log('[useTerminal] Terminal focused')
-      })
+      attachedRef.current = true
     },
-    [terminalId, worktreePath, command, setTerminalRunning]
+    [terminalId, worktreeId, worktreePath, command]
   )
 
   const fit = useCallback(() => {
-    if (fitAddonRef.current && terminalRef.current) {
-      fitAddonRef.current.fit()
-
-      const { cols, rows } = terminalRef.current
-      invoke('terminal_resize', { terminalId, cols, rows }).catch(console.error)
-    }
+    fitTerminal(terminalId)
   }, [terminalId])
 
   const focus = useCallback(() => {
-    if (terminalRef.current) {
-      terminalRef.current.focus()
-    }
-  }, [])
-
-  const dispose = useCallback(async () => {
-    // Stop terminal on backend
-    try {
-      await invoke('stop_terminal', { terminalId })
-    } catch {
-      // Ignore errors
-    }
-
-    // Cleanup listeners
-    for (const unlisten of unlistenersRef.current) {
-      unlisten()
-    }
-    unlistenersRef.current = []
-
-    // Dispose terminal
-    if (terminalRef.current) {
-      terminalRef.current.dispose()
-      terminalRef.current = null
-    }
-    fitAddonRef.current = null
-    containerRef.current = null
+    focusTerminal(terminalId)
   }, [terminalId])
 
-  // Cleanup on unmount
+  // Cleanup: detach terminal from DOM on unmount
+  // Terminal instance stays in memory with preserved buffer
   useEffect(() => {
     return () => {
-      dispose()
+      if (attachedRef.current) {
+        detachFromContainer(terminalId)
+        attachedRef.current = false
+      }
     }
-  }, [dispose])
+  }, [terminalId])
 
   return {
     initTerminal,
     fit,
     focus,
-    dispose,
-    terminalRef,
   }
 }

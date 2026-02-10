@@ -7,6 +7,10 @@
  */
 
 import { useCallback, useEffect, useRef, useMemo } from 'react'
+import { invoke } from '@/lib/transport'
+import { useQueryClient } from '@tanstack/react-query'
+import { ghCliQueryKeys } from '@/services/gh-cli'
+import { githubQueryKeys } from '@/services/github'
 import {
   Dialog,
   DialogContent,
@@ -16,6 +20,7 @@ import {
 } from '@/components/ui/dialog'
 import { useUIStore } from '@/store/ui-store'
 import { useTerminal } from '@/hooks/useTerminal'
+import { disposeTerminal } from '@/lib/terminal-instances'
 
 export function CliLoginModal() {
   const isOpen = useUIStore(state => state.cliLoginModalOpen)
@@ -41,22 +46,35 @@ interface CliLoginModalContentProps {
   onClose: () => void
 }
 
-function CliLoginModalContent({ cliType, command, onClose }: CliLoginModalContentProps) {
+function CliLoginModalContent({
+  cliType,
+  command,
+  onClose,
+}: CliLoginModalContentProps) {
+  const queryClient = useQueryClient()
   const initialized = useRef(false)
   const observerRef = useRef<ResizeObserver | null>(null)
   const cliName = cliType === 'claude' ? 'Claude CLI' : 'GitHub CLI'
 
   // Generate unique terminal ID for this login session
   const terminalId = useMemo(() => {
+    // eslint-disable-next-line react-hooks/purity
     const id = `cli-login-${Date.now()}`
     console.log('[CliLoginModal] Generated terminalId:', id)
     return id
   }, [])
 
-  console.log('[CliLoginModal] Render - terminalId:', terminalId, 'command:', command)
-
-  const { initTerminal, fit, dispose } = useTerminal({
+  console.log(
+    '[CliLoginModal] Render - terminalId:',
     terminalId,
+    'command:',
+    command
+  )
+
+  // Use a synthetic worktreeId for CLI login (not associated with any real worktree)
+  const { initTerminal, fit } = useTerminal({
+    terminalId,
+    worktreeId: 'cli-login', // Synthetic worktreeId for CLI login terminals
     worktreePath: '/tmp', // CLI commands don't depend on cwd
     command,
   })
@@ -64,7 +82,12 @@ function CliLoginModalContent({ cliType, command, onClose }: CliLoginModalConten
   // Use callback ref to detect when container is mounted (Dialog uses portal)
   const containerCallbackRef = useCallback(
     (container: HTMLDivElement | null) => {
-      console.log('[CliLoginModal] containerCallbackRef called, container:', !!container, 'initialized:', initialized.current)
+      console.log(
+        '[CliLoginModal] containerCallbackRef called, container:',
+        !!container,
+        'initialized:',
+        initialized.current
+      )
 
       // Cleanup previous observer if any
       if (observerRef.current) {
@@ -76,7 +99,12 @@ function CliLoginModalContent({ cliType, command, onClose }: CliLoginModalConten
 
       const observer = new ResizeObserver(entries => {
         const entry = entries[0]
-        console.log('[CliLoginModal] ResizeObserver fired, width:', entry?.contentRect.width, 'initialized:', initialized.current)
+        console.log(
+          '[CliLoginModal] ResizeObserver fired, width:',
+          entry?.contentRect.width,
+          'initialized:',
+          initialized.current
+        )
 
         if (!entry || entry.contentRect.width === 0) {
           console.log('[CliLoginModal] No entry or width=0, skipping')
@@ -115,18 +143,32 @@ function CliLoginModalContent({ cliType, command, onClose }: CliLoginModalConten
 
   // Cleanup terminal when modal closes
   const handleOpenChange = useCallback(
-    (open: boolean) => {
+    async (open: boolean) => {
       if (!open) {
-        dispose()
+        // Stop PTY process
+        try {
+          await invoke('stop_terminal', { terminalId })
+        } catch {
+          // Terminal may already be stopped
+        }
+        // Dispose xterm instance
+        disposeTerminal(terminalId)
+
+        // Invalidate caches so views auto-refetch after login
+        if (cliType === 'gh') {
+          queryClient.invalidateQueries({ queryKey: ghCliQueryKeys.auth() })
+          queryClient.invalidateQueries({ queryKey: githubQueryKeys.all })
+        }
+
         onClose()
       }
     },
-    [dispose, onClose]
+    [terminalId, onClose, cliType, queryClient]
   )
 
   return (
     <Dialog open={true} onOpenChange={handleOpenChange}>
-      <DialogContent className="!w-[calc(100vw-64px)] !max-w-[calc(100vw-64px)] h-[calc(100vh-64px)] flex flex-col">
+      <DialogContent className="!w-screen !h-dvh !max-w-screen !rounded-none sm:!w-[calc(100vw-64px)] sm:!max-w-[calc(100vw-64px)] sm:!h-[calc(100vh-64px)] sm:!rounded-lg flex flex-col">
         <DialogHeader>
           <DialogTitle>{cliName} Login</DialogTitle>
           <DialogDescription>

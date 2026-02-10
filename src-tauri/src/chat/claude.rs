@@ -1,9 +1,13 @@
-use tauri::{Emitter, Manager};
+use tauri::Manager;
 
-use super::types::{ContentBlock, ThinkingLevel, ToolCall, UsageData};
+use super::types::{
+    CompactMetadata, ContentBlock, EffortLevel, ThinkingLevel, ToolCall, UsageData,
+};
+use crate::http_server::EmitExt;
 use crate::projects::github_issues::{
     get_github_contexts_dir, get_worktree_issue_refs, get_worktree_pr_refs,
 };
+use crate::projects::storage::load_projects_data;
 
 // =============================================================================
 // Claude CLI execution
@@ -113,6 +117,23 @@ struct PermissionDeniedEvent {
     denials: Vec<PermissionDenial>,
 }
 
+/// Payload for compacting-in-progress events sent to frontend
+/// Signals that context compaction has started
+#[derive(serde::Serialize, Clone)]
+struct CompactingEvent {
+    session_id: String,
+    worktree_id: String,
+}
+
+/// Payload for compaction-complete events sent to frontend
+/// Contains metadata about the compaction that occurred
+#[derive(serde::Serialize, Clone)]
+struct CompactedEvent {
+    session_id: String,
+    worktree_id: String,
+    metadata: CompactMetadata,
+}
+
 // =============================================================================
 // Detached Claude CLI execution
 // =============================================================================
@@ -129,9 +150,13 @@ fn build_claude_args(
     model: Option<&str>,
     execution_mode: Option<&str>,
     thinking_level: Option<&ThinkingLevel>,
+    effort_level: Option<&EffortLevel>,
     allowed_tools: Option<&[String]>,
     disable_thinking_in_non_plan_modes: bool,
-    parallel_execution_prompt_enabled: bool,
+    parallel_execution_prompt: Option<&str>,
+    ai_language: Option<&str>,
+    mcp_config: Option<&str>,
+    chrome_enabled: bool,
 ) -> (Vec<String>, Vec<(String, String)>) {
     let mut args = Vec::new();
     let mut env_vars = Vec::new();
@@ -194,31 +219,47 @@ fn build_claude_args(
     args.push("--permission-mode".to_string());
     args.push(perm_mode.to_string());
 
-    // Thinking configuration
-    // If disable_thinking_in_non_plan_modes is true and mode is build/yolo, force thinking off
-    let effective_thinking_level = if disable_thinking_in_non_plan_modes {
+    // Thinking/Effort configuration
+    // If disable_thinking_in_non_plan_modes is true and mode is build/yolo, force off
+    let is_non_plan_override = disable_thinking_in_non_plan_modes && {
         let mode = execution_mode.unwrap_or("plan");
-        if mode == "build" || mode == "yolo" {
-            // Override to off for non-plan modes
+        mode == "build" || mode == "yolo"
+    };
+
+    if let Some(effort) = effort_level {
+        // Opus 4.6 adaptive thinking: use effort parameter via --settings JSON
+        let effective_effort = if is_non_plan_override {
+            &EffortLevel::Off
+        } else {
+            effort
+        };
+
+        if let Some(effort_value) = effective_effort.effort_value() {
+            let settings = format!(r#"{{"effortLevel": "{effort_value}"}}"#);
+            args.push("--settings".to_string());
+            args.push(settings);
+        }
+        // If Off, don't send any thinking/effort settings
+    } else {
+        // Traditional thinking levels (Opus 4.5, Sonnet, Haiku)
+        let effective_thinking_level = if is_non_plan_override {
             Some(&ThinkingLevel::Off)
         } else {
             thinking_level
-        }
-    } else {
-        thinking_level
-    };
-
-    if let Some(level) = effective_thinking_level {
-        let settings = if level.is_enabled() {
-            r#"{"alwaysThinkingEnabled": true}"#
-        } else {
-            r#"{"alwaysThinkingEnabled": false}"#
         };
-        args.push("--settings".to_string());
-        args.push(settings.to_string());
 
-        if let Some(tokens) = level.thinking_tokens() {
-            env_vars.push(("MAX_THINKING_TOKENS".to_string(), tokens.to_string()));
+        if let Some(level) = effective_thinking_level {
+            let settings = if level.is_enabled() {
+                r#"{"alwaysThinkingEnabled": true}"#
+            } else {
+                r#"{"alwaysThinkingEnabled": false}"#
+            };
+            args.push("--settings".to_string());
+            args.push(settings.to_string());
+
+            if let Some(tokens) = level.thinking_tokens() {
+                env_vars.push(("MAX_THINKING_TOKENS".to_string(), tokens.to_string()));
+            }
         }
     }
 
@@ -230,18 +271,95 @@ fn build_claude_args(
         }
     }
 
+    // Allow embedded CLI binaries without approval via --allowedTools
+    // Claude wraps paths with spaces in quotes, so the actual command is:
+    // "/Users/.../Application Support/.../gh-cli/gh" --version
+    // Use *gh-cli/gh* to match regardless of quoting
+    args.push("--allowedTools".to_string());
+    args.push("Bash(*gh-cli/gh*)".to_string());
+    args.push("--allowedTools".to_string());
+    args.push("Bash(*claude-cli/claude*)".to_string());
+
+    // MCP server configuration
+    if let Some(config) = mcp_config {
+        if !config.is_empty() {
+            args.push("--mcp-config".to_string());
+            args.push(config.to_string());
+
+            // Auto-allow all tools from configured MCP servers
+            // Pattern "mcp__<name>" matches all tools from that server
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(config) {
+                if let Some(servers) = parsed.get("mcpServers").and_then(|v| v.as_object()) {
+                    for server_name in servers.keys() {
+                        args.push("--allowedTools".to_string());
+                        args.push(format!("mcp__{server_name}"));
+                    }
+                }
+            }
+        }
+    }
+
+    // Chrome browser integration (beta)
+    if chrome_enabled {
+        args.push("--chrome".to_string());
+    }
+
+    // Build combined system prompt parts
+    // Claude CLI only uses the LAST --append-system-prompt, so we must combine all prompts
+    let mut system_prompt_parts: Vec<String> = Vec::new();
+
+    // AI language preference - user's preferred response language
+    if let Some(lang) = ai_language {
+        let lang = lang.trim();
+        if !lang.is_empty() {
+            system_prompt_parts.push(format!("Respond to the user in {}.", lang));
+        }
+    }
+
     // Parallel execution prompt - encourages sub-agent parallelization
-    if parallel_execution_prompt_enabled {
-        args.push("--append-system-prompt".to_string());
-        args.push(
-            "In plan mode, structure plans so sub-agents can work simultaneously. \
-             In build/execute mode, use sub-agents in parallel for faster implementation."
-                .to_string(),
-        );
+    if let Some(prompt) = parallel_execution_prompt {
+        let prompt = prompt.trim();
+        if !prompt.is_empty() {
+            system_prompt_parts.push(prompt.to_string());
+        }
+    }
+
+    // Per-project custom system prompt
+    if let Ok(data) = load_projects_data(app) {
+        if let Some(worktree) = data.find_worktree(worktree_id) {
+            if let Some(project) = data.find_project(&worktree.project_id) {
+                if let Some(prompt) = &project.custom_system_prompt {
+                    let prompt = prompt.trim();
+                    if !prompt.is_empty() {
+                        system_prompt_parts.push(prompt.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    // Embedded gh CLI path - tell Claude to use the app's bundled binary
+    let gh_binary = crate::gh_cli::config::resolve_gh_binary(app);
+    if gh_binary != std::path::PathBuf::from("gh") {
+        system_prompt_parts.push(format!(
+            "When running GitHub CLI commands, use the full path to the embedded binary: {}\n\
+             Do NOT use bare `gh` — always use the full path above.",
+            gh_binary.display()
+        ));
+    }
+
+    // Embedded Claude CLI path - tell Claude to use the app's bundled binary
+    if let Ok(claude_binary) = crate::claude_cli::get_cli_binary_path(app) {
+        if claude_binary.exists() {
+            system_prompt_parts.push(format!(
+                "When running Claude CLI commands, use the full path to the embedded binary: {}\n\
+                 Do NOT use bare `claude` — always use the full path above.",
+                claude_binary.display()
+            ));
+        }
     }
 
     // Collect all context files (issues and PRs) and concatenate into a single file
-    // Claude CLI only uses the LAST --append-system-prompt, so we must combine all contexts
     let mut all_context_paths: Vec<std::path::PathBuf> = Vec::new();
 
     // Check for issue context files (shared storage)
@@ -314,8 +432,9 @@ fn build_claude_args(
         }
     }
 
-    // If we have context files, concatenate them into a single temp file
-    if !all_context_paths.is_empty() {
+    // If we have context files OR system prompt parts, create a combined context file
+    let has_system_prompts = !system_prompt_parts.is_empty();
+    if !all_context_paths.is_empty() || has_system_prompts {
         if let Ok(app_data_dir) = app.path().app_data_dir() {
             let combined_contexts_dir = app_data_dir.join("combined-contexts");
             let _ = std::fs::create_dir_all(&combined_contexts_dir);
@@ -348,24 +467,38 @@ fn build_claude_args(
             // Build combined content with header
             let mut combined_content = String::new();
 
-            // Add header explaining the context
-            combined_content.push_str("# Loaded Context\n\n");
-            combined_content.push_str("The following context has been loaded. ");
-            combined_content.push_str("You should be aware of this when working on this task.\n\n");
-
-            if issue_count > 0 || pr_count > 0 || saved_context_count > 0 {
-                combined_content.push_str("**Summary:**\n");
-                if issue_count > 0 {
-                    combined_content.push_str(&format!("- {} GitHub Issue(s)\n", issue_count));
-                }
-                if pr_count > 0 {
-                    combined_content.push_str(&format!("- {} GitHub Pull Request(s)\n", pr_count));
-                }
-                if saved_context_count > 0 {
-                    combined_content
-                        .push_str(&format!("- {} Saved Context(s)\n", saved_context_count));
+            // Add system prompt parts first (language preference, parallel execution)
+            if !system_prompt_parts.is_empty() {
+                combined_content.push_str("# Instructions\n\n");
+                for part in &system_prompt_parts {
+                    combined_content.push_str(part);
+                    combined_content.push('\n');
                 }
                 combined_content.push_str("\n---\n\n");
+            }
+
+            // Add context header if we have context files
+            if !all_context_paths.is_empty() {
+                combined_content.push_str("# Loaded Context\n\n");
+                combined_content.push_str("The following context has been loaded. ");
+                combined_content
+                    .push_str("You should be aware of this when working on this task.\n\n");
+
+                if issue_count > 0 || pr_count > 0 || saved_context_count > 0 {
+                    combined_content.push_str("**Summary:**\n");
+                    if issue_count > 0 {
+                        combined_content.push_str(&format!("- {} GitHub Issue(s)\n", issue_count));
+                    }
+                    if pr_count > 0 {
+                        combined_content
+                            .push_str(&format!("- {} GitHub Pull Request(s)\n", pr_count));
+                    }
+                    if saved_context_count > 0 {
+                        combined_content
+                            .push_str(&format!("- {} Saved Context(s)\n", saved_context_count));
+                    }
+                    combined_content.push_str("\n---\n\n");
+                }
             }
 
             for path in &all_context_paths {
@@ -396,6 +529,14 @@ fn build_claude_args(
         args.push("--resume".to_string());
         args.push(claude_sid.to_string());
     }
+
+    // Disable background tasks - forces all Task sub-agents to run in foreground.
+    // Background tasks are killed when --print mode exits the CLI process.
+    // Foreground tasks still run in parallel when called in the same message.
+    env_vars.push((
+        "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS".to_string(),
+        "1".to_string(),
+    ));
 
     // Debug env vars
     env_vars.push(("JEAN_SESSION_ID".to_string(), session_id.to_string()));
@@ -432,9 +573,13 @@ pub fn execute_claude_detached(
     model: Option<&str>,
     execution_mode: Option<&str>,
     thinking_level: Option<&ThinkingLevel>,
+    effort_level: Option<&EffortLevel>,
     allowed_tools: Option<&[String]>,
     disable_thinking_in_non_plan_modes: bool,
-    parallel_execution_prompt_enabled: bool,
+    parallel_execution_prompt: Option<&str>,
+    ai_language: Option<&str>,
+    mcp_config: Option<&str>,
+    chrome_enabled: bool,
 ) -> Result<(u32, ClaudeResponse), String> {
     use super::detached::spawn_detached_claude;
     use crate::claude_cli::get_cli_binary_path;
@@ -454,7 +599,7 @@ pub fn execute_claude_detached(
             worktree_id: worktree_id.to_string(),
             error: error_msg.clone(),
         };
-        let _ = app.emit("chat:error", &error_event);
+        let _ = app.emit_all("chat:error", &error_event);
         error_msg
     })?;
 
@@ -467,7 +612,7 @@ pub fn execute_claude_detached(
             worktree_id: worktree_id.to_string(),
             error: error_msg.clone(),
         };
-        let _ = app.emit("chat:error", &error_event);
+        let _ = app.emit_all("chat:error", &error_event);
         return Err(error_msg);
     }
 
@@ -480,9 +625,13 @@ pub fn execute_claude_detached(
         model,
         execution_mode,
         thinking_level,
+        effort_level,
         allowed_tools,
         disable_thinking_in_non_plan_modes,
-        parallel_execution_prompt_enabled,
+        parallel_execution_prompt,
+        ai_language,
+        mcp_config,
+        chrome_enabled,
     );
 
     // Log the full Claude CLI command for debugging
@@ -506,7 +655,20 @@ pub fn execute_claude_detached(
         output_file,
         working_dir,
         &env_refs,
-    )?;
+    )
+    .map_err(|e| {
+        let error_msg = format!("Failed to start Claude CLI: {e}");
+        log::error!("{error_msg}");
+        let _ = app.emit_all(
+            "chat:error",
+            &ErrorEvent {
+                session_id: session_id.to_string(),
+                worktree_id: worktree_id.to_string(),
+                error: error_msg.clone(),
+            },
+        );
+        error_msg
+    })?;
 
     log::trace!("Detached Claude CLI spawned with PID: {pid}");
 
@@ -563,7 +725,6 @@ pub fn tail_claude_output(
     let mut claude_session_id = String::new();
     let mut tool_calls: Vec<ToolCall> = Vec::new();
     let mut content_blocks: Vec<ContentBlock> = Vec::new();
-    let mut current_parent_tool_use_id: Option<String> = None;
     let mut completed = false;
     let mut cancelled = false;
     let mut usage: Option<UsageData> = None;
@@ -620,9 +781,11 @@ pub fn tail_claude_output(
             }
 
             // Track parent_tool_use_id for sub-agent tool calls
-            if let Some(parent_id) = msg.get("parent_tool_use_id").and_then(|v| v.as_str()) {
-                current_parent_tool_use_id = Some(parent_id.to_string());
-            }
+            // Must reset to None for root-level messages, otherwise parallel Tasks get wrong parent
+            let current_parent_tool_use_id = msg
+                .get("parent_tool_use_id")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
 
             let msg_type = msg.get("type").and_then(|v| v.as_str()).unwrap_or("");
 
@@ -639,6 +802,11 @@ pub fn tail_claude_output(
                                         if let Some(text) =
                                             block.get("text").and_then(|v| v.as_str())
                                         {
+                                            // Skip CLI placeholder text emitted when extended
+                                            // thinking starts before any real text content
+                                            if text == "(no content)" {
+                                                continue;
+                                            }
                                             full_content.push_str(text);
                                             content_blocks.push(ContentBlock::Text {
                                                 text: text.to_string(),
@@ -650,7 +818,7 @@ pub fn tail_claude_output(
                                                 worktree_id: worktree_id.to_string(),
                                                 content: text.to_string(),
                                             };
-                                            if let Err(e) = app.emit("chat:chunk", &event) {
+                                            if let Err(e) = app.emit_all("chat:chunk", &event) {
                                                 log::error!("Failed to emit chunk: {e}");
                                             }
                                         }
@@ -692,7 +860,7 @@ pub fn tail_claude_output(
                                             input: input.clone(),
                                             parent_tool_use_id: current_parent_tool_use_id.clone(),
                                         };
-                                        if let Err(e) = app.emit("chat:tool_use", &event) {
+                                        if let Err(e) = app.emit_all("chat:tool_use", &event) {
                                             log::error!("Failed to emit tool_use: {e}");
                                         }
 
@@ -702,7 +870,9 @@ pub fn tail_claude_output(
                                             worktree_id: worktree_id.to_string(),
                                             tool_call_id: id.clone(),
                                         };
-                                        if let Err(e) = app.emit("chat:tool_block", &block_event) {
+                                        if let Err(e) =
+                                            app.emit_all("chat:tool_block", &block_event)
+                                        {
                                             log::error!("Failed to emit tool_block: {e}");
                                         }
 
@@ -717,7 +887,7 @@ pub fn tail_claude_output(
                                             }
                                             #[cfg(windows)]
                                             {
-                                                let _ = std::process::Command::new("taskkill")
+                                                let _ = crate::platform::silent_command("taskkill")
                                                     .args(["/F", "/PID", &pid.to_string()])
                                                     .output();
                                             }
@@ -727,7 +897,7 @@ pub fn tail_claude_output(
                                                 session_id: session_id.to_string(),
                                                 worktree_id: worktree_id.to_string(),
                                             };
-                                            if let Err(e) = app.emit("chat:done", &done_event) {
+                                            if let Err(e) = app.emit_all("chat:done", &done_event) {
                                                 log::error!("Failed to emit done event: {e}");
                                             }
 
@@ -755,7 +925,7 @@ pub fn tail_claude_output(
                                                 worktree_id: worktree_id.to_string(),
                                                 content: thinking.to_string(),
                                             };
-                                            if let Err(e) = app.emit("chat:thinking", &event) {
+                                            if let Err(e) = app.emit_all("chat:thinking", &event) {
                                                 log::error!("Failed to emit thinking: {e}");
                                             }
                                         }
@@ -779,14 +949,38 @@ pub fn tail_claude_output(
                                         .get("tool_use_id")
                                         .and_then(|v| v.as_str())
                                         .unwrap_or("");
-                                    let output =
-                                        block.get("content").and_then(|v| v.as_str()).unwrap_or("");
+                                    // Content can be a string OR an array of content blocks
+                                    let output = block
+                                        .get("content")
+                                        .map(|v| {
+                                            if let Some(s) = v.as_str() {
+                                                s.to_string()
+                                            } else if let Some(arr) = v.as_array() {
+                                                arr.iter()
+                                                    .filter_map(|item| {
+                                                        if item.get("type").and_then(|t| t.as_str())
+                                                            == Some("text")
+                                                        {
+                                                            item.get("text")
+                                                                .and_then(|t| t.as_str())
+                                                                .map(|s| s.to_string())
+                                                        } else {
+                                                            None
+                                                        }
+                                                    })
+                                                    .collect::<Vec<_>>()
+                                                    .join("\n")
+                                            } else {
+                                                String::new()
+                                            }
+                                        })
+                                        .unwrap_or_default();
 
                                     // Update matching tool call's output
                                     if let Some(tc) =
                                         tool_calls.iter_mut().find(|t| t.id == tool_id)
                                     {
-                                        tc.output = Some(output.to_string());
+                                        tc.output = Some(output.clone());
                                     }
 
                                     // Emit tool_result event
@@ -794,9 +988,9 @@ pub fn tail_claude_output(
                                         session_id: session_id.to_string(),
                                         worktree_id: worktree_id.to_string(),
                                         tool_use_id: tool_id.to_string(),
-                                        output: output.to_string(),
+                                        output,
                                     };
-                                    if let Err(e) = app.emit("chat:tool_result", &event) {
+                                    if let Err(e) = app.emit_all("chat:tool_result", &event) {
                                         log::error!("Failed to emit tool_result: {e}");
                                     }
                                 }
@@ -892,7 +1086,7 @@ pub fn tail_claude_output(
                                     worktree_id: worktree_id.to_string(),
                                     denials: denial_events,
                                 };
-                                if let Err(e) = app.emit("chat:permission_denied", &event) {
+                                if let Err(e) = app.emit_all("chat:permission_denied", &event) {
                                     log::error!("Failed to emit permission_denied: {e}");
                                 }
                             }
@@ -901,6 +1095,37 @@ pub fn tail_claude_output(
 
                     completed = true;
                     log::trace!("Received result message - Claude CLI completed");
+                }
+                "system" => {
+                    let subtype = msg.get("subtype").and_then(|v| v.as_str()).unwrap_or("");
+                    if subtype == "compact_boundary" {
+                        log::trace!("Detected compact_boundary system message");
+
+                        // Signal UI that compaction is in progress
+                        let compacting_event = CompactingEvent {
+                            session_id: session_id.to_string(),
+                            worktree_id: worktree_id.to_string(),
+                        };
+                        if let Err(e) = app.emit_all("chat:compacting", &compacting_event) {
+                            log::error!("Failed to emit compacting: {e}");
+                        }
+
+                        // Emit compacted event with metadata if available
+                        if let Some(metadata_val) = msg.get("compactMetadata") {
+                            if let Ok(metadata) =
+                                serde_json::from_value::<CompactMetadata>(metadata_val.clone())
+                            {
+                                let compacted_event = CompactedEvent {
+                                    session_id: session_id.to_string(),
+                                    worktree_id: worktree_id.to_string(),
+                                    metadata,
+                                };
+                                if let Err(e) = app.emit_all("chat:compacted", &compacted_event) {
+                                    log::error!("Failed to emit compacted: {e}");
+                                }
+                            }
+                        }
+                    }
                 }
                 _ => {}
             }
@@ -966,7 +1191,7 @@ pub fn tail_claude_output(
             session_id: session_id.to_string(),
             worktree_id: worktree_id.to_string(),
         };
-        if let Err(e) = app.emit("chat:done", &done_event) {
+        if let Err(e) = app.emit_all("chat:done", &done_event) {
             log::error!("Failed to emit done event: {e}");
         }
     }

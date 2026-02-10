@@ -1,4 +1,11 @@
-import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react'
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  lazy,
+  Suspense,
+} from 'react'
 import {
   FileText,
   ImageIcon,
@@ -9,7 +16,7 @@ import {
   Save,
   ExternalLink,
 } from 'lucide-react'
-import { invoke, convertFileSrc } from '@tauri-apps/api/core'
+import { invoke, convertFileSrc } from '@/lib/transport'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
@@ -24,7 +31,9 @@ import { toast } from 'sonner'
 
 // Lazy load CodeEditor since it's heavy
 const CodeEditor = lazy(() =>
-  import('@/components/ui/code-editor').then(mod => ({ default: mod.CodeEditor }))
+  import('@/components/ui/code-editor').then(mod => ({
+    default: mod.CodeEditor,
+  }))
 )
 
 function isMarkdownFile(filename: string | null | undefined): boolean {
@@ -56,7 +65,11 @@ function SyntaxHighlightedCode({
   language: string
   theme: SyntaxTheme
 }) {
-  const { html, isLoading, error } = useSyntaxHighlighting(content, language, theme)
+  const { html, isLoading, error } = useSyntaxHighlighting(
+    content,
+    language,
+    theme
+  )
 
   if (isLoading) {
     return (
@@ -164,7 +177,10 @@ export function FileContentModal({ filePath, onClose }: FileContentModalProps) {
 
     setIsSaving(true)
     try {
-      await invoke('write_file_content', { path: filePath, content: editedContent })
+      await invoke('write_file_content', {
+        path: filePath,
+        content: editedContent,
+      })
       setContent(editedContent)
       setIsEditing(false)
       toast.success('File saved')
@@ -216,7 +232,7 @@ export function FileContentModal({ filePath, onClose }: FileContentModalProps) {
 
   return (
     <Dialog open={!!filePath} onOpenChange={handleOpenChange}>
-      <DialogContent className="!max-w-[calc(100vw-4rem)] !w-[calc(100vw-4rem)] max-h-[85vh] p-4 bg-background/95 backdrop-blur-sm">
+      <DialogContent className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none p-0 sm:!w-[calc(100vw-4rem)] sm:!max-w-[calc(100vw-4rem)] sm:!h-auto sm:max-h-[85vh] sm:!rounded-lg sm:p-4 bg-background/95 backdrop-blur-sm">
         <DialogTitle className="flex flex-col gap-1 pr-8">
           <div className="flex items-center gap-2">
             {isImage ? (
@@ -272,13 +288,13 @@ export function FileContentModal({ filePath, onClose }: FileContentModalProps) {
                     variant="ghost"
                     size="sm"
                     onClick={handleOpenExternal}
-                >
-                  <ExternalLink className="h-4 w-4 mr-1" />
-                  Open in Editor
-                </Button>
-              )}
-            </div>
-          )}
+                  >
+                    <ExternalLink className="h-4 w-4 mr-1" />
+                    Open in Editor
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
           {filePath && (
             <span className="text-muted-foreground font-normal text-xs truncate">

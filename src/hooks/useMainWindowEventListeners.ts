@@ -1,17 +1,16 @@
 import { useEffect, useRef } from 'react'
-import { listen } from '@tauri-apps/api/event'
-import { getVersion } from '@tauri-apps/api/app'
-import { check } from '@tauri-apps/plugin-updater'
-import { message } from '@tauri-apps/plugin-dialog'
-import { getCurrentWindow } from '@tauri-apps/api/window'
-import { invoke } from '@tauri-apps/api/core'
+import { listen, invoke } from '@/lib/transport'
+import { isNativeApp } from '@/lib/environment'
+import { notify } from '@/lib/notifications'
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
+import { useTerminalStore } from '@/store/terminal-store'
 import { projectsQueryKeys } from '@/services/projects'
 import { chatQueryKeys } from '@/services/chat'
 import { setActiveWorktreeForPolling } from '@/services/git-status'
+import { disposeTerminal } from '@/lib/terminal-instances'
 import { useCommandContext } from './use-command-context'
 import { usePreferences } from '@/services/preferences'
 import { logger } from '@/lib/logger'
@@ -205,18 +204,74 @@ function executeKeybindingAction(
       logger.debug('Keybinding: open_git_diff')
       window.dispatchEvent(new CustomEvent('open-git-diff'))
       break
-    case 'execute_run':
+    case 'execute_run': {
       logger.debug('Keybinding: execute_run')
-      window.dispatchEvent(new CustomEvent('toggle-workspace-run'))
+      if (!isNativeApp()) break
+
+      const chatStore = useChatStore.getState()
+      const uiStore = useUIStore.getState()
+      const { activeWorktreeId, activeWorktreePath } = chatStore
+      const sessionModalOpen = uiStore.sessionChatModalOpen
+
+      // Project canvas (no worktree selected) → error
+      if (!activeWorktreePath) {
+        notify('Open a worktree to run', undefined, { type: 'error' })
+        break
+      }
+
+      if (!activeWorktreeId) {
+        notify('No active worktree', undefined, { type: 'error' })
+        break
+      }
+
+      // Fetch run script from query cache
+      const runScript = queryClient.getQueryData<string | null>([
+        'run-script',
+        activeWorktreePath,
+      ])
+
+      if (!runScript) {
+        notify('No run script configured in jean.json', undefined, {
+          type: 'error',
+        })
+        break
+      }
+
+      // Start run (works on canvas, modal, or main view)
+      useTerminalStore.getState().startRun(activeWorktreeId, runScript)
+
+      // If modal is open, also open the terminal drawer
+      if (sessionModalOpen) {
+        useTerminalStore.getState().setModalTerminalOpen(activeWorktreeId, true)
+      }
       break
+    }
     case 'open_in_modal':
       logger.debug('Keybinding: open_in_modal')
       useUIStore.getState().setOpenInModalOpen(true)
       break
     case 'open_magic_modal': {
       logger.debug('Keybinding: open_magic_modal')
-      const { activeWorktreeId, activeSessionIds, sendingSessionIds } =
-        useChatStore.getState()
+      const chatStore = useChatStore.getState()
+      const uiStore = useUIStore.getState()
+      const {
+        activeWorktreeId,
+        activeSessionIds,
+        sendingSessionIds,
+        activeWorktreePath,
+      } = chatStore
+
+      // Block only when there's no worktree context at all (e.g., project dashboard with nothing selected)
+      const selectedWorktreeId = useProjectsStore.getState().selectedWorktreeId
+      const worktreeIdToCheck = selectedWorktreeId ?? activeWorktreeId
+
+      if (!worktreeIdToCheck && !activeWorktreePath) {
+        notify('Select a worktree to use magic commands', undefined, {
+          type: 'error',
+        })
+        break
+      }
+
       const activeSessionId = activeWorktreeId
         ? activeSessionIds[activeWorktreeId]
         : null
@@ -224,7 +279,7 @@ function executeKeybindingAction(
         ? (sendingSessionIds[activeSessionId] ?? false)
         : false
       if (!isSending) {
-        useUIStore.getState().setMagicModalOpen(true)
+        uiStore.setMagicModalOpen(true)
       }
       break
     }
@@ -244,10 +299,35 @@ function executeKeybindingAction(
         new CustomEvent('switch-session', { detail: { direction: 'previous' } })
       )
       break
-    case 'close_session_or_worktree':
+    case 'close_session_or_worktree': {
+      // If terminal is focused, close the active terminal tab instead
+      if (document.activeElement?.closest('.xterm')) {
+        const chatStore = useChatStore.getState()
+        const wId = chatStore.activeWorktreeId
+        if (wId) {
+          const termStore = useTerminalStore.getState()
+          const activeTerminalId = termStore.activeTerminalIds[wId]
+          if (activeTerminalId) {
+            invoke('stop_terminal', { terminalId: activeTerminalId }).catch(
+              () => {
+                /* noop */
+              }
+            )
+            disposeTerminal(activeTerminalId)
+            termStore.removeTerminal(wId, activeTerminalId)
+            const remaining = termStore.terminals[wId] ?? []
+            if (remaining.length === 0) {
+              termStore.setTerminalPanelOpen(wId, false)
+            }
+            break
+          }
+        }
+      }
+      // Default: close session/worktree
       logger.debug('Keybinding: close_session_or_worktree')
       window.dispatchEvent(new CustomEvent('close-session-or-worktree'))
       break
+    }
     case 'new_worktree':
       logger.debug('Keybinding: new_worktree')
       window.dispatchEvent(new CustomEvent('create-new-worktree'))
@@ -261,26 +341,72 @@ function executeKeybindingAction(
       switchWorktree('previous', queryClient)
       break
     case 'cycle_execution_mode': {
+      // Only cycle execution mode when inside a session (modal open or not in canvas view)
+      const chatStore = useChatStore.getState()
+      const activeWorktreeId = chatStore.activeWorktreeId
+      const isViewingCanvas = activeWorktreeId
+        ? chatStore.isViewingCanvasTab(activeWorktreeId)
+        : false
+      const sessionModalOpen = useUIStore.getState().sessionChatModalOpen
+      // Skip if viewing canvas without modal open (no session context)
+      if (isViewingCanvas && !sessionModalOpen) break
       logger.debug('Keybinding: cycle_execution_mode')
-      const { activeWorktreeId, getActiveSession, cycleExecutionMode } =
-        useChatStore.getState()
-      if (activeWorktreeId) {
-        const activeSessionId = getActiveSession(activeWorktreeId)
-        if (activeSessionId) {
-          cycleExecutionMode(activeSessionId)
-        }
-      }
+      window.dispatchEvent(new CustomEvent('cycle-execution-mode'))
       break
     }
-    case 'approve_plan':
+    case 'approve_plan': {
       logger.debug('Keybinding: approve_plan')
+      const planDialogOpen = useUIStore.getState().planDialogOpen
+      if (planDialogOpen) break // Let PlanDialog handle it directly
       window.dispatchEvent(new CustomEvent('approve-plan'))
       window.dispatchEvent(new CustomEvent('answer-question'))
       break
+    }
+    case 'approve_plan_yolo': {
+      logger.debug('Keybinding: approve_plan_yolo')
+      const planDialogOpenYolo = useUIStore.getState().planDialogOpen
+      if (planDialogOpenYolo) break // Let PlanDialog handle it directly
+      window.dispatchEvent(new CustomEvent('approve-plan-yolo'))
+      break
+    }
+    case 'open_plan': {
+      logger.debug('Keybinding: open_plan')
+      const sessionModalOpen = useUIStore.getState().sessionChatModalOpen
+      if (sessionModalOpen) {
+        break
+      }
+      window.dispatchEvent(new CustomEvent('open-plan'))
+      break
+    }
+    case 'open_recap': {
+      logger.debug('Keybinding: open_recap')
+      const sessionModalOpenForRecap =
+        useUIStore.getState().sessionChatModalOpen
+      if (sessionModalOpenForRecap) {
+        break
+      }
+      window.dispatchEvent(new CustomEvent('open-recap'))
+      break
+    }
     case 'restore_last_archived':
       logger.debug('Keybinding: restore_last_archived')
       window.dispatchEvent(new CustomEvent('restore-last-archived'))
       break
+    case 'focus_canvas_search':
+      logger.debug('Keybinding: focus_canvas_search')
+      window.dispatchEvent(new CustomEvent('focus-canvas-search'))
+      break
+    case 'toggle_modal_terminal': {
+      logger.debug('Keybinding: toggle_modal_terminal')
+      // Only works when session modal is open
+      const sessionModalOpen = useUIStore.getState().sessionChatModalOpen
+      if (!sessionModalOpen) break
+      const { activeWorktreeId } = useChatStore.getState()
+      if (activeWorktreeId) {
+        useTerminalStore.getState().toggleModalTerminal(activeWorktreeId)
+      }
+      break
+    }
   }
 }
 
@@ -303,11 +429,37 @@ export function useMainWindowEventListeners() {
       const shortcut = eventToShortcutString(e)
       if (!shortcut) return
 
+      // Skip single-key shortcuts (no modifier) when focus is in input/textarea
+      const hasModifier = e.metaKey || e.ctrlKey || e.altKey || e.shiftKey
+      if (!hasModifier) {
+        const tag = document.activeElement?.tagName
+        if (
+          tag === 'INPUT' ||
+          tag === 'TEXTAREA' ||
+          (document.activeElement as HTMLElement)?.isContentEditable
+        ) {
+          return
+        }
+      }
+
+      // Skip when a modal/dialog is open - let it handle its own shortcuts
+      const uiState = useUIStore.getState()
+      if (
+        uiState.magicModalOpen ||
+        uiState.newWorktreeModalOpen ||
+        uiState.commandPaletteOpen ||
+        uiState.preferencesOpen ||
+        uiState.releaseNotesModalOpen
+      )
+        return
+      if (useProjectsStore.getState().projectSettingsDialogOpen) return
+
       // Look up matching action in keybindings
       const keybindings = keybindingsRef.current
       for (const [action, binding] of Object.entries(keybindings)) {
         if (binding === shortcut) {
           e.preventDefault()
+          e.stopPropagation()
           executeKeybindingAction(
             action as KeybindingAction,
             commandContext,
@@ -324,6 +476,9 @@ export function useMainWindowEventListeners() {
       const unlisteners = await Promise.all([
         listen('menu-about', async () => {
           logger.debug('About menu event received')
+          if (!isNativeApp()) return
+          const { getVersion } = await import('@tauri-apps/api/app')
+          const { message } = await import('@tauri-apps/plugin-dialog')
           // Show simple about dialog with dynamic version
           const appVersion = await getVersion()
           await message(
@@ -334,7 +489,9 @@ export function useMainWindowEventListeners() {
 
         listen('menu-check-updates', async () => {
           logger.debug('Check for updates menu event received')
+          if (!isNativeApp()) return
           try {
+            const { check } = await import('@tauri-apps/plugin-updater')
             const update = await check()
             if (update) {
               commandContext.showToast(
@@ -441,6 +598,44 @@ export function useMainWindowEventListeners() {
           })
           // Silent failure - don't show toast to avoid interrupting workflow
         }),
+
+        // Real-time cache sync between native + web clients
+        listen<{ keys: string[] }>('cache:invalidate', event => {
+          const { keys } = event.payload
+          for (const key of keys) {
+            switch (key) {
+              case 'sessions':
+                queryClient.invalidateQueries({
+                  queryKey: chatQueryKeys.all,
+                })
+                break
+              case 'projects':
+                queryClient.invalidateQueries({
+                  queryKey: projectsQueryKeys.all,
+                })
+                break
+              case 'preferences':
+                queryClient.invalidateQueries({
+                  queryKey: ['preferences'],
+                })
+                break
+              case 'ui-state':
+                queryClient.invalidateQueries({
+                  queryKey: ['ui-state'],
+                })
+                break
+              case 'contexts':
+                queryClient.invalidateQueries({
+                  queryKey: ['contexts'],
+                })
+                // Also invalidate saved contexts list
+                queryClient.invalidateQueries({
+                  queryKey: ['saved-contexts'],
+                })
+                break
+            }
+          }
+        }),
       ])
 
       logger.debug(
@@ -449,7 +644,8 @@ export function useMainWindowEventListeners() {
       return unlisteners
     }
 
-    document.addEventListener('keydown', handleKeyDown)
+    // Use capture phase to handle keybindings before dialogs/modals can intercept
+    document.addEventListener('keydown', handleKeyDown, { capture: true })
 
     let menuUnlisteners: (() => void)[] = []
     setupMenuListeners()
@@ -462,7 +658,7 @@ export function useMainWindowEventListeners() {
       })
 
     return () => {
-      document.removeEventListener('keydown', handleKeyDown)
+      document.removeEventListener('keydown', handleKeyDown, { capture: true })
       menuUnlisteners.forEach(unlisten => {
         if (unlisten && typeof unlisten === 'function') {
           unlisten()
@@ -471,32 +667,47 @@ export function useMainWindowEventListeners() {
     }
   }, [commandContext, queryClient])
 
-  // Quit confirmation for running sessions (production only)
+  // Quit confirmation for system-level close events (Alt+F4, taskbar close).
+  // The X button handles its own confirmation via window-close command,
+  // but system close events still go through onCloseRequested.
   useEffect(() => {
     // Skip in development mode - only block quit in production
     if (import.meta.env.DEV) return
+    if (!isNativeApp()) return
 
     let unlisten: (() => void) | null = null
 
-    getCurrentWindow()
-      .onCloseRequested(async event => {
-        try {
-          const hasRunning = await invoke<boolean>('has_running_sessions')
-          if (hasRunning) {
-            event.preventDefault()
-            window.dispatchEvent(new CustomEvent('quit-confirmation-requested'))
+    const setup = async () => {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window')
+      getCurrentWindow()
+        .onCloseRequested(async event => {
+          try {
+            const hasRunning = await Promise.race([
+              invoke<boolean>('has_running_sessions'),
+              new Promise<boolean>((_, reject) =>
+                setTimeout(() => reject(new Error('timeout')), 2000)
+              ),
+            ])
+            if (hasRunning) {
+              event.preventDefault()
+              window.dispatchEvent(
+                new CustomEvent('quit-confirmation-requested')
+              )
+            }
+          } catch (error) {
+            logger.error('Failed to check running sessions', { error })
+            // Allow quit if we can't check (fail open)
           }
-        } catch (error) {
-          logger.error('Failed to check running sessions', { error })
-          // Allow quit if we can't check (fail open)
-        }
-      })
-      .then(fn => {
-        unlisten = fn
-      })
-      .catch(error => {
-        logger.error('Failed to setup close listener', { error })
-      })
+        })
+        .then(fn => {
+          unlisten = fn
+        })
+        .catch(error => {
+          logger.error('Failed to setup close listener', { error })
+        })
+    }
+
+    setup()
 
     return () => {
       unlisten?.()

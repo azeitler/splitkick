@@ -5,12 +5,13 @@
  * and listen for status updates from the Rust backend.
  */
 
-import { invoke } from '@tauri-apps/api/core'
-import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { invoke, useWsConnectionStatus } from '@/lib/transport'
+import { listen, type UnlistenFn } from '@/lib/transport'
 import { useEffect, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { isTauri, updateWorktreeCachedStatus } from '@/services/projects'
+import { isTauri, updateWorktreeCachedStatus, projectsQueryKeys } from '@/services/projects'
+import type { Worktree } from '@/types/projects'
 import type { GitDiff } from '@/types/git-diff'
 
 // ============================================================================
@@ -40,6 +41,10 @@ export interface GitStatusEvent {
   base_branch_ahead_count: number
   /** Commits the local base branch is behind origin */
   base_branch_behind_count: number
+  /** Commits unique to this worktree (ahead of local base branch) */
+  worktree_ahead_count: number
+  /** Commits in HEAD not yet pushed to origin/current_branch */
+  unpushed_count: number
 }
 
 /**
@@ -142,16 +147,24 @@ export async function gitPull(
 }
 
 /**
- * Push current branch to remote origin.
+ * Push current branch to remote. If prNumber is provided, uses PR-aware push
+ * that handles fork remotes and uses --force-with-lease.
  *
  * @param worktreePath - Path to the worktree/repository
+ * @param prNumber - Optional PR number for PR-aware push
  * @returns Output from git push command
  */
-export async function gitPush(worktreePath: string): Promise<string> {
+export async function gitPush(
+  worktreePath: string,
+  prNumber?: number
+): Promise<string> {
   if (!isTauri()) {
     throw new Error('Git push only available in Tauri')
   }
-  return invoke<string>('git_push', { worktreePath })
+  return invoke<string>('git_push', {
+    worktreePath,
+    prNumber: prNumber ?? null,
+  })
 }
 
 /**
@@ -247,6 +260,7 @@ export function useGitStatusEvents(
   onStatusUpdate?: (status: GitStatusEvent) => void
 ) {
   const queryClient = useQueryClient()
+  const wsConnected = useWsConnectionStatus()
 
   useEffect(() => {
     if (!isTauri()) return
@@ -257,7 +271,12 @@ export function useGitStatusEvents(
     unlistenPromises.push(
       listen<GitStatusEvent>('git:status-update', event => {
         const status = event.payload
-        console.info('[git-status] Received status update for worktree:', status.worktree_id, 'behind:', status.behind_count)
+        console.info(
+          '[git-status] Received status update for worktree:',
+          status.worktree_id,
+          'behind:',
+          status.behind_count
+        )
 
         // Update the query cache
         queryClient.setQueryData(
@@ -265,9 +284,30 @@ export function useGitStatusEvents(
           status
         )
 
+        // Update worktree.branch in query cache for immediate UI update
+        const worktreesQueries = queryClient.getQueriesData<Worktree[]>({
+          queryKey: projectsQueryKeys.all,
+        })
+        for (const [key, worktrees] of worktreesQueries) {
+          if (!worktrees || !Array.isArray(worktrees)) continue
+          const idx = worktrees.findIndex(w => w.id === status.worktree_id)
+          const match = idx !== -1 ? worktrees[idx] : undefined
+          if (match && match.branch !== status.current_branch) {
+            const updated = [...worktrees]
+            const patch: Partial<Worktree> = { branch: status.current_branch }
+            // For base sessions, also update the display name to match the branch
+            if (match.session_type === 'base') {
+              patch.name = status.current_branch
+            }
+            updated[idx] = { ...match, ...patch }
+            queryClient.setQueryData(key, updated)
+          }
+        }
+
         // Persist to worktree cached status (fire and forget)
         updateWorktreeCachedStatus(
           status.worktree_id,
+          status.current_branch,
           null, // pr_status - handled by pr-status service
           null, // check_status - handled by pr-status service
           status.behind_count,
@@ -277,7 +317,9 @@ export function useGitStatusEvents(
           status.branch_diff_added,
           status.branch_diff_removed,
           status.base_branch_ahead_count,
-          status.base_branch_behind_count
+          status.base_branch_behind_count,
+          status.worktree_ahead_count,
+          status.unpushed_count
         ).catch(err =>
           console.warn('[git-status] Failed to cache status:', err)
         )
@@ -296,7 +338,7 @@ export function useGitStatusEvents(
     return () => {
       unlistens.forEach(unlisten => unlisten())
     }
-  }, [queryClient, onStatusUpdate])
+  }, [queryClient, onStatusUpdate, wsConnected])
 }
 
 /**
@@ -307,6 +349,7 @@ export function useGitStatusEvents(
  */
 export function useAppFocusTracking() {
   const isMounted = useRef(true)
+  const wsConnected = useWsConnectionStatus()
 
   useEffect(() => {
     if (!isTauri()) return
@@ -347,7 +390,7 @@ export function useAppFocusTracking() {
       window.removeEventListener('focus', handleFocus)
       window.removeEventListener('blur', handleBlur)
     }
-  }, [])
+  }, [wsConnected])
 }
 
 /**
@@ -375,6 +418,7 @@ export function useGitStatus(worktreeId: string | null) {
  */
 export function useWorktreePolling(info: WorktreePollingInfo | null) {
   const prevInfoRef = useRef<WorktreePollingInfo | null>(null)
+  const wsConnected = useWsConnectionStatus()
 
   useEffect(() => {
     if (!isTauri()) return
@@ -393,7 +437,7 @@ export function useWorktreePolling(info: WorktreePollingInfo | null) {
       setActiveWorktreeForPolling(info)
       prevInfoRef.current = info
     }
-  }, [info])
+  }, [info, wsConnected])
 
   // Clear polling on unmount
   useEffect(() => {

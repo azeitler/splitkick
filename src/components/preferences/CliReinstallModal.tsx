@@ -34,7 +34,9 @@ import {
  * Common interface for CLI setup objects (both hooks return compatible shapes)
  */
 interface CliSetupInterface {
-  status: { installed?: boolean; version?: string | null; path?: string | null } | undefined
+  status:
+    | { installed?: boolean; version?: string | null; path?: string | null }
+    | undefined
   versions: { version: string; prerelease: boolean }[]
   isVersionsLoading: boolean
   progress: { stage: string; message: string; percent: number } | null
@@ -50,7 +52,6 @@ interface ModalProps {
   onOpenChange: (open: boolean) => void
 }
 
-
 type ModalStep = 'setup' | 'installing' | 'complete'
 
 /**
@@ -59,7 +60,9 @@ type ModalStep = 'setup' | 'installing' | 'complete'
  */
 export function ClaudeCliReinstallModal({ open, onOpenChange }: ModalProps) {
   if (!open) return null
-  return <ClaudeCliReinstallModalContent open={open} onOpenChange={onOpenChange} />
+  return (
+    <ClaudeCliReinstallModalContent open={open} onOpenChange={onOpenChange} />
+  )
 }
 
 function ClaudeCliReinstallModalContent({ open, onOpenChange }: ModalProps) {
@@ -94,7 +97,6 @@ function GhCliReinstallModalContent({ open, onOpenChange }: ModalProps) {
     />
   )
 }
-
 
 /**
  * Shared UI component - receives setup as prop, no hooks here
@@ -169,12 +171,17 @@ function CliReinstallModalUI({
     }
     // Guard against double-invocation
     if (isInstallingRef.current) {
-      logger.warn('[CliReinstallModal] Already installing, aborting duplicate call')
+      logger.warn(
+        '[CliReinstallModal] Already installing, aborting duplicate call'
+      )
       return
     }
     isInstallingRef.current = true
 
-    logger.info('[CliReinstallModal] Starting installation', { cliType, selectedVersion })
+    logger.info('[CliReinstallModal] Starting installation', {
+      cliType,
+      selectedVersion,
+    })
     setStep('installing')
     setInstallError(null)
 
@@ -186,7 +193,10 @@ function CliReinstallModalUI({
         setStep('complete')
       },
       onError: error => {
-        logger.error('[CliReinstallModal] Installation failed', { cliType, error })
+        logger.error('[CliReinstallModal] Installation failed', {
+          cliType,
+          error,
+        })
         isInstallingRef.current = false
         setInstallError(error)
         setStep('setup')
@@ -228,7 +238,7 @@ function CliReinstallModalUI({
                 <div className="text-center">
                   <p className="font-medium">Installation Successful</p>
                   <p className="text-sm text-muted-foreground mt-1">
-                    {cliName}: v{setup.status?.version ?? selectedVersion}
+                    {cliName}: v{selectedVersion}
                   </p>
                 </div>
               </div>

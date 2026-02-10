@@ -261,6 +261,7 @@ pub fn start_run(
     model: Option<&str>,
     execution_mode: Option<&str>,
     thinking_level: Option<&str>,
+    effort_level: Option<&str>,
 ) -> Result<RunLogWriter, String> {
     let run_id = Uuid::new_v4().to_string();
     let now = now_timestamp();
@@ -303,6 +304,7 @@ pub fn start_run(
         model: model.map(|s| s.to_string()),
         execution_mode: execution_mode.map(|s| s.to_string()),
         thinking_level: thinking_level.map(|s| s.to_string()),
+        effort_level: effort_level.map(|s| s.to_string()),
         started_at: now,
         ended_at: None,
         status: RunStatus::Running,
@@ -438,7 +440,6 @@ pub fn parse_run_to_message(lines: &[String], run: &RunEntry) -> Result<ChatMess
     let mut content = String::new();
     let mut tool_calls: Vec<ToolCall> = Vec::new();
     let mut content_blocks: Vec<ContentBlock> = Vec::new();
-    let mut current_parent_tool_use_id: Option<String> = None;
 
     for line in lines {
         if line.trim().is_empty() {
@@ -460,9 +461,11 @@ pub fn parse_run_to_message(lines: &[String], run: &RunEntry) -> Result<ChatMess
         }
 
         // Track parent_tool_use_id for sub-agent tool calls
-        if let Some(parent_id) = msg.get("parent_tool_use_id").and_then(|v| v.as_str()) {
-            current_parent_tool_use_id = Some(parent_id.to_string());
-        }
+        // Must reset to None for root-level messages, otherwise parallel Tasks get wrong parent
+        let current_parent_tool_use_id = msg
+            .get("parent_tool_use_id")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
 
         let msg_type = msg.get("type").and_then(|v| v.as_str()).unwrap_or("");
 
@@ -477,6 +480,11 @@ pub fn parse_run_to_message(lines: &[String], run: &RunEntry) -> Result<ChatMess
                             match block_type {
                                 "text" => {
                                     if let Some(text) = block.get("text").and_then(|v| v.as_str()) {
+                                        // Skip CLI placeholder text emitted when extended
+                                        // thinking starts before any real text content
+                                        if text == "(no content)" {
+                                            continue;
+                                        }
                                         content.push_str(text);
                                         content_blocks.push(ContentBlock::Text {
                                             text: text.to_string(),
@@ -577,6 +585,7 @@ pub fn parse_run_to_message(lines: &[String], run: &RunEntry) -> Result<ChatMess
         model: None,
         execution_mode: None,
         thinking_level: None,
+        effort_level: None,
         recovered: run.recovered,
         usage: run.usage.clone(), // Token usage from metadata
     })
@@ -619,6 +628,7 @@ pub fn load_session_messages(
                 model: run.model.clone(),
                 execution_mode: run.execution_mode.clone(),
                 thinking_level: run.thinking_level.clone(),
+                effort_level: run.effort_level.clone(),
                 recovered: false,
                 usage: None, // User messages don't have token usage
             });

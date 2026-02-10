@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react'
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from '@/lib/transport'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Loader2, ChevronDown } from 'lucide-react'
@@ -7,7 +7,12 @@ import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
-import { useClaudeCliStatus, useClaudeCliAuth, claudeCliQueryKeys } from '@/services/claude-cli'
+import { Input } from '@/components/ui/input'
+import {
+  useClaudeCliStatus,
+  useClaudeCliAuth,
+  claudeCliQueryKeys,
+} from '@/services/claude-cli'
 import { useGhCliStatus, useGhCliAuth, ghCliQueryKeys } from '@/services/gh-cli'
 import { useUIStore } from '@/store/ui-store'
 import type { ClaudeAuthStatus } from '@/types/claude-cli'
@@ -29,20 +34,26 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { usePreferences, useSavePreferences } from '@/services/preferences'
 import {
   modelOptions,
   thinkingLevelOptions,
+  effortLevelOptions,
   terminalOptions,
   editorOptions,
   gitPollIntervalOptions,
   remotePollIntervalOptions,
   archiveRetentionOptions,
+  notificationSoundOptions,
   type ClaudeModel,
   type TerminalApp,
   type EditorApp,
+  type NotificationSound,
 } from '@/types/preferences'
-import type { ThinkingLevel } from '@/types/chat'
+import { playNotificationSound } from '@/lib/sounds'
+import type { ThinkingLevel, EffortLevel } from '@/types/chat'
+import { isNativeApp } from '@/lib/environment'
 import {
   setGitPollInterval,
   setRemotePollInterval,
@@ -75,11 +86,13 @@ const InlineField: React.FC<{
   description?: React.ReactNode
   children: React.ReactNode
 }> = ({ label, description, children }) => (
-  <div className="flex items-center gap-4">
-    <div className="w-96 shrink-0 space-y-0.5">
+  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+    <div className="space-y-0.5 sm:w-96 sm:shrink-0">
       <Label className="text-sm text-foreground">{label}</Label>
       {description && (
-        <div className="text-xs text-muted-foreground">{description}</div>
+        <div className="text-xs text-muted-foreground truncate">
+          {description}
+        </div>
       )}
     </div>
     {children}
@@ -98,9 +111,11 @@ export const GeneralPane: React.FC = () => {
   const { data: ghStatus, isLoading: isGhLoading } = useGhCliStatus()
 
   // Auth status queries - only enabled when CLI is installed
-  const { data: claudeAuth, isLoading: isClaudeAuthLoading } = useClaudeCliAuth({
-    enabled: !!cliStatus?.installed,
-  })
+  const { data: claudeAuth, isLoading: isClaudeAuthLoading } = useClaudeCliAuth(
+    {
+      enabled: !!cliStatus?.installed,
+    }
+  )
   const { data: ghAuth, isLoading: isGhAuthLoading } = useGhCliAuth({
     enabled: !!ghStatus?.installed,
   })
@@ -161,6 +176,12 @@ export const GeneralPane: React.FC = () => {
     }
   }
 
+  const handleEffortLevelChange = (value: EffortLevel) => {
+    if (preferences) {
+      savePreferences.mutate({ ...preferences, default_effort_level: value })
+    }
+  }
+
   const handleTerminalChange = (value: TerminalApp) => {
     if (preferences) {
       savePreferences.mutate({ ...preferences, terminal: value })
@@ -210,6 +231,22 @@ export const GeneralPane: React.FC = () => {
     }
   }
 
+  const handleWaitingSoundChange = (value: NotificationSound) => {
+    if (preferences) {
+      savePreferences.mutate({ ...preferences, waiting_sound: value })
+      // Play preview of the selected sound
+      playNotificationSound(value)
+    }
+  }
+
+  const handleReviewSoundChange = (value: NotificationSound) => {
+    if (preferences) {
+      savePreferences.mutate({ ...preferences, review_sound: value })
+      // Play preview of the selected sound
+      playNotificationSound(value)
+    }
+  }
+
   const handleClaudeLogin = useCallback(async () => {
     if (!cliStatus?.path) return
 
@@ -217,8 +254,12 @@ export const GeneralPane: React.FC = () => {
     setCheckingClaudeAuth(true)
     try {
       // Invalidate cache and refetch to get fresh status
-      await queryClient.invalidateQueries({ queryKey: claudeCliQueryKeys.auth() })
-      const result = await queryClient.fetchQuery<ClaudeAuthStatus>({ queryKey: claudeCliQueryKeys.auth() })
+      await queryClient.invalidateQueries({
+        queryKey: claudeCliQueryKeys.auth(),
+      })
+      const result = await queryClient.fetchQuery<ClaudeAuthStatus>({
+        queryKey: claudeCliQueryKeys.auth(),
+      })
 
       if (result?.authenticated) {
         toast.success('Claude CLI is already authenticated')
@@ -229,7 +270,11 @@ export const GeneralPane: React.FC = () => {
     }
 
     // Not authenticated, open login modal
-    const escapedPath = `'${cliStatus.path.replace(/'/g, "'\\''")}'`
+    // Use & "path" syntax for PowerShell on Windows, single-quote escaping for Unix
+    const isWindows = navigator.userAgent.includes('Windows')
+    const escapedPath = isWindows
+      ? `& "${cliStatus.path}"`
+      : `'${cliStatus.path.replace(/'/g, "'\\''")}'`
     openCliLoginModal('claude', escapedPath)
   }, [cliStatus?.path, openCliLoginModal, queryClient])
 
@@ -241,7 +286,9 @@ export const GeneralPane: React.FC = () => {
     try {
       // Invalidate cache and refetch to get fresh status
       await queryClient.invalidateQueries({ queryKey: ghCliQueryKeys.auth() })
-      const result = await queryClient.fetchQuery<GhAuthStatus>({ queryKey: ghCliQueryKeys.auth() })
+      const result = await queryClient.fetchQuery<GhAuthStatus>({
+        queryKey: ghCliQueryKeys.auth(),
+      })
 
       if (result?.authenticated) {
         toast.success('GitHub CLI is already authenticated')
@@ -252,8 +299,12 @@ export const GeneralPane: React.FC = () => {
     }
 
     // Not authenticated, open login modal
-    const escapedPath = `'${ghStatus.path.replace(/'/g, "'\\''")}'`
-    openCliLoginModal('gh', `${escapedPath} auth login`)
+    // Use & "path" syntax for PowerShell on Windows, single-quote escaping for Unix
+    const isWindows = navigator.userAgent.includes('Windows')
+    const escapedPath = isWindows
+      ? `& "${ghStatus.path}" auth login`
+      : `'${ghStatus.path.replace(/'/g, "'\\''")}'` + ' auth login'
+    openCliLoginModal('gh', escapedPath)
   }, [ghStatus?.path, openCliLoginModal, queryClient])
 
   const claudeStatusDescription = cliStatus?.installed
@@ -272,135 +323,143 @@ export const GeneralPane: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <SettingsSection
-        title="Claude CLI"
-        actions={
-          cliStatus?.installed ? (
-            checkingClaudeAuth || isClaudeAuthLoading ? (
-              <span className="text-sm text-muted-foreground flex items-center gap-2">
-                <Loader2 className="size-3 animate-spin" />
-                Checking...
-              </span>
-            ) : claudeAuth?.authenticated ? (
-              <span className="text-sm text-muted-foreground">Logged in</span>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleClaudeLogin}
-              >
-                Login
-              </Button>
-            )
-          ) : (
-            <span className="text-sm text-muted-foreground">Not installed</span>
-          )
-        }
-      >
-        <div className="space-y-4">
-          <InlineField
-            label={cliStatus?.installed ? 'Version' : 'Status'}
-            description={
-              cliStatus?.installed ? (
-                <button
-                  onClick={() => handleCopyPath(cliStatus.path)}
-                  className="text-left hover:underline cursor-pointer"
-                  title="Click to copy path"
-                >
-                  {claudeStatusDescription}
-                </button>
+      {isNativeApp() && (
+        <SettingsSection
+          title="Claude CLI"
+          actions={
+            cliStatus?.installed ? (
+              checkingClaudeAuth || isClaudeAuthLoading ? (
+                <span className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Loader2 className="size-3 animate-spin" />
+                  Checking...
+                </span>
+              ) : claudeAuth?.authenticated ? (
+                <span className="text-sm text-muted-foreground">Logged in</span>
               ) : (
-                'Required'
+                <Button variant="outline" size="sm" onClick={handleClaudeLogin}>
+                  Login
+                </Button>
               )
-            }
-          >
-            {isCliLoading ? (
-              <Loader2 className="size-4 animate-spin text-muted-foreground" />
-            ) : cliStatus?.installed ? (
-              <Button
-                variant="outline"
-                className="w-40 justify-between"
-                onClick={() => openCliUpdateModal('claude')}
-              >
-                {cliStatus.version ?? 'Installed'}
-                <ChevronDown className="size-3" />
-              </Button>
             ) : (
-              <Button
-                className="w-40"
-                onClick={() => openCliUpdateModal('claude')}
-              >
-                Install
-              </Button>
-            )}
-          </InlineField>
-        </div>
-      </SettingsSection>
+              <span className="text-sm text-muted-foreground">
+                Not installed
+              </span>
+            )
+          }
+        >
+          <div className="space-y-4">
+            <InlineField
+              label={cliStatus?.installed ? 'Version' : 'Status'}
+              description={
+                cliStatus?.installed ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => handleCopyPath(cliStatus.path)}
+                        className="text-left hover:underline cursor-pointer"
+                      >
+                        {claudeStatusDescription}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Click to copy path</TooltipContent>
+                  </Tooltip>
+                ) : (
+                  'Required'
+                )
+              }
+            >
+              {isCliLoading ? (
+                <Loader2 className="size-4 animate-spin text-muted-foreground" />
+              ) : cliStatus?.installed ? (
+                <Button
+                  variant="outline"
+                  className="w-40 justify-between"
+                  onClick={() => openCliUpdateModal('claude')}
+                >
+                  {cliStatus.version ?? 'Installed'}
+                  <ChevronDown className="size-3" />
+                </Button>
+              ) : (
+                <Button
+                  className="w-40"
+                  onClick={() => openCliUpdateModal('claude')}
+                >
+                  Install
+                </Button>
+              )}
+            </InlineField>
+          </div>
+        </SettingsSection>
+      )}
 
-      <SettingsSection
-        title="GitHub CLI"
-        actions={
-          ghStatus?.installed ? (
-            checkingGhAuth || isGhAuthLoading ? (
-              <span className="text-sm text-muted-foreground flex items-center gap-2">
-                <Loader2 className="size-3 animate-spin" />
-                Checking...
-              </span>
-            ) : ghAuth?.authenticated ? (
-              <span className="text-sm text-muted-foreground">Logged in</span>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleGhLogin}
-              >
-                Login
-              </Button>
-            )
-          ) : (
-            <span className="text-sm text-muted-foreground">Not installed</span>
-          )
-        }
-      >
-        <div className="space-y-4">
-          <InlineField
-            label={ghStatus?.installed ? 'Version' : 'Status'}
-            description={
-              ghStatus?.installed ? (
-                <button
-                  onClick={() => handleCopyPath(ghStatus.path)}
-                  className="text-left hover:underline cursor-pointer"
-                  title="Click to copy path"
-                >
-                  {ghStatusDescription}
-                </button>
+      {isNativeApp() && (
+        <SettingsSection
+          title="GitHub CLI"
+          actions={
+            ghStatus?.installed ? (
+              checkingGhAuth || isGhAuthLoading ? (
+                <span className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Loader2 className="size-3 animate-spin" />
+                  Checking...
+                </span>
+              ) : ghAuth?.authenticated ? (
+                <span className="text-sm text-muted-foreground">Logged in</span>
               ) : (
-                'Optional'
+                <Button variant="outline" size="sm" onClick={handleGhLogin}>
+                  Login
+                </Button>
               )
-            }
-          >
-            {isGhLoading ? (
-              <Loader2 className="size-4 animate-spin text-muted-foreground" />
-            ) : ghStatus?.installed ? (
-              <Button
-                variant="outline"
-                className="w-40 justify-between"
-                onClick={() => openCliUpdateModal('gh')}
-              >
-                {ghStatus.version ?? 'Installed'}
-                <ChevronDown className="size-3" />
-              </Button>
             ) : (
-              <Button
-                className="w-40"
-                onClick={() => openCliUpdateModal('gh')}
-              >
-                Install
-              </Button>
-            )}
-          </InlineField>
-        </div>
-      </SettingsSection>
+              <span className="text-sm text-muted-foreground">
+                Not installed
+              </span>
+            )
+          }
+        >
+          <div className="space-y-4">
+            <InlineField
+              label={ghStatus?.installed ? 'Version' : 'Status'}
+              description={
+                ghStatus?.installed ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => handleCopyPath(ghStatus.path)}
+                        className="text-left hover:underline cursor-pointer"
+                      >
+                        {ghStatusDescription}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Click to copy path</TooltipContent>
+                  </Tooltip>
+                ) : (
+                  'Optional'
+                )
+              }
+            >
+              {isGhLoading ? (
+                <Loader2 className="size-4 animate-spin text-muted-foreground" />
+              ) : ghStatus?.installed ? (
+                <Button
+                  variant="outline"
+                  className="w-40 justify-between"
+                  onClick={() => openCliUpdateModal('gh')}
+                >
+                  {ghStatus.version ?? 'Installed'}
+                  <ChevronDown className="size-3" />
+                </Button>
+              ) : (
+                <Button
+                  className="w-40"
+                  onClick={() => openCliUpdateModal('gh')}
+                >
+                  Install
+                </Button>
+              )}
+            </InlineField>
+          </div>
+        </SettingsSection>
+      )}
 
       <SettingsSection title="Defaults">
         <div className="space-y-4">
@@ -412,7 +471,7 @@ export const GeneralPane: React.FC = () => {
               value={preferences?.selected_model ?? 'opus'}
               onValueChange={handleModelChange}
             >
-              <SelectTrigger className="w-40">
+              <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -433,11 +492,32 @@ export const GeneralPane: React.FC = () => {
               value={preferences?.thinking_level ?? 'off'}
               onValueChange={handleThinkingLevelChange}
             >
-              <SelectTrigger className="w-40">
+              <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {thinkingLevelOptions.map(option => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </InlineField>
+
+          <InlineField
+            label="Effort level"
+            description="Effort for Opus (requires CLI 2.1.32+)"
+          >
+            <Select
+              value={preferences?.default_effort_level ?? 'high'}
+              onValueChange={handleEffortLevelChange}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {effortLevelOptions.map(option => (
                   <SelectItem key={option.value} value={option.value}>
                     {option.label}
                   </SelectItem>
@@ -463,41 +543,101 @@ export const GeneralPane: React.FC = () => {
             />
           </InlineField>
 
-          <InlineField label="Editor" description="App to open worktrees in">
-            <Select
-              value={preferences?.editor ?? 'vscode'}
-              onValueChange={handleEditorChange}
-            >
-              <SelectTrigger className="w-40">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {editorOptions.map(option => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <InlineField
+            label="AI Language"
+            description="Language for AI responses (e.g. French, 日本語)"
+          >
+            <Input
+              className="w-40"
+              placeholder="Default"
+              value={preferences?.ai_language ?? ''}
+              onChange={e => {
+                if (preferences) {
+                  savePreferences.mutate({
+                    ...preferences,
+                    ai_language: e.target.value,
+                  })
+                }
+              }}
+            />
           </InlineField>
 
-          <InlineField label="Terminal" description="App to open terminals in">
-            <Select
-              value={preferences?.terminal ?? 'terminal'}
-              onValueChange={handleTerminalChange}
-            >
-              <SelectTrigger className="w-40">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {terminalOptions.map(option => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <InlineField
+            label="Allow web tools in plan mode"
+            description="Auto-approve WebFetch/WebSearch without prompts"
+          >
+            <Switch
+              checked={preferences?.allow_web_tools_in_plan_mode ?? true}
+              onCheckedChange={checked => {
+                if (preferences) {
+                  savePreferences.mutate({
+                    ...preferences,
+                    allow_web_tools_in_plan_mode: checked,
+                  })
+                }
+              }}
+            />
           </InlineField>
+
+          <InlineField
+            label="Chrome browser integration"
+            description="Enable browser automation via Chrome extension"
+          >
+            <Switch
+              checked={preferences?.chrome_enabled ?? true}
+              onCheckedChange={checked => {
+                if (preferences) {
+                  savePreferences.mutate({
+                    ...preferences,
+                    chrome_enabled: checked,
+                  })
+                }
+              }}
+            />
+          </InlineField>
+
+          {isNativeApp() && (
+            <InlineField label="Editor" description="App to open worktrees in">
+              <Select
+                value={preferences?.editor ?? 'vscode'}
+                onValueChange={handleEditorChange}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {editorOptions.map(option => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </InlineField>
+          )}
+
+          {isNativeApp() && (
+            <InlineField
+              label="Terminal"
+              description="App to open terminals in"
+            >
+              <Select
+                value={preferences?.terminal ?? 'terminal'}
+                onValueChange={handleTerminalChange}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {terminalOptions.map(option => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </InlineField>
+          )}
 
           <InlineField
             label="Git poll interval"
@@ -507,7 +647,7 @@ export const GeneralPane: React.FC = () => {
               value={String(preferences?.git_poll_interval ?? 60)}
               onValueChange={handleGitPollIntervalChange}
             >
-              <SelectTrigger className="w-40">
+              <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -528,7 +668,7 @@ export const GeneralPane: React.FC = () => {
               value={String(preferences?.remote_poll_interval ?? 60)}
               onValueChange={handleRemotePollIntervalChange}
             >
-              <SelectTrigger className="w-40">
+              <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -540,7 +680,52 @@ export const GeneralPane: React.FC = () => {
               </SelectContent>
             </Select>
           </InlineField>
+        </div>
+      </SettingsSection>
 
+      <SettingsSection title="Notifications">
+        <div className="space-y-4">
+          <InlineField
+            label="Waiting sound"
+            description="Play when session needs your input"
+          >
+            <Select
+              value={preferences?.waiting_sound ?? 'none'}
+              onValueChange={handleWaitingSoundChange}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {notificationSoundOptions.map(option => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </InlineField>
+
+          <InlineField
+            label="Review sound"
+            description="Play when session finishes"
+          >
+            <Select
+              value={preferences?.review_sound ?? 'none'}
+              onValueChange={handleReviewSoundChange}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {notificationSoundOptions.map(option => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </InlineField>
         </div>
       </SettingsSection>
 
@@ -570,6 +755,23 @@ export const GeneralPane: React.FC = () => {
       <SettingsSection title="Archive">
         <div className="space-y-4">
           <InlineField
+            label="Auto-archive on PR merge"
+            description="Archive worktrees when their PR is merged"
+          >
+            <Switch
+              checked={preferences?.auto_archive_on_pr_merged ?? true}
+              onCheckedChange={checked => {
+                if (preferences) {
+                  savePreferences.mutate({
+                    ...preferences,
+                    auto_archive_on_pr_merged: checked,
+                  })
+                }
+              }}
+            />
+          </InlineField>
+
+          <InlineField
             label="Auto-delete archives"
             description="Delete archived items older than this"
           >
@@ -577,7 +779,7 @@ export const GeneralPane: React.FC = () => {
               value={String(preferences?.archive_retention_days ?? 30)}
               onValueChange={handleArchiveRetentionChange}
             >
-              <SelectTrigger className="w-48">
+              <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -606,7 +808,10 @@ export const GeneralPane: React.FC = () => {
         </div>
       </SettingsSection>
 
-      <AlertDialog open={showDeleteAllDialog} onOpenChange={setShowDeleteAllDialog}>
+      <AlertDialog
+        open={showDeleteAllDialog}
+        onOpenChange={setShowDeleteAllDialog}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete all archives?</AlertDialogTitle>

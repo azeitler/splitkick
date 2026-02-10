@@ -6,6 +6,7 @@ import {
   type QuestionAnswer,
   type SetupScriptResult,
   type ThinkingLevel,
+  type EffortLevel,
   type PendingImage,
   type PendingFile,
   type PendingSkill,
@@ -22,7 +23,7 @@ import {
 import type { ReviewResponse } from '@/types/projects'
 
 /** Available Claude models */
-export type ClaudeModel = 'sonnet' | 'opus' | 'haiku'
+export type ClaudeModel = 'opus' | 'opus-4.5' | 'sonnet' | 'haiku'
 
 /** Default model to use when none is selected (fallback only - preferences take priority) */
 export const DEFAULT_MODEL: ClaudeModel = 'opus'
@@ -43,6 +44,9 @@ interface ChatUIState {
 
   // Track if user is viewing review tab (instead of chat) per worktree
   viewingReviewTab: Record<string, boolean>
+
+  // Track if user is viewing canvas tab (session overview grid) per worktree
+  viewingCanvasTab: Record<string, boolean>
 
   // Fixed AI review findings per worktree (keyed by finding identifier)
   fixedReviewFindings: Record<string, Set<string>>
@@ -84,8 +88,14 @@ interface ChatUIState {
   // Manual thinking override per session (true if user changed thinking while in build/yolo)
   manualThinkingOverrides: Record<string, boolean>
 
+  // Effort level per session (for Opus 4.6 adaptive thinking)
+  effortLevels: Record<string, EffortLevel>
+
   // Selected model per session (for tracking what model was used)
   selectedModels: Record<string, string>
+
+  // Enabled MCP servers per session (server names that are active)
+  enabledMcpServers: Record<string, string[]>
 
   // Answered questions per session (to make them read-only after answering)
   answeredQuestions: Record<string, Set<string>>
@@ -148,8 +158,17 @@ interface ChatUIState {
   // Last compaction timestamp and trigger per session
   lastCompaction: Record<string, { timestamp: number; trigger: string }>
 
+  // Sessions currently compacting context
+  compactingSessions: Record<string, boolean>
+
   // Sessions marked as "reviewing" (manual session board status, persisted)
   reviewingSessions: Record<string, boolean>
+
+  // Plan file paths per session (persisted)
+  planFilePaths: Record<string, string | null>
+
+  // Pending plan message IDs per session (persisted)
+  pendingPlanMessageIds: Record<string, string | null>
 
   // Sessions currently generating context in the background
   savingContext: Record<string, boolean>
@@ -163,6 +182,12 @@ interface ChatUIState {
   // Generated session digests (cached until dismissed)
   sessionDigests: Record<string, SessionDigest>
 
+  // Worktree loading operations (commit, pr, review, merge, pull)
+  worktreeLoadingOperations: Record<string, string | null>
+
+  // Canvas-selected session per worktree (for magic menu targeting)
+  canvasSelectedSessionIds: Record<string, string | null>
+
   // Actions - Session management
   setActiveSession: (worktreeId: string, sessionId: string) => void
   getActiveSession: (worktreeId: string) => string | undefined
@@ -173,6 +198,10 @@ interface ChatUIState {
   setViewingReviewTab: (worktreeId: string, viewing: boolean) => void
   isViewingReviewTab: (worktreeId: string) => boolean
 
+  // Actions - Canvas tab management
+  setViewingCanvasTab: (worktreeId: string, viewing: boolean) => void
+  isViewingCanvasTab: (worktreeId: string) => boolean
+
   // Actions - AI Review fixed findings (worktree-based)
   markReviewFindingFixed: (worktreeId: string, findingKey: string) => void
   isReviewFindingFixed: (worktreeId: string, findingKey: string) => boolean
@@ -181,6 +210,14 @@ interface ChatUIState {
   // Actions - Reviewing status management (persisted)
   setSessionReviewing: (sessionId: string, reviewing: boolean) => void
   isSessionReviewing: (sessionId: string) => boolean
+
+  // Actions - Plan file path management (persisted)
+  setPlanFilePath: (sessionId: string, path: string | null) => void
+  getPlanFilePath: (sessionId: string) => string | null
+
+  // Actions - Pending plan message ID management (persisted)
+  setPendingPlanMessageId: (sessionId: string, messageId: string | null) => void
+  getPendingPlanMessageId: (sessionId: string) => string | null
 
   // Actions - Worktree management
   setActiveWorktree: (id: string | null, path: string | null) => void
@@ -241,8 +278,16 @@ interface ChatUIState {
   setManualThinkingOverride: (sessionId: string, override: boolean) => void
   hasManualThinkingOverride: (sessionId: string) => boolean
 
+  // Actions - Effort level (session-based, for Opus 4.6 adaptive thinking)
+  setEffortLevel: (sessionId: string, level: EffortLevel) => void
+  getEffortLevel: (sessionId: string) => EffortLevel
+
   // Actions - Selected model (session-based)
   setSelectedModel: (sessionId: string, model: string) => void
+
+  // Actions - MCP servers (session-based)
+  setEnabledMcpServers: (sessionId: string, servers: string[]) => void
+  toggleMcpServer: (sessionId: string, serverName: string) => void
 
   // Actions - Question answering (session-based)
   markQuestionAnswered: (
@@ -358,6 +403,7 @@ interface ChatUIState {
   clearSessionState: (sessionId: string) => void
 
   // Actions - Compaction tracking
+  setCompacting: (sessionId: string, compacting: boolean) => void
   setLastCompaction: (sessionId: string, trigger: string) => void
   getLastCompaction: (
     sessionId: string
@@ -375,6 +421,18 @@ interface ChatUIState {
   hasPendingDigest: (sessionId: string) => boolean
   getSessionDigest: (sessionId: string) => SessionDigest | undefined
 
+  // Actions - Worktree loading operations (commit, pr, review, merge, pull)
+  setWorktreeLoading: (worktreeId: string, operation: string) => void
+  clearWorktreeLoading: (worktreeId: string) => void
+  getWorktreeLoadingOperation: (worktreeId: string) => string | null
+
+  // Actions - Canvas-selected session (for magic menu targeting)
+  setCanvasSelectedSession: (
+    worktreeId: string,
+    sessionId: string | null
+  ) => void
+  getCanvasSelectedSession: (worktreeId: string) => string | null
+
   // Legacy actions (deprecated - for backward compatibility)
   /** @deprecated Use addSendingSession instead */
   addSendingWorktree: (worktreeId: string) => void
@@ -391,6 +449,7 @@ export const useChatStore = create<ChatUIState>()(
       activeSessionIds: {},
       reviewResults: {},
       viewingReviewTab: {},
+      viewingCanvasTab: {},
       fixedReviewFindings: {},
       worktreePaths: {},
       sendingSessionIds: {},
@@ -404,7 +463,9 @@ export const useChatStore = create<ChatUIState>()(
       executionModes: {},
       thinkingLevels: {},
       manualThinkingOverrides: {},
+      effortLevels: {},
       selectedModels: {},
+      enabledMcpServers: {},
       answeredQuestions: {},
       submittedAnswers: {},
       errors: {},
@@ -423,11 +484,16 @@ export const useChatStore = create<ChatUIState>()(
       pendingPermissionDenials: {},
       deniedMessageContext: {},
       lastCompaction: {},
+      compactingSessions: {},
       reviewingSessions: {},
+      planFilePaths: {},
+      pendingPlanMessageIds: {},
       savingContext: {},
       skippedQuestionSessions: {},
       pendingDigestSessionIds: {},
       sessionDigests: {},
+      worktreeLoadingOperations: {},
+      canvasSelectedSessionIds: {},
 
       // Session management
       setActiveSession: (worktreeId, sessionId) =>
@@ -492,6 +558,22 @@ export const useChatStore = create<ChatUIState>()(
       isViewingReviewTab: worktreeId =>
         get().viewingReviewTab[worktreeId] ?? false,
 
+      // Canvas tab management
+      setViewingCanvasTab: (worktreeId, viewing) =>
+        set(
+          state => ({
+            viewingCanvasTab: {
+              ...state.viewingCanvasTab,
+              [worktreeId]: viewing,
+            },
+          }),
+          undefined,
+          'setViewingCanvasTab'
+        ),
+
+      isViewingCanvasTab: worktreeId =>
+        get().viewingCanvasTab[worktreeId] ?? true, // Default to canvas view
+
       // AI Review fixed findings (worktree-based)
       markReviewFindingFixed: (worktreeId, findingKey) =>
         set(
@@ -545,6 +627,51 @@ export const useChatStore = create<ChatUIState>()(
 
       isSessionReviewing: sessionId =>
         get().reviewingSessions[sessionId] ?? false,
+
+      // Plan file path management
+      setPlanFilePath: (sessionId, path) =>
+        set(
+          state => {
+            if (path) {
+              return {
+                planFilePaths: {
+                  ...state.planFilePaths,
+                  [sessionId]: path,
+                },
+              }
+            } else {
+              const { [sessionId]: _, ...rest } = state.planFilePaths
+              return { planFilePaths: rest }
+            }
+          },
+          undefined,
+          'setPlanFilePath'
+        ),
+
+      getPlanFilePath: sessionId => get().planFilePaths[sessionId] ?? null,
+
+      // Pending plan message ID management
+      setPendingPlanMessageId: (sessionId, messageId) =>
+        set(
+          state => {
+            if (messageId) {
+              return {
+                pendingPlanMessageIds: {
+                  ...state.pendingPlanMessageIds,
+                  [sessionId]: messageId,
+                },
+              }
+            } else {
+              const { [sessionId]: _, ...rest } = state.pendingPlanMessageIds
+              return { pendingPlanMessageIds: rest }
+            }
+          },
+          undefined,
+          'setPendingPlanMessageId'
+        ),
+
+      getPendingPlanMessageId: sessionId =>
+        get().pendingPlanMessageIds[sessionId] ?? null,
 
       // Worktree management
       setActiveWorktree: (id, path) =>
@@ -617,7 +744,8 @@ export const useChatStore = create<ChatUIState>()(
                 },
               }
             } else {
-              const { [sessionId]: _, ...rest } = state.waitingForInputSessionIds
+              const { [sessionId]: _, ...rest } =
+                state.waitingForInputSessionIds
               return { waitingForInputSessionIds: rest }
             }
           },
@@ -946,6 +1074,21 @@ export const useChatStore = create<ChatUIState>()(
       hasManualThinkingOverride: sessionId =>
         get().manualThinkingOverrides[sessionId] ?? false,
 
+      // Effort level (session-based, for Opus 4.6 adaptive thinking)
+      setEffortLevel: (sessionId, level) =>
+        set(
+          state => ({
+            effortLevels: {
+              ...state.effortLevels,
+              [sessionId]: level,
+            },
+          }),
+          undefined,
+          'setEffortLevel'
+        ),
+
+      getEffortLevel: sessionId => get().effortLevels[sessionId] ?? 'high',
+
       // Selected model (session-based)
       setSelectedModel: (sessionId, model) =>
         set(
@@ -957,6 +1100,37 @@ export const useChatStore = create<ChatUIState>()(
           }),
           undefined,
           'setSelectedModel'
+        ),
+
+      // MCP servers (session-based)
+      setEnabledMcpServers: (sessionId, servers) =>
+        set(
+          state => ({
+            enabledMcpServers: {
+              ...state.enabledMcpServers,
+              [sessionId]: servers,
+            },
+          }),
+          undefined,
+          'setEnabledMcpServers'
+        ),
+
+      toggleMcpServer: (sessionId, serverName) =>
+        set(
+          state => {
+            const current = state.enabledMcpServers[sessionId] ?? []
+            const updated = current.includes(serverName)
+              ? current.filter(n => n !== serverName)
+              : [...current, serverName]
+            return {
+              enabledMcpServers: {
+                ...state.enabledMcpServers,
+                [sessionId]: updated,
+              },
+            }
+          },
+          undefined,
+          'toggleMcpServer'
         ),
 
       // Question answering (session-based)
@@ -1113,12 +1287,19 @@ export const useChatStore = create<ChatUIState>()(
       // Pending files (session-based, for @ mentions)
       addPendingFile: (sessionId, file) =>
         set(
-          state => ({
-            pendingFiles: {
-              ...state.pendingFiles,
-              [sessionId]: [...(state.pendingFiles[sessionId] ?? []), file],
-            },
-          }),
+          state => {
+            const existing = state.pendingFiles[sessionId] ?? []
+            // Deduplicate by relativePath - don't add if already present
+            if (existing.some(f => f.relativePath === file.relativePath)) {
+              return state
+            }
+            return {
+              pendingFiles: {
+                ...state.pendingFiles,
+                [sessionId]: [...existing, file],
+              },
+            }
+          },
           undefined,
           'addPendingFile'
         ),
@@ -1481,15 +1662,25 @@ export const useChatStore = create<ChatUIState>()(
       clearSessionState: sessionId =>
         set(
           state => {
-            const { [sessionId]: _approved, ...restApproved } = state.approvedTools
-            const { [sessionId]: _denials, ...restDenials } = state.pendingPermissionDenials
-            const { [sessionId]: _denied, ...restDenied } = state.deniedMessageContext
-            const { [sessionId]: _reviewing, ...restReviewing } = state.reviewingSessions
-            const { [sessionId]: _waiting, ...restWaiting } = state.waitingForInputSessionIds
-            const { [sessionId]: _answered, ...restAnswered } = state.answeredQuestions
-            const { [sessionId]: _submitted, ...restSubmitted } = state.submittedAnswers
+            const { [sessionId]: _approved, ...restApproved } =
+              state.approvedTools
+            const { [sessionId]: _denials, ...restDenials } =
+              state.pendingPermissionDenials
+            const { [sessionId]: _denied, ...restDenied } =
+              state.deniedMessageContext
+            const { [sessionId]: _reviewing, ...restReviewing } =
+              state.reviewingSessions
+            const { [sessionId]: _waiting, ...restWaiting } =
+              state.waitingForInputSessionIds
+            const { [sessionId]: _answered, ...restAnswered } =
+              state.answeredQuestions
+            const { [sessionId]: _submitted, ...restSubmitted } =
+              state.submittedAnswers
             const { [sessionId]: _fixed, ...restFixed } = state.fixedFindings
-            const { [sessionId]: _manual, ...restManual } = state.manualThinkingOverrides
+            const { [sessionId]: _manual, ...restManual } =
+              state.manualThinkingOverrides
+            const { [sessionId]: _effort, ...restEffort } = state.effortLevels
+            const { [sessionId]: _mcp, ...restMcp } = state.enabledMcpServers
 
             return {
               approvedTools: restApproved,
@@ -1501,6 +1692,8 @@ export const useChatStore = create<ChatUIState>()(
               submittedAnswers: restSubmitted,
               fixedFindings: restFixed,
               manualThinkingOverrides: restManual,
+              effortLevels: restEffort,
+              enabledMcpServers: restMcp,
             }
           },
           undefined,
@@ -1508,6 +1701,23 @@ export const useChatStore = create<ChatUIState>()(
         ),
 
       // Compaction tracking
+      setCompacting: (sessionId, compacting) =>
+        set(
+          state => ({
+            compactingSessions: {
+              ...state.compactingSessions,
+              ...(compacting
+                ? { [sessionId]: true }
+                : (() => {
+                    const { [sessionId]: _, ...rest } = state.compactingSessions
+                    return rest
+                  })()),
+            },
+          }),
+          undefined,
+          'setCompacting'
+        ),
+
       setLastCompaction: (sessionId, trigger) =>
         set(
           state => ({
@@ -1596,6 +1806,56 @@ export const useChatStore = create<ChatUIState>()(
         get().pendingDigestSessionIds[sessionId] ?? false,
 
       getSessionDigest: sessionId => get().sessionDigests[sessionId],
+
+      // Worktree loading operations (commit, pr, review, merge, pull)
+      setWorktreeLoading: (worktreeId, operation) =>
+        set(
+          state => ({
+            worktreeLoadingOperations: {
+              ...state.worktreeLoadingOperations,
+              [worktreeId]: operation,
+            },
+          }),
+          undefined,
+          'setWorktreeLoading'
+        ),
+
+      clearWorktreeLoading: worktreeId =>
+        set(
+          state => {
+            const { [worktreeId]: _, ...rest } = state.worktreeLoadingOperations
+            return { worktreeLoadingOperations: rest }
+          },
+          undefined,
+          'clearWorktreeLoading'
+        ),
+
+      getWorktreeLoadingOperation: worktreeId =>
+        get().worktreeLoadingOperations[worktreeId] ?? null,
+
+      // Canvas-selected session (for magic menu targeting)
+      setCanvasSelectedSession: (worktreeId, sessionId) =>
+        set(
+          state => {
+            if (sessionId) {
+              return {
+                canvasSelectedSessionIds: {
+                  ...state.canvasSelectedSessionIds,
+                  [worktreeId]: sessionId,
+                },
+              }
+            } else {
+              const { [worktreeId]: _, ...rest } =
+                state.canvasSelectedSessionIds
+              return { canvasSelectedSessionIds: rest }
+            }
+          },
+          undefined,
+          'setCanvasSelectedSession'
+        ),
+
+      getCanvasSelectedSession: worktreeId =>
+        get().canvasSelectedSessionIds[worktreeId] ?? null,
 
       // Legacy actions (deprecated - for backward compatibility)
       addSendingWorktree: worktreeId => {

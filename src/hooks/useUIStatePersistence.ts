@@ -4,6 +4,7 @@ import { useProjects } from '@/services/projects'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
+import { useTerminalStore } from '@/store/terminal-store'
 import { logger } from '@/lib/logger'
 import type { UIState } from '@/types/ui-state'
 
@@ -75,9 +76,15 @@ export function useUIStatePersistence() {
       fixedReviewFindings,
       pendingDigestSessionIds,
     } = useChatStore.getState()
-    const { expandedProjectIds, expandedFolderIds, selectedProjectId } =
-      useProjectsStore.getState()
+    const {
+      expandedProjectIds,
+      expandedFolderIds,
+      selectedProjectId,
+      projectAccessTimestamps,
+    } = useProjectsStore.getState()
     const { leftSidebarSize, leftSidebarVisible } = useUIStore.getState()
+    const { modalTerminalOpen, modalTerminalWidth } =
+      useTerminalStore.getState()
 
     return {
       active_worktree_id: activeWorktreeId,
@@ -97,6 +104,11 @@ export function useUIStatePersistence() {
       ),
       // Convert pendingDigestSessionIds record to array of session IDs
       pending_digest_session_ids: Object.keys(pendingDigestSessionIds),
+      // Modal terminal drawer state
+      modal_terminal_open: modalTerminalOpen,
+      modal_terminal_width: modalTerminalWidth,
+      // Project access timestamps for recency sorting
+      project_access_timestamps: projectAccessTimestamps,
       version: 1, // Reset for first release
     }
   }, [])
@@ -174,7 +186,9 @@ export function useUIStatePersistence() {
     // Restore active project first (selectProject clears selectedWorktreeId)
     // This must happen BEFORE restoring the active worktree
     if (uiState.active_project_id) {
-      const projectExists = projects.some(p => p.id === uiState.active_project_id)
+      const projectExists = projects.some(
+        p => p.id === uiState.active_project_id
+      )
       if (projectExists) {
         logger.debug('Restoring active project', {
           id: uiState.active_project_id,
@@ -270,8 +284,37 @@ export function useUIStatePersistence() {
       useChatStore.setState({ pendingDigestSessionIds: converted })
     }
 
+    // Restore modal terminal drawer state
+    const modalTerminalOpen = uiState.modal_terminal_open ?? {}
+    if (Object.keys(modalTerminalOpen).length > 0) {
+      logger.debug('Restoring modal terminal open state', {
+        count: Object.keys(modalTerminalOpen).length,
+      })
+      useTerminalStore.setState({ modalTerminalOpen })
+    }
+    if (uiState.modal_terminal_width != null) {
+      logger.debug('Restoring modal terminal width', {
+        width: uiState.modal_terminal_width,
+      })
+      useTerminalStore.setState({
+        modalTerminalWidth: uiState.modal_terminal_width,
+      })
+    }
+
+    // Restore project access timestamps
+    const projectAccessTimestamps = uiState.project_access_timestamps ?? {}
+    if (Object.keys(projectAccessTimestamps).length > 0) {
+      logger.debug('Restoring project access timestamps', {
+        count: Object.keys(projectAccessTimestamps).length,
+      })
+      useProjectsStore
+        .getState()
+        .setProjectAccessTimestamps(projectAccessTimestamps)
+    }
+
     queueMicrotask(() => {
       setIsInitialized(true)
+      useUIStore.getState().setUIStateInitialized(true)
     })
     logger.info('UI state initialization complete')
   }, [uiStateLoaded, uiState, projects, projectsLoaded, isInitialized])
@@ -285,6 +328,8 @@ export function useUIStatePersistence() {
     let prevExpandedProjectIds = useProjectsStore.getState().expandedProjectIds
     let prevExpandedFolderIds = useProjectsStore.getState().expandedFolderIds
     let prevSelectedProjectId = useProjectsStore.getState().selectedProjectId
+    let prevProjectAccessTimestamps =
+      useProjectsStore.getState().projectAccessTimestamps
     let prevLeftSidebarSize = useUIStore.getState().leftSidebarSize
     let prevLeftSidebarVisible = useUIStore.getState().leftSidebarVisible
     let prevWorktreeId = useChatStore.getState().activeWorktreeId
@@ -296,18 +341,30 @@ export function useUIStatePersistence() {
     let prevFixedReviewFindings = useChatStore.getState().fixedReviewFindings
     let prevPendingDigestSessionIds =
       useChatStore.getState().pendingDigestSessionIds
+    let prevModalTerminalOpen = useTerminalStore.getState().modalTerminalOpen
+    let prevModalTerminalWidth = useTerminalStore.getState().modalTerminalWidth
 
     // Subscribe to projects-store changes (expanded projects, folders, and selected project)
     const unsubProjects = useProjectsStore.subscribe(state => {
       // Check if expandedProjectIds, expandedFolderIds, or selectedProjectId changed
-      const projectIdsChanged = state.expandedProjectIds !== prevExpandedProjectIds
+      const projectIdsChanged =
+        state.expandedProjectIds !== prevExpandedProjectIds
       const folderIdsChanged = state.expandedFolderIds !== prevExpandedFolderIds
-      const selectedProjectChanged = state.selectedProjectId !== prevSelectedProjectId
+      const selectedProjectChanged =
+        state.selectedProjectId !== prevSelectedProjectId
+      const accessTimestampsChanged =
+        state.projectAccessTimestamps !== prevProjectAccessTimestamps
 
-      if (projectIdsChanged || folderIdsChanged || selectedProjectChanged) {
+      if (
+        projectIdsChanged ||
+        folderIdsChanged ||
+        selectedProjectChanged ||
+        accessTimestampsChanged
+      ) {
         prevExpandedProjectIds = state.expandedProjectIds
         prevExpandedFolderIds = state.expandedFolderIds
         prevSelectedProjectId = state.selectedProjectId
+        prevProjectAccessTimestamps = state.projectAccessTimestamps
         const currentState = getCurrentUIState()
         debouncedSaveRef.current?.(currentState)
       }
@@ -363,12 +420,26 @@ export function useUIStatePersistence() {
       }
     })
 
+    // Subscribe to terminal-store changes (modal terminal drawer state)
+    const unsubTerminal = useTerminalStore.subscribe(state => {
+      const openChanged = state.modalTerminalOpen !== prevModalTerminalOpen
+      const widthChanged = state.modalTerminalWidth !== prevModalTerminalWidth
+
+      if (openChanged || widthChanged) {
+        prevModalTerminalOpen = state.modalTerminalOpen
+        prevModalTerminalWidth = state.modalTerminalWidth
+        const currentState = getCurrentUIState()
+        debouncedSaveRef.current?.(currentState)
+      }
+    })
+
     logger.debug('UI state persistence subscriptions active')
 
     return () => {
       unsubProjects()
       unsubUI()
       unsubChat()
+      unsubTerminal()
       debouncedSaveRef.current?.cancel()
       logger.debug('UI state persistence subscriptions cleaned up')
     }

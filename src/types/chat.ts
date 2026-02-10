@@ -14,6 +14,17 @@ export type MessageRole = 'user' | 'assistant'
 export type ThinkingLevel = 'off' | 'think' | 'megathink' | 'ultrathink'
 
 /**
+ * Effort level for Opus 4.6 adaptive thinking
+ * Controls --settings {"effort": "<level>"} via CLI
+ * Replaces ThinkingLevel when model is Opus (latest) on CLI >= 2.1.32
+ * - low: Minimal thinking, skips for simple tasks
+ * - medium: Moderate thinking, may skip for very simple queries
+ * - high: Deep reasoning (default), almost always thinks
+ * - max: No constraints on thinking depth (Opus 4.6 only)
+ */
+export type EffortLevel = 'low' | 'medium' | 'high' | 'max'
+
+/**
  * Execution mode for Claude CLI permission handling
  * - plan: Read-only mode, Claude can't make changes (--permission-mode plan)
  * - build: Auto-approve file edits only (--permission-mode acceptEdits)
@@ -74,6 +85,8 @@ export interface ChatMessage {
   execution_mode?: ExecutionMode
   /** Thinking level when this message was sent (user messages only) */
   thinking_level?: ThinkingLevel
+  /** Effort level when this message was sent (user messages only, Opus 4.6) */
+  effort_level?: EffortLevel
   /** True if this message was recovered from a crash */
   recovered?: boolean
   /** Token usage for this message (assistant messages only) */
@@ -141,8 +154,20 @@ export interface Session {
   is_reviewing?: boolean
   /** Whether this session is waiting for user input (AskUserQuestion, ExitPlanMode) */
   waiting_for_input?: boolean
+  /** Type of waiting: 'question' for AskUserQuestion, 'plan' for ExitPlanMode */
+  waiting_for_input_type?: 'question' | 'plan' | null
   /** Message IDs whose plans have been approved (for NDJSON-only storage) */
   approved_plan_message_ids?: string[]
+  /** File path to the current plan (extracted from Write tool calls) */
+  plan_file_path?: string
+  /** Message ID of the pending plan awaiting approval (for Canvas view) */
+  pending_plan_message_id?: string
+  /** Persisted session digest (recap summary) */
+  digest?: SessionDigest
+  /** Status of the last run (for immediate status on app restart) */
+  last_run_status?: RunStatus
+  /** Execution mode of the last run (plan/build/yolo) */
+  last_run_execution_mode?: ExecutionMode
 }
 
 /**
@@ -257,7 +282,15 @@ export interface DoneEvent {
 }
 
 /**
- * Event payload for context compaction from Rust
+ * Event payload for compaction-in-progress from Rust
+ */
+export interface CompactingEvent {
+  session_id: string
+  worktree_id: string
+}
+
+/**
+ * Event payload for context compaction complete from Rust
  */
 export interface CompactedEvent {
   session_id: string
@@ -668,8 +701,41 @@ export interface QueuedMessage {
   thinkingLevel: ThinkingLevel
   /** Whether thinking should be disabled for this mode (snapshot at queue time) */
   disableThinkingForMode: boolean
+  /** Effort level for Opus 4.6 adaptive thinking (snapshot at queue time) */
+  effortLevel?: EffortLevel
+  /** MCP config JSON to pass to CLI (snapshot at queue time) */
+  mcpConfig?: string
   /** Timestamp when queued (for display ordering) */
   queuedAt: number
+}
+
+// ============================================================================
+// MCP Server Types
+// ============================================================================
+
+/** Information about a configured MCP server (from Claude CLI config) */
+export interface McpServerInfo {
+  /** Server name (key in mcpServers config) */
+  name: string
+  /** Full server config object (type, command, args, env, url, etc.) */
+  config: unknown
+  /** Configuration scope: user (~/.claude.json global), local (~/.claude.json per-project), project (.mcp.json) */
+  scope: 'user' | 'local' | 'project'
+  /** Whether the server has "disabled": true in its config */
+  disabled: boolean
+}
+
+/** Health status of an MCP server as reported by `claude mcp list` */
+export type McpHealthStatus =
+  | 'connected'
+  | 'needsAuthentication'
+  | 'couldNotConnect'
+  | 'disabled'
+  | 'unknown'
+
+/** Result of a health check across all MCP servers */
+export interface McpHealthResult {
+  statuses: Record<string, McpHealthStatus>
 }
 
 // ============================================================================
@@ -809,4 +875,8 @@ export interface SessionDigest {
   chat_summary: string
   /** One sentence describing what was just completed */
   last_action: string
+  /** When the digest was created (unix epoch seconds) */
+  created_at?: number
+  /** Number of messages when this digest was generated */
+  message_count?: number
 }

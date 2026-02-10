@@ -5,6 +5,8 @@
  * and the individual CLI reinstall modal.
  */
 
+import { useCallback, useEffect, useRef } from 'react'
+import { invoke } from '@tauri-apps/api/core'
 import { Download, CheckCircle2, Loader2, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -14,6 +16,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { useTerminal } from '@/hooks/useTerminal'
+import { disposeTerminal } from '@/lib/terminal-instances'
 
 export interface SetupStateProps {
   cliName: string
@@ -89,7 +93,9 @@ export function SetupState({
           </Select>
         )}
         <p className="text-xs text-muted-foreground">
-          {cliName} will be installed in Jean&apos;s application data folder.
+          {cliName} will be installed separately in Jean&apos;s application data
+          folder — it won&apos;t affect your global installation. Authentication
+          and configuration from your global {cliName} setup will be used.
         </p>
       </div>
 
@@ -172,6 +178,125 @@ export function ErrorState({
             onClick={onSkip}
             variant="outline"
             className="w-full"
+            size="lg"
+          >
+            Skip for Now
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export interface AuthCheckingStateProps {
+  cliName: string
+}
+
+export function AuthCheckingState({ cliName }: AuthCheckingStateProps) {
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col items-center gap-4">
+        <Loader2 className="size-10 animate-spin text-primary" />
+        <div className="text-center">
+          <p className="font-medium">Checking Authentication</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            Verifying {cliName} login status...
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export interface AuthLoginStateProps {
+  cliName: string
+  terminalId: string
+  command: string
+  onComplete: () => void
+  onSkip?: () => void
+}
+
+export function AuthLoginState({
+  cliName,
+  terminalId,
+  command,
+  onComplete,
+  onSkip,
+}: AuthLoginStateProps) {
+  const observerRef = useRef<ResizeObserver | null>(null)
+  const initialized = useRef(false)
+
+  const { initTerminal, fit } = useTerminal({
+    terminalId,
+    worktreeId: 'cli-login',
+    worktreePath: '/tmp',
+    command,
+  })
+
+  const containerCallbackRef = useCallback(
+    (container: HTMLDivElement | null) => {
+      if (observerRef.current) {
+        observerRef.current.disconnect()
+        observerRef.current = null
+      }
+
+      if (!container) return
+
+      const observer = new ResizeObserver(entries => {
+        const entry = entries[0]
+        if (!entry || entry.contentRect.width === 0) return
+
+        if (!initialized.current) {
+          initialized.current = true
+          initTerminal(container)
+          return
+        }
+
+        fit()
+      })
+
+      observer.observe(container)
+      observerRef.current = observer
+    },
+    [initTerminal, fit]
+  )
+
+  // Cleanup observer and terminal on unmount
+  useEffect(() => {
+    return () => {
+      if (observerRef.current) {
+        observerRef.current.disconnect()
+      }
+      invoke('stop_terminal', { terminalId }).catch(() => {
+        /* noop */
+      })
+      disposeTerminal(terminalId)
+    }
+  }, [terminalId])
+
+  return (
+    <div className="space-y-4">
+      <div className="text-center">
+        <p className="font-medium">{cliName} Login Required</p>
+        <p className="text-sm text-muted-foreground mt-1">
+          Complete the authentication process below.
+        </p>
+      </div>
+
+      <div
+        ref={containerCallbackRef}
+        className="w-full h-[300px] rounded-md bg-[#1a1a1a] overflow-hidden"
+      />
+
+      <div className="flex gap-2">
+        <Button onClick={onComplete} className="flex-1" size="lg">
+          I&apos;ve Completed Login
+        </Button>
+        {onSkip && (
+          <Button
+            onClick={onSkip}
+            variant="outline"
+            className="flex-1"
             size="lg"
           >
             Skip for Now

@@ -33,6 +33,8 @@ interface StreamingMessageProps {
   selectedThinkingLevel: ThinkingLevel
   /** Keyboard shortcut for approve button */
   approveShortcut: string
+  /** Keyboard shortcut for approve yolo button */
+  approveShortcutYolo?: string
   /** Callback when user answers a question */
   onQuestionAnswer: (
     toolCallId: string,
@@ -73,6 +75,7 @@ export const StreamingMessage = memo(function StreamingMessage({
   streamingContent,
   streamingExecutionMode,
   approveShortcut,
+  approveShortcutYolo,
   onQuestionAnswer,
   onQuestionSkip,
   onFileClick,
@@ -99,126 +102,141 @@ export const StreamingMessage = memo(function StreamingMessage({
           const lastIncompleteIndex = timeline.reduce((lastIdx, item, idx) => {
             if (item.type === 'task' && !item.taskTool.output) return idx
             if (item.type === 'standalone' && !item.tool.output) return idx
-            if (item.type === 'stackedGroup' && item.items.some(i => i.type === 'tool' && !i.tool.output)) return idx
+            if (
+              item.type === 'stackedGroup' &&
+              item.items.some(i => i.type === 'tool' && !i.tool.output)
+            )
+              return idx
             return lastIdx
           }, -1)
 
           return (
-        <>
-          {/* Build timeline preserving order of text and tools */}
-          <div className="space-y-4">
-            {timeline.map((item, index) => {
-              const isLastIncomplete = index === lastIncompleteIndex
-              switch (item.type) {
-                case 'thinking':
-                  return (
-                    <ThinkingBlock
-                      key={item.key}
-                      thinking={item.thinking}
-                      isStreaming={true}
-                    />
-                  )
-                case 'text':
-                  return (
-                    <Markdown key={item.key} streaming>
-                      {item.text}
-                    </Markdown>
-                  )
-                case 'task':
-                  return (
-                    <TaskCallInline
-                      key={item.key}
-                      taskToolCall={item.taskTool}
-                      subToolCalls={item.subTools}
-                      onFileClick={onFileClick}
-                      isStreaming={true}
-                      isLastIncomplete={isLastIncomplete}
-                    />
-                  )
-                case 'standalone':
-                  return (
-                    <ToolCallInline
-                      key={item.key}
-                      toolCall={item.tool}
-                      onFileClick={onFileClick}
-                      isStreaming={true}
-                      isLastIncomplete={isLastIncomplete}
-                    />
-                  )
-                case 'stackedGroup':
-                  return (
-                    <StackedGroup
-                      key={item.key}
-                      items={item.items}
-                      onFileClick={onFileClick}
-                      isStreaming={true}
-                      isLastIncomplete={isLastIncomplete}
-                    />
-                  )
-                case 'askUserQuestion': {
-                  // Render during streaming - Claude blocks waiting for user input
-                  const isAnswered = isQuestionAnswered(sessionId, item.tool.id)
-                  const input = item.tool.input as {
-                    questions: Question[]
-                  }
-                  return (
-                    <AskUserQuestion
-                      key={item.key}
-                      toolCallId={item.tool.id}
-                      questions={input.questions}
-                      introText={item.introText}
-                      onSubmit={(toolCallId, answers) =>
-                        onQuestionAnswer(toolCallId, answers, input.questions)
+            <>
+              {/* Build timeline preserving order of text and tools */}
+              <div className="space-y-4">
+                {timeline.map((item, index) => {
+                  const isLastIncomplete = index === lastIncompleteIndex
+                  switch (item.type) {
+                    case 'thinking':
+                      return (
+                        <ThinkingBlock
+                          key={item.key}
+                          thinking={item.thinking}
+                          isStreaming={true}
+                        />
+                      )
+                    case 'text':
+                      return (
+                        <Markdown key={item.key} streaming>
+                          {item.text}
+                        </Markdown>
+                      )
+                    case 'task':
+                      return (
+                        <TaskCallInline
+                          key={item.key}
+                          taskToolCall={item.taskTool}
+                          subToolCalls={item.subTools}
+                          allToolCalls={toolCalls}
+                          onFileClick={onFileClick}
+                          isStreaming={true}
+                          isLastIncomplete={isLastIncomplete}
+                        />
+                      )
+                    case 'standalone':
+                      return (
+                        <ToolCallInline
+                          key={item.key}
+                          toolCall={item.tool}
+                          onFileClick={onFileClick}
+                          isStreaming={true}
+                          isLastIncomplete={isLastIncomplete}
+                        />
+                      )
+                    case 'stackedGroup':
+                      return (
+                        <StackedGroup
+                          key={item.key}
+                          items={item.items}
+                          onFileClick={onFileClick}
+                          isStreaming={true}
+                          isLastIncomplete={isLastIncomplete}
+                        />
+                      )
+                    case 'askUserQuestion': {
+                      // Render during streaming - Claude blocks waiting for user input
+                      const isAnswered = isQuestionAnswered(
+                        sessionId,
+                        item.tool.id
+                      )
+                      const input = item.tool.input as {
+                        questions: Question[]
                       }
-                      onSkip={onQuestionSkip}
-                      readOnly={isAnswered}
-                      submittedAnswers={
-                        isAnswered
-                          ? getSubmittedAnswers(sessionId, item.tool.id)
-                          : undefined
-                      }
-                    />
-                  )
-                }
-                case 'exitPlanMode': {
-                  // Render plan content + approval button during streaming
-                  // Extract plan from this specific tool's input (not global search)
-                  const toolInput = item.tool.input as { plan?: string } | undefined
-                  const inlinePlan = toolInput?.plan
-                  const planFilePath = !inlinePlan
-                    ? findPlanFilePath(toolCalls)
-                    : null
-                  const isApproved = isStreamingPlanApproved(sessionId)
+                      return (
+                        <AskUserQuestion
+                          key={item.key}
+                          toolCallId={item.tool.id}
+                          questions={input.questions}
+                          introText={item.introText}
+                          onSubmit={(toolCallId, answers) =>
+                            onQuestionAnswer(
+                              toolCallId,
+                              answers,
+                              input.questions
+                            )
+                          }
+                          onSkip={onQuestionSkip}
+                          readOnly={isAnswered}
+                          submittedAnswers={
+                            isAnswered
+                              ? getSubmittedAnswers(sessionId, item.tool.id)
+                              : undefined
+                          }
+                        />
+                      )
+                    }
+                    case 'exitPlanMode': {
+                      // Render plan content + approval button during streaming
+                      // Extract plan from this specific tool's input (not global search)
+                      const toolInput = item.tool.input as
+                        | { plan?: string }
+                        | undefined
+                      const inlinePlan = toolInput?.plan
+                      const planFilePath = !inlinePlan
+                        ? findPlanFilePath(toolCalls)
+                        : null
+                      const isApproved = isStreamingPlanApproved(sessionId)
 
-                  return (
-                    <div key={item.key}>
-                      {inlinePlan ? (
-                        <PlanDisplay
-                          content={inlinePlan}
-                          defaultCollapsed={isApproved}
-                        />
-                      ) : planFilePath ? (
-                        <PlanDisplay
-                          filePath={planFilePath}
-                          defaultCollapsed={isApproved}
-                        />
-                      ) : null}
-                      <ExitPlanModeButton
-                        toolCalls={toolCalls}
-                        isApproved={isApproved}
-                        onPlanApproval={onStreamingPlanApproval}
-                        onPlanApprovalYolo={onStreamingPlanApprovalYolo}
-                        shortcut={approveShortcut}
-                      />
-                    </div>
-                  )
-                }
-                default:
-                  return null
-              }
-            })}
-          </div>
-        </>
+                      return (
+                        <div key={item.key}>
+                          {inlinePlan ? (
+                            <PlanDisplay
+                              content={inlinePlan}
+                              defaultCollapsed={isApproved}
+                            />
+                          ) : planFilePath ? (
+                            <PlanDisplay
+                              filePath={planFilePath}
+                              defaultCollapsed={isApproved}
+                            />
+                          ) : null}
+                          <ExitPlanModeButton
+                            toolCalls={toolCalls}
+                            isApproved={isApproved}
+                            onPlanApproval={onStreamingPlanApproval}
+                            onPlanApprovalYolo={onStreamingPlanApprovalYolo}
+                            shortcut={approveShortcut}
+                            shortcutYolo={approveShortcutYolo}
+                          />
+                        </div>
+                      )
+                    }
+                    default:
+                      return null
+                  }
+                })}
+              </div>
+            </>
           )
         })()
       ) : (

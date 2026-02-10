@@ -1,8 +1,13 @@
 import { useCallback } from 'react'
 import { X } from 'lucide-react'
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from '@/lib/transport'
 import type { PendingImage } from '@/types/chat'
 import { ImageLightbox } from './ImageLightbox'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip'
 
 interface ImagePreviewProps {
   /** Array of pending images to display */
@@ -55,14 +60,18 @@ export function ImagePreview({
             thumbnailClassName="h-16 w-16 object-cover rounded-md border border-border/50 bg-muted cursor-pointer hover:border-primary/50 transition-colors"
           />
           {!disabled && (
-            <button
-              type="button"
-              onClick={e => handleRemove(e, image)}
-              className="absolute -top-1.5 -right-1.5 p-0.5 bg-destructive text-destructive-foreground rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-destructive/90 z-10"
-              title="Remove image"
-            >
-              <X className="h-3 w-3" />
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={e => handleRemove(e, image)}
+                  className="absolute -top-1.5 -right-1.5 p-0.5 bg-destructive text-destructive-foreground rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-destructive/90 z-10"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Remove image</TooltipContent>
+            </Tooltip>
           )}
         </div>
       ))}

@@ -3,9 +3,11 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::io::Write;
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 
 use super::config::{ensure_cli_dir, get_cli_binary_path};
+use crate::http_server::EmitExt;
+use crate::platform::silent_command;
 
 /// Extract semver version number from a version string
 /// Handles formats like: "1.0.28", "v1.0.28", "Claude CLI 1.0.28"
@@ -84,9 +86,8 @@ pub async fn check_claude_cli_installed(app: AppHandle) -> Result<ClaudeCliStatu
     }
 
     // Try to get the version by running claude --version
-    // Use shell wrapper to bypass macOS security restrictions
-    let shell_cmd = format!("{:?} --version", binary_path);
-    let version = match crate::platform::shell_command(&shell_cmd).output() {
+    // Use the binary directly - shell wrapper causes PowerShell parsing issues on Windows
+    let version = match silent_command(&binary_path).arg("--version").output() {
         Ok(output) => {
             if output.status.success() {
                 let version_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -247,6 +248,11 @@ fn get_platform() -> Result<&'static str, String> {
         return Ok("linux-arm64");
     }
 
+    #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
+    {
+        return Ok("win32-x64");
+    }
+
     #[allow(unreachable_code)]
     Err("Unsupported platform".to_string())
 }
@@ -339,7 +345,12 @@ pub async fn install_claude_cli(app: AppHandle, version: Option<String>) -> Resu
     log::trace!("Expected checksum for {platform}: {expected_checksum}");
 
     // Build download URL
-    let download_url = format!("{CLAUDE_DIST_BUCKET}/{version}/{platform}/claude");
+    let binary_name = if cfg!(windows) {
+        "claude.exe"
+    } else {
+        "claude"
+    };
+    let download_url = format!("{CLAUDE_DIST_BUCKET}/{version}/{platform}/{binary_name}");
     log::trace!("Downloading from: {download_url}");
 
     // Emit progress: downloading
@@ -411,7 +422,7 @@ pub async fn install_claude_cli(app: AppHandle, version: Option<String>) -> Resu
     #[cfg(target_os = "macos")]
     {
         log::trace!("Removing quarantine attribute from {:?}", binary_path);
-        let _ = Command::new("xattr")
+        let _ = silent_command("xattr")
             .args(["-d", "com.apple.quarantine"])
             .arg(&binary_path)
             .output();
@@ -450,14 +461,16 @@ pub async fn check_claude_cli_auth(app: AppHandle) -> Result<ClaudeAuthStatus, S
 
     // Run a simple non-interactive query to check if authenticated
     // Use --print to avoid interactive mode, and a simple prompt
-    let shell_cmd = format!(
-        "{:?} --print --output-format text -p 'Reply with just the word OK'",
-        binary_path
-    );
+    log::trace!("Running auth check: {:?}", binary_path);
 
-    log::trace!("Running auth check: {:?}", shell_cmd);
-
-    let output = crate::platform::shell_command(&shell_cmd)
+    let output = silent_command(&binary_path)
+        .args([
+            "--print",
+            "--output-format",
+            "text",
+            "-p",
+            "Reply with just the word OK",
+        ])
         .output()
         .map_err(|e| format!("Failed to execute Claude CLI: {e}"))?;
 
@@ -486,7 +499,7 @@ fn emit_progress(app: &AppHandle, stage: &str, message: &str, percent: u8) {
         percent,
     };
 
-    if let Err(e) = app.emit("claude-cli:install-progress", &progress) {
+    if let Err(e) = app.emit_all("claude-cli:install-progress", &progress) {
         log::warn!("Failed to emit install progress: {}", e);
     }
 }

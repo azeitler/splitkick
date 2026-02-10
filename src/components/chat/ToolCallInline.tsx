@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import {
   FileText,
   Edit,
@@ -14,6 +14,7 @@ import {
   Brain,
   Loader2,
 } from 'lucide-react'
+import { diffLines } from 'diff'
 import type { ToolCall } from '@/types/chat'
 import type { StackableItem } from './tool-call-utils'
 import { Markdown } from '@/components/ui/markdown'
@@ -105,9 +106,9 @@ export function ToolCallInline({
         </CollapsibleTrigger>
         <CollapsibleContent>
           <div className="border-t border-border/50 px-3 py-2">
-            <pre className="max-h-64 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">
+            <div className="max-h-64 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">
               {expandedContent}
-            </pre>
+            </div>
             {toolCall.output && (
               <>
                 <div className="border-t border-border/30 my-2" />
@@ -129,6 +130,8 @@ export function ToolCallInline({
 interface TaskCallInlineProps {
   taskToolCall: ToolCall
   subToolCalls: ToolCall[]
+  /** All tool calls in the message, used to resolve nested Task sub-tools */
+  allToolCalls?: ToolCall[]
   className?: string
   /** Callback when a file path is clicked (for Read/Edit/Write tools) */
   onFileClick?: (filePath: string) => void
@@ -145,6 +148,7 @@ interface TaskCallInlineProps {
 export function TaskCallInline({
   taskToolCall,
   subToolCalls,
+  allToolCalls,
   className,
   onFileClick,
   isStreaming,
@@ -154,6 +158,7 @@ export function TaskCallInline({
   const input = taskToolCall.input as Record<string, unknown>
   const subagentType = input.subagent_type as string | undefined
   const description = input.description as string | undefined
+  const prompt = input.prompt as string | undefined
 
   return (
     <Collapsible
@@ -201,17 +206,36 @@ export function TaskCallInline({
           )}
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <div className="border-t border-border/50 px-3 py-2">
+          <div className="border-t border-border/50 px-3 py-2 space-y-2">
+            {/* Show prompt/instructions */}
+            {prompt && (
+              <div className="text-xs text-muted-foreground bg-muted/50 rounded p-2 whitespace-pre-wrap max-h-32 overflow-y-auto">
+                {prompt}
+              </div>
+            )}
             {/* Show sub-tools as compact list */}
             {subToolCalls.length > 0 ? (
               <div className="space-y-1">
-                {subToolCalls.map(subTool => (
-                  <SubToolItem
-                    key={subTool.id}
-                    toolCall={subTool}
-                    onFileClick={onFileClick}
-                  />
-                ))}
+                {subToolCalls.map(subTool =>
+                  subTool.name === 'Task' && allToolCalls ? (
+                    <TaskCallInline
+                      key={subTool.id}
+                      taskToolCall={subTool}
+                      subToolCalls={allToolCalls.filter(
+                        t => t.parent_tool_use_id === subTool.id
+                      )}
+                      allToolCalls={allToolCalls}
+                      onFileClick={onFileClick}
+                      isStreaming={isStreaming}
+                    />
+                  ) : (
+                    <SubToolItem
+                      key={subTool.id}
+                      toolCall={subTool}
+                      onFileClick={onFileClick}
+                    />
+                  )
+                )}
               </div>
             ) : (
               <p className="text-xs text-muted-foreground/60 italic">
@@ -425,9 +449,9 @@ function SubToolItem({ toolCall, onFileClick }: SubToolItemProps) {
         </CollapsibleTrigger>
         <CollapsibleContent>
           <div className="border-t border-border/30 px-2 py-1.5">
-            <pre className="max-h-40 overflow-auto whitespace-pre-wrap text-[0.625rem] text-muted-foreground/70">
+            <div className="max-h-40 overflow-auto whitespace-pre-wrap text-[0.625rem] text-muted-foreground/70">
               {expandedContent}
-            </pre>
+            </div>
             {toolCall.output && (
               <>
                 <div className="border-t border-border/20 my-1.5" />
@@ -452,7 +476,51 @@ interface ToolDisplay {
   detail?: string
   /** Full file path for file-related tools (Read, Edit, Write) */
   filePath?: string
-  expandedContent: string
+  expandedContent: React.ReactNode
+}
+
+/** Renders a unified diff view with colored +/- lines */
+function DiffView({
+  oldString,
+  newString,
+  filePath,
+  className,
+}: {
+  oldString: string
+  newString: string
+  filePath: string
+  className?: string
+}) {
+  const parts = useMemo(
+    () => diffLines(oldString, newString),
+    [oldString, newString]
+  )
+
+  return (
+    <div className={className}>
+      <div className="text-muted-foreground mb-1.5">Path: {filePath}</div>
+      <div className="rounded border border-border/30 overflow-auto max-h-64">
+        {parts.map((part, i) => {
+          const lines = part.value.replace(/\n$/, '').split('\n')
+          return lines.map((line, j) => (
+            <div
+              key={`${i}-${j}`}
+              className={cn(
+                'px-2 font-mono',
+                part.added && 'bg-green-500/15 text-green-400',
+                part.removed && 'bg-red-500/15 text-red-400'
+              )}
+            >
+              <span className="inline-block w-4 select-none opacity-60">
+                {part.added ? '+' : part.removed ? '-' : ' '}
+              </span>
+              {line}
+            </div>
+          ))
+        })}
+      </div>
+    </div>
+  )
 }
 
 function getToolDisplay(toolCall: ToolCall): ToolDisplay {
@@ -486,9 +554,15 @@ function getToolDisplay(toolCall: ToolCall): ToolDisplay {
         label: 'Edit',
         detail: filename,
         filePath,
-        expandedContent: filePath
-          ? `Path: ${filePath}\n\n--- Old ---\n${oldString ?? '(empty)'}\n\n+++ New +++\n${newString ?? '(empty)'}`
-          : 'No file path specified',
+        expandedContent: filePath ? (
+          <DiffView
+            filePath={filePath}
+            oldString={oldString ?? ''}
+            newString={newString ?? ''}
+          />
+        ) : (
+          'No file path specified'
+        ),
       }
     }
 

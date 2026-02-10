@@ -1,8 +1,16 @@
 import React from 'react'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { usePreferences, useSavePreferences } from '@/services/preferences'
+import { modelOptions, type ClaudeModel } from '@/types/preferences'
 
 const SettingsSection: React.FC<{
   title: string
@@ -22,8 +30,8 @@ const InlineField: React.FC<{
   description?: React.ReactNode
   children: React.ReactNode
 }> = ({ label, description, children }) => (
-  <div className="flex items-center gap-4">
-    <div className="w-96 shrink-0 space-y-0.5">
+  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+    <div className="space-y-0.5 sm:w-96 sm:shrink-0">
       <Label className="text-sm text-foreground">{label}</Label>
       {description && (
         <div className="text-xs text-muted-foreground">{description}</div>
@@ -66,8 +74,8 @@ export const ExperimentalPane: React.FC = () => {
           </InlineField>
 
           <InlineField
-            label="Session recap"
-            description="Show AI-generated summary when returning to unfocused sessions"
+            label="Automatic session recap"
+            description="Auto-generate AI summary when returning to unfocused sessions. Press R on canvas to generate on-demand."
           >
             <Switch
               checked={preferences?.session_recap_enabled ?? false}
@@ -81,7 +89,54 @@ export const ExperimentalPane: React.FC = () => {
               }}
             />
           </InlineField>
+
+          <InlineField
+            label="Recap model"
+            description="Claude model for automatic and on-demand session recaps"
+          >
+            <Select
+              value={preferences?.session_recap_model ?? 'haiku'}
+              onValueChange={(value: ClaudeModel) => {
+                if (preferences) {
+                  savePreferences.mutate({
+                    ...preferences,
+                    session_recap_model: value,
+                  })
+                }
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {modelOptions.map(option => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </InlineField>
         </div>
+      </SettingsSection>
+
+      <SettingsSection title="Developer Tools">
+        <InlineField
+          label="Debug mode"
+          description="Show session debug panel with file paths, run logs, and token usage"
+        >
+          <Switch
+            checked={preferences?.debug_mode_enabled ?? false}
+            onCheckedChange={checked => {
+              if (preferences) {
+                savePreferences.mutate({
+                  ...preferences,
+                  debug_mode_enabled: checked,
+                })
+              }
+            }}
+          />
+        </InlineField>
       </SettingsSection>
     </div>
   )

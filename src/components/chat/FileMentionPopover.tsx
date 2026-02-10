@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { FileIcon } from 'lucide-react'
 import {
   Command,
@@ -11,6 +18,7 @@ import { Popover, PopoverContent, PopoverAnchor } from '@/components/ui/popover'
 import { useWorktreeFiles } from '@/services/files'
 import type { WorktreeFile, PendingFile } from '@/types/chat'
 import { cn } from '@/lib/utils'
+import { generateId } from '@/lib/uuid'
 import { getExtensionColor } from '@/lib/file-colors'
 
 export interface FileMentionPopoverHandle {
@@ -72,7 +80,7 @@ export function FileMentionPopover({
   const handleSelect = useCallback(
     (file: WorktreeFile) => {
       const pendingFile: PendingFile = {
-        id: crypto.randomUUID(),
+        id: generateId(),
         relativePath: file.relative_path,
         extension: file.extension,
       }
@@ -83,29 +91,39 @@ export function FileMentionPopover({
   )
 
   // Expose navigation methods via ref for parent to call
-  useImperativeHandle(
-    handleRef,
-    () => {
-      console.log('[FileMentionPopover] useImperativeHandle creating handle, filteredFiles.length:', filteredFiles.length)
-      return {
-        moveUp: () => {
-          console.log('[FileMentionPopover] moveUp called, current selectedIndex:', selectedIndex)
-          setSelectedIndex(i => Math.max(i - 1, 0))
-        },
-        moveDown: () => {
-          console.log('[FileMentionPopover] moveDown called, current selectedIndex:', selectedIndex, 'max:', filteredFiles.length - 1)
-          setSelectedIndex(i => Math.min(i + 1, filteredFiles.length - 1))
-        },
-        selectCurrent: () => {
-          console.log('[FileMentionPopover] selectCurrent called, clampedSelectedIndex:', clampedSelectedIndex)
-          if (filteredFiles[clampedSelectedIndex]) {
-            handleSelect(filteredFiles[clampedSelectedIndex])
-          }
-        },
-      }
-    },
-    [filteredFiles, clampedSelectedIndex, handleSelect, selectedIndex]
-  )
+  useImperativeHandle(handleRef, () => {
+    console.log(
+      '[FileMentionPopover] useImperativeHandle creating handle, filteredFiles.length:',
+      filteredFiles.length
+    )
+    return {
+      moveUp: () => {
+        console.log(
+          '[FileMentionPopover] moveUp called, current selectedIndex:',
+          selectedIndex
+        )
+        setSelectedIndex(i => Math.max(i - 1, 0))
+      },
+      moveDown: () => {
+        console.log(
+          '[FileMentionPopover] moveDown called, current selectedIndex:',
+          selectedIndex,
+          'max:',
+          filteredFiles.length - 1
+        )
+        setSelectedIndex(i => Math.min(i + 1, filteredFiles.length - 1))
+      },
+      selectCurrent: () => {
+        console.log(
+          '[FileMentionPopover] selectCurrent called, clampedSelectedIndex:',
+          clampedSelectedIndex
+        )
+        if (filteredFiles[clampedSelectedIndex]) {
+          handleSelect(filteredFiles[clampedSelectedIndex])
+        }
+      },
+    }
+  }, [filteredFiles, clampedSelectedIndex, handleSelect, selectedIndex])
 
   // Scroll selected item into view
   useEffect(() => {
@@ -131,7 +149,7 @@ export function FileMentionPopover({
         }}
       />
       <PopoverContent
-        className="w-80 p-0"
+        className="w-96 p-0"
         align="start"
         side="top"
         sideOffset={4}

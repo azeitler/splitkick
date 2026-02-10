@@ -1,11 +1,12 @@
 /**
  * Onboarding Dialog for CLI Setup
  *
- * Multi-step wizard that handles installation of both Claude CLI and GitHub CLI.
- * Shows on first launch when either CLI is not installed.
+ * Multi-step wizard that handles installation and authentication of both
+ * Claude CLI and GitHub CLI. Shows on first launch when either CLI is not
+ * installed or not authenticated.
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { CheckCircle2 } from 'lucide-react'
 import {
   Dialog,
@@ -16,17 +17,28 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { useUIStore } from '@/store/ui-store'
-import { useClaudeCliSetup } from '@/services/claude-cli'
-import { useGhCliSetup } from '@/services/gh-cli'
-import { SetupState, InstallingState, ErrorState } from './CliSetupComponents'
+import { useClaudeCliSetup, useClaudeCliAuth } from '@/services/claude-cli'
+import { useGhCliSetup, useGhCliAuth } from '@/services/gh-cli'
+import {
+  SetupState,
+  InstallingState,
+  ErrorState,
+  AuthCheckingState,
+  AuthLoginState,
+} from './CliSetupComponents'
+import { toast } from 'sonner'
 import type { ReleaseInfo } from '@/types/claude-cli'
 import type { GhReleaseInfo } from '@/types/gh-cli'
 
 type OnboardingStep =
   | 'claude-setup'
   | 'claude-installing'
+  | 'claude-auth-checking'
+  | 'claude-auth-login'
   | 'gh-setup'
   | 'gh-installing'
+  | 'gh-auth-checking'
+  | 'gh-auth-login'
   | 'complete'
 
 interface CliSetupData {
@@ -74,6 +86,14 @@ function OnboardingDialogContent() {
   const claudeSetup = useClaudeCliSetup()
   const ghSetup = useGhCliSetup()
 
+  // Auth hooks — only enabled when CLI is installed
+  const claudeAuth = useClaudeCliAuth({
+    enabled: !!claudeSetup.status?.installed,
+  })
+  const ghAuth = useGhCliAuth({
+    enabled: !!ghSetup.status?.installed,
+  })
+
   const [step, setStep] = useState<OnboardingStep>('claude-setup')
   const [claudeVersion, setClaudeVersion] = useState<string | null>(null)
   const [ghVersion, setGhVersion] = useState<string | null>(null)
@@ -81,6 +101,18 @@ function OnboardingDialogContent() {
   const [ghInstallFailed, setGhInstallFailed] = useState(false)
   // Track when step was deliberately set via onboardingStartStep to prevent auto-skip
   const deliberateStepRef = useRef(false)
+
+  // Stable terminal IDs for auth login steps (created once per dialog open)
+  const claudeLoginTerminalId = useMemo(
+    // eslint-disable-next-line react-hooks/purity
+    () => `onboarding-claude-login-${Date.now()}`,
+    []
+  )
+  const ghLoginTerminalId = useMemo(
+    // eslint-disable-next-line react-hooks/purity
+    () => `onboarding-gh-login-${Date.now()}`,
+    []
+  )
 
   // Filter to stable releases only
   const stableClaudeVersions = claudeSetup.versions.filter(v => !v.prerelease)
@@ -100,6 +132,18 @@ function OnboardingDialogContent() {
       queueMicrotask(() => setGhVersion(stableGhVersions[0]?.version ?? null))
     }
   }, [ghVersion, stableGhVersions])
+
+  // Helper: determine next step after Claude is installed + authenticated
+  const getNextStepAfterClaude = useCallback(() => {
+    if (!ghSetup.status?.installed) return 'gh-setup' as const
+    if (!ghAuth.data?.authenticated) return 'gh-auth-checking' as const
+    return 'complete' as const
+  }, [ghSetup.status?.installed, ghAuth.data?.authenticated])
+
+  // Helper: determine next step after gh is installed + authenticated
+  const getNextStepAfterGh = useCallback(() => {
+    return 'complete' as const
+  }, [])
 
   // Determine initial step when dialog opens
   useEffect(() => {
@@ -139,11 +183,26 @@ function OnboardingDialogContent() {
       return
     }
 
-    // Auto-skip based on installation status (only for fresh opens)
-    if (claudeSetup.status?.installed && ghSetup.status?.installed) {
-      queueMicrotask(() => setStep('complete'))
-    } else if (claudeSetup.status?.installed) {
-      queueMicrotask(() => setStep('gh-setup'))
+    // Auto-skip based on installation + auth status
+    const claudeInstalled = claudeSetup.status?.installed
+    const ghInstalled = ghSetup.status?.installed
+    const claudeAuthed = claudeAuth.data?.authenticated
+    const ghAuthed = ghAuth.data?.authenticated
+
+    if (claudeInstalled && ghInstalled) {
+      if (claudeAuthed && ghAuthed) {
+        queueMicrotask(() => setStep('complete'))
+      } else if (!claudeAuthed) {
+        queueMicrotask(() => setStep('claude-auth-checking'))
+      } else {
+        queueMicrotask(() => setStep('gh-auth-checking'))
+      }
+    } else if (claudeInstalled) {
+      if (claudeAuthed) {
+        queueMicrotask(() => setStep('gh-setup'))
+      } else {
+        queueMicrotask(() => setStep('claude-auth-checking'))
+      }
     } else {
       queueMicrotask(() => setStep('claude-setup'))
     }
@@ -152,7 +211,45 @@ function OnboardingDialogContent() {
     onboardingStartStep,
     claudeSetup.status?.installed,
     ghSetup.status?.installed,
+    claudeAuth.data?.authenticated,
+    ghAuth.data?.authenticated,
     setOnboardingStartStep,
+  ])
+
+  // Handle Claude auth check result
+  useEffect(() => {
+    if (step !== 'claude-auth-checking') return
+    if (claudeAuth.isLoading || claudeAuth.isFetching) return
+
+    if (claudeAuth.data?.authenticated) {
+      queueMicrotask(() => setStep(getNextStepAfterClaude()))
+    } else {
+      queueMicrotask(() => setStep('claude-auth-login'))
+    }
+  }, [
+    step,
+    claudeAuth.isLoading,
+    claudeAuth.isFetching,
+    claudeAuth.data?.authenticated,
+    getNextStepAfterClaude,
+  ])
+
+  // Handle gh auth check result
+  useEffect(() => {
+    if (step !== 'gh-auth-checking') return
+    if (ghAuth.isLoading || ghAuth.isFetching) return
+
+    if (ghAuth.data?.authenticated) {
+      queueMicrotask(() => setStep(getNextStepAfterGh()))
+    } else {
+      queueMicrotask(() => setStep('gh-auth-login'))
+    }
+  }, [
+    step,
+    ghAuth.isLoading,
+    ghAuth.isFetching,
+    ghAuth.data?.authenticated,
+    getNextStepAfterGh,
   ])
 
   const handleClaudeInstall = useCallback(() => {
@@ -160,33 +257,49 @@ function OnboardingDialogContent() {
     setStep('claude-installing')
     claudeSetup.install(claudeVersion, {
       onSuccess: () => {
-        // Move to gh setup
-        if (ghSetup.status?.installed) {
-          setStep('complete')
-        } else {
-          setStep('gh-setup')
-        }
+        // After install, check auth
+        setStep('claude-auth-checking')
+        claudeAuth.refetch()
       },
       onError: () => {
         setClaudeInstallFailed(true)
         setStep('claude-setup')
       },
     })
-  }, [claudeVersion, claudeSetup, ghSetup.status?.installed])
+  }, [claudeVersion, claudeSetup, claudeAuth])
 
   const handleGhInstall = useCallback(() => {
     if (!ghVersion) return
     setStep('gh-installing')
     ghSetup.install(ghVersion, {
       onSuccess: () => {
-        setStep('complete')
+        // After install, check auth
+        setStep('gh-auth-checking')
+        ghAuth.refetch()
       },
       onError: () => {
         setGhInstallFailed(true)
         setStep('gh-setup')
       },
     })
-  }, [ghVersion, ghSetup])
+  }, [ghVersion, ghSetup, ghAuth])
+
+  const handleClaudeLoginComplete = useCallback(async () => {
+    setStep('claude-auth-checking')
+    await claudeAuth.refetch()
+  }, [claudeAuth])
+
+  const handleGhLoginComplete = useCallback(async () => {
+    setStep('gh-auth-checking')
+    await ghAuth.refetch()
+  }, [ghAuth])
+
+  const handleGhLoginSkip = useCallback(() => {
+    toast.info(
+      'GitHub authentication skipped. You can authenticate later in Settings.'
+    )
+    setStep('complete')
+  }, [])
 
   const handleComplete = useCallback(() => {
     claudeSetup.refetchStatus()
@@ -242,12 +355,21 @@ function OnboardingDialogContent() {
     claudeSetup.status?.installed && step === 'claude-setup'
   const isGhReinstall = ghSetup.status?.installed && step === 'gh-setup'
 
+  // Build CLI login command from binary path
+  const claudeLoginCommand = claudeSetup.status?.path
+    ? `'${claudeSetup.status.path.replace(/'/g, "'\\''")}'`
+    : ''
+  const ghLoginCommand = ghSetup.status?.path
+    ? `'${ghSetup.status.path.replace(/'/g, "'\\''")}' auth login`
+    : ''
+
   // Determine dialog title and description
   const getDialogContent = () => {
     if (step === 'complete') {
       return {
         title: 'Setup Complete',
-        description: 'All required tools have been installed.',
+        description:
+          'All required tools have been installed and authenticated.',
         showClose: true,
       }
     }
@@ -264,6 +386,14 @@ function OnboardingDialogContent() {
       }
     }
 
+    if (step === 'claude-auth-checking' || step === 'claude-auth-login') {
+      return {
+        title: 'Authenticate Claude CLI',
+        description: 'Claude CLI requires authentication to function.',
+        showClose: false,
+      }
+    }
+
     if (step === 'gh-setup' || step === 'gh-installing') {
       return {
         title: isGhReinstall
@@ -276,6 +406,14 @@ function OnboardingDialogContent() {
       }
     }
 
+    if (step === 'gh-auth-checking' || step === 'gh-auth-login') {
+      return {
+        title: 'Authenticate GitHub CLI',
+        description: 'Authenticate GitHub CLI for full functionality.',
+        showClose: false,
+      }
+    }
+
     return { title: 'Setup', description: '', showClose: false }
   }
 
@@ -283,14 +421,10 @@ function OnboardingDialogContent() {
 
   // Step indicator
   const renderStepIndicator = () => {
-    const claudeComplete =
-      claudeSetup.status?.installed ||
-      step === 'gh-setup' ||
-      step === 'gh-installing' ||
-      step === 'complete'
-    const ghComplete = ghSetup.status?.installed || step === 'complete'
-    const isClaudeStep = step === 'claude-setup' || step === 'claude-installing'
-    const isGhStep = step === 'gh-setup' || step === 'gh-installing'
+    const isClaudeStep = step.startsWith('claude-')
+    const isGhStep = step.startsWith('gh-')
+    const claudeComplete = !isClaudeStep && (isGhStep || step === 'complete')
+    const ghComplete = step === 'complete'
 
     return (
       <div className="flex items-center justify-center gap-2 mb-4">
@@ -303,7 +437,7 @@ function OnboardingDialogContent() {
                 : 'bg-muted text-muted-foreground'
           }`}
         >
-          {claudeComplete && !isClaudeStep ? (
+          {claudeComplete ? (
             <CheckCircle2 className="size-3" />
           ) : (
             <span className="font-medium">1</span>
@@ -320,7 +454,7 @@ function OnboardingDialogContent() {
                 : 'bg-muted text-muted-foreground'
           }`}
         >
-          {ghComplete && !isGhStep ? (
+          {ghComplete ? (
             <CheckCircle2 className="size-3" />
           ) : (
             <span className="font-medium">2</span>
@@ -371,6 +505,25 @@ function OnboardingDialogContent() {
             <InstallingState cliName="Claude CLI" progress={cliData.progress} />
           ) : step === 'gh-installing' && cliData ? (
             <InstallingState cliName="GitHub CLI" progress={cliData.progress} />
+          ) : step === 'claude-auth-checking' ? (
+            <AuthCheckingState cliName="Claude CLI" />
+          ) : step === 'claude-auth-login' ? (
+            <AuthLoginState
+              cliName="Claude CLI"
+              terminalId={claudeLoginTerminalId}
+              command={claudeLoginCommand}
+              onComplete={handleClaudeLoginComplete}
+            />
+          ) : step === 'gh-auth-checking' ? (
+            <AuthCheckingState cliName="GitHub CLI" />
+          ) : step === 'gh-auth-login' ? (
+            <AuthLoginState
+              cliName="GitHub CLI"
+              terminalId={ghLoginTerminalId}
+              command={ghLoginCommand}
+              onComplete={handleGhLoginComplete}
+              onSkip={handleGhLoginSkip}
+            />
           ) : step === 'claude-setup' && cliData ? (
             claudeInstallFailed && cliData.installError ? (
               <ErrorState
@@ -433,11 +586,11 @@ function SuccessState({
       <div className="flex flex-col items-center gap-4">
         <CheckCircle2 className="size-10 text-green-500" />
         <div className="text-center">
-          <p className="font-medium">All Tools Installed</p>
+          <p className="font-medium">All Tools Ready</p>
           <div className="text-sm text-muted-foreground mt-2 space-y-1">
             {claudeVersion && <p>Claude CLI: v{claudeVersion}</p>}
             {ghVersion && <p>GitHub CLI: v{ghVersion}</p>}
-            {!claudeVersion && !ghVersion && <p>Installation complete</p>}
+            {!claudeVersion && !ghVersion && <p>Setup complete</p>}
           </div>
         </div>
       </div>

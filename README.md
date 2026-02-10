@@ -3,6 +3,7 @@
 Jean (Claude haha) is an AI assistant application that helps you to manage multiple projects, worktrees, session with Claude CLI.
 
 # Features
+
 - Automated worktree management
 - Load context from sessions, GitHub Issues / Pull requests
 - Automated (magic) Git commands / prompts (review, commit, open PR, investigate issue/pr)
@@ -13,18 +14,27 @@ Jean (Claude haha) is an AI assistant application that helps you to manage multi
 
 # Screenshots
 
-![Main Interface](screenshots/SCR-20260123-oaws.png)
-![Development Mode](screenshots/SCR-20260123-oavf.png)
-![Diff View](screenshots/SCR-20260123-oaxs.png)
-![Plan Mode](screenshots/SCR-20260123-oazz.png)
+![Main Interface](screenshots/SCR-20260209-nigu.png)
+![Development Mode](screenshots/SCR-20260209-ninl.png)
+![Diff View](screenshots/SCR-20260209-niug.png)
+![Plan Mode](screenshots/SCR-20260209-njel.png)
+
+# Prerequisites
+
+- [Node.js](https://nodejs.org/)
+- [Rust](https://www.rust-lang.org/tools/install)
+- **Windows only**: In the Visual Studio Installer, ensure the **"Desktop development with C++"** workload is selected, which includes:
+  - MSVC C++ build tools
+  - Windows SDK (provides `kernel32.lib` and other system libraries required by Rust)
 
 # Platform Support
 
-- **macOS**: Tested ✓
-- **Windows**: Not tested
-- **Linux**: Not tested
+- **macOS**: Tested
+- **Windows**: Not fully tested
+- **Linux**: Not tested at all
 
 # Roadmap
+
 - Add [Opencode](https://opencode.ai/) support
 - Add remote access support through an API
 
@@ -34,7 +44,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
 # Philosophy
 
-Learn more about our approach: [Philosophy](https://coolify.io/philosophy/)
+Learn more about our approach: [Philosophy](https://coollabs.io/philosophy/)
 
 ---
 

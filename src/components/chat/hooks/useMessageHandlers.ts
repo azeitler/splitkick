@@ -1,6 +1,7 @@
 import { useCallback, type RefObject } from 'react'
 import type { QueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { invoke } from '@/lib/transport'
 import {
   chatQueryKeys,
   markPlanApproved as markPlanApprovedService,
@@ -8,6 +9,7 @@ import {
 import { useChatStore } from '@/store/chat-store'
 import type {
   ChatMessage,
+  EffortLevel,
   ExecutionMode,
   Question,
   QuestionAnswer,
@@ -22,7 +24,7 @@ import { parseReviewFindings, getFindingKey } from '../review-finding-utils'
 /** Git commands to auto-approve for magic prompts (no permission prompts needed) */
 export const GIT_ALLOWED_TOOLS = [
   'Bash(git:*)', // All git commands
-  'Bash(gh:*)', // GitHub CLI for PR creation
+  // gh-cli/claude-cli are auto-allowed via --allowedTools in build_claude_args()
 ]
 
 /** Type for the sendMessage mutation */
@@ -36,7 +38,10 @@ interface SendMessageMutation {
       model?: string
       executionMode?: ExecutionMode
       thinkingLevel?: ThinkingLevel
+      effortLevel?: string
       allowedTools?: string[]
+      disableThinkingForMode?: boolean
+      mcpConfig?: string
     },
     options?: {
       onSettled?: () => void
@@ -53,6 +58,10 @@ interface UseMessageHandlersParams {
   selectedModelRef: RefObject<string>
   executionModeRef: RefObject<ExecutionMode>
   selectedThinkingLevelRef: RefObject<ThinkingLevel>
+  selectedEffortLevelRef: RefObject<EffortLevel>
+  useAdaptiveThinkingRef: RefObject<boolean>
+  // MCP config builder (reads current refs internally)
+  getMcpConfig: () => string | undefined
   // Actions
   sendMessage: SendMessageMutation
   queryClient: QueryClient
@@ -70,8 +79,8 @@ interface MessageHandlers {
     questions: Question[]
   ) => void
   handleSkipQuestion: (toolCallId: string) => void
-  handlePlanApproval: (messageId: string) => void
-  handlePlanApprovalYolo: (messageId: string) => void
+  handlePlanApproval: (messageId: string, updatedPlan?: string) => void
+  handlePlanApprovalYolo: (messageId: string, updatedPlan?: string) => void
   handleStreamingPlanApproval: () => void
   handleStreamingPlanApprovalYolo: () => void
   handlePendingPlanApprovalCallback: () => void
@@ -105,12 +114,17 @@ export function useMessageHandlers({
   selectedModelRef,
   executionModeRef,
   selectedThinkingLevelRef,
+  selectedEffortLevelRef,
+  useAdaptiveThinkingRef,
+  getMcpConfig,
   sendMessage,
   queryClient,
   scrollToBottom,
   inputRef,
   pendingPlanMessage,
 }: UseMessageHandlersParams): MessageHandlers {
+  'use no memo'
+
   // Handle answer submission for AskUserQuestion
   // PERFORMANCE: Uses refs for session/worktree IDs to keep callback stable across session switches
   const handleQuestionAnswer = useCallback(
@@ -139,6 +153,20 @@ export function useMessageHandlers({
       setSessionReviewing(sessionId, false)
       setWaitingForInput(sessionId, false)
 
+      // Persist cleared waiting state to backend (for canvas view where session may not be active)
+      invoke('update_session_state', {
+        worktreeId,
+        worktreePath,
+        sessionId,
+        waitingForInput: false,
+        waitingForInputType: null,
+      }).catch(err => {
+        console.error(
+          '[useMessageHandlers] Failed to clear waiting state:',
+          err
+        )
+      })
+
       // Scroll to bottom to compensate for the question form collapsing
       scrollToBottom()
 
@@ -160,6 +188,10 @@ export function useMessageHandlers({
           model: selectedModelRef.current,
           executionMode: executionModeRef.current,
           thinkingLevel: selectedThinkingLevelRef.current,
+          effortLevel: useAdaptiveThinkingRef.current
+            ? selectedEffortLevelRef.current
+            : undefined,
+          mcpConfig: getMcpConfig(),
         },
         {
           onSettled: () => {
@@ -175,6 +207,9 @@ export function useMessageHandlers({
       selectedModelRef,
       executionModeRef,
       selectedThinkingLevelRef,
+      selectedEffortLevelRef,
+      useAdaptiveThinkingRef,
+      getMcpConfig,
       sendMessage,
       scrollToBottom,
       inputRef,
@@ -187,7 +222,9 @@ export function useMessageHandlers({
   const handleSkipQuestion = useCallback(
     (toolCallId: string) => {
       const sessionId = activeSessionIdRef.current
-      if (!sessionId) return
+      const worktreeId = activeWorktreeIdRef.current
+      const worktreePath = activeWorktreePathRef.current
+      if (!sessionId || !worktreeId || !worktreePath) return
 
       const {
         markQuestionAnswered,
@@ -215,16 +252,30 @@ export function useMessageHandlers({
       setWaitingForInput(sessionId, false)
       setSessionReviewing(sessionId, true)
 
+      // Persist cleared waiting state to backend (for canvas view where session may not be active)
+      invoke('update_session_state', {
+        worktreeId,
+        worktreePath,
+        sessionId,
+        waitingForInput: false,
+        waitingForInputType: null,
+      }).catch(err => {
+        console.error(
+          '[useMessageHandlers] Failed to clear waiting state:',
+          err
+        )
+      })
+
       // Focus input so user can type their next message
       inputRef.current?.focus()
     },
-    [activeSessionIdRef, inputRef]
+    [activeSessionIdRef, activeWorktreeIdRef, activeWorktreePathRef, inputRef]
   )
 
   // Handle plan approval for ExitPlanMode
   // PERFORMANCE: Uses refs for session/worktree IDs to keep callback stable across session switches
   const handlePlanApproval = useCallback(
-    (messageId: string) => {
+    (messageId: string, updatedPlan?: string) => {
       const sessionId = activeSessionIdRef.current
       const worktreeId = activeWorktreeIdRef.current
       const worktreePath = activeWorktreePathRef.current
@@ -240,12 +291,21 @@ export function useMessageHandlers({
           if (!old) return old
           return {
             ...old,
+            approved_plan_message_ids: [
+              ...(old.approved_plan_message_ids ?? []),
+              messageId,
+            ],
             messages: old.messages.map(msg =>
               msg.id === messageId ? { ...msg, plan_approved: true } : msg
             ),
           }
         }
       )
+
+      // Invalidate sessions list so canvas cards update
+      queryClient.invalidateQueries({
+        queryKey: chatQueryKeys.sessions(worktreeId),
+      })
 
       // Explicitly set to build mode (not toggle, to avoid switching back to plan if already in build)
       const {
@@ -268,10 +328,19 @@ export function useMessageHandlers({
       setSessionReviewing(sessionId, false)
       setWaitingForInput(sessionId, false)
 
+      // Format approval message - include updated plan if provided
+      const message = updatedPlan
+        ? `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
+        : 'Approved'
+      console.log(
+        '[useMessageHandlers] handlePlanApproval - message:',
+        message.substring(0, 100)
+      )
+
       // Send approval message to Claude so it continues with execution
       // NOTE: setLastSentMessage is critical for permission denial flow - without it,
       // the denied message context won't be set and approval UI won't work
-      setLastSentMessage(sessionId, 'Approved')
+      setLastSentMessage(sessionId, message)
       setError(sessionId, null)
       addSendingSession(sessionId)
       setSelectedModel(sessionId, selectedModelRef.current)
@@ -282,10 +351,15 @@ export function useMessageHandlers({
           sessionId,
           worktreeId,
           worktreePath,
-          message: 'Approved',
+          message,
           model: selectedModelRef.current,
           executionMode: 'build',
           thinkingLevel: selectedThinkingLevelRef.current,
+          effortLevel: useAdaptiveThinkingRef.current
+            ? selectedEffortLevelRef.current
+            : undefined,
+          disableThinkingForMode: true, // Always disable thinking when executing approved plan
+          mcpConfig: getMcpConfig(),
         },
         {
           onSettled: () => {
@@ -300,6 +374,9 @@ export function useMessageHandlers({
       activeWorktreePathRef,
       selectedModelRef,
       selectedThinkingLevelRef,
+      selectedEffortLevelRef,
+      useAdaptiveThinkingRef,
+      getMcpConfig,
       sendMessage,
       queryClient,
       inputRef,
@@ -309,7 +386,7 @@ export function useMessageHandlers({
   // Handle plan approval with yolo mode (auto-approve all future tools)
   // PERFORMANCE: Uses refs for session/worktree IDs to keep callback stable across session switches
   const handlePlanApprovalYolo = useCallback(
-    (messageId: string) => {
+    (messageId: string, updatedPlan?: string) => {
       const sessionId = activeSessionIdRef.current
       const worktreeId = activeWorktreeIdRef.current
       const worktreePath = activeWorktreePathRef.current
@@ -325,12 +402,21 @@ export function useMessageHandlers({
           if (!old) return old
           return {
             ...old,
+            approved_plan_message_ids: [
+              ...(old.approved_plan_message_ids ?? []),
+              messageId,
+            ],
             messages: old.messages.map(msg =>
               msg.id === messageId ? { ...msg, plan_approved: true } : msg
             ),
           }
         }
       )
+
+      // Invalidate sessions list so canvas cards update
+      queryClient.invalidateQueries({
+        queryKey: chatQueryKeys.sessions(worktreeId),
+      })
 
       // Set to yolo mode for auto-approval of all future tools
       const {
@@ -353,8 +439,17 @@ export function useMessageHandlers({
       setSessionReviewing(sessionId, false)
       setWaitingForInput(sessionId, false)
 
+      // Format approval message - include updated plan if provided
+      const message = updatedPlan
+        ? `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
+        : 'Approved - yolo'
+      console.log(
+        '[useMessageHandlers] handlePlanApprovalYolo - message:',
+        message.substring(0, 100)
+      )
+
       // Send approval message to Claude so it continues with execution
-      setLastSentMessage(sessionId, 'Approved - yolo')
+      setLastSentMessage(sessionId, message)
       setError(sessionId, null)
       addSendingSession(sessionId)
       setSelectedModel(sessionId, selectedModelRef.current)
@@ -365,10 +460,15 @@ export function useMessageHandlers({
           sessionId,
           worktreeId,
           worktreePath,
-          message: 'Approved - yolo',
+          message,
           model: selectedModelRef.current,
           executionMode: 'yolo',
           thinkingLevel: selectedThinkingLevelRef.current,
+          effortLevel: useAdaptiveThinkingRef.current
+            ? selectedEffortLevelRef.current
+            : undefined,
+          disableThinkingForMode: true, // Always disable thinking when executing approved plan
+          mcpConfig: getMcpConfig(),
         },
         {
           onSettled: () => {
@@ -383,6 +483,9 @@ export function useMessageHandlers({
       activeWorktreePathRef,
       selectedModelRef,
       selectedThinkingLevelRef,
+      selectedEffortLevelRef,
+      useAdaptiveThinkingRef,
+      getMcpConfig,
       sendMessage,
       queryClient,
       inputRef,
@@ -447,6 +550,11 @@ export function useMessageHandlers({
         model: selectedModelRef.current,
         executionMode: 'build',
         thinkingLevel: selectedThinkingLevelRef.current,
+        effortLevel: useAdaptiveThinkingRef.current
+          ? selectedEffortLevelRef.current
+          : undefined,
+        disableThinkingForMode: true, // Always disable thinking when executing approved plan
+        mcpConfig: getMcpConfig(),
       },
       {
         onSettled: () => {
@@ -460,6 +568,9 @@ export function useMessageHandlers({
     activeWorktreePathRef,
     selectedModelRef,
     selectedThinkingLevelRef,
+    selectedEffortLevelRef,
+    useAdaptiveThinkingRef,
+    getMcpConfig,
     sendMessage,
     inputRef,
   ])
@@ -513,6 +624,11 @@ export function useMessageHandlers({
         model: selectedModelRef.current,
         executionMode: 'yolo',
         thinkingLevel: selectedThinkingLevelRef.current,
+        effortLevel: useAdaptiveThinkingRef.current
+          ? selectedEffortLevelRef.current
+          : undefined,
+        disableThinkingForMode: true, // Always disable thinking when executing approved plan
+        mcpConfig: getMcpConfig(),
       },
       {
         onSettled: () => {
@@ -526,6 +642,9 @@ export function useMessageHandlers({
     activeWorktreePathRef,
     selectedModelRef,
     selectedThinkingLevelRef,
+    selectedEffortLevelRef,
+    useAdaptiveThinkingRef,
+    getMcpConfig,
     sendMessage,
     inputRef,
   ])
@@ -624,7 +743,11 @@ export function useMessageHandlers({
           executionMode: modeToUse,
           thinkingLevel:
             context.thinkingLevel ?? selectedThinkingLevelRef.current,
+          effortLevel: useAdaptiveThinkingRef.current
+            ? selectedEffortLevelRef.current
+            : undefined,
           allowedTools: [...GIT_ALLOWED_TOOLS, ...allApprovedTools],
+          mcpConfig: getMcpConfig(),
         },
         {
           onSettled: () => {
@@ -639,6 +762,9 @@ export function useMessageHandlers({
       selectedModelRef,
       executionModeRef,
       selectedThinkingLevelRef,
+      selectedEffortLevelRef,
+      useAdaptiveThinkingRef,
+      getMcpConfig,
       sendMessage,
       inputRef,
     ]
@@ -737,6 +863,10 @@ export function useMessageHandlers({
           executionMode: 'yolo',
           thinkingLevel:
             context.thinkingLevel ?? selectedThinkingLevelRef.current,
+          effortLevel: useAdaptiveThinkingRef.current
+            ? selectedEffortLevelRef.current
+            : undefined,
+          mcpConfig: getMcpConfig(),
         },
         {
           onSettled: () => {
@@ -750,6 +880,9 @@ export function useMessageHandlers({
       activeWorktreePathRef,
       selectedModelRef,
       selectedThinkingLevelRef,
+      selectedEffortLevelRef,
+      useAdaptiveThinkingRef,
+      getMcpConfig,
       sendMessage,
       inputRef,
     ]
@@ -847,6 +980,10 @@ Please apply this fix to the file.`
           model: selectedModelRef.current,
           executionMode: 'build',
           thinkingLevel: selectedThinkingLevelRef.current,
+          effortLevel: useAdaptiveThinkingRef.current
+            ? selectedEffortLevelRef.current
+            : undefined,
+          mcpConfig: getMcpConfig(),
         },
         {
           onSettled: () => {
@@ -861,6 +998,9 @@ Please apply this fix to the file.`
       activeWorktreePathRef,
       selectedModelRef,
       selectedThinkingLevelRef,
+      selectedEffortLevelRef,
+      useAdaptiveThinkingRef,
+      getMcpConfig,
       sendMessage,
       queryClient,
       inputRef,
@@ -950,6 +1090,10 @@ Please apply all these fixes to the respective files.`
           model: selectedModelRef.current,
           executionMode: 'build',
           thinkingLevel: selectedThinkingLevelRef.current,
+          effortLevel: useAdaptiveThinkingRef.current
+            ? selectedEffortLevelRef.current
+            : undefined,
+          mcpConfig: getMcpConfig(),
         },
         {
           onSettled: () => {
@@ -964,6 +1108,9 @@ Please apply all these fixes to the respective files.`
       activeWorktreePathRef,
       selectedModelRef,
       selectedThinkingLevelRef,
+      selectedEffortLevelRef,
+      useAdaptiveThinkingRef,
+      getMcpConfig,
       sendMessage,
       queryClient,
       inputRef,

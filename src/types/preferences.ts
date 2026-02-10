@@ -1,5 +1,23 @@
-import type { ThinkingLevel } from './chat'
+import type { ThinkingLevel, EffortLevel } from './chat'
 import { DEFAULT_KEYBINDINGS, type KeybindingsMap } from './keybindings'
+
+// =============================================================================
+// Notification Sounds
+// =============================================================================
+
+export type NotificationSound = 'none' | 'ding' | 'chime' | 'pop' | 'choochoo'
+
+export const notificationSoundOptions: {
+  value: NotificationSound
+  label: string
+}[] = [
+  { value: 'none', label: 'None' },
+  // More sounds will be added later:
+  // { value: 'ding', label: 'Ding' },
+  // { value: 'chime', label: 'Chime' },
+  // { value: 'pop', label: 'Pop' },
+  // { value: 'choochoo', label: 'Choo-choo' },
+]
 
 // =============================================================================
 // Magic Prompts - Customizable prompts for AI-powered features
@@ -9,19 +27,32 @@ import { DEFAULT_KEYBINDINGS, type KeybindingsMap } from './keybindings'
  * Default prompts for magic commands. These can be customized in Settings.
  * Field names use snake_case to match Rust struct exactly.
  */
+/**
+ * Customizable prompts for AI-powered features.
+ * null = use current app default (auto-updates on new versions).
+ * string = user customization (preserved across updates).
+ */
 export interface MagicPrompts {
   /** Prompt for investigating GitHub issues */
-  investigate_issue: string
+  investigate_issue: string | null
   /** Prompt for investigating GitHub pull requests */
-  investigate_pr: string
+  investigate_pr: string | null
   /** Prompt for generating PR title/body */
-  pr_content: string
+  pr_content: string | null
   /** Prompt for generating commit messages */
-  commit_message: string
+  commit_message: string | null
   /** Prompt for AI code review */
-  code_review: string
+  code_review: string | null
   /** Prompt for context summarization */
-  context_summary: string
+  context_summary: string | null
+  /** Prompt for resolving git conflicts (appended to conflict resolution messages) */
+  resolve_conflicts: string | null
+  /** Prompt for investigating failed GitHub Actions workflow runs */
+  investigate_workflow_run: string | null
+  /** Prompt for generating release notes */
+  release_notes: string | null
+  /** System prompt for parallel execution (appended to every chat session when enabled) */
+  parallel_execution: string | null
 }
 
 /** Default prompt for investigating GitHub issues */
@@ -35,18 +66,33 @@ Investigate the loaded GitHub {issueWord} ({issueRefs})
 <instructions>
 
 1. Read the issue context file(s) to understand the full problem description and comments
-2. Analyze the problem: expected vs actual behavior, error messages, reproduction steps
-3. Explore the codebase to find relevant code
-4. Identify root cause and constraints
-5. Check for regression if this is a bug fix
-6. Propose solution with specific files, risks, and test cases
+2. Analyze the problem:
+   - What is the expected vs actual behavior?
+   - Are there error messages, stack traces, or reproduction steps?
+3. Explore the codebase to find relevant code:
+   - Search for files/functions mentioned in the {issueWord}
+   - Read source files to understand current implementation
+   - Trace the affected code path
+4. Identify root cause:
+   - Where does the bug originate OR where should the feature be implemented?
+   - What constraints/edge cases need handling?
+   - Any related issues or tech debt?
+5. Check for regression:
+   - If this is a bug fix, determine if this is a regression
+   - Look at git history or related code to understand if the feature previously worked
+   - Identify what change may have caused the regression
+6. Propose solution:
+   - Clear explanation of needed changes
+   - Specific files to modify
+   - Potential risks/trade-offs
+   - Test cases to verify
 
 </instructions>
 
 
 <guidelines>
 
-- Be thorough but focused
+- Be thorough but focused - investigate deeply without getting sidetracked
 - Ask clarifying questions if requirements are unclear
 - If multiple solutions exist, explain trade-offs
 - Reference specific file paths and line numbers
@@ -64,19 +110,43 @@ Investigate the loaded GitHub {prWord} ({prRefs})
 <instructions>
 
 1. Read the PR context file(s) to understand the full description, reviews, and comments
-2. Understand what the PR is trying to accomplish and branch info (head → base)
-3. Explore the codebase to understand the context
-4. Analyze if the implementation matches the PR description
-5. Identify action items from reviewer feedback
-6. Propose next steps to get the PR merged
+2. Understand the changes:
+   - What is the PR trying to accomplish?
+   - What branches are involved (head → base)?
+   - Are there any review comments or requested changes?
+3. Explore the codebase to understand the context:
+   - Check out the PR branch if needed
+   - Read the files being modified
+   - Understand the current implementation
+4. Analyze the approach:
+   - Does the implementation match the PR description?
+   - Are there any concerns raised in reviews?
+   - What feedback has been given?
+5. Security review - check the changes for:
+   - Malicious or obfuscated code (eval, encoded strings, hidden network calls, data exfiltration)
+   - Suspicious dependency additions or version changes (typosquatting, hijacked packages)
+   - Hardcoded secrets, tokens, API keys, or credentials
+   - Backdoors, reverse shells, or unauthorized remote access
+   - Unsafe deserialization, command injection, SQL injection, XSS
+   - Weakened auth/permissions (removed checks, broadened access, disabled validation)
+   - Suspicious file system or environment variable access
+6. Identify action items:
+   - What changes are requested by reviewers?
+   - Are there any failing checks or tests?
+   - What needs to be done to get this PR merged?
+7. Propose next steps:
+   - Address reviewer feedback
+   - Specific files to modify
+   - Test cases to add or update
 
 </instructions>
 
 
 <guidelines>
 
-- Be thorough but focused
+- Be thorough but focused - investigate deeply without getting sidetracked
 - Pay attention to reviewer feedback and requested changes
+- Flag any security concerns prominently, even minor ones
 - If multiple approaches exist, explain trade-offs
 - Reference specific file paths and line numbers
 
@@ -90,6 +160,10 @@ export const DEFAULT_PR_CONTENT_PROMPT = `<task>Generate a pull request title an
 <target_branch>{target_branch}</target_branch>
 <commit_count>{commit_count}</commit_count>
 </context>
+
+<related_context>
+{context}
+</related_context>
 
 <commits>
 {commits}
@@ -135,7 +209,14 @@ export const DEFAULT_CODE_REVIEW_PROMPT = `<task>Review the following code chang
 
 <instructions>
 Focus on:
-- Security vulnerabilities
+- Security & supply-chain risks:
+  - Malicious or obfuscated code (eval, encoded strings, hidden network calls, data exfiltration)
+  - Suspicious dependency additions or version changes (typosquatting, hijacked packages)
+  - Hardcoded secrets, tokens, API keys, or credentials
+  - Backdoors, reverse shells, or unauthorized remote access
+  - Unsafe deserialization, command injection, SQL injection, XSS
+  - Weakened auth/permissions (removed checks, broadened access, disabled validation)
+  - Suspicious file system or environment variable access
 - Performance issues
 - Code quality and maintainability (use /check skill if available to run linters/tests)
 - Potential bugs
@@ -173,14 +254,108 @@ Format as clean markdown. Be concise but capture reasoning.
 {conversation}
 </conversation>`
 
-/** Default values for all magic prompts */
+/** Default prompt for resolving git conflicts */
+export const DEFAULT_RESOLVE_CONFLICTS_PROMPT = `Please help me resolve these conflicts. Analyze the diff above, explain what's conflicting in each file, and guide me through resolving each conflict.
+
+After resolving each file's conflicts, stage it with \`git add\`. Then run the appropriate continue command (\`git rebase --continue\`, \`git merge --continue\`, or \`git cherry-pick --continue\`). If more conflicts appear, resolve those too. Keep going until the operation is fully complete and the branch is ready to push.`
+
+/** Default prompt for investigating failed workflow runs */
+export const DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT = `<task>
+
+Investigate the failed GitHub Actions workflow run for "{workflowName}" on branch \`{branch}\`
+
+</task>
+
+
+<context>
+
+- Workflow: {workflowName}
+- Commit/PR: {displayTitle}
+- Branch: {branch}
+- Run URL: {runUrl}
+
+</context>
+
+
+<instructions>
+
+1. Use the GitHub CLI to fetch the workflow run logs: \`gh run view {runId} --log-failed\`
+2. Read the error output carefully to identify the failure cause
+3. Explore the relevant code in the codebase to understand the context
+4. Determine if this is a code issue, configuration issue, or flaky test
+5. Propose a fix with specific files and changes needed
+
+</instructions>
+
+
+<guidelines>
+
+- Be thorough but focused on the failure
+- If the error is in CI config (.github/workflows), explain the fix
+- If the error is in code, reference specific file paths and line numbers
+- If it's a flaky test, suggest how to make it more reliable
+
+</guidelines>`
+
+/** Default prompt for generating release notes */
+export const DEFAULT_RELEASE_NOTES_PROMPT = `Generate release notes for changes since the \`{tag}\` release ({previous_release_name}).
+
+## Commits since {tag}
+
+{commits}
+
+## Instructions
+
+- Write a concise release title
+- Group changes into categories: Features, Fixes, Improvements, Breaking Changes (only include categories that have entries)
+- Use bullet points with brief descriptions
+- Reference PR numbers if visible in commit messages
+- Skip merge commits and trivial changes (typos, formatting)
+- Write in past tense ("Added", "Fixed", "Improved")
+- Keep it concise and user-facing (skip internal implementation details)`
+
+export const DEFAULT_PARALLEL_EXECUTION_PROMPT = `In plan mode, structure plans so sub-agents can work simultaneously. In build/execute mode, use sub-agents in parallel for faster implementation.
+
+When launching multiple Task sub-agents, prefer sending them in a single message rather than sequentially. Group independent work items (e.g., editing separate files, researching unrelated questions) into parallel Task calls. Only sequence Tasks when one depends on another's output.
+
+Instruct each sub-agent to briefly outline its approach before implementing, so it can course-correct early without formal plan mode overhead.`
+
+/** Default values for all magic prompts (null = use current app default) */
 export const DEFAULT_MAGIC_PROMPTS: MagicPrompts = {
-  investigate_issue: DEFAULT_INVESTIGATE_ISSUE_PROMPT,
-  investigate_pr: DEFAULT_INVESTIGATE_PR_PROMPT,
-  pr_content: DEFAULT_PR_CONTENT_PROMPT,
-  commit_message: DEFAULT_COMMIT_MESSAGE_PROMPT,
-  code_review: DEFAULT_CODE_REVIEW_PROMPT,
-  context_summary: DEFAULT_CONTEXT_SUMMARY_PROMPT,
+  investigate_issue: null,
+  investigate_pr: null,
+  pr_content: null,
+  commit_message: null,
+  code_review: null,
+  context_summary: null,
+  resolve_conflicts: null,
+  investigate_workflow_run: null,
+  release_notes: null,
+  parallel_execution: null,
+}
+
+/**
+ * Per-prompt model overrides. Field names use snake_case to match Rust struct exactly.
+ */
+export interface MagicPromptModels {
+  investigate_model: ClaudeModel
+  pr_content_model: ClaudeModel
+  commit_message_model: ClaudeModel
+  code_review_model: ClaudeModel
+  context_summary_model: ClaudeModel
+  resolve_conflicts_model: ClaudeModel
+  release_notes_model: ClaudeModel
+}
+
+/** Default models for each magic prompt */
+export const DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
+  investigate_model: 'opus',
+  pr_content_model: 'haiku',
+  commit_message_model: 'haiku',
+  code_review_model: 'haiku',
+  context_summary_model: 'opus',
+  resolve_conflicts_model: 'opus',
+  release_notes_model: 'haiku',
 }
 
 // Types that match the Rust AppPreferences struct
@@ -190,6 +365,7 @@ export interface AppPreferences {
   theme: string
   selected_model: ClaudeModel // Claude model: 'opus' | 'sonnet' | 'haiku'
   thinking_level: ThinkingLevel // Thinking level: 'off' | 'think' | 'megathink' | 'ultrathink'
+  default_effort_level: EffortLevel // Effort level for Opus 4.6 adaptive thinking: 'low' | 'medium' | 'high' | 'max'
   terminal: TerminalApp // Terminal app: 'terminal' | 'warp' | 'ghostty'
   editor: EditorApp // Editor app: 'vscode' | 'cursor' | 'xcode'
   auto_branch_naming: boolean // Automatically generate branch names from first message
@@ -205,13 +381,34 @@ export interface AppPreferences {
   keybindings: KeybindingsMap // User-configurable keyboard shortcuts
   archive_retention_days: number // Days to keep archived items (0 = never delete)
   session_grouping_enabled: boolean // Group session tabs by status when >3 sessions
+  canvas_enabled: boolean // Show the canvas tab for session overview
+  canvas_only_mode: boolean // Always show canvas view, hide session tabs
   syntax_theme_dark: SyntaxTheme // Syntax highlighting theme for dark mode
   syntax_theme_light: SyntaxTheme // Syntax highlighting theme for light mode
   disable_thinking_in_non_plan_modes: boolean // Disable thinking in build/yolo modes (only plan uses thinking)
   session_recap_enabled: boolean // Show session recap when returning to unfocused sessions
+  session_recap_model: ClaudeModel // Model for generating session recaps
   parallel_execution_prompt_enabled: boolean // Add system prompt to encourage parallel sub-agent execution
   magic_prompts: MagicPrompts // Customizable prompts for AI-powered features
+  magic_prompt_models: MagicPromptModels // Per-prompt model overrides
   file_edit_mode: FileEditMode // How to edit files: inline (CodeMirror) or external (VS Code, etc.)
+  ai_language: string // Preferred language for AI responses (empty = default)
+  allow_web_tools_in_plan_mode: boolean // Allow WebFetch/WebSearch in plan mode without prompts
+  waiting_sound: NotificationSound // Sound when session is waiting for input
+  review_sound: NotificationSound // Sound when session finishes reviewing
+  http_server_enabled: boolean // Whether HTTP server is enabled
+  http_server_port: number // HTTP server port (default 3456)
+  http_server_token: string | null // Auth token for HTTP/WS access
+  http_server_auto_start: boolean // Auto-start HTTP server on launch
+  http_server_localhost_only: boolean // Bind to localhost only (more secure)
+  http_server_token_required: boolean // Require token for web access (default true)
+  auto_archive_on_pr_merged: boolean // Auto-archive worktrees when their PR is merged
+  show_keybinding_hints: boolean // Show keyboard shortcut hints at bottom of canvas views
+  debug_mode_enabled: boolean // Show debug panel in chat sessions
+  default_enabled_mcp_servers: string[] // MCP server names enabled by default (empty = none)
+  has_seen_feature_tour: boolean // Whether user has seen the feature tour onboarding
+  chrome_enabled: boolean // Enable browser automation via Chrome extension
+  zoom_level: number // Zoom level percentage (50-200, default 100)
 }
 
 export type FileEditMode = 'inline' | 'external'
@@ -221,10 +418,11 @@ export const fileEditModeOptions: { value: FileEditMode; label: string }[] = [
   { value: 'external', label: 'External editor' },
 ]
 
-export type ClaudeModel = 'opus' | 'sonnet' | 'haiku'
+export type ClaudeModel = 'opus' | 'opus-4.5' | 'sonnet' | 'haiku'
 
 export const modelOptions: { value: ClaudeModel; label: string }[] = [
-  { value: 'opus', label: 'Claude Opus' },
+  { value: 'opus', label: 'Claude Opus 4.6' },
+  { value: 'opus-4.5', label: 'Claude Opus 4.5' },
   { value: 'sonnet', label: 'Claude Sonnet' },
   { value: 'haiku', label: 'Claude Haiku' },
 ]
@@ -236,13 +434,37 @@ export const thinkingLevelOptions: { value: ThinkingLevel; label: string }[] = [
   { value: 'ultrathink', label: 'Ultrathink (32K)' },
 ]
 
-export type TerminalApp = 'terminal' | 'warp' | 'ghostty'
-
-export const terminalOptions: { value: TerminalApp; label: string }[] = [
-  { value: 'terminal', label: 'Terminal' },
-  { value: 'warp', label: 'Warp' },
-  { value: 'ghostty', label: 'Ghostty' },
+export const effortLevelOptions: {
+  value: EffortLevel
+  label: string
+  description: string
+}[] = [
+  { value: 'low', label: 'Low', description: 'Minimal thinking' },
+  { value: 'medium', label: 'Medium', description: 'Moderate thinking' },
+  { value: 'high', label: 'High', description: 'Deep reasoning' },
+  { value: 'max', label: 'Max', description: 'No limits' },
 ]
+
+export type TerminalApp =
+  | 'terminal'
+  | 'warp'
+  | 'ghostty'
+  | 'windows-terminal'
+  | 'powershell'
+  | 'cmd'
+
+export const terminalOptions: { value: TerminalApp; label: string }[] =
+  navigator.platform.startsWith('Win')
+    ? [
+        { value: 'windows-terminal', label: 'Windows Terminal' },
+        { value: 'powershell', label: 'PowerShell' },
+        { value: 'cmd', label: 'Command Prompt' },
+      ]
+    : [
+        { value: 'terminal', label: 'Terminal' },
+        { value: 'warp', label: 'Warp' },
+        { value: 'ghostty', label: 'Ghostty' },
+      ]
 
 export type EditorApp = 'vscode' | 'cursor' | 'xcode'
 
@@ -256,6 +478,41 @@ export const editorOptions: { value: EditorApp; label: string }[] = [
 export type FontSize = number
 
 export const FONT_SIZE_DEFAULT = 16
+export const ZOOM_LEVEL_DEFAULT = 100
+
+export const uiFontScaleTicks = [
+  { value: 12, label: '12px' },
+  { value: 14, label: '14px' },
+  { value: 15, label: '15px' },
+  { value: 16, label: '16px' },
+  { value: 18, label: '18px' },
+  { value: 20, label: '20px' },
+  { value: 24, label: '24px' },
+]
+
+export const chatFontScaleTicks = [
+  { value: 12, label: '12px' },
+  { value: 14, label: '14px' },
+  { value: 15, label: '15px' },
+  { value: 16, label: '16px' },
+  { value: 18, label: '18px' },
+  { value: 20, label: '20px' },
+  { value: 24, label: '24px' },
+]
+
+export const zoomLevelTicks = [
+  { value: 50, label: '50' },
+  { value: 67, label: '67' },
+  { value: 75, label: '75' },
+  { value: 80, label: '80' },
+  { value: 90, label: '90' },
+  { value: 100, label: '100' },
+  { value: 110, label: '110' },
+  { value: 125, label: '125' },
+  { value: 150, label: '150' },
+  { value: 175, label: '175' },
+  { value: 200, label: '200' },
+]
 
 export type UIFont = 'inter' | 'geist' | 'roboto' | 'lato' | 'system'
 export type ChatFont =
@@ -379,6 +636,7 @@ export const defaultPreferences: AppPreferences = {
   theme: 'system',
   selected_model: 'opus',
   thinking_level: 'ultrathink',
+  default_effort_level: 'high',
   terminal: 'terminal',
   editor: 'vscode',
   auto_branch_naming: true,
@@ -394,11 +652,32 @@ export const defaultPreferences: AppPreferences = {
   keybindings: DEFAULT_KEYBINDINGS,
   archive_retention_days: 30,
   session_grouping_enabled: true,
+  canvas_enabled: true,
+  canvas_only_mode: true,
   syntax_theme_dark: 'vitesse-black',
   syntax_theme_light: 'github-light',
   disable_thinking_in_non_plan_modes: true, // Default: only plan mode uses thinking
   session_recap_enabled: false, // Default: disabled (experimental)
+  session_recap_model: 'haiku', // Default: haiku for fast recaps
   parallel_execution_prompt_enabled: false, // Default: disabled (experimental)
   magic_prompts: DEFAULT_MAGIC_PROMPTS,
+  magic_prompt_models: DEFAULT_MAGIC_PROMPT_MODELS,
   file_edit_mode: 'external',
+  ai_language: '', // Default: empty (Claude's default behavior)
+  allow_web_tools_in_plan_mode: true, // Default: enabled
+  waiting_sound: 'none',
+  review_sound: 'none',
+  http_server_enabled: false,
+  http_server_port: 3456,
+  http_server_token: null,
+  http_server_auto_start: false,
+  http_server_localhost_only: true, // Default to localhost-only for security
+  http_server_token_required: true, // Default: require token for security
+  auto_archive_on_pr_merged: true, // Default: enabled
+  show_keybinding_hints: true, // Default: enabled
+  debug_mode_enabled: false, // Default: disabled
+  default_enabled_mcp_servers: [], // Default: no MCP servers enabled
+  has_seen_feature_tour: false, // Default: not seen
+  chrome_enabled: true, // Default: enabled
+  zoom_level: ZOOM_LEVEL_DEFAULT,
 }

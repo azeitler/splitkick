@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useRef } from 'react'
+import { useMemo, useCallback, useRef, useEffect, useState } from 'react'
 import { TitleBar } from '@/components/titlebar/TitleBar'
 import { DevModeBanner } from './DevModeBanner'
 import { LeftSideBar } from './LeftSideBar'
@@ -6,26 +6,33 @@ import { SidebarWidthProvider } from './SidebarWidthContext'
 import { MainWindowContent } from './MainWindowContent'
 import { CommandPalette } from '@/components/command-palette/CommandPalette'
 import { PreferencesDialog } from '@/components/preferences/PreferencesDialog'
+import { ProjectSettingsDialog } from '@/components/projects/ProjectSettingsDialog'
 import { CommitModal } from '@/components/commit/CommitModal'
 import { OnboardingDialog } from '@/components/onboarding/OnboardingDialog'
+import { FeatureTourDialog } from '@/components/onboarding/FeatureTourDialog'
 import { CliUpdateModal } from '@/components/layout/CliUpdateModal'
 import { CliLoginModal } from '@/components/preferences/CliLoginModal'
 import { OpenInModal } from '@/components/open-in/OpenInModal'
+import { WorkflowRunsModal } from '@/components/shared/WorkflowRunsModal'
 import { MagicModal } from '@/components/magic/MagicModal'
+import { CheckoutPRModal } from '@/components/magic/CheckoutPRModal'
+import { ReleaseNotesDialog } from '@/components/magic/ReleaseNotesDialog'
 import { NewWorktreeModal } from '@/components/worktree/NewWorktreeModal'
 import { PathConflictModal } from '@/components/worktree/PathConflictModal'
 import { BranchConflictModal } from '@/components/worktree/BranchConflictModal'
 import { SessionBoardModal } from '@/components/session-board'
+import { AddProjectDialog } from '@/components/projects/AddProjectDialog'
 import { GitInitModal } from '@/components/projects/GitInitModal'
 import { QuitConfirmationDialog } from './QuitConfirmationDialog'
-import { Toaster } from 'sonner'
-import { useTheme } from '@/hooks/use-theme'
+import { ArchivedModal } from '@/components/archive/ArchivedModal'
+import { Toaster } from '@/components/ui/sonner'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useMainWindowEventListeners } from '@/hooks/useMainWindowEventListeners'
 import { useCloseSessionOrWorktreeKeybinding } from '@/services/chat'
 import { useUIStatePersistence } from '@/hooks/useUIStatePersistence'
 import { useSessionStatePersistence } from '@/hooks/useSessionStatePersistence'
+import { useSessionPrefetch } from '@/hooks/useSessionPrefetch'
 import { useRestoreLastArchived } from '@/hooks/useRestoreLastArchived'
 import { useArchiveCleanup } from '@/hooks/useArchiveCleanup'
 import {
@@ -34,17 +41,22 @@ import {
   useWorktreePolling,
   type WorktreePollingInfo,
 } from '@/services/git-status'
-import { useWorktree, useProjects, useCreateWorktreeKeybinding } from '@/services/projects'
+import {
+  useWorktree,
+  useProjects,
+  useCreateWorktreeKeybinding,
+  useWorktreeEvents,
+} from '@/services/projects'
 import { usePreferences } from '@/services/preferences'
 import { useSessions } from '@/services/chat'
 import { useChatStore } from '@/store/chat-store'
+import { isNativeApp } from '@/lib/environment'
 
 // Left sidebar resize constraints (pixels)
 const MIN_SIDEBAR_WIDTH = 150
 const MAX_SIDEBAR_WIDTH = 500
 
 export function MainWindow() {
-  const { theme } = useTheme()
   const leftSidebarVisible = useUIStore(state => state.leftSidebarVisible)
   const leftSidebarSize = useUIStore(state => state.leftSidebarSize)
   const setLeftSidebarSize = useUIStore(state => state.setLeftSidebarSize)
@@ -59,12 +71,21 @@ export function MainWindow() {
 
   // Fetch preferences and session data for title
   const { data: preferences } = usePreferences()
-  const { data: sessionsData } = useSessions(selectedWorktreeId ?? null, worktree?.path ?? null)
+  const { data: sessionsData } = useSessions(
+    selectedWorktreeId ?? null,
+    worktree?.path ?? null
+  )
   const activeSessionId = useChatStore(state =>
     selectedWorktreeId ? state.activeSessionIds[selectedWorktreeId] : undefined
   )
+  const isViewingCanvasTabRaw = useChatStore(state =>
+    selectedWorktreeId
+      ? (state.viewingCanvasTab[selectedWorktreeId] ?? true)
+      : false
+  )
 
   // Find active session name
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const activeSessionName = useMemo(() => {
     if (!sessionsData?.sessions || !activeSessionId) return undefined
     return sessionsData.sessions.find(s => s.id === activeSessionId)?.name
@@ -73,7 +94,8 @@ export function MainWindow() {
   // Compute window title based on selected project/worktree
   const windowTitle = useMemo(() => {
     if (!project || !worktree) return 'Jean'
-    const branchSuffix = worktree.branch !== worktree.name ? ` (${worktree.branch})` : ''
+    const branchSuffix =
+      worktree.branch !== worktree.name ? ` (${worktree.branch})` : ''
 
     // Add session name when grouping enabled
     if (preferences?.session_grouping_enabled && activeSessionName) {
@@ -81,7 +103,19 @@ export function MainWindow() {
     }
 
     return `${project.name} › ${worktree.name}${branchSuffix}`
-  }, [project, worktree, preferences?.session_grouping_enabled, activeSessionName])
+  }, [
+    project,
+    worktree,
+    preferences?.session_grouping_enabled,
+    activeSessionName,
+  ])
+
+  // Determine if canvas view is active (for hiding title bar)
+  const canvasEnabled = preferences?.canvas_enabled ?? true
+  const canvasOnlyMode = preferences?.canvas_only_mode ?? false
+  const isViewingCanvasTab = canvasEnabled
+    ? canvasOnlyMode || isViewingCanvasTabRaw
+    : false
 
   // Compute polling info - null if no worktree or data not loaded
   const pollingInfo: WorktreePollingInfo | null = useMemo(() => {
@@ -104,6 +138,10 @@ export function MainWindow() {
   // Persist session-specific state (answered questions, fixed findings, etc.)
   useSessionStatePersistence()
 
+  // Prefetch sessions for all projects on startup (regardless of sidebar visibility)
+  // This ensures session statuses (review, waiting) are restored immediately
+  useSessionPrefetch(projects)
+
   // Ref for the sidebar element to update width directly during drag
   const sidebarRef = useRef<HTMLDivElement>(null)
 
@@ -123,6 +161,14 @@ export function MainWindow() {
   // Handle CMD+SHIFT+T to restore last archived item
   useRestoreLastArchived()
 
+  // Archive modal state (triggered by command palette or sidebar button)
+  const [archivedModalOpen, setArchivedModalOpen] = useState(false)
+  useEffect(() => {
+    const handler = () => setArchivedModalOpen(true)
+    window.addEventListener('command:open-archived-modal', handler)
+    return () => window.removeEventListener('command:open-archived-modal', handler)
+  }, [])
+
   // Auto-cleanup old archived items on startup
   useArchiveCleanup()
 
@@ -132,8 +178,19 @@ export function MainWindow() {
   // Listen for git status updates from the background task
   useGitStatusEvents()
 
+  // Listen for background worktree events (creation/deletion) - must be here
+  // (not in sidebar) so events are received even when sidebar is closed
+  useWorktreeEvents()
+
   // Handle CMD+N keybinding to create new worktree
   useCreateWorktreeKeybinding()
+
+  // Set browser tab title in web mode (native app sets window title via Tauri)
+  useEffect(() => {
+    if (!isNativeApp()) {
+      document.title = windowTitle
+    }
+  }, [windowTitle])
 
   // Handle custom resize for left sidebar (pixel-based)
   // Uses direct DOM manipulation during drag for smooth performance,
@@ -172,12 +229,14 @@ export function MainWindow() {
   )
 
   return (
-    <div className="flex h-screen w-full flex-col overflow-hidden rounded-xl bg-background">
+    <div
+      className={`flex h-dvh w-full flex-col overflow-hidden bg-background ${isNativeApp() ? 'rounded-xl' : ''}`}
+    >
       {/* Dev Mode Banner */}
       <DevModeBanner />
 
       {/* Title Bar */}
-      <TitleBar title={windowTitle} />
+      <TitleBar title={windowTitle} hideTitle={isViewingCanvasTab} />
 
       {/* Main Content Area */}
       <div className="flex flex-1 overflow-hidden">
@@ -214,28 +273,32 @@ export function MainWindow() {
       {/* Global UI Components (hidden until triggered) */}
       <CommandPalette />
       <PreferencesDialog />
+      <ProjectSettingsDialog />
       <CommitModal />
       <OnboardingDialog />
+      <FeatureTourDialog />
       <CliUpdateModal />
       <CliLoginModal />
       <OpenInModal />
+      <WorkflowRunsModal />
       <MagicModal />
+      <CheckoutPRModal />
+      <ReleaseNotesDialog />
       <NewWorktreeModal />
       <PathConflictModal />
       <BranchConflictModal />
       <SessionBoardModal />
+      <AddProjectDialog />
       <GitInitModal />
+      <ArchivedModal open={archivedModalOpen} onOpenChange={setArchivedModalOpen} />
       <QuitConfirmationDialog />
       <Toaster
         position="bottom-right"
-        theme={
-          theme === 'dark' ? 'dark' : theme === 'light' ? 'light' : 'system'
-        }
-        className="toaster group"
+        offset="52px"
         toastOptions={{
           classNames: {
             toast:
-              'group toast group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg',
+              'group toast group-[.toaster]:bg-sidebar group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg',
             description: 'group-[.toast]:text-muted-foreground',
             actionButton:
               'group-[.toast]:bg-primary group-[.toast]:text-primary-foreground',

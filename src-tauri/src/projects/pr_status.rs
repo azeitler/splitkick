@@ -1,6 +1,6 @@
-use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::platform::silent_command;
 use serde::{Deserialize, Serialize};
 
 /// PR state from GitHub API
@@ -42,6 +42,15 @@ pub enum PrDisplayStatus {
     Closed,
 }
 
+/// PR merge conflict status from GitHub API
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum MergeableStatus {
+    Mergeable,
+    Conflicting,
+    Unknown,
+}
+
 /// Raw response from gh pr view --json
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -50,6 +59,7 @@ struct GhPrViewResponse {
     is_draft: bool,
     review_decision: Option<String>,
     status_check_rollup: Option<Vec<StatusCheck>>,
+    mergeable: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -69,6 +79,7 @@ pub struct PrStatus {
     pub review_decision: Option<ReviewDecision>,
     pub check_status: Option<CheckStatus>,
     pub display_status: PrDisplayStatus,
+    pub mergeable: Option<MergeableStatus>,
     pub checked_at: u64,
 }
 
@@ -78,17 +89,18 @@ pub fn get_pr_status(
     pr_number: u32,
     pr_url: &str,
     worktree_id: &str,
+    gh_binary: &std::path::Path,
 ) -> Result<PrStatus, String> {
     log::trace!("Fetching PR status for #{pr_number} in {repo_path}");
 
     // Run gh pr view
-    let output = Command::new("gh")
+    let output = silent_command(gh_binary)
         .args([
             "pr",
             "view",
             &pr_number.to_string(),
             "--json",
-            "state,isDraft,reviewDecision,statusCheckRollup",
+            "state,isDraft,reviewDecision,statusCheckRollup,mergeable",
         ])
         .current_dir(repo_path)
         .output()
@@ -118,6 +130,10 @@ pub fn get_pr_status(
         .and_then(|s| parse_review_decision(s));
     let check_status = compute_check_status(&response.status_check_rollup);
     let display_status = compute_display_status(&state, response.is_draft, &review_decision);
+    let mergeable = response
+        .mergeable
+        .as_ref()
+        .and_then(|s| parse_mergeable_status(s));
 
     let checked_at = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -133,6 +149,7 @@ pub fn get_pr_status(
         review_decision,
         check_status,
         display_status,
+        mergeable,
         checked_at,
     })
 }
@@ -142,6 +159,15 @@ fn parse_pr_state(s: &str) -> PrState {
         "MERGED" => PrState::Merged,
         "CLOSED" => PrState::Closed,
         _ => PrState::Open,
+    }
+}
+
+fn parse_mergeable_status(s: &str) -> Option<MergeableStatus> {
+    match s.to_uppercase().as_str() {
+        "MERGEABLE" => Some(MergeableStatus::Mergeable),
+        "CONFLICTING" => Some(MergeableStatus::Conflicting),
+        "UNKNOWN" => Some(MergeableStatus::Unknown),
+        _ => None,
     }
 }
 
@@ -257,11 +283,30 @@ mod tests {
             review_decision: Some(ReviewDecision::Approved),
             check_status: Some(CheckStatus::Success),
             display_status: PrDisplayStatus::Review,
+            mergeable: Some(MergeableStatus::Mergeable),
             checked_at: 1234567890,
         };
 
         let json = serde_json::to_string(&status).unwrap();
         assert!(json.contains("\"display_status\":\"review\""));
         assert!(json.contains("\"check_status\":\"success\""));
+        assert!(json.contains("\"mergeable\":\"mergeable\""));
+    }
+
+    #[test]
+    fn test_parse_mergeable_status() {
+        assert_eq!(
+            parse_mergeable_status("MERGEABLE"),
+            Some(MergeableStatus::Mergeable)
+        );
+        assert_eq!(
+            parse_mergeable_status("CONFLICTING"),
+            Some(MergeableStatus::Conflicting)
+        );
+        assert_eq!(
+            parse_mergeable_status("UNKNOWN"),
+            Some(MergeableStatus::Unknown)
+        );
+        assert_eq!(parse_mergeable_status("other"), None);
     }
 }

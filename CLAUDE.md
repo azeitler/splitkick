@@ -81,18 +81,21 @@ const handleAction = useCallback(() => {
 **CRITICAL:** There are two patterns for Rust-TypeScript serialization. Pick ONE per struct and be consistent.
 
 **Pattern A: snake_case (for persisted/settings data)**
+
 - Used for: `AppPreferences`, `UIState`, and other persisted data
 - Rust structs use snake_case by default (e.g., `active_worktree_id`)
 - TypeScript interfaces must match exactly (e.g., `active_worktree_id`, NOT `activeWorktreeId`)
 - See `src/types/preferences.ts` and `src/types/ui-state.ts` for examples
 
 **Pattern B: camelCase with `#[serde(rename_all = "camelCase")]` (for API/command data)**
+
 - Used for: Data passed between frontend and Tauri commands (e.g., `IssueContext`, `PullRequestContext`)
 - Add `#[serde(rename_all = "camelCase")]` to Rust struct
 - TypeScript uses standard camelCase (e.g., `headRefName`, `baseRefName`)
 - See `src-tauri/src/projects/github_issues.rs` for examples
 
 **Common error:** `invalid args for command: missing field 'field_name'`
+
 - This means Rust expects snake_case but frontend sent camelCase (or vice versa)
 - Fix: Add `#[serde(rename_all = "camelCase")]` to the Rust struct, OR change TypeScript to snake_case
 
@@ -232,3 +235,62 @@ toast.success('PR created', {
   },
 })
 ```
+
+#### Windows Console Window Flash Prevention
+
+**CRITICAL:** On Windows, every `std::process::Command::new()` call opens a visible console window that briefly flashes on screen unless `CREATE_NO_WINDOW` (0x08000000) is set via `creation_flags()`.
+
+**Use `silent_command()` for all background operations:**
+
+```rust
+use crate::platform::silent_command;
+
+// ✅ GOOD: No console window flash
+let output = silent_command("git")
+    .args(["status", "--porcelain"])
+    .current_dir(repo_path)
+    .output()?;
+
+// ❌ BAD: Flashes a console window on Windows
+let output = Command::new("git")
+    .args(["status", "--porcelain"])
+    .current_dir(repo_path)
+    .output()?;
+```
+
+**Keep `Command::new()` ONLY for commands that intentionally open UI:**
+
+- File managers: `open`, `explorer`, `xdg-open`
+- Terminals: `wt`, `powershell`, `cmd`, terminal emulators
+- Editors: `code`, `cursor`, `xed`
+- macOS automation: `osascript`
+
+**For detached processes** that need both `CREATE_NO_WINDOW` and `CREATE_NEW_PROCESS_GROUP`: use `silent_command()` but re-set both flags via `creation_flags()` (it replaces, doesn't merge).
+
+The helper is defined in `src-tauri/src/platform/process.rs` and exported via `pub use process::*` in `platform/mod.rs`.
+
+#### Canvas Views Architecture
+
+**"Canvas"** refers to two distinct grid views that display session cards:
+
+1. **SessionCanvasView** (`src/components/chat/SessionCanvasView.tsx`)
+   - Worktree-level canvas showing sessions within a single worktree
+   - Uses the shared `CanvasGrid` component
+
+2. **WorktreeDashboard** (`src/components/dashboard/WorktreeDashboard.tsx`)
+   - Project-level canvas showing sessions grouped by worktree (with section headers)
+   - Has its own rendering logic but uses shared hooks
+
+**Shared Hooks** (in `src/components/chat/hooks/`):
+
+- `useCanvasKeyboardNav.ts` - Arrow key navigation, Enter selection, visual-position vertical neighbor finding
+- `useCanvasShortcutEvents.ts` - Event handlers for `open-plan`, `open-recap`, `approve-plan`, etc.
+- `useCanvasStoreState.ts` - Subscribes to chat store state needed for `SessionCardData`
+
+**Shared Components**:
+
+- `SessionCard.tsx` - Individual card component used by both canvas views
+- `CanvasGrid.tsx` - Shared grid component (used by SessionCanvasView only)
+- `session-card-utils.tsx` - `computeSessionCardData()` function and `SessionCardData` type
+
+When user mentions "Canvas", consider both views and their shared infrastructure.

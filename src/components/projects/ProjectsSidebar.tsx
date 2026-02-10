@@ -1,8 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { Plus, Folder, Archive, Briefcase } from 'lucide-react'
-import { invoke } from '@tauri-apps/api/core'
-import { useQueryClient } from '@tanstack/react-query'
-import { Button } from '@/components/ui/button'
 import { useSidebarWidth } from '@/components/layout/SidebarWidthContext'
 import {
   DropdownMenu,
@@ -10,44 +7,23 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import {
-  useProjects,
-  useWorktreeEvents,
-  useCreateFolder,
-} from '@/services/projects'
+import { useProjects, useCreateFolder } from '@/services/projects'
 import { fetchWorktreesStatus } from '@/services/git-status'
-import { prefetchSessions } from '@/services/chat'
 import { useProjectsStore } from '@/store/projects-store'
 import { ProjectTree } from './ProjectTree'
-import { AddProjectDialog } from './AddProjectDialog'
-import { ProjectSettingsDialog } from './ProjectSettingsDialog'
-import { ArchivedModal } from '@/components/archive/ArchivedModal'
-import type { Worktree } from '@/types/projects'
 
 export function ProjectsSidebar() {
   const { data: projects = [], isLoading } = useProjects()
   const { setAddProjectDialogOpen } = useProjectsStore()
-  const [archivedModalOpen, setArchivedModalOpen] = useState(false)
   const createFolder = useCreateFolder()
-  const queryClient = useQueryClient()
   const sidebarWidth = useSidebarWidth()
 
   // Responsive layout threshold
   const isNarrow = sidebarWidth < 180
 
-  // Listen for background worktree events (creation/deletion)
-  useWorktreeEvents()
-
-  // Listen for command palette events
-  useEffect(() => {
-    const handleOpenArchivedModal = () => setArchivedModalOpen(true)
-    window.addEventListener('command:open-archived-modal', handleOpenArchivedModal)
-    return () =>
-      window.removeEventListener('command:open-archived-modal', handleOpenArchivedModal)
-  }, [])
-
-  // Fetch worktree status and sessions for all projects on startup
+  // Fetch worktree git status for all projects on startup
   // Priority: expanded projects first, then all others
+  // Note: Session prefetching is handled by useSessionPrefetch in MainWindow
   const hasFetchedRef = useRef(false)
   useEffect(() => {
     if (hasFetchedRef.current || projects.length === 0) return
@@ -61,69 +37,55 @@ export function ProjectsSidebar() {
     const { expandedProjectIds } = useProjectsStore.getState()
 
     // Split into expanded (priority) and collapsed projects
-    const expandedProjects = actualProjects.filter(p => expandedProjectIds.has(p.id))
-    const collapsedProjects = actualProjects.filter(p => !expandedProjectIds.has(p.id))
+    const expandedProjects = actualProjects.filter(p =>
+      expandedProjectIds.has(p.id)
+    )
+    const collapsedProjects = actualProjects.filter(
+      p => !expandedProjectIds.has(p.id)
+    )
 
     // Fetch git status for a batch of projects
     const fetchGitStatusBatch = async (batch: typeof actualProjects) => {
       await Promise.all(
         batch.map(p =>
           fetchWorktreesStatus(p.id).catch(err =>
-            console.warn(`[startup] Failed to fetch git status for ${p.name}:`, err)
-          )
-        )
-      )
-    }
-
-    // Fetch sessions for all worktrees in a project
-    const fetchSessionsForProject = async (projectId: string) => {
-      try {
-        const worktrees = await invoke<Worktree[]>('list_worktrees', { projectId })
-        await Promise.all(
-          worktrees.map(w =>
-            prefetchSessions(queryClient, w.id, w.path).catch(err =>
-              console.warn(`[startup] Failed to prefetch sessions for ${w.name}:`, err)
+            console.warn(
+              `[startup] Failed to fetch git status for ${p.name}:`,
+              err
             )
           )
         )
-      } catch (err) {
-        console.warn(`[startup] Failed to list worktrees for project ${projectId}:`, err)
-      }
+      )
     }
 
     const fetchAll = async () => {
       const concurrencyLimit = 3
 
       console.info(
-        '[startup] Fetching worktree status and sessions: expanded=%d, collapsed=%d',
+        '[startup] Fetching worktree git status: expanded=%d, collapsed=%d',
         expandedProjects.length,
         collapsedProjects.length
       )
 
       // First: fetch expanded projects (user sees these immediately)
-      // Fetch both git status and sessions in parallel
       for (let i = 0; i < expandedProjects.length; i += concurrencyLimit) {
         const batch = expandedProjects.slice(i, i + concurrencyLimit)
-        await Promise.all([
-          fetchGitStatusBatch(batch),
-          ...batch.map(p => fetchSessionsForProject(p.id)),
-        ])
+        await fetchGitStatusBatch(batch)
       }
 
       // Then: fetch collapsed projects in background (lazy load for when user expands)
       for (let i = 0; i < collapsedProjects.length; i += concurrencyLimit) {
         const batch = collapsedProjects.slice(i, i + concurrencyLimit)
-        await Promise.all([
-          fetchGitStatusBatch(batch),
-          ...batch.map(p => fetchSessionsForProject(p.id)),
-        ])
+        await fetchGitStatusBatch(batch)
       }
 
-      console.info('[startup] Done fetching worktree status and sessions for all projects')
+      console.info(
+        '[startup] Done fetching worktree git status for all projects'
+      )
     }
 
     fetchAll()
-  }, [projects, queryClient])
+  }, [projects])
 
   return (
     <div className="flex h-full flex-col">
@@ -134,14 +96,20 @@ export function ProjectsSidebar() {
             <span className="text-sm text-muted-foreground">Loading...</span>
           </div>
         ) : projects.length === 0 ? (
-          <EmptyState onAddProject={() => setAddProjectDialogOpen(true)} />
+          <div className="flex h-full items-center justify-center px-2">
+            <span className="truncate text-sm text-muted-foreground/50">
+              No projects found
+            </span>
+          </div>
         ) : (
           <ProjectTree projects={projects} />
         )}
       </div>
 
       {/* Footer - transparent buttons with hover background */}
-      <div className={`flex gap-1 p-1.5 pb-2 ${isNarrow ? 'flex-col' : 'items-center'}`}>
+      <div
+        className={`flex gap-1 p-1.5 pb-2 ${isNarrow ? 'flex-col' : 'items-center'}`}
+      >
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
@@ -152,8 +120,13 @@ export function ProjectsSidebar() {
               New
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-48">
-            <DropdownMenuItem onClick={() => createFolder.mutate({ name: 'New Folder' })}>
+          <DropdownMenuContent
+            align="start"
+            style={{ width: sidebarWidth - 12 }}
+          >
+            <DropdownMenuItem
+              onClick={() => createFolder.mutate({ name: 'New Folder' })}
+            >
               <Folder className="mr-2 size-3.5" />
               Folder
             </DropdownMenuItem>
@@ -166,38 +139,13 @@ export function ProjectsSidebar() {
         <button
           type="button"
           className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
-          onClick={() => setArchivedModalOpen(true)}
+          onClick={() => window.dispatchEvent(new CustomEvent('command:open-archived-modal'))}
         >
           {!isNarrow && <Archive className="size-3.5" />}
           Archived
         </button>
       </div>
 
-      {/* Dialogs */}
-      <AddProjectDialog />
-      <ProjectSettingsDialog />
-      <ArchivedModal
-        open={archivedModalOpen}
-        onOpenChange={setArchivedModalOpen}
-      />
-    </div>
-  )
-}
-
-function EmptyState({ onAddProject }: { onAddProject: () => void }) {
-  return (
-    <div className="flex flex-col items-center justify-center gap-3 p-6 text-center">
-      <Plus className="h-10 w-10 text-muted-foreground/50" />
-      <div>
-        <p className="text-sm font-medium">No projects yet</p>
-        <p className="text-xs text-muted-foreground">
-          Add a git repository to get started
-        </p>
-      </div>
-      <Button variant="outline" size="sm" onClick={onAddProject}>
-        <Plus className="mr-2 h-4 w-4" />
-        Add Project
-      </Button>
     </div>
   )
 }

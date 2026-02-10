@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from '@/lib/transport'
 import type { QueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import type { SaveContextResponse } from '@/types/chat'
@@ -43,6 +43,7 @@ export function useContextOperations({
   const [loadContextModalOpen, setLoadContextModalOpen] = useState(false)
 
   // Handle Save Context - generates context summary in the background
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const handleSaveContext = useCallback(async () => {
     if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
 
@@ -61,6 +62,7 @@ export function useContextOperations({
           sourceSessionId: activeSessionId,
           projectName,
           customPrompt: preferences?.magic_prompts?.context_summary,
+          model: preferences?.magic_prompt_models?.context_summary_model,
         }
       )
 
@@ -79,6 +81,7 @@ export function useContextOperations({
     worktree?.name,
     queryClient,
     preferences?.magic_prompts?.context_summary,
+    preferences?.magic_prompt_models?.context_summary_model,
   ])
 
   // Handle Load Context - opens modal to select saved context
