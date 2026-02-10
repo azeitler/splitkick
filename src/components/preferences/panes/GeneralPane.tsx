@@ -8,7 +8,11 @@ import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { useClaudeCliStatus, useClaudeCliAuth, claudeCliQueryKeys } from '@/services/claude-cli'
+import {
+  useClaudeCliStatus,
+  useClaudeCliAuth,
+  claudeCliQueryKeys,
+} from '@/services/claude-cli'
 import { useGhCliStatus, useGhCliAuth, ghCliQueryKeys } from '@/services/gh-cli'
 import { useUIStore } from '@/store/ui-store'
 import type { ClaudeAuthStatus } from '@/types/claude-cli'
@@ -30,10 +34,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { usePreferences, useSavePreferences } from '@/services/preferences'
 import {
   modelOptions,
   thinkingLevelOptions,
+  effortLevelOptions,
   terminalOptions,
   editorOptions,
   gitPollIntervalOptions,
@@ -46,7 +52,7 @@ import {
   type NotificationSound,
 } from '@/types/preferences'
 import { playNotificationSound } from '@/lib/sounds'
-import type { ThinkingLevel } from '@/types/chat'
+import type { ThinkingLevel, EffortLevel } from '@/types/chat'
 import { isNativeApp } from '@/lib/environment'
 import {
   setGitPollInterval,
@@ -80,11 +86,13 @@ const InlineField: React.FC<{
   description?: React.ReactNode
   children: React.ReactNode
 }> = ({ label, description, children }) => (
-  <div className="flex items-center gap-4">
-    <div className="w-96 shrink-0 space-y-0.5">
+  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+    <div className="space-y-0.5 sm:w-96 sm:shrink-0">
       <Label className="text-sm text-foreground">{label}</Label>
       {description && (
-        <div className="text-xs text-muted-foreground truncate">{description}</div>
+        <div className="text-xs text-muted-foreground truncate">
+          {description}
+        </div>
       )}
     </div>
     {children}
@@ -103,9 +111,11 @@ export const GeneralPane: React.FC = () => {
   const { data: ghStatus, isLoading: isGhLoading } = useGhCliStatus()
 
   // Auth status queries - only enabled when CLI is installed
-  const { data: claudeAuth, isLoading: isClaudeAuthLoading } = useClaudeCliAuth({
-    enabled: !!cliStatus?.installed,
-  })
+  const { data: claudeAuth, isLoading: isClaudeAuthLoading } = useClaudeCliAuth(
+    {
+      enabled: !!cliStatus?.installed,
+    }
+  )
   const { data: ghAuth, isLoading: isGhAuthLoading } = useGhCliAuth({
     enabled: !!ghStatus?.installed,
   })
@@ -163,6 +173,12 @@ export const GeneralPane: React.FC = () => {
   const handleThinkingLevelChange = (value: ThinkingLevel) => {
     if (preferences) {
       savePreferences.mutate({ ...preferences, thinking_level: value })
+    }
+  }
+
+  const handleEffortLevelChange = (value: EffortLevel) => {
+    if (preferences) {
+      savePreferences.mutate({ ...preferences, default_effort_level: value })
     }
   }
 
@@ -238,8 +254,12 @@ export const GeneralPane: React.FC = () => {
     setCheckingClaudeAuth(true)
     try {
       // Invalidate cache and refetch to get fresh status
-      await queryClient.invalidateQueries({ queryKey: claudeCliQueryKeys.auth() })
-      const result = await queryClient.fetchQuery<ClaudeAuthStatus>({ queryKey: claudeCliQueryKeys.auth() })
+      await queryClient.invalidateQueries({
+        queryKey: claudeCliQueryKeys.auth(),
+      })
+      const result = await queryClient.fetchQuery<ClaudeAuthStatus>({
+        queryKey: claudeCliQueryKeys.auth(),
+      })
 
       if (result?.authenticated) {
         toast.success('Claude CLI is already authenticated')
@@ -266,7 +286,9 @@ export const GeneralPane: React.FC = () => {
     try {
       // Invalidate cache and refetch to get fresh status
       await queryClient.invalidateQueries({ queryKey: ghCliQueryKeys.auth() })
-      const result = await queryClient.fetchQuery<GhAuthStatus>({ queryKey: ghCliQueryKeys.auth() })
+      const result = await queryClient.fetchQuery<GhAuthStatus>({
+        queryKey: ghCliQueryKeys.auth(),
+      })
 
       if (result?.authenticated) {
         toast.success('GitHub CLI is already authenticated')
@@ -314,16 +336,14 @@ export const GeneralPane: React.FC = () => {
               ) : claudeAuth?.authenticated ? (
                 <span className="text-sm text-muted-foreground">Logged in</span>
               ) : (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleClaudeLogin}
-                >
+                <Button variant="outline" size="sm" onClick={handleClaudeLogin}>
                   Login
                 </Button>
               )
             ) : (
-              <span className="text-sm text-muted-foreground">Not installed</span>
+              <span className="text-sm text-muted-foreground">
+                Not installed
+              </span>
             )
           }
         >
@@ -332,13 +352,17 @@ export const GeneralPane: React.FC = () => {
               label={cliStatus?.installed ? 'Version' : 'Status'}
               description={
                 cliStatus?.installed ? (
-                  <button
-                    onClick={() => handleCopyPath(cliStatus.path)}
-                    className="text-left hover:underline cursor-pointer"
-                    title="Click to copy path"
-                  >
-                    {claudeStatusDescription}
-                  </button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => handleCopyPath(cliStatus.path)}
+                        className="text-left hover:underline cursor-pointer"
+                      >
+                        {claudeStatusDescription}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Click to copy path</TooltipContent>
+                  </Tooltip>
                 ) : (
                   'Required'
                 )
@@ -381,16 +405,14 @@ export const GeneralPane: React.FC = () => {
               ) : ghAuth?.authenticated ? (
                 <span className="text-sm text-muted-foreground">Logged in</span>
               ) : (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleGhLogin}
-                >
+                <Button variant="outline" size="sm" onClick={handleGhLogin}>
                   Login
                 </Button>
               )
             ) : (
-              <span className="text-sm text-muted-foreground">Not installed</span>
+              <span className="text-sm text-muted-foreground">
+                Not installed
+              </span>
             )
           }
         >
@@ -399,13 +421,17 @@ export const GeneralPane: React.FC = () => {
               label={ghStatus?.installed ? 'Version' : 'Status'}
               description={
                 ghStatus?.installed ? (
-                  <button
-                    onClick={() => handleCopyPath(ghStatus.path)}
-                    className="text-left hover:underline cursor-pointer"
-                    title="Click to copy path"
-                  >
-                    {ghStatusDescription}
-                  </button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => handleCopyPath(ghStatus.path)}
+                        className="text-left hover:underline cursor-pointer"
+                      >
+                        {ghStatusDescription}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Click to copy path</TooltipContent>
+                  </Tooltip>
                 ) : (
                   'Optional'
                 )
@@ -445,7 +471,7 @@ export const GeneralPane: React.FC = () => {
               value={preferences?.selected_model ?? 'opus'}
               onValueChange={handleModelChange}
             >
-              <SelectTrigger className="w-40">
+              <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -466,11 +492,32 @@ export const GeneralPane: React.FC = () => {
               value={preferences?.thinking_level ?? 'off'}
               onValueChange={handleThinkingLevelChange}
             >
-              <SelectTrigger className="w-40">
+              <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {thinkingLevelOptions.map(option => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </InlineField>
+
+          <InlineField
+            label="Effort level"
+            description="Effort for Opus (requires CLI 2.1.32+)"
+          >
+            <Select
+              value={preferences?.default_effort_level ?? 'high'}
+              onValueChange={handleEffortLevelChange}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {effortLevelOptions.map(option => (
                   <SelectItem key={option.value} value={option.value}>
                     {option.label}
                   </SelectItem>
@@ -532,13 +579,30 @@ export const GeneralPane: React.FC = () => {
             />
           </InlineField>
 
+          <InlineField
+            label="Chrome browser integration"
+            description="Enable browser automation via Chrome extension"
+          >
+            <Switch
+              checked={preferences?.chrome_enabled ?? true}
+              onCheckedChange={checked => {
+                if (preferences) {
+                  savePreferences.mutate({
+                    ...preferences,
+                    chrome_enabled: checked,
+                  })
+                }
+              }}
+            />
+          </InlineField>
+
           {isNativeApp() && (
             <InlineField label="Editor" description="App to open worktrees in">
               <Select
                 value={preferences?.editor ?? 'vscode'}
                 onValueChange={handleEditorChange}
               >
-                <SelectTrigger className="w-40">
+                <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -553,12 +617,15 @@ export const GeneralPane: React.FC = () => {
           )}
 
           {isNativeApp() && (
-            <InlineField label="Terminal" description="App to open terminals in">
+            <InlineField
+              label="Terminal"
+              description="App to open terminals in"
+            >
               <Select
                 value={preferences?.terminal ?? 'terminal'}
                 onValueChange={handleTerminalChange}
               >
-                <SelectTrigger className="w-40">
+                <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -580,7 +647,7 @@ export const GeneralPane: React.FC = () => {
               value={String(preferences?.git_poll_interval ?? 60)}
               onValueChange={handleGitPollIntervalChange}
             >
-              <SelectTrigger className="w-40">
+              <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -601,7 +668,7 @@ export const GeneralPane: React.FC = () => {
               value={String(preferences?.remote_poll_interval ?? 60)}
               onValueChange={handleRemotePollIntervalChange}
             >
-              <SelectTrigger className="w-40">
+              <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -613,7 +680,6 @@ export const GeneralPane: React.FC = () => {
               </SelectContent>
             </Select>
           </InlineField>
-
         </div>
       </SettingsSection>
 
@@ -627,7 +693,7 @@ export const GeneralPane: React.FC = () => {
               value={preferences?.waiting_sound ?? 'none'}
               onValueChange={handleWaitingSoundChange}
             >
-              <SelectTrigger className="w-40">
+              <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -648,7 +714,7 @@ export const GeneralPane: React.FC = () => {
               value={preferences?.review_sound ?? 'none'}
               onValueChange={handleReviewSoundChange}
             >
-              <SelectTrigger className="w-40">
+              <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -689,6 +755,23 @@ export const GeneralPane: React.FC = () => {
       <SettingsSection title="Archive">
         <div className="space-y-4">
           <InlineField
+            label="Auto-archive on PR merge"
+            description="Archive worktrees when their PR is merged"
+          >
+            <Switch
+              checked={preferences?.auto_archive_on_pr_merged ?? true}
+              onCheckedChange={checked => {
+                if (preferences) {
+                  savePreferences.mutate({
+                    ...preferences,
+                    auto_archive_on_pr_merged: checked,
+                  })
+                }
+              }}
+            />
+          </InlineField>
+
+          <InlineField
             label="Auto-delete archives"
             description="Delete archived items older than this"
           >
@@ -696,7 +779,7 @@ export const GeneralPane: React.FC = () => {
               value={String(preferences?.archive_retention_days ?? 30)}
               onValueChange={handleArchiveRetentionChange}
             >
-              <SelectTrigger className="w-48">
+              <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -725,7 +808,10 @@ export const GeneralPane: React.FC = () => {
         </div>
       </SettingsSection>
 
-      <AlertDialog open={showDeleteAllDialog} onOpenChange={setShowDeleteAllDialog}>
+      <AlertDialog
+        open={showDeleteAllDialog}
+        onOpenChange={setShowDeleteAllDialog}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete all archives?</AlertDialogTitle>

@@ -7,6 +7,11 @@ import { Button } from '@/components/ui/button'
 import { Copy, FileText } from 'lucide-react'
 import type { SessionDebugInfo, RunStatus, UsageData } from '@/types/chat'
 import { cn } from '@/lib/utils'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip'
 
 interface SessionDebugPanelProps {
   worktreeId: string
@@ -91,14 +96,17 @@ export function SessionDebugPanel({
       '',
       `Run logs (${debugInfo.run_log_files.length}):`,
       ...debugInfo.run_log_files.map(
-        (f) => `  ${getStatusText(f.status)} ${f.usage ? `(${formatUsage(f.usage)})` : ''} ${f.user_message_preview}`
+        f =>
+          `  ${getStatusText(f.status)} ${f.usage ? `(${formatUsage(f.usage)})` : ''} ${f.user_message_preview}`
       ),
     ]
 
     try {
       const text = lines.join('\n')
       if (isNativeApp()) {
-        const { writeText } = await import('@tauri-apps/plugin-clipboard-manager')
+        const { writeText } = await import(
+          '@tauri-apps/plugin-clipboard-manager'
+        )
         await writeText(text)
       } else {
         await navigator.clipboard.writeText(text)
@@ -134,53 +142,90 @@ export function SessionDebugPanel({
       <div className="text-muted-foreground">
         session: <span className="text-foreground">{sessionId}</span>
       </div>
-      <div className="text-muted-foreground truncate" title={debugInfo.sessions_file}>
-        sessions file:{' '}
-        <span
-          className="text-foreground/70 cursor-pointer hover:underline"
-          onClick={() => onFileClick?.(debugInfo.sessions_file)}
-        >
-          ...{debugInfo.sessions_file.slice(-60)}
-        </span>
-      </div>
-      <div className="text-muted-foreground truncate" title={debugInfo.runs_dir}>
-        runs dir: <span className="text-foreground/70">...{debugInfo.runs_dir.slice(-50)}</span>
-      </div>
-      <div className="text-muted-foreground truncate" title={debugInfo.manifest_file || undefined}>
-        manifest:{' '}
-        {debugInfo.manifest_file ? (
-          <span
-            className="text-foreground/70 cursor-pointer hover:underline"
-            onClick={() => onFileClick?.(debugInfo.manifest_file!)}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div
+            className="text-muted-foreground truncate"
           >
-            ...{debugInfo.manifest_file.slice(-55)}
-          </span>
-        ) : (
-          <span className="text-foreground/70">none</span>
+            sessions file:{' '}
+            <span
+              className="text-foreground/70 cursor-pointer hover:underline"
+              onClick={() => onFileClick?.(debugInfo.sessions_file)}
+            >
+              ...{debugInfo.sessions_file.slice(-60)}
+            </span>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent>{debugInfo.sessions_file}</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="text-muted-foreground truncate">
+            runs dir:{' '}
+            <span className="text-foreground/70">
+              ...{debugInfo.runs_dir.slice(-50)}
+            </span>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent>{debugInfo.runs_dir}</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="text-muted-foreground truncate">
+            manifest:{' '}
+            {debugInfo.manifest_file ? (
+              <span
+                className="text-foreground/70 cursor-pointer hover:underline"
+                // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                onClick={() => onFileClick?.(debugInfo.manifest_file!)}
+              >
+                ...{debugInfo.manifest_file.slice(-55)}
+              </span>
+            ) : (
+              <span className="text-foreground/70">none</span>
+            )}
+          </div>
+        </TooltipTrigger>
+        {debugInfo.manifest_file && (
+          <TooltipContent>{debugInfo.manifest_file}</TooltipContent>
         )}
-      </div>
+      </Tooltip>
       {debugInfo.claude_jsonl_file && (
-        <div className="text-muted-foreground truncate" title={debugInfo.claude_jsonl_file}>
-          claude jsonl:{' '}
-          <span
-            className="text-foreground/70 cursor-pointer hover:underline"
-            onClick={() => onFileClick?.(debugInfo.claude_jsonl_file!)}
-          >
-            ...{debugInfo.claude_jsonl_file.slice(-55)}
-          </span>
-        </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="text-muted-foreground truncate">
+              claude jsonl:{' '}
+              <span
+                className="text-foreground/70 cursor-pointer hover:underline"
+                // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                onClick={() => onFileClick?.(debugInfo.claude_jsonl_file!)}
+              >
+                ...{debugInfo.claude_jsonl_file.slice(-55)}
+              </span>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>{debugInfo.claude_jsonl_file}</TooltipContent>
+        </Tooltip>
       )}
 
       {/* Total token usage */}
-      {(debugInfo.total_usage.input_tokens > 0 || debugInfo.total_usage.output_tokens > 0) && (
+      {(debugInfo.total_usage.input_tokens > 0 ||
+        debugInfo.total_usage.output_tokens > 0) && (
         <div className="text-muted-foreground">
-          total usage: <span className="text-foreground font-mono">
+          total usage:{' '}
+          <span className="text-foreground font-mono">
             {formatUsage(debugInfo.total_usage)}
           </span>
           {debugInfo.total_usage.cache_read_input_tokens ? (
-            <span className="text-green-500 ml-2" title="Cache hit tokens (cost savings)">
-              ({formatTokens(debugInfo.total_usage.cache_read_input_tokens)} cached)
-            </span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="text-green-500 ml-2">
+                  ({formatTokens(debugInfo.total_usage.cache_read_input_tokens)}{' '}
+                  cached)
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>Cache hit tokens (cost savings)</TooltipContent>
+            </Tooltip>
           ) : null}
         </div>
       )}
@@ -196,14 +241,19 @@ export function SessionDebugPanel({
           </div>
         ) : (
           <div className="space-y-1 ml-2">
-            {debugInfo.run_log_files.map((file) => (
+            {debugInfo.run_log_files.map(file => (
               <div
                 key={file.run_id}
                 className="flex items-center gap-2 cursor-pointer hover:bg-muted/50 rounded px-1 -mx-1"
                 onClick={() => onFileClick?.(file.path)}
               >
                 <FileText className="size-4 text-muted-foreground shrink-0" />
-                <span className={cn('font-medium shrink-0', getStatusColor(file.status))}>
+                <span
+                  className={cn(
+                    'font-medium shrink-0',
+                    getStatusColor(file.status)
+                  )}
+                >
                   {getStatusText(file.status)}
                 </span>
                 {file.usage && (

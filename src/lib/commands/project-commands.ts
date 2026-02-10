@@ -1,5 +1,6 @@
-import { FolderPlus, FolderGit, Trash2 } from 'lucide-react'
+import { FolderPlus, FolderGit, Bug, Keyboard, Archive, ArchiveRestore } from 'lucide-react'
 import type { AppCommand } from './types'
+import { useUIStore } from '@/store/ui-store'
 
 export const projectCommands: AppCommand[] = [
   {
@@ -29,17 +30,61 @@ export const projectCommands: AppCommand[] = [
   },
 
   {
-    id: 'remove-project',
-    label: 'Remove Project',
-    description: 'Remove the current project from the sidebar',
-    icon: Trash2,
-    group: 'projects',
-    keywords: ['project', 'remove', 'delete'],
+    id: 'toggle-debug-mode',
+    label: 'Toggle Debug Mode',
+    description: 'Show/hide session debug panel',
+    icon: Bug,
+    group: 'settings',
+    keywords: ['debug', 'developer', 'dev', 'panel', 'toggle'],
 
     execute: context => {
-      context.removeProject()
+      context.toggleDebugMode()
     },
+  },
 
-    isAvailable: context => context.hasSelectedProject(),
+  {
+    id: 'help.feature-tour',
+    label: 'Show Feature Tour',
+    description: 'Learn essential keyboard shortcuts',
+    icon: Keyboard,
+    group: 'help',
+    keywords: [
+      'tour',
+      'onboarding',
+      'shortcuts',
+      'keybindings',
+      'help',
+      'keyboard',
+    ],
+
+    execute: () => {
+      useUIStore.getState().setFeatureTourOpen(true)
+    },
+  },
+
+  {
+    id: 'open-archive',
+    label: 'Open Archive',
+    description: 'View archived worktrees and sessions',
+    icon: Archive,
+    group: 'projects',
+    keywords: ['archive', 'archived', 'trash', 'deleted', 'removed'],
+
+    execute: context => {
+      context.openArchivedModal()
+    },
+  },
+
+  {
+    id: 'restore-last-archived',
+    label: 'Restore Last Archived',
+    description: 'Restore the most recently archived item',
+    icon: ArchiveRestore,
+    group: 'projects',
+    keywords: ['archive', 'restore', 'undo', 'unarchive', 'recover'],
+
+    execute: context => {
+      context.restoreLastArchived()
+    },
   },
 ]

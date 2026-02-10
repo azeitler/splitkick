@@ -9,12 +9,15 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::DialogExt;
 use uuid::Uuid;
 
+use rand::Rng;
+
 use super::git;
 use super::git::get_repo_identifier;
 use super::github_issues::{
     add_issue_reference, add_pr_reference, format_issue_context_markdown,
     format_pr_context_markdown, generate_branch_name_from_issue, generate_branch_name_from_pr,
-    get_github_contexts_dir, get_github_pr, get_pr_diff, IssueContext, PullRequestContext,
+    get_github_contexts_dir, get_github_pr, get_pr_diff, get_worktree_context_content,
+    get_worktree_context_numbers, IssueContext, PullRequestContext,
 };
 use super::names::generate_unique_workspace_name;
 use super::storage::{get_project_worktrees_dir, load_projects_data, save_projects_data};
@@ -28,6 +31,31 @@ use crate::claude_cli::get_cli_binary_path;
 use crate::gh_cli::config::resolve_gh_binary;
 use crate::http_server::EmitExt;
 use crate::platform::silent_command;
+
+/// Generate a unique name by appending 4 random alphanumeric chars,
+/// checking against both storage and git branches.
+fn generate_unique_suffix_name(
+    name: &str,
+    project_path: &str,
+    project_id: &str,
+    data: Option<&super::types::ProjectsData>,
+) -> String {
+    const CHARSET: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    let mut rng = rand::thread_rng();
+    loop {
+        let suffix: String = (0..4)
+            .map(|_| CHARSET[rng.gen_range(0..CHARSET.len())] as char)
+            .collect();
+        let candidate = format!("{name}-{suffix}");
+        let name_in_storage = data
+            .map(|d| d.worktree_name_exists(project_id, &candidate))
+            .unwrap_or(false);
+        let branch_in_git = git::branch_exists(project_path, &candidate);
+        if !name_in_storage && !branch_in_git {
+            break candidate;
+        }
+    }
+}
 
 /// Get current Unix timestamp
 fn now() -> u64 {
@@ -141,6 +169,8 @@ pub async fn add_project(
         parent_id,
         is_folder: false,
         avatar_path: None,
+        enabled_mcp_servers: Vec::new(),
+        custom_system_prompt: None,
     };
 
     data.add_project(project.clone());
@@ -291,6 +321,8 @@ pub async fn init_project(
         parent_id,
         is_folder: false,
         avatar_path: None,
+        enabled_mcp_servers: Vec::new(),
+        custom_system_prompt: None,
     };
 
     data.add_project(project.clone());
@@ -548,24 +580,11 @@ pub async fn create_worktree(
                     .map(|w| (w.id.clone(), w.name.clone()))
             });
 
-            // Generate a suggested alternative name with incremented suffix
+            // Generate a suggested alternative name with random suffix
             // Must check both storage AND git branches (branch may exist from previously deleted worktree)
             let suggested_name = {
                 let data = load_projects_data(&app_clone).ok();
-                let mut counter = 2;
-                loop {
-                    let candidate = format!("{name_clone}-{counter}");
-                    let name_in_storage = data
-                        .as_ref()
-                        .map(|d| d.worktree_name_exists(&project_id_clone, &candidate))
-                        .unwrap_or(false);
-                    let branch_in_git = git::branch_exists(&project_path, &candidate);
-
-                    if !name_in_storage && !branch_in_git {
-                        break candidate;
-                    }
-                    counter += 1;
-                }
+                generate_unique_suffix_name(&name_clone, &project_path, &project_id_clone, data.as_ref())
             };
 
             // Emit path_exists event with archived worktree info if available
@@ -618,23 +637,10 @@ pub async fn create_worktree(
                 if git::branch_exists(&project_path, &name_clone) {
                     log::trace!("Background: Branch already exists: {name_clone}");
 
-                    // Generate a suggested alternative name with incremented suffix
+                    // Generate a suggested alternative name with random suffix
                     let suggested_name = {
                         let data = load_projects_data(&app_clone).ok();
-                        let mut counter = 2;
-                        loop {
-                            let candidate = format!("{name_clone}-{counter}");
-                            let name_in_storage = data
-                                .as_ref()
-                                .map(|d| d.worktree_name_exists(&project_id_clone, &candidate))
-                                .unwrap_or(false);
-                            let branch_in_git = git::branch_exists(&project_path, &candidate);
-
-                            if !name_in_storage && !branch_in_git {
-                                break candidate;
-                            }
-                            counter += 1;
-                        }
+                        generate_unique_suffix_name(&name_clone, &project_path, &project_id_clone, data.as_ref())
                     };
 
                     // Emit branch_exists event
@@ -646,7 +652,9 @@ pub async fn create_worktree(
                         issue_context: issue_context_clone.clone(),
                         pr_context: pr_context_clone.clone(),
                     };
-                    if let Err(e) = app_clone.emit_all("worktree:branch_exists", &branch_exists_event) {
+                    if let Err(e) =
+                        app_clone.emit_all("worktree:branch_exists", &branch_exists_event)
+                    {
                         log::error!("Failed to emit worktree:branch_exists event: {e}");
                     }
 
@@ -830,39 +838,40 @@ pub async fn create_worktree(
         }
 
         // Check for jean.json and run setup script
-        let (setup_output, setup_script) =
-            if let Some(config) = git::read_jean_config(&project_path) {
-                if let Some(script) = config.scripts.setup {
-                    log::trace!("Background: Found jean.json with setup script, executing...");
-                    match git::run_setup_script(
-                        &worktree_path_clone,
-                        &project_path,
-                        &final_branch,
-                        &script,
-                    ) {
-                        Ok(output) => (Some(output), Some(script)),
-                        Err(e) => {
-                            log::error!("Background: Setup script failed: {e}");
-                            // Clean up: remove the worktree since setup failed
-                            let _ = git::remove_worktree(&project_path, &worktree_path_clone);
-                            let _ = git::delete_branch(&project_path, &final_branch);
-                            let error_event = WorktreeCreateErrorEvent {
-                                id: worktree_id_clone,
-                                project_id: project_id_clone,
-                                error: format!("Setup script failed: {e}"),
-                            };
-                            if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
-                                log::error!("Failed to emit worktree:error event: {emit_err}");
-                            }
-                            return;
+        let (setup_output, setup_script) = if let Some(config) =
+            git::read_jean_config(&project_path)
+        {
+            if let Some(script) = config.scripts.setup {
+                log::trace!("Background: Found jean.json with setup script, executing...");
+                match git::run_setup_script(
+                    &worktree_path_clone,
+                    &project_path,
+                    &final_branch,
+                    &script,
+                ) {
+                    Ok(output) => (Some(output), Some(script)),
+                    Err(e) => {
+                        log::error!("Background: Setup script failed: {e}");
+                        // Clean up: remove the worktree since setup failed
+                        let _ = git::remove_worktree(&project_path, &worktree_path_clone);
+                        let _ = git::delete_branch(&project_path, &final_branch);
+                        let error_event = WorktreeCreateErrorEvent {
+                            id: worktree_id_clone,
+                            project_id: project_id_clone,
+                            error: format!("Setup script failed: {e}"),
+                        };
+                        if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
+                            log::error!("Failed to emit worktree:error event: {emit_err}");
                         }
+                        return;
                     }
-                } else {
-                    (None, None)
                 }
             } else {
                 (None, None)
-            };
+            }
+        } else {
+            (None, None)
+        };
 
         // Save to storage
         if let Ok(mut data) = load_projects_data(&app_clone) {
@@ -1164,39 +1173,40 @@ pub async fn create_worktree_from_existing_branch(
         }
 
         // Check for jean.json and run setup script
-        let (setup_output, setup_script) =
-            if let Some(config) = git::read_jean_config(&project_path) {
-                if let Some(script) = config.scripts.setup {
-                    log::trace!("Background: Found jean.json with setup script, executing...");
-                    match git::run_setup_script(
-                        &worktree_path_clone,
-                        &project_path,
-                        &name_clone,
-                        &script,
-                    ) {
-                        Ok(output) => (Some(output), Some(script)),
-                        Err(e) => {
-                            log::error!("Background: Setup script failed: {e}");
-                            // Clean up: remove the worktree since setup failed
-                            // Note: Don't delete the branch since it's an existing branch
-                            let _ = git::remove_worktree(&project_path, &worktree_path_clone);
-                            let error_event = WorktreeCreateErrorEvent {
-                                id: worktree_id_clone,
-                                project_id: project_id_clone,
-                                error: format!("Setup script failed: {e}"),
-                            };
-                            if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
-                                log::error!("Failed to emit worktree:error event: {emit_err}");
-                            }
-                            return;
+        let (setup_output, setup_script) = if let Some(config) =
+            git::read_jean_config(&project_path)
+        {
+            if let Some(script) = config.scripts.setup {
+                log::trace!("Background: Found jean.json with setup script, executing...");
+                match git::run_setup_script(
+                    &worktree_path_clone,
+                    &project_path,
+                    &name_clone,
+                    &script,
+                ) {
+                    Ok(output) => (Some(output), Some(script)),
+                    Err(e) => {
+                        log::error!("Background: Setup script failed: {e}");
+                        // Clean up: remove the worktree since setup failed
+                        // Note: Don't delete the branch since it's an existing branch
+                        let _ = git::remove_worktree(&project_path, &worktree_path_clone);
+                        let error_event = WorktreeCreateErrorEvent {
+                            id: worktree_id_clone,
+                            project_id: project_id_clone,
+                            error: format!("Setup script failed: {e}"),
+                        };
+                        if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
+                            log::error!("Failed to emit worktree:error event: {emit_err}");
                         }
+                        return;
                     }
-                } else {
-                    (None, None)
                 }
             } else {
                 (None, None)
-            };
+            }
+        } else {
+            (None, None)
+        };
 
         // Save to storage
         if let Ok(mut data) = load_projects_data(&app_clone) {
@@ -1499,39 +1509,40 @@ pub async fn checkout_pr(
         );
 
         // Check for jean.json and run setup script
-        let (setup_output, setup_script) =
-            if let Some(config) = git::read_jean_config(&worktree_path_clone) {
-                if let Some(script) = config.scripts.setup {
-                    log::trace!("Background: Found jean.json with setup script, executing...");
-                    match git::run_setup_script(
-                        &worktree_path_clone,
-                        &project_path,
-                        &actual_branch,
-                        &script,
-                    ) {
-                        Ok(output) => (Some(output), Some(script)),
-                        Err(e) => {
-                            log::error!("Background: Setup script failed: {e}");
-                            // Clean up: remove the worktree since setup failed
-                            let _ = git::remove_worktree(&project_path, &worktree_path_clone);
-                            let _ = git::delete_branch(&project_path, &actual_branch);
-                            let error_event = WorktreeCreateErrorEvent {
-                                id: worktree_id_clone,
-                                project_id: project_id_clone,
-                                error: format!("Setup script failed: {e}"),
-                            };
-                            if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
-                                log::error!("Failed to emit worktree:error event: {emit_err}");
-                            }
-                            return;
+        let (setup_output, setup_script) = if let Some(config) =
+            git::read_jean_config(&worktree_path_clone)
+        {
+            if let Some(script) = config.scripts.setup {
+                log::trace!("Background: Found jean.json with setup script, executing...");
+                match git::run_setup_script(
+                    &worktree_path_clone,
+                    &project_path,
+                    &actual_branch,
+                    &script,
+                ) {
+                    Ok(output) => (Some(output), Some(script)),
+                    Err(e) => {
+                        log::error!("Background: Setup script failed: {e}");
+                        // Clean up: remove the worktree since setup failed
+                        let _ = git::remove_worktree(&project_path, &worktree_path_clone);
+                        let _ = git::delete_branch(&project_path, &actual_branch);
+                        let error_event = WorktreeCreateErrorEvent {
+                            id: worktree_id_clone,
+                            project_id: project_id_clone,
+                            error: format!("Setup script failed: {e}"),
+                        };
+                        if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
+                            log::error!("Failed to emit worktree:error event: {emit_err}");
                         }
+                        return;
                     }
-                } else {
-                    (None, None)
                 }
             } else {
                 (None, None)
-            };
+            }
+        } else {
+            (None, None)
+        };
 
         // Write PR context file to shared git-context directory
         if let Ok(repo_id) = get_repo_identifier(&project_path) {
@@ -2600,7 +2611,22 @@ pub async fn open_worktree_in_editor(
     Ok(())
 }
 
-/// Open a branch on GitHub in the browser
+/// Get the GitHub URL for a branch (for frontend to open)
+#[tauri::command]
+pub async fn get_github_branch_url(repo_path: String, branch: String) -> Result<String, String> {
+    log::trace!("Getting GitHub branch URL: {branch} in {repo_path}");
+    let github_url = git::get_github_url(&repo_path)?;
+    Ok(format!("{github_url}/tree/{branch}"))
+}
+
+/// Get the GitHub URL for a repository (for frontend to open)
+#[tauri::command]
+pub async fn get_github_repo_url(repo_path: String) -> Result<String, String> {
+    log::trace!("Getting GitHub repo URL for: {repo_path}");
+    git::get_github_url(&repo_path)
+}
+
+/// Open a branch on GitHub in the browser (native only)
 #[tauri::command]
 pub async fn open_branch_on_github(repo_path: String, branch: String) -> Result<(), String> {
     log::trace!("Opening branch on GitHub: {branch} in {repo_path}");
@@ -2932,12 +2958,14 @@ pub async fn get_project_branches(
     Ok(branches)
 }
 
-/// Update project settings (currently just default_branch)
+/// Update project settings
 #[tauri::command]
 pub async fn update_project_settings(
     app: AppHandle,
     project_id: String,
     default_branch: Option<String>,
+    enabled_mcp_servers: Option<Vec<String>>,
+    custom_system_prompt: Option<String>,
 ) -> Result<Project, String> {
     log::trace!("Updating settings for project: {project_id}");
 
@@ -2954,6 +2982,21 @@ pub async fn update_project_settings(
             branch
         );
         project.default_branch = branch;
+    }
+
+    if let Some(servers) = enabled_mcp_servers {
+        log::trace!("Updating enabled MCP servers: {servers:?}");
+        project.enabled_mcp_servers = servers;
+    }
+
+    if let Some(prompt) = custom_system_prompt {
+        let prompt = prompt.trim().to_string();
+        log::trace!("Updating custom system prompt ({} chars)", prompt.len());
+        project.custom_system_prompt = if prompt.is_empty() {
+            None
+        } else {
+            Some(prompt)
+        };
     }
 
     let updated_project = project.clone();
@@ -3276,6 +3319,14 @@ DO NOT run git diff, git log, git status, or ANY other git commands. All the inf
 
 When reviewing the diff:
 
+- Security & supply-chain risks:
+  - Malicious or obfuscated code (eval, encoded strings, hidden network calls, data exfiltration)
+  - Suspicious dependency additions or version changes (typosquatting, hijacked packages)
+  - Hardcoded secrets, tokens, API keys, or credentials
+  - Backdoors, reverse shells, or unauthorized remote access
+  - Unsafe deserialization, command injection, SQL injection, XSS
+  - Weakened auth/permissions (removed checks, broadened access, disabled validation)
+  - Suspicious file system or environment variable access
 - Focus on logic and correctness - Check for bugs, edge cases, and potential issues.
 - Consider readability - Is the code clear and maintainable? Does it follow best practices in this repository?
 - Evaluate performance - Are there obvious performance concerns or optimizations that could be made?
@@ -3403,6 +3454,7 @@ pub async fn clear_worktree_pr(app: AppHandle, worktree_id: String) -> Result<()
 pub async fn update_worktree_cached_status(
     app: AppHandle,
     worktree_id: String,
+    branch: Option<String>,
     pr_status: Option<String>,
     check_status: Option<String>,
     behind_count: Option<u32>,
@@ -3427,6 +3479,13 @@ pub async fn update_worktree_cached_status(
         .ok_or_else(|| format!("Worktree not found: {worktree_id}"))?;
 
     // Only update fields that are provided, preserve existing values for None
+    if let Some(ref b) = branch {
+        worktree.branch = b.clone();
+        // For base sessions, also update the display name to match the branch
+        if worktree.session_type == crate::projects::types::SessionType::Base {
+            worktree.name = b.clone();
+        }
+    }
     if pr_status.is_some() {
         worktree.cached_pr_status = pr_status;
     }
@@ -3563,6 +3622,10 @@ const PR_CONTENT_PROMPT: &str = r#"Generate a pull request title and description
 Branch: {current_branch} → {target_branch}
 Commits: {commit_count}
 
+## Related Context
+
+{context}
+
 ## Commit Messages
 
 {commits}
@@ -3696,6 +3759,7 @@ fn generate_pr_content(
     target_branch: &str,
     custom_prompt: Option<&str>,
     model: Option<&str>,
+    context: &str,
 ) -> Result<PrContentResponse, String> {
     let cli_path = get_cli_binary_path(app)?;
 
@@ -3721,6 +3785,7 @@ fn generate_pr_content(
         .replace("{current_branch}", current_branch)
         .replace("{target_branch}", target_branch)
         .replace("{commit_count}", &commit_count.to_string())
+        .replace("{context}", context)
         .replace("{commits}", &commits)
         .replace("{diff}", &diff);
 
@@ -3893,16 +3958,35 @@ pub async fn create_pr_with_ai_content(
         }
     }
 
+    // Gather issue/PR context for this worktree
+    let context_content =
+        get_worktree_context_content(&app, &worktree.id, &project.path).unwrap_or_default();
+    let (issue_nums, pr_nums) =
+        get_worktree_context_numbers(&app, &worktree.id).unwrap_or_default();
+
     // Generate PR content using Claude CLI
     log::trace!("Generating PR content with AI");
-    let pr_content = generate_pr_content(
+    let mut pr_content = generate_pr_content(
         &app,
         &worktree_path,
         &current_branch,
         target_branch,
         custom_prompt.as_deref(),
         model.as_deref(),
+        &context_content,
     )?;
+
+    // Append unconditional issue/PR references to the body
+    let mut refs: Vec<String> = Vec::new();
+    for num in &issue_nums {
+        refs.push(format!("Closes #{num}"));
+    }
+    for num in &pr_nums {
+        refs.push(format!("Related to #{num}"));
+    }
+    if !refs.is_empty() {
+        pr_content.body = format!("{}\n\n---\n\n{}", pr_content.body, refs.join("\n"));
+    }
 
     log::trace!("Generated PR title: {}", pr_content.title);
 
@@ -4269,7 +4353,14 @@ const REVIEW_PROMPT: &str = r#"Review the following code changes and provide str
 {uncommitted_section}
 
 Focus on:
-- Security vulnerabilities
+- Security & supply-chain risks:
+  - Malicious or obfuscated code (eval, encoded strings, hidden network calls, data exfiltration)
+  - Suspicious dependency additions or version changes (typosquatting, hijacked packages)
+  - Hardcoded secrets, tokens, API keys, or credentials
+  - Backdoors, reverse shells, or unauthorized remote access
+  - Unsafe deserialization, command injection, SQL injection, XSS
+  - Weakened auth/permissions (removed checks, broadened access, disabled validation)
+  - Suspicious file system or environment variable access
 - Performance issues
 - Code quality and maintainability
 - Potential bugs
@@ -4474,12 +4565,261 @@ pub async fn git_pull(worktree_path: String, base_branch: String) -> Result<Stri
 /// Push current branch to remote. If pr_number is provided, uses PR-aware push
 /// that handles fork remotes and uses --force-with-lease.
 #[tauri::command]
-pub async fn git_push(app: tauri::AppHandle, worktree_path: String, pr_number: Option<u32>) -> Result<String, String> {
+pub async fn git_push(
+    app: tauri::AppHandle,
+    worktree_path: String,
+    pr_number: Option<u32>,
+) -> Result<String, String> {
     log::trace!("Pushing changes for worktree: {worktree_path}, pr_number: {pr_number:?}");
     match pr_number {
         Some(pr) => git::git_push_to_pr(&worktree_path, pr, &resolve_gh_binary(&app)),
         None => git::git_push(&worktree_path),
     }
+}
+
+// =============================================================================
+// Release Notes
+// =============================================================================
+
+/// A GitHub release returned by `gh release list`
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubRelease {
+    pub tag_name: String,
+    pub name: String,
+    pub published_at: String,
+    pub is_latest: bool,
+    pub is_draft: bool,
+    pub is_prerelease: bool,
+}
+
+/// List GitHub releases for a project
+#[tauri::command]
+pub async fn list_github_releases(
+    app: AppHandle,
+    project_path: String,
+) -> Result<Vec<GitHubRelease>, String> {
+    log::trace!("Listing GitHub releases for: {project_path}");
+
+    let gh = resolve_gh_binary(&app);
+    let output = silent_command(&gh)
+        .args([
+            "release",
+            "list",
+            "--json",
+            "tagName,name,publishedAt,isLatest,isDraft,isPrerelease",
+            "--limit",
+            "30",
+        ])
+        .current_dir(&project_path)
+        .output()
+        .map_err(|e| format!("Failed to run gh CLI: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to list releases: {stderr}"));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    serde_json::from_str::<Vec<GitHubRelease>>(&stdout)
+        .map_err(|e| format!("Failed to parse releases: {e}"))
+}
+
+/// Response from generate_release_notes command
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReleaseNotesResponse {
+    pub title: String,
+    pub body: String,
+}
+
+const RELEASE_NOTES_SCHEMA: &str = r#"{
+    "type": "object",
+    "properties": {
+        "title": {
+            "type": "string",
+            "description": "A concise release title (e.g. 'v1.2.0 - Dark Mode & Performance')"
+        },
+        "body": {
+            "type": "string",
+            "description": "Release notes in markdown format, grouped by category"
+        }
+    },
+    "required": ["title", "body"]
+}"#;
+
+const RELEASE_NOTES_PROMPT: &str = r#"Generate release notes for changes since the `{tag}` release ({previous_release_name}).
+
+## Commits since {tag}
+
+{commits}
+
+## Instructions
+
+- Write a concise release title
+- Group changes into categories: Features, Fixes, Improvements, Breaking Changes (only include categories that have entries)
+- Use bullet points with brief descriptions
+- Reference PR numbers if visible in commit messages
+- Skip merge commits and trivial changes (typos, formatting)
+- Write in past tense ("Added", "Fixed", "Improved")
+- Keep it concise and user-facing (skip internal implementation details)"#;
+
+/// Generate release notes content using Claude CLI
+fn generate_release_notes_content(
+    app: &AppHandle,
+    project_path: &str,
+    tag: &str,
+    release_name: &str,
+    custom_prompt: Option<&str>,
+    model: Option<&str>,
+) -> Result<ReleaseNotesResponse, String> {
+    let cli_path = get_cli_binary_path(app)?;
+
+    if !cli_path.exists() {
+        return Err("Claude CLI not installed".to_string());
+    }
+
+    // Fetch tags to ensure we have the tag locally
+    let fetch_output = silent_command("git")
+        .args(["fetch", "--tags"])
+        .current_dir(project_path)
+        .output()
+        .map_err(|e| format!("Failed to fetch tags: {e}"))?;
+
+    if !fetch_output.status.success() {
+        let stderr = String::from_utf8_lossy(&fetch_output.stderr);
+        log::warn!("git fetch --tags warning: {stderr}");
+    }
+
+    // Get commits since the tag
+    let commits_output = silent_command("git")
+        .args([
+            "log",
+            &format!("{tag}..HEAD"),
+            "--format=%h %s%n%b---",
+            "--no-merges",
+        ])
+        .current_dir(project_path)
+        .output()
+        .map_err(|e| format!("Failed to get commits: {e}"))?;
+
+    if !commits_output.status.success() {
+        let stderr = String::from_utf8_lossy(&commits_output.stderr);
+        return Err(format!("Failed to get commits since {tag}: {stderr}"));
+    }
+
+    let commits = String::from_utf8_lossy(&commits_output.stdout).to_string();
+
+    if commits.trim().is_empty() {
+        return Err(format!("No changes found since {tag}"));
+    }
+
+    // Truncate commits if too large (50K chars)
+    let commits = if commits.len() > 50_000 {
+        format!(
+            "{}\n\n[... truncated, {} total characters]",
+            &commits[..50_000],
+            commits.len()
+        )
+    } else {
+        commits
+    };
+
+    // Build prompt
+    let prompt_template = custom_prompt
+        .filter(|p| !p.trim().is_empty())
+        .unwrap_or(RELEASE_NOTES_PROMPT);
+
+    let prompt = prompt_template
+        .replace("{tag}", tag)
+        .replace("{previous_release_name}", release_name)
+        .replace("{commits}", &commits);
+
+    log::trace!("Generating release notes with Claude CLI (JSON schema)");
+
+    let mut cmd = silent_command(&cli_path);
+    cmd.args([
+        "--print",
+        "--verbose",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--model",
+        model.unwrap_or("haiku"),
+        "--no-session-persistence",
+        "--tools",
+        "",
+        "--max-turns",
+        "1",
+        "--json-schema",
+        RELEASE_NOTES_SCHEMA,
+    ]);
+
+    cmd.stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to spawn Claude CLI: {e}"))?;
+
+    // Write prompt to stdin
+    {
+        let stdin = child.stdin.as_mut().ok_or("Failed to open stdin")?;
+        let input_message = serde_json::json!({
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": prompt
+            }
+        });
+        writeln!(stdin, "{input_message}").map_err(|e| format!("Failed to write to stdin: {e}"))?;
+    }
+
+    let output = child
+        .wait_with_output()
+        .map_err(|e| format!("Failed to wait for Claude CLI: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        return Err(format!(
+            "Claude CLI failed: stderr={}, stdout={}",
+            stderr.trim(),
+            stdout.trim()
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    log::trace!("Claude CLI release notes stdout: {stdout}");
+
+    let json_content = extract_structured_output(&stdout)?;
+    log::trace!("Extracted release notes JSON: {json_content}");
+
+    serde_json::from_str::<ReleaseNotesResponse>(&json_content)
+        .map_err(|e| format!("Failed to parse release notes response: {e}"))
+}
+
+/// Generate release notes comparing a tag to HEAD
+#[tauri::command]
+pub async fn generate_release_notes(
+    app: AppHandle,
+    project_path: String,
+    tag: String,
+    release_name: String,
+    custom_prompt: Option<String>,
+    model: Option<String>,
+) -> Result<ReleaseNotesResponse, String> {
+    log::trace!("Generating release notes for {project_path} since {tag}");
+
+    generate_release_notes_content(
+        &app,
+        &project_path,
+        &tag,
+        &release_name,
+        custom_prompt.as_deref(),
+        model.as_deref(),
+    )
 }
 
 // =============================================================================
@@ -5166,6 +5506,8 @@ pub async fn create_folder(
         parent_id,
         is_folder: true,
         avatar_path: None,
+        enabled_mcp_servers: Vec::new(),
+        custom_system_prompt: None,
     };
 
     data.add_project(folder.clone());

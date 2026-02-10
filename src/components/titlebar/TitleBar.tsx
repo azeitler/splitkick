@@ -1,8 +1,9 @@
 import type React from 'react'
+import { useState, useEffect } from 'react'
 import { cn } from '@/lib/utils'
 import { MacOSWindowControls } from './MacOSWindowControls'
 import { WindowsWindowControls } from './WindowsWindowControls'
-import { isMacOS } from '@/lib/platform'
+import { isMacOS, openExternal } from '@/lib/platform'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -10,19 +11,28 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { useUIStore } from '@/store/ui-store'
-import { executeCommand, useCommandContext } from '@/lib/commands'
-import { PanelLeft, PanelLeftClose, Settings } from 'lucide-react'
+import { useCommandContext } from '@/lib/commands'
+import { Heart, PanelLeft, PanelLeftClose, Plus, Settings } from 'lucide-react'
 import { usePreferences } from '@/services/preferences'
 import { formatShortcutDisplay, DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 import { isNativeApp } from '@/lib/environment'
+import { useProjectsStore } from '@/store/projects-store'
 
 interface TitleBarProps {
   className?: string
   title?: string
+  hideTitle?: boolean
 }
 
-export function TitleBar({ className, title = 'Jean' }: TitleBarProps) {
+export function TitleBar({
+  className,
+  title = 'Jean',
+  hideTitle = false,
+}: TitleBarProps) {
   const { leftSidebarVisible, toggleLeftSidebar } = useUIStore()
+  const setAddProjectDialogOpen = useProjectsStore(
+    s => s.setAddProjectDialogOpen
+  )
   const commandContext = useCommandContext()
   const { data: preferences } = usePreferences()
 
@@ -32,20 +42,38 @@ export function TitleBar({ className, title = 'Jean' }: TitleBarProps) {
   )
   const native = isNativeApp()
 
+  const [appVersion, setAppVersion] = useState<string>('')
+  useEffect(() => {
+    if (native) {
+      import('@tauri-apps/api/app').then(({ getVersion }) =>
+        getVersion().then(setAppVersion)
+      )
+    }
+  }, [native])
+
   return (
     <div
       {...(native ? { 'data-tauri-drag-region': true } : {})}
       className={cn(
         'relative flex h-8 w-full shrink-0 items-center justify-between bg-sidebar',
+        native && !isMacOS && 'z-[60]',
         className
       )}
     >
       {/* Left side - Window Controls + Left Actions */}
-      <div className="flex items-center" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+      <div
+        className="flex items-center"
+        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+      >
         {native && isMacOS && <MacOSWindowControls />}
 
         {/* Left Action Buttons */}
-        <div className={cn('flex items-center gap-1', (!native || !isMacOS) && 'pl-2')}>
+        <div
+          className={cn(
+            'flex items-center gap-1',
+            (!native || !isMacOS) && 'pl-2'
+          )}
+        >
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -71,7 +99,7 @@ export function TitleBar({ className, title = 'Jean' }: TitleBarProps) {
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
-                onClick={() => executeCommand('open-preferences', commandContext)}
+                onClick={commandContext.openPreferences}
                 variant="ghost"
                 size="icon"
                 className="h-6 w-6 text-foreground/70 hover:text-foreground"
@@ -80,24 +108,64 @@ export function TitleBar({ className, title = 'Jean' }: TitleBarProps) {
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              Settings <kbd className="ml-1 text-[0.625rem] opacity-60">{formatShortcutDisplay(
-                (preferences?.keybindings?.open_preferences ||
-                  DEFAULT_KEYBINDINGS.open_preferences) as string
-              )}</kbd>
+              Settings{' '}
+              <kbd className="ml-1 text-[0.625rem] opacity-60">
+                {formatShortcutDisplay(
+                  (preferences?.keybindings?.open_preferences ||
+                    DEFAULT_KEYBINDINGS.open_preferences) as string
+                )}
+              </kbd>
             </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                onClick={() => setAddProjectDialogOpen(true)}
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-foreground/70 hover:text-foreground"
+              >
+                <Plus className="h-3 w-3" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Add Project</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                onClick={() =>
+                  openExternal('https://jean.build/sponsorships/')
+                }
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-pink-500 hover:text-pink-400"
+              >
+                <Heart className="h-3 w-3" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Sponsor</TooltipContent>
           </Tooltip>
         </div>
       </div>
 
       {/* Center - Title */}
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 max-w-[50%] px-2">
-        <span className="block truncate text-sm font-medium text-foreground/80">
-          {title}
-        </span>
-      </div>
+      {!hideTitle && (
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 max-w-[50%] px-2">
+          <span className="block truncate text-sm font-medium text-foreground/80">
+            {title}
+          </span>
+        </div>
+      )}
 
-      {/* Right side - Windows/Linux window controls */}
-      {native && !isMacOS && <WindowsWindowControls />}
+      {/* Right side - Version + Windows/Linux window controls */}
+      <div className="flex items-center">
+        {appVersion && (
+          <span className="pr-2 text-[0.625rem] text-foreground/40">
+            v{appVersion}
+          </span>
+        )}
+        {native && !isMacOS && <WindowsWindowControls />}
+      </div>
     </div>
   )
 }

@@ -43,6 +43,7 @@ export function useContextOperations({
   const [loadContextModalOpen, setLoadContextModalOpen] = useState(false)
 
   // Handle Save Context - generates context summary in the background
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const handleSaveContext = useCallback(async () => {
     if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
 

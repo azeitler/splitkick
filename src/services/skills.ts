@@ -55,7 +55,9 @@ export function useClaudeCommands() {
       try {
         logger.debug('Loading Claude CLI custom commands')
         const commands = await invoke<ClaudeCommand[]>('list_claude_commands')
-        logger.info('Claude CLI custom commands loaded', { count: commands.length })
+        logger.info('Claude CLI custom commands loaded', {
+          count: commands.length,
+        })
         return commands
       } catch (error) {
         logger.error('Failed to load Claude CLI custom commands', { error })

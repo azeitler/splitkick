@@ -21,6 +21,11 @@ export interface GitHubIssue {
   author: GitHubAuthor
 }
 
+export interface GitHubIssueListResult {
+  issues: GitHubIssue[]
+  totalCount: number
+}
+
 export interface GitHubComment {
   body: string
   author: GitHubAuthor
@@ -113,6 +118,28 @@ export interface LoadedPullRequestContext {
   reviewCount: number
   repoOwner: string
   repoName: string
+}
+
+// =============================================================================
+// GitHub Actions Workflow Run Types
+// =============================================================================
+
+export interface WorkflowRun {
+  databaseId: number
+  name: string
+  displayTitle: string
+  status: string // "completed" | "in_progress" | "queued"
+  conclusion: string | null // "success" | "failure" | "cancelled" | "skipped" | "startup_failure" | null
+  event: string
+  headBranch: string
+  createdAt: string
+  url: string
+  workflowName: string
+}
+
+export interface WorkflowRunsResult {
+  runs: WorkflowRun[]
+  failedCount: number
 }
 
 // =============================================================================

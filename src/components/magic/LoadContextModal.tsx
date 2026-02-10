@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { getModifierSymbol } from '@/lib/platform'
 import { invoke } from '@/lib/transport'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -29,6 +30,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Markdown } from '@/components/ui/markdown'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { useAllSessions } from '@/services/chat'
 import type {
@@ -134,7 +136,9 @@ export function LoadContextModal({
   const [removingNumbers, setRemovingNumbers] = useState<Set<number>>(new Set())
 
   // Context tab state
-  const [generatingSessionId, setGeneratingSessionId] = useState<string | null>(null)
+  const [generatingSessionId, setGeneratingSessionId] = useState<string | null>(
+    null
+  )
   const [editingFilename, setEditingFilename] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
   const editInputRef = useRef<HTMLInputElement>(null)
@@ -178,12 +182,13 @@ export function LoadContextModal({
   // GitHub issues query
   const issueState = includeClosed ? 'all' : 'open'
   const {
-    data: issues,
+    data: issueResult,
     isLoading: isLoadingIssues,
     isFetching: isRefetchingIssues,
     error: issuesError,
     refetch: refetchIssues,
   } = useGitHubIssues(worktreePath, issueState)
+  const issues = issueResult?.issues
 
   // GitHub PRs query
   const prState = includeClosed ? 'all' : 'open'
@@ -216,15 +221,13 @@ export function LoadContextModal({
   const debouncedSearchQuery = useDebouncedValue(searchQuery, 300)
 
   // GitHub search queries (triggered when local filter may miss results)
-  const {
-    data: searchedIssues,
-    isFetching: isSearchingIssues,
-  } = useSearchGitHubIssues(worktreePath, debouncedSearchQuery)
+  const { data: searchedIssues, isFetching: isSearchingIssues } =
+    useSearchGitHubIssues(worktreePath, debouncedSearchQuery)
 
-  const {
-    data: searchedPRs,
-    isFetching: isSearchingPRs,
-  } = useSearchGitHubPRs(worktreePath, debouncedSearchQuery)
+  const { data: searchedPRs, isFetching: isSearchingPRs } = useSearchGitHubPRs(
+    worktreePath,
+    debouncedSearchQuery
+  )
 
   // Filter issues locally, merge with search results, exclude already loaded ones
   const filteredIssues = useMemo(() => {
@@ -250,7 +253,9 @@ export function LoadContextModal({
     const attachedSlugs = new Set(attachedSavedContexts?.map(c => c.slug) ?? [])
 
     // Filter out already-attached contexts
-    let filtered = contextsData.contexts.filter(ctx => !attachedSlugs.has(ctx.slug))
+    const filtered = contextsData.contexts.filter(
+      ctx => !attachedSlugs.has(ctx.slug)
+    )
 
     if (!searchQuery) return filtered
 
@@ -368,7 +373,15 @@ export function LoadContextModal({
       queryClient.invalidateQueries({ queryKey: ['session-context'] })
     }
     prevOpenRef.current = open
-  }, [open, worktreePath, worktreeId, queryClient, loadedIssueContexts?.length, loadedPRContexts?.length, attachedSavedContexts?.length])
+  }, [
+    open,
+    worktreePath,
+    worktreeId,
+    queryClient,
+    loadedIssueContexts?.length,
+    loadedPRContexts?.length,
+    attachedSavedContexts?.length,
+  ])
 
   // Focus search input when modal opens or tab changes
   useEffect(() => {
@@ -404,7 +417,7 @@ export function LoadContextModal({
 
   // Handle loading/refreshing an issue
   const handleLoadIssue = useCallback(
-    async (issueNumber: number, isRefresh: boolean = false) => {
+    async (issueNumber: number, isRefresh = false) => {
       if (!worktreeId || !worktreePath) {
         toast.error('No active worktree')
         return
@@ -412,11 +425,17 @@ export function LoadContextModal({
 
       setLoadingNumbers(prev => new Set(prev).add(issueNumber))
       const toastId = toast.loading(
-        isRefresh ? `Refreshing issue #${issueNumber}...` : `Loading issue #${issueNumber}...`
+        isRefresh
+          ? `Refreshing issue #${issueNumber}...`
+          : `Loading issue #${issueNumber}...`
       )
 
       try {
-        const result = await loadIssueContext(worktreeId, issueNumber, worktreePath)
+        const result = await loadIssueContext(
+          worktreeId,
+          issueNumber,
+          worktreePath
+        )
 
         // Refresh loaded contexts list
         await refetchIssueContexts()
@@ -440,7 +459,7 @@ export function LoadContextModal({
 
   // Handle loading/refreshing a PR
   const handleLoadPR = useCallback(
-    async (prNumber: number, isRefresh: boolean = false) => {
+    async (prNumber: number, isRefresh = false) => {
       if (!worktreeId || !worktreePath) {
         toast.error('No active worktree')
         return
@@ -448,7 +467,9 @@ export function LoadContextModal({
 
       setLoadingNumbers(prev => new Set(prev).add(prNumber))
       const toastId = toast.loading(
-        isRefresh ? `Refreshing PR #${prNumber}...` : `Loading PR #${prNumber}...`
+        isRefresh
+          ? `Refreshing PR #${prNumber}...`
+          : `Loading PR #${prNumber}...`
       )
 
       try {
@@ -528,7 +549,11 @@ export function LoadContextModal({
       if (!worktreeId || !worktreePath) return
 
       try {
-        const content = await getIssueContextContent(worktreeId, ctx.number, worktreePath)
+        const content = await getIssueContextContent(
+          worktreeId,
+          ctx.number,
+          worktreePath
+        )
         setViewingContext({
           type: 'issue',
           number: ctx.number,
@@ -548,7 +573,11 @@ export function LoadContextModal({
       if (!worktreeId || !worktreePath) return
 
       try {
-        const content = await getPRContextContent(worktreeId, ctx.number, worktreePath)
+        const content = await getPRContextContent(
+          worktreeId,
+          ctx.number,
+          worktreePath
+        )
         setViewingContext({
           type: 'pr',
           number: ctx.number,
@@ -605,7 +634,9 @@ export function LoadContextModal({
       }
 
       setLoadingSlugs(prev => new Set(prev).add(context.slug))
-      const toastId = toast.loading(`Attaching context "${context.name || context.slug}"...`)
+      const toastId = toast.loading(
+        `Attaching context "${context.name || context.slug}"...`
+      )
 
       try {
         await attachSavedContext(worktreeId, context.path, context.slug)
@@ -613,7 +644,9 @@ export function LoadContextModal({
         // Refresh attached contexts list
         await refetchAttachedContexts()
 
-        toast.success(`Context "${context.name || context.slug}" attached`, { id: toastId })
+        toast.success(`Context "${context.name || context.slug}" attached`, {
+          id: toastId,
+        })
         setSearchQuery('')
         setSelectedIndex(0)
       } catch (error) {
@@ -708,8 +741,12 @@ export function LoadContextModal({
 
   const handleSessionClick = useCallback(
     async (sessionWithContext: SessionWithContext) => {
-      const { session, worktreeId: sessionWorktreeId, worktreePath: sessionWorktreePath, projectName: sessionProjectName } =
-        sessionWithContext
+      const {
+        session,
+        worktreeId: sessionWorktreeId,
+        worktreePath: sessionWorktreePath,
+        projectName: sessionProjectName,
+      } = sessionWithContext
 
       if (!worktreeId) {
         toast.error('No active worktree')
@@ -756,7 +793,13 @@ export function LoadContextModal({
         setGeneratingSessionId(null)
       }
     },
-    [worktreeId, refetchContexts, refetchAttachedContexts, preferences?.magic_prompts?.context_summary, preferences?.magic_prompt_models?.context_summary_model]
+    [
+      worktreeId,
+      refetchContexts,
+      refetchAttachedContexts,
+      preferences?.magic_prompts?.context_summary,
+      preferences?.magic_prompt_models?.context_summary_model,
+    ]
   )
 
   // Keyboard navigation
@@ -808,9 +851,7 @@ export function LoadContextModal({
       if (activeTab === 'prs' && filteredPRs.length > 0) {
         if (key === 'arrowdown') {
           e.preventDefault()
-          setSelectedIndex(prev =>
-            Math.min(prev + 1, filteredPRs.length - 1)
-          )
+          setSelectedIndex(prev => Math.min(prev + 1, filteredPRs.length - 1))
           return
         }
         if (key === 'arrowup') {
@@ -827,7 +868,9 @@ export function LoadContextModal({
 
       // List navigation for contexts tab (saved contexts + sessions)
       if (activeTab === 'contexts') {
-        const totalItems = filteredContexts.length + filteredEntries.reduce((acc, e) => acc + e.sessions.length, 0)
+        const totalItems =
+          filteredContexts.length +
+          filteredEntries.reduce((acc, e) => acc + e.sessions.length, 0)
         if (totalItems > 0) {
           if (key === 'arrowdown') {
             e.preventDefault()
@@ -869,7 +912,18 @@ export function LoadContextModal({
         }
       }
     },
-    [activeTab, filteredIssues, filteredPRs, filteredContexts, filteredEntries, selectedIndex, handleSelectIssue, handleSelectPR, handleAttachContext, handleSessionClick]
+    [
+      activeTab,
+      filteredIssues,
+      filteredPRs,
+      filteredContexts,
+      filteredEntries,
+      selectedIndex,
+      handleSelectIssue,
+      handleSelectPR,
+      handleAttachContext,
+      handleSessionClick,
+    ]
   )
 
   // Scroll selected item into view
@@ -889,7 +943,7 @@ export function LoadContextModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="overflow-hidden p-0 !max-w-[calc(100vw-4rem)] !w-[calc(100vw-4rem)] !h-[calc(100vh-4rem)] font-sans rounded-xl flex flex-col"
+        className="overflow-hidden p-0 !w-screen !h-dvh !max-w-screen !max-h-none !rounded-none sm:!w-[calc(100vw-4rem)] sm:!max-w-[calc(100vw-4rem)] sm:!h-[calc(100vh-4rem)] sm:!rounded-xl font-sans flex flex-col"
         onKeyDown={handleKeyDown}
       >
         <DialogHeader className="px-4 pt-4 pb-2">
@@ -915,7 +969,7 @@ export function LoadContextModal({
             >
               {tab.label}
               <kbd className="ml-2 text-xs text-muted-foreground bg-muted px-1 py-0.5 rounded">
-                {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+{tab.key}
+                {getModifierSymbol()}+{tab.key}
               </kbd>
             </button>
           ))}
@@ -943,7 +997,9 @@ export function LoadContextModal({
               onSelectItem={handleSelectIssue}
               loadingNumbers={loadingNumbers}
               removingNumbers={removingNumbers}
-              onLoadItem={(num: number, refresh: boolean) => handleLoadIssue(num, refresh)}
+              onLoadItem={(num: number, refresh: boolean) =>
+                handleLoadIssue(num, refresh)
+              }
               onRemoveItem={handleRemoveIssue}
               onViewItem={handleViewIssue}
               hasLoadedContexts={hasLoadedIssueContexts}
@@ -972,7 +1028,9 @@ export function LoadContextModal({
               onSelectItem={handleSelectPR}
               loadingNumbers={loadingNumbers}
               removingNumbers={removingNumbers}
-              onLoadItem={(num: number, refresh: boolean) => handleLoadPR(num, refresh)}
+              onLoadItem={(num: number, refresh: boolean) =>
+                handleLoadPR(num, refresh)
+              }
               onRemoveItem={handleRemovePR}
               onViewItem={handleViewPR}
               hasLoadedContexts={hasLoadedPRContexts}
@@ -1021,7 +1079,7 @@ export function LoadContextModal({
         {/* Context viewer modal */}
         {viewingContext && (
           <Dialog open={true} onOpenChange={() => setViewingContext(null)}>
-            <DialogContent className="!max-w-[calc(100vw-8rem)] !w-[calc(100vw-8rem)] !h-[calc(100vh-8rem)] flex flex-col">
+            <DialogContent className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none sm:!w-[calc(100vw-8rem)] sm:!max-w-[calc(100vw-8rem)] sm:!h-[calc(100vh-8rem)] sm:!rounded-lg flex flex-col">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
                   {viewingContext.type === 'issue' && (
@@ -1033,13 +1091,12 @@ export function LoadContextModal({
                   {viewingContext.type === 'saved' && (
                     <FolderOpen className="h-4 w-4 text-blue-500" />
                   )}
-                  {viewingContext.number ? `#${viewingContext.number}: ` : ''}{viewingContext.title}
+                  {viewingContext.number ? `#${viewingContext.number}: ` : ''}
+                  {viewingContext.title}
                 </DialogTitle>
               </DialogHeader>
               <ScrollArea className="flex-1 min-h-0">
-                <Markdown className="p-4">
-                  {viewingContext.content}
-                </Markdown>
+                <Markdown className="p-4">{viewingContext.content}</Markdown>
               </ScrollArea>
             </DialogContent>
           </Dialog>
@@ -1151,24 +1208,28 @@ function IssuesTab({
               className="pl-9 h-8 text-sm"
             />
           </div>
-          <button
-            onClick={onRefresh}
-            disabled={isRefetching}
-            className={cn(
-              'flex items-center justify-center h-8 w-8 rounded-md border border-border',
-              'hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring',
-              'transition-colors',
-              isRefetching && 'opacity-50 cursor-not-allowed'
-            )}
-            title="Refresh issues"
-          >
-            <RefreshCw
-              className={cn(
-                'h-4 w-4 text-muted-foreground',
-                isRefetching && 'animate-spin'
-              )}
-            />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={onRefresh}
+                disabled={isRefetching}
+                className={cn(
+                  'flex items-center justify-center h-8 w-8 rounded-md border border-border',
+                  'hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring',
+                  'transition-colors',
+                  isRefetching && 'opacity-50 cursor-not-allowed'
+                )}
+              >
+                <RefreshCw
+                  className={cn(
+                    'h-4 w-4 text-muted-foreground',
+                    isRefetching && 'animate-spin'
+                  )}
+                />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Refresh issues</TooltipContent>
+          </Tooltip>
         </div>
         <div className="flex items-center gap-2">
           <Checkbox
@@ -1196,8 +1257,8 @@ function IssuesTab({
           </div>
         )}
 
-        {error && (
-          isGhAuthError(error) ? (
+        {error &&
+          (isGhAuthError(error) ? (
             <GhAuthError onLogin={onGhLogin} isGhInstalled={isGhInstalled} />
           ) : (
             <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
@@ -1206,8 +1267,7 @@ function IssuesTab({
                 {error.message || 'Failed to load issues'}
               </span>
             </div>
-          )
-        )}
+          ))}
 
         {!isLoading && !error && filteredItems.length === 0 && !isSearching && (
           <div className="flex items-center justify-center py-8">
@@ -1360,24 +1420,28 @@ function PullRequestsTab({
               className="pl-9 h-8 text-sm"
             />
           </div>
-          <button
-            onClick={onRefresh}
-            disabled={isRefetching}
-            className={cn(
-              'flex items-center justify-center h-8 w-8 rounded-md border border-border',
-              'hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring',
-              'transition-colors',
-              isRefetching && 'opacity-50 cursor-not-allowed'
-            )}
-            title="Refresh pull requests"
-          >
-            <RefreshCw
-              className={cn(
-                'h-4 w-4 text-muted-foreground',
-                isRefetching && 'animate-spin'
-              )}
-            />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={onRefresh}
+                disabled={isRefetching}
+                className={cn(
+                  'flex items-center justify-center h-8 w-8 rounded-md border border-border',
+                  'hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring',
+                  'transition-colors',
+                  isRefetching && 'opacity-50 cursor-not-allowed'
+                )}
+              >
+                <RefreshCw
+                  className={cn(
+                    'h-4 w-4 text-muted-foreground',
+                    isRefetching && 'animate-spin'
+                  )}
+                />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Refresh pull requests</TooltipContent>
+          </Tooltip>
         </div>
         <div className="flex items-center gap-2">
           <Checkbox
@@ -1405,8 +1469,8 @@ function PullRequestsTab({
           </div>
         )}
 
-        {error && (
-          isGhAuthError(error) ? (
+        {error &&
+          (isGhAuthError(error) ? (
             <GhAuthError onLogin={onGhLogin} isGhInstalled={isGhInstalled} />
           ) : (
             <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
@@ -1415,8 +1479,7 @@ function PullRequestsTab({
                 {error.message || 'Failed to load pull requests'}
               </span>
             </div>
-          )
-        )}
+          ))}
 
         {!isLoading && !error && filteredItems.length === 0 && !isSearching && (
           <div className="flex items-center justify-center py-8">
@@ -1538,7 +1601,8 @@ function ContextsTab({
   onDeleteContext,
   onSessionClick,
 }: ContextsTabProps) {
-  const isEmpty = !hasContexts && !hasSessions && !hasAttachedContexts && !isLoading && !error
+  const isEmpty =
+    !hasContexts && !hasSessions && !hasAttachedContexts && !isLoading && !error
 
   // Calculate flat index for sessions
   let sessionStartIndex = filteredContexts.length
@@ -1652,6 +1716,7 @@ function ContextsTab({
                       setSelectedIndex={setSelectedIndex}
                     />
                   )
+                  // eslint-disable-next-line react-hooks/immutability
                   sessionStartIndex += entry.sessions.length
                   return entryElement
                 })}
@@ -1728,7 +1793,9 @@ function SessionGroup({
                 <MessageSquare className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
               )}
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium truncate">{session.name}</div>
+                <div className="text-sm font-medium truncate">
+                  {session.name}
+                </div>
                 <div className="text-xs text-muted-foreground mt-0.5">
                   {hasMessages
                     ? `${session.messages.length} messages`
@@ -1772,7 +1839,9 @@ function LoadedIssueItem({
       <CircleDot className="h-4 w-4 text-green-500 flex-shrink-0" />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">#{context.number}</span>
+          <span className="text-xs text-muted-foreground">
+            #{context.number}
+          </span>
           <span className="text-sm truncate">{context.title}</span>
           {context.commentCount > 0 && (
             <span className="text-xs text-muted-foreground">
@@ -1782,47 +1851,59 @@ function LoadedIssueItem({
         </div>
       </div>
       <div className="flex items-center gap-1 flex-shrink-0">
-        <button
-          onClick={onView}
-          disabled={isDisabled}
-          className={cn(
-            'p-1 rounded hover:bg-accent focus:outline-none focus:ring-1 focus:ring-ring',
-            'transition-colors'
-          )}
-          title="View context"
-        >
-          <Eye className="h-3.5 w-3.5 text-muted-foreground" />
-        </button>
-        <button
-          onClick={onRefresh}
-          disabled={isDisabled}
-          className={cn(
-            'p-1 rounded hover:bg-accent focus:outline-none focus:ring-1 focus:ring-ring',
-            'transition-colors'
-          )}
-          title="Refresh issue"
-        >
-          {isLoading ? (
-            <Loader2 className="h-3.5 w-3.5 text-muted-foreground animate-spin" />
-          ) : (
-            <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />
-          )}
-        </button>
-        <button
-          onClick={onRemove}
-          disabled={isDisabled}
-          className={cn(
-            'p-1 rounded hover:bg-destructive/10 focus:outline-none focus:ring-1 focus:ring-ring',
-            'transition-colors'
-          )}
-          title="Remove from context"
-        >
-          {isRemoving ? (
-            <Loader2 className="h-3.5 w-3.5 text-muted-foreground animate-spin" />
-          ) : (
-            <X className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
-          )}
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={onView}
+              disabled={isDisabled}
+              className={cn(
+                'p-1 rounded hover:bg-accent focus:outline-none focus:ring-1 focus:ring-ring',
+                'transition-colors'
+              )}
+            >
+              <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>View context</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={onRefresh}
+              disabled={isDisabled}
+              className={cn(
+                'p-1 rounded hover:bg-accent focus:outline-none focus:ring-1 focus:ring-ring',
+                'transition-colors'
+              )}
+            >
+              {isLoading ? (
+                <Loader2 className="h-3.5 w-3.5 text-muted-foreground animate-spin" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />
+              )}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Refresh issue</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={onRemove}
+              disabled={isDisabled}
+              className={cn(
+                'p-1 rounded hover:bg-destructive/10 focus:outline-none focus:ring-1 focus:ring-ring',
+                'transition-colors'
+              )}
+            >
+              {isRemoving ? (
+                <Loader2 className="h-3.5 w-3.5 text-muted-foreground animate-spin" />
+              ) : (
+                <X className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+              )}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Remove from context</TooltipContent>
+        </Tooltip>
       </div>
     </div>
   )
@@ -1857,7 +1938,9 @@ function LoadedPRItem({
       <GitPullRequest className="h-4 w-4 text-green-500 flex-shrink-0" />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">#{context.number}</span>
+          <span className="text-xs text-muted-foreground">
+            #{context.number}
+          </span>
           <span className="text-sm truncate">{context.title}</span>
           {(context.commentCount > 0 || context.reviewCount > 0) && (
             <span className="text-xs text-muted-foreground">
@@ -1867,47 +1950,59 @@ function LoadedPRItem({
         </div>
       </div>
       <div className="flex items-center gap-1 flex-shrink-0">
-        <button
-          onClick={onView}
-          disabled={isDisabled}
-          className={cn(
-            'p-1 rounded hover:bg-accent focus:outline-none focus:ring-1 focus:ring-ring',
-            'transition-colors'
-          )}
-          title="View context"
-        >
-          <Eye className="h-3.5 w-3.5 text-muted-foreground" />
-        </button>
-        <button
-          onClick={onRefresh}
-          disabled={isDisabled}
-          className={cn(
-            'p-1 rounded hover:bg-accent focus:outline-none focus:ring-1 focus:ring-ring',
-            'transition-colors'
-          )}
-          title="Refresh PR"
-        >
-          {isLoading ? (
-            <Loader2 className="h-3.5 w-3.5 text-muted-foreground animate-spin" />
-          ) : (
-            <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />
-          )}
-        </button>
-        <button
-          onClick={onRemove}
-          disabled={isDisabled}
-          className={cn(
-            'p-1 rounded hover:bg-destructive/10 focus:outline-none focus:ring-1 focus:ring-ring',
-            'transition-colors'
-          )}
-          title="Remove from context"
-        >
-          {isRemoving ? (
-            <Loader2 className="h-3.5 w-3.5 text-muted-foreground animate-spin" />
-          ) : (
-            <X className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
-          )}
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={onView}
+              disabled={isDisabled}
+              className={cn(
+                'p-1 rounded hover:bg-accent focus:outline-none focus:ring-1 focus:ring-ring',
+                'transition-colors'
+              )}
+            >
+              <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>View context</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={onRefresh}
+              disabled={isDisabled}
+              className={cn(
+                'p-1 rounded hover:bg-accent focus:outline-none focus:ring-1 focus:ring-ring',
+                'transition-colors'
+              )}
+            >
+              {isLoading ? (
+                <Loader2 className="h-3.5 w-3.5 text-muted-foreground animate-spin" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />
+              )}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Refresh PR</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={onRemove}
+              disabled={isDisabled}
+              className={cn(
+                'p-1 rounded hover:bg-destructive/10 focus:outline-none focus:ring-1 focus:ring-ring',
+                'transition-colors'
+              )}
+            >
+              {isRemoving ? (
+                <Loader2 className="h-3.5 w-3.5 text-muted-foreground animate-spin" />
+              ) : (
+                <X className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+              )}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Remove from context</TooltipContent>
+        </Tooltip>
       </div>
     </div>
   )
@@ -2021,7 +2116,11 @@ function PRItem({
         <GitPullRequest
           className={cn(
             'h-4 w-4 mt-0.5 flex-shrink-0',
-            pr.state === 'OPEN' ? 'text-green-500' : pr.state === 'MERGED' ? 'text-purple-500' : 'text-red-500'
+            pr.state === 'OPEN'
+              ? 'text-green-500'
+              : pr.state === 'MERGED'
+                ? 'text-purple-500'
+                : 'text-red-500'
           )}
         />
       )}
@@ -2165,20 +2264,28 @@ function ContextItem({
         </div>
       </div>
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        <button
-          onClick={onStartEdit}
-          className="p-1 rounded hover:bg-muted focus:outline-none"
-          title="Rename"
-        >
-          <Pencil className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
-        </button>
-        <button
-          onClick={onDelete}
-          className="p-1 rounded hover:bg-destructive/10 focus:outline-none"
-          title="Delete"
-        >
-          <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={onStartEdit}
+              className="p-1 rounded hover:bg-muted focus:outline-none"
+            >
+              <Pencil className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Rename</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={onDelete}
+              className="p-1 rounded hover:bg-destructive/10 focus:outline-none"
+            >
+              <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Delete</TooltipContent>
+        </Tooltip>
       </div>
     </button>
   )
@@ -2211,39 +2318,49 @@ function AttachedContextItem({
       <FolderOpen className="h-4 w-4 text-blue-500 flex-shrink-0" />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-sm truncate">{context.name || context.slug}</span>
+          <span className="text-sm truncate">
+            {context.name || context.slug}
+          </span>
           <span className="text-xs text-muted-foreground">
             {formatSize(context.size)}
           </span>
         </div>
       </div>
       <div className="flex items-center gap-1 flex-shrink-0">
-        <button
-          onClick={onView}
-          disabled={isRemoving}
-          className={cn(
-            'p-1 rounded hover:bg-accent focus:outline-none focus:ring-1 focus:ring-ring',
-            'transition-colors'
-          )}
-          title="View context"
-        >
-          <Eye className="h-3.5 w-3.5 text-muted-foreground" />
-        </button>
-        <button
-          onClick={onRemove}
-          disabled={isRemoving}
-          className={cn(
-            'p-1 rounded hover:bg-destructive/10 focus:outline-none focus:ring-1 focus:ring-ring',
-            'transition-colors'
-          )}
-          title="Remove from context"
-        >
-          {isRemoving ? (
-            <Loader2 className="h-3.5 w-3.5 text-muted-foreground animate-spin" />
-          ) : (
-            <X className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
-          )}
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={onView}
+              disabled={isRemoving}
+              className={cn(
+                'p-1 rounded hover:bg-accent focus:outline-none focus:ring-1 focus:ring-ring',
+                'transition-colors'
+              )}
+            >
+              <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>View context</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={onRemove}
+              disabled={isRemoving}
+              className={cn(
+                'p-1 rounded hover:bg-destructive/10 focus:outline-none focus:ring-1 focus:ring-ring',
+                'transition-colors'
+              )}
+            >
+              {isRemoving ? (
+                <Loader2 className="h-3.5 w-3.5 text-muted-foreground animate-spin" />
+              ) : (
+                <X className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+              )}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Remove from context</TooltipContent>
+        </Tooltip>
       </div>
     </div>
   )

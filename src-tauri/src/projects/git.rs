@@ -515,7 +515,11 @@ pub fn git_push(repo_path: &str) -> Result<String, String> {
 /// 1. Query gh pr view for fork info
 /// 2. Same-repo PR: push to origin
 /// 3. Fork PR: add fork remote if needed, fetch, push
-pub fn git_push_to_pr(repo_path: &str, pr_number: u32, gh_binary: &std::path::Path) -> Result<String, String> {
+pub fn git_push_to_pr(
+    repo_path: &str,
+    pr_number: u32,
+    gh_binary: &std::path::Path,
+) -> Result<String, String> {
     log::trace!("Pushing to PR #{pr_number} remote branch in {repo_path}");
 
     // 1. Query PR info from GitHub
@@ -537,8 +541,8 @@ pub fn git_push_to_pr(repo_path: &str, pr_number: u32, gh_binary: &std::path::Pa
         return git_push(repo_path);
     }
 
-    let pr_info: serde_json::Value =
-        serde_json::from_slice(&gh_output.stdout).map_err(|e| format!("Failed to parse gh pr view output: {e}"))?;
+    let pr_info: serde_json::Value = serde_json::from_slice(&gh_output.stdout)
+        .map_err(|e| format!("Failed to parse gh pr view output: {e}"))?;
 
     let head_ref_name = pr_info["headRefName"]
         .as_str()
@@ -584,7 +588,9 @@ pub fn git_push_to_pr(repo_path: &str, pr_number: u32, gh_binary: &std::path::Pa
         .output()
         .map_err(|e| format!("Failed to get origin URL: {e}"))?;
 
-    let origin_url = String::from_utf8_lossy(&origin_url_output.stdout).trim().to_string();
+    let origin_url = String::from_utf8_lossy(&origin_url_output.stdout)
+        .trim()
+        .to_string();
     let fork_url = if origin_url.starts_with("git@") || origin_url.starts_with("ssh://") {
         format!("git@github.com:{fork_owner}/{fork_repo_name}.git")
     } else {
@@ -603,7 +609,9 @@ pub fn git_push_to_pr(repo_path: &str, pr_number: u32, gh_binary: &std::path::Pa
     let remotes_str = String::from_utf8_lossy(&remotes_output.stdout);
     let remote_name = remotes_str
         .lines()
-        .find(|line| line.contains(&fork_url) || line.contains(&format!("{fork_owner}/{fork_repo_name}")))
+        .find(|line| {
+            line.contains(&fork_url) || line.contains(&format!("{fork_owner}/{fork_repo_name}"))
+        })
         .and_then(|line| line.split_whitespace().next())
         .map(|s| s.to_string())
         .unwrap_or_else(|| {
@@ -1062,27 +1070,6 @@ pub fn commit_changes(repo_path: &str, message: &str, stage_all: bool) -> Result
 
 /// Open a pull request using the GitHub CLI (gh)
 ///
-/// # Arguments
-/// Returns platform-specific installation instructions for GitHub CLI
-fn get_gh_install_hint() -> &'static str {
-    #[cfg(target_os = "macos")]
-    {
-        "Install it with: brew install gh"
-    }
-    #[cfg(target_os = "windows")]
-    {
-        "Install it with: winget install GitHub.cli"
-    }
-    #[cfg(target_os = "linux")]
-    {
-        "Install it from: https://github.com/cli/cli/releases"
-    }
-    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
-    {
-        "Install GitHub CLI from: https://cli.github.com"
-    }
-}
-
 /// * `repo_path` - Path to the repository
 /// * `title` - Optional PR title (if None, gh will prompt or use default)
 /// * `body` - Optional PR body
@@ -1097,35 +1084,6 @@ pub fn open_pull_request(
     gh_binary: &std::path::Path,
 ) -> Result<String, String> {
     log::trace!("Opening pull request from {repo_path}");
-
-    // First check if gh is installed
-    let gh_check = silent_command(gh_binary)
-        .args(["--version"])
-        .output()
-        .map_err(|_| {
-            format!(
-                "GitHub CLI (gh) is not installed. {}",
-                get_gh_install_hint()
-            )
-        })?;
-
-    if !gh_check.status.success() {
-        return Err(format!(
-            "GitHub CLI (gh) is not installed. {}",
-            get_gh_install_hint()
-        ));
-    }
-
-    // Check if user is authenticated
-    let auth_check = silent_command(gh_binary)
-        .args(["auth", "status"])
-        .current_dir(repo_path)
-        .output()
-        .map_err(|e| format!("Failed to check gh auth status: {e}"))?;
-
-    if !auth_check.status.success() {
-        return Err("Not authenticated with GitHub. Run: gh auth login".to_string());
-    }
 
     // Push current branch to remote first
     log::trace!("Pushing current branch to remote...");

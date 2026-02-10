@@ -1,13 +1,17 @@
 import { useCallback, useState } from 'react'
 import { invoke } from '@/lib/transport'
-import { isNativeApp } from '@/lib/environment'
+import { openExternal } from '@/lib/platform'
 import type { QueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { chatQueryKeys } from '@/services/chat'
 import { saveWorktreePr, projectsQueryKeys } from '@/services/projects'
-import { gitPull, gitPush, triggerImmediateGitPoll } from '@/services/git-status'
+import {
+  gitPull,
+  gitPush,
+  triggerImmediateGitPoll,
+} from '@/services/git-status'
 import { isBaseSession } from '@/types/projects'
 import type {
   CreatePrResponse,
@@ -20,7 +24,10 @@ import type {
   Project,
 } from '@/types/projects'
 import type { Session } from '@/types/chat'
-import { DEFAULT_RESOLVE_CONFLICTS_PROMPT, type AppPreferences } from '@/types/preferences'
+import {
+  DEFAULT_RESOLVE_CONFLICTS_PROMPT,
+  type AppPreferences,
+} from '@/types/preferences'
 
 interface UseGitOperationsParams {
   activeWorktreeId: string | null | undefined
@@ -85,7 +92,8 @@ export function useGitOperations({
 
     const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
     setWorktreeLoading(activeWorktreeId, 'commit')
-    const toastId = toast.loading('Creating commit...')
+    const branch = worktree?.branch ?? ''
+    const toastId = toast.loading(`Creating commit on ${branch}...`)
 
     try {
       const result = await invoke<CreateCommitResponse>(
@@ -109,7 +117,13 @@ export function useGitOperations({
     } finally {
       clearWorktreeLoading(activeWorktreeId)
     }
-  }, [activeWorktreeId, activeWorktreePath, preferences?.magic_prompts?.commit_message, preferences?.magic_prompt_models?.commit_message_model])
+  }, [
+    activeWorktreeId,
+    activeWorktreePath,
+    worktree?.branch,
+    preferences?.magic_prompts?.commit_message,
+    preferences?.magic_prompt_models?.commit_message_model,
+  ])
 
   // Handle Commit & Push - creates commit with AI-generated message and pushes
   const handleCommitAndPush = useCallback(async () => {
@@ -117,7 +131,8 @@ export function useGitOperations({
 
     const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
     setWorktreeLoading(activeWorktreeId, 'commit')
-    const toastId = toast.loading('Committing and pushing...')
+    const branch = worktree?.branch ?? ''
+    const toastId = toast.loading(`Committing and pushing on ${branch}...`)
 
     try {
       const result = await invoke<CreateCommitResponse>(
@@ -141,7 +156,13 @@ export function useGitOperations({
     } finally {
       clearWorktreeLoading(activeWorktreeId)
     }
-  }, [activeWorktreeId, activeWorktreePath, preferences?.magic_prompts?.commit_message, preferences?.magic_prompt_models?.commit_message_model])
+  }, [
+    activeWorktreeId,
+    activeWorktreePath,
+    worktree?.branch,
+    preferences?.magic_prompts?.commit_message,
+    preferences?.magic_prompt_models?.commit_message_model,
+  ])
 
   // Handle Pull - pulls changes from remote
   const handlePull = useCallback(async () => {
@@ -149,7 +170,8 @@ export function useGitOperations({
 
     const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
     setWorktreeLoading(activeWorktreeId, 'commit')
-    const toastId = toast.loading('Pulling changes...')
+    const branch = worktree?.branch ?? ''
+    const toastId = toast.loading(`Pulling changes on ${branch}...`)
 
     try {
       const baseBranch = project?.default_branch ?? 'main'
@@ -165,7 +187,7 @@ export function useGitOperations({
     } finally {
       clearWorktreeLoading(activeWorktreeId)
     }
-  }, [activeWorktreeId, activeWorktreePath, project?.default_branch])
+  }, [activeWorktreeId, activeWorktreePath, worktree?.branch, project?.default_branch])
 
   // Handle Push - pushes commits to remote
   const handlePush = useCallback(async () => {
@@ -173,7 +195,8 @@ export function useGitOperations({
 
     const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
     setWorktreeLoading(activeWorktreeId, 'commit')
-    const toastId = toast.loading('Pushing changes...')
+    const branch = worktree?.branch ?? ''
+    const toastId = toast.loading(`Pushing ${branch}...`)
 
     try {
       await gitPush(activeWorktreePath, worktree?.pr_number)
@@ -184,7 +207,7 @@ export function useGitOperations({
     } finally {
       clearWorktreeLoading(activeWorktreeId)
     }
-  }, [activeWorktreeId, activeWorktreePath, worktree?.pr_number])
+  }, [activeWorktreeId, activeWorktreePath, worktree?.branch, worktree?.pr_number])
 
   // Handle Open PR - creates PR with AI-generated title and description in background
   const handleOpenPr = useCallback(async () => {
@@ -192,7 +215,8 @@ export function useGitOperations({
 
     const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
     setWorktreeLoading(activeWorktreeId, 'pr')
-    const toastId = toast.loading('Creating PR...')
+    const branch = worktree?.branch ?? ''
+    const toastId = toast.loading(`Creating PR for ${branch}...`)
 
     try {
       const result = await invoke<CreatePrResponse>(
@@ -219,14 +243,7 @@ export function useGitOperations({
         id: toastId,
         action: {
           label: 'Open',
-          onClick: async () => {
-            if (isNativeApp()) {
-              const { openUrl } = await import('@tauri-apps/plugin-opener')
-              await openUrl(result.pr_url)
-            } else {
-              window.open(result.pr_url, '_blank')
-            }
-          },
+          onClick: () => openExternal(result.pr_url),
         },
       })
     } catch (error) {
@@ -234,7 +251,14 @@ export function useGitOperations({
     } finally {
       clearWorktreeLoading(activeWorktreeId)
     }
-  }, [activeWorktreeId, activeWorktreePath, worktree, queryClient, preferences?.magic_prompts?.pr_content, preferences?.magic_prompt_models?.pr_content_model])
+  }, [
+    activeWorktreeId,
+    activeWorktreePath,
+    worktree,
+    queryClient,
+    preferences?.magic_prompts?.pr_content,
+    preferences?.magic_prompt_models?.pr_content_model,
+  ])
 
   // Handle Review - runs AI code review in background
   const handleReview = useCallback(async () => {
@@ -242,7 +266,8 @@ export function useGitOperations({
 
     const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
     setWorktreeLoading(activeWorktreeId, 'review')
-    const toastId = toast.loading('Running AI code review...')
+    const branch = worktree?.branch ?? ''
+    const toastId = toast.loading(`Reviewing ${branch}...`)
 
     try {
       const result = await invoke<ReviewResponse>('run_review_with_ai', {
@@ -274,7 +299,12 @@ export function useGitOperations({
     } finally {
       clearWorktreeLoading(activeWorktreeId)
     }
-  }, [activeWorktreeId, activeWorktreePath, preferences?.magic_prompts?.code_review, preferences?.magic_prompt_models?.code_review_model])
+  }, [
+    activeWorktreeId,
+    activeWorktreePath,
+    preferences?.magic_prompts?.code_review,
+    preferences?.magic_prompt_models?.code_review_model,
+  ])
 
   // Handle Merge - validates and shows merge options dialog
   const handleMerge = useCallback(async () => {
@@ -329,13 +359,10 @@ export function useGitOperations({
         return
       }
 
-      toast.warning(
-        `Found conflicts in ${result.conflicts.length} file(s)`,
-        {
-          id: toastId,
-          description: 'Opening conflict resolution session...',
-        }
-      )
+      toast.warning(`Found conflicts in ${result.conflicts.length} file(s)`, {
+        id: toastId,
+        description: 'Opening conflict resolution session...',
+      })
 
       const { setActiveSession, setInputDraft } = useChatStore.getState()
 
@@ -355,7 +382,9 @@ export function useGitOperations({
         ? `\n\nHere is the diff showing the conflict details:\n\n\`\`\`diff\n${result.conflict_diff}\n\`\`\``
         : ''
 
-      const resolveInstructions = preferences?.magic_prompts?.resolve_conflicts ?? DEFAULT_RESOLVE_CONFLICTS_PROMPT
+      const resolveInstructions =
+        preferences?.magic_prompts?.resolve_conflicts ??
+        DEFAULT_RESOLVE_CONFLICTS_PROMPT
 
       const conflictPrompt = `I have merge conflicts that need to be resolved.
 
@@ -385,7 +414,9 @@ ${resolveInstructions}`
   const handleResolvePrConflicts = useCallback(async () => {
     if (!activeWorktreeId || !worktree) return
 
-    const toastId = toast.loading('Fetching base branch and checking for conflicts...')
+    const toastId = toast.loading(
+      'Fetching base branch and checking for conflicts...'
+    )
 
     try {
       const result = await invoke<MergeConflictsResponse>(
@@ -394,18 +425,17 @@ ${resolveInstructions}`
       )
 
       if (!result.has_conflicts) {
-        toast.success('No conflicts — base branch merged cleanly', { id: toastId })
+        toast.success('No conflicts — base branch merged cleanly', {
+          id: toastId,
+        })
         triggerImmediateGitPoll()
         return
       }
 
-      toast.warning(
-        `Found conflicts in ${result.conflicts.length} file(s)`,
-        {
-          id: toastId,
-          description: 'Opening conflict resolution session...',
-        }
-      )
+      toast.warning(`Found conflicts in ${result.conflicts.length} file(s)`, {
+        id: toastId,
+        description: 'Opening conflict resolution session...',
+      })
 
       const { setActiveSession, setInputDraft } = useChatStore.getState()
 
@@ -426,7 +456,9 @@ ${resolveInstructions}`
         : ''
 
       const baseBranch = project?.default_branch || 'main'
-      const resolveInstructions = preferences?.magic_prompts?.resolve_conflicts ?? DEFAULT_RESOLVE_CONFLICTS_PROMPT
+      const resolveInstructions =
+        preferences?.magic_prompts?.resolve_conflicts ??
+        DEFAULT_RESOLVE_CONFLICTS_PROMPT
 
       const conflictPrompt = `I merged \`origin/${baseBranch}\` into this branch to resolve PR conflicts, but there are merge conflicts.
 
@@ -462,7 +494,8 @@ ${resolveInstructions}`
       setShowMergeDialog(false)
       setPendingMergeWorktree(null)
 
-      const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
+      const { setWorktreeLoading, clearWorktreeLoading } =
+        useChatStore.getState()
       setWorktreeLoading(activeWorktreeId, 'merge')
       const toastId = toast.loading('Checking for uncommitted changes...')
       const featureBranch = worktreeData.branch
@@ -555,7 +588,9 @@ ${resolveInstructions}`
           // Get base branch name from the project
           const baseBranch = project?.default_branch || 'main'
 
-          const resolveInstructions = preferences?.magic_prompts?.resolve_conflicts ?? DEFAULT_RESOLVE_CONFLICTS_PROMPT
+          const resolveInstructions =
+            preferences?.magic_prompts?.resolve_conflicts ??
+            DEFAULT_RESOLVE_CONFLICTS_PROMPT
 
           const conflictPrompt = `I tried to merge this branch (\`${featureBranch}\`) into \`${baseBranch}\`, but there are merge conflicts.
 
@@ -588,7 +623,14 @@ ${resolveInstructions}`
         clearWorktreeLoading(activeWorktreeId)
       }
     },
-    [activeWorktreeId, pendingMergeWorktree, preferences, project, queryClient, inputRef]
+    [
+      activeWorktreeId,
+      pendingMergeWorktree,
+      preferences,
+      project,
+      queryClient,
+      inputRef,
+    ]
   )
 
   return {

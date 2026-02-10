@@ -61,6 +61,14 @@ pub struct GitHubIssueDetail {
     pub comments: Vec<GitHubComment>,
 }
 
+/// Result of listing GitHub issues, includes total count for pagination awareness
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubIssueListResult {
+    pub issues: Vec<GitHubIssue>,
+    pub total_count: u32,
+}
+
 /// Issue context to pass when creating a worktree
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IssueContext {
@@ -75,12 +83,13 @@ pub struct IssueContext {
 /// Uses `gh issue list` to fetch issues from the repository.
 /// - state: "open", "closed", or "all" (default: "open")
 /// - Returns up to 100 issues sorted by creation date (newest first)
+/// - Includes total_count from GitHub search API for accurate badge display
 #[tauri::command]
 pub async fn list_github_issues(
     app: AppHandle,
     project_path: String,
     state: Option<String>,
-) -> Result<Vec<GitHubIssue>, String> {
+) -> Result<GitHubIssueListResult, String> {
     log::trace!("Listing GitHub issues for {project_path} with state: {state:?}");
 
     let gh = resolve_gh_binary(&app);
@@ -121,8 +130,46 @@ pub async fn list_github_issues(
     let issues: Vec<GitHubIssue> =
         serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse gh response: {e}"))?;
 
-    log::trace!("Found {} issues", issues.len());
-    Ok(issues)
+    // Get accurate total count from GitHub search API
+    let total_count =
+        get_issue_total_count(&gh, &project_path, &state_arg).unwrap_or(issues.len() as u32);
+
+    log::trace!("Found {} issues (total: {total_count})", issues.len());
+    Ok(GitHubIssueListResult {
+        issues,
+        total_count,
+    })
+}
+
+/// Get accurate total issue count from GitHub search API
+///
+/// Uses `gh api search/issues` to get the real total count without fetching all issues.
+/// Falls back to None on any error so callers can use issues.len() instead.
+fn get_issue_total_count(gh: &PathBuf, project_path: &str, state: &str) -> Option<u32> {
+    let repo_id = get_repo_identifier(project_path).ok()?;
+    let state_qualifier = match state {
+        "closed" => "+state:closed",
+        "all" => "",
+        _ => "+state:open",
+    };
+    let query = format!(
+        "search/issues?q=repo:{}/{}+is:issue{}&per_page=1",
+        repo_id.owner, repo_id.repo, state_qualifier
+    );
+
+    let output = silent_command(gh)
+        .args(["api", &query])
+        .current_dir(project_path)
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).ok()?;
+    json.get("total_count")?.as_u64().map(|n| n as u32)
 }
 
 /// Search GitHub issues using GitHub's search syntax
@@ -500,6 +547,77 @@ pub fn get_worktree_pr_refs(
         .filter(|(_, entry)| entry.worktrees.contains(&worktree_id.to_string()))
         .map(|(key, _)| key.clone())
         .collect())
+}
+
+/// Extract the number from a context ref key (format: "{owner}-{repo}-{number}")
+fn extract_number_from_ref_key(key: &str) -> Option<u32> {
+    key.rsplit('-').next()?.parse().ok()
+}
+
+/// Get all issue and PR numbers referenced by a worktree
+/// Returns (issue_numbers, pr_numbers)
+pub fn get_worktree_context_numbers(
+    app: &AppHandle,
+    worktree_id: &str,
+) -> Result<(Vec<u32>, Vec<u32>), String> {
+    let issue_keys = get_worktree_issue_refs(app, worktree_id)?;
+    let pr_keys = get_worktree_pr_refs(app, worktree_id)?;
+
+    let issue_nums: Vec<u32> = issue_keys
+        .iter()
+        .filter_map(|k| extract_number_from_ref_key(k))
+        .collect();
+    let pr_nums: Vec<u32> = pr_keys
+        .iter()
+        .filter_map(|k| extract_number_from_ref_key(k))
+        .collect();
+
+    Ok((issue_nums, pr_nums))
+}
+
+/// Get all loaded context markdown content for a worktree
+/// Returns concatenated markdown of all issue and PR context files, or empty string if none
+pub fn get_worktree_context_content(
+    app: &AppHandle,
+    worktree_id: &str,
+    project_path: &str,
+) -> Result<String, String> {
+    let repo_id = get_repo_identifier(project_path)?;
+    let repo_key = repo_id.to_key();
+    let contexts_dir = get_github_contexts_dir(app)?;
+
+    let issue_keys = get_worktree_issue_refs(app, worktree_id)?;
+    let pr_keys = get_worktree_pr_refs(app, worktree_id)?;
+
+    if issue_keys.is_empty() && pr_keys.is_empty() {
+        return Ok(String::new());
+    }
+
+    let mut parts: Vec<String> = Vec::new();
+
+    for key in &issue_keys {
+        if let Some(number) = extract_number_from_ref_key(key) {
+            let file = contexts_dir.join(format!("{repo_key}-issue-{number}.md"));
+            if file.exists() {
+                if let Ok(content) = std::fs::read_to_string(&file) {
+                    parts.push(format!("### Issue #{number}\n\n{content}"));
+                }
+            }
+        }
+    }
+
+    for key in &pr_keys {
+        if let Some(number) = extract_number_from_ref_key(key) {
+            let file = contexts_dir.join(format!("{repo_key}-pr-{number}.md"));
+            if file.exists() {
+                if let Ok(content) = std::fs::read_to_string(&file) {
+                    parts.push(format!("### PR #{number}\n\n{content}"));
+                }
+            }
+        }
+    }
+
+    Ok(parts.join("\n\n"))
 }
 
 /// Remove all references for a worktree

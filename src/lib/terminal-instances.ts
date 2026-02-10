@@ -60,7 +60,8 @@ export function getOrCreateTerminal(
   const terminal = new Terminal({
     cursorBlink: true,
     fontSize: 13,
-    fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace',
+    fontFamily:
+      'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace',
     theme: {
       background: '#1a1a1a',
       foreground: '#e5e5e5',
@@ -98,7 +99,9 @@ export function getOrCreateTerminal(
     if (event.payload.terminal_id === terminalId) {
       setTerminalRunning(terminalId, false)
       const exitCode = event.payload.exit_code
-      terminal.writeln(`\r\n\x1b[90m[Process exited with code ${exitCode ?? 'unknown'}]\x1b[0m`)
+      terminal.writeln(
+        `\r\n\x1b[90m[Process exited with code ${exitCode ?? 'unknown'}]\x1b[0m`
+      )
     }
   }).then(unlisten => listeners.push(unlisten))
 
@@ -119,7 +122,9 @@ export function getOrCreateTerminal(
 /**
  * Get terminal instance by ID.
  */
-export function getInstance(terminalId: string): PersistentTerminal | undefined {
+export function getInstance(
+  terminalId: string
+): PersistentTerminal | undefined {
   return instances.get(terminalId)
 }
 
@@ -134,7 +139,10 @@ export async function attachToContainer(
 ): Promise<void> {
   const instance = instances.get(terminalId)
   if (!instance) {
-    console.error('[terminal-instances] attachToContainer: instance not found:', terminalId)
+    console.error(
+      '[terminal-instances] attachToContainer: instance not found:',
+      terminalId
+    )
     return
   }
 
@@ -156,12 +164,16 @@ export async function attachToContainer(
 
     if (!initialized) {
       // First time - check if PTY already exists (reconnecting after app restart)
-      const ptyExists = await invoke<boolean>('has_active_terminal', { terminalId })
+      const ptyExists = await invoke<boolean>('has_active_terminal', {
+        terminalId,
+      })
 
       if (ptyExists) {
         // PTY exists - just resize and mark as running
         useTerminalStore.getState().setTerminalRunning(terminalId, true)
-        await invoke('terminal_resize', { terminalId, cols, rows }).catch(console.error)
+        await invoke('terminal_resize', { terminalId, cols, rows }).catch(
+          console.error
+        )
       } else {
         // Start new PTY process
         await invoke('start_terminal', {
@@ -179,7 +191,9 @@ export async function attachToContainer(
       instance.initialized = true
     } else {
       // Already initialized - just resize
-      await invoke('terminal_resize', { terminalId, cols, rows }).catch(console.error)
+      await invoke('terminal_resize', { terminalId, cols, rows }).catch(
+        console.error
+      )
     }
 
     terminal.focus()

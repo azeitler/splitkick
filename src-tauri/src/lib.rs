@@ -77,6 +77,8 @@ pub struct AppPreferences {
     pub selected_model: String, // Claude model: opus, sonnet, haiku
     #[serde(default = "default_thinking_level")]
     pub thinking_level: String, // Thinking level: off, think, megathink, ultrathink
+    #[serde(default = "default_effort_level")]
+    pub default_effort_level: String, // Effort level for Opus 4.6: low, medium, high, max
     #[serde(default = "default_terminal")]
     pub terminal: String, // Terminal app: terminal, warp, ghostty
     #[serde(default = "default_editor")]
@@ -107,6 +109,10 @@ pub struct AppPreferences {
     pub archive_retention_days: u32, // Days to keep archived items before auto-cleanup (0 = disabled)
     #[serde(default = "default_session_grouping_enabled")]
     pub session_grouping_enabled: bool, // Group session tabs by status when >3 sessions
+    #[serde(default = "default_canvas_enabled")]
+    pub canvas_enabled: bool, // Show the canvas tab for session overview
+    #[serde(default = "default_canvas_only_mode")]
+    pub canvas_only_mode: bool, // Always show canvas view, hide session tabs
     #[serde(default = "default_syntax_theme_dark")]
     pub syntax_theme_dark: String, // Syntax highlighting theme for dark mode
     #[serde(default = "default_syntax_theme_light")]
@@ -141,6 +147,22 @@ pub struct AppPreferences {
     pub http_server_token: Option<String>, // Persisted auth token (generated once)
     #[serde(default)]
     pub http_server_localhost_only: bool, // Bind to localhost only (more secure)
+    #[serde(default = "default_http_server_token_required")]
+    pub http_server_token_required: bool, // Require token for web access (default true)
+    #[serde(default = "default_auto_archive_on_pr_merged")]
+    pub auto_archive_on_pr_merged: bool, // Auto-archive worktrees when their PR is merged
+    #[serde(default = "default_show_keybinding_hints")]
+    pub show_keybinding_hints: bool, // Show keyboard shortcut hints at bottom of canvas views
+    #[serde(default)]
+    pub debug_mode_enabled: bool, // Show debug panel in chat sessions (default: false)
+    #[serde(default)]
+    pub default_enabled_mcp_servers: Vec<String>, // MCP server names enabled by default (empty = none)
+    #[serde(default)]
+    pub has_seen_feature_tour: bool, // Whether user has seen the feature tour onboarding
+    #[serde(default = "default_chrome_enabled")]
+    pub chrome_enabled: bool, // Enable browser automation via Chrome extension
+    #[serde(default = "default_zoom_level")]
+    pub zoom_level: u32, // Zoom level percentage (50-200, default 100)
 }
 
 fn default_auto_branch_naming() -> bool {
@@ -157,6 +179,14 @@ fn default_auto_session_naming() -> bool {
 
 fn default_session_grouping_enabled() -> bool {
     true // Enabled by default
+}
+
+fn default_canvas_enabled() -> bool {
+    true // Enabled by default
+}
+
+fn default_canvas_only_mode() -> bool {
+    true // Canvas-only by default for new installations
 }
 
 fn default_session_naming_model() -> String {
@@ -181,6 +211,10 @@ fn default_model() -> String {
 
 fn default_thinking_level() -> String {
     "ultrathink".to_string()
+}
+
+fn default_effort_level() -> String {
+    "high".to_string()
 }
 
 fn default_terminal() -> String {
@@ -250,6 +284,14 @@ fn default_parallel_execution_prompt_enabled() -> bool {
     false // Disabled by default (experimental)
 }
 
+fn default_chrome_enabled() -> bool {
+    true // Enabled by default
+}
+
+fn default_zoom_level() -> u32 {
+    100 // 100% = no zoom
+}
+
 fn default_allow_web_tools_in_plan_mode() -> bool {
     true // Enabled by default
 }
@@ -266,27 +308,47 @@ fn default_http_server_port() -> u16 {
     3456
 }
 
+fn default_http_server_token_required() -> bool {
+    true // Require token by default for security
+}
+
+fn default_auto_archive_on_pr_merged() -> bool {
+    true // Enabled by default
+}
+
+fn default_show_keybinding_hints() -> bool {
+    true // Enabled by default
+}
+
 // =============================================================================
 // Magic Prompts - Customizable prompts for AI-powered features
 // =============================================================================
 
-/// Customizable prompts for AI-powered features
+/// Customizable prompts for AI-powered features.
+/// Fields are Option<String>: None = use current app default (auto-updates on new versions),
+/// Some(text) = user customization (preserved across updates).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MagicPrompts {
-    #[serde(default = "default_investigate_issue_prompt")]
-    pub investigate_issue: String,
-    #[serde(default = "default_investigate_pr_prompt")]
-    pub investigate_pr: String,
-    #[serde(default = "default_pr_content_prompt")]
-    pub pr_content: String,
-    #[serde(default = "default_commit_message_prompt")]
-    pub commit_message: String,
-    #[serde(default = "default_code_review_prompt")]
-    pub code_review: String,
-    #[serde(default = "default_context_summary_prompt")]
-    pub context_summary: String,
-    #[serde(default = "default_resolve_conflicts_prompt")]
-    pub resolve_conflicts: String,
+    #[serde(default)]
+    pub investigate_issue: Option<String>,
+    #[serde(default)]
+    pub investigate_pr: Option<String>,
+    #[serde(default)]
+    pub pr_content: Option<String>,
+    #[serde(default)]
+    pub commit_message: Option<String>,
+    #[serde(default)]
+    pub code_review: Option<String>,
+    #[serde(default)]
+    pub context_summary: Option<String>,
+    #[serde(default)]
+    pub resolve_conflicts: Option<String>,
+    #[serde(default)]
+    pub investigate_workflow_run: Option<String>,
+    #[serde(default)]
+    pub release_notes: Option<String>,
+    #[serde(default)]
+    pub parallel_execution: Option<String>,
 }
 
 fn default_investigate_issue_prompt() -> String {
@@ -334,8 +396,16 @@ Investigate the loaded GitHub {prWord} ({prRefs})
 2. Understand what the PR is trying to accomplish and branch info (head → base)
 3. Explore the codebase to understand the context
 4. Analyze if the implementation matches the PR description
-5. Identify action items from reviewer feedback
-6. Propose next steps to get the PR merged
+5. Security review - check the changes for:
+   - Malicious or obfuscated code (eval, encoded strings, hidden network calls, data exfiltration)
+   - Suspicious dependency additions or version changes (typosquatting, hijacked packages)
+   - Hardcoded secrets, tokens, API keys, or credentials
+   - Backdoors, reverse shells, or unauthorized remote access
+   - Unsafe deserialization, command injection, SQL injection, XSS
+   - Weakened auth/permissions (removed checks, broadened access, disabled validation)
+   - Suspicious file system or environment variable access
+6. Identify action items from reviewer feedback
+7. Propose next steps to get the PR merged
 
 </instructions>
 
@@ -344,6 +414,7 @@ Investigate the loaded GitHub {prWord} ({prRefs})
 
 - Be thorough but focused
 - Pay attention to reviewer feedback and requested changes
+- Flag any security concerns prominently, even minor ones
 - If multiple approaches exist, explain trade-offs
 - Reference specific file paths and line numbers
 
@@ -408,7 +479,14 @@ fn default_code_review_prompt() -> String {
 
 <instructions>
 Focus on:
-- Security vulnerabilities
+- Security & supply-chain risks:
+  - Malicious or obfuscated code (eval, encoded strings, hidden network calls, data exfiltration)
+  - Suspicious dependency additions or version changes (typosquatting, hijacked packages)
+  - Hardcoded secrets, tokens, API keys, or credentials
+  - Backdoors, reverse shells, or unauthorized remote access
+  - Unsafe deserialization, command injection, SQL injection, XSS
+  - Weakened auth/permissions (removed checks, broadened access, disabled validation)
+  - Suspicious file system or environment variable access
 - Performance issues
 - Code quality and maintainability (use /check skill if available to run linters/tests)
 - Potential bugs
@@ -457,6 +535,33 @@ After resolving each file's conflicts, stage it with `git add`. Then run the app
         .to_string()
 }
 
+fn default_investigate_workflow_run_prompt() -> String {
+    r#"Investigate the failed GitHub Actions workflow run for "{workflowName}" on branch `{branch}`.
+
+**Context:**
+- Workflow: {workflowName}
+- Commit/PR: {displayTitle}
+- Branch: {branch}
+- Run URL: {runUrl}
+
+**Instructions:**
+1. Use the GitHub CLI to fetch the workflow run logs: `gh run view {runId} --log-failed`
+2. Read the error output carefully to identify the failure cause
+3. Explore the relevant code in the codebase to understand the context
+4. Determine if this is a code issue, configuration issue, or flaky test
+5. Propose a fix with specific files and changes needed"#
+        .to_string()
+}
+
+fn default_parallel_execution_prompt() -> String {
+    r#"In plan mode, structure plans so sub-agents can work simultaneously. In build/execute mode, use sub-agents in parallel for faster implementation.
+
+When launching multiple Task sub-agents, prefer sending them in a single message rather than sequentially. Group independent work items (e.g., editing separate files, researching unrelated questions) into parallel Task calls. Only sequence Tasks when one depends on another's output.
+
+Instruct each sub-agent to briefly outline its approach before implementing, so it can course-correct early without formal plan mode overhead."#
+        .to_string()
+}
+
 /// Per-prompt model overrides for magic prompts
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MagicPromptModels {
@@ -472,6 +577,8 @@ pub struct MagicPromptModels {
     pub context_summary_model: String,
     #[serde(default = "default_model")]
     pub resolve_conflicts_model: String,
+    #[serde(default = "default_haiku_model")]
+    pub release_notes_model: String,
 }
 
 fn default_haiku_model() -> String {
@@ -487,6 +594,7 @@ impl Default for MagicPromptModels {
             code_review_model: default_haiku_model(),
             context_summary_model: default_model(),
             resolve_conflicts_model: default_model(),
+            release_notes_model: default_haiku_model(),
         }
     }
 }
@@ -494,13 +602,42 @@ impl Default for MagicPromptModels {
 impl Default for MagicPrompts {
     fn default() -> Self {
         Self {
-            investigate_issue: default_investigate_issue_prompt(),
-            investigate_pr: default_investigate_pr_prompt(),
-            pr_content: default_pr_content_prompt(),
-            commit_message: default_commit_message_prompt(),
-            code_review: default_code_review_prompt(),
-            context_summary: default_context_summary_prompt(),
-            resolve_conflicts: default_resolve_conflicts_prompt(),
+            investigate_issue: None,
+            investigate_pr: None,
+            pr_content: None,
+            commit_message: None,
+            code_review: None,
+            context_summary: None,
+            resolve_conflicts: None,
+            investigate_workflow_run: None,
+            release_notes: None,
+            parallel_execution: None,
+        }
+    }
+}
+
+impl MagicPrompts {
+    /// Migrate prompts that match the current default to None.
+    /// This ensures users who never customized a prompt get auto-updated defaults.
+    fn migrate_defaults(&mut self) {
+        let defaults: [(fn() -> String, &mut Option<String>); 9] = [
+            (default_investigate_issue_prompt, &mut self.investigate_issue),
+            (default_investigate_pr_prompt, &mut self.investigate_pr),
+            (default_pr_content_prompt, &mut self.pr_content),
+            (default_commit_message_prompt, &mut self.commit_message),
+            (default_code_review_prompt, &mut self.code_review),
+            (default_context_summary_prompt, &mut self.context_summary),
+            (default_resolve_conflicts_prompt, &mut self.resolve_conflicts),
+            (default_investigate_workflow_run_prompt, &mut self.investigate_workflow_run),
+            (default_parallel_execution_prompt, &mut self.parallel_execution),
+        ];
+
+        for (default_fn, field) in defaults {
+            if let Some(ref value) = field {
+                if value == &default_fn() {
+                    *field = None;
+                }
+            }
         }
     }
 }
@@ -526,6 +663,8 @@ impl Default for AppPreferences {
             keybindings: default_keybindings(),
             archive_retention_days: default_archive_retention_days(),
             session_grouping_enabled: default_session_grouping_enabled(),
+            canvas_enabled: default_canvas_enabled(),
+            canvas_only_mode: default_canvas_only_mode(),
             syntax_theme_dark: default_syntax_theme_dark(),
             syntax_theme_light: default_syntax_theme_light(),
             disable_thinking_in_non_plan_modes: default_disable_thinking_in_non_plan_modes(),
@@ -543,6 +682,15 @@ impl Default for AppPreferences {
             http_server_port: default_http_server_port(),
             http_server_token: None,
             http_server_localhost_only: true, // Default to localhost-only for security
+            http_server_token_required: default_http_server_token_required(),
+            auto_archive_on_pr_merged: default_auto_archive_on_pr_merged(),
+            show_keybinding_hints: default_show_keybinding_hints(),
+            debug_mode_enabled: false,
+            default_effort_level: default_effort_level(),
+            default_enabled_mcp_servers: Vec::new(),
+            has_seen_feature_tour: false,
+            chrome_enabled: default_chrome_enabled(),
+            zoom_level: default_zoom_level(),
         }
     }
 }
@@ -579,7 +727,7 @@ pub struct UIState {
     #[serde(default)]
     pub left_sidebar_size: Option<f64>,
 
-    /// Left sidebar visibility, defaults to true
+    /// Left sidebar visibility, defaults to false
     #[serde(default)]
     pub left_sidebar_visible: Option<bool>,
 
@@ -602,6 +750,18 @@ pub struct UIState {
     /// Session IDs that completed while out of focus, need digest on open
     #[serde(default)]
     pub pending_digest_session_ids: Vec<String>,
+
+    /// Modal terminal drawer open state per worktree
+    #[serde(default)]
+    pub modal_terminal_open: std::collections::HashMap<String, bool>,
+
+    /// Modal terminal drawer width in pixels
+    #[serde(default)]
+    pub modal_terminal_width: Option<f64>,
+
+    /// Last-accessed timestamps per project for recency sorting (projectId → unix ms)
+    #[serde(default)]
+    pub project_access_timestamps: std::collections::HashMap<String, f64>,
 
     /// Version for future migration support
     #[serde(default = "default_ui_state_version")]
@@ -627,6 +787,9 @@ impl Default for UIState {
             viewing_review_tab: std::collections::HashMap::new(),
             fixed_review_findings: std::collections::HashMap::new(),
             pending_digest_session_ids: Vec::new(),
+            modal_terminal_open: std::collections::HashMap::new(),
+            modal_terminal_width: None,
+            project_access_timestamps: std::collections::HashMap::new(),
             version: default_ui_state_version(),
         }
     }
@@ -660,10 +823,14 @@ async fn load_preferences(app: AppHandle) -> Result<AppPreferences, String> {
         format!("Failed to read preferences file: {e}")
     })?;
 
-    let preferences: AppPreferences = serde_json::from_str(&contents).map_err(|e| {
+    let mut preferences: AppPreferences = serde_json::from_str(&contents).map_err(|e| {
         log::error!("Failed to parse preferences JSON: {e}");
         format!("Failed to parse preferences: {e}")
     })?;
+
+    // Migrate magic prompts: convert prompts matching current defaults to None
+    // so they auto-update when new defaults are shipped
+    preferences.magic_prompts.migrate_defaults();
 
     log::trace!("Successfully loaded preferences");
     Ok(preferences)
@@ -984,6 +1151,7 @@ async fn start_http_server(
     let prefs = load_preferences(app.clone()).await?;
     let actual_port = port.unwrap_or(prefs.http_server_port);
     let localhost_only = prefs.http_server_localhost_only;
+    let token_required = prefs.http_server_token_required;
 
     // Generate or load token
     let token = match prefs.http_server_token {
@@ -1000,7 +1168,8 @@ async fn start_http_server(
 
     // Check if already running
     {
-        let handle_state = app.try_state::<Arc<Mutex<Option<http_server::server::HttpServerHandle>>>>();
+        let handle_state =
+            app.try_state::<Arc<Mutex<Option<http_server::server::HttpServerHandle>>>>();
         if let Some(state) = handle_state {
             let handle = state.lock().await;
             if handle.is_some() {
@@ -1010,7 +1179,14 @@ async fn start_http_server(
     }
 
     // Start the server
-    let handle = http_server::server::start_server(app.clone(), actual_port, token, localhost_only).await?;
+    let handle = http_server::server::start_server(
+        app.clone(),
+        actual_port,
+        token,
+        localhost_only,
+        token_required,
+    )
+    .await?;
     let status = http_server::server::ServerStatus {
         running: true,
         url: Some(handle.url.clone()),
@@ -1026,7 +1202,11 @@ async fn start_http_server(
         *guard = Some(handle);
     }
 
-    log::info!("HTTP server started: {} (localhost_only: {})", status.url.as_deref().unwrap_or("unknown"), localhost_only);
+    log::info!(
+        "HTTP server started: {} (localhost_only: {})",
+        status.url.as_deref().unwrap_or("unknown"),
+        localhost_only
+    );
     Ok(status)
 }
 
@@ -1063,6 +1243,7 @@ async fn start_http_server_headless(
     } else {
         prefs.http_server_localhost_only
     };
+    let token_required = prefs.http_server_token_required;
 
     // Generate or load token
     let token = match prefs.http_server_token {
@@ -1091,7 +1272,8 @@ async fn start_http_server_headless(
 
     // Start the server
     let handle =
-        http_server::server::start_server(app.clone(), port, token, localhost_only).await?;
+        http_server::server::start_server(app.clone(), port, token, localhost_only, token_required)
+            .await?;
     let status = http_server::server::ServerStatus {
         running: true,
         url: Some(handle.url.clone()),
@@ -1116,7 +1298,9 @@ async fn start_http_server_headless(
 }
 
 #[tauri::command]
-async fn get_http_server_status(app: AppHandle) -> Result<http_server::server::ServerStatus, String> {
+async fn get_http_server_status(
+    app: AppHandle,
+) -> Result<http_server::server::ServerStatus, String> {
     Ok(http_server::server::get_server_status(app).await)
 }
 
@@ -1205,9 +1389,12 @@ fn fix_macos_path() {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
 
     // Spawn a login (-l) + interactive (-i) shell to source all config files
-    // including .zshrc where tools like bun, nvm add their PATH entries
+    // including .zshrc where tools like bun, nvm add their PATH entries.
+    // Use `printenv PATH` instead of `echo $PATH` because fish shell prints
+    // $PATH as space-separated (it's a list in fish), while printenv always
+    // outputs the raw colon-separated environment variable.
     let output = silent_command(&shell)
-        .args(["-l", "-i", "-c", "echo $PATH"])
+        .args(["-l", "-i", "-c", "/usr/bin/printenv PATH"])
         .output();
 
     if let Ok(output) = output {
@@ -1280,19 +1467,50 @@ pub fn run() {
         }
     }
 
-    // Build log targets conditionally (skip webview in headless mode)
-    let mut log_targets = vec![
-        tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
-    ];
-    if !headless {
+    // Build log targets conditionally
+    let mut log_targets = vec![tauri_plugin_log::Target::new(
+        tauri_plugin_log::TargetKind::Stdout,
+    )];
+    if cfg!(debug_assertions) {
+        // Dev mode: Stdout + LogDir (file) on all platforms.
+        // Skip Webview target — frontend console overrides forward to the plugin,
+        // so a Webview target would create an infinite loop:
+        //   console.log → plugin.trace → Webview → console.log → ...
+
+        // Clear old log files on startup so each dev session starts fresh.
+        // Tauri's LogDir writes to ~/Library/Logs/{bundle_id}/ on macOS,
+        // {LOCALAPPDATA}/{bundle_id}/logs/ on Windows, etc.
+        #[cfg(target_os = "macos")]
+        let log_dir = dirs::home_dir().map(|d| d.join("Library/Logs/com.jean.desktop"));
+        #[cfg(target_os = "windows")]
+        let log_dir = dirs::data_local_dir().map(|d| d.join("com.jean.desktop/logs"));
+        #[cfg(target_os = "linux")]
+        let log_dir = dirs::config_local_dir().map(|d| d.join("com.jean.desktop/logs"));
+        if let Some(log_dir) = log_dir {
+            if log_dir.exists() {
+                if let Ok(entries) = std::fs::read_dir(&log_dir) {
+                    for entry in entries.flatten() {
+                        let _ = std::fs::remove_file(entry.path());
+                    }
+                }
+            }
+        }
+
         log_targets.push(tauri_plugin_log::Target::new(
-            tauri_plugin_log::TargetKind::Webview,
+            tauri_plugin_log::TargetKind::LogDir { file_name: None },
+        ));
+    } else {
+        // Prod: Webview target + macOS-only file logging
+        if !headless {
+            log_targets.push(tauri_plugin_log::Target::new(
+                tauri_plugin_log::TargetKind::Webview,
+            ));
+        }
+        #[cfg(target_os = "macos")]
+        log_targets.push(tauri_plugin_log::Target::new(
+            tauri_plugin_log::TargetKind::LogDir { file_name: None },
         ));
     }
-    #[cfg(target_os = "macos")]
-    log_targets.push(tauri_plugin_log::Target::new(
-        tauri_plugin_log::TargetKind::LogDir { file_name: None },
-    ));
 
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -1309,6 +1527,7 @@ pub fn run() {
                 // Silence noisy external crates
                 .level_for("globset", log::LevelFilter::Warn)
                 .level_for("ignore", log::LevelFilter::Warn)
+                .level_for("tauri_plugin_updater", log::LevelFilter::Info)
                 .targets(log_targets)
                 .build(),
         )
@@ -1560,9 +1779,13 @@ pub fn run() {
             projects::create_pr_with_ai_content,
             projects::create_commit_with_ai,
             projects::run_review_with_ai,
+            projects::list_github_releases,
+            projects::generate_release_notes,
             projects::commit_changes,
             projects::open_project_on_github,
             projects::open_branch_on_github,
+            projects::get_github_branch_url,
+            projects::get_github_repo_url,
             projects::list_worktree_files,
             projects::get_project_branches,
             projects::update_project_settings,
@@ -1601,6 +1824,8 @@ pub fn run() {
             projects::remove_pr_context,
             projects::get_pr_context_content,
             projects::get_issue_context_content,
+            // GitHub Actions commands
+            projects::list_workflow_runs,
             // Saved context commands
             projects::attach_saved_context,
             projects::remove_saved_context,
@@ -1643,6 +1868,8 @@ pub fn run() {
             chat::set_active_session,
             // Chat commands - Session-based messaging
             chat::send_chat_message,
+            chat::get_mcp_servers,
+            chat::check_mcp_health,
             chat::clear_session_history,
             chat::set_session_model,
             chat::set_session_thinking_level,
@@ -1673,6 +1900,7 @@ pub fn run() {
             chat::generate_context_from_session,
             // Chat commands - Session digest (context recall)
             chat::generate_session_digest,
+            chat::update_session_digest,
             // Chat commands - Real-time setting sync
             chat::broadcast_session_setting,
             // Chat commands - Debug info

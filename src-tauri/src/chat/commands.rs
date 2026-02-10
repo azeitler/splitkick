@@ -14,14 +14,14 @@ use super::storage::{
     load_sessions, with_sessions_mut,
 };
 use super::types::{
-    AllSessionsEntry, AllSessionsResponse, ChatMessage, ClaudeContext, MessageRole, RunStatus,
-    Session, ThinkingLevel, WorktreeSessions,
+    AllSessionsEntry, AllSessionsResponse, ChatMessage, ClaudeContext, EffortLevel, MessageRole,
+    RunStatus, Session, SessionDigest, ThinkingLevel, WorktreeSessions,
 };
 use crate::claude_cli::get_cli_binary_path;
+use crate::http_server::EmitExt;
 use crate::platform::silent_command;
 use crate::projects::storage::load_projects_data;
 use crate::projects::types::SessionType;
-use crate::http_server::EmitExt;
 
 /// Get current Unix timestamp in seconds
 fn now() -> u64 {
@@ -76,6 +76,16 @@ pub async fn get_sessions(
                 session.message_count = Some(count);
             }
         }
+    }
+
+    // Debug logging for session recovery
+    for session in &sessions.sessions {
+        log::trace!(
+            "get_sessions: session={}, last_run_status={:?}, last_run_mode={:?}",
+            session.id,
+            session.last_run_status,
+            session.last_run_execution_mode
+        );
     }
 
     Ok(sessions)
@@ -219,6 +229,9 @@ pub async fn update_session_state(
     denied_message_context: Option<Option<super::types::DeniedMessageContext>>,
     is_reviewing: Option<bool>,
     waiting_for_input: Option<bool>,
+    waiting_for_input_type: Option<Option<String>>,
+    plan_file_path: Option<Option<String>>,
+    pending_plan_message_id: Option<Option<String>>,
 ) -> Result<(), String> {
     log::trace!("Updating session state for: {session_id}");
 
@@ -244,6 +257,15 @@ pub async fn update_session_state(
             }
             if let Some(v) = waiting_for_input {
                 session.waiting_for_input = v;
+            }
+            if let Some(v) = waiting_for_input_type {
+                session.waiting_for_input_type = v;
+            }
+            if let Some(v) = plan_file_path {
+                session.plan_file_path = v;
+            }
+            if let Some(v) = pending_plan_message_id {
+                session.pending_plan_message_id = v;
             }
             Ok(())
         } else {
@@ -817,12 +839,15 @@ pub async fn send_chat_message(
     model: Option<String>,
     execution_mode: Option<String>,
     thinking_level: Option<ThinkingLevel>,
+    effort_level: Option<EffortLevel>,
     disable_thinking_for_mode: Option<bool>,
-    parallel_execution_prompt_enabled: Option<bool>,
+    parallel_execution_prompt: Option<String>,
     ai_language: Option<String>,
     allowed_tools: Option<Vec<String>>,
+    mcp_config: Option<String>,
+    chrome_enabled: Option<bool>,
 ) -> Result<ChatMessage, String> {
-    log::trace!("Sending chat message for session: {session_id}, worktree: {worktree_id}, model: {model:?}, execution_mode: {execution_mode:?}, thinking: {thinking_level:?}, disable_thinking_for_mode: {disable_thinking_for_mode:?}, allowed_tools: {allowed_tools:?}");
+    log::trace!("Sending chat message for session: {session_id}, worktree: {worktree_id}, model: {model:?}, execution_mode: {execution_mode:?}, thinking: {thinking_level:?}, effort: {effort_level:?}, disable_thinking_for_mode: {disable_thinking_for_mode:?}, allowed_tools: {allowed_tools:?}");
 
     // Validate inputs
     if message.trim().is_empty() {
@@ -933,10 +958,13 @@ pub async fn send_chat_message(
     }
 
     // Notify all clients that a message is being sent (for real-time sync)
-    if let Err(e) = app.emit_all("chat:sending", &serde_json::json!({
-        "session_id": session_id,
-        "worktree_id": worktree_id,
-    })) {
+    if let Err(e) = app.emit_all(
+        "chat:sending",
+        &serde_json::json!({
+            "session_id": session_id,
+            "worktree_id": worktree_id,
+        }),
+    ) {
         log::error!("Failed to emit chat:sending event: {e}");
     }
 
@@ -951,7 +979,7 @@ pub async fn send_chat_message(
             log::error!("{}", error_msg);
 
             // Emit error event so frontend knows what happened
-            
+
             let error_event = super::claude::ErrorEvent {
                 session_id: session_id.clone(),
                 worktree_id: worktree_id.clone(),
@@ -999,6 +1027,10 @@ pub async fn send_chat_message(
             .as_ref()
             .map(|t| format!("{t:?}").to_lowercase())
             .as_deref(),
+        effort_level
+            .as_ref()
+            .and_then(|e| e.effort_value())
+            .or(None),
     )?;
 
     // Get file paths for detached execution
@@ -1012,8 +1044,27 @@ pub async fn send_chat_message(
     // Use passed parameter for thinking override (computed by frontend based on preference + manual override)
     let disable_thinking_in_non_plan_modes = disable_thinking_for_mode.unwrap_or(false);
 
-    // Use passed parameter for parallel execution prompt (default false - experimental)
-    let parallel_execution_prompt = parallel_execution_prompt_enabled.unwrap_or(false);
+    // Use passed parameter for parallel execution prompt (None = disabled)
+    let parallel_execution_prompt = parallel_execution_prompt.filter(|p| !p.trim().is_empty());
+
+    // Use passed parameter for Chrome browser integration (default false - beta)
+    let chrome = chrome_enabled.unwrap_or(false);
+
+    // Inject WebFetch/WebSearch in plan mode if preference is enabled
+    let mut final_allowed_tools = allowed_tools.unwrap_or_default();
+    if execution_mode.as_deref() == Some("plan") {
+        if let Ok(prefs) = crate::load_preferences(app.clone()).await {
+            if prefs.allow_web_tools_in_plan_mode {
+                final_allowed_tools.push("WebFetch".to_string());
+                final_allowed_tools.push("WebSearch".to_string());
+            }
+        }
+    }
+    let allowed_tools_for_cli = if final_allowed_tools.is_empty() {
+        None
+    } else {
+        Some(final_allowed_tools)
+    };
 
     // Execute Claude CLI in detached mode
     // If resume fails with "session not found", retry without the session ID
@@ -1032,10 +1083,13 @@ pub async fn send_chat_message(
             model.as_deref(),
             execution_mode.as_deref(),
             thinking_level.as_ref(),
-            allowed_tools.as_deref(),
+            effort_level.as_ref(),
+            allowed_tools_for_cli.as_deref(),
             disable_thinking_in_non_plan_modes,
-            parallel_execution_prompt,
+            parallel_execution_prompt.as_deref(),
             ai_language.as_deref(),
+            mcp_config.as_deref(),
+            chrome,
         ) {
             Ok((pid, response)) => {
                 log::trace!("execute_claude_detached succeeded (PID: {pid})");
@@ -1128,6 +1182,7 @@ pub async fn send_chat_message(
             model: None,
             execution_mode: None,
             thinking_level: None,
+            effort_level: None,
             recovered: false,
             usage: None,
         });
@@ -1148,6 +1203,7 @@ pub async fn send_chat_message(
         model: None,
         execution_mode: None,
         thinking_level: None,
+        effort_level: None,
         recovered: false,
         usage: claude_response.usage.clone(),
     };
@@ -1340,6 +1396,10 @@ pub async fn mark_plan_approved(
                 session.approved_plan_message_ids.push(message_id.clone());
                 log::trace!("Plan marked as approved (added to approved_plan_message_ids)");
             }
+            // Clear waiting state after approval
+            session.waiting_for_input = false;
+            session.pending_plan_message_id = None;
+            session.waiting_for_input_type = None;
             Ok(())
         } else {
             Err(format!("Session not found: {session_id}"))
@@ -2936,7 +2996,7 @@ fn execute_digest_claude(
 pub async fn generate_session_digest(
     app: AppHandle,
     session_id: String,
-) -> Result<SessionDigestResponse, String> {
+) -> Result<SessionDigest, String> {
     log::trace!("Generating digest for session {}", session_id);
 
     // Load preferences to get model
@@ -2958,7 +3018,44 @@ pub async fn generate_session_digest(
     let prompt = SESSION_DIGEST_PROMPT.replace("{conversation}", &conversation_history);
 
     // Call Claude CLI with JSON schema (non-streaming)
-    execute_digest_claude(&app, &prompt, &prefs.session_recap_model)
+    let response = execute_digest_claude(&app, &prompt, &prefs.session_recap_model)?;
+
+    Ok(SessionDigest {
+        chat_summary: response.chat_summary,
+        last_action: response.last_action,
+        created_at: Some(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+        ),
+        message_count: Some(messages.len()),
+    })
+}
+
+/// Update a session's persisted digest
+///
+/// Called after generating a digest to persist it to disk so it survives app reload.
+#[tauri::command]
+pub async fn update_session_digest(
+    app: AppHandle,
+    session_id: String,
+    digest: SessionDigest,
+) -> Result<(), String> {
+    log::trace!("Persisting digest for session {session_id}");
+
+    // Load existing metadata
+    let metadata = load_metadata(&app, &session_id)?
+        .ok_or_else(|| format!("Session {session_id} not found"))?;
+
+    // Update and save with new digest
+    let mut updated = metadata;
+    updated.digest = Some(digest);
+
+    super::storage::save_metadata(&app, &updated)?;
+
+    log::trace!("Digest persisted for session {session_id}");
+    Ok(())
 }
 
 /// Broadcast a session setting change to all connected clients.
@@ -2978,6 +3075,216 @@ pub async fn broadcast_session_setting(
             "value": value,
         }),
     )
+}
+
+// ============================================================================
+// MCP Server Discovery Commands
+// ============================================================================
+
+/// Information about a configured MCP server
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct McpServerInfo {
+    pub name: String,
+    pub config: serde_json::Value,
+    pub scope: String, // "user", "local", "project"
+    /// Whether the server is disabled in its config (has "disabled": true)
+    pub disabled: bool,
+}
+
+/// Health status of an MCP server as reported by `claude mcp list`
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub enum McpHealthStatus {
+    Connected,
+    NeedsAuthentication,
+    CouldNotConnect,
+    Disabled,
+    Unknown,
+}
+
+/// Result of a health check across all MCP servers
+#[derive(serde::Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct McpHealthResult {
+    pub statuses: std::collections::HashMap<String, McpHealthStatus>,
+}
+
+/// Discover MCP servers from all configuration sources:
+/// - User scope: ~/.claude.json top-level mcpServers
+/// - Local scope: ~/.claude.json under projects[worktreePath].mcpServers
+/// - Project scope: <worktree_path>/.mcp.json mcpServers
+#[tauri::command]
+pub async fn get_mcp_servers(worktree_path: Option<String>) -> Result<Vec<McpServerInfo>, String> {
+    let mut servers = Vec::new();
+    let mut seen_names = std::collections::HashSet::new();
+
+    // Read ~/.claude.json once for both user and local scope
+    let claude_json_data = if let Some(home) = dirs::home_dir() {
+        let claude_json = home.join(".claude.json");
+        if claude_json.exists() {
+            std::fs::read_to_string(&claude_json)
+                .ok()
+                .and_then(|content| serde_json::from_str::<serde_json::Value>(&content).ok())
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    // 1. Local scope (highest precedence): project-specific servers in ~/.claude.json
+    if let (Some(ref json), Some(ref wt_path)) = (&claude_json_data, &worktree_path) {
+        if let Some(projects) = json.get("projects").and_then(|v| v.as_object()) {
+            // Look for the worktree path key (may need to check with/without trailing slash)
+            let path_key = wt_path.trim_end_matches('/');
+            for (key, project_val) in projects {
+                let key_normalized = key.trim_end_matches('/');
+                if key_normalized == path_key {
+                    if let Some(mcp) = project_val.get("mcpServers").and_then(|v| v.as_object()) {
+                        for (name, config) in mcp {
+                            if seen_names.insert(name.clone()) {
+                                let disabled = config
+                                    .get("disabled")
+                                    .and_then(|v| v.as_bool())
+                                    .unwrap_or(false);
+                                servers.push(McpServerInfo {
+                                    name: name.clone(),
+                                    config: config.clone(),
+                                    scope: "local".to_string(),
+                                    disabled,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Project scope: .mcp.json in worktree root
+    if let Some(ref wt_path) = worktree_path {
+        let mcp_json_path = std::path::PathBuf::from(wt_path).join(".mcp.json");
+        if mcp_json_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&mcp_json_path) {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if let Some(mcp) = json.get("mcpServers").and_then(|v| v.as_object()) {
+                        for (name, config) in mcp {
+                            if seen_names.insert(name.clone()) {
+                                let disabled = config
+                                    .get("disabled")
+                                    .and_then(|v| v.as_bool())
+                                    .unwrap_or(false);
+                                servers.push(McpServerInfo {
+                                    name: name.clone(),
+                                    config: config.clone(),
+                                    scope: "project".to_string(),
+                                    disabled,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. User scope (lowest precedence): top-level mcpServers in ~/.claude.json
+    if let Some(ref json) = claude_json_data {
+        if let Some(mcp) = json.get("mcpServers").and_then(|v| v.as_object()) {
+            for (name, config) in mcp {
+                if seen_names.insert(name.clone()) {
+                    let disabled = config
+                        .get("disabled")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+                    servers.push(McpServerInfo {
+                        name: name.clone(),
+                        config: config.clone(),
+                        scope: "user".to_string(),
+                        disabled,
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(servers)
+}
+
+/// Parse `claude mcp list` text output into server health statuses.
+///
+/// Expected format per line: `name: url/path (Type) - Status`
+/// Examples:
+///   `notion: https://mcp.notion.com/mcp (HTTP) - ! Needs authentication`
+///   `filesystem: /usr/bin/fs (STDIO) - connected`
+fn parse_mcp_list_output(output: &str) -> std::collections::HashMap<String, McpHealthStatus> {
+    let mut statuses = std::collections::HashMap::new();
+
+    for line in output.lines() {
+        let line = line.trim();
+
+        // Skip header/empty lines
+        if line.is_empty() || line.starts_with("Checking MCP") {
+            continue;
+        }
+
+        // Extract server name (everything before first ':')
+        let Some((name, rest)) = line.split_once(':') else {
+            continue;
+        };
+        let name = name.trim().to_string();
+
+        // Extract status (everything after last " - ")
+        let status_str = rest.rsplit_once(" - ").map(|(_, s)| s.trim()).unwrap_or("");
+
+        let status = if status_str.contains("connected") {
+            McpHealthStatus::Connected
+        } else if status_str.contains("Needs authentication") {
+            McpHealthStatus::NeedsAuthentication
+        } else if status_str.contains("Could not connect") {
+            McpHealthStatus::CouldNotConnect
+        } else if status_str.contains("disabled") {
+            McpHealthStatus::Disabled
+        } else {
+            McpHealthStatus::Unknown
+        };
+
+        statuses.insert(name, status);
+    }
+
+    statuses
+}
+
+/// Check health status of all MCP servers by running `claude mcp list`.
+#[tauri::command]
+pub async fn check_mcp_health(app: AppHandle) -> Result<McpHealthResult, String> {
+    let cli_path = get_cli_binary_path(&app)?;
+
+    if !cli_path.exists() {
+        return Err("Claude CLI not installed".to_string());
+    }
+
+    log::debug!("Running: claude mcp list");
+
+    let output = silent_command(&cli_path)
+        .args(["mcp", "list"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| format!("Failed to run claude mcp list: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("claude mcp list failed: {stderr}"));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let statuses = parse_mcp_list_output(&stdout);
+
+    log::debug!("MCP health check: {} servers", statuses.len());
+
+    Ok(McpHealthResult { statuses })
 }
 
 #[cfg(test)]
@@ -3069,5 +3376,42 @@ also not json"#;
         let result = extract_text_from_stream_json(output);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "After tool");
+    }
+
+    #[test]
+    fn test_parse_mcp_list_output() {
+        let output = "\
+Checking MCP server health...
+
+notion: https://mcp.notion.com/mcp (HTTP) - ! Needs authentication
+filesystem: /usr/bin/fs-server (STDIO) - connected
+broken: http://localhost:9999 (HTTP) - ! Could not connect
+my-disabled: /usr/bin/disabled (STDIO) - disabled";
+
+        let statuses = parse_mcp_list_output(output);
+        assert_eq!(statuses.len(), 4);
+        assert_eq!(
+            statuses.get("notion"),
+            Some(&McpHealthStatus::NeedsAuthentication)
+        );
+        assert_eq!(
+            statuses.get("filesystem"),
+            Some(&McpHealthStatus::Connected)
+        );
+        assert_eq!(
+            statuses.get("broken"),
+            Some(&McpHealthStatus::CouldNotConnect)
+        );
+        assert_eq!(
+            statuses.get("my-disabled"),
+            Some(&McpHealthStatus::Disabled)
+        );
+    }
+
+    #[test]
+    fn test_parse_mcp_list_output_empty() {
+        let output = "Checking MCP server health...\n\n";
+        let statuses = parse_mcp_list_output(output);
+        assert!(statuses.is_empty());
     }
 }

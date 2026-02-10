@@ -2,6 +2,8 @@
  * Environment-aware logging utility
  * - debug/info: only log in development
  * - warn/error: always log (even in production)
+ * - In dev mode, console.* calls are forwarded to Tauri's log plugin (→ log file)
+ *   via the console overrides in main.tsx — no need to call the plugin directly here.
  */
 
 const isDev = import.meta.env.DEV

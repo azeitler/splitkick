@@ -1,16 +1,18 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { invoke } from '@/lib/transport'
+import { generateId } from '@/lib/uuid'
 import { toast } from 'sonner'
 import { Textarea } from '@/components/ui/textarea'
 import { Kbd } from '@/components/ui/kbd'
 import { useChatStore } from '@/store/chat-store'
-import { getFilename } from '@/lib/path-utils'
+import { getFilename, getExtension } from '@/lib/path-utils'
 import type {
   PendingFile,
   PendingSkill,
   ClaudeCommand,
   SaveImageResponse,
   SaveTextResponse,
+  ReadTextResponse,
   ExecutionMode,
 } from '@/types/chat'
 import {
@@ -77,7 +79,9 @@ export const ChatInput = memo(function ChatInput({
     top: number
     left: number
   } | null>(null)
-  const [slashTriggerIndex, setSlashTriggerIndex] = useState<number | null>(null)
+  const [slashTriggerIndex, setSlashTriggerIndex] = useState<number | null>(
+    null
+  )
 
   // Refs to expose navigation methods from popovers
   const fileMentionHandleRef = useRef<FileMentionPopoverHandle | null>(null)
@@ -327,7 +331,10 @@ export const ChatInput = memo(function ChatInput({
 
       // When file mention popover is open, handle navigation
       if (fileMentionOpen) {
-        console.log('[ChatInput] File mention popover open, handling key:', e.key)
+        console.log(
+          '[ChatInput] File mention popover open, handling key:',
+          e.key
+        )
         switch (e.key) {
           case 'ArrowDown':
             e.preventDefault()
@@ -342,7 +349,9 @@ export const ChatInput = memo(function ChatInput({
           case 'Enter':
           case 'Tab':
             e.preventDefault()
-            console.log('[ChatInput] Calling fileMentionHandleRef.selectCurrent()')
+            console.log(
+              '[ChatInput] Calling fileMentionHandleRef.selectCurrent()'
+            )
             fileMentionHandleRef.current?.selectCurrent()
             return
           case 'Escape':
@@ -370,7 +379,9 @@ export const ChatInput = memo(function ChatInput({
           case 'Enter':
           case 'Tab':
             e.preventDefault()
-            console.log('[ChatInput] Calling slashPopoverHandleRef.selectCurrent()')
+            console.log(
+              '[ChatInput] Calling slashPopoverHandleRef.selectCurrent()'
+            )
             slashPopoverHandleRef.current?.selectCurrent()
             return
           case 'Escape':
@@ -414,13 +425,117 @@ export const ChatInput = memo(function ChatInput({
       }
       // Shift+Enter adds a new line (default behavior)
     },
-    [activeSessionId, fileMentionOpen, slashPopoverOpen, isSending, onCancel, onSubmit]
+    [
+      activeSessionId,
+      fileMentionOpen,
+      slashPopoverOpen,
+      isSending,
+      onCancel,
+      onSubmit,
+    ]
   )
 
   // Handle paste events
   const handlePaste = useCallback(
     async (e: React.ClipboardEvent) => {
       if (!activeSessionId) return
+
+      // Check for jean-prompt clipboard format (copied from a sent message)
+      const html = e.clipboardData?.getData('text/html')
+      if (html) {
+        const match = html.match(/data-jean-prompt="([^"]+)"/)
+        if (match?.[1]) {
+          // Read text synchronously before preventDefault - clipboardData
+          // is only available during the event handler, not after await
+          const text = e.clipboardData?.getData('text/plain') ?? ''
+          e.preventDefault()
+          try {
+            const metadata = JSON.parse(decodeURIComponent(match[1])) as {
+              images?: string[]
+              textFiles?: string[]
+              files?: string[]
+              skills?: { name: string; path: string }[]
+            }
+
+            // Insert the plain text into the textarea first
+            if (text && inputRef.current) {
+              const textarea = inputRef.current
+              const start = textarea.selectionStart
+              const end = textarea.selectionEnd
+              const current = textarea.value
+              textarea.value =
+                current.slice(0, start) + text + current.slice(end)
+              valueRef.current = textarea.value
+              textarea.selectionStart = textarea.selectionEnd =
+                start + text.length
+              // Auto-resize
+              textarea.style.height = 'auto'
+              textarea.style.height = `${textarea.scrollHeight}px`
+              // Save draft
+              useChatStore
+                .getState()
+                .setInputDraft(activeSessionId, textarea.value)
+              onHasValueChange?.(Boolean(textarea.value.trim()))
+            }
+
+            const {
+              addPendingImage,
+              addPendingFile,
+              addPendingSkill,
+              addPendingTextFile,
+            } = useChatStore.getState()
+
+            // Restore images (they already exist on disk)
+            for (const path of metadata.images ?? []) {
+              addPendingImage(activeSessionId, {
+                id: generateId(),
+                path,
+                filename: getFilename(path),
+              })
+            }
+
+            // Restore text files (read content from disk)
+            for (const path of metadata.textFiles ?? []) {
+              try {
+                const response = await invoke<ReadTextResponse>(
+                  'read_pasted_text',
+                  { path }
+                )
+                addPendingTextFile(activeSessionId, {
+                  id: generateId(),
+                  path,
+                  filename: getFilename(path),
+                  size: response.size,
+                  content: response.content,
+                })
+              } catch {
+                // File may no longer exist, skip
+              }
+            }
+
+            // Restore file mentions
+            for (const path of metadata.files ?? []) {
+              addPendingFile(activeSessionId, {
+                id: generateId(),
+                relativePath: path,
+                extension: getExtension(path),
+              })
+            }
+
+            // Restore skills
+            for (const skill of metadata.skills ?? []) {
+              addPendingSkill(activeSessionId, {
+                id: generateId(),
+                name: skill.name,
+                path: skill.path,
+              })
+            }
+          } catch {
+            // Invalid JSON, fall through to normal paste
+          }
+          return
+        }
+      }
 
       const items = e.clipboardData?.items
       if (!items) return
@@ -531,7 +646,7 @@ export const ChatInput = memo(function ChatInput({
         }
       }
     },
-    [activeSessionId]
+    [activeSessionId, inputRef, onHasValueChange]
   )
 
   // Handle file selection from @ mention popover
@@ -596,6 +711,14 @@ export const ChatInput = memo(function ChatInput({
         inputRef.current.value = newValue
         valueRef.current = newValue
 
+        // Cancel pending debounced save (it still has the old "/query" value)
+        // and sync cleaned value to store immediately
+        clearTimeout(debouncedSaveRef.current)
+        useChatStore
+          .getState()
+          .setInputDraft(activeSessionId, newValue)
+        onHasValueChange?.(Boolean(newValue.trim()))
+
         // Set cursor position where the slash was
         requestAnimationFrame(() => {
           inputRef.current?.setSelectionRange(triggerIndex, triggerIndex)
@@ -610,7 +733,7 @@ export const ChatInput = memo(function ChatInput({
       // Refocus input
       inputRef.current?.focus()
     },
-    [activeSessionId, slashTriggerIndex, inputRef]
+    [activeSessionId, slashTriggerIndex, inputRef, onHasValueChange]
   )
 
   // Handle command selection from / mention popover (executes immediately)
@@ -639,6 +762,7 @@ export const ChatInput = memo(function ChatInput({
   const isSlashAtPromptStart =
     slashTriggerIndex !== null &&
     (slashTriggerIndex === 0 ||
+      // eslint-disable-next-line react-hooks/refs
       valueRef.current.slice(0, slashTriggerIndex).trim() === '')
 
   return (
@@ -661,12 +785,12 @@ export const ChatInput = memo(function ChatInput({
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
         disabled={false}
-        className="min-h-[60px] max-h-[200px] w-full resize-none border-0 bg-transparent dark:bg-transparent p-0 font-mono text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+        className="min-h-[80px] max-h-[200px] w-full resize-none border-0 bg-transparent dark:bg-transparent p-0 font-mono text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
         rows={2}
         autoFocus
       />
       {showHint && (
-        <span className="absolute top-0 right-0 flex items-center gap-1.5 text-xs text-muted-foreground opacity-40">
+        <span className="absolute top-0 right-0 hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground opacity-40">
           <Kbd>{focusChatShortcut}</Kbd>
           <span>to focus</span>
         </span>

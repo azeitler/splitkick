@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { getModifierSymbol } from '@/lib/platform'
 import { invoke } from '@/lib/transport'
 import { useQueryClient } from '@tanstack/react-query'
 import {
@@ -11,9 +12,11 @@ import {
   CircleDot,
   AlertCircle,
   Wand2,
+  Zap,
 } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
-import { isGhAuthError } from '@/services/github'
+import { isGhAuthError, isNewIssue } from '@/services/github'
 import { useGhLogin } from '@/hooks/useGhLogin'
 import { GhAuthError } from '@/components/shared/GhAuthError'
 import {
@@ -25,6 +28,11 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
@@ -45,22 +53,33 @@ import {
   useWorktrees,
   useCreateWorktree,
   useCreateBaseSession,
+  useProjectBranches,
+  useCreateWorktreeFromExistingBranch,
+  projectsQueryKeys,
 } from '@/services/projects'
 import { isBaseSession } from '@/types/projects'
-import type { GitHubIssue, GitHubPullRequest, IssueContext, PullRequestContext } from '@/types/github'
+import type {
+  GitHubIssue,
+  GitHubPullRequest,
+  IssueContext,
+  PullRequestContext,
+} from '@/types/github'
 
-type TabId = 'quick' | 'issues' | 'prs'
+export type TabId = 'quick' | 'issues' | 'prs' | 'branches'
 
-interface Tab {
+export interface Tab {
   id: TabId
   label: string
   key: string
+  icon: LucideIcon
 }
 
-const TABS: Tab[] = [
-  { id: 'quick', label: 'Quick Actions', key: 'Q' },
-  { id: 'issues', label: 'Issues', key: 'I' },
-  { id: 'prs', label: 'Pull Requests', key: 'P' },
+// eslint-disable-next-line react-refresh/only-export-components
+export const TABS: Tab[] = [
+  { id: 'quick', label: 'Actions', key: '1', icon: Zap },
+  { id: 'issues', label: 'Issues', key: '2', icon: CircleDot },
+  { id: 'prs', label: 'PRs', key: '3', icon: GitPullRequest },
+  { id: 'branches', label: 'Branches', key: '4', icon: GitBranch },
 ]
 
 export function NewWorktreeModal() {
@@ -92,19 +111,25 @@ export function NewWorktreeModal() {
   const [searchQuery, setSearchQuery] = useState('')
   const [includeClosed, setIncludeClosed] = useState(false)
   const [selectedItemIndex, setSelectedItemIndex] = useState(0)
-  const [creatingFromNumber, setCreatingFromNumber] = useState<number | null>(null)
+  const [creatingFromNumber, setCreatingFromNumber] = useState<number | null>(
+    null
+  )
+  const [creatingFromBranch, setCreatingFromBranch] = useState<string | null>(
+    null
+  )
 
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   // GitHub issues query
   const issueState = includeClosed ? 'all' : 'open'
   const {
-    data: issues,
+    data: issueResult,
     isLoading: isLoadingIssues,
     isFetching: isRefetchingIssues,
     error: issuesError,
     refetch: refetchIssues,
   } = useGitHubIssues(selectedProject?.path ?? null, issueState)
+  const issues = issueResult?.issues
 
   // GitHub PRs query
   const prState = includeClosed ? 'all' : 'open'
@@ -120,47 +145,76 @@ export function NewWorktreeModal() {
   const debouncedSearchQuery = useDebouncedValue(searchQuery, 300)
 
   // GitHub search queries (triggered when local filter may miss results)
-  const {
-    data: searchedIssues,
-    isFetching: isSearchingIssues,
-  } = useSearchGitHubIssues(
-    selectedProject?.path ?? null,
-    debouncedSearchQuery,
-  )
+  const { data: searchedIssues, isFetching: isSearchingIssues } =
+    useSearchGitHubIssues(selectedProject?.path ?? null, debouncedSearchQuery)
 
-  const {
-    data: searchedPRs,
-    isFetching: isSearchingPRs,
-  } = useSearchGitHubPRs(
+  const { data: searchedPRs, isFetching: isSearchingPRs } = useSearchGitHubPRs(
     selectedProject?.path ?? null,
-    debouncedSearchQuery,
+    debouncedSearchQuery
   )
 
   // Filter issues locally, then merge with remote search results
   const filteredIssues = useMemo(
-    () => mergeWithSearchResults(
-      filterIssues(issues ?? [], searchQuery),
-      searchedIssues,
-    ),
+    () =>
+      mergeWithSearchResults(
+        filterIssues(issues ?? [], searchQuery),
+        searchedIssues
+      ),
     [issues, searchQuery, searchedIssues]
   )
 
   // Filter PRs locally, then merge with remote search results
   const filteredPRs = useMemo(
-    () => mergeWithSearchResults(
-      filterPRs(prs ?? [], searchQuery),
-      searchedPRs,
-    ),
+    () =>
+      mergeWithSearchResults(filterPRs(prs ?? [], searchQuery), searchedPRs),
     [prs, searchQuery, searchedPRs]
   )
+
+  // Branches query
+  const {
+    data: branches,
+    isLoading: isLoadingBranches,
+    isFetching: isRefetchingBranches,
+    error: branchesError,
+    refetch: refetchBranches,
+  } = useProjectBranches(selectedProjectId)
+
+  // Filter branches locally (exclude the base/default branch)
+  const filteredBranches = useMemo(() => {
+    if (!branches) return []
+    const baseBranch = selectedProject?.default_branch
+    const filtered = branches.filter(b => b !== baseBranch)
+    if (!searchQuery) return filtered
+    const q = searchQuery.toLowerCase()
+    return filtered.filter(b => b.toLowerCase().includes(q))
+  }, [branches, searchQuery, selectedProject?.default_branch])
 
   // Mutations
   const createWorktree = useCreateWorktree()
   const createBaseSession = useCreateBaseSession()
+  const createWorktreeFromBranch = useCreateWorktreeFromExistingBranch()
+
+  // Apply store-provided default tab when modal opens (e.g. from NewIssuesBadge click)
+  useEffect(() => {
+    if (newWorktreeModalOpen) {
+      const { newWorktreeModalDefaultTab, setNewWorktreeModalDefaultTab } =
+        useUIStore.getState()
+      if (newWorktreeModalDefaultTab) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setActiveTab(newWorktreeModalDefaultTab)
+        setNewWorktreeModalDefaultTab(null)
+      }
+    }
+  }, [newWorktreeModalOpen])
 
   // Focus search input when switching to issues or prs tab
   useEffect(() => {
-    if ((activeTab === 'issues' || activeTab === 'prs') && newWorktreeModalOpen) {
+    if (
+      (activeTab === 'issues' ||
+        activeTab === 'prs' ||
+        activeTab === 'branches') &&
+      newWorktreeModalOpen
+    ) {
       // Small delay to ensure the input is mounted
       const timer = setTimeout(() => {
         searchInputRef.current?.focus()
@@ -171,6 +225,7 @@ export function NewWorktreeModal() {
 
   // Reset selection when switching tabs
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelectedItemIndex(0)
     setSearchQuery('')
   }, [activeTab])
@@ -179,13 +234,19 @@ export function NewWorktreeModal() {
     (open: boolean) => {
       // Always reset these states on open/close
       setCreatingFromNumber(null)
+      setCreatingFromBranch(null)
       setSearchQuery('')
       setSelectedItemIndex(0)
 
       if (open) {
         // Reset other state when modal opens
-        // Default to issues tab if a project is selected, otherwise quick actions
-        setActiveTab(selectedProjectId ? 'issues' : 'quick')
+        // Use store-provided default tab (e.g. from NewIssuesBadge click), fallback to issues/quick
+        const { newWorktreeModalDefaultTab, setNewWorktreeModalDefaultTab } =
+          useUIStore.getState()
+        setActiveTab(
+          newWorktreeModalDefaultTab ?? (selectedProjectId ? 'issues' : 'quick')
+        )
+        setNewWorktreeModalDefaultTab(null)
         setIncludeClosed(false)
 
         // Invalidate GitHub caches to fetch fresh data
@@ -202,6 +263,14 @@ export function NewWorktreeModal() {
           })
           queryClient.invalidateQueries({
             queryKey: githubQueryKeys.prs(projectPath, 'all'),
+          })
+        }
+        if (selectedProjectId) {
+          queryClient.invalidateQueries({
+            queryKey: [
+              ...projectsQueryKeys.detail(selectedProjectId),
+              'branches',
+            ],
           })
         }
       }
@@ -245,6 +314,24 @@ export function NewWorktreeModal() {
     handleOpenChange,
   ])
 
+  const handleSelectBranch = useCallback(
+    (branchName: string) => {
+      if (!selectedProjectId) {
+        toast.error('No project selected')
+        return
+      }
+      setCreatingFromBranch(branchName)
+      createWorktreeFromBranch.mutate(
+        { projectId: selectedProjectId, branchName },
+        {
+          onError: () => setCreatingFromBranch(null),
+        }
+      )
+      handleOpenChange(false)
+    },
+    [selectedProjectId, createWorktreeFromBranch, handleOpenChange]
+  )
+
   const handleSelectIssue = useCallback(
     async (issue: GitHubIssue) => {
       const projectPath = selectedProject?.path
@@ -257,13 +344,18 @@ export function NewWorktreeModal() {
 
       try {
         // Fetch full issue details including comments
-        const issueDetail = await invoke<GitHubIssue & { comments: { body: string; author: { login: string }; created_at: string }[] }>(
-          'get_github_issue',
-          {
-            projectPath,
-            issueNumber: issue.number,
+        const issueDetail = await invoke<
+          GitHubIssue & {
+            comments: {
+              body: string
+              author: { login: string }
+              created_at: string
+            }[]
           }
-        )
+        >('get_github_issue', {
+          projectPath,
+          issueNumber: issue.number,
+        })
 
         // Create issue context for the worktree
         // Note: Backend expects camelCase for comments (createdAt not created_at)
@@ -308,13 +400,18 @@ export function NewWorktreeModal() {
 
       try {
         // Fetch full issue details including comments
-        const issueDetail = await invoke<GitHubIssue & { comments: { body: string; author: { login: string }; created_at: string }[] }>(
-          'get_github_issue',
-          {
-            projectPath,
-            issueNumber: issue.number,
+        const issueDetail = await invoke<
+          GitHubIssue & {
+            comments: {
+              body: string
+              author: { login: string }
+              created_at: string
+            }[]
           }
-        )
+        >('get_github_issue', {
+          projectPath,
+          issueNumber: issue.number,
+        })
 
         // Create issue context for the worktree
         const issueContext: IssueContext = {
@@ -361,16 +458,24 @@ export function NewWorktreeModal() {
 
       try {
         // Fetch full PR details including comments and reviews
-        const prDetail = await invoke<GitHubPullRequest & {
-          comments: { body: string; author: { login: string }; created_at: string }[]
-          reviews: { body: string; state: string; author: { login: string }; submittedAt?: string }[]
-        }>(
-          'get_github_pr',
-          {
-            projectPath,
-            prNumber: pr.number,
+        const prDetail = await invoke<
+          GitHubPullRequest & {
+            comments: {
+              body: string
+              author: { login: string }
+              created_at: string
+            }[]
+            reviews: {
+              body: string
+              state: string
+              author: { login: string }
+              submittedAt?: string
+            }[]
           }
-        )
+        >('get_github_pr', {
+          projectPath,
+          prNumber: pr.number,
+        })
 
         // Create PR context for the worktree
         const prContext: PullRequestContext = {
@@ -424,16 +529,24 @@ export function NewWorktreeModal() {
 
       try {
         // Fetch full PR details including comments and reviews
-        const prDetail = await invoke<GitHubPullRequest & {
-          comments: { body: string; author: { login: string }; created_at: string }[]
-          reviews: { body: string; state: string; author: { login: string }; submittedAt?: string }[]
-        }>(
-          'get_github_pr',
-          {
-            projectPath,
-            prNumber: pr.number,
+        const prDetail = await invoke<
+          GitHubPullRequest & {
+            comments: {
+              body: string
+              author: { login: string }
+              created_at: string
+            }[]
+            reviews: {
+              body: string
+              state: string
+              author: { login: string }
+              submittedAt?: string
+            }[]
           }
-        )
+        >('get_github_pr', {
+          projectPath,
+          prNumber: pr.number,
+        })
 
         // Create PR context for the worktree
         const prContext: PullRequestContext = {
@@ -485,34 +598,44 @@ export function NewWorktreeModal() {
 
       // Tab shortcuts (Cmd+key, works even when input is focused)
       if (e.metaKey || e.ctrlKey) {
-        if (key === 'q') {
+        if (key === '1') {
           e.preventDefault()
           setActiveTab('quick')
           return
         }
-        if (key === 'i') {
+        if (key === '2') {
           e.preventDefault()
           setActiveTab('issues')
           return
         }
-        if (key === 'p') {
+        if (key === '3') {
           e.preventDefault()
           setActiveTab('prs')
           return
         }
-      }
-
-      // Quick actions shortcuts
-      if (activeTab === 'quick') {
-        if (key === 'n') {
+        if (key === '4') {
           e.preventDefault()
-          handleCreateWorktree()
+          setActiveTab('branches')
           return
         }
-        if (key === 'b') {
-          e.preventDefault()
-          handleBaseSession()
-          return
+      }
+
+      // Quick actions shortcuts (skip when typing in an input)
+      if (activeTab === 'quick') {
+        const tag = (e.target as HTMLElement)?.tagName
+        if (tag !== 'INPUT' && tag !== 'TEXTAREA') {
+          if (key === 'n') {
+            e.preventDefault()
+            e.nativeEvent.stopImmediatePropagation()
+            handleCreateWorktree()
+            return
+          }
+          if (key === 'm') {
+            e.preventDefault()
+            e.nativeEvent.stopImmediatePropagation()
+            handleBaseSession()
+            return
+          }
         }
       }
 
@@ -533,6 +656,11 @@ export function NewWorktreeModal() {
         if (key === 'enter' && filteredIssues[selectedItemIndex]) {
           e.preventDefault()
           handleSelectIssue(filteredIssues[selectedItemIndex])
+          return
+        }
+        if (key === 'm' && filteredIssues[selectedItemIndex]) {
+          e.preventDefault()
+          handleSelectIssueAndInvestigate(filteredIssues[selectedItemIndex])
           return
         }
       }
@@ -556,17 +684,47 @@ export function NewWorktreeModal() {
           handleSelectPR(filteredPRs[selectedItemIndex])
           return
         }
+        if (key === 'm' && filteredPRs[selectedItemIndex]) {
+          e.preventDefault()
+          handleSelectPRAndInvestigate(filteredPRs[selectedItemIndex])
+          return
+        }
+      }
+
+      // Branches tab navigation
+      if (activeTab === 'branches' && filteredBranches.length > 0) {
+        if (key === 'arrowdown') {
+          e.preventDefault()
+          setSelectedItemIndex(prev =>
+            Math.min(prev + 1, filteredBranches.length - 1)
+          )
+          return
+        }
+        if (key === 'arrowup') {
+          e.preventDefault()
+          setSelectedItemIndex(prev => Math.max(prev - 1, 0))
+          return
+        }
+        if (key === 'enter' && filteredBranches[selectedItemIndex]) {
+          e.preventDefault()
+          handleSelectBranch(filteredBranches[selectedItemIndex])
+          return
+        }
       }
     },
     [
       activeTab,
       filteredIssues,
       filteredPRs,
+      filteredBranches,
       selectedItemIndex,
       handleCreateWorktree,
       handleBaseSession,
       handleSelectIssue,
+      handleSelectIssueAndInvestigate,
       handleSelectPR,
+      handleSelectPRAndInvestigate,
+      handleSelectBranch,
     ]
   )
 
@@ -581,7 +739,7 @@ export function NewWorktreeModal() {
   return (
     <Dialog open={newWorktreeModalOpen} onOpenChange={handleOpenChange}>
       <DialogContent
-        className="!w-[90vw] !max-w-[90vw] !h-[85vh] !max-h-[85vh] p-0 flex flex-col overflow-hidden"
+        className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none sm:!w-[90vw] sm:!max-w-[90vw] sm:!h-[85vh] sm:!max-h-[85vh] sm:!rounded-lg p-0 flex flex-col overflow-hidden"
         onKeyDown={handleKeyDown}
       >
         <DialogHeader className="px-4 pt-4 pb-2">
@@ -591,27 +749,7 @@ export function NewWorktreeModal() {
         </DialogHeader>
 
         {/* Tabs */}
-        <div className="flex border-b border-border">
-          {TABS.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={cn(
-                'flex-1 px-4 py-2 text-sm font-medium transition-colors',
-                'hover:bg-accent focus:outline-none',
-                'border-b-2',
-                activeTab === tab.id
-                  ? 'border-primary text-foreground'
-                  : 'border-transparent text-muted-foreground'
-              )}
-            >
-              {tab.label}
-              <kbd className="ml-2 text-xs text-muted-foreground bg-muted px-1 py-0.5 rounded">
-                {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+{tab.key}
-              </kbd>
-            </button>
-          ))}
-        </div>
+        <SessionTabBar activeTab={activeTab} onTabChange={setActiveTab} />
 
         {/* Tab content */}
         <div className="flex-1 min-h-0 flex flex-col">
@@ -620,7 +758,9 @@ export function NewWorktreeModal() {
               hasBaseSession={hasBaseSession}
               onCreateWorktree={handleCreateWorktree}
               onBaseSession={handleBaseSession}
-              isCreating={createWorktree.isPending || createBaseSession.isPending}
+              isCreating={
+                createWorktree.isPending || createBaseSession.isPending
+              }
             />
           )}
 
@@ -669,45 +809,101 @@ export function NewWorktreeModal() {
               isGhInstalled={isGhInstalled}
             />
           )}
+
+          {activeTab === 'branches' && (
+            <BranchesTab
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+              branches={filteredBranches}
+              isLoading={isLoadingBranches}
+              isRefetching={isRefetchingBranches}
+              error={branchesError}
+              onRefresh={() => refetchBranches()}
+              selectedIndex={selectedItemIndex}
+              setSelectedIndex={setSelectedItemIndex}
+              onSelectBranch={handleSelectBranch}
+              creatingFromBranch={creatingFromBranch}
+              searchInputRef={searchInputRef}
+            />
+          )}
         </div>
       </DialogContent>
     </Dialog>
   )
 }
 
-interface QuickActionsTabProps {
+export function SessionTabBar({
+  activeTab,
+  onTabChange,
+}: {
+  activeTab: TabId
+  onTabChange: (tab: TabId) => void
+}) {
+  return (
+    <div className="flex border-b border-border">
+      {TABS.map(tab => (
+        <button
+          key={tab.id}
+          onClick={() => onTabChange(tab.id)}
+          tabIndex={-1}
+          className={cn(
+            'flex-1 px-4 py-2 text-sm font-medium transition-colors',
+            'flex items-center justify-center gap-1.5',
+            'hover:bg-accent focus:outline-none',
+            'border-b-2',
+            activeTab === tab.id
+              ? 'border-primary text-foreground'
+              : 'border-transparent text-muted-foreground'
+          )}
+        >
+          <tab.icon className="h-4 w-4" />
+          <span className="text-xs sm:text-sm">{tab.label}</span>
+          <kbd className="hidden sm:inline ml-0.5 text-xs text-muted-foreground bg-muted px-1 py-0.5 rounded">
+            {getModifierSymbol()}+{tab.key}
+          </kbd>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+export interface QuickActionsTabProps {
   hasBaseSession: boolean
   onCreateWorktree: () => void
   onBaseSession: () => void
   isCreating: boolean
 }
 
-function QuickActionsTab({
+export function QuickActionsTab({
   hasBaseSession,
   onCreateWorktree,
   onBaseSession,
   isCreating,
 }: QuickActionsTabProps) {
   return (
-    <div className="flex items-center justify-center flex-1 p-10">
-      <div className="grid grid-cols-2 gap-6 w-full max-w-xl">
+    <div className="flex items-center justify-center flex-1 p-4 sm:p-10">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 w-full max-w-xl">
         {/* Base Session button */}
         <button
           onClick={onBaseSession}
           disabled={isCreating}
           className={cn(
-            'relative flex flex-col items-center justify-center gap-4 aspect-square p-8 rounded-xl text-sm transition-colors',
+            'relative flex flex-col items-center justify-center gap-4 sm:aspect-square p-4 sm:p-8 rounded-xl text-sm transition-colors',
             'hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring',
             'border border-border'
           )}
         >
           <GitBranch className="h-10 w-10 text-muted-foreground" />
           <div className="flex flex-col items-center gap-1.5">
-            <span className="font-medium text-base">{hasBaseSession ? 'Switch to Base Session' : 'New Base Session'}</span>
-            <span className="text-xs text-muted-foreground text-center">Work directly on the project folder</span>
+            <span className="font-medium text-base">
+              {hasBaseSession ? 'Switch to Base Session' : 'New Base Session'}
+            </span>
+            <span className="text-xs text-muted-foreground text-center">
+              Work directly on the project folder
+            </span>
           </div>
-          <kbd className="absolute top-3 right-3 text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-            B
+          <kbd className="hidden sm:block absolute top-3 right-3 text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+            M
           </kbd>
         </button>
 
@@ -716,7 +912,7 @@ function QuickActionsTab({
           onClick={onCreateWorktree}
           disabled={isCreating}
           className={cn(
-            'relative flex flex-col items-center justify-center gap-4 aspect-square p-8 rounded-xl text-sm transition-colors',
+            'relative flex flex-col items-center justify-center gap-4 sm:aspect-square p-4 sm:p-8 rounded-xl text-sm transition-colors',
             'hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring',
             'border border-border'
           )}
@@ -728,9 +924,11 @@ function QuickActionsTab({
           )}
           <div className="flex flex-col items-center gap-1.5">
             <span className="font-medium text-base">New Worktree</span>
-            <span className="text-xs text-muted-foreground text-center">Create an isolated branch for your task</span>
+            <span className="text-xs text-muted-foreground text-center">
+              Create an isolated branch for your task
+            </span>
           </div>
-          <kbd className="absolute top-3 right-3 text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+          <kbd className="hidden sm:block absolute top-3 right-3 text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
             N
           </kbd>
         </button>
@@ -739,7 +937,7 @@ function QuickActionsTab({
   )
 }
 
-interface GitHubIssuesTabProps {
+export interface GitHubIssuesTabProps {
   searchQuery: string
   setSearchQuery: (query: string) => void
   includeClosed: boolean
@@ -760,7 +958,7 @@ interface GitHubIssuesTabProps {
   isGhInstalled: boolean
 }
 
-function GitHubIssuesTab({
+export function GitHubIssuesTab({
   searchQuery,
   setSearchQuery,
   includeClosed,
@@ -796,24 +994,28 @@ function GitHubIssuesTab({
               className="pl-9 h-8 text-sm"
             />
           </div>
-          <button
-            onClick={onRefresh}
-            disabled={isRefetching}
-            className={cn(
-              'flex items-center justify-center h-8 w-8 rounded-md border border-border',
-              'hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring',
-              'transition-colors',
-              isRefetching && 'opacity-50 cursor-not-allowed'
-            )}
-            title="Refresh issues"
-          >
-            <RefreshCw
-              className={cn(
-                'h-4 w-4 text-muted-foreground',
-                isRefetching && 'animate-spin'
-              )}
-            />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={onRefresh}
+                disabled={isRefetching}
+                className={cn(
+                  'flex items-center justify-center h-8 w-8 rounded-md border border-border',
+                  'hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring',
+                  'transition-colors',
+                  isRefetching && 'opacity-50 cursor-not-allowed'
+                )}
+              >
+                <RefreshCw
+                  className={cn(
+                    'h-4 w-4 text-muted-foreground',
+                    isRefetching && 'animate-spin'
+                  )}
+                />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Refresh issues</TooltipContent>
+          </Tooltip>
         </div>
         <div className="flex items-center gap-2">
           <Checkbox
@@ -841,8 +1043,8 @@ function GitHubIssuesTab({
           </div>
         )}
 
-        {error && (
-          isGhAuthError(error) ? (
+        {error &&
+          (isGhAuthError(error) ? (
             <GhAuthError onLogin={onGhLogin} isGhInstalled={isGhInstalled} />
           ) : (
             <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
@@ -851,13 +1053,14 @@ function GitHubIssuesTab({
                 {error.message || 'Failed to load issues'}
               </span>
             </div>
-          )
-        )}
+          ))}
 
         {!isLoading && !error && issues.length === 0 && !isSearching && (
           <div className="flex items-center justify-center py-8">
             <span className="text-sm text-muted-foreground">
-              {searchQuery ? 'No issues match your search' : 'No open issues found'}
+              {searchQuery
+                ? 'No issues match your search'
+                : 'No open issues found'}
             </span>
           </div>
         )}
@@ -900,7 +1103,7 @@ function GitHubIssuesTab({
   )
 }
 
-interface GitHubPRsTabProps {
+export interface GitHubPRsTabProps {
   searchQuery: string
   setSearchQuery: (query: string) => void
   includeClosed: boolean
@@ -921,7 +1124,7 @@ interface GitHubPRsTabProps {
   isGhInstalled: boolean
 }
 
-function GitHubPRsTab({
+export function GitHubPRsTab({
   searchQuery,
   setSearchQuery,
   includeClosed,
@@ -957,24 +1160,28 @@ function GitHubPRsTab({
               className="pl-9 h-8 text-sm"
             />
           </div>
-          <button
-            onClick={onRefresh}
-            disabled={isRefetching}
-            className={cn(
-              'flex items-center justify-center h-8 w-8 rounded-md border border-border',
-              'hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring',
-              'transition-colors',
-              isRefetching && 'opacity-50 cursor-not-allowed'
-            )}
-            title="Refresh pull requests"
-          >
-            <RefreshCw
-              className={cn(
-                'h-4 w-4 text-muted-foreground',
-                isRefetching && 'animate-spin'
-              )}
-            />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={onRefresh}
+                disabled={isRefetching}
+                className={cn(
+                  'flex items-center justify-center h-8 w-8 rounded-md border border-border',
+                  'hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring',
+                  'transition-colors',
+                  isRefetching && 'opacity-50 cursor-not-allowed'
+                )}
+              >
+                <RefreshCw
+                  className={cn(
+                    'h-4 w-4 text-muted-foreground',
+                    isRefetching && 'animate-spin'
+                  )}
+                />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Refresh pull requests</TooltipContent>
+          </Tooltip>
         </div>
         <div className="flex items-center gap-2">
           <Checkbox
@@ -1002,8 +1209,8 @@ function GitHubPRsTab({
           </div>
         )}
 
-        {error && (
-          isGhAuthError(error) ? (
+        {error &&
+          (isGhAuthError(error) ? (
             <GhAuthError onLogin={onGhLogin} isGhInstalled={isGhInstalled} />
           ) : (
             <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
@@ -1012,13 +1219,14 @@ function GitHubPRsTab({
                 {error.message || 'Failed to load pull requests'}
               </span>
             </div>
-          )
-        )}
+          ))}
 
         {!isLoading && !error && prs.length === 0 && !isSearching && (
           <div className="flex items-center justify-center py-8">
             <span className="text-sm text-muted-foreground">
-              {searchQuery ? 'No PRs match your search' : 'No open pull requests found'}
+              {searchQuery
+                ? 'No PRs match your search'
+                : 'No open pull requests found'}
             </span>
           </div>
         )}
@@ -1085,7 +1293,7 @@ function IssueItem({
       data-item-index={index}
       onMouseEnter={onMouseEnter}
       className={cn(
-        'group w-full flex items-start gap-3 px-3 py-2 text-left transition-colors',
+        'group w-full flex items-start gap-3 px-3 py-2.5 sm:py-2 text-left transition-colors',
         'hover:bg-accent',
         isSelected && 'bg-accent',
         isCreating && 'opacity-50'
@@ -1109,6 +1317,11 @@ function IssueItem({
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground">#{issue.number}</span>
           <span className="text-sm font-medium truncate">{issue.title}</span>
+          {isNewIssue(issue.created_at) && (
+            <span className="shrink-0 rounded-full bg-green-500/10 px-1.5 py-0.5 text-[10px] font-medium text-green-600 border border-green-500/20">
+              New
+            </span>
+          )}
         </div>
         {issue.labels.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-1">
@@ -1134,22 +1347,26 @@ function IssueItem({
         )}
       </button>
       {/* Investigate button - always visible */}
-      <button
-        onClick={e => {
-          e.stopPropagation()
-          onInvestigate()
-        }}
-        disabled={isCreating}
-        title="Create worktree and investigate issue"
-        className={cn(
-          'opacity-50 hover:opacity-100 transition-opacity',
-          'p-1.5 rounded-md hover:bg-accent-foreground/10',
-          'focus:outline-none focus:opacity-100',
-          'disabled:opacity-30 disabled:cursor-not-allowed'
-        )}
-      >
-        <Wand2 className="h-4 w-4 text-muted-foreground" />
-      </button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            onClick={e => {
+              e.stopPropagation()
+              onInvestigate()
+            }}
+            disabled={isCreating}
+            className={cn(
+              'opacity-50 hover:opacity-100 transition-opacity',
+              'p-2.5 sm:p-1.5 rounded-md hover:bg-accent-foreground/10',
+              'focus:outline-none focus:opacity-100',
+              'disabled:opacity-30 disabled:cursor-not-allowed'
+            )}
+          >
+            <Wand2 className="h-4 w-4 text-muted-foreground" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>Create worktree and investigate issue</TooltipContent>
+      </Tooltip>
     </div>
   )
 }
@@ -1178,7 +1395,7 @@ function PRItem({
       data-item-index={index}
       onMouseEnter={onMouseEnter}
       className={cn(
-        'group w-full flex items-start gap-3 px-3 py-2 text-left transition-colors',
+        'group w-full flex items-start gap-3 px-3 py-2.5 sm:py-2 text-left transition-colors',
         'hover:bg-accent',
         isSelected && 'bg-accent',
         isCreating && 'opacity-50'
@@ -1190,7 +1407,11 @@ function PRItem({
         <GitPullRequest
           className={cn(
             'h-4 w-4 mt-0.5 flex-shrink-0',
-            pr.state === 'OPEN' ? 'text-green-500' : pr.state === 'MERGED' ? 'text-purple-500' : 'text-red-500'
+            pr.state === 'OPEN'
+              ? 'text-green-500'
+              : pr.state === 'MERGED'
+                ? 'text-purple-500'
+                : 'text-red-500'
           )}
         />
       )}
@@ -1237,23 +1458,191 @@ function PRItem({
         )}
       </button>
       {/* Investigate button - always visible */}
-      <button
-        onClick={e => {
-          e.stopPropagation()
-          onInvestigate()
-        }}
-        disabled={isCreating}
-        title="Create worktree and investigate PR"
-        className={cn(
-          'opacity-50 hover:opacity-100 transition-opacity',
-          'p-1.5 rounded-md hover:bg-accent-foreground/10',
-          'focus:outline-none focus:opacity-100',
-          'disabled:opacity-30 disabled:cursor-not-allowed'
-        )}
-      >
-        <Wand2 className="h-4 w-4 text-muted-foreground" />
-      </button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            onClick={e => {
+              e.stopPropagation()
+              onInvestigate()
+            }}
+            disabled={isCreating}
+            className={cn(
+              'opacity-50 hover:opacity-100 transition-opacity',
+              'p-2.5 sm:p-1.5 rounded-md hover:bg-accent-foreground/10',
+              'focus:outline-none focus:opacity-100',
+              'disabled:opacity-30 disabled:cursor-not-allowed'
+            )}
+          >
+            <Wand2 className="h-4 w-4 text-muted-foreground" />
+            <kbd className="hidden sm:inline text-[10px] text-muted-foreground bg-muted px-1 py-0.5 rounded">
+              M
+            </kbd>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>Create worktree and investigate PR</TooltipContent>
+      </Tooltip>
     </div>
+  )
+}
+
+export interface BranchesTabProps {
+  searchQuery: string
+  setSearchQuery: (query: string) => void
+  branches: string[]
+  isLoading: boolean
+  isRefetching: boolean
+  error: Error | null
+  onRefresh: () => void
+  selectedIndex: number
+  setSelectedIndex: (index: number) => void
+  onSelectBranch: (branchName: string) => void
+  creatingFromBranch: string | null
+  searchInputRef: React.RefObject<HTMLInputElement | null>
+}
+
+export function BranchesTab({
+  searchQuery,
+  setSearchQuery,
+  branches,
+  isLoading,
+  isRefetching,
+  error,
+  onRefresh,
+  selectedIndex,
+  setSelectedIndex,
+  onSelectBranch,
+  creatingFromBranch,
+  searchInputRef,
+}: BranchesTabProps) {
+  return (
+    <div className="flex flex-col flex-1 min-h-0">
+      {/* Search and refresh */}
+      <div className="p-3 border-b border-border">
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              ref={searchInputRef}
+              type="text"
+              placeholder="Search branches..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="pl-9 h-8 text-sm"
+            />
+          </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={onRefresh}
+                disabled={isRefetching}
+                className={cn(
+                  'flex items-center justify-center h-8 w-8 rounded-md border border-border',
+                  'hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring',
+                  'transition-colors',
+                  isRefetching && 'opacity-50 cursor-not-allowed'
+                )}
+              >
+                <RefreshCw
+                  className={cn(
+                    'h-4 w-4 text-muted-foreground',
+                    isRefetching && 'animate-spin'
+                  )}
+                />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Refresh branches</TooltipContent>
+          </Tooltip>
+        </div>
+      </div>
+
+      {/* Branch list */}
+      <ScrollArea className="flex-1">
+        {isLoading && (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            <span className="ml-2 text-sm text-muted-foreground">
+              Loading branches...
+            </span>
+          </div>
+        )}
+
+        {error && (
+          <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
+            <AlertCircle className="h-5 w-5 text-destructive mb-2" />
+            <span className="text-sm text-muted-foreground">
+              {error.message || 'Failed to load branches'}
+            </span>
+          </div>
+        )}
+
+        {!isLoading && !error && branches.length === 0 && (
+          <div className="flex items-center justify-center py-8">
+            <span className="text-sm text-muted-foreground">
+              {searchQuery
+                ? 'No branches match your search'
+                : 'No branches found'}
+            </span>
+          </div>
+        )}
+
+        {!isLoading && !error && branches.length > 0 && (
+          <div className="py-1">
+            {branches.map((branch, index) => (
+              <BranchItem
+                key={branch}
+                branch={branch}
+                index={index}
+                isSelected={index === selectedIndex}
+                isCreating={creatingFromBranch === branch}
+                onMouseEnter={() => setSelectedIndex(index)}
+                onClick={() => onSelectBranch(branch)}
+              />
+            ))}
+          </div>
+        )}
+      </ScrollArea>
+    </div>
+  )
+}
+
+interface BranchItemProps {
+  branch: string
+  index: number
+  isSelected: boolean
+  isCreating: boolean
+  onMouseEnter: () => void
+  onClick: () => void
+}
+
+function BranchItem({
+  branch,
+  index,
+  isSelected,
+  isCreating,
+  onMouseEnter,
+  onClick,
+}: BranchItemProps) {
+  return (
+    <button
+      data-item-index={index}
+      onMouseEnter={onMouseEnter}
+      onClick={onClick}
+      disabled={isCreating}
+      className={cn(
+        'w-full flex items-center gap-3 px-3 py-2.5 sm:py-2 text-left transition-colors',
+        'hover:bg-accent',
+        isSelected && 'bg-accent',
+        isCreating && 'opacity-50',
+        'focus:outline-none disabled:cursor-not-allowed'
+      )}
+    >
+      {isCreating ? (
+        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground flex-shrink-0" />
+      ) : (
+        <GitBranch className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+      )}
+      <span className="text-sm truncate">{branch}</span>
+    </button>
   )
 }
 

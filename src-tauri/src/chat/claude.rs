@@ -1,10 +1,13 @@
 use tauri::Manager;
 
-use super::types::{CompactMetadata, ContentBlock, ThinkingLevel, ToolCall, UsageData};
+use super::types::{
+    CompactMetadata, ContentBlock, EffortLevel, ThinkingLevel, ToolCall, UsageData,
+};
 use crate::http_server::EmitExt;
 use crate::projects::github_issues::{
     get_github_contexts_dir, get_worktree_issue_refs, get_worktree_pr_refs,
 };
+use crate::projects::storage::load_projects_data;
 
 // =============================================================================
 // Claude CLI execution
@@ -147,10 +150,13 @@ fn build_claude_args(
     model: Option<&str>,
     execution_mode: Option<&str>,
     thinking_level: Option<&ThinkingLevel>,
+    effort_level: Option<&EffortLevel>,
     allowed_tools: Option<&[String]>,
     disable_thinking_in_non_plan_modes: bool,
-    parallel_execution_prompt_enabled: bool,
+    parallel_execution_prompt: Option<&str>,
     ai_language: Option<&str>,
+    mcp_config: Option<&str>,
+    chrome_enabled: bool,
 ) -> (Vec<String>, Vec<(String, String)>) {
     let mut args = Vec::new();
     let mut env_vars = Vec::new();
@@ -213,32 +219,47 @@ fn build_claude_args(
     args.push("--permission-mode".to_string());
     args.push(perm_mode.to_string());
 
-    // Thinking configuration
-    // If disable_thinking_in_non_plan_modes is true and mode is build/yolo, force thinking off
-    let effective_thinking_level = if disable_thinking_in_non_plan_modes {
+    // Thinking/Effort configuration
+    // If disable_thinking_in_non_plan_modes is true and mode is build/yolo, force off
+    let is_non_plan_override = disable_thinking_in_non_plan_modes && {
         let mode = execution_mode.unwrap_or("plan");
-        if mode == "build" || mode == "yolo" {
-            // Override to off for non-plan modes
+        mode == "build" || mode == "yolo"
+    };
+
+    if let Some(effort) = effort_level {
+        // Opus 4.6 adaptive thinking: use effort parameter via --settings JSON
+        let effective_effort = if is_non_plan_override {
+            &EffortLevel::Off
+        } else {
+            effort
+        };
+
+        if let Some(effort_value) = effective_effort.effort_value() {
+            let settings = format!(r#"{{"effortLevel": "{effort_value}"}}"#);
+            args.push("--settings".to_string());
+            args.push(settings);
+        }
+        // If Off, don't send any thinking/effort settings
+    } else {
+        // Traditional thinking levels (Opus 4.5, Sonnet, Haiku)
+        let effective_thinking_level = if is_non_plan_override {
             Some(&ThinkingLevel::Off)
         } else {
             thinking_level
-        }
-    } else {
-        thinking_level
-    };
-
-    // Thinking configuration via --settings (only thinking, no permissions to avoid overwriting)
-    if let Some(level) = effective_thinking_level {
-        let settings = if level.is_enabled() {
-            r#"{"alwaysThinkingEnabled": true}"#
-        } else {
-            r#"{"alwaysThinkingEnabled": false}"#
         };
-        args.push("--settings".to_string());
-        args.push(settings.to_string());
 
-        if let Some(tokens) = level.thinking_tokens() {
-            env_vars.push(("MAX_THINKING_TOKENS".to_string(), tokens.to_string()));
+        if let Some(level) = effective_thinking_level {
+            let settings = if level.is_enabled() {
+                r#"{"alwaysThinkingEnabled": true}"#
+            } else {
+                r#"{"alwaysThinkingEnabled": false}"#
+            };
+            args.push("--settings".to_string());
+            args.push(settings.to_string());
+
+            if let Some(tokens) = level.thinking_tokens() {
+                env_vars.push(("MAX_THINKING_TOKENS".to_string(), tokens.to_string()));
+            }
         }
     }
 
@@ -259,6 +280,30 @@ fn build_claude_args(
     args.push("--allowedTools".to_string());
     args.push("Bash(*claude-cli/claude*)".to_string());
 
+    // MCP server configuration
+    if let Some(config) = mcp_config {
+        if !config.is_empty() {
+            args.push("--mcp-config".to_string());
+            args.push(config.to_string());
+
+            // Auto-allow all tools from configured MCP servers
+            // Pattern "mcp__<name>" matches all tools from that server
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(config) {
+                if let Some(servers) = parsed.get("mcpServers").and_then(|v| v.as_object()) {
+                    for server_name in servers.keys() {
+                        args.push("--allowedTools".to_string());
+                        args.push(format!("mcp__{server_name}"));
+                    }
+                }
+            }
+        }
+    }
+
+    // Chrome browser integration (beta)
+    if chrome_enabled {
+        args.push("--chrome".to_string());
+    }
+
     // Build combined system prompt parts
     // Claude CLI only uses the LAST --append-system-prompt, so we must combine all prompts
     let mut system_prompt_parts: Vec<String> = Vec::new();
@@ -272,12 +317,25 @@ fn build_claude_args(
     }
 
     // Parallel execution prompt - encourages sub-agent parallelization
-    if parallel_execution_prompt_enabled {
-        system_prompt_parts.push(
-            "In plan mode, structure plans so sub-agents can work simultaneously. \
-             In build/execute mode, use sub-agents in parallel for faster implementation."
-                .to_string(),
-        );
+    if let Some(prompt) = parallel_execution_prompt {
+        let prompt = prompt.trim();
+        if !prompt.is_empty() {
+            system_prompt_parts.push(prompt.to_string());
+        }
+    }
+
+    // Per-project custom system prompt
+    if let Ok(data) = load_projects_data(app) {
+        if let Some(worktree) = data.find_worktree(worktree_id) {
+            if let Some(project) = data.find_project(&worktree.project_id) {
+                if let Some(prompt) = &project.custom_system_prompt {
+                    let prompt = prompt.trim();
+                    if !prompt.is_empty() {
+                        system_prompt_parts.push(prompt.to_string());
+                    }
+                }
+            }
+        }
     }
 
     // Embedded gh CLI path - tell Claude to use the app's bundled binary
@@ -472,6 +530,14 @@ fn build_claude_args(
         args.push(claude_sid.to_string());
     }
 
+    // Disable background tasks - forces all Task sub-agents to run in foreground.
+    // Background tasks are killed when --print mode exits the CLI process.
+    // Foreground tasks still run in parallel when called in the same message.
+    env_vars.push((
+        "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS".to_string(),
+        "1".to_string(),
+    ));
+
     // Debug env vars
     env_vars.push(("JEAN_SESSION_ID".to_string(), session_id.to_string()));
     env_vars.push(("JEAN_WORKTREE_ID".to_string(), worktree_id.to_string()));
@@ -507,10 +573,13 @@ pub fn execute_claude_detached(
     model: Option<&str>,
     execution_mode: Option<&str>,
     thinking_level: Option<&ThinkingLevel>,
+    effort_level: Option<&EffortLevel>,
     allowed_tools: Option<&[String]>,
     disable_thinking_in_non_plan_modes: bool,
-    parallel_execution_prompt_enabled: bool,
+    parallel_execution_prompt: Option<&str>,
     ai_language: Option<&str>,
+    mcp_config: Option<&str>,
+    chrome_enabled: bool,
 ) -> Result<(u32, ClaudeResponse), String> {
     use super::detached::spawn_detached_claude;
     use crate::claude_cli::get_cli_binary_path;
@@ -556,10 +625,13 @@ pub fn execute_claude_detached(
         model,
         execution_mode,
         thinking_level,
+        effort_level,
         allowed_tools,
         disable_thinking_in_non_plan_modes,
-        parallel_execution_prompt_enabled,
+        parallel_execution_prompt,
         ai_language,
+        mcp_config,
+        chrome_enabled,
     );
 
     // Log the full Claude CLI command for debugging
@@ -653,7 +725,6 @@ pub fn tail_claude_output(
     let mut claude_session_id = String::new();
     let mut tool_calls: Vec<ToolCall> = Vec::new();
     let mut content_blocks: Vec<ContentBlock> = Vec::new();
-    let mut current_parent_tool_use_id: Option<String> = None;
     let mut completed = false;
     let mut cancelled = false;
     let mut usage: Option<UsageData> = None;
@@ -710,9 +781,11 @@ pub fn tail_claude_output(
             }
 
             // Track parent_tool_use_id for sub-agent tool calls
-            if let Some(parent_id) = msg.get("parent_tool_use_id").and_then(|v| v.as_str()) {
-                current_parent_tool_use_id = Some(parent_id.to_string());
-            }
+            // Must reset to None for root-level messages, otherwise parallel Tasks get wrong parent
+            let current_parent_tool_use_id = msg
+                .get("parent_tool_use_id")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
 
             let msg_type = msg.get("type").and_then(|v| v.as_str()).unwrap_or("");
 
@@ -797,7 +870,9 @@ pub fn tail_claude_output(
                                             worktree_id: worktree_id.to_string(),
                                             tool_call_id: id.clone(),
                                         };
-                                        if let Err(e) = app.emit_all("chat:tool_block", &block_event) {
+                                        if let Err(e) =
+                                            app.emit_all("chat:tool_block", &block_event)
+                                        {
                                             log::error!("Failed to emit tool_block: {e}");
                                         }
 
@@ -874,14 +949,38 @@ pub fn tail_claude_output(
                                         .get("tool_use_id")
                                         .and_then(|v| v.as_str())
                                         .unwrap_or("");
-                                    let output =
-                                        block.get("content").and_then(|v| v.as_str()).unwrap_or("");
+                                    // Content can be a string OR an array of content blocks
+                                    let output = block
+                                        .get("content")
+                                        .map(|v| {
+                                            if let Some(s) = v.as_str() {
+                                                s.to_string()
+                                            } else if let Some(arr) = v.as_array() {
+                                                arr.iter()
+                                                    .filter_map(|item| {
+                                                        if item.get("type").and_then(|t| t.as_str())
+                                                            == Some("text")
+                                                        {
+                                                            item.get("text")
+                                                                .and_then(|t| t.as_str())
+                                                                .map(|s| s.to_string())
+                                                        } else {
+                                                            None
+                                                        }
+                                                    })
+                                                    .collect::<Vec<_>>()
+                                                    .join("\n")
+                                            } else {
+                                                String::new()
+                                            }
+                                        })
+                                        .unwrap_or_default();
 
                                     // Update matching tool call's output
                                     if let Some(tc) =
                                         tool_calls.iter_mut().find(|t| t.id == tool_id)
                                     {
-                                        tc.output = Some(output.to_string());
+                                        tc.output = Some(output.clone());
                                     }
 
                                     // Emit tool_result event
@@ -889,7 +988,7 @@ pub fn tail_claude_output(
                                         session_id: session_id.to_string(),
                                         worktree_id: worktree_id.to_string(),
                                         tool_use_id: tool_id.to_string(),
-                                        output: output.to_string(),
+                                        output,
                                     };
                                     if let Err(e) = app.emit_all("chat:tool_result", &event) {
                                         log::error!("Failed to emit tool_result: {e}");
@@ -1013,7 +1112,9 @@ pub fn tail_claude_output(
 
                         // Emit compacted event with metadata if available
                         if let Some(metadata_val) = msg.get("compactMetadata") {
-                            if let Ok(metadata) = serde_json::from_value::<CompactMetadata>(metadata_val.clone()) {
+                            if let Ok(metadata) =
+                                serde_json::from_value::<CompactMetadata>(metadata_val.clone())
+                            {
                                 let compacted_event = CompactedEvent {
                                     session_id: session_id.to_string(),
                                     worktree_id: worktree_id.to_string(),

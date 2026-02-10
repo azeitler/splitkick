@@ -17,7 +17,9 @@ import {
 
 export function PathConflictModal() {
   const pathConflictData = useUIStore(state => state.pathConflictData)
-  const closePathConflictModal = useUIStore(state => state.closePathConflictModal)
+  const closePathConflictModal = useUIStore(
+    state => state.closePathConflictModal
+  )
 
   const unarchiveWorktree = useUnarchiveWorktree()
   const importWorktree = useImportWorktree()
@@ -80,7 +82,8 @@ export function PathConflictModal() {
               </>
             ) : (
               <>
-                A directory already exists at this path. What would you like to do?
+                A directory already exists at this path. What would you like to
+                do?
               </>
             )}
           </DialogDescription>

@@ -104,10 +104,12 @@ function OnboardingDialogContent() {
 
   // Stable terminal IDs for auth login steps (created once per dialog open)
   const claudeLoginTerminalId = useMemo(
+    // eslint-disable-next-line react-hooks/purity
     () => `onboarding-claude-login-${Date.now()}`,
     []
   )
   const ghLoginTerminalId = useMemo(
+    // eslint-disable-next-line react-hooks/purity
     () => `onboarding-gh-login-${Date.now()}`,
     []
   )
@@ -366,7 +368,8 @@ function OnboardingDialogContent() {
     if (step === 'complete') {
       return {
         title: 'Setup Complete',
-        description: 'All required tools have been installed and authenticated.',
+        description:
+          'All required tools have been installed and authenticated.',
         showClose: true,
       }
     }
@@ -383,10 +386,7 @@ function OnboardingDialogContent() {
       }
     }
 
-    if (
-      step === 'claude-auth-checking' ||
-      step === 'claude-auth-login'
-    ) {
+    if (step === 'claude-auth-checking' || step === 'claude-auth-login') {
       return {
         title: 'Authenticate Claude CLI',
         description: 'Claude CLI requires authentication to function.',

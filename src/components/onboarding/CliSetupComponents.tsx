@@ -93,7 +93,9 @@ export function SetupState({
           </Select>
         )}
         <p className="text-xs text-muted-foreground">
-          {cliName} will be installed in Jean&apos;s application data folder.
+          {cliName} will be installed separately in Jean&apos;s application data
+          folder — it won&apos;t affect your global installation. Authentication
+          and configuration from your global {cliName} setup will be used.
         </p>
       </div>
 
@@ -265,7 +267,9 @@ export function AuthLoginState({
       if (observerRef.current) {
         observerRef.current.disconnect()
       }
-      invoke('stop_terminal', { terminalId }).catch(() => {})
+      invoke('stop_terminal', { terminalId }).catch(() => {
+        /* noop */
+      })
       disposeTerminal(terminalId)
     }
   }, [terminalId])
@@ -286,7 +290,7 @@ export function AuthLoginState({
 
       <div className="flex gap-2">
         <Button onClick={onComplete} className="flex-1" size="lg">
-          I've Completed Login
+          I&apos;ve Completed Login
         </Button>
         {onSkip && (
           <Button

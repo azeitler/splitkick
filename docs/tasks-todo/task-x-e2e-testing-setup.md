@@ -24,6 +24,7 @@ npx playwright install chromium
 ### Files to create
 
 **`playwright.config.ts`:**
+
 ```typescript
 import { defineConfig } from '@playwright/test'
 
@@ -39,6 +40,7 @@ export default defineConfig({
 ```
 
 **`src/main.tsx` addition:**
+
 ```typescript
 if (import.meta.env.VITE_PLAYWRIGHT === 'true') {
   const { mockIPC } = await import('@tauri-apps/api/mocks')
@@ -50,6 +52,7 @@ if (import.meta.env.VITE_PLAYWRIGHT === 'true') {
 ```
 
 **`e2e/chat.spec.ts`:**
+
 ```typescript
 import { test, expect } from '@playwright/test'
 
@@ -81,6 +84,7 @@ npm install -D @wdio/cli @wdio/local-runner @wdio/mocha-framework
 ### Files to create
 
 **`wdio.conf.js`:**
+
 ```javascript
 import { spawn } from 'child_process'
 
@@ -97,11 +101,13 @@ export const config = {
 
   afterSession: () => tauriDriver?.kill(),
 
-  capabilities: [{
-    'tauri:options': {
-      application: './src-tauri/target/debug/jean'
-    }
-  }]
+  capabilities: [
+    {
+      'tauri:options': {
+        application: './src-tauri/target/debug/jean',
+      },
+    },
+  ],
 }
 ```
 
@@ -117,6 +123,7 @@ npx wdio run wdio.conf.js
 ## Recommendation
 
 For **macOS**, use **Option A (Playwright + mocks)**:
+
 - Works on macOS
 - Tests UI workflows with controlled backend responses
 - Fast iteration (no full build needed)

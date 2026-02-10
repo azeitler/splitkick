@@ -28,7 +28,13 @@ import {
 } from '@pierre/diffs'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
+import { generateId } from '@/lib/uuid'
 import { getFilename } from '@/lib/path-utils'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip'
 import { getGitDiff } from '@/services/git-status'
 import { useTheme } from '@/hooks/use-theme'
 import { usePreferences } from '@/services/preferences'
@@ -265,7 +271,8 @@ const CommentInputBar = memo(function CommentInputBar({
     <div className="flex items-center gap-2 px-3 h-10 bg-muted rounded-md border border-border">
       <MessageSquarePlus className="h-4 w-4 text-muted-foreground shrink-0" />
       <span className="text-xs text-muted-foreground shrink-0">
-        {activeFileName ? getFilename(activeFileName) : ''}:{selectedRange.start}
+        {activeFileName ? getFilename(activeFileName) : ''}:
+        {selectedRange.start}
         {selectedRange.end !== selectedRange.start && `-${selectedRange.end}`}
       </span>
       <input
@@ -433,7 +440,7 @@ export function GitDiffModal({
       if (!selectedRange || !activeFileName || !commentText) return
 
       const newComment: DiffComment = {
-        id: crypto.randomUUID(),
+        id: generateId(),
         fileName: activeFileName,
         side: selectedRange.side ?? 'additions',
         startLine: Math.min(selectedRange.start, selectedRange.end),
@@ -652,23 +659,27 @@ export function GitDiffModal({
     <Dialog open={!!diffRequest} onOpenChange={open => !open && onClose()}>
       <DialogContent
         ref={dialogContentRef}
-        className="!max-w-[calc(100vw-4rem)] !w-[calc(100vw-4rem)] h-[85vh] p-4 bg-background/95 backdrop-blur-sm overflow-hidden flex flex-col"
+        className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none p-0 sm:!w-[calc(100vw-4rem)] sm:!max-w-[calc(100vw-4rem)] sm:!h-[85vh] sm:!rounded-lg sm:p-4 bg-background/95 backdrop-blur-sm overflow-hidden flex flex-col"
         style={{ fontSize: 'var(--ui-font-size)' }}
       >
         <DialogTitle className="flex items-center gap-2 shrink-0">
           <FileText className="h-4 w-4" />
           {title}
-          <button
-            type="button"
-            onClick={() => diffRequest && loadDiff(diffRequest, true)}
-            disabled={isLoading}
-            className="p-1 text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors disabled:opacity-50"
-            title="Refresh diff"
-          >
-            <RefreshCw
-              className={cn('h-3.5 w-3.5', isLoading && 'animate-spin')}
-            />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={() => diffRequest && loadDiff(diffRequest, true)}
+                disabled={isLoading}
+                className="p-1 text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors disabled:opacity-50"
+              >
+                <RefreshCw
+                  className={cn('h-3.5 w-3.5', isLoading && 'animate-spin')}
+                />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Refresh diff</TooltipContent>
+          </Tooltip>
           <div className="flex items-center gap-3">
             {diff && (
               <span className="text-muted-foreground font-normal text-xs">
@@ -688,34 +699,42 @@ export function GitDiffModal({
             )}
             {/* View mode toggle */}
             <div className="flex items-center bg-muted rounded-lg p-1">
-              <button
-                type="button"
-                onClick={() => setDiffStyle('split')}
-                className={cn(
-                  'flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors',
-                  diffStyle === 'split'
-                    ? 'bg-background shadow-sm text-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                )}
-                title="Side-by-side view"
-              >
-                <Columns2 className="h-3.5 w-3.5" />
-                Split
-              </button>
-              <button
-                type="button"
-                onClick={() => setDiffStyle('unified')}
-                className={cn(
-                  'flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors',
-                  diffStyle === 'unified'
-                    ? 'bg-background shadow-sm text-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                )}
-                title="Unified view"
-              >
-                <Rows3 className="h-3.5 w-3.5" />
-                Stacked
-              </button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => setDiffStyle('split')}
+                    className={cn(
+                      'flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors',
+                      diffStyle === 'split'
+                        ? 'bg-background shadow-sm text-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    <Columns2 className="h-3.5 w-3.5" />
+                    Split
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Side-by-side view</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => setDiffStyle('unified')}
+                    className={cn(
+                      'flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors',
+                      diffStyle === 'unified'
+                        ? 'bg-background shadow-sm text-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    <Rows3 className="h-3.5 w-3.5" />
+                    Stacked
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Unified view</TooltipContent>
+              </Tooltip>
             </div>
             {/* Execute and Edit buttons */}
             {comments.length > 0 && (onAddToPrompt || onExecutePrompt) && (
@@ -811,38 +830,41 @@ export function GitDiffModal({
                   const displayName = getFilename(file.fileName)
 
                   return (
-                    <button
-                      key={file.key}
-                      type="button"
-                      data-index={index}
-                      onClick={() => handleSelectFile(index)}
-                      className={cn(
-                        'w-full flex items-center gap-2 px-3 py-2 text-left transition-colors',
-                        'hover:bg-muted/50',
-                        isSelected && 'bg-accent'
-                      )}
-                      title={file.fileName}
-                    >
-                      <FileText
-                        className={cn(
-                          'h-[1em] w-[1em] shrink-0',
-                          getStatusColor(file.fileDiff.type)
-                        )}
-                      />
-                      <span className="truncate flex-1">{displayName}</span>
-                      <div className="flex items-center gap-1 shrink-0">
-                        {file.additions > 0 && (
-                          <span className="text-green-500">
-                            +{file.additions}
-                          </span>
-                        )}
-                        {file.deletions > 0 && (
-                          <span className="text-red-500">
-                            -{file.deletions}
-                          </span>
-                        )}
-                      </div>
-                    </button>
+                    <Tooltip key={file.key}>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          data-index={index}
+                          onClick={() => handleSelectFile(index)}
+                          className={cn(
+                            'w-full flex items-center gap-2 px-3 py-2 text-left transition-colors',
+                            'hover:bg-muted/50',
+                            isSelected && 'bg-accent'
+                          )}
+                        >
+                          <FileText
+                            className={cn(
+                              'h-[1em] w-[1em] shrink-0',
+                              getStatusColor(file.fileDiff.type)
+                            )}
+                          />
+                          <span className="truncate flex-1">{displayName}</span>
+                          <div className="flex items-center gap-1 shrink-0">
+                            {file.additions > 0 && (
+                              <span className="text-green-500">
+                                +{file.additions}
+                              </span>
+                            )}
+                            {file.deletions > 0 && (
+                              <span className="text-red-500">
+                                -{file.deletions}
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>{file.fileName}</TooltipContent>
+                    </Tooltip>
                   )
                 })}
               </div>

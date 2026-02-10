@@ -1,14 +1,23 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { Copy, Eye, EyeOff, ExternalLink, RefreshCw } from 'lucide-react'
+import {
+  Copy,
+  Eye,
+  EyeOff,
+  ExternalLink,
+  RefreshCw,
+  ShieldAlert,
+} from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { usePreferences, useSavePreferences } from '@/services/preferences'
 import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 import { isNativeApp } from '@/lib/environment'
+import { openExternal } from '@/lib/platform'
 
 const SettingsSection: React.FC<{
   title: string
@@ -28,8 +37,8 @@ const InlineField: React.FC<{
   description?: React.ReactNode
   children: React.ReactNode
 }> = ({ label, description, children }) => (
-  <div className="flex items-center gap-4">
-    <div className="w-96 shrink-0 space-y-0.5">
+  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+    <div className="space-y-0.5 sm:w-96 sm:shrink-0">
       <Label className="text-sm text-foreground">{label}</Label>
       {description && (
         <div className="text-xs text-muted-foreground">{description}</div>
@@ -90,15 +99,26 @@ export const WebAccessPane: React.FC = () => {
     }
   }, [preferences, serverStatus?.running, refreshStatus])
 
-  const handlePortChange = useCallback(
-    (value: string) => {
-      const port = parseInt(value, 10)
-      if (preferences && !isNaN(port) && port >= 1024 && port <= 65535) {
-        savePreferences.mutate({ ...preferences, http_server_port: port })
-      }
-    },
-    [savePreferences, preferences]
+  const [portInput, setPortInput] = useState(
+    String(preferences?.http_server_port ?? 3456)
   )
+
+  // Sync local state when preferences load/change externally
+  useEffect(() => {
+    if (preferences?.http_server_port != null) {
+      setPortInput(String(preferences.http_server_port))
+    }
+  }, [preferences?.http_server_port])
+
+  const handlePortBlur = useCallback(() => {
+    const port = parseInt(portInput, 10)
+    if (preferences && !isNaN(port) && port >= 1024 && port <= 65535) {
+      savePreferences.mutate({ ...preferences, http_server_port: port })
+    } else {
+      // Reset to current preference value on invalid input
+      setPortInput(String(preferences?.http_server_port ?? 3456))
+    }
+  }, [portInput, savePreferences, preferences])
 
   const handleRegenerateToken = useCallback(async () => {
     try {
@@ -113,12 +133,19 @@ export const WebAccessPane: React.FC = () => {
     }
   }, [savePreferences, preferences, refreshStatus])
 
-  const handleCopyUrl = useCallback((url: string) => {
-    if (!serverStatus?.token) return
-    const fullUrl = `${url}?token=${serverStatus.token}`
-    navigator.clipboard.writeText(fullUrl)
-    toast.success('URL copied to clipboard')
-  }, [serverStatus?.token])
+  const tokenRequired = preferences?.http_server_token_required ?? true
+
+  const handleCopyUrl = useCallback(
+    (url: string) => {
+      const fullUrl =
+        tokenRequired && serverStatus?.token
+          ? `${url}?token=${serverStatus.token}`
+          : url
+      navigator.clipboard.writeText(fullUrl)
+      toast.success('URL copied to clipboard')
+    },
+    [serverStatus?.token, tokenRequired]
+  )
 
   const handleLocalhostOnlyChange = useCallback(
     async (checked: boolean) => {
@@ -149,10 +176,38 @@ export const WebAccessPane: React.FC = () => {
   )
 
   const handleCopyToken = useCallback(() => {
-    if (!serverStatus?.token) return
-    navigator.clipboard.writeText(serverStatus.token)
+    const token = serverStatus?.token ?? preferences?.http_server_token
+    if (!token) return
+    navigator.clipboard.writeText(token)
     toast.success('Token copied to clipboard')
-  }, [serverStatus])
+  }, [serverStatus, preferences?.http_server_token])
+
+  const handleTokenRequiredChange = useCallback(
+    async (checked: boolean) => {
+      if (!preferences) return
+      savePreferences.mutate({
+        ...preferences,
+        http_server_token_required: checked,
+      })
+
+      // Restart server if currently running to apply the change
+      if (serverStatus?.running) {
+        setIsToggling(true)
+        try {
+          await invoke('stop_http_server')
+          await new Promise(resolve => setTimeout(resolve, 100))
+          await invoke('start_http_server')
+          await refreshStatus()
+          toast.success('Server restarted with new authentication setting')
+        } catch (error) {
+          toast.error(`Failed to restart server: ${error}`)
+        } finally {
+          setIsToggling(false)
+        }
+      }
+    },
+    [preferences, savePreferences, serverStatus?.running, refreshStatus]
+  )
 
   if (!isNativeApp()) {
     return (
@@ -168,8 +223,9 @@ export const WebAccessPane: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-lg border border-muted p-4">
+      <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 p-4">
         <p className="text-sm text-muted-foreground">
+          <strong className="text-yellow-600 dark:text-yellow-400">Experimental.</strong>{' '}
           Enable HTTP server to access Jean from a web browser on your local
           network. All commands are routed over WebSocket with token
           authentication.
@@ -190,10 +246,11 @@ export const WebAccessPane: React.FC = () => {
               />
               <div className="flex items-center gap-1.5">
                 <div
-                  className={`h-2 w-2 rounded-full ${serverStatus?.running
+                  className={`h-2 w-2 rounded-full ${
+                    serverStatus?.running
                       ? 'bg-green-500'
                       : 'bg-muted-foreground/40'
-                    }`}
+                  }`}
                 />
                 <span className="text-xs text-muted-foreground">
                   {serverStatus?.running ? 'Running' : 'Stopped'}
@@ -211,8 +268,9 @@ export const WebAccessPane: React.FC = () => {
               min={1024}
               max={65535}
               className="w-28"
-              value={preferences?.http_server_port ?? 3456}
-              onChange={e => handlePortChange(e.target.value)}
+              value={portInput}
+              onChange={e => setPortInput(e.target.value)}
+              onBlur={handlePortBlur}
               disabled={serverStatus?.running}
             />
           </InlineField>
@@ -250,39 +308,63 @@ export const WebAccessPane: React.FC = () => {
       <SettingsSection title="Authentication">
         <div className="space-y-4">
           <InlineField
-            label="Access token"
-            description="Token required to connect via browser"
+            label="Require access token"
+            description="Require token authentication for web access"
           >
-            <div className="flex items-center gap-2">
-              <Input
-                type={tokenVisible ? 'text' : 'password'}
-                className="w-64 font-mono text-xs"
-                value={serverStatus?.token ?? ''}
-                readOnly
-              />
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setTokenVisible(!tokenVisible)}
-              >
-                {tokenVisible ? (
-                  <EyeOff className="h-4 w-4" />
-                ) : (
-                  <Eye className="h-4 w-4" />
-                )}
-              </Button>
-              <Button variant="ghost" size="icon" onClick={handleCopyToken}>
-                <Copy className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleRegenerateToken}
-              >
-                <RefreshCw className="h-4 w-4" />
-              </Button>
-            </div>
+            <Switch
+              checked={preferences?.http_server_token_required ?? true}
+              onCheckedChange={handleTokenRequiredChange}
+              disabled={isToggling}
+            />
           </InlineField>
+
+          {!tokenRequired && (
+            <div className="flex items-start gap-3 rounded-md border border-amber-500/50 bg-amber-500/10 p-3">
+              <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
+              <div className="text-sm text-amber-600 dark:text-amber-400">
+                <strong>Security Warning:</strong> Anyone on your network can
+                access Jean without authentication. Only disable this on trusted
+                networks.
+              </div>
+            </div>
+          )}
+
+          {tokenRequired && (
+            <InlineField
+              label="Access token"
+              description="Token required to connect via browser"
+            >
+              <div className="flex items-center gap-2">
+                <Input
+                  type={tokenVisible ? 'text' : 'password'}
+                  className="w-64 font-mono text-xs"
+                  value={serverStatus?.token ?? preferences?.http_server_token ?? ''}
+                  readOnly
+                />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setTokenVisible(!tokenVisible)}
+                >
+                  {tokenVisible ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </Button>
+                <Button variant="ghost" size="icon" onClick={handleCopyToken}>
+                  <Copy className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleRegenerateToken}
+                >
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
+              </div>
+            </InlineField>
+          )}
 
           {serverStatus?.running && serverStatus?.port && (
             <InlineField
@@ -298,29 +380,39 @@ export const WebAccessPane: React.FC = () => {
                     value={`http://localhost:${serverStatus.port}`}
                     readOnly
                   />
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() =>
-                      window.open(
-                        `http://localhost:${serverStatus.port}?token=${serverStatus.token}`,
-                        '_blank'
-                      )
-                    }
-                    title="Open in browser"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() =>
-                      handleCopyUrl(`http://localhost:${serverStatus.port}`)
-                    }
-                    title="Copy URL with token"
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          const base = `http://localhost:${serverStatus.port}`
+                          openExternal(
+                            tokenRequired && serverStatus.token
+                              ? `${base}?token=${serverStatus.token}`
+                              : base
+                          )
+                        }}
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Open in browser</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() =>
+                          handleCopyUrl(`http://localhost:${serverStatus.port}`)
+                        }
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Copy URL</TooltipContent>
+                  </Tooltip>
                 </div>
 
                 {/* Network URL - only when not localhost-only */}
@@ -332,27 +424,38 @@ export const WebAccessPane: React.FC = () => {
                       value={serverStatus.url}
                       readOnly
                     />
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() =>
-                        window.open(
-                          `${serverStatus.url}?token=${serverStatus.token}`,
-                          '_blank'
-                        )
-                      }
-                      title="Open in browser"
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleCopyUrl(serverStatus.url!)}
-                      title="Copy URL with token"
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            const base = serverStatus.url ?? ''
+                            openExternal(
+                              tokenRequired && serverStatus.token
+                                ? `${base}?token=${serverStatus.token}`
+                                : base
+                            )
+                          }}
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Open in browser</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                          onClick={() => handleCopyUrl(serverStatus.url!)}
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Copy URL</TooltipContent>
+                    </Tooltip>
                   </div>
                 )}
               </div>

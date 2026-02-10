@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import {
   Archive,
   Code,
@@ -10,8 +9,6 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { invoke } from '@/lib/transport'
-import { toast } from 'sonner'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,23 +26,10 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
-import { isBaseSession, type Worktree } from '@/types/projects'
-import {
-  useArchiveWorktree,
-  useCloseBaseSession,
-  useDeleteWorktree,
-  useOpenWorktreeInFinder,
-  useOpenWorktreeInTerminal,
-  useOpenWorktreeInEditor,
-  useRunScript,
-} from '@/services/projects'
-import { usePreferences } from '@/services/preferences'
-import { useSessions } from '@/services/chat'
+import type { Worktree } from '@/types/projects'
 import { getEditorLabel, getTerminalLabel } from '@/types/preferences'
-import { useTerminalStore } from '@/store/terminal-store'
-import { useChatStore } from '@/store/chat-store'
-import type { SessionDigest } from '@/types/chat'
 import { isNativeApp } from '@/lib/environment'
+import { useWorktreeMenuActions } from './useWorktreeMenuActions'
 
 interface WorktreeContextMenuProps {
   worktree: Worktree
@@ -60,122 +44,30 @@ export function WorktreeContextMenu({
   projectPath,
   children,
 }: WorktreeContextMenuProps) {
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-  const archiveWorktree = useArchiveWorktree()
-  const closeBaseSession = useCloseBaseSession()
-  const deleteWorktree = useDeleteWorktree()
-  const openInFinder = useOpenWorktreeInFinder()
-  const openInTerminal = useOpenWorktreeInTerminal()
-  const openInEditor = useOpenWorktreeInEditor()
-  const { data: runScript } = useRunScript(worktree.path)
-  const { data: preferences } = usePreferences()
-  const { data: sessionsData } = useSessions(worktree.id, worktree.path)
-  const isBase = isBaseSession(worktree)
-
-  // Check if any session has at least one message (for recap generation)
-  const hasMessages = sessionsData?.sessions?.some(
-    session => session.messages.length > 0
-  )
+  const {
+    showDeleteConfirm,
+    setShowDeleteConfirm,
+    isBase,
+    hasMessages,
+    runScript,
+    preferences,
+    handleRun,
+    handleOpenInFinder,
+    handleOpenInTerminal,
+    handleOpenInEditor,
+    handleArchiveOrClose,
+    handleDelete,
+    handleOpenJeanConfig,
+    handleGenerateRecap,
+  } = useWorktreeMenuActions({ worktree, projectId })
 
   // Suppress unused variable warning
   void projectPath
-
-  const handleRun = () => {
-    if (runScript) {
-      useTerminalStore.getState().startRun(worktree.id, runScript)
-    }
-  }
-
-  const handleOpenTerminalPanel = () => {
-    useTerminalStore.getState().addTerminal(worktree.id)
-  }
-
-  const handleOpenInFinder = () => {
-    openInFinder.mutate(worktree.path)
-  }
-
-  const handleOpenInTerminal = () => {
-    openInTerminal.mutate({
-      worktreePath: worktree.path,
-      terminal: preferences?.terminal,
-    })
-  }
-
-  const handleOpenInEditor = () => {
-    openInEditor.mutate({
-      worktreePath: worktree.path,
-      editor: preferences?.editor,
-    })
-  }
-
-  const handleArchiveOrClose = () => {
-    if (isBase) {
-      // Base sessions are closed (removed from list), not archived
-      closeBaseSession.mutate({ worktreeId: worktree.id, projectId })
-    } else {
-      // Regular worktrees are archived (can be restored later)
-      archiveWorktree.mutate({ worktreeId: worktree.id, projectId })
-    }
-  }
-
-  const handleDelete = () => {
-    deleteWorktree.mutate({ worktreeId: worktree.id, projectId })
-    setShowDeleteConfirm(false)
-  }
-
-  const handleOpenJeanConfig = () => {
-    openInEditor.mutate({
-      worktreePath: `${worktree.path}/jean.json`,
-      editor: preferences?.editor,
-    })
-  }
-
-  const handleGenerateRecap = async () => {
-    // Find the most recent session with messages
-    const sessions = sessionsData?.sessions ?? []
-    const sessionWithMessages = sessions.find(s => s.messages.length >= 2)
-
-    if (!sessionWithMessages) {
-      toast.error('No session with enough messages for recap')
-      return
-    }
-
-    const toastId = toast.loading('Generating recap...')
-
-    try {
-      const digest = await invoke<SessionDigest>('generate_session_digest', {
-        sessionId: sessionWithMessages.id,
-      })
-
-      // Store the digest in the chat store for display
-      useChatStore.getState().markSessionNeedsDigest(sessionWithMessages.id)
-      useChatStore.getState().setSessionDigest(sessionWithMessages.id, digest)
-
-      toast.success(
-        <div className="space-y-1">
-          <div className="font-medium">{digest.chat_summary}</div>
-          <div className="text-xs text-muted-foreground">
-            {digest.last_action}
-          </div>
-        </div>,
-        { id: toastId, duration: 8000 }
-      )
-    } catch (error) {
-      toast.error(`Failed to generate recap: ${error}`, { id: toastId })
-    }
-  }
 
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
       <ContextMenuContent className="w-48">
-        {isNativeApp() && (
-          <ContextMenuItem onClick={handleOpenTerminalPanel}>
-            <Terminal className="mr-2 h-4 w-4" />
-            Terminal
-          </ContextMenuItem>
-        )}
-
         {isNativeApp() && runScript && (
           <ContextMenuItem onClick={handleRun}>
             <Play className="mr-2 h-4 w-4" />

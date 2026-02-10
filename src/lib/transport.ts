@@ -8,6 +8,7 @@
 
 import { useSyncExternalStore } from 'react'
 import { isNativeApp, setWsConnected } from './environment'
+import { generateId } from './uuid'
 
 // ---------------------------------------------------------------------------
 // File source URL conversion (drop-in for Tauri's convertFileSrc)
@@ -42,7 +43,7 @@ export type UnlistenFn = () => void
  */
 export async function invoke<T>(
   command: string,
-  args?: Record<string, unknown>,
+  args?: Record<string, unknown>
 ): Promise<T> {
   if (isNativeApp()) {
     const { invoke: tauriInvoke } = await import('@tauri-apps/api/core')
@@ -57,7 +58,7 @@ export async function invoke<T>(
  */
 export async function listen<T>(
   event: string,
-  handler: (event: { payload: T }) => void,
+  handler: (event: { payload: T }) => void
 ): Promise<() => void> {
   if (isNativeApp()) {
     const { listen: tauriListen } = await import('@tauri-apps/api/event')
@@ -73,8 +74,8 @@ export async function listen<T>(
 export interface InitialData {
   projects: unknown[]
   worktreesByProject: Record<string, unknown[]>
-  sessionsByWorktree: Record<string, unknown>  // worktreeId -> WorktreeSessions
-  activeSessions?: Record<string, unknown>  // sessionId -> Session (with messages)
+  sessionsByWorktree: Record<string, unknown> // worktreeId -> WorktreeSessions
+  activeSessions?: Record<string, unknown> // sessionId -> Session (with messages)
   preferences: unknown
   uiState: unknown
 }
@@ -97,12 +98,11 @@ export async function preloadInitialData(): Promise<InitialData | null> {
     const urlToken = new URLSearchParams(window.location.search).get('token')
     const token = urlToken || localStorage.getItem('jean-http-token') || ''
 
-    if (!token) {
-      return null
-    }
-
     try {
-      const response = await fetch(`/api/init?token=${encodeURIComponent(token)}`)
+      const url = token
+        ? `/api/init?token=${encodeURIComponent(token)}`
+        : '/api/init'
+      const response = await fetch(url)
       if (!response.ok) {
         return null
       }
@@ -131,7 +131,9 @@ export function getPreloadedData(): InitialData | null {
   if (!initialDataResolved || !initialDataPromise) return null
   // Since initialDataResolved is true, the promise has resolved
   let result: InitialData | null = null
-  initialDataPromise.then(data => { result = data })
+  initialDataPromise.then(data => {
+    result = data
+  })
   return result
 }
 
@@ -157,10 +159,13 @@ interface WsMessage {
 class WsTransport {
   private ws: WebSocket | null = null
   private pending = new Map<string, PendingRequest>()
-  private listeners = new Map<string, Set<(event: { payload: unknown }) => void>>()
+  private listeners = new Map<
+    string,
+    Set<(event: { payload: unknown }) => void>
+  >()
   private reconnectAttempt = 0
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
-  private queue: Array<{ data: string; resolve: () => void }> = []
+  private queue: { data: string; resolve: () => void }[] = []
   private _connected = false
   private _connecting = false
   private _authError: string | null = null
@@ -228,12 +233,6 @@ class WsTransport {
       window.history.replaceState({}, '', url.toString())
     }
 
-    // Don't attempt connection without a token — it will always be rejected
-    if (!token) {
-      this.setAuthError('No access token provided. Use the URL from Jean\'s Web Access settings.')
-      return
-    }
-
     // Validate token via HTTP before establishing WebSocket
     this._connecting = true
     this.validateAndConnect(token).finally(() => {
@@ -242,14 +241,20 @@ class WsTransport {
   }
 
   private async validateAndConnect(token: string): Promise<void> {
-    const authUrl = `${window.location.origin}/api/auth?token=${encodeURIComponent(token)}`
+    const authUrl = token
+      ? `${window.location.origin}/api/auth?token=${encodeURIComponent(token)}`
+      : `${window.location.origin}/api/auth`
 
     try {
       const res = await fetch(authUrl)
       if (!res.ok) {
         // Invalid token — clear it, set error, don't reconnect
         localStorage.removeItem('jean-http-token')
-        this.setAuthError('Invalid access token. Check the URL in Jean\'s Web Access settings.')
+        this.setAuthError(
+          token
+            ? "Invalid access token. Check the URL in Jean's Web Access settings."
+            : "No access token provided. Use the URL from Jean's Web Access settings."
+        )
         return
       }
     } catch {
@@ -259,7 +264,7 @@ class WsTransport {
       return
     }
 
-    // Token valid — clear any previous auth error and connect WebSocket
+    // Token valid (or not required) — clear any previous auth error and connect
     this.setAuthError(null)
     this.connectWs(token)
   }
@@ -284,7 +289,7 @@ class WsTransport {
       this.queue = []
     }
 
-    this.ws.onmessage = (event) => {
+    this.ws.onmessage = event => {
       try {
         const msg: WsMessage = JSON.parse(event.data)
         this.handleMessage(msg)
@@ -305,7 +310,7 @@ class WsTransport {
 
   /** Call a backend command over WebSocket. */
   async invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
-    const id = crypto.randomUUID()
+    const id = generateId()
     const data = JSON.stringify({
       type: 'invoke',
       id,
@@ -329,7 +334,12 @@ class WsTransport {
         this.ws.send(data)
       } else {
         // Queue for when connection is established
-        this.queue.push({ data, resolve: () => {} })
+        this.queue.push({
+          data,
+          resolve() {
+            /* noop */
+          },
+        })
         this.connect()
       }
     })
@@ -338,12 +348,13 @@ class WsTransport {
   /** Register an event listener. Returns an unlisten function. */
   listen<T>(
     event: string,
-    handler: (event: { payload: T }) => void,
+    handler: (event: { payload: T }) => void
   ): () => void {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, new Set())
     }
     const typedHandler = handler as (event: { payload: unknown }) => void
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     this.listeners.get(event)!.add(typedHandler)
 
     // Ensure connected

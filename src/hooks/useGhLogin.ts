@@ -10,6 +10,7 @@ export function useGhLogin() {
   const { data: ghStatus } = useGhCliStatus()
   const openCliLoginModal = useUIStore(state => state.openCliLoginModal)
 
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const triggerLogin = useCallback(() => {
     if (!ghStatus?.path) return
 

@@ -1,5 +1,14 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 
+export interface WorkflowRunDetail {
+  workflowName: string
+  runUrl: string
+  runId: string
+  branch: string
+  displayTitle: string
+  projectPath: string | null
+}
+
 interface MagicCommandHandlers {
   handleSaveContext: () => void
   handleLoadContext: () => void
@@ -13,6 +22,16 @@ interface MagicCommandHandlers {
   handleResolveConflicts: () => void
   handleInvestigate: () => void
   handleCheckoutPR: () => void
+  handleInvestigateWorkflowRun: (detail: WorkflowRunDetail) => void
+}
+
+interface UseMagicCommandsOptions extends MagicCommandHandlers {
+  /** Whether this ChatWindow is rendered in modal mode */
+  isModal?: boolean
+  /** Whether the main ChatWindow is currently showing canvas tab */
+  isViewingCanvasTab?: boolean
+  /** Whether the session chat modal is currently open */
+  sessionModalOpen?: boolean
 }
 
 /**
@@ -20,6 +39,9 @@ interface MagicCommandHandlers {
  *
  * PERFORMANCE: Uses refs to keep event listener stable across handler changes.
  * The event listener is set up once and uses refs to access current handler versions.
+ *
+ * DEDUPLICATION: When main ChatWindow shows canvas view, it skips listener registration.
+ * The modal ChatWindow (inside SessionChatModal) will handle events instead.
  */
 export function useMagicCommands({
   handleSaveContext,
@@ -34,7 +56,11 @@ export function useMagicCommands({
   handleResolveConflicts,
   handleInvestigate,
   handleCheckoutPR,
-}: MagicCommandHandlers): void {
+  handleInvestigateWorkflowRun,
+  isModal = false,
+  isViewingCanvasTab = false,
+  sessionModalOpen = false,
+}: UseMagicCommandsOptions): void {
   // Store handlers in ref so event listener always has access to current versions
   const handlersRef = useRef<MagicCommandHandlers>({
     handleSaveContext,
@@ -49,6 +75,7 @@ export function useMagicCommands({
     handleResolveConflicts,
     handleInvestigate,
     handleCheckoutPR,
+    handleInvestigateWorkflowRun,
   })
 
   // Update refs in useLayoutEffect to avoid linter warning about ref updates during render
@@ -67,12 +94,25 @@ export function useMagicCommands({
       handleResolveConflicts,
       handleInvestigate,
       handleCheckoutPR,
+      handleInvestigateWorkflowRun,
     }
   })
 
   useEffect(() => {
-    const handleMagicCommand = (e: CustomEvent<{ command: string }>) => {
-      const { command } = e.detail
+    // If main ChatWindow is showing canvas view AND a session modal is open,
+    // don't register listener here — the modal ChatWindow will handle events instead.
+    // When on canvas WITHOUT a modal, the main ChatWindow still listens (for canvas-allowed commands).
+    if (!isModal && isViewingCanvasTab && sessionModalOpen) {
+      console.warn('[MAGIC-CMD] Skipping listener registration (main + canvas + modal open)')
+      return
+    }
+    console.warn('[MAGIC-CMD] Registering listener:', { isModal, isViewingCanvasTab, sessionModalOpen })
+
+    const handleMagicCommand = (
+      e: CustomEvent<{ command: string } & Partial<WorkflowRunDetail>>
+    ) => {
+      const { command, ...rest } = e.detail
+      console.warn('[MAGIC-CMD] Received:', command, { isModal, isViewingCanvasTab, sessionModalOpen, rest })
       const handlers = handlersRef.current
       switch (command) {
         case 'save-context':
@@ -111,6 +151,9 @@ export function useMagicCommands({
         case 'checkout-pr':
           handlers.handleCheckoutPR()
           break
+        case 'investigate-workflow-run':
+          handlers.handleInvestigateWorkflowRun(rest as WorkflowRunDetail)
+          break
       }
     }
 
@@ -123,5 +166,5 @@ export function useMagicCommands({
         'magic-command',
         handleMagicCommand as EventListener
       )
-  }, []) // Empty deps - stable listener using refs
+  }, [isModal, isViewingCanvasTab, sessionModalOpen]) // Re-register when modal/canvas state changes
 }

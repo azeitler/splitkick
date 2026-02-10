@@ -9,12 +9,12 @@ use crate::projects::git;
 use crate::projects::storage::{load_projects_data, save_projects_data};
 
 use super::storage::with_sessions_mut;
+use crate::http_server::EmitExt;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::Stdio;
 use tauri::{AppHandle, Manager};
-use crate::http_server::EmitExt;
 
 /// Request for combined naming (session + branch)
 #[derive(Debug, Clone)]

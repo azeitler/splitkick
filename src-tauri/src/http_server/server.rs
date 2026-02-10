@@ -23,6 +23,7 @@ use super::WsBroadcaster;
 struct AppState {
     app: AppHandle,
     token: String,
+    token_required: bool,
 }
 
 /// Server handle for shutdown coordination.
@@ -32,6 +33,7 @@ pub struct HttpServerHandle {
     pub token: String,
     pub url: String,
     pub localhost_only: bool,
+    pub token_required: bool,
 }
 
 /// Status response for the HTTP server.
@@ -52,12 +54,23 @@ struct WsAuth {
 /// Resolve the dist directory path at runtime.
 /// Checks multiple locations for development and production scenarios.
 fn resolve_dist_path(app: &AppHandle) -> std::path::PathBuf {
-    // 1. Check if app has a resource dir with dist/
+    // 1. Check if app has a resource dir with dist/ (bundled via resources config)
     if let Ok(resource_dir) = app.path().resource_dir() {
+        log::info!("Resource dir: {}", resource_dir.display());
+
         let dist = resource_dir.join("dist");
         if dist.exists() && dist.join("index.html").exists() {
             log::info!("Serving frontend from resource dir: {}", dist.display());
             return dist;
+        }
+
+        // 1b. Check resource dir itself (flat resources on some platforms)
+        if resource_dir.join("index.html").exists() {
+            log::info!(
+                "Serving frontend from resource dir (flat): {}",
+                resource_dir.display()
+            );
+            return resource_dir;
         }
     }
 
@@ -73,14 +86,20 @@ fn resolve_dist_path(app: &AppHandle) -> std::path::PathBuf {
         if let Some(parent) = exe.parent() {
             let dist = parent.join("dist");
             if dist.exists() && dist.join("index.html").exists() {
-                log::info!("Serving frontend from exe-relative dist: {}", dist.display());
+                log::info!(
+                    "Serving frontend from exe-relative dist: {}",
+                    dist.display()
+                );
                 return dist;
             }
         }
     }
 
     // Last resort: return dev path even if it doesn't exist yet
-    log::warn!("No dist directory found with index.html, using dev path: {}", dev_dist.display());
+    log::warn!(
+        "No dist directory found with index.html, using dev path: {}",
+        dev_dist.display()
+    );
     dev_dist
 }
 
@@ -90,10 +109,12 @@ pub async fn start_server(
     port: u16,
     token: String,
     localhost_only: bool,
+    token_required: bool,
 ) -> Result<HttpServerHandle, String> {
     let state = AppState {
         app: app.clone(),
         token: token.clone(),
+        token_required,
     };
 
     let cors = CorsLayer::new()
@@ -127,7 +148,8 @@ pub async fn start_server(
         .await
         .map_err(|e| format!("Failed to bind to port {port}: {e}"))?;
 
-    let local_addr = listener.local_addr()
+    let local_addr = listener
+        .local_addr()
         .map_err(|e| format!("Failed to get local address: {e}"))?;
 
     // Get LAN IP for the URL (only used when not localhost-only)
@@ -158,6 +180,7 @@ pub async fn start_server(
         token,
         url,
         localhost_only,
+        token_required,
     })
 }
 
@@ -167,10 +190,12 @@ async fn ws_handler(
     Query(params): Query<WsAuth>,
     State(state): State<AppState>,
 ) -> Response {
-    // Validate token
-    let provided = params.token.unwrap_or_default();
-    if !auth::validate_token(&provided, &state.token) {
-        return (StatusCode::UNAUTHORIZED, "Invalid token").into_response();
+    // Validate token (skip if token not required)
+    if state.token_required {
+        let provided = params.token.unwrap_or_default();
+        if !auth::validate_token(&provided, &state.token) {
+            return (StatusCode::UNAUTHORIZED, "Invalid token").into_response();
+        }
     }
 
     // Get broadcast receiver for this client
@@ -188,10 +213,12 @@ async fn ws_handler(
 
 /// Token validation endpoint. Returns 200 with { ok: true } on success,
 /// or 401 with { ok: false, error: "..." } on failure.
-async fn auth_handler(
-    Query(params): Query<WsAuth>,
-    State(state): State<AppState>,
-) -> Response {
+async fn auth_handler(Query(params): Query<WsAuth>, State(state): State<AppState>) -> Response {
+    // If token not required, always return success
+    if !state.token_required {
+        return Json(serde_json::json!({ "ok": true, "token_required": false })).into_response();
+    }
+
     let provided = params.token.unwrap_or_default();
     if auth::validate_token(&provided, &state.token) {
         Json(serde_json::json!({ "ok": true })).into_response()
@@ -206,14 +233,13 @@ async fn auth_handler(
 
 /// Initial data endpoint. Returns all data needed to render the initial view.
 /// This is used by the web view to preload data before WebSocket connects.
-async fn init_handler(
-    Query(params): Query<WsAuth>,
-    State(state): State<AppState>,
-) -> Response {
-    // Validate token
-    let provided = params.token.unwrap_or_default();
-    if !auth::validate_token(&provided, &state.token) {
-        return (StatusCode::UNAUTHORIZED, "Invalid token").into_response();
+async fn init_handler(Query(params): Query<WsAuth>, State(state): State<AppState>) -> Response {
+    // Validate token (skip if token not required)
+    if state.token_required {
+        let provided = params.token.unwrap_or_default();
+        if !auth::validate_token(&provided, &state.token) {
+            return (StatusCode::UNAUTHORIZED, "Invalid token").into_response();
+        }
     }
 
     // Fetch base data in parallel
@@ -251,11 +277,13 @@ async fn init_handler(
         })
         .collect();
 
-    let worktrees_by_project: std::collections::HashMap<String, Vec<crate::projects::types::Worktree>> =
-        futures_util::future::join_all(worktrees_futures)
-            .await
-            .into_iter()
-            .collect();
+    let worktrees_by_project: std::collections::HashMap<
+        String,
+        Vec<crate::projects::types::Worktree>,
+    > = futures_util::future::join_all(worktrees_futures)
+        .await
+        .into_iter()
+        .collect();
 
     // Collect all worktrees for session/status fetching
     let all_worktrees: Vec<_> = worktrees_by_project
@@ -275,8 +303,8 @@ async fn init_handler(
                     app,
                     worktree_id.clone(),
                     worktree_path,
-                    None,  // include_archived
-                    Some(true),  // include_message_counts
+                    None,       // include_archived
+                    Some(true), // include_message_counts
                 )
                 .await
                 .unwrap_or_default();
@@ -286,11 +314,13 @@ async fn init_handler(
         .collect();
 
     // WorktreeSessions contains the full struct - keep as-is for frontend compatibility
-    let sessions_by_worktree: std::collections::HashMap<String, crate::chat::types::WorktreeSessions> =
-        futures_util::future::join_all(sessions_futures)
-            .await
-            .into_iter()
-            .collect();
+    let sessions_by_worktree: std::collections::HashMap<
+        String,
+        crate::chat::types::WorktreeSessions,
+    > = futures_util::future::join_all(sessions_futures)
+        .await
+        .into_iter()
+        .collect();
 
     // Note: Git status is already included in the Worktree struct (cached_* fields)
     // No need to fetch separately - the frontend will use worktree.cached_* values
@@ -303,41 +333,48 @@ async fn init_handler(
 
     // Fetch full session details (with messages) for all active sessions
     // This ensures the chat history is immediately available when the app loads
-    let active_sessions: std::collections::HashMap<String, crate::chat::types::Session> = if let Some(ref ui) = ui_state {
-        // Build a map of worktree_id -> worktree for path lookup
-        let worktree_map: std::collections::HashMap<&str, &crate::projects::types::Worktree> =
-            all_worktrees.iter().map(|wt| (wt.id.as_str(), *wt)).collect();
+    let active_sessions: std::collections::HashMap<String, crate::chat::types::Session> =
+        if let Some(ref ui) = ui_state {
+            // Build a map of worktree_id -> worktree for path lookup
+            let worktree_map: std::collections::HashMap<&str, &crate::projects::types::Worktree> =
+                all_worktrees
+                    .iter()
+                    .map(|wt| (wt.id.as_str(), *wt))
+                    .collect();
 
-        // Fetch full session details for each active session
-        let session_futures: Vec<_> = ui.active_session_ids
-            .iter()
-            .filter_map(|(worktree_id, session_id)| {
-                worktree_map.get(worktree_id.as_str()).map(|wt| {
-                    let app = state.app.clone();
-                    let wt_id = worktree_id.clone();
-                    let wt_path = wt.path.clone();
-                    let sess_id = session_id.clone();
-                    async move {
-                        match crate::chat::get_session(app, wt_id, wt_path, sess_id.clone()).await {
-                            Ok(session) => Some((sess_id, session)),
-                            Err(e) => {
-                                log::warn!("Failed to load active session {sess_id}: {e}");
-                                None
+            // Fetch full session details for each active session
+            let session_futures: Vec<_> = ui
+                .active_session_ids
+                .iter()
+                .filter_map(|(worktree_id, session_id)| {
+                    worktree_map.get(worktree_id.as_str()).map(|wt| {
+                        let app = state.app.clone();
+                        let wt_id = worktree_id.clone();
+                        let wt_path = wt.path.clone();
+                        let sess_id = session_id.clone();
+                        async move {
+                            match crate::chat::get_session(app, wt_id, wt_path, sess_id.clone())
+                                .await
+                            {
+                                Ok(session) => Some((sess_id, session)),
+                                Err(e) => {
+                                    log::warn!("Failed to load active session {sess_id}: {e}");
+                                    None
+                                }
                             }
                         }
-                    }
+                    })
                 })
-            })
-            .collect();
+                .collect();
 
-        futures_util::future::join_all(session_futures)
-            .await
-            .into_iter()
-            .flatten()
-            .collect()
-    } else {
-        std::collections::HashMap::new()
-    };
+            futures_util::future::join_all(session_futures)
+                .await
+                .into_iter()
+                .flatten()
+                .collect()
+        } else {
+            std::collections::HashMap::new()
+        };
 
     // Serialize projects
     if let Ok(val) = serde_json::to_value(&projects) {

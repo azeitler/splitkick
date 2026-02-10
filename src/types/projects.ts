@@ -37,6 +37,10 @@ export interface Project {
   is_folder?: boolean
   /** Path to custom avatar image (relative to app data dir, e.g., "avatars/abc123.png") */
   avatar_path?: string
+  /** MCP server names enabled by default for this project */
+  enabled_mcp_servers?: string[]
+  /** Custom system prompt appended to every session execution */
+  custom_system_prompt?: string
 }
 
 /**
@@ -194,11 +198,11 @@ export interface WorktreePathExistsEvent {
     number: number
     title: string
     body?: string
-    comments: Array<{
+    comments: {
       author: { login: string }
       body: string
       createdAt: string
-    }>
+    }[]
   }
 }
 
@@ -217,11 +221,11 @@ export interface WorktreeBranchExistsEvent {
     number: number
     title: string
     body?: string
-    comments: Array<{
+    comments: {
       author: { login: string }
       body: string
       createdAt: string
-    }>
+    }[]
   }
   /** PR context to use when creating a new worktree with the suggested name */
   pr_context?: {
@@ -230,17 +234,17 @@ export interface WorktreeBranchExistsEvent {
     body?: string
     headRefName: string
     baseRefName: string
-    comments: Array<{
+    comments: {
       author: { login: string }
       body: string
       createdAt: string
-    }>
-    reviews: Array<{
+    }[]
+    reviews: {
       author: { login: string }
       body: string
       state: string
       submittedAt: string
-    }>
+    }[]
     diff?: string
   }
 }
@@ -301,6 +305,26 @@ export interface ReviewResponse {
   findings: ReviewFinding[]
   /** Overall review verdict */
   approval_status: 'approved' | 'changes_requested' | 'needs_discussion'
+}
+
+// =============================================================================
+// Release Notes
+// =============================================================================
+
+/** A GitHub release from gh release list */
+export interface GitHubRelease {
+  tagName: string
+  name: string
+  publishedAt: string
+  isLatest: boolean
+  isDraft: boolean
+  isPrerelease: boolean
+}
+
+/** Response from generate_release_notes command */
+export interface ReleaseNotesResponse {
+  title: string
+  body: string
 }
 
 // =============================================================================

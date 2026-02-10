@@ -9,7 +9,10 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { useUIStore } from '@/store/ui-store'
-import { useCreateWorktree, useCreateWorktreeFromExistingBranch } from '@/services/projects'
+import {
+  useCreateWorktree,
+  useCreateWorktreeFromExistingBranch,
+} from '@/services/projects'
 
 export function BranchConflictModal() {
   const branchConflictData = useUIStore(state => state.branchConflictData)
@@ -42,7 +45,11 @@ export function BranchConflictModal() {
       prContext: branchConflictData.prContext,
     })
     closeBranchConflictModal()
-  }, [branchConflictData, createWorktreeFromExistingBranch, closeBranchConflictModal])
+  }, [
+    branchConflictData,
+    createWorktreeFromExistingBranch,
+    closeBranchConflictModal,
+  ])
 
   const handleCreateNew = useCallback(() => {
     if (!branchConflictData) return

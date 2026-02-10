@@ -12,6 +12,9 @@ interface ProjectsUIState {
   // Expansion state for folders
   expandedFolderIds: Set<string>
 
+  // Last-accessed timestamps per project (for recency sorting in command palette)
+  projectAccessTimestamps: Record<string, number>
+
   // Add project dialog state
   addProjectDialogOpen: boolean
   addProjectParentFolderId: string | null
@@ -40,12 +43,16 @@ interface ProjectsUIState {
   expandFolder: (id: string) => void
   collapseFolder: (id: string) => void
 
-  setAddProjectDialogOpen: (open: boolean, parentFolderId?: string | null) => void
+  setAddProjectDialogOpen: (
+    open: boolean,
+    parentFolderId?: string | null
+  ) => void
   openProjectSettings: (projectId: string) => void
   closeProjectSettings: () => void
   openGitInitModal: (path: string) => void
   closeGitInitModal: () => void
   setEditingFolderId: (id: string | null) => void
+  setProjectAccessTimestamps: (timestamps: Record<string, number>) => void
 }
 
 export const useProjectsStore = create<ProjectsUIState>()(
@@ -56,6 +63,7 @@ export const useProjectsStore = create<ProjectsUIState>()(
       selectedWorktreeId: null,
       expandedProjectIds: new Set<string>(),
       expandedFolderIds: new Set<string>(),
+      projectAccessTimestamps: {},
       addProjectDialogOpen: false,
       addProjectParentFolderId: null,
       projectSettingsDialogOpen: false,
@@ -67,7 +75,13 @@ export const useProjectsStore = create<ProjectsUIState>()(
       // Selection actions
       selectProject: id =>
         set(
-          { selectedProjectId: id, selectedWorktreeId: null },
+          state => ({
+            selectedProjectId: id,
+            selectedWorktreeId: null,
+            projectAccessTimestamps: id
+              ? { ...state.projectAccessTimestamps, [id]: Date.now() }
+              : state.projectAccessTimestamps,
+          }),
           undefined,
           'selectProject'
         ),
@@ -210,6 +224,13 @@ export const useProjectsStore = create<ProjectsUIState>()(
 
       setEditingFolderId: id =>
         set({ editingFolderId: id }, undefined, 'setEditingFolderId'),
+
+      setProjectAccessTimestamps: timestamps =>
+        set(
+          { projectAccessTimestamps: timestamps },
+          undefined,
+          'setProjectAccessTimestamps'
+        ),
     }),
     {
       name: 'projects-store',

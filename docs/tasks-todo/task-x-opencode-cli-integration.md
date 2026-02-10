@@ -19,28 +19,28 @@ opencode models
 
 ## Key Mappings
 
-| Jean Mode | OpenCode Flag | Claude Flag |
-|-----------|--------------|-------------|
-| plan | `--agent plan` | `--permission-mode plan` |
-| build | `--agent build` | `--permission-mode acceptEdits` |
-| yolo | `--agent build` | `--permission-mode bypassPermissions` |
+| Jean Mode | OpenCode Flag   | Claude Flag                           |
+| --------- | --------------- | ------------------------------------- |
+| plan      | `--agent plan`  | `--permission-mode plan`              |
+| build     | `--agent build` | `--permission-mode acceptEdits`       |
+| yolo      | `--agent build` | `--permission-mode bypassPermissions` |
 
 | Jean Thinking | OpenCode Variant (Anthropic) |
-|---------------|------------------------------|
-| Off | (none) |
-| Think | `--variant high` |
-| Megathink | `--variant high` |
-| Ultrathink | `--variant max` |
+| ------------- | ---------------------------- |
+| Off           | (none)                       |
+| Think         | `--variant high`             |
+| Megathink     | `--variant high`             |
+| Ultrathink    | `--variant max`              |
 
 ## OpenCode NDJSON Events → Jean Events
 
-| OpenCode Event | Jean Event | Notes |
-|---------------|-----------|-------|
-| `step_start` | (internal) | Track step beginning |
-| `text` | `chat:chunk` | `part.text` → content |
-| `tool_use` | `chat:tool_use` + `chat:tool_result` | Split single event |
-| `step_finish` (stop) | `chat:done` | Extract usage from `part.tokens` |
-| `step_finish` (tool-calls) | (internal) | More steps coming |
+| OpenCode Event             | Jean Event                           | Notes                            |
+| -------------------------- | ------------------------------------ | -------------------------------- |
+| `step_start`               | (internal)                           | Track step beginning             |
+| `text`                     | `chat:chunk`                         | `part.text` → content            |
+| `tool_use`                 | `chat:tool_use` + `chat:tool_result` | Split single event               |
+| `step_finish` (stop)       | `chat:done`                          | Extract usage from `part.tokens` |
+| `step_finish` (tool-calls) | (internal)                           | More steps coming                |
 
 ## File Changes
 
@@ -61,6 +61,7 @@ opencode models
 
 3. **`src-tauri/src/chat/types.rs`**
    - Add to `SessionMetadata`:
+
      ```rust
      #[serde(default = "default_provider")]
      pub provider: String,  // "claude" | "opencode"
@@ -105,22 +106,26 @@ opencode models
 ## Implementation Order
 
 ### Phase 1: Backend Core
+
 1. Create `src-tauri/src/opencode_cli/` module with path detection
 2. Add types to `types.rs` (provider, opencode_session_id)
 3. Create `opencode.rs` with `build_opencode_args()`
 4. Add `list_opencode_models` command
 
 ### Phase 2: Event Parsing
+
 1. Implement `tail_opencode_output()` with event parsing
 2. Handle combined tool_use events (split into tool_use + tool_result)
 3. Extract usage from step_finish events
 
 ### Phase 3: Integration
+
 1. Modify `send_chat_message` to branch on provider
 2. Store `opencode_session_id` in session metadata
 3. Handle session resumption with `--session` flag
 
 ### Phase 4: Frontend
+
 1. Add TypeScript types for provider
 2. Add provider state to Zustand store
 3. Add provider toggle to ChatToolbar

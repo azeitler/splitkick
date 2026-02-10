@@ -1,5 +1,14 @@
 import { useState, useCallback, useEffect } from 'react'
-import { Settings, Palette, Keyboard, Wand2, FlaskConical, Globe } from 'lucide-react'
+import {
+  Settings,
+  Palette,
+  Keyboard,
+  Wand2,
+  Plug,
+  FlaskConical,
+  Globe,
+  X,
+} from 'lucide-react'
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -14,6 +23,14 @@ import {
   DialogDescription,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Sidebar,
   SidebarContent,
@@ -29,6 +46,7 @@ import { GeneralPane } from './panes/GeneralPane'
 import { AppearancePane } from './panes/AppearancePane'
 import { KeybindingsPane } from './panes/KeybindingsPane'
 import { MagicPromptsPane } from './panes/MagicPromptsPane'
+import { McpServersPane } from './panes/McpServersPane'
 import { ExperimentalPane } from './panes/ExperimentalPane'
 import { WebAccessPane } from './panes/WebAccessPane'
 
@@ -47,11 +65,17 @@ const navigationItems = [
     id: 'keybindings' as const,
     name: 'Keybindings',
     icon: Keyboard,
+    desktopOnly: true,
   },
   {
     id: 'magic-prompts' as const,
     name: 'Magic Prompts',
     icon: Wand2,
+  },
+  {
+    id: 'mcp-servers' as const,
+    name: 'MCP Servers',
+    icon: Plug,
   },
   {
     id: 'experimental' as const,
@@ -60,8 +84,9 @@ const navigationItems = [
   },
   {
     id: 'web-access' as const,
-    name: 'Web Access',
+    name: 'Web Access (Experimental)',
     icon: Globe,
+    desktopOnly: true,
   },
 ]
 
@@ -75,10 +100,12 @@ const getPaneTitle = (pane: PreferencePane): string => {
       return 'Keybindings'
     case 'magic-prompts':
       return 'Magic Prompts'
+    case 'mcp-servers':
+      return 'MCP Servers'
     case 'experimental':
       return 'Experimental'
     case 'web-access':
-      return 'Web Access'
+      return 'Web Access (Experimental)'
     default:
       return 'General'
   }
@@ -102,19 +129,20 @@ export function PreferencesDialog() {
   // Sync activePane from preferencesPane when dialog opens to a specific pane
   useEffect(() => {
     if (preferencesOpen && preferencesPane) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setActivePane(preferencesPane)
     }
   }, [preferencesOpen, preferencesPane])
 
   return (
     <Dialog open={preferencesOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="overflow-hidden p-0 !max-w-[calc(100vw-4rem)] !w-[calc(100vw-4rem)] max-h-[85vh] font-sans rounded-xl">
+      <DialogContent className="overflow-hidden p-0 !w-screen !h-dvh !max-w-screen !max-h-none !rounded-none sm:!w-[calc(100vw-4rem)] sm:!max-w-[calc(100vw-4rem)] sm:!h-[85vh] sm:!rounded-xl font-sans [&_[data-slot=dialog-close]]:hidden sm:[&_[data-slot=dialog-close]]:block">
         <DialogTitle className="sr-only">Settings</DialogTitle>
         <DialogDescription className="sr-only">
           Customize your application preferences here.
         </DialogDescription>
 
-        <SidebarProvider className="items-start">
+        <SidebarProvider className="!min-h-0 !h-full items-stretch overflow-hidden">
           <Sidebar collapsible="none" className="hidden md:flex">
             <SidebarContent>
               <SidebarGroup>
@@ -144,13 +172,39 @@ export function PreferencesDialog() {
 
           <main className="flex flex-1 flex-col overflow-hidden">
             <header className="flex h-16 shrink-0 items-center gap-2">
-              <div className="flex items-center gap-2 px-4">
-                <Breadcrumb>
+              <div className="flex flex-1 items-center gap-2 px-4 sm:pr-10">
+                {/* Mobile pane selector */}
+                <Select
+                  value={activePane}
+                  onValueChange={v => setActivePane(v as PreferencePane)}
+                >
+                  <SelectTrigger className="md:hidden w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {navigationItems
+                      .filter(item => !item.desktopOnly)
+                      .map(item => (
+                        <SelectItem key={item.id} value={item.id}>
+                          {item.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="sm:hidden h-9 w-9 shrink-0"
+                  onClick={() => handleOpenChange(false)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+                <Breadcrumb className="hidden md:block">
                   <BreadcrumbList>
-                    <BreadcrumbItem className="hidden md:block">
+                    <BreadcrumbItem>
                       <BreadcrumbLink href="#">Settings</BreadcrumbLink>
                     </BreadcrumbItem>
-                    <BreadcrumbSeparator className="hidden md:block" />
+                    <BreadcrumbSeparator />
                     <BreadcrumbItem>
                       <BreadcrumbPage>
                         {getPaneTitle(activePane)}
@@ -161,11 +215,12 @@ export function PreferencesDialog() {
               </div>
             </header>
 
-            <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4 pt-0 max-h-[calc(85vh-4rem)]">
+            <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4 pt-0 min-h-0">
               {activePane === 'general' && <GeneralPane />}
               {activePane === 'appearance' && <AppearancePane />}
               {activePane === 'keybindings' && <KeybindingsPane />}
               {activePane === 'magic-prompts' && <MagicPromptsPane />}
+              {activePane === 'mcp-servers' && <McpServersPane />}
               {activePane === 'experimental' && <ExperimentalPane />}
               {activePane === 'web-access' && <WebAccessPane />}
             </div>

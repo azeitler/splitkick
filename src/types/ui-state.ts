@@ -16,7 +16,7 @@ export interface UIState {
   expanded_folder_ids: string[]
   /** Left sidebar width in pixels, defaults to 250 */
   left_sidebar_size?: number
-  /** Left sidebar visibility, defaults to true */
+  /** Left sidebar visibility, defaults to false */
   left_sidebar_visible?: boolean
   /** Active session ID per worktree (for restoring open tabs) */
   active_session_ids: Record<string, string>
@@ -28,6 +28,12 @@ export interface UIState {
   fixed_review_findings: Record<string, string[]>
   /** Session IDs that completed while out of focus, need digest on open */
   pending_digest_session_ids: string[]
+  /** Modal terminal drawer open state per worktree */
+  modal_terminal_open?: Record<string, boolean>
+  /** Modal terminal drawer width in pixels */
+  modal_terminal_width?: number
+  /** Last-accessed timestamps per project for recency sorting: projectId → unix ms */
+  project_access_timestamps?: Record<string, number>
   version: number
 }
 
@@ -38,11 +44,13 @@ export const defaultUIState: UIState = {
   expanded_project_ids: [],
   expanded_folder_ids: [],
   left_sidebar_size: 250,
-  left_sidebar_visible: true,
+  left_sidebar_visible: false,
   active_session_ids: {},
   review_results: {},
   viewing_review_tab: {},
   fixed_review_findings: {},
   pending_digest_session_ids: [],
+  modal_terminal_open: {},
+  modal_terminal_width: 400,
   version: 1,
 }

@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { invoke, useWsConnectionStatus, useWsAuthError, preloadInitialData, type InitialData } from '@/lib/transport'
+import {
+  invoke,
+  useWsConnectionStatus,
+  useWsAuthError,
+  preloadInitialData,
+  type InitialData,
+} from '@/lib/transport'
 import { isNativeApp } from '@/lib/environment'
 import { projectsQueryKeys } from '@/services/projects'
 import { chatQueryKeys } from '@/services/chat'
@@ -15,11 +21,14 @@ import ErrorBoundary from './components/ErrorBoundary'
 import { useClaudeCliStatus, useClaudeCliAuth } from './services/claude-cli'
 import { useGhCliStatus, useGhCliAuth } from './services/gh-cli'
 import { useUIStore } from './store/ui-store'
+import type { AppPreferences } from './types/preferences'
 import { useChatStore } from './store/chat-store'
 import { useFontSettings } from './hooks/use-font-settings'
+import { useZoom } from './hooks/use-zoom'
 import { useImmediateSessionStateSave } from './hooks/useImmediateSessionStateSave'
 import { useCliVersionCheck } from './hooks/useCliVersionCheck'
 import { useQueueProcessor } from './hooks/useQueueProcessor'
+import { useAutoArchiveOnMerge } from './hooks/useAutoArchiveOnMerge'
 import useStreamingEvents from './components/chat/hooks/useStreamingEvents'
 import { preloadAllSounds } from './lib/sounds'
 
@@ -45,8 +54,16 @@ function WsStatusBadge() {
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/90 backdrop-blur-sm">
         <div className="mx-4 max-w-md rounded-lg border border-destructive/50 bg-background p-6 shadow-lg">
           <div className="flex items-center gap-2 text-destructive">
-            <svg className="size-5 shrink-0" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            <svg
+              className="size-5 shrink-0"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path
+                fillRule="evenodd"
+                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                clipRule="evenodd"
+              />
             </svg>
             <h2 className="text-sm font-semibold">Connection Failed</h2>
           </div>
@@ -84,8 +101,13 @@ function App() {
       }
       // Seed worktrees for each project
       if (data.worktreesByProject) {
-        for (const [projectId, worktrees] of Object.entries(data.worktreesByProject)) {
-          queryClient.setQueryData(projectsQueryKeys.worktrees(projectId), worktrees)
+        for (const [projectId, worktrees] of Object.entries(
+          data.worktreesByProject
+        )) {
+          queryClient.setQueryData(
+            projectsQueryKeys.worktrees(projectId),
+            worktrees
+          )
         }
       }
       // Seed sessions for each worktree (WorktreeSessions struct)
@@ -96,8 +118,13 @@ function App() {
         const sessionMappings: Record<string, string> = {}
         const worktreePaths: Record<string, string> = {}
 
-        for (const [worktreeId, sessionsData] of Object.entries(data.sessionsByWorktree)) {
-          queryClient.setQueryData(chatQueryKeys.sessions(worktreeId), sessionsData)
+        for (const [worktreeId, sessionsData] of Object.entries(
+          data.sessionsByWorktree
+        )) {
+          queryClient.setQueryData(
+            chatQueryKeys.sessions(worktreeId),
+            sessionsData
+          )
 
           // Extract session state for Zustand store
           const wts = sessionsData as WorktreeSessions
@@ -115,7 +142,7 @@ function App() {
         // Get worktree paths from worktreesByProject
         if (data.worktreesByProject) {
           for (const worktrees of Object.values(data.worktreesByProject)) {
-            for (const wt of worktrees as Array<{ id: string; path: string }>) {
+            for (const wt of worktrees as { id: string; path: string }[]) {
               if (wt.id && wt.path) {
                 worktreePaths[wt.id] = wt.path
               }
@@ -125,19 +152,32 @@ function App() {
 
         // Update Zustand store with session state
         const currentState = useChatStore.getState()
-        const storeUpdates: Partial<ReturnType<typeof useChatStore.getState>> = {}
+        const storeUpdates: Partial<ReturnType<typeof useChatStore.getState>> =
+          {}
 
         if (Object.keys(sessionMappings).length > 0) {
-          storeUpdates.sessionWorktreeMap = { ...currentState.sessionWorktreeMap, ...sessionMappings }
+          storeUpdates.sessionWorktreeMap = {
+            ...currentState.sessionWorktreeMap,
+            ...sessionMappings,
+          }
         }
         if (Object.keys(worktreePaths).length > 0) {
-          storeUpdates.worktreePaths = { ...currentState.worktreePaths, ...worktreePaths }
+          storeUpdates.worktreePaths = {
+            ...currentState.worktreePaths,
+            ...worktreePaths,
+          }
         }
         if (Object.keys(reviewingUpdates).length > 0) {
-          storeUpdates.reviewingSessions = { ...currentState.reviewingSessions, ...reviewingUpdates }
+          storeUpdates.reviewingSessions = {
+            ...currentState.reviewingSessions,
+            ...reviewingUpdates,
+          }
         }
         if (Object.keys(waitingUpdates).length > 0) {
-          storeUpdates.waitingForInputSessionIds = { ...currentState.waitingForInputSessionIds, ...waitingUpdates }
+          storeUpdates.waitingForInputSessionIds = {
+            ...currentState.waitingForInputSessionIds,
+            ...waitingUpdates,
+          }
         }
         if (Object.keys(storeUpdates).length > 0) {
           useChatStore.setState(storeUpdates)
@@ -145,7 +185,9 @@ function App() {
       }
       // Seed active sessions (with full chat history/messages)
       if (data.activeSessions) {
-        for (const [sessionId, session] of Object.entries(data.activeSessions)) {
+        for (const [sessionId, session] of Object.entries(
+          data.activeSessions
+        )) {
           queryClient.setQueryData(chatQueryKeys.session(sessionId), session)
         }
       }
@@ -180,6 +222,9 @@ function App() {
   // Apply font settings from preferences
   useFontSettings()
 
+  // Apply zoom level from preferences + keyboard shortcuts
+  useZoom()
+
   // Save reviewing/waiting state immediately (no debounce) to ensure persistence on reload
   useImmediateSessionStateSave()
 
@@ -194,6 +239,9 @@ function App() {
   // even when the worktree is not focused (ChatWindow unmounted)
   useQueueProcessor()
 
+  // Auto-archive worktrees when their PR is merged (if enabled in preferences)
+  useAutoArchiveOnMerge()
+
   // When WebSocket connects (browser mode), invalidate queries that weren't preloaded
   // so they refetch with the now-available backend. Skip preloaded data.
   const wsConnected = useWsConnectionStatus()
@@ -205,7 +253,12 @@ function App() {
         predicate: query => {
           const key = query.queryKey[0]
           // Skip invalidating preloaded data (projects, worktrees, sessions, chat, preferences, ui-state)
-          return key !== 'projects' && key !== 'preferences' && key !== 'ui-state' && key !== 'chat'
+          return (
+            key !== 'projects' &&
+            key !== 'preferences' &&
+            key !== 'ui-state' &&
+            key !== 'chat'
+          )
         },
       })
     }
@@ -224,8 +277,9 @@ function App() {
   const { data: ghStatus, isLoading: isGhStatusLoading } = useGhCliStatus()
 
   // Check CLI authentication status (only when installed)
-  const { data: claudeAuth, isLoading: isClaudeAuthLoading } =
-    useClaudeCliAuth({ enabled: !!claudeStatus?.installed })
+  const { data: claudeAuth, isLoading: isClaudeAuthLoading } = useClaudeCliAuth(
+    { enabled: !!claudeStatus?.installed }
+  )
   const { data: ghAuth, isLoading: isGhAuthLoading } = useGhCliAuth({
     enabled: !!ghStatus?.installed,
   })
@@ -255,6 +309,12 @@ function App() {
         ghAuth: ghAuth?.authenticated,
       })
       useUIStore.getState().setOnboardingOpen(true)
+    } else {
+      // CLIs already set up — show feature tour if not yet seen
+      const prefs = queryClient.getQueryData<AppPreferences>(['preferences'])
+      if (prefs && !prefs.has_seen_feature_tour) {
+        useUIStore.getState().setFeatureTourOpen(true)
+      }
     }
   }, [
     claudeStatus,
@@ -265,7 +325,26 @@ function App() {
     isGhStatusLoading,
     isClaudeAuthLoading,
     isGhAuthLoading,
+    queryClient,
   ])
+
+  // Show feature tour after CLI onboarding completes (first launch only)
+  useEffect(() => {
+    let wasOpen = useUIStore.getState().onboardingOpen
+    const unsub = useUIStore.subscribe(state => {
+      const isOpen = state.onboardingOpen
+      if (wasOpen && !isOpen) {
+        const prefs = queryClient.getQueryData<AppPreferences>(['preferences'])
+        if (prefs && !prefs.has_seen_feature_tour) {
+          setTimeout(() => {
+            useUIStore.getState().setFeatureTourOpen(true)
+          }, 300)
+        }
+      }
+      wasOpen = isOpen
+    })
+    return unsub
+  }, [queryClient])
 
   // Kill all terminals on page refresh/close (backup for Rust-side cleanup)
   useEffect(() => {
@@ -273,7 +352,9 @@ function App() {
       // Best-effort sync cleanup for refresh scenarios
       // Note: async operations may not complete, but Rust-side RunEvent::Exit
       // will handle proper cleanup on app quit
-      invoke('kill_all_terminals').catch(() => {})
+      invoke('kill_all_terminals').catch(() => {
+        /* noop */
+      })
     }
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
@@ -293,7 +374,9 @@ function App() {
     invoke<number>('kill_all_terminals')
       .then(killed => {
         if (killed > 0) {
-          logger.info(`Cleaned up ${killed} orphaned terminal(s) from previous session`)
+          logger.info(
+            `Cleaned up ${killed} orphaned terminal(s) from previous session`
+          )
         }
       })
       .catch(error => {
@@ -395,11 +478,19 @@ function App() {
                 await relaunch()
               }
             } catch (updateError) {
-              logger.error(`Update installation failed: ${String(updateError)}`)
-              await message(
-                `Update failed: There was a problem with the automatic download.\n\n${String(updateError)}`,
-                { title: 'Update Failed', kind: 'error' }
-              )
+              const errorStr = String(updateError)
+              logger.error(`Update installation failed: ${errorStr}`)
+              if (errorStr.includes('invalid updater binary format')) {
+                await message(
+                  `A new version (${update.version}) is available, but auto-update is not supported for this installation type.\n\nPlease update manually from the GitHub releases page or your package manager.`,
+                  { title: 'Update Available', kind: 'info' }
+                )
+              } else {
+                await message(
+                  `Update failed: There was a problem with the automatic download.\n\n${errorStr}`,
+                  { title: 'Update Failed', kind: 'error' }
+                )
+              }
             }
           }
         }
