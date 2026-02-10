@@ -535,6 +535,12 @@ export interface SaveTextResponse {
 }
 
 /**
+ * Response from the update_pasted_text Tauri command
+ * Returns the new file size after updating content
+ */
+export type UpdateTextResponse = number
+
+/**
  * Response from the read_pasted_text Tauri command
  */
 export interface ReadTextResponse {

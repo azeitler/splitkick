@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
-import { FileText, Loader2 } from 'lucide-react'
+import { FileText, Loader2, Copy } from 'lucide-react'
 import { invoke } from '@/lib/transport'
+import { toast } from 'sonner'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Markdown } from '@/components/ui/markdown'
@@ -58,6 +59,13 @@ export function TextFileLightbox({ path, size }: TextFileLightboxProps) {
     }
   }, [content, isLoading, path])
 
+  const handleCopy = useCallback(() => {
+    if (content) {
+      navigator.clipboard.writeText(content)
+      toast.success('Copied to clipboard')
+    }
+  }, [content])
+
   return (
     <>
       <button
@@ -87,7 +95,7 @@ export function TextFileLightbox({ path, size }: TextFileLightboxProps) {
               </span>
             )}
           </DialogTitle>
-          <ScrollArea className="h-[calc(85vh-6rem)] mt-2">
+          <ScrollArea className="h-[calc(85vh-8rem)] mt-2">
             {isLoading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -106,6 +114,19 @@ export function TextFileLightbox({ path, size }: TextFileLightboxProps) {
               </pre>
             )}
           </ScrollArea>
+          {content && (
+            <div className="flex items-center gap-1 pt-2 border-t border-border/50">
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="px-3 py-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors flex items-center gap-1.5 text-xs"
+                title="Copy to clipboard"
+              >
+                <Copy className="h-3.5 w-3.5" />
+                Copy
+              </button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </>

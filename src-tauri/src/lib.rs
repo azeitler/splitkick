@@ -603,14 +603,23 @@ impl MagicPrompts {
     /// This ensures users who never customized a prompt get auto-updated defaults.
     fn migrate_defaults(&mut self) {
         let defaults: [(fn() -> String, &mut Option<String>); 8] = [
-            (default_investigate_issue_prompt, &mut self.investigate_issue),
+            (
+                default_investigate_issue_prompt,
+                &mut self.investigate_issue,
+            ),
             (default_investigate_pr_prompt, &mut self.investigate_pr),
             (default_pr_content_prompt, &mut self.pr_content),
             (default_commit_message_prompt, &mut self.commit_message),
             (default_code_review_prompt, &mut self.code_review),
             (default_context_summary_prompt, &mut self.context_summary),
-            (default_resolve_conflicts_prompt, &mut self.resolve_conflicts),
-            (default_investigate_workflow_run_prompt, &mut self.investigate_workflow_run),
+            (
+                default_resolve_conflicts_prompt,
+                &mut self.resolve_conflicts,
+            ),
+            (
+                default_investigate_workflow_run_prompt,
+                &mut self.investigate_workflow_run,
+            ),
         ];
 
         for (default_fn, field) in defaults {
@@ -1862,6 +1871,7 @@ pub fn run() {
             chat::delete_pasted_image,
             // Chat commands - Text paste handling
             chat::save_pasted_text,
+            chat::update_pasted_text,
             chat::delete_pasted_text,
             chat::read_pasted_text,
             // Chat commands - Plan file handling

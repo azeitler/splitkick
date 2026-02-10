@@ -334,6 +334,12 @@ interface ChatUIState {
 
   // Actions - Pending text files (session-based)
   addPendingTextFile: (sessionId: string, textFile: PendingTextFile) => void
+  updatePendingTextFile: (
+    sessionId: string,
+    textFileId: string,
+    content: string,
+    size: number
+  ) => void
   removePendingTextFile: (sessionId: string, textFileId: string) => void
   clearPendingTextFiles: (sessionId: string) => void
   getPendingTextFiles: (sessionId: string) => PendingTextFile[]
@@ -1383,6 +1389,20 @@ export const useChatStore = create<ChatUIState>()(
           }),
           undefined,
           'addPendingTextFile'
+        ),
+
+      updatePendingTextFile: (sessionId, textFileId, content, size) =>
+        set(
+          state => ({
+            pendingTextFiles: {
+              ...state.pendingTextFiles,
+              [sessionId]: (state.pendingTextFiles[sessionId] ?? []).map(tf =>
+                tf.id === textFileId ? { ...tf, content, size } : tf
+              ),
+            },
+          }),
+          undefined,
+          'updatePendingTextFile'
         ),
 
       removePendingTextFile: (sessionId, textFileId) =>

@@ -1672,6 +1672,61 @@ pub async fn save_pasted_text(app: AppHandle, content: String) -> Result<SaveTex
     })
 }
 
+/// Update the content of a pasted text file
+///
+/// Overwrites the file content atomically (temp file + rename).
+/// Returns the new file size in bytes.
+#[tauri::command]
+pub async fn update_pasted_text(
+    app: AppHandle,
+    path: String,
+    content: String,
+) -> Result<usize, String> {
+    let size = content.len();
+    log::trace!("Updating pasted text file: {path}, new size: {size} bytes");
+
+    // Check size limit
+    if size > MAX_TEXT_SIZE {
+        return Err(format!(
+            "Text too large: {size} bytes. Maximum size: {MAX_TEXT_SIZE} bytes (10MB)"
+        ));
+    }
+
+    let file_path = std::path::PathBuf::from(&path);
+
+    // Validate that the path exists
+    if !file_path.exists() {
+        return Err(format!("Text file not found: {path}"));
+    }
+
+    // Validate that the path is within allowed directories
+    let path_str = file_path.to_string_lossy();
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {e}"))?;
+    let app_data_str = app_data_dir.to_string_lossy();
+
+    let is_old_location =
+        path_str.contains(".jean/pastes/") || path_str.contains(".jean\\pastes\\");
+    let is_new_location = path_str.contains(&format!("{app_data_str}/pasted-texts/"))
+        || path_str.contains(&format!("{app_data_str}\\pasted-texts\\"));
+
+    if !is_old_location && !is_new_location {
+        return Err("Invalid path: must be within allowed directories".to_string());
+    }
+
+    // Write file atomically (temp file + rename)
+    let temp_path = file_path.with_extension("tmp");
+    std::fs::write(&temp_path, &content).map_err(|e| format!("Failed to write text file: {e}"))?;
+
+    std::fs::rename(&temp_path, &file_path)
+        .map_err(|e| format!("Failed to finalize text file: {e}"))?;
+
+    log::trace!("Text file updated: {path}");
+    Ok(size)
+}
+
 /// Delete a pasted text file
 ///
 /// Validates that the path is within allowed directories before deleting.

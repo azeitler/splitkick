@@ -2738,6 +2738,7 @@ Begin your investigation now.`
                         textFiles={currentPendingTextFiles}
                         onRemove={handleRemovePendingTextFile}
                         disabled={isSending}
+                        sessionId={activeSessionId}
                       />
 
                       {/* Pending skills preview */}
