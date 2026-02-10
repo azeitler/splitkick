@@ -711,6 +711,14 @@ export const ChatInput = memo(function ChatInput({
         inputRef.current.value = newValue
         valueRef.current = newValue
 
+        // Cancel pending debounced save (it still has the old "/query" value)
+        // and sync cleaned value to store immediately
+        clearTimeout(debouncedSaveRef.current)
+        useChatStore
+          .getState()
+          .setInputDraft(activeSessionId, newValue)
+        onHasValueChange?.(Boolean(newValue.trim()))
+
         // Set cursor position where the slash was
         requestAnimationFrame(() => {
           inputRef.current?.setSelectionRange(triggerIndex, triggerIndex)
@@ -725,7 +733,7 @@ export const ChatInput = memo(function ChatInput({
       // Refocus input
       inputRef.current?.focus()
     },
-    [activeSessionId, slashTriggerIndex, inputRef]
+    [activeSessionId, slashTriggerIndex, inputRef, onHasValueChange]
   )
 
   // Handle command selection from / mention popover (executes immediately)

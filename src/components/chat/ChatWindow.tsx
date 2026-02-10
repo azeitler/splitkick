@@ -607,10 +607,12 @@ export function ChatWindow({
     const images = state.pendingImages[activeSessionId]
     const textFiles = state.pendingTextFiles[activeSessionId]
     const files = state.pendingFiles[activeSessionId]
+    const skills = state.pendingSkills[activeSessionId]
     return (
       (images?.length ?? 0) > 0 ||
       (textFiles?.length ?? 0) > 0 ||
-      (files?.length ?? 0) > 0
+      (files?.length ?? 0) > 0 ||
+      (skills?.length ?? 0) > 0
     )
   })
   // Per-session message queue (uses deferredSessionId for content consistency)
@@ -1275,12 +1277,13 @@ export function ChatWindow({
       const skills = getPendingSkills(activeSessionId ?? '')
       const textFiles = getPendingTextFiles(activeSessionId ?? '')
 
-      // Need either text, images, files, or text files to send
+      // Need either text, images, files, text files, or skills to send
       if (
         !textMessage &&
         images.length === 0 &&
         files.length === 0 &&
-        textFiles.length === 0
+        textFiles.length === 0 &&
+        skills.length === 0
       )
         return
       if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
