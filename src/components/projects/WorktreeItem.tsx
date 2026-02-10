@@ -355,12 +355,17 @@ export function WorktreeItem({
     (e: React.KeyboardEvent) => {
       if (e.key === 'Enter') {
         e.preventDefault()
+        e.stopPropagation()
         handleSubmit()
       } else if (e.key === 'Escape') {
         e.preventDefault()
+        e.stopPropagation()
         handleCancel()
-      } else if (e.key === ' ') {
-        // Prevent space from triggering parent ContextMenuTrigger
+      } else if (
+        e.key === ' ' ||
+        ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)
+      ) {
+        // Prevent space/arrows from triggering parent handlers or canvas navigation
         e.stopPropagation()
       }
     },
@@ -467,13 +472,16 @@ export function WorktreeItem({
             className={cn('flex-1 truncate text-sm', isBase && 'font-medium')}
           >
             {worktree.name}
-            {/* Show branch name if different from worktree name */}
-            {worktree.branch !== worktree.name && (
-              <span className="ml-1 inline-flex items-center gap-0.5 text-xs text-muted-foreground">
-                <GitBranch className="h-2.5 w-2.5" />
-                {worktree.branch}
-              </span>
-            )}
+            {/* Show branch name only when different from displayed name */}
+            {(() => {
+              const displayBranch = gitStatus?.current_branch ?? worktree.branch
+              return displayBranch !== worktree.name ? (
+                <span className="ml-1 inline-flex items-center gap-0.5 text-xs text-muted-foreground">
+                  <GitBranch className="h-2.5 w-2.5" />
+                  {displayBranch}
+                </span>
+              ) : null
+            })()}
           </span>
         )}
 

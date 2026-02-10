@@ -2996,7 +2996,7 @@ fn execute_digest_claude(
 pub async fn generate_session_digest(
     app: AppHandle,
     session_id: String,
-) -> Result<SessionDigestResponse, String> {
+) -> Result<SessionDigest, String> {
     log::trace!("Generating digest for session {}", session_id);
 
     // Load preferences to get model
@@ -3018,7 +3018,19 @@ pub async fn generate_session_digest(
     let prompt = SESSION_DIGEST_PROMPT.replace("{conversation}", &conversation_history);
 
     // Call Claude CLI with JSON schema (non-streaming)
-    execute_digest_claude(&app, &prompt, &prefs.session_recap_model)
+    let response = execute_digest_claude(&app, &prompt, &prefs.session_recap_model)?;
+
+    Ok(SessionDigest {
+        chat_summary: response.chat_summary,
+        last_action: response.last_action,
+        created_at: Some(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+        ),
+        message_count: Some(messages.len()),
+    })
 }
 
 /// Update a session's persisted digest

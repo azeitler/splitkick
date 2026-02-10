@@ -559,11 +559,13 @@ export function NewWorktreeModal() {
         if (tag !== 'INPUT' && tag !== 'TEXTAREA') {
           if (key === 'n') {
             e.preventDefault()
+            e.nativeEvent.stopImmediatePropagation()
             handleCreateWorktree()
             return
           }
           if (key === 'b') {
             e.preventDefault()
+            e.nativeEvent.stopImmediatePropagation()
             handleBaseSession()
             return
           }

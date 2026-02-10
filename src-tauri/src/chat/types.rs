@@ -12,6 +12,12 @@ pub struct SessionDigest {
     pub chat_summary: String,
     /// One sentence describing what was just completed
     pub last_action: String,
+    /// When the digest was created (unix epoch seconds)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<u64>,
+    /// Number of messages in the session when this digest was generated
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message_count: Option<usize>,
 }
 
 // ============================================================================

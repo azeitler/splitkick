@@ -60,7 +60,7 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
               'group flex w-full sm:w-[260px] min-h-[132px] flex-col gap-3 rounded-md overflow-hidden bg-muted/30 border p-4 transition-colors text-left cursor-pointer scroll-mt-28 scroll-mb-20',
               'hover:border-foreground/20 hover:bg-muted/50',
               isSelected &&
-                'border-primary bg-primary/5 hover:border-primary hover:bg-primary/10 opacity-100'
+                'border-primary/50 bg-primary/5 hover:border-primary/50 hover:bg-primary/10 opacity-100'
             )}
           >
             {/* Top row: status indicator + plan/recap buttons */}

@@ -58,6 +58,7 @@ export function usePrStatusEvents(
         // Persist to worktree cached status (fire and forget)
         updateWorktreeCachedStatus(
           status.worktree_id,
+          null, // branch - handled by git-status service
           status.display_status,
           status.check_status,
           null, // behind_count - handled by git-status service

@@ -10,7 +10,8 @@ import { listen, type UnlistenFn } from '@/lib/transport'
 import { useEffect, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { isTauri, updateWorktreeCachedStatus } from '@/services/projects'
+import { isTauri, updateWorktreeCachedStatus, projectsQueryKeys } from '@/services/projects'
+import type { Worktree } from '@/types/projects'
 import type { GitDiff } from '@/types/git-diff'
 
 // ============================================================================
@@ -283,9 +284,30 @@ export function useGitStatusEvents(
           status
         )
 
+        // Update worktree.branch in query cache for immediate UI update
+        const worktreesQueries = queryClient.getQueriesData<Worktree[]>({
+          queryKey: projectsQueryKeys.all,
+        })
+        for (const [key, worktrees] of worktreesQueries) {
+          if (!worktrees || !Array.isArray(worktrees)) continue
+          const idx = worktrees.findIndex(w => w.id === status.worktree_id)
+          const match = idx !== -1 ? worktrees[idx] : undefined
+          if (match && match.branch !== status.current_branch) {
+            const updated = [...worktrees]
+            const patch: Partial<Worktree> = { branch: status.current_branch }
+            // For base sessions, also update the display name to match the branch
+            if (match.session_type === 'base') {
+              patch.name = status.current_branch
+            }
+            updated[idx] = { ...match, ...patch }
+            queryClient.setQueryData(key, updated)
+          }
+        }
+
         // Persist to worktree cached status (fire and forget)
         updateWorktreeCachedStatus(
           status.worktree_id,
+          status.current_branch,
           null, // pr_status - handled by pr-status service
           null, // check_status - handled by pr-status service
           status.behind_count,

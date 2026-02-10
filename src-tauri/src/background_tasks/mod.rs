@@ -315,10 +315,9 @@ impl BackgroundTaskManager {
                     MIN_LOCAL_POLL_DEBOUNCE
                 );
 
-                // If enough time has passed, trigger immediate poll
-                if time_since >= MIN_LOCAL_POLL_DEBOUNCE {
-                    self.immediate_poll.store(true, Ordering::Relaxed);
-                }
+                // Always trigger immediate local poll on focus regain
+                // Branch changes happen while the app is unfocused, so we need fresh data
+                self.immediate_poll.store(true, Ordering::Relaxed);
             } else {
                 log::trace!("App gained focus: no active worktree");
             }

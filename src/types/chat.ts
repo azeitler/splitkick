@@ -875,4 +875,8 @@ export interface SessionDigest {
   chat_summary: string
   /** One sentence describing what was just completed */
   last_action: string
+  /** When the digest was created (unix epoch seconds) */
+  created_at?: number
+  /** Number of messages when this digest was generated */
+  message_count?: number
 }

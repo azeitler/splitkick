@@ -3432,6 +3432,7 @@ pub async fn clear_worktree_pr(app: AppHandle, worktree_id: String) -> Result<()
 pub async fn update_worktree_cached_status(
     app: AppHandle,
     worktree_id: String,
+    branch: Option<String>,
     pr_status: Option<String>,
     check_status: Option<String>,
     behind_count: Option<u32>,
@@ -3456,6 +3457,13 @@ pub async fn update_worktree_cached_status(
         .ok_or_else(|| format!("Worktree not found: {worktree_id}"))?;
 
     // Only update fields that are provided, preserve existing values for None
+    if let Some(ref b) = branch {
+        worktree.branch = b.clone();
+        // For base sessions, also update the display name to match the branch
+        if worktree.session_type == crate::projects::types::SessionType::Base {
+            worktree.name = b.clone();
+        }
+    }
     if pr_status.is_some() {
         worktree.cached_pr_status = pr_status;
     }

@@ -74,8 +74,8 @@ export const ExperimentalPane: React.FC = () => {
           </InlineField>
 
           <InlineField
-            label="Session recap"
-            description="Show AI-generated summary when returning to unfocused sessions"
+            label="Automatic session recap"
+            description="Auto-generate AI summary when returning to unfocused sessions. Press R on canvas to generate on-demand."
           >
             <Switch
               checked={preferences?.session_recap_enabled ?? false}
@@ -90,35 +90,33 @@ export const ExperimentalPane: React.FC = () => {
             />
           </InlineField>
 
-          {preferences?.session_recap_enabled && (
-            <InlineField
-              label="Recap model"
-              description="Claude model for generating session summaries"
+          <InlineField
+            label="Recap model"
+            description="Claude model for automatic and on-demand session recaps"
+          >
+            <Select
+              value={preferences?.session_recap_model ?? 'haiku'}
+              onValueChange={(value: ClaudeModel) => {
+                if (preferences) {
+                  savePreferences.mutate({
+                    ...preferences,
+                    session_recap_model: value,
+                  })
+                }
+              }}
             >
-              <Select
-                value={preferences?.session_recap_model ?? 'haiku'}
-                onValueChange={(value: ClaudeModel) => {
-                  if (preferences) {
-                    savePreferences.mutate({
-                      ...preferences,
-                      session_recap_model: value,
-                    })
-                  }
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {modelOptions.map(option => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </InlineField>
-          )}
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {modelOptions.map(option => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </InlineField>
         </div>
       </SettingsSection>
 

@@ -106,6 +106,9 @@ export function CanvasGrid({
     planDialogCard,
     closePlanDialog,
     recapDialogDigest,
+    isRecapDialogOpen,
+    isGeneratingRecap,
+    regenerateRecap,
     closeRecapDialog,
     handlePlanView,
     handleRecapView,
@@ -123,7 +126,7 @@ export function CanvasGrid({
     !!selectedSessionId ||
     !!planDialogPath ||
     !!planDialogContent ||
-    !!recapDialogDigest
+    isRecapDialogOpen
   console.log(
     '[CanvasGrid] isModalOpen:',
     isModalOpen,
@@ -133,8 +136,8 @@ export function CanvasGrid({
     planDialogPath,
     'planDialogContent:',
     !!planDialogContent,
-    'recapDialogDigest:',
-    !!recapDialogDigest
+    'isRecapDialogOpen:',
+    isRecapDialogOpen
   )
   const { cardRefs } = useCanvasKeyboardNav({
     cards,
@@ -327,8 +330,10 @@ export function CanvasGrid({
       {/* Recap Dialog */}
       <RecapDialog
         digest={recapDialogDigest}
-        isOpen={!!recapDialogDigest}
+        isOpen={isRecapDialogOpen}
         onClose={closeRecapDialog}
+        isGenerating={isGeneratingRecap}
+        onRegenerate={regenerateRecap}
       />
 
       {/* Session Chat Modal */}

@@ -165,20 +165,19 @@ function WorktreeSectionHeader({
   return (
     <>
       <div className="mb-3 flex items-center gap-2">
-        <GitBranch className="h-4 w-4 text-muted-foreground" />
         <span className="font-medium">
           {isBase ? 'Base Session' : worktree.name}
         </span>
-        {worktree.name !== worktree.branch && (
-          <span className="text-sm text-muted-foreground">
-            ({worktree.branch})
-          </span>
-        )}
-        {isBase && (
-          <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-            base
-          </span>
-        )}
+        {(() => {
+          const displayBranch = gitStatus?.current_branch ?? worktree.branch
+          const displayName = isBase ? 'Base Session' : worktree.name
+          return displayBranch !== displayName ? (
+            <span className="inline-flex items-center gap-0.5 text-xs text-muted-foreground">
+              <GitBranch className="h-3 w-3" />
+              <span className="max-w-[150px] truncate">{displayBranch}</span>
+            </span>
+          ) : null
+        })()}
         <GitStatusBadges
           behindCount={behindCount}
           unpushedCount={unpushedCount}
@@ -574,6 +573,9 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     planDialogCard,
     closePlanDialog,
     recapDialogDigest,
+    isRecapDialogOpen,
+    isGeneratingRecap,
+    regenerateRecap,
     closeRecapDialog,
     handlePlanView,
     handleRecapView,
@@ -593,7 +595,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     !!selectedSession ||
     !!planDialogPath ||
     !!planDialogContent ||
-    !!recapDialogDigest
+    isRecapDialogOpen
   const { cardRefs } = useCanvasKeyboardNav({
     cards: flatCards,
     selectedIndex,
@@ -1180,8 +1182,10 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
       {/* Recap Dialog */}
       <RecapDialog
         digest={recapDialogDigest}
-        isOpen={!!recapDialogDigest}
+        isOpen={isRecapDialogOpen}
         onClose={closeRecapDialog}
+        isGenerating={isGeneratingRecap}
+        onRegenerate={regenerateRecap}
       />
 
       {/* Session Chat Modal */}

@@ -236,6 +236,7 @@ pub async fn dispatch_command(
         }
         "update_worktree_cached_status" => {
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let branch: Option<String> = field_opt(&args, "branch", "branch")?;
             let pr_status: Option<String> = field_opt(&args, "prStatus", "pr_status")?;
             let check_status: Option<String> = field_opt(&args, "checkStatus", "check_status")?;
             let behind_count: Option<u32> = field_opt(&args, "behindCount", "behind_count")?;
@@ -258,6 +259,7 @@ pub async fn dispatch_command(
             crate::projects::update_worktree_cached_status(
                 app.clone(),
                 worktree_id,
+                branch,
                 pr_status,
                 check_status,
                 behind_count,
