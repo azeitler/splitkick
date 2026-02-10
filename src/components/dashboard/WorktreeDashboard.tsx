@@ -37,6 +37,7 @@ import { useUIStore } from '@/store/ui-store'
 import { isBaseSession, type Worktree } from '@/types/projects'
 import type { Session, WorktreeSessions } from '@/types/chat'
 import { NewIssuesBadge } from '@/components/shared/NewIssuesBadge'
+import { OpenPRsBadge } from '@/components/shared/OpenPRsBadge'
 import { PlanDialog } from '@/components/chat/PlanDialog'
 import { RecapDialog } from '@/components/chat/RecapDialog'
 import { SessionChatModal } from '@/components/chat/SessionChatModal'
@@ -428,12 +429,6 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
         fc.worktreeId === selectedSession.worktreeId &&
         fc.card?.session.id === selectedSession.sessionId
     )
-    console.log(
-      '[WorktreeDashboard] sync selectedIndex - cardIndex:',
-      cardIndex,
-      'for session:',
-      selectedSession.sessionId
-    )
     if (cardIndex !== -1 && cardIndex !== selectedIndex) {
       setSelectedIndex(cardIndex)
     }
@@ -472,27 +467,47 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     }
   }, [sessionsByWorktreeId, readyWorktrees, flatCards])
 
-  // Auto-select first session when dashboard opens (visual selection only, no modal)
+  // Auto-select session when dashboard opens (visual selection only, no modal)
+  // Prefers the persisted active session per worktree, falls back to first card
   useEffect(() => {
     if (selectedIndex !== null || selectedSession) return
-    const firstCardIndex = flatCards.findIndex(
-      fc => fc.card !== null && !fc.isPending
-    )
-    if (firstCardIndex === -1) return
-    const firstCard = flatCards[firstCardIndex]
-    setSelectedIndex(firstCardIndex)
-    if (firstCard?.card) {
+    if (flatCards.length === 0) return
+
+    // Try to find a card matching a persisted active session
+    const { activeSessionIds } = useChatStore.getState()
+    let targetIndex = -1
+    for (const fc of flatCards) {
+      if (!fc.card || fc.isPending) continue
+      const activeId = activeSessionIds[fc.worktreeId]
+      if (activeId && fc.card.session.id === activeId) {
+        targetIndex = fc.globalIndex
+        break
+      }
+    }
+
+    // Fall back to first non-pending card
+    if (targetIndex === -1) {
+      const firstCardIndex = flatCards.findIndex(
+        fc => fc.card !== null && !fc.isPending
+      )
+      if (firstCardIndex === -1) return
+      targetIndex = firstCardIndex
+    }
+
+    const targetCard = flatCards[targetIndex]
+    setSelectedIndex(targetIndex)
+    if (targetCard?.card) {
       useChatStore
         .getState()
         .setCanvasSelectedSession(
-          firstCard.worktreeId,
-          firstCard.card.session.id
+          targetCard.worktreeId,
+          targetCard.card.session.id
         )
       // Sync projects store so commands (CMD+O, open terminal, etc.) work immediately
-      useProjectsStore.getState().selectWorktree(firstCard.worktreeId)
+      useProjectsStore.getState().selectWorktree(targetCard.worktreeId)
       useChatStore
         .getState()
-        .registerWorktreePath(firstCard.worktreeId, firstCard.worktreePath)
+        .registerWorktreePath(targetCard.worktreeId, targetCard.worktreePath)
     }
   }, [flatCards, selectedIndex, selectedSession])
 
@@ -997,6 +1012,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
           <div className="flex items-center gap-1 shrink-0">
             <h2 className="text-lg font-semibold">{project.name}</h2>
             <NewIssuesBadge projectPath={project.path} projectId={projectId} />
+            <OpenPRsBadge projectPath={project.path} projectId={projectId} />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button

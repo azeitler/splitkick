@@ -53,7 +53,9 @@ import {
 } from '@/services/chat'
 import { useCloseBaseSessionClean } from '@/services/projects'
 import { usePreferences } from '@/services/preferences'
+import { invoke } from '@/lib/transport'
 import { useChatStore } from '@/store/chat-store'
+import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
 import {
   isAskUserQuestion,
@@ -548,6 +550,7 @@ export function SessionTabBar({
     : false
   const reviewResults = useChatStore(state => state.reviewResults[worktreeId])
   const reviewingSessions = useChatStore(state => state.reviewingSessions)
+  const uiStateInitialized = useUIStore(state => state.uiStateInitialized)
 
   // Actions via getState() - no subscription, stable references
   const {
@@ -576,6 +579,9 @@ export function SessionTabBar({
 
   // Set initial active session when sessions load
   useEffect(() => {
+    // Wait for UI state to be restored from persisted storage first,
+    // otherwise we'd overwrite the restored activeSessionIds with the first session
+    if (!uiStateInitialized) return
     const sessions = sessionsData?.sessions
     const firstSession = sessions?.[0]
     if (sessions && sessions.length > 0 && firstSession) {
@@ -587,7 +593,7 @@ export function SessionTabBar({
         setActiveSession(worktreeId, targetSession)
       }
     }
-  }, [sessionsData, worktreeId, getActiveSession, setActiveSession])
+  }, [sessionsData, worktreeId, getActiveSession, setActiveSession, uiStateInitialized])
 
   const handleCreateSession = useCallback(() => {
     createSession.mutate(
@@ -708,8 +714,10 @@ export function SessionTabBar({
         setViewingCanvasTab(worktreeId, false)
         setActiveSession(worktreeId, sessionId)
       })
+      // Fire-and-forget: persist active session to backend index
+      invoke('set_active_session', { worktreeId, worktreePath, sessionId })
     },
-    [worktreeId, setActiveSession, setViewingReviewTab, setViewingCanvasTab]
+    [worktreeId, worktreePath, setActiveSession, setViewingReviewTab, setViewingCanvasTab]
   )
 
   const handleReviewTabClick = useCallback(() => {

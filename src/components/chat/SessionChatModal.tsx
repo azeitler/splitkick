@@ -75,14 +75,6 @@ export function SessionChatModal({
 
   const [diffRequest, setDiffRequest] = useState<DiffRequest | null>(null)
 
-  console.log('[SessionChatModal] render', {
-    sessionId,
-    isOpen,
-    'session?.id': session?.id,
-    'session?.name': session?.name,
-    match: session?.id === sessionId,
-  })
-
   // Store the previous active session to restore on close
   const previousSessionRef = useRef<string | undefined>(undefined)
   const hasSetActiveRef = useRef<string | null>(null)
@@ -102,18 +94,20 @@ export function SessionChatModal({
     hasSetActiveRef.current = sessionId
   }
 
-  // Reset refs when modal closes
+  // Reset refs when modal closes (isOpen→false without handleClose, e.g. parent state reset)
   useEffect(() => {
     if (!isOpen) {
       hasSetActiveRef.current = null
     }
   }, [isOpen])
 
-  // When modal closes, restore the previous session
+  // When user explicitly closes the modal (X button, back button, click outside),
+  // restore the previous session so the canvas highlight goes back.
+  // On forced unmount (project switch), we intentionally keep the modal's session
+  // as activeSessionIds[worktreeId] — that's the "last used session" we want to persist.
   const handleClose = useCallback(() => {
     if (previousSessionRef.current) {
-      const { setActiveSession } = useChatStore.getState()
-      setActiveSession(worktreeId, previousSessionRef.current)
+      useChatStore.getState().setActiveSession(worktreeId, previousSessionRef.current)
     }
     onClose()
   }, [worktreeId, onClose])

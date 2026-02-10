@@ -116,6 +116,8 @@ interface UIState {
   planDialogOpen: boolean
   /** Whether the feature tour dialog is open */
   featureTourOpen: boolean
+  /** Whether UI state has been restored from persisted storage */
+  uiStateInitialized: boolean
 
   toggleLeftSidebar: () => void
   setLeftSidebarVisible: (visible: boolean) => void
@@ -156,6 +158,7 @@ interface UIState {
   setSessionChatModalOpen: (open: boolean, worktreeId?: string | null) => void
   setPlanDialogOpen: (open: boolean) => void
   setFeatureTourOpen: (open: boolean) => void
+  setUIStateInitialized: (initialized: boolean) => void
 }
 
 export const useUIStore = create<UIState>()(
@@ -190,6 +193,7 @@ export const useUIStore = create<UIState>()(
       sessionChatModalWorktreeId: null,
       planDialogOpen: false,
       featureTourOpen: false,
+      uiStateInitialized: false,
 
       toggleLeftSidebar: () =>
         set(
@@ -456,6 +460,9 @@ export const useUIStore = create<UIState>()(
 
       setFeatureTourOpen: open =>
         set({ featureTourOpen: open }, undefined, 'setFeatureTourOpen'),
+
+      setUIStateInitialized: initialized =>
+        set({ uiStateInitialized: initialized }, undefined, 'setUIStateInitialized'),
     }),
     {
       name: 'ui-store',

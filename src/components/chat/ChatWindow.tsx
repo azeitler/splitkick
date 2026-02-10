@@ -277,8 +277,13 @@ export function ChatWindow({
     isFetching: isSessionsFetching,
   } = useSessions(activeWorktreeId, activeWorktreePath)
 
+  const uiStateInitialized = useUIStore(state => state.uiStateInitialized)
+
   // Sync active session from backend if store doesn't have one
   useEffect(() => {
+    // Wait for UI state to be restored from persisted storage first,
+    // otherwise we'd overwrite the restored activeSessionIds with the first session
+    if (!uiStateInitialized) return
     // Skip while refetching - stale cached data could overwrite a valid selection
     // (e.g., when creating a new session, the cache doesn't include it yet)
     if (!activeWorktreeId || !sessionsData || isSessionsFetching) return
@@ -296,7 +301,7 @@ export function ChatWindow({
         store.setActiveSession(activeWorktreeId, targetSession)
       }
     }
-  }, [sessionsData, activeWorktreeId, isSessionsFetching])
+  }, [sessionsData, activeWorktreeId, isSessionsFetching, uiStateInitialized])
 
   // Use backend's active session if store doesn't have one yet
   if (!activeSessionId && sessionsData?.sessions.length) {
@@ -1098,18 +1103,11 @@ export function ChatWindow({
       // Get session-approved tools to include
       const sessionApprovedTools = getApprovedTools(activeSessionId)
 
-      // Build base allowed tools (git always, web tools if enabled)
-      const webTools = preferences?.allow_web_tools_in_plan_mode
-        ? ['WebFetch', 'WebSearch']
-        : []
-      const baseAllowedTools = [...GIT_ALLOWED_TOOLS, ...webTools]
-
+      // Build allowed tools (git always; WebFetch/WebSearch injected by backend based on prefs + mode)
       const allowedTools =
         sessionApprovedTools.length > 0
-          ? [...baseAllowedTools, ...sessionApprovedTools]
-          : baseAllowedTools.length > GIT_ALLOWED_TOOLS.length
-            ? baseAllowedTools
-            : undefined
+          ? [...GIT_ALLOWED_TOOLS, ...sessionApprovedTools]
+          : undefined
 
       // Build full message with attachment refs for backend
       const fullMessage = buildMessageWithRefs(queuedMsg)

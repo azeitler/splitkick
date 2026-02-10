@@ -181,12 +181,13 @@ export function LoadContextModal({
   // GitHub issues query
   const issueState = includeClosed ? 'all' : 'open'
   const {
-    data: issues,
+    data: issueResult,
     isLoading: isLoadingIssues,
     isFetching: isRefetchingIssues,
     error: issuesError,
     refetch: refetchIssues,
   } = useGitHubIssues(worktreePath, issueState)
+  const issues = issueResult?.issues
 
   // GitHub PRs query
   const prState = includeClosed ? 'all' : 'open'

@@ -6,6 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { invoke } from '@/lib/transport'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
@@ -150,9 +151,12 @@ export function OpenInModal() {
         case 'github': {
           const branch = worktree?.branch
           if (!branch) {
-            notify('No branch found for this worktree', undefined, {
-              type: 'error',
-            })
+            // No worktree branch - open project GitHub page instead
+            if (selectedProjectId) {
+              invoke('open_project_on_github', { projectId: selectedProjectId })
+            } else {
+              notify('No project selected', undefined, { type: 'error' })
+            }
             break
           }
           openOnGitHub.mutate({ repoPath: targetPath, branch })
@@ -171,6 +175,7 @@ export function OpenInModal() {
       worktree,
       preferences,
       setOpenInModalOpen,
+      selectedProjectId,
     ]
   )
 

@@ -21,6 +21,11 @@ export interface GitHubIssue {
   author: GitHubAuthor
 }
 
+export interface GitHubIssueListResult {
+  issues: GitHubIssue[]
+  totalCount: number
+}
+
 export interface GitHubComment {
   body: string
   author: GitHubAuthor

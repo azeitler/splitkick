@@ -25,12 +25,12 @@ export function NewIssuesBadge({
   const authData = queryClient.getQueryData<GhAuthStatus>(ghCliQueryKeys.auth())
   const isAuthenticated = authData?.authenticated ?? false
 
-  const { data: issues } = useGitHubIssues(projectPath, 'open', {
+  const { data: issueResult } = useGitHubIssues(projectPath, 'open', {
     enabled: isAuthenticated,
     staleTime: BADGE_STALE_TIME,
   })
 
-  const totalCount = issues?.length ?? 0
+  const totalCount = issueResult?.totalCount ?? 0
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {

@@ -13,6 +13,7 @@ import {
 import { isBaseSession } from '@/types/projects'
 import { GitStatusBadges } from '@/components/ui/git-status-badges'
 import { NewIssuesBadge } from '@/components/shared/NewIssuesBadge'
+import { OpenPRsBadge } from '@/components/shared/OpenPRsBadge'
 import { GitDiffModal } from './GitDiffModal'
 import type { DiffRequest } from '@/types/git-diff'
 import { toast } from 'sonner'
@@ -254,29 +255,30 @@ export function SessionCanvasView({
     }
   }, [selectedSessionId, sessionCards, selectedIndex])
 
-  // Auto-select first session when canvas opens (visual selection only, no modal)
+  // Auto-select session when canvas opens (visual selection only, no modal)
+  // Prefers the persisted active session, falls back to first card
   useEffect(() => {
     if (selectedIndex !== null || selectedSessionId) return
     if (sessionCards.length === 0) return
-    setSelectedIndex(0)
-    const firstCard = sessionCards[0]
-    if (firstCard) {
+
+    // Try to find the persisted active session for this worktree
+    const activeId = useChatStore.getState().activeSessionIds[worktreeId]
+    let targetIndex = activeId
+      ? sessionCards.findIndex(c => c.session.id === activeId)
+      : -1
+    if (targetIndex === -1) targetIndex = 0
+
+    setSelectedIndex(targetIndex)
+    const targetCard = sessionCards[targetIndex]
+    if (targetCard) {
       useChatStore
         .getState()
-        .setCanvasSelectedSession(worktreeId, firstCard.session.id)
+        .setCanvasSelectedSession(worktreeId, targetCard.session.id)
       // Sync projects store so commands (CMD+O, open terminal, etc.) work immediately
       useProjectsStore.getState().selectWorktree(worktreeId)
       useChatStore.getState().registerWorktreePath(worktreeId, worktreePath)
     }
   }, [sessionCards, selectedIndex, selectedSessionId, worktreeId, worktreePath])
-
-  // Debug: log selectedIndex changes
-  console.log(
-    '[SessionCanvasView] render - selectedIndex:',
-    selectedIndex,
-    'sessionCards.length:',
-    sessionCards.length
-  )
 
   // Handle opening full view from modal
   const handleOpenFullView = useCallback(() => {
@@ -304,6 +306,12 @@ export function SessionCanvasView({
               </h2>
               {project && worktree && (
                 <NewIssuesBadge
+                  projectPath={project.path}
+                  projectId={worktree.project_id}
+                />
+              )}
+              {project && worktree && (
+                <OpenPRsBadge
                   projectPath={project.path}
                   projectId={worktree.project_id}
                 />

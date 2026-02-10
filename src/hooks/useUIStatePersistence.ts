@@ -314,6 +314,7 @@ export function useUIStatePersistence() {
 
     queueMicrotask(() => {
       setIsInitialized(true)
+      useUIStore.getState().setUIStateInitialized(true)
     })
     logger.info('UI state initialization complete')
   }, [uiStateLoaded, uiState, projects, projectsLoaded, isInitialized])

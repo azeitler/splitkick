@@ -4,6 +4,7 @@ import { logger } from '@/lib/logger'
 import type {
   GitHubIssue,
   GitHubIssueDetail,
+  GitHubIssueListResult,
   GitHubPullRequest,
   GitHubPullRequestDetail,
   LoadedIssueContext,
@@ -77,19 +78,19 @@ export function useGitHubIssues(
 ) {
   return useQuery({
     queryKey: githubQueryKeys.issues(projectPath ?? '', state),
-    queryFn: async (): Promise<GitHubIssue[]> => {
+    queryFn: async (): Promise<GitHubIssueListResult> => {
       if (!isTauri() || !projectPath) {
-        return []
+        return { issues: [], totalCount: 0 }
       }
 
       try {
         logger.debug('Fetching GitHub issues', { projectPath, state })
-        const issues = await invoke<GitHubIssue[]>('list_github_issues', {
+        const result = await invoke<GitHubIssueListResult>('list_github_issues', {
           projectPath,
           state,
         })
-        logger.info('GitHub issues loaded', { count: issues.length })
-        return issues
+        logger.info('GitHub issues loaded', { count: result.issues.length, totalCount: result.totalCount })
+        return result
       } catch (error) {
         logger.error('Failed to load GitHub issues', { error, projectPath })
         throw error

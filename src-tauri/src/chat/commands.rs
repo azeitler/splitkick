@@ -1050,6 +1050,22 @@ pub async fn send_chat_message(
     // Use passed parameter for Chrome browser integration (default false - beta)
     let chrome = chrome_enabled.unwrap_or(false);
 
+    // Inject WebFetch/WebSearch in plan mode if preference is enabled
+    let mut final_allowed_tools = allowed_tools.unwrap_or_default();
+    if execution_mode.as_deref() == Some("plan") {
+        if let Ok(prefs) = crate::load_preferences(app.clone()).await {
+            if prefs.allow_web_tools_in_plan_mode {
+                final_allowed_tools.push("WebFetch".to_string());
+                final_allowed_tools.push("WebSearch".to_string());
+            }
+        }
+    }
+    let allowed_tools_for_cli = if final_allowed_tools.is_empty() {
+        None
+    } else {
+        Some(final_allowed_tools)
+    };
+
     // Execute Claude CLI in detached mode
     // If resume fails with "session not found", retry without the session ID
     let mut claude_session_id_for_call = claude_session_id.clone();
@@ -1068,7 +1084,7 @@ pub async fn send_chat_message(
             execution_mode.as_deref(),
             thinking_level.as_ref(),
             effort_level.as_ref(),
-            allowed_tools.as_deref(),
+            allowed_tools_for_cli.as_deref(),
             disable_thinking_in_non_plan_modes,
             parallel_execution_prompt,
             ai_language.as_deref(),

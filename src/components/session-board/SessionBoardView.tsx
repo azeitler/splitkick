@@ -20,6 +20,7 @@ import type { ExecutionMode } from '@/types/chat'
 import type { Session } from '@/types/chat'
 import type { Worktree } from '@/types/projects'
 import { NewIssuesBadge } from '@/components/shared/NewIssuesBadge'
+import { OpenPRsBadge } from '@/components/shared/OpenPRsBadge'
 import { SessionCard } from './SessionCard'
 import { SessionColumn } from './SessionColumn'
 import { Spinner } from '@/components/ui/spinner'
@@ -243,6 +244,7 @@ export function SessionBoardView({
       <div className="mb-4 flex items-center justify-end gap-2">
         <span className="text-sm text-muted-foreground">{project.name}</span>
         <NewIssuesBadge projectPath={project.path} projectId={project.id} />
+        <OpenPRsBadge projectPath={project.path} projectId={project.id} />
       </div>
 
       {/* Session Board */}

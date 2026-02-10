@@ -110,12 +110,13 @@ export function NewWorktreeModal() {
   // GitHub issues query
   const issueState = includeClosed ? 'all' : 'open'
   const {
-    data: issues,
+    data: issueResult,
     isLoading: isLoadingIssues,
     isFetching: isRefetchingIssues,
     error: issuesError,
     refetch: refetchIssues,
   } = useGitHubIssues(selectedProject?.path ?? null, issueState)
+  const issues = issueResult?.issues
 
   // GitHub PRs query
   const prState = includeClosed ? 'all' : 'open'
