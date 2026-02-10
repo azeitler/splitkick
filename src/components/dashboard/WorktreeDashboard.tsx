@@ -1,15 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { cn } from '@/lib/utils'
-import { useQueries } from '@tanstack/react-query'
+import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { invoke } from '@/lib/transport'
-import {
-  Search,
-  GitBranch,
-  MoreHorizontal,
-  Settings,
-  Plus,
-  Loader2,
-} from 'lucide-react'
+import { Search, GitBranch, MoreHorizontal, Settings, Plus } from 'lucide-react'
 import { WorktreeDropdownMenu } from '@/components/projects/WorktreeDropdownMenu'
 import { Button } from '@/components/ui/button'
 import {
@@ -27,6 +19,9 @@ import {
   useProjects,
   useCreateWorktree,
   useCreateBaseSession,
+  useProjectBranches,
+  useCreateWorktreeFromExistingBranch,
+  projectsQueryKeys,
   isTauri,
 } from '@/services/projects'
 import { chatQueryKeys, useCreateSession } from '@/services/chat'
@@ -48,6 +43,32 @@ import {
   computeSessionCardData,
 } from '@/components/chat/session-card-utils'
 import { WorktreeSetupCard } from '@/components/chat/WorktreeSetupCard'
+import {
+  type TabId,
+  SessionTabBar,
+  QuickActionsTab,
+  GitHubIssuesTab,
+  GitHubPRsTab,
+  BranchesTab,
+} from '@/components/worktree/NewWorktreeModal'
+import { useGhLogin } from '@/hooks/useGhLogin'
+import {
+  useGitHubIssues,
+  useGitHubPRs,
+  useSearchGitHubIssues,
+  useSearchGitHubPRs,
+  filterIssues,
+  filterPRs,
+  mergeWithSearchResults,
+  githubQueryKeys,
+} from '@/services/github'
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
+import type {
+  GitHubIssue,
+  GitHubPullRequest,
+  IssueContext,
+  PullRequestContext,
+} from '@/types/github'
 import { useCanvasStoreState } from '@/components/chat/hooks/useCanvasStoreState'
 import { usePlanApproval } from '@/components/chat/hooks/usePlanApproval'
 import { useCanvasKeyboardNav } from '@/components/chat/hooks/useCanvasKeyboardNav'
@@ -265,29 +286,6 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     }
     return map
   }, [sessionQueries])
-
-  // Create worktree/base session for empty state
-  const createWorktree = useCreateWorktree()
-  const createBaseSession = useCreateBaseSession()
-  const hasBaseSession = worktrees.some(wt => isBaseSession(wt))
-
-  const handleEmptyCreateWorktree = useCallback(() => {
-    createWorktree.mutate({ projectId })
-  }, [projectId, createWorktree])
-
-  const handleEmptyBaseSession = useCallback(() => {
-    if (hasBaseSession) {
-      const base = worktrees.find(wt => isBaseSession(wt))
-      if (base) {
-        const { selectWorktree } = useProjectsStore.getState()
-        const { setActiveWorktree } = useChatStore.getState()
-        selectWorktree(base.id)
-        setActiveWorktree(base.id, base.path)
-      }
-    } else {
-      createBaseSession.mutate(projectId)
-    }
-  }, [projectId, hasBaseSession, worktrees, createBaseSession])
 
   // Use shared store state hook
   const storeState = useCanvasStoreState()
@@ -1030,9 +1028,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
               <DropdownMenuContent align="start">
                 <DropdownMenuItem
                   onSelect={() =>
-                    window.dispatchEvent(
-                      new CustomEvent('create-new-worktree')
-                    )
+                    window.dispatchEvent(new CustomEvent('create-new-worktree'))
                   }
                 >
                   <Plus className="h-4 w-4" />
@@ -1050,34 +1046,31 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              ref={searchInputRef}
-              placeholder="Search worktrees and sessions..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="pl-9 bg-transparent border-border/30"
-            />
-          </div>
+          {worktreeSections.length > 0 && (
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                ref={searchInputRef}
+                placeholder="Search worktrees and sessions..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="pl-9 bg-transparent border-border/30"
+              />
+            </div>
+          )}
         </div>
 
         {/* Canvas View */}
-        <div className="flex-1 pb-16 pt-6 px-4">
+        <div
+          className={`flex-1 pb-16 ${worktreeSections.length === 0 && !searchQuery ? '' : 'pt-6 px-4'}`}
+        >
           {worktreeSections.length === 0 ? (
             searchQuery ? (
               <div className="flex h-full items-center justify-center text-muted-foreground">
                 No worktrees or sessions match your search
               </div>
             ) : (
-              <EmptyDashboard
-                hasBaseSession={hasBaseSession}
-                onCreateWorktree={handleEmptyCreateWorktree}
-                onBaseSession={handleEmptyBaseSession}
-                isCreating={
-                  createWorktree.isPending || createBaseSession.isPending
-                }
-              />
+              <EmptyDashboardTabs projectId={projectId} />
             )
           ) : (
             <div className="space-y-6">
@@ -1226,110 +1219,570 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
   )
 }
 
-interface EmptyDashboardProps {
-  hasBaseSession: boolean
-  onCreateWorktree: () => void
-  onBaseSession: () => void
-  isCreating: boolean
-}
+function EmptyDashboardTabs({ projectId }: { projectId: string }) {
+  const queryClient = useQueryClient()
+  const { triggerLogin: triggerGhLogin, isGhInstalled } = useGhLogin()
 
-function EmptyDashboard({
-  hasBaseSession,
-  onCreateWorktree,
-  onBaseSession,
-  isCreating,
-}: EmptyDashboardProps) {
+  const { data: projects = [] } = useProjects()
+  const project = projects.find(p => p.id === projectId)
+  const { data: worktrees = [] } = useWorktrees(projectId)
+  const hasBaseSession = worktrees.some(wt => isBaseSession(wt))
+  const baseSession = worktrees.find(wt => isBaseSession(wt))
+
+  const [activeTab, setActiveTab] = useState<TabId>('quick')
+  const [searchQuery, setTabSearchQuery] = useState('')
+  const [includeClosed, setIncludeClosed] = useState(false)
+  const [selectedItemIndex, setSelectedItemIndex] = useState(0)
+  const [creatingFromNumber, setCreatingFromNumber] = useState<number | null>(
+    null
+  )
+  const [creatingFromBranch, setCreatingFromBranch] = useState<string | null>(
+    null
+  )
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  // GitHub issues
+  const issueState = includeClosed ? 'all' : 'open'
+  const {
+    data: issueResult,
+    isLoading: isLoadingIssues,
+    isFetching: isRefetchingIssues,
+    error: issuesError,
+    refetch: refetchIssues,
+  } = useGitHubIssues(project?.path ?? null, issueState)
+  const issues = issueResult?.issues
+
+  // GitHub PRs
+  const prState = includeClosed ? 'all' : 'open'
+  const {
+    data: prs,
+    isLoading: isLoadingPRs,
+    isFetching: isRefetchingPRs,
+    error: prsError,
+    refetch: refetchPRs,
+  } = useGitHubPRs(project?.path ?? null, prState)
+
+  // Debounced search
+  const debouncedSearchQuery = useDebouncedValue(searchQuery, 300)
+  const { data: searchedIssues, isFetching: isSearchingIssues } =
+    useSearchGitHubIssues(project?.path ?? null, debouncedSearchQuery)
+  const { data: searchedPRs, isFetching: isSearchingPRs } = useSearchGitHubPRs(
+    project?.path ?? null,
+    debouncedSearchQuery
+  )
+
+  const filteredIssues = useMemo(
+    () =>
+      mergeWithSearchResults(
+        filterIssues(issues ?? [], searchQuery),
+        searchedIssues
+      ),
+    [issues, searchQuery, searchedIssues]
+  )
+
+  const filteredPRs = useMemo(
+    () =>
+      mergeWithSearchResults(filterPRs(prs ?? [], searchQuery), searchedPRs),
+    [prs, searchQuery, searchedPRs]
+  )
+
+  // Branches
+  const {
+    data: branches,
+    isLoading: isLoadingBranches,
+    isFetching: isRefetchingBranches,
+    error: branchesError,
+    refetch: refetchBranches,
+  } = useProjectBranches(projectId)
+
+  const filteredBranches = useMemo(() => {
+    if (!branches) return []
+    const baseBranch = project?.default_branch
+    const filtered = branches.filter(b => b !== baseBranch)
+    if (!searchQuery) return filtered
+    const q = searchQuery.toLowerCase()
+    return filtered.filter(b => b.toLowerCase().includes(q))
+  }, [branches, searchQuery, project?.default_branch])
+
+  // Mutations
+  const createWorktree = useCreateWorktree()
+  const createBaseSession = useCreateBaseSession()
+  const createWorktreeFromBranch = useCreateWorktreeFromExistingBranch()
+
+  // Invalidate caches on mount
   useEffect(() => {
-    if (isCreating) return
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't intercept when typing in inputs or when a dialog/modal is open
-      const tag = document.activeElement?.tagName
-      if (
-        tag === 'INPUT' ||
-        tag === 'TEXTAREA' ||
-        (document.activeElement as HTMLElement)?.isContentEditable
-      )
-        return
+    const projectPath = project?.path
+    if (projectPath) {
+      queryClient.invalidateQueries({
+        queryKey: githubQueryKeys.issues(projectPath, 'open'),
+      })
+      queryClient.invalidateQueries({
+        queryKey: githubQueryKeys.prs(projectPath, 'open'),
+      })
+    }
+    if (projectId) {
+      queryClient.invalidateQueries({
+        queryKey: [...projectsQueryKeys.detail(projectId), 'branches'],
+      })
+    }
+  }, [project?.path, projectId, queryClient])
 
-      const { projectSettingsDialogOpen } = useProjectsStore.getState()
-      const {
-        newWorktreeModalOpen,
-        commandPaletteOpen,
-        preferencesOpen,
-        magicModalOpen,
-      } = useUIStore.getState()
-      if (
-        projectSettingsDialogOpen ||
-        newWorktreeModalOpen ||
-        commandPaletteOpen ||
-        preferencesOpen ||
-        magicModalOpen
-      )
-        return
+  // Focus search input when switching to searchable tabs
+  useEffect(() => {
+    if (
+      activeTab === 'issues' ||
+      activeTab === 'prs' ||
+      activeTab === 'branches'
+    ) {
+      const timer = setTimeout(() => searchInputRef.current?.focus(), 50)
+      return () => clearTimeout(timer)
+    }
+  }, [activeTab])
 
+  // Reset selection when switching tabs
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSelectedItemIndex(0)
+    setTabSearchQuery('')
+  }, [activeTab])
+
+  // Scroll selected item into view
+  useEffect(() => {
+    const el = document.querySelector(
+      `[data-item-index="${selectedItemIndex}"]`
+    )
+    el?.scrollIntoView({ block: 'nearest' })
+  }, [selectedItemIndex])
+
+  const handleCreateWorktree = useCallback(() => {
+    createWorktree.mutate({ projectId })
+  }, [projectId, createWorktree])
+
+  const handleBaseSession = useCallback(() => {
+    if (hasBaseSession && baseSession) {
+      const { selectWorktree } = useProjectsStore.getState()
+      const { setActiveWorktree } = useChatStore.getState()
+      selectWorktree(baseSession.id)
+      setActiveWorktree(baseSession.id, baseSession.path)
+      toast.success(`Switched to base session: ${baseSession.name}`)
+    } else {
+      createBaseSession.mutate(projectId)
+    }
+  }, [projectId, hasBaseSession, baseSession, createBaseSession])
+
+  const handleSelectBranch = useCallback(
+    (branchName: string) => {
+      setCreatingFromBranch(branchName)
+      createWorktreeFromBranch.mutate(
+        { projectId, branchName },
+        { onError: () => setCreatingFromBranch(null) }
+      )
+    },
+    [projectId, createWorktreeFromBranch]
+  )
+
+  const handleSelectIssue = useCallback(
+    async (issue: GitHubIssue) => {
+      const projectPath = project?.path
+      if (!projectPath) return
+      setCreatingFromNumber(issue.number)
+      try {
+        const issueDetail = await invoke<
+          GitHubIssue & {
+            comments: {
+              body: string
+              author: { login: string }
+              created_at: string
+            }[]
+          }
+        >('get_github_issue', { projectPath, issueNumber: issue.number })
+        const issueContext: IssueContext = {
+          number: issueDetail.number,
+          title: issueDetail.title,
+          body: issueDetail.body,
+          comments: (issueDetail.comments ?? [])
+            .filter(c => c && c.created_at && c.author)
+            .map(c => ({
+              body: c.body ?? '',
+              author: { login: c.author.login ?? '' },
+              createdAt: c.created_at,
+            })),
+        }
+        createWorktree.mutate({ projectId, issueContext })
+      } catch (error) {
+        toast.error(`Failed to fetch issue details: ${error}`)
+        setCreatingFromNumber(null)
+      }
+    },
+    [projectId, project, createWorktree]
+  )
+
+  const handleSelectIssueAndInvestigate = useCallback(
+    async (issue: GitHubIssue) => {
+      const projectPath = project?.path
+      if (!projectPath) return
+      setCreatingFromNumber(issue.number)
+      try {
+        const issueDetail = await invoke<
+          GitHubIssue & {
+            comments: {
+              body: string
+              author: { login: string }
+              created_at: string
+            }[]
+          }
+        >('get_github_issue', { projectPath, issueNumber: issue.number })
+        const issueContext: IssueContext = {
+          number: issueDetail.number,
+          title: issueDetail.title,
+          body: issueDetail.body,
+          comments: (issueDetail.comments ?? [])
+            .filter(c => c && c.created_at && c.author)
+            .map(c => ({
+              body: c.body ?? '',
+              author: { login: c.author.login ?? '' },
+              createdAt: c.created_at,
+            })),
+        }
+        const pendingWorktree = await createWorktree.mutateAsync({
+          projectId,
+          issueContext,
+        })
+        const { markWorktreeForAutoInvestigate } = useUIStore.getState()
+        markWorktreeForAutoInvestigate(pendingWorktree.id)
+      } catch (error) {
+        toast.error(`Failed to fetch issue details: ${error}`)
+        setCreatingFromNumber(null)
+      }
+    },
+    [projectId, project, createWorktree]
+  )
+
+  const handleSelectPR = useCallback(
+    async (pr: GitHubPullRequest) => {
+      const projectPath = project?.path
+      if (!projectPath) return
+      setCreatingFromNumber(pr.number)
+      try {
+        const prDetail = await invoke<
+          GitHubPullRequest & {
+            comments: {
+              body: string
+              author: { login: string }
+              created_at: string
+            }[]
+            reviews: {
+              body: string
+              state: string
+              author: { login: string }
+              submittedAt?: string
+            }[]
+          }
+        >('get_github_pr', { projectPath, prNumber: pr.number })
+        const prContext: PullRequestContext = {
+          number: prDetail.number,
+          title: prDetail.title,
+          body: prDetail.body,
+          headRefName: prDetail.headRefName,
+          baseRefName: prDetail.baseRefName,
+          comments: (prDetail.comments ?? [])
+            .filter(c => c && c.created_at && c.author)
+            .map(c => ({
+              body: c.body ?? '',
+              author: { login: c.author.login ?? '' },
+              createdAt: c.created_at,
+            })),
+          reviews: (prDetail.reviews ?? [])
+            .filter(r => r && r.author)
+            .map(r => ({
+              body: r.body ?? '',
+              state: r.state,
+              author: { login: r.author.login ?? '' },
+              submittedAt: r.submittedAt,
+            })),
+        }
+        createWorktree.mutate({ projectId, prContext })
+      } catch (error) {
+        toast.error(`Failed to fetch PR details: ${error}`)
+        setCreatingFromNumber(null)
+      }
+    },
+    [projectId, project, createWorktree]
+  )
+
+  const handleSelectPRAndInvestigate = useCallback(
+    async (pr: GitHubPullRequest) => {
+      const projectPath = project?.path
+      if (!projectPath) return
+      setCreatingFromNumber(pr.number)
+      try {
+        const prDetail = await invoke<
+          GitHubPullRequest & {
+            comments: {
+              body: string
+              author: { login: string }
+              created_at: string
+            }[]
+            reviews: {
+              body: string
+              state: string
+              author: { login: string }
+              submittedAt?: string
+            }[]
+          }
+        >('get_github_pr', { projectPath, prNumber: pr.number })
+        const prContext: PullRequestContext = {
+          number: prDetail.number,
+          title: prDetail.title,
+          body: prDetail.body,
+          headRefName: prDetail.headRefName,
+          baseRefName: prDetail.baseRefName,
+          comments: (prDetail.comments ?? [])
+            .filter(c => c && c.created_at && c.author)
+            .map(c => ({
+              body: c.body ?? '',
+              author: { login: c.author.login ?? '' },
+              createdAt: c.created_at,
+            })),
+          reviews: (prDetail.reviews ?? [])
+            .filter(r => r && r.author)
+            .map(r => ({
+              body: r.body ?? '',
+              state: r.state,
+              author: { login: r.author.login ?? '' },
+              submittedAt: r.submittedAt,
+            })),
+        }
+        const pendingWorktree = await createWorktree.mutateAsync({
+          projectId,
+          prContext,
+        })
+        const { markWorktreeForAutoInvestigatePR } = useUIStore.getState()
+        markWorktreeForAutoInvestigatePR(pendingWorktree.id)
+      } catch (error) {
+        toast.error(`Failed to fetch PR details: ${error}`)
+        setCreatingFromNumber(null)
+      }
+    },
+    [projectId, project, createWorktree]
+  )
+
+  // Keyboard navigation (document-level so it works regardless of focus)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase()
-      if (key === 'b') {
-        e.preventDefault()
-        onBaseSession()
-      } else if (key === 'n') {
-        e.preventDefault()
-        onCreateWorktree()
+
+      // Tab shortcuts (Cmd+key)
+      if (e.metaKey || e.ctrlKey) {
+        if (key === '1') {
+          e.preventDefault()
+          setActiveTab('quick')
+          return
+        }
+        if (key === '2') {
+          e.preventDefault()
+          setActiveTab('issues')
+          return
+        }
+        if (key === '3') {
+          e.preventDefault()
+          setActiveTab('prs')
+          return
+        }
+        if (key === '4') {
+          e.preventDefault()
+          setActiveTab('branches')
+          return
+        }
+      }
+
+      // Skip single-key shortcuts when typing in an input
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return
+
+      // Quick actions shortcuts
+      if (activeTab === 'quick') {
+        if (key === 'n') {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          handleCreateWorktree()
+          return
+        }
+        if (key === 'm') {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          handleBaseSession()
+          return
+        }
+      }
+
+      // Issues tab navigation
+      if (activeTab === 'issues' && filteredIssues.length > 0) {
+        if (key === 'arrowdown') {
+          e.preventDefault()
+          setSelectedItemIndex(prev =>
+            Math.min(prev + 1, filteredIssues.length - 1)
+          )
+          return
+        }
+        if (key === 'arrowup') {
+          e.preventDefault()
+          setSelectedItemIndex(prev => Math.max(prev - 1, 0))
+          return
+        }
+        if (key === 'enter' && filteredIssues[selectedItemIndex]) {
+          e.preventDefault()
+          handleSelectIssue(filteredIssues[selectedItemIndex])
+          return
+        }
+        if (key === 'm' && filteredIssues[selectedItemIndex]) {
+          e.preventDefault()
+          handleSelectIssueAndInvestigate(filteredIssues[selectedItemIndex])
+          return
+        }
+      }
+
+      // PRs tab navigation
+      if (activeTab === 'prs' && filteredPRs.length > 0) {
+        if (key === 'arrowdown') {
+          e.preventDefault()
+          setSelectedItemIndex(prev =>
+            Math.min(prev + 1, filteredPRs.length - 1)
+          )
+          return
+        }
+        if (key === 'arrowup') {
+          e.preventDefault()
+          setSelectedItemIndex(prev => Math.max(prev - 1, 0))
+          return
+        }
+        if (key === 'enter' && filteredPRs[selectedItemIndex]) {
+          e.preventDefault()
+          handleSelectPR(filteredPRs[selectedItemIndex])
+          return
+        }
+        if (key === 'm' && filteredPRs[selectedItemIndex]) {
+          e.preventDefault()
+          handleSelectPRAndInvestigate(filteredPRs[selectedItemIndex])
+          return
+        }
+      }
+
+      // Branches tab navigation
+      if (activeTab === 'branches' && filteredBranches.length > 0) {
+        if (key === 'arrowdown') {
+          e.preventDefault()
+          setSelectedItemIndex(prev =>
+            Math.min(prev + 1, filteredBranches.length - 1)
+          )
+          return
+        }
+        if (key === 'arrowup') {
+          e.preventDefault()
+          setSelectedItemIndex(prev => Math.max(prev - 1, 0))
+          return
+        }
+        if (key === 'enter' && filteredBranches[selectedItemIndex]) {
+          e.preventDefault()
+          handleSelectBranch(filteredBranches[selectedItemIndex])
+          return
+        }
       }
     }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isCreating, onBaseSession, onCreateWorktree])
+
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [
+    activeTab,
+    filteredIssues,
+    filteredPRs,
+    filteredBranches,
+    selectedItemIndex,
+    handleCreateWorktree,
+    handleBaseSession,
+    handleSelectIssue,
+    handleSelectIssueAndInvestigate,
+    handleSelectPR,
+    handleSelectPRAndInvestigate,
+    handleSelectBranch,
+  ])
 
   return (
-    <div className="flex h-full items-center justify-center">
-      <div className="grid grid-cols-2 gap-6 w-full max-w-xl">
-        <button
-          onClick={onBaseSession}
-          disabled={isCreating}
-          className={cn(
-            'relative flex flex-col items-center justify-center gap-4 aspect-square p-8 rounded-xl text-sm transition-colors',
-            'hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring',
-            'border border-border'
-          )}
-        >
-          <GitBranch className="h-10 w-10 text-muted-foreground" />
-          <div className="flex flex-col items-center gap-1.5">
-            <span className="font-medium text-base">
-              {hasBaseSession ? 'Switch to Base Session' : 'New Base Session'}
-            </span>
-            <span className="text-xs text-muted-foreground text-center">
-              Work directly on the project folder
-            </span>
-          </div>
-          <kbd className="absolute top-3 right-3 text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-            B
-          </kbd>
-        </button>
-
-        <button
-          onClick={onCreateWorktree}
-          disabled={isCreating}
-          className={cn(
-            'relative flex flex-col items-center justify-center gap-4 aspect-square p-8 rounded-xl text-sm transition-colors',
-            'hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring',
-            'border border-border'
-          )}
-        >
-          {isCreating ? (
-            <Loader2 className="h-10 w-10 text-muted-foreground animate-spin" />
-          ) : (
-            <Plus className="h-10 w-10 text-muted-foreground" />
-          )}
-          <div className="flex flex-col items-center gap-1.5">
-            <span className="font-medium text-base">New Worktree</span>
-            <span className="text-xs text-muted-foreground text-center">
-              Create an isolated branch for your task
-            </span>
-          </div>
-          <kbd className="absolute top-3 right-3 text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-            N
-          </kbd>
-        </button>
+    <div
+      ref={containerRef}
+      className="flex flex-col h-full w-full"
+    >
+      <SessionTabBar activeTab={activeTab} onTabChange={setActiveTab} />
+      <div className="flex-1 min-h-0 flex flex-col">
+        {activeTab === 'quick' && (
+          <QuickActionsTab
+            hasBaseSession={hasBaseSession}
+            onCreateWorktree={handleCreateWorktree}
+            onBaseSession={handleBaseSession}
+            isCreating={createWorktree.isPending || createBaseSession.isPending}
+          />
+        )}
+        {activeTab === 'issues' && (
+          <GitHubIssuesTab
+            searchQuery={searchQuery}
+            setSearchQuery={setTabSearchQuery}
+            includeClosed={includeClosed}
+            setIncludeClosed={setIncludeClosed}
+            issues={filteredIssues}
+            isLoading={isLoadingIssues}
+            isRefetching={isRefetchingIssues}
+            isSearching={isSearchingIssues}
+            error={issuesError}
+            onRefresh={() => refetchIssues()}
+            selectedIndex={selectedItemIndex}
+            setSelectedIndex={setSelectedItemIndex}
+            onSelectIssue={handleSelectIssue}
+            onInvestigateIssue={handleSelectIssueAndInvestigate}
+            creatingFromNumber={creatingFromNumber}
+            searchInputRef={searchInputRef}
+            onGhLogin={triggerGhLogin}
+            isGhInstalled={isGhInstalled}
+          />
+        )}
+        {activeTab === 'prs' && (
+          <GitHubPRsTab
+            searchQuery={searchQuery}
+            setSearchQuery={setTabSearchQuery}
+            includeClosed={includeClosed}
+            setIncludeClosed={setIncludeClosed}
+            prs={filteredPRs}
+            isLoading={isLoadingPRs}
+            isRefetching={isRefetchingPRs}
+            isSearching={isSearchingPRs}
+            error={prsError}
+            onRefresh={() => refetchPRs()}
+            selectedIndex={selectedItemIndex}
+            setSelectedIndex={setSelectedItemIndex}
+            onSelectPR={handleSelectPR}
+            onInvestigatePR={handleSelectPRAndInvestigate}
+            creatingFromNumber={creatingFromNumber}
+            searchInputRef={searchInputRef}
+            onGhLogin={triggerGhLogin}
+            isGhInstalled={isGhInstalled}
+          />
+        )}
+        {activeTab === 'branches' && (
+          <BranchesTab
+            searchQuery={searchQuery}
+            setSearchQuery={setTabSearchQuery}
+            branches={filteredBranches}
+            isLoading={isLoadingBranches}
+            isRefetching={isRefetchingBranches}
+            error={branchesError}
+            onRefresh={() => refetchBranches()}
+            selectedIndex={selectedItemIndex}
+            setSelectedIndex={setSelectedItemIndex}
+            onSelectBranch={handleSelectBranch}
+            creatingFromBranch={creatingFromBranch}
+            searchInputRef={searchInputRef}
+          />
+        )}
       </div>
     </div>
   )

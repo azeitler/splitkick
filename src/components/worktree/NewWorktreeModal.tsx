@@ -28,7 +28,11 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
@@ -61,20 +65,21 @@ import type {
   PullRequestContext,
 } from '@/types/github'
 
-type TabId = 'quick' | 'issues' | 'prs' | 'branches'
+export type TabId = 'quick' | 'issues' | 'prs' | 'branches'
 
-interface Tab {
+export interface Tab {
   id: TabId
   label: string
   key: string
   icon: LucideIcon
 }
 
-const TABS: Tab[] = [
-  { id: 'quick', label: 'Actions', key: 'Q', icon: Zap },
-  { id: 'issues', label: 'Issues', key: 'I', icon: CircleDot },
-  { id: 'prs', label: 'PRs', key: 'P', icon: GitPullRequest },
-  { id: 'branches', label: 'Branches', key: 'B', icon: GitBranch },
+// eslint-disable-next-line react-refresh/only-export-components
+export const TABS: Tab[] = [
+  { id: 'quick', label: 'Actions', key: '1', icon: Zap },
+  { id: 'issues', label: 'Issues', key: '2', icon: CircleDot },
+  { id: 'prs', label: 'PRs', key: '3', icon: GitPullRequest },
+  { id: 'branches', label: 'Branches', key: '4', icon: GitBranch },
 ]
 
 export function NewWorktreeModal() {
@@ -205,7 +210,9 @@ export function NewWorktreeModal() {
   // Focus search input when switching to issues or prs tab
   useEffect(() => {
     if (
-      (activeTab === 'issues' || activeTab === 'prs' || activeTab === 'branches') &&
+      (activeTab === 'issues' ||
+        activeTab === 'prs' ||
+        activeTab === 'branches') &&
       newWorktreeModalOpen
     ) {
       // Small delay to ensure the input is mounted
@@ -260,7 +267,10 @@ export function NewWorktreeModal() {
         }
         if (selectedProjectId) {
           queryClient.invalidateQueries({
-            queryKey: [...projectsQueryKeys.detail(selectedProjectId), 'branches'],
+            queryKey: [
+              ...projectsQueryKeys.detail(selectedProjectId),
+              'branches',
+            ],
           })
         }
       }
@@ -588,22 +598,22 @@ export function NewWorktreeModal() {
 
       // Tab shortcuts (Cmd+key, works even when input is focused)
       if (e.metaKey || e.ctrlKey) {
-        if (key === 'q') {
+        if (key === '1') {
           e.preventDefault()
           setActiveTab('quick')
           return
         }
-        if (key === 'i') {
+        if (key === '2') {
           e.preventDefault()
           setActiveTab('issues')
           return
         }
-        if (key === 'p') {
+        if (key === '3') {
           e.preventDefault()
           setActiveTab('prs')
           return
         }
-        if (key === 'b') {
+        if (key === '4') {
           e.preventDefault()
           setActiveTab('branches')
           return
@@ -739,29 +749,7 @@ export function NewWorktreeModal() {
         </DialogHeader>
 
         {/* Tabs */}
-        <div className="flex border-b border-border">
-          {TABS.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={cn(
-                'flex-1 px-4 py-2 text-sm font-medium transition-colors',
-                'flex items-center justify-center gap-1.5',
-                'hover:bg-accent focus:outline-none',
-                'border-b-2',
-                activeTab === tab.id
-                  ? 'border-primary text-foreground'
-                  : 'border-transparent text-muted-foreground'
-              )}
-            >
-              <tab.icon className="h-4 w-4" />
-              <span className="text-xs sm:text-sm">{tab.label}</span>
-              <kbd className="hidden sm:inline ml-0.5 text-xs text-muted-foreground bg-muted px-1 py-0.5 rounded">
-                {getModifierSymbol()}+{tab.key}
-              </kbd>
-            </button>
-          ))}
-        </div>
+        <SessionTabBar activeTab={activeTab} onTabChange={setActiveTab} />
 
         {/* Tab content */}
         <div className="flex-1 min-h-0 flex flex-col">
@@ -844,14 +832,49 @@ export function NewWorktreeModal() {
   )
 }
 
-interface QuickActionsTabProps {
+export function SessionTabBar({
+  activeTab,
+  onTabChange,
+}: {
+  activeTab: TabId
+  onTabChange: (tab: TabId) => void
+}) {
+  return (
+    <div className="flex border-b border-border">
+      {TABS.map(tab => (
+        <button
+          key={tab.id}
+          onClick={() => onTabChange(tab.id)}
+          tabIndex={-1}
+          className={cn(
+            'flex-1 px-4 py-2 text-sm font-medium transition-colors',
+            'flex items-center justify-center gap-1.5',
+            'hover:bg-accent focus:outline-none',
+            'border-b-2',
+            activeTab === tab.id
+              ? 'border-primary text-foreground'
+              : 'border-transparent text-muted-foreground'
+          )}
+        >
+          <tab.icon className="h-4 w-4" />
+          <span className="text-xs sm:text-sm">{tab.label}</span>
+          <kbd className="hidden sm:inline ml-0.5 text-xs text-muted-foreground bg-muted px-1 py-0.5 rounded">
+            {getModifierSymbol()}+{tab.key}
+          </kbd>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+export interface QuickActionsTabProps {
   hasBaseSession: boolean
   onCreateWorktree: () => void
   onBaseSession: () => void
   isCreating: boolean
 }
 
-function QuickActionsTab({
+export function QuickActionsTab({
   hasBaseSession,
   onCreateWorktree,
   onBaseSession,
@@ -914,7 +937,7 @@ function QuickActionsTab({
   )
 }
 
-interface GitHubIssuesTabProps {
+export interface GitHubIssuesTabProps {
   searchQuery: string
   setSearchQuery: (query: string) => void
   includeClosed: boolean
@@ -935,7 +958,7 @@ interface GitHubIssuesTabProps {
   isGhInstalled: boolean
 }
 
-function GitHubIssuesTab({
+export function GitHubIssuesTab({
   searchQuery,
   setSearchQuery,
   includeClosed,
@@ -1080,7 +1103,7 @@ function GitHubIssuesTab({
   )
 }
 
-interface GitHubPRsTabProps {
+export interface GitHubPRsTabProps {
   searchQuery: string
   setSearchQuery: (query: string) => void
   includeClosed: boolean
@@ -1101,7 +1124,7 @@ interface GitHubPRsTabProps {
   isGhInstalled: boolean
 }
 
-function GitHubPRsTab({
+export function GitHubPRsTab({
   searchQuery,
   setSearchQuery,
   includeClosed,
@@ -1462,7 +1485,7 @@ function PRItem({
   )
 }
 
-interface BranchesTabProps {
+export interface BranchesTabProps {
   searchQuery: string
   setSearchQuery: (query: string) => void
   branches: string[]
@@ -1477,7 +1500,7 @@ interface BranchesTabProps {
   searchInputRef: React.RefObject<HTMLInputElement | null>
 }
 
-function BranchesTab({
+export function BranchesTab({
   searchQuery,
   setSearchQuery,
   branches,

@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState, useRef, useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   CheckCircle2,
@@ -96,6 +96,23 @@ export function WorkflowRunsModal() {
   )
 
   const runs = result?.runs ?? []
+  const [focusedIndex, setFocusedIndex] = useState(0)
+  const listRef = useRef<HTMLDivElement>(null)
+  const itemRefs = useRef<(HTMLDivElement | null)[]>([])
+
+  // Reset focus when modal opens or runs change
+  useEffect(() => {
+    if (workflowRunsModalOpen) {
+      setFocusedIndex(0)
+      // Auto-focus the list for keyboard nav
+      requestAnimationFrame(() => listRef.current?.focus())
+    }
+  }, [workflowRunsModalOpen, runs.length])
+
+  // Scroll focused item into view
+  useEffect(() => {
+    itemRefs.current[focusedIndex]?.scrollIntoView({ block: 'nearest' })
+  }, [focusedIndex])
 
   const title = useMemo(() => {
     if (workflowRunsModalBranch) {
@@ -341,9 +358,40 @@ export function WorkflowRunsModal() {
     ]
   )
 
+  const handleListKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (runs.length === 0) return
+      switch (e.key) {
+        case 'ArrowDown':
+        case 'j':
+          e.preventDefault()
+          setFocusedIndex(i => Math.min(i + 1, runs.length - 1))
+          break
+        case 'ArrowUp':
+        case 'k':
+          e.preventDefault()
+          setFocusedIndex(i => Math.max(i - 1, 0))
+          break
+        case 'Enter': {
+          e.preventDefault()
+          const run = runs[focusedIndex]
+          if (run) handleRunClick(run.url)
+          break
+        }
+        case 'm': {
+          e.preventDefault()
+          const run = runs[focusedIndex]
+          if (run && isFailedRun(run)) handleInvestigate(run)
+          break
+        }
+      }
+    },
+    [runs, focusedIndex, handleRunClick, handleInvestigate]
+  )
+
   return (
     <Dialog open={workflowRunsModalOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-h-[80vh] max-w-lg overflow-hidden flex flex-col">
+      <DialogContent className="max-h-[80vh] sm:max-w-xl overflow-hidden flex flex-col" onOpenAutoFocus={e => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
@@ -357,48 +405,53 @@ export function WorkflowRunsModal() {
             No workflow runs found
           </div>
         ) : (
-          <div className="overflow-y-auto -mx-6 px-6">
+          <div ref={listRef} tabIndex={0} onKeyDown={handleListKeyDown} className="overflow-y-auto -mx-6 px-6 outline-none">
             <div className="space-y-1 pb-2">
-              {runs.map(run => (
+              {runs.map((run, index) => (
                 <div
                   key={run.databaseId}
+                  ref={el => { itemRefs.current[index] = el }}
+                  className={`group relative flex cursor-pointer items-center rounded-md px-2 py-2 transition-colors hover:bg-accent ${index === focusedIndex ? 'bg-accent' : ''}`}
                   onClick={() => handleRunClick(run.url)}
-                  className="group flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2 py-2 text-left transition-colors hover:bg-accent"
+                  onMouseEnter={() => setFocusedIndex(index)}
                 >
-                  <RunStatusIcon run={run} />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
-                      <span className="truncate text-sm font-medium">
-                        {run.workflowName}
-                      </span>
-                      <span className="shrink-0 rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
-                        {run.headBranch}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <span className="truncate">{run.displayTitle}</span>
-                      <span className="shrink-0">·</span>
-                      <span className="shrink-0">
-                        {timeAgo(run.createdAt)}
-                      </span>
+                  <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                    <RunStatusIcon run={run} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="truncate text-sm font-medium">
+                          {run.workflowName}
+                        </span>
+                        <span className="shrink-0 rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
+                          {run.headBranch}
+                        </span>
+                        {isFailedRun(run) && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button
+                                onClick={e => {
+                                  e.stopPropagation()
+                                  handleInvestigate(run)
+                                }}
+                                className="shrink-0 inline-flex items-center gap-0.5 rounded bg-black px-1 py-0.5 text-[10px] text-white transition-colors hover:bg-black/80 dark:bg-yellow-500/20 dark:text-yellow-400 dark:hover:bg-yellow-500/30 dark:hover:text-yellow-300"
+                              >
+                                <Wand2 className="h-3 w-3" />
+                                <span>M</span>
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent>Investigate this failure</TooltipContent>
+                          </Tooltip>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <span className="truncate">{run.displayTitle}</span>
+                        <span className="shrink-0">·</span>
+                        <span className="shrink-0">
+                          {timeAgo(run.createdAt)}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                  {isFailedRun(run) && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          onClick={e => {
-                            e.stopPropagation()
-                            handleInvestigate(run)
-                          }}
-                          className="shrink-0 rounded-md p-1.5 opacity-50 transition-opacity hover:bg-accent-foreground/10 hover:opacity-100"
-                        >
-                          <Wand2 className="h-4 w-4 text-muted-foreground" />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent>Investigate this failure</TooltipContent>
-                    </Tooltip>
-                  )}
                 </div>
               ))}
             </div>

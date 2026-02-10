@@ -11,6 +11,11 @@ import {
 import { cn } from '@/lib/utils'
 import type { QueuedMessage } from '@/types/chat'
 import {
+  MODEL_OPTIONS,
+  THINKING_LEVEL_OPTIONS,
+  EFFORT_LEVEL_OPTIONS,
+} from '@/components/chat/ChatToolbar'
+import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
@@ -89,7 +94,7 @@ export const QueuedMessageItem = memo(function QueuedMessageItem({
           {/* Model badge */}
           <span className="inline-flex items-center gap-1 rounded bg-muted/80 px-1.5 py-0.5 text-[10px] text-muted-foreground">
             <Sparkles className="h-2.5 w-2.5" />
-            {message.model}
+            {MODEL_OPTIONS.find(o => o.value === message.model)?.label ?? message.model}
           </span>
           {/* Mode badge */}
           <span
@@ -114,13 +119,19 @@ export const QueuedMessageItem = memo(function QueuedMessageItem({
             )}
             <span className="capitalize">{message.executionMode}</span>
           </span>
-          {/* Thinking level badge - only show if not 'off' */}
-          {message.thinkingLevel !== 'off' && (
-            <span className="inline-flex items-center gap-1 rounded bg-muted/80 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-              <Brain className="h-2.5 w-2.5" />
-              {message.thinkingLevel}
-            </span>
-          )}
+          {/* Thinking/Effort level badge */}
+          {!message.disableThinkingForMode &&
+            (message.effortLevel ? (
+              <span className="inline-flex items-center gap-1 rounded bg-muted/80 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                <Brain className="h-2.5 w-2.5" />
+                {EFFORT_LEVEL_OPTIONS.find(o => o.value === message.effortLevel)?.label}
+              </span>
+            ) : message.thinkingLevel !== 'off' ? (
+              <span className="inline-flex items-center gap-1 rounded bg-muted/80 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                <Brain className="h-2.5 w-2.5" />
+                {THINKING_LEVEL_OPTIONS.find(o => o.value === message.thinkingLevel)?.label}
+              </span>
+            ) : null)}
         </div>
       </div>
     </div>

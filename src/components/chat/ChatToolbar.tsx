@@ -96,7 +96,7 @@ import {
 } from '@/services/github'
 
 /** Model options with display labels */
-const MODEL_OPTIONS: { value: ClaudeModel; label: string }[] = [
+export const MODEL_OPTIONS: { value: ClaudeModel; label: string }[] = [
   { value: 'opus', label: 'Opus 4.6' },
   { value: 'opus-4.5', label: 'Opus 4.5' },
   { value: 'sonnet', label: 'Sonnet' },
@@ -104,7 +104,7 @@ const MODEL_OPTIONS: { value: ClaudeModel; label: string }[] = [
 ]
 
 /** Thinking level options with display labels and token counts */
-const THINKING_LEVEL_OPTIONS: {
+export const THINKING_LEVEL_OPTIONS: {
   value: ThinkingLevel
   label: string
   tokens: string
@@ -116,7 +116,7 @@ const THINKING_LEVEL_OPTIONS: {
 ]
 
 /** Effort level options for Opus 4.6 adaptive thinking */
-const EFFORT_LEVEL_OPTIONS: {
+export const EFFORT_LEVEL_OPTIONS: {
   value: EffortLevel
   label: string
   description: string

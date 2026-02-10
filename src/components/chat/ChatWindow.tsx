@@ -1493,7 +1493,14 @@ export function ChatWindow({
   const handleToolbarEffortLevelChange = useCallback((level: EffortLevel) => {
     const sessionId = activeSessionIdRef.current
     if (!sessionId) return
-    useChatStore.getState().setEffortLevel(sessionId, level)
+    const store = useChatStore.getState()
+    store.setEffortLevel(sessionId, level)
+
+    // Mark as manually overridden if in build/yolo mode
+    const currentMode = store.getExecutionMode(sessionId)
+    if (currentMode !== 'plan') {
+      store.setManualThinkingOverride(sessionId, true)
+    }
   }, [])
 
   const handleToggleMcpServer = useCallback((serverName: string) => {
@@ -2925,7 +2932,7 @@ export function ChatWindow({
                   model: selectedModelRef.current,
                   executionMode: 'build',
                   thinkingLevel: selectedThinkingLevelRef.current,
-                  disableThinkingForMode: true,
+                  disableThinkingForMode: !useChatStore.getState().hasManualThinkingOverride(activeSessionId),
                   effortLevel: useAdaptiveThinkingRef.current
                     ? selectedEffortLevelRef.current
                     : undefined,
@@ -2995,7 +3002,7 @@ export function ChatWindow({
                   model: selectedModelRef.current,
                   executionMode: 'yolo',
                   thinkingLevel: selectedThinkingLevelRef.current,
-                  disableThinkingForMode: true,
+                  disableThinkingForMode: !useChatStore.getState().hasManualThinkingOverride(activeSessionId),
                   effortLevel: useAdaptiveThinkingRef.current
                     ? selectedEffortLevelRef.current
                     : undefined,
@@ -3082,7 +3089,7 @@ export function ChatWindow({
                   model: selectedModelRef.current,
                   executionMode: 'build',
                   thinkingLevel: selectedThinkingLevelRef.current,
-                  disableThinkingForMode: true,
+                  disableThinkingForMode: !useChatStore.getState().hasManualThinkingOverride(activeSessionId),
                   effortLevel: useAdaptiveThinkingRef.current
                     ? selectedEffortLevelRef.current
                     : undefined,
@@ -3152,7 +3159,7 @@ export function ChatWindow({
                   model: selectedModelRef.current,
                   executionMode: 'yolo',
                   thinkingLevel: selectedThinkingLevelRef.current,
-                  disableThinkingForMode: true,
+                  disableThinkingForMode: !useChatStore.getState().hasManualThinkingOverride(activeSessionId),
                   effortLevel: useAdaptiveThinkingRef.current
                     ? selectedEffortLevelRef.current
                     : undefined,

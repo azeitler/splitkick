@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { Plus, Folder, Archive, Briefcase } from 'lucide-react'
 import { useSidebarWidth } from '@/components/layout/SidebarWidthContext'
 import {
