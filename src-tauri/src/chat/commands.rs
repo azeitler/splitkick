@@ -841,7 +841,7 @@ pub async fn send_chat_message(
     thinking_level: Option<ThinkingLevel>,
     effort_level: Option<EffortLevel>,
     disable_thinking_for_mode: Option<bool>,
-    parallel_execution_prompt_enabled: Option<bool>,
+    parallel_execution_prompt: Option<String>,
     ai_language: Option<String>,
     allowed_tools: Option<Vec<String>>,
     mcp_config: Option<String>,
@@ -1044,8 +1044,8 @@ pub async fn send_chat_message(
     // Use passed parameter for thinking override (computed by frontend based on preference + manual override)
     let disable_thinking_in_non_plan_modes = disable_thinking_for_mode.unwrap_or(false);
 
-    // Use passed parameter for parallel execution prompt (default false - experimental)
-    let parallel_execution_prompt = parallel_execution_prompt_enabled.unwrap_or(false);
+    // Use passed parameter for parallel execution prompt (None = disabled)
+    let parallel_execution_prompt = parallel_execution_prompt.filter(|p| !p.trim().is_empty());
 
     // Use passed parameter for Chrome browser integration (default false - beta)
     let chrome = chrome_enabled.unwrap_or(false);
@@ -1086,7 +1086,7 @@ pub async fn send_chat_message(
             effort_level.as_ref(),
             allowed_tools_for_cli.as_deref(),
             disable_thinking_in_non_plan_modes,
-            parallel_execution_prompt,
+            parallel_execution_prompt.as_deref(),
             ai_language.as_deref(),
             mcp_config.as_deref(),
             chrome,

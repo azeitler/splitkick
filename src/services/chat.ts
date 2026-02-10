@@ -1121,7 +1121,7 @@ export function useSendMessage() {
       thinkingLevel,
       effortLevel,
       disableThinkingForMode,
-      parallelExecutionPromptEnabled,
+      parallelExecutionPrompt,
       aiLanguage,
       allowedTools,
       mcpConfig,
@@ -1136,7 +1136,7 @@ export function useSendMessage() {
       thinkingLevel?: ThinkingLevel
       effortLevel?: string
       disableThinkingForMode?: boolean
-      parallelExecutionPromptEnabled?: boolean
+      parallelExecutionPrompt?: string
       aiLanguage?: string
       allowedTools?: string[]
       mcpConfig?: string
@@ -1154,7 +1154,7 @@ export function useSendMessage() {
         thinkingLevel,
         effortLevel,
         disableThinkingForMode,
-        parallelExecutionPromptEnabled,
+        parallelExecutionPrompt,
         aiLanguage,
         allowedTools,
         mcpConfig: mcpConfig ? '(set)' : undefined,
@@ -1170,7 +1170,7 @@ export function useSendMessage() {
         thinkingLevel,
         effortLevel,
         disableThinkingForMode,
-        parallelExecutionPromptEnabled,
+        parallelExecutionPrompt,
         aiLanguage,
         allowedTools,
         mcpConfig,

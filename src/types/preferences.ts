@@ -51,6 +51,8 @@ export interface MagicPrompts {
   investigate_workflow_run: string | null
   /** Prompt for generating release notes */
   release_notes: string | null
+  /** System prompt for parallel execution (appended to every chat session when enabled) */
+  parallel_execution: string | null
 }
 
 /** Default prompt for investigating GitHub issues */
@@ -312,6 +314,12 @@ export const DEFAULT_RELEASE_NOTES_PROMPT = `Generate release notes for changes 
 - Write in past tense ("Added", "Fixed", "Improved")
 - Keep it concise and user-facing (skip internal implementation details)`
 
+export const DEFAULT_PARALLEL_EXECUTION_PROMPT = `In plan mode, structure plans so sub-agents can work simultaneously. In build/execute mode, use sub-agents in parallel for faster implementation.
+
+When launching multiple Task sub-agents, prefer sending them in a single message rather than sequentially. Group independent work items (e.g., editing separate files, researching unrelated questions) into parallel Task calls. Only sequence Tasks when one depends on another's output.
+
+Instruct each sub-agent to briefly outline its approach before implementing, so it can course-correct early without formal plan mode overhead.`
+
 /** Default values for all magic prompts (null = use current app default) */
 export const DEFAULT_MAGIC_PROMPTS: MagicPrompts = {
   investigate_issue: null,
@@ -323,6 +331,7 @@ export const DEFAULT_MAGIC_PROMPTS: MagicPrompts = {
   resolve_conflicts: null,
   investigate_workflow_run: null,
   release_notes: null,
+  parallel_execution: null,
 }
 
 /**

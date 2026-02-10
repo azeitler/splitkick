@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useChatStore } from '@/store/chat-store'
 import { useSendMessage } from '@/services/chat'
 import { usePreferences } from '@/services/preferences'
+import { DEFAULT_PARALLEL_EXECUTION_PROMPT } from '@/types/preferences'
 import { isTauri } from '@/services/projects'
 import { useWsConnectionStatus } from '@/lib/transport'
 import type { QueuedMessage } from '@/types/chat'
@@ -183,8 +184,9 @@ export function useQueueProcessor(): void {
           disableThinkingForMode: queuedMsg.disableThinkingForMode,
           effortLevel: queuedMsg.effortLevel,
           mcpConfig: queuedMsg.mcpConfig,
-          parallelExecutionPromptEnabled:
-            preferences?.parallel_execution_prompt_enabled ?? false,
+          parallelExecutionPrompt: preferences?.parallel_execution_prompt_enabled
+            ? (preferences.magic_prompts?.parallel_execution ?? DEFAULT_PARALLEL_EXECUTION_PROMPT)
+            : undefined,
           chromeEnabled: preferences?.chrome_enabled ?? false,
           allowedTools,
         },

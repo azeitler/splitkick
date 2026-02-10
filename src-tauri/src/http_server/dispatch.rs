@@ -535,10 +535,10 @@ pub async fn dispatch_command(
             let thinking_level = field_opt(&args, "thinkingLevel", "thinking_level")?;
             let disable_thinking_for_mode: Option<bool> =
                 field_opt(&args, "disableThinkingForMode", "disable_thinking_for_mode")?;
-            let parallel_execution_prompt_enabled: Option<bool> = field_opt(
+            let parallel_execution_prompt: Option<String> = field_opt(
                 &args,
-                "parallelExecutionPromptEnabled",
-                "parallel_execution_prompt_enabled",
+                "parallelExecutionPrompt",
+                "parallel_execution_prompt",
             )?;
             let ai_language: Option<String> = field_opt(&args, "aiLanguage", "ai_language")?;
             let allowed_tools: Option<Vec<String>> =
@@ -558,7 +558,7 @@ pub async fn dispatch_command(
                 thinking_level,
                 effort_level,
                 disable_thinking_for_mode,
-                parallel_execution_prompt_enabled,
+                parallel_execution_prompt,
                 ai_language,
                 allowed_tools,
                 mcp_config,

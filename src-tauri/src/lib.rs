@@ -347,6 +347,8 @@ pub struct MagicPrompts {
     pub investigate_workflow_run: Option<String>,
     #[serde(default)]
     pub release_notes: Option<String>,
+    #[serde(default)]
+    pub parallel_execution: Option<String>,
 }
 
 fn default_investigate_issue_prompt() -> String {
@@ -551,6 +553,15 @@ fn default_investigate_workflow_run_prompt() -> String {
         .to_string()
 }
 
+fn default_parallel_execution_prompt() -> String {
+    r#"In plan mode, structure plans so sub-agents can work simultaneously. In build/execute mode, use sub-agents in parallel for faster implementation.
+
+When launching multiple Task sub-agents, prefer sending them in a single message rather than sequentially. Group independent work items (e.g., editing separate files, researching unrelated questions) into parallel Task calls. Only sequence Tasks when one depends on another's output.
+
+Instruct each sub-agent to briefly outline its approach before implementing, so it can course-correct early without formal plan mode overhead."#
+        .to_string()
+}
+
 /// Per-prompt model overrides for magic prompts
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MagicPromptModels {
@@ -600,6 +611,7 @@ impl Default for MagicPrompts {
             resolve_conflicts: None,
             investigate_workflow_run: None,
             release_notes: None,
+            parallel_execution: None,
         }
     }
 }
@@ -608,7 +620,7 @@ impl MagicPrompts {
     /// Migrate prompts that match the current default to None.
     /// This ensures users who never customized a prompt get auto-updated defaults.
     fn migrate_defaults(&mut self) {
-        let defaults: [(fn() -> String, &mut Option<String>); 8] = [
+        let defaults: [(fn() -> String, &mut Option<String>); 9] = [
             (default_investigate_issue_prompt, &mut self.investigate_issue),
             (default_investigate_pr_prompt, &mut self.investigate_pr),
             (default_pr_content_prompt, &mut self.pr_content),
@@ -617,6 +629,7 @@ impl MagicPrompts {
             (default_context_summary_prompt, &mut self.context_summary),
             (default_resolve_conflicts_prompt, &mut self.resolve_conflicts),
             (default_investigate_workflow_run_prompt, &mut self.investigate_workflow_run),
+            (default_parallel_execution_prompt, &mut self.parallel_execution),
         ];
 
         for (default_fn, field) in defaults {

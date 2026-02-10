@@ -20,6 +20,7 @@ import {
   DEFAULT_RESOLVE_CONFLICTS_PROMPT,
   DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT,
   DEFAULT_RELEASE_NOTES_PROMPT,
+  DEFAULT_PARALLEL_EXECUTION_PROMPT,
   DEFAULT_MAGIC_PROMPTS,
   DEFAULT_MAGIC_PROMPT_MODELS,
   type MagicPrompts,
@@ -35,12 +36,12 @@ interface VariableInfo {
 
 interface PromptConfig {
   key: keyof MagicPrompts
-  modelKey: keyof MagicPromptModels
+  modelKey?: keyof MagicPromptModels
   label: string
   description: string
   variables: VariableInfo[]
   defaultValue: string
-  defaultModel: ClaudeModel
+  defaultModel?: ClaudeModel
 }
 
 interface PromptSection {
@@ -242,6 +243,19 @@ const PROMPT_SECTIONS: PromptSection[] = [
       },
     ],
   },
+  {
+    label: 'System Prompts',
+    configs: [
+      {
+        key: 'parallel_execution',
+        label: 'Parallel Execution',
+        description:
+          'System prompt appended to every chat session when enabled in Experimental settings. Encourages sub-agent parallelization.',
+        variables: [],
+        defaultValue: DEFAULT_PARALLEL_EXECUTION_PROMPT,
+      },
+    ],
+  },
 ]
 
 // Flat list for lookups
@@ -268,8 +282,9 @@ export const MagicPromptsPane: React.FC = () => {
   const selectedConfig = PROMPT_CONFIGS.find(c => c.key === selectedKey)!
   const currentValue =
     currentPrompts[selectedKey] ?? selectedConfig.defaultValue
-  const currentModel =
-    currentModels[selectedConfig.modelKey] ?? selectedConfig.defaultModel
+  const currentModel = selectedConfig.modelKey
+    ? (currentModels[selectedConfig.modelKey] ?? selectedConfig.defaultModel)
+    : undefined
   const isModified = currentPrompts[selectedKey] !== null
 
   // Sync local value when selection changes or external value updates
@@ -353,7 +368,7 @@ export const MagicPromptsPane: React.FC = () => {
 
   const handleModelChange = useCallback(
     (model: ClaudeModel) => {
-      if (!preferences) return
+      if (!preferences || !selectedConfig.modelKey) return
       savePreferences.mutate({
         ...preferences,
         magic_prompt_models: {
@@ -377,8 +392,9 @@ export const MagicPromptsPane: React.FC = () => {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
               {section.configs.map(config => {
                 const promptIsModified = currentPrompts[config.key] !== null
-                const promptModel =
-                  currentModels[config.modelKey] ?? config.defaultModel
+                const promptModel = config.modelKey
+                  ? (currentModels[config.modelKey] ?? config.defaultModel)
+                  : undefined
                 return (
                   <button
                     key={config.key}
@@ -398,14 +414,16 @@ export const MagicPromptsPane: React.FC = () => {
                           <span className="text-muted-foreground ml-1">*</span>
                         )}
                       </span>
-                      <span
-                        className={cn(
-                          'text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0',
-                          'bg-muted text-muted-foreground'
-                        )}
-                      >
-                        {promptModel}
-                      </span>
+                      {promptModel && (
+                        <span
+                          className={cn(
+                            'text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0',
+                            'bg-muted text-muted-foreground'
+                          )}
+                        >
+                          {promptModel}
+                        </span>
+                      )}
                     </div>
                   </button>
                 )
@@ -424,22 +442,26 @@ export const MagicPromptsPane: React.FC = () => {
             {selectedConfig.description}
           </p>
           <div className="flex items-center gap-2 mt-2">
-            <span className="text-xs text-muted-foreground">Used model</span>
-            <Select
-              value={currentModel}
-              onValueChange={(v: string) => handleModelChange(v as ClaudeModel)}
-            >
-              <SelectTrigger className="w-[110px] h-8 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {MODEL_OPTIONS.map(opt => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {currentModel && (
+              <>
+                <span className="text-xs text-muted-foreground">Used model</span>
+                <Select
+                  value={currentModel}
+                  onValueChange={(v: string) => handleModelChange(v as ClaudeModel)}
+                >
+                  <SelectTrigger className="w-[110px] h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MODEL_OPTIONS.map(opt => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
+            )}
             <Button
               variant="outline"
               size="sm"

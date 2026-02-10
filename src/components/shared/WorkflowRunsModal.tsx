@@ -26,7 +26,7 @@ import { useCreateSession, useSendMessage, chatQueryKeys } from '@/services/chat
 import type { WorktreeSessions } from '@/types/chat'
 import { usePreferences } from '@/services/preferences'
 import { openExternal } from '@/lib/platform'
-import { DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT } from '@/types/preferences'
+import { DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT, DEFAULT_PARALLEL_EXECUTION_PROMPT } from '@/types/preferences'
 import type { WorkflowRun } from '@/types/github'
 import type { Project, Worktree } from '@/types/projects'
 
@@ -276,8 +276,9 @@ export function WorkflowRunsModal() {
           model: investigateModel,
           executionMode: 'build',
           thinkingLevel: 'think',
-          parallelExecutionPromptEnabled:
-            preferences?.parallel_execution_prompt_enabled ?? false,
+          parallelExecutionPrompt: preferences?.parallel_execution_prompt_enabled
+            ? (preferences.magic_prompts?.parallel_execution ?? DEFAULT_PARALLEL_EXECUTION_PROMPT)
+            : undefined,
           chromeEnabled: preferences?.chrome_enabled ?? false,
           aiLanguage: preferences?.ai_language,
         })

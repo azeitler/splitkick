@@ -62,6 +62,7 @@ import {
   DEFAULT_INVESTIGATE_ISSUE_PROMPT,
   DEFAULT_INVESTIGATE_PR_PROMPT,
   DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT,
+  DEFAULT_PARALLEL_EXECUTION_PROMPT,
 } from '@/types/preferences'
 import type { Project, Worktree } from '@/types/projects'
 import type {
@@ -1138,8 +1139,9 @@ export function ChatWindow({
           disableThinkingForMode: queuedMsg.disableThinkingForMode,
           effortLevel: queuedMsg.effortLevel,
           mcpConfig: queuedMsg.mcpConfig,
-          parallelExecutionPromptEnabled:
-            preferences?.parallel_execution_prompt_enabled ?? false,
+          parallelExecutionPrompt: preferences?.parallel_execution_prompt_enabled
+            ? (preferences.magic_prompts?.parallel_execution ?? DEFAULT_PARALLEL_EXECUTION_PROMPT)
+            : undefined,
           chromeEnabled: preferences?.chrome_enabled ?? false,
           aiLanguage: preferences?.ai_language,
           allowedTools,
@@ -1230,8 +1232,9 @@ export function ChatWindow({
             mcpServersDataRef.current,
             enabledMcpServersRef.current
           ),
-          parallelExecutionPromptEnabled:
-            preferences?.parallel_execution_prompt_enabled ?? false,
+          parallelExecutionPrompt: preferences?.parallel_execution_prompt_enabled
+            ? (preferences.magic_prompts?.parallel_execution ?? DEFAULT_PARALLEL_EXECUTION_PROMPT)
+            : undefined,
           chromeEnabled: preferences?.chrome_enabled ?? false,
           aiLanguage: preferences?.ai_language,
         },
@@ -1636,8 +1639,9 @@ export function ChatWindow({
           mcpServersDataRef.current,
           enabledMcpServersRef.current
         ),
-        parallelExecutionPromptEnabled:
-          preferences?.parallel_execution_prompt_enabled ?? false,
+        parallelExecutionPrompt: preferences?.parallel_execution_prompt_enabled
+          ? (preferences.magic_prompts?.parallel_execution ?? DEFAULT_PARALLEL_EXECUTION_PROMPT)
+          : undefined,
         chromeEnabled: preferences?.chrome_enabled ?? false,
         aiLanguage: preferences?.ai_language,
       },
@@ -1888,8 +1892,9 @@ export function ChatWindow({
               mcpServersDataRef.current,
               enabledMcpServersRef.current
             ),
-            parallelExecutionPromptEnabled:
-              preferences?.parallel_execution_prompt_enabled ?? false,
+            parallelExecutionPrompt: preferences?.parallel_execution_prompt_enabled
+              ? (preferences.magic_prompts?.parallel_execution ?? DEFAULT_PARALLEL_EXECUTION_PROMPT)
+              : undefined,
             chromeEnabled: preferences?.chrome_enabled ?? false,
             aiLanguage: preferences?.ai_language,
           },
@@ -2212,8 +2217,9 @@ export function ChatWindow({
               mcpServersDataRef.current,
               enabledMcpServersRef.current
             ),
-            parallelExecutionPromptEnabled:
-              preferences?.parallel_execution_prompt_enabled ?? false,
+            parallelExecutionPrompt: preferences?.parallel_execution_prompt_enabled
+              ? (preferences.magic_prompts?.parallel_execution ?? DEFAULT_PARALLEL_EXECUTION_PROMPT)
+              : undefined,
             chromeEnabled: preferences?.chrome_enabled ?? false,
             aiLanguage: preferences?.ai_language,
           },
