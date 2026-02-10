@@ -21,6 +21,7 @@ import type { Session } from '@/types/chat'
 import type { Worktree } from '@/types/projects'
 import { NewIssuesBadge } from '@/components/shared/NewIssuesBadge'
 import { OpenPRsBadge } from '@/components/shared/OpenPRsBadge'
+import { FailedRunsBadge } from '@/components/shared/FailedRunsBadge'
 import { SessionCard } from './SessionCard'
 import { SessionColumn } from './SessionColumn'
 import { Spinner } from '@/components/ui/spinner'
@@ -245,6 +246,7 @@ export function SessionBoardView({
         <span className="text-sm text-muted-foreground">{project.name}</span>
         <NewIssuesBadge projectPath={project.path} projectId={project.id} />
         <OpenPRsBadge projectPath={project.path} projectId={project.id} />
+        <FailedRunsBadge projectPath={project.path} />
       </div>
 
       {/* Session Board */}

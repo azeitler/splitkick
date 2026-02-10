@@ -10,6 +10,7 @@ import type {
   LoadedIssueContext,
   LoadedPullRequestContext,
   AttachedSavedContext,
+  WorkflowRunsResult,
 } from '@/types/github'
 import { isTauri } from './projects'
 
@@ -63,6 +64,8 @@ export const githubQueryKeys = {
     [...githubQueryKeys.all, 'issue-search', projectPath, query] as const,
   prSearch: (projectPath: string, query: string) =>
     [...githubQueryKeys.all, 'pr-search', projectPath, query] as const,
+  workflowRuns: (projectPath: string, branch?: string) =>
+    [...githubQueryKeys.all, 'workflow-runs', projectPath, branch ?? ''] as const,
 }
 
 /**
@@ -584,6 +587,51 @@ export function mergeWithSearchResults<T extends { number: number }>(
 
   if (remoteOnly.length === 0) return localResults
   return [...localResults, ...remoteOnly]
+}
+
+// =============================================================================
+// GitHub Actions Workflow Runs
+// =============================================================================
+
+/**
+ * Hook to list GitHub Actions workflow runs for a project
+ *
+ * @param projectPath - Path to the git repository
+ * @param branch - Optional branch name to filter runs (for PR/worktree-specific views)
+ */
+export function useWorkflowRuns(
+  projectPath: string | null,
+  branch?: string,
+  options?: { enabled?: boolean; staleTime?: number }
+) {
+  return useQuery({
+    queryKey: githubQueryKeys.workflowRuns(projectPath ?? '', branch),
+    queryFn: async (): Promise<WorkflowRunsResult> => {
+      if (!isTauri() || !projectPath) {
+        return { runs: [], failedCount: 0 }
+      }
+
+      try {
+        logger.debug('Fetching workflow runs', { projectPath, branch })
+        const result = await invoke<WorkflowRunsResult>('list_workflow_runs', {
+          projectPath,
+          branch: branch ?? null,
+        })
+        logger.info('Workflow runs loaded', {
+          count: result.runs.length,
+          failedCount: result.failedCount,
+        })
+        return result
+      } catch (error) {
+        logger.error('Failed to load workflow runs', { error, projectPath })
+        throw error
+      }
+    },
+    enabled: (options?.enabled ?? true) && !!projectPath,
+    staleTime: options?.staleTime ?? 1000 * 60 * 3, // 3 minutes
+    gcTime: 1000 * 60 * 10, // 10 minutes
+    retry: 1,
+  })
 }
 
 // =============================================================================

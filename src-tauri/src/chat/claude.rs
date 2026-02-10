@@ -7,6 +7,7 @@ use crate::http_server::EmitExt;
 use crate::projects::github_issues::{
     get_github_contexts_dir, get_worktree_issue_refs, get_worktree_pr_refs,
 };
+use crate::projects::storage::load_projects_data;
 
 // =============================================================================
 // Claude CLI execution
@@ -322,6 +323,20 @@ fn build_claude_args(
              In build/execute mode, use sub-agents in parallel for faster implementation."
                 .to_string(),
         );
+    }
+
+    // Per-project custom system prompt
+    if let Ok(data) = load_projects_data(app) {
+        if let Some(worktree) = data.find_worktree(worktree_id) {
+            if let Some(project) = data.find_project(&worktree.project_id) {
+                if let Some(prompt) = &project.custom_system_prompt {
+                    let prompt = prompt.trim();
+                    if !prompt.is_empty() {
+                        system_prompt_parts.push(prompt.to_string());
+                    }
+                }
+            }
+        }
     }
 
     // Embedded gh CLI path - tell Claude to use the app's bundled binary

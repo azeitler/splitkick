@@ -24,6 +24,7 @@ import {
 } from '@/services/git-status'
 import { NewIssuesBadge } from '@/components/shared/NewIssuesBadge'
 import { OpenPRsBadge } from '@/components/shared/OpenPRsBadge'
+import { FailedRunsBadge } from '@/components/shared/FailedRunsBadge'
 import { WorktreeList } from './WorktreeList'
 import { ProjectContextMenu } from './ProjectContextMenu'
 
@@ -218,6 +219,7 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
           {/* New issues indicator */}
           <NewIssuesBadge projectPath={project.path} projectId={project.id} />
           <OpenPRsBadge projectPath={project.path} projectId={project.id} />
+          <FailedRunsBadge projectPath={project.path} />
 
           {/* Settings */}
           <button

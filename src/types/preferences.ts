@@ -47,6 +47,8 @@ export interface MagicPrompts {
   context_summary: string | null
   /** Prompt for resolving git conflicts (appended to conflict resolution messages) */
   resolve_conflicts: string | null
+  /** Prompt for investigating failed GitHub Actions workflow runs */
+  investigate_workflow_run: string | null
 }
 
 /** Default prompt for investigating GitHub issues */
@@ -92,8 +94,16 @@ Investigate the loaded GitHub {prWord} ({prRefs})
 2. Understand what the PR is trying to accomplish and branch info (head → base)
 3. Explore the codebase to understand the context
 4. Analyze if the implementation matches the PR description
-5. Identify action items from reviewer feedback
-6. Propose next steps to get the PR merged
+5. Security review - check the changes for:
+   - Malicious or obfuscated code (eval, encoded strings, hidden network calls, data exfiltration)
+   - Suspicious dependency additions or version changes (typosquatting, hijacked packages)
+   - Hardcoded secrets, tokens, API keys, or credentials
+   - Backdoors, reverse shells, or unauthorized remote access
+   - Unsafe deserialization, command injection, SQL injection, XSS
+   - Weakened auth/permissions (removed checks, broadened access, disabled validation)
+   - Suspicious file system or environment variable access
+6. Identify action items from reviewer feedback
+7. Propose next steps to get the PR merged
 
 </instructions>
 
@@ -102,6 +112,7 @@ Investigate the loaded GitHub {prWord} ({prRefs})
 
 - Be thorough but focused
 - Pay attention to reviewer feedback and requested changes
+- Flag any security concerns prominently, even minor ones
 - If multiple approaches exist, explain trade-offs
 - Reference specific file paths and line numbers
 
@@ -164,7 +175,14 @@ export const DEFAULT_CODE_REVIEW_PROMPT = `<task>Review the following code chang
 
 <instructions>
 Focus on:
-- Security vulnerabilities
+- Security & supply-chain risks:
+  - Malicious or obfuscated code (eval, encoded strings, hidden network calls, data exfiltration)
+  - Suspicious dependency additions or version changes (typosquatting, hijacked packages)
+  - Hardcoded secrets, tokens, API keys, or credentials
+  - Backdoors, reverse shells, or unauthorized remote access
+  - Unsafe deserialization, command injection, SQL injection, XSS
+  - Weakened auth/permissions (removed checks, broadened access, disabled validation)
+  - Suspicious file system or environment variable access
 - Performance issues
 - Code quality and maintainability (use /check skill if available to run linters/tests)
 - Potential bugs
@@ -207,6 +225,44 @@ export const DEFAULT_RESOLVE_CONFLICTS_PROMPT = `Please help me resolve these co
 
 After resolving each file's conflicts, stage it with \`git add\`. Then run the appropriate continue command (\`git rebase --continue\`, \`git merge --continue\`, or \`git cherry-pick --continue\`). If more conflicts appear, resolve those too. Keep going until the operation is fully complete and the branch is ready to push.`
 
+/** Default prompt for investigating failed workflow runs */
+export const DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT = `<task>
+
+Investigate the failed GitHub Actions workflow run for "{workflowName}" on branch \`{branch}\`
+
+</task>
+
+
+<context>
+
+- Workflow: {workflowName}
+- Commit/PR: {displayTitle}
+- Branch: {branch}
+- Run URL: {runUrl}
+
+</context>
+
+
+<instructions>
+
+1. Use the GitHub CLI to fetch the workflow run logs: \`gh run view {runId} --log-failed\`
+2. Read the error output carefully to identify the failure cause
+3. Explore the relevant code in the codebase to understand the context
+4. Determine if this is a code issue, configuration issue, or flaky test
+5. Propose a fix with specific files and changes needed
+
+</instructions>
+
+
+<guidelines>
+
+- Be thorough but focused on the failure
+- If the error is in CI config (.github/workflows), explain the fix
+- If the error is in code, reference specific file paths and line numbers
+- If it's a flaky test, suggest how to make it more reliable
+
+</guidelines>`
+
 /** Default values for all magic prompts (null = use current app default) */
 export const DEFAULT_MAGIC_PROMPTS: MagicPrompts = {
   investigate_issue: null,
@@ -216,6 +272,7 @@ export const DEFAULT_MAGIC_PROMPTS: MagicPrompts = {
   code_review: null,
   context_summary: null,
   resolve_conflicts: null,
+  investigate_workflow_run: null,
 }
 
 /**

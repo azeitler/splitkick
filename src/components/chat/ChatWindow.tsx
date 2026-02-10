@@ -35,7 +35,12 @@ import {
   chatQueryKeys,
   markPlanApproved as markPlanApprovedService,
 } from '@/services/chat'
-import { useWorktree, useProjects, useRunScript } from '@/services/projects'
+import {
+  useWorktree,
+  useProjects,
+  useRunScript,
+  projectsQueryKeys,
+} from '@/services/projects'
 import {
   githubQueryKeys,
   useLoadedIssueContexts,
@@ -53,6 +58,8 @@ import {
   type ClaudeModel,
 } from '@/store/chat-store'
 import { usePreferences, useSavePreferences } from '@/services/preferences'
+import { DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT } from '@/types/preferences'
+import type { Project, Worktree } from '@/types/projects'
 import type {
   ChatMessage,
   ToolCall,
@@ -141,7 +148,10 @@ import {
   useMessageHandlers,
   GIT_ALLOWED_TOOLS,
 } from './hooks/useMessageHandlers'
-import { useMagicCommands } from './hooks/useMagicCommands'
+import {
+  useMagicCommands,
+  type WorkflowRunDetail,
+} from './hooks/useMagicCommands'
 import { useDragAndDropImages } from './hooks/useDragAndDropImages'
 
 // PERFORMANCE: Stable empty array references to prevent infinite render loops
@@ -1760,6 +1770,247 @@ Begin your investigation now.`
     useUIStore.getState().setCheckoutPRModalOpen(true)
   }, [])
 
+  // Handle investigate workflow run - sends investigation prompt for a failed GitHub Actions run
+  const handleInvestigateWorkflowRun = useCallback(
+    async (detail: WorkflowRunDetail) => {
+      console.warn('[INVESTIGATE-WF] Handler called with detail:', {
+        workflowName: detail.workflowName,
+        branch: detail.branch,
+        projectPath: detail.projectPath,
+        runId: detail.runId,
+      })
+
+      const customPrompt =
+        preferences?.magic_prompts?.investigate_workflow_run
+      const template =
+        customPrompt && customPrompt.trim()
+          ? customPrompt
+          : DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT
+
+      const prompt = template
+        .replace(/\{workflowName\}/g, detail.workflowName)
+        .replace(/\{runUrl\}/g, detail.runUrl)
+        .replace(/\{runId\}/g, detail.runId)
+        .replace(/\{branch\}/g, detail.branch)
+        .replace(/\{displayTitle\}/g, detail.displayTitle)
+
+      const investigateModel =
+        preferences?.magic_prompt_models?.investigate_model ??
+        selectedModelRef.current
+
+      // Find the right worktree for this branch
+      let targetWorktreeId: string | null = null
+      let targetWorktreePath: string | null = null
+
+      if (detail.projectPath) {
+        console.warn('[INVESTIGATE-WF] Fetching projects...')
+        // Use fetchQuery to ensure data is loaded (not just cached)
+        const projects = await queryClient.fetchQuery({
+          queryKey: projectsQueryKeys.list(),
+          queryFn: () => invoke<Project[]>('list_projects'),
+          staleTime: 1000 * 60,
+        })
+        const project = projects?.find(p => p.path === detail.projectPath)
+        console.warn('[INVESTIGATE-WF] Project lookup:', {
+          projectPath: detail.projectPath,
+          found: !!project,
+          projectId: project?.id,
+          projectName: project?.name,
+          allProjectPaths: projects?.map(p => p.path),
+        })
+
+        if (project) {
+          let worktrees: Worktree[] = []
+          try {
+            console.warn('[INVESTIGATE-WF] Fetching worktrees for project:', project.id)
+            worktrees = await queryClient.fetchQuery({
+              queryKey: projectsQueryKeys.worktrees(project.id),
+              queryFn: () =>
+                invoke<Worktree[]>('list_worktrees', {
+                  projectId: project.id,
+                }),
+              staleTime: 1000 * 60,
+            })
+            console.warn('[INVESTIGATE-WF] Worktrees fetched:', worktrees.map(w => ({
+              id: w.id,
+              branch: w.branch,
+              status: w.status,
+              session_type: w.session_type,
+              path: w.path,
+            })))
+          } catch (err) {
+            console.error('[INVESTIGATE-WF] Failed to fetch worktrees:', err)
+          }
+
+          // status is optional — undefined or 'ready' both mean usable
+          const isUsable = (w: Worktree) =>
+            !w.status || w.status === 'ready'
+
+          if (worktrees.length > 0) {
+            // Find worktree matching the run's branch
+            const matching = worktrees.find(
+              w => w.branch === detail.branch && isUsable(w)
+            )
+            console.warn('[INVESTIGATE-WF] Branch match:', {
+              targetBranch: detail.branch,
+              matchingWorktree: matching ? { id: matching.id, branch: matching.branch, status: matching.status } : null,
+            })
+            if (matching) {
+              targetWorktreeId = matching.id
+              targetWorktreePath = matching.path
+            } else {
+              // Fall back to the base worktree (first usable one)
+              const base = worktrees.find(w => isUsable(w))
+              console.warn('[INVESTIGATE-WF] No branch match, fallback to base:', {
+                baseWorktree: base ? { id: base.id, branch: base.branch, status: base.status } : null,
+              })
+              if (base) {
+                targetWorktreeId = base.id
+                targetWorktreePath = base.path
+              }
+            }
+          } else {
+            console.warn('[INVESTIGATE-WF] No worktrees found (empty array)')
+          }
+
+          // No usable worktrees — create the base session first
+          if (!targetWorktreeId) {
+            console.warn('[INVESTIGATE-WF] No usable worktree found, creating base session for project:', project.id)
+            try {
+              const baseSession = await invoke<Worktree>(
+                'create_base_session',
+                { projectId: project.id }
+              )
+              console.warn('[INVESTIGATE-WF] Base session created:', {
+                id: baseSession.id,
+                path: baseSession.path,
+                branch: baseSession.branch,
+                status: baseSession.status,
+              })
+              queryClient.invalidateQueries({
+                queryKey: projectsQueryKeys.worktrees(project.id),
+              })
+              targetWorktreeId = baseSession.id
+              targetWorktreePath = baseSession.path
+            } catch (error) {
+              console.error('[INVESTIGATE-WF] Failed to create base session:', error)
+              toast.error(`Failed to open base session: ${error}`)
+              return
+            }
+          }
+        }
+      } else {
+        console.warn('[INVESTIGATE-WF] No projectPath in detail, skipping project lookup')
+      }
+
+      // Final fallback: use active worktree
+      if (!targetWorktreeId || !targetWorktreePath) {
+        console.warn('[INVESTIGATE-WF] Using active worktree as final fallback:', {
+          activeWorktreeId: activeWorktreeIdRef.current,
+          activeWorktreePath: activeWorktreePathRef.current,
+        })
+        targetWorktreeId = activeWorktreeIdRef.current
+        targetWorktreePath = activeWorktreePathRef.current
+      }
+
+      if (!targetWorktreeId || !targetWorktreePath) {
+        console.error('[INVESTIGATE-WF] No worktree found at all, aborting')
+        toast.error('No worktree found for this branch')
+        return
+      }
+
+      console.warn('[INVESTIGATE-WF] Target worktree resolved:', {
+        worktreeId: targetWorktreeId,
+        worktreePath: targetWorktreePath,
+      })
+
+      // Capture for closure stability
+      const worktreeId = targetWorktreeId
+      const worktreePath = targetWorktreePath
+
+      const sendInvestigateMessage = (targetSessionId: string) => {
+        console.warn('[INVESTIGATE-WF] Sending investigate message to session:', targetSessionId)
+        const {
+          addSendingSession,
+          setLastSentMessage,
+          setError,
+          setSelectedModel,
+          setExecutingMode,
+        } = useChatStore.getState()
+
+        setLastSentMessage(targetSessionId, prompt)
+        setError(targetSessionId, null)
+        addSendingSession(targetSessionId)
+        setSelectedModel(targetSessionId, investigateModel)
+        setExecutingMode(targetSessionId, executionModeRef.current)
+
+        sendMessage.mutate(
+          {
+            sessionId: targetSessionId,
+            worktreeId,
+            worktreePath,
+            message: prompt,
+            model: investigateModel,
+            executionMode: executionModeRef.current,
+            thinkingLevel: selectedThinkingLevelRef.current,
+            effortLevel: useAdaptiveThinkingRef.current
+              ? selectedEffortLevelRef.current
+              : undefined,
+            mcpConfig: buildMcpConfigJson(
+              mcpServersDataRef.current,
+              enabledMcpServersRef.current
+            ),
+            parallelExecutionPromptEnabled:
+              preferences?.parallel_execution_prompt_enabled ?? false,
+            chromeEnabled: preferences?.chrome_enabled ?? false,
+            aiLanguage: preferences?.ai_language,
+          },
+          { onSettled: () => inputRef.current?.focus() }
+        )
+      }
+
+      // Switch to the target worktree, create a new session, then send the prompt
+      const { setActiveWorktree, setActiveSession } = useChatStore.getState()
+      const { selectWorktree, expandProject } = useProjectsStore.getState()
+      console.warn('[INVESTIGATE-WF] Switching to worktree:', worktreeId)
+      setActiveWorktree(worktreeId, worktreePath)
+      selectWorktree(worktreeId)
+
+      // Expand the project in sidebar so user can see the worktree
+      const projects = queryClient.getQueryData<Project[]>(
+        projectsQueryKeys.list()
+      )
+      const project = projects?.find(p => p.path === detail.projectPath)
+      if (project) expandProject(project.id)
+
+      console.warn('[INVESTIGATE-WF] Creating new session in worktree:', worktreeId)
+      createSession.mutate(
+        { worktreeId, worktreePath },
+        {
+          onSuccess: session => {
+            console.warn('[INVESTIGATE-WF] New session created:', session.id)
+            setActiveSession(worktreeId, session.id)
+            sendInvestigateMessage(session.id)
+          },
+          onError: error => {
+            console.error('[INVESTIGATE-WF] Failed to create session:', error)
+            toast.error(`Failed to create session: ${error}`)
+          },
+        }
+      )
+    },
+    [
+      sendMessage,
+      createSession,
+      queryClient,
+      preferences?.magic_prompts?.investigate_workflow_run,
+      preferences?.magic_prompt_models?.investigate_model,
+      preferences?.parallel_execution_prompt_enabled,
+      preferences?.chrome_enabled,
+      preferences?.ai_language,
+    ]
+  )
+
   // Listen for magic-command events from MagicModal
   // Pass isModal and isViewingCanvasTab to prevent duplicate listeners when modal is open over canvas
   useMagicCommands({
@@ -1775,6 +2026,7 @@ Begin your investigation now.`
     handleResolveConflicts,
     handleInvestigate,
     handleCheckoutPR,
+    handleInvestigateWorkflowRun,
     isModal,
     isViewingCanvasTab,
     sessionModalOpen,

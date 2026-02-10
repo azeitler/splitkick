@@ -14,6 +14,7 @@ import { isBaseSession } from '@/types/projects'
 import { GitStatusBadges } from '@/components/ui/git-status-badges'
 import { NewIssuesBadge } from '@/components/shared/NewIssuesBadge'
 import { OpenPRsBadge } from '@/components/shared/OpenPRsBadge'
+import { FailedRunsBadge } from '@/components/shared/FailedRunsBadge'
 import { GitDiffModal } from './GitDiffModal'
 import type { DiffRequest } from '@/types/git-diff'
 import { toast } from 'sonner'
@@ -323,6 +324,12 @@ export function SessionCanvasView({
                 <OpenPRsBadge
                   projectPath={project.path}
                   projectId={worktree.project_id}
+                />
+              )}
+              {project && worktree && (
+                <FailedRunsBadge
+                  projectPath={project.path}
+                  branch={worktree.branch}
                 />
               )}
               <GitStatusBadges

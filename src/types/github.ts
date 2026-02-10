@@ -121,6 +121,28 @@ export interface LoadedPullRequestContext {
 }
 
 // =============================================================================
+// GitHub Actions Workflow Run Types
+// =============================================================================
+
+export interface WorkflowRun {
+  databaseId: number
+  name: string
+  displayTitle: string
+  status: string // "completed" | "in_progress" | "queued"
+  conclusion: string | null // "success" | "failure" | "cancelled" | "skipped" | "startup_failure" | null
+  event: string
+  headBranch: string
+  createdAt: string
+  url: string
+  workflowName: string
+}
+
+export interface WorkflowRunsResult {
+  runs: WorkflowRun[]
+  failedCount: number
+}
+
+// =============================================================================
 // Attached Saved Context Types
 // =============================================================================
 

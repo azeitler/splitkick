@@ -39,6 +39,8 @@ export interface Project {
   avatar_path?: string
   /** MCP server names enabled by default for this project */
   enabled_mcp_servers?: string[]
+  /** Custom system prompt appended to every session execution */
+  custom_system_prompt?: string
 }
 
 /**

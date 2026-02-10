@@ -91,6 +91,9 @@ interface UIState {
   newWorktreeModalOpen: boolean
   newWorktreeModalDefaultTab: 'quick' | 'issues' | 'prs' | null
   checkoutPRModalOpen: boolean
+  workflowRunsModalOpen: boolean
+  workflowRunsModalProjectPath: string | null
+  workflowRunsModalBranch: string | null
   cliUpdateModalOpen: boolean
   cliUpdateModalType: CliUpdateModalType
   cliLoginModalOpen: boolean
@@ -139,6 +142,11 @@ interface UIState {
     tab: 'quick' | 'issues' | 'prs' | null
   ) => void
   setCheckoutPRModalOpen: (open: boolean) => void
+  setWorkflowRunsModalOpen: (
+    open: boolean,
+    projectPath?: string | null,
+    branch?: string | null
+  ) => void
   openCliUpdateModal: (type: 'claude' | 'gh') => void
   closeCliUpdateModal: () => void
   openCliLoginModal: (type: 'claude' | 'gh', command: string) => void
@@ -178,6 +186,9 @@ export const useUIStore = create<UIState>()(
       newWorktreeModalOpen: false,
       newWorktreeModalDefaultTab: null,
       checkoutPRModalOpen: false,
+      workflowRunsModalOpen: false,
+      workflowRunsModalProjectPath: null,
+      workflowRunsModalBranch: null,
       cliUpdateModalOpen: false,
       cliUpdateModalType: null,
       cliLoginModalOpen: false,
@@ -291,6 +302,17 @@ export const useUIStore = create<UIState>()(
 
       setCheckoutPRModalOpen: open =>
         set({ checkoutPRModalOpen: open }, undefined, 'setCheckoutPRModalOpen'),
+
+      setWorkflowRunsModalOpen: (open, projectPath, branch) =>
+        set(
+          {
+            workflowRunsModalOpen: open,
+            workflowRunsModalProjectPath: open ? (projectPath ?? null) : null,
+            workflowRunsModalBranch: open ? (branch ?? null) : null,
+          },
+          undefined,
+          'setWorkflowRunsModalOpen'
+        ),
 
       openCliUpdateModal: type =>
         set(

@@ -343,6 +343,8 @@ pub struct MagicPrompts {
     pub context_summary: Option<String>,
     #[serde(default)]
     pub resolve_conflicts: Option<String>,
+    #[serde(default)]
+    pub investigate_workflow_run: Option<String>,
 }
 
 fn default_investigate_issue_prompt() -> String {
@@ -390,8 +392,16 @@ Investigate the loaded GitHub {prWord} ({prRefs})
 2. Understand what the PR is trying to accomplish and branch info (head → base)
 3. Explore the codebase to understand the context
 4. Analyze if the implementation matches the PR description
-5. Identify action items from reviewer feedback
-6. Propose next steps to get the PR merged
+5. Security review - check the changes for:
+   - Malicious or obfuscated code (eval, encoded strings, hidden network calls, data exfiltration)
+   - Suspicious dependency additions or version changes (typosquatting, hijacked packages)
+   - Hardcoded secrets, tokens, API keys, or credentials
+   - Backdoors, reverse shells, or unauthorized remote access
+   - Unsafe deserialization, command injection, SQL injection, XSS
+   - Weakened auth/permissions (removed checks, broadened access, disabled validation)
+   - Suspicious file system or environment variable access
+6. Identify action items from reviewer feedback
+7. Propose next steps to get the PR merged
 
 </instructions>
 
@@ -400,6 +410,7 @@ Investigate the loaded GitHub {prWord} ({prRefs})
 
 - Be thorough but focused
 - Pay attention to reviewer feedback and requested changes
+- Flag any security concerns prominently, even minor ones
 - If multiple approaches exist, explain trade-offs
 - Reference specific file paths and line numbers
 
@@ -464,7 +475,14 @@ fn default_code_review_prompt() -> String {
 
 <instructions>
 Focus on:
-- Security vulnerabilities
+- Security & supply-chain risks:
+  - Malicious or obfuscated code (eval, encoded strings, hidden network calls, data exfiltration)
+  - Suspicious dependency additions or version changes (typosquatting, hijacked packages)
+  - Hardcoded secrets, tokens, API keys, or credentials
+  - Backdoors, reverse shells, or unauthorized remote access
+  - Unsafe deserialization, command injection, SQL injection, XSS
+  - Weakened auth/permissions (removed checks, broadened access, disabled validation)
+  - Suspicious file system or environment variable access
 - Performance issues
 - Code quality and maintainability (use /check skill if available to run linters/tests)
 - Potential bugs
@@ -513,6 +531,24 @@ After resolving each file's conflicts, stage it with `git add`. Then run the app
         .to_string()
 }
 
+fn default_investigate_workflow_run_prompt() -> String {
+    r#"Investigate the failed GitHub Actions workflow run for "{workflowName}" on branch `{branch}`.
+
+**Context:**
+- Workflow: {workflowName}
+- Commit/PR: {displayTitle}
+- Branch: {branch}
+- Run URL: {runUrl}
+
+**Instructions:**
+1. Use the GitHub CLI to fetch the workflow run logs: `gh run view {runId} --log-failed`
+2. Read the error output carefully to identify the failure cause
+3. Explore the relevant code in the codebase to understand the context
+4. Determine if this is a code issue, configuration issue, or flaky test
+5. Propose a fix with specific files and changes needed"#
+        .to_string()
+}
+
 /// Per-prompt model overrides for magic prompts
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MagicPromptModels {
@@ -557,6 +593,7 @@ impl Default for MagicPrompts {
             code_review: None,
             context_summary: None,
             resolve_conflicts: None,
+            investigate_workflow_run: None,
         }
     }
 }
@@ -565,7 +602,7 @@ impl MagicPrompts {
     /// Migrate prompts that match the current default to None.
     /// This ensures users who never customized a prompt get auto-updated defaults.
     fn migrate_defaults(&mut self) {
-        let defaults: [(fn() -> String, &mut Option<String>); 7] = [
+        let defaults: [(fn() -> String, &mut Option<String>); 8] = [
             (default_investigate_issue_prompt, &mut self.investigate_issue),
             (default_investigate_pr_prompt, &mut self.investigate_pr),
             (default_pr_content_prompt, &mut self.pr_content),
@@ -573,6 +610,7 @@ impl MagicPrompts {
             (default_code_review_prompt, &mut self.code_review),
             (default_context_summary_prompt, &mut self.context_summary),
             (default_resolve_conflicts_prompt, &mut self.resolve_conflicts),
+            (default_investigate_workflow_run_prompt, &mut self.investigate_workflow_run),
         ];
 
         for (default_fn, field) in defaults {
@@ -1410,19 +1448,50 @@ pub fn run() {
         }
     }
 
-    // Build log targets conditionally (skip webview in headless mode)
+    // Build log targets conditionally
     let mut log_targets = vec![tauri_plugin_log::Target::new(
         tauri_plugin_log::TargetKind::Stdout,
     )];
-    if !headless {
+    if cfg!(debug_assertions) {
+        // Dev mode: Stdout + LogDir (file) on all platforms.
+        // Skip Webview target — frontend console overrides forward to the plugin,
+        // so a Webview target would create an infinite loop:
+        //   console.log → plugin.trace → Webview → console.log → ...
+
+        // Clear old log files on startup so each dev session starts fresh.
+        // Tauri's LogDir writes to ~/Library/Logs/{bundle_id}/ on macOS,
+        // {LOCALAPPDATA}/{bundle_id}/logs/ on Windows, etc.
+        #[cfg(target_os = "macos")]
+        let log_dir = dirs::home_dir().map(|d| d.join("Library/Logs/com.jean.desktop"));
+        #[cfg(target_os = "windows")]
+        let log_dir = dirs::data_local_dir().map(|d| d.join("com.jean.desktop/logs"));
+        #[cfg(target_os = "linux")]
+        let log_dir = dirs::config_local_dir().map(|d| d.join("com.jean.desktop/logs"));
+        if let Some(log_dir) = log_dir {
+            if log_dir.exists() {
+                if let Ok(entries) = std::fs::read_dir(&log_dir) {
+                    for entry in entries.flatten() {
+                        let _ = std::fs::remove_file(entry.path());
+                    }
+                }
+            }
+        }
+
         log_targets.push(tauri_plugin_log::Target::new(
-            tauri_plugin_log::TargetKind::Webview,
+            tauri_plugin_log::TargetKind::LogDir { file_name: None },
+        ));
+    } else {
+        // Prod: Webview target + macOS-only file logging
+        if !headless {
+            log_targets.push(tauri_plugin_log::Target::new(
+                tauri_plugin_log::TargetKind::Webview,
+            ));
+        }
+        #[cfg(target_os = "macos")]
+        log_targets.push(tauri_plugin_log::Target::new(
+            tauri_plugin_log::TargetKind::LogDir { file_name: None },
         ));
     }
-    #[cfg(target_os = "macos")]
-    log_targets.push(tauri_plugin_log::Target::new(
-        tauri_plugin_log::TargetKind::LogDir { file_name: None },
-    ));
 
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -1734,6 +1803,8 @@ pub fn run() {
             projects::remove_pr_context,
             projects::get_pr_context_content,
             projects::get_issue_context_content,
+            // GitHub Actions commands
+            projects::list_workflow_runs,
             // Saved context commands
             projects::attach_saved_context,
             projects::remove_saved_context,

@@ -13,6 +13,7 @@ import { FeatureTourDialog } from '@/components/onboarding/FeatureTourDialog'
 import { CliUpdateModal } from '@/components/layout/CliUpdateModal'
 import { CliLoginModal } from '@/components/preferences/CliLoginModal'
 import { OpenInModal } from '@/components/open-in/OpenInModal'
+import { WorkflowRunsModal } from '@/components/shared/WorkflowRunsModal'
 import { MagicModal } from '@/components/magic/MagicModal'
 import { CheckoutPRModal } from '@/components/magic/CheckoutPRModal'
 import { NewWorktreeModal } from '@/components/worktree/NewWorktreeModal'
@@ -269,6 +270,7 @@ export function MainWindow() {
       <CliUpdateModal />
       <CliLoginModal />
       <OpenInModal />
+      <WorkflowRunsModal />
       <MagicModal />
       <CheckoutPRModal />
       <NewWorktreeModal />

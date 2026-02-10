@@ -38,6 +38,7 @@ import { isBaseSession, type Worktree } from '@/types/projects'
 import type { Session, WorktreeSessions } from '@/types/chat'
 import { NewIssuesBadge } from '@/components/shared/NewIssuesBadge'
 import { OpenPRsBadge } from '@/components/shared/OpenPRsBadge'
+import { FailedRunsBadge } from '@/components/shared/FailedRunsBadge'
 import { PlanDialog } from '@/components/chat/PlanDialog'
 import { RecapDialog } from '@/components/chat/RecapDialog'
 import { SessionChatModal } from '@/components/chat/SessionChatModal'
@@ -1015,6 +1016,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
             <h2 className="text-lg font-semibold">{project.name}</h2>
             <NewIssuesBadge projectPath={project.path} projectId={projectId} />
             <OpenPRsBadge projectPath={project.path} projectId={projectId} />
+            <FailedRunsBadge projectPath={project.path} />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button

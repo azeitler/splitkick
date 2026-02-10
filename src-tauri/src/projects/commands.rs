@@ -143,6 +143,7 @@ pub async fn add_project(
         is_folder: false,
         avatar_path: None,
         enabled_mcp_servers: Vec::new(),
+        custom_system_prompt: None,
     };
 
     data.add_project(project.clone());
@@ -294,6 +295,7 @@ pub async fn init_project(
         is_folder: false,
         avatar_path: None,
         enabled_mcp_servers: Vec::new(),
+        custom_system_prompt: None,
     };
 
     data.add_project(project.clone());
@@ -2962,6 +2964,7 @@ pub async fn update_project_settings(
     project_id: String,
     default_branch: Option<String>,
     enabled_mcp_servers: Option<Vec<String>>,
+    custom_system_prompt: Option<String>,
 ) -> Result<Project, String> {
     log::trace!("Updating settings for project: {project_id}");
 
@@ -2983,6 +2986,16 @@ pub async fn update_project_settings(
     if let Some(servers) = enabled_mcp_servers {
         log::trace!("Updating enabled MCP servers: {servers:?}");
         project.enabled_mcp_servers = servers;
+    }
+
+    if let Some(prompt) = custom_system_prompt {
+        let prompt = prompt.trim().to_string();
+        log::trace!("Updating custom system prompt ({} chars)", prompt.len());
+        project.custom_system_prompt = if prompt.is_empty() {
+            None
+        } else {
+            Some(prompt)
+        };
     }
 
     let updated_project = project.clone();
@@ -3305,6 +3318,14 @@ DO NOT run git diff, git log, git status, or ANY other git commands. All the inf
 
 When reviewing the diff:
 
+- Security & supply-chain risks:
+  - Malicious or obfuscated code (eval, encoded strings, hidden network calls, data exfiltration)
+  - Suspicious dependency additions or version changes (typosquatting, hijacked packages)
+  - Hardcoded secrets, tokens, API keys, or credentials
+  - Backdoors, reverse shells, or unauthorized remote access
+  - Unsafe deserialization, command injection, SQL injection, XSS
+  - Weakened auth/permissions (removed checks, broadened access, disabled validation)
+  - Suspicious file system or environment variable access
 - Focus on logic and correctness - Check for bugs, edge cases, and potential issues.
 - Consider readability - Is the code clear and maintainable? Does it follow best practices in this repository?
 - Evaluate performance - Are there obvious performance concerns or optimizations that could be made?
@@ -4331,7 +4352,14 @@ const REVIEW_PROMPT: &str = r#"Review the following code changes and provide str
 {uncommitted_section}
 
 Focus on:
-- Security vulnerabilities
+- Security & supply-chain risks:
+  - Malicious or obfuscated code (eval, encoded strings, hidden network calls, data exfiltration)
+  - Suspicious dependency additions or version changes (typosquatting, hijacked packages)
+  - Hardcoded secrets, tokens, API keys, or credentials
+  - Backdoors, reverse shells, or unauthorized remote access
+  - Unsafe deserialization, command injection, SQL injection, XSS
+  - Weakened auth/permissions (removed checks, broadened access, disabled validation)
+  - Suspicious file system or environment variable access
 - Performance issues
 - Code quality and maintainability
 - Potential bugs
@@ -5233,6 +5261,7 @@ pub async fn create_folder(
         is_folder: true,
         avatar_path: None,
         enabled_mcp_servers: Vec::new(),
+        custom_system_prompt: None,
     };
 
     data.add_project(folder.clone());

@@ -2009,10 +2009,12 @@ export function useUpdateProjectSettings() {
       projectId,
       defaultBranch,
       enabledMcpServers,
+      customSystemPrompt,
     }: {
       projectId: string
       defaultBranch?: string
       enabledMcpServers?: string[]
+      customSystemPrompt?: string
     }): Promise<Project> => {
       if (!isTauri()) {
         throw new Error('Not in Tauri context')
@@ -2023,6 +2025,7 @@ export function useUpdateProjectSettings() {
         projectId,
         defaultBranch,
         enabledMcpServers,
+        customSystemPrompt,
       })
       logger.info('Project settings updated', { project })
       return project
