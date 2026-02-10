@@ -1041,6 +1041,52 @@ pub fn run_setup_script(
     Ok(combined)
 }
 
+/// Run a teardown script in a worktree directory before deletion
+///
+/// Executes the script using sh -c and captures output.
+/// Sets environment variables for use in the script:
+/// - JEAN_WORKSPACE_PATH: Path to the worktree being deleted
+/// - JEAN_ROOT_PATH: Path to the repository root directory
+/// - JEAN_BRANCH: Branch name of the worktree
+pub fn run_teardown_script(
+    worktree_path: &str,
+    root_path: &str,
+    branch: &str,
+    script: &str,
+) -> Result<String, String> {
+    log::trace!("Running teardown script in {worktree_path}: {script}");
+
+    let (shell, supports_login) = get_user_shell();
+    log::trace!("Using shell: {shell} (login mode: {supports_login})");
+
+    let mut cmd = silent_command(&shell);
+    if supports_login {
+        cmd.args(["-l", "-c", script]);
+    } else {
+        cmd.args(["-c", script]);
+    }
+
+    let output = cmd
+        .current_dir(worktree_path)
+        .env("JEAN_WORKSPACE_PATH", worktree_path)
+        .env("JEAN_ROOT_PATH", root_path)
+        .env("JEAN_BRANCH", branch)
+        .output()
+        .map_err(|e| format!("Failed to run teardown script: {e}"))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+    if !output.status.success() {
+        let combined = format!("{stdout}{stderr}").trim().to_string();
+        return Err(format!("Teardown script failed:\n{combined}"));
+    }
+
+    let combined = format!("{stdout}{stderr}").trim().to_string();
+    log::trace!("Teardown script completed successfully");
+    Ok(combined)
+}
+
 /// Check if there are uncommitted changes (staged or unstaged)
 pub fn has_uncommitted_changes(repo_path: &str) -> bool {
     Command::new("git")

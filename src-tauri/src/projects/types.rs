@@ -35,6 +35,8 @@ pub struct JeanConfig {
 pub struct JeanScripts {
     /// Script to run after worktree creation
     pub setup: Option<String>,
+    /// Script to run before worktree deletion
+    pub teardown: Option<String>,
     /// Script to run the dev environment
     pub run: Option<String>,
 }

@@ -1188,6 +1188,10 @@ pub async fn delete_worktree(app: AppHandle, worktree_id: String) -> Result<(), 
 
     log::trace!("Found project: id={}, path={}", project.id, project.path);
 
+    // Read jean.json teardown script before removing from storage
+    let teardown_script = git::read_jean_config(&project.path)
+        .and_then(|config| config.scripts.teardown);
+
     // Remove from storage SYNCHRONOUSLY to avoid race conditions with other operations
     // (e.g., archive/unarchive could be overwritten if we save in background thread)
     let mut data = load_projects_data(&app)?;
@@ -1212,10 +1216,47 @@ pub async fn delete_worktree(app: AppHandle, worktree_id: String) -> Result<(), 
     let worktree_path = worktree.path.clone();
     let worktree_branch = worktree.branch.clone();
     let worktree_name = worktree.name.clone();
+    let worktree_for_restore = worktree.clone();
 
-    // Spawn background thread for git operations only
-    // Storage is already updated, so git failures won't corrupt other data
+    // Spawn background thread for teardown script + git operations
+    // Storage is already updated, so failures require re-adding the worktree
     thread::spawn(move || {
+        // Run teardown script before git operations (directory still exists)
+        if let Some(ref script) = teardown_script {
+            log::trace!("Background: Running teardown script for {worktree_name}");
+            if let Err(e) =
+                git::run_teardown_script(&worktree_path, &project_path, &worktree_branch, script)
+            {
+                log::error!("Background: Teardown script failed: {e}");
+
+                // Re-add worktree to storage since teardown blocked deletion
+                match load_projects_data(&app_clone) {
+                    Ok(mut data) => {
+                        data.add_worktree(worktree_for_restore);
+                        if let Err(save_err) = save_projects_data(&app_clone, &data) {
+                            log::error!("Failed to restore worktree in storage: {save_err}");
+                        }
+                    }
+                    Err(load_err) => {
+                        log::error!("Failed to load projects data for restore: {load_err}");
+                    }
+                }
+
+                let error_event = WorktreeDeleteErrorEvent {
+                    id: worktree_id_clone,
+                    project_id: project_id_clone,
+                    error: format!("Teardown script failed: {e}"),
+                };
+                if let Err(emit_err) =
+                    app_clone.emit_all("worktree:delete_error", &error_event)
+                {
+                    log::error!("Failed to emit worktree:delete_error event: {emit_err}");
+                }
+                return;
+            }
+            log::trace!("Background: Teardown script completed for {worktree_name}");
+        }
+
         log::trace!("Background: Removing git worktree at {worktree_path}");
 
         // Remove the git worktree (this can be slow for large repos)
