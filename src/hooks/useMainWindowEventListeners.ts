@@ -448,7 +448,8 @@ export function useMainWindowEventListeners() {
         uiState.magicModalOpen ||
         uiState.newWorktreeModalOpen ||
         uiState.commandPaletteOpen ||
-        uiState.preferencesOpen
+        uiState.preferencesOpen ||
+        uiState.releaseNotesModalOpen
       )
         return
       if (useProjectsStore.getState().projectSettingsDialogOpen) return

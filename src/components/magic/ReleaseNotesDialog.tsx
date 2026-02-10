@@ -184,6 +184,11 @@ export function ReleaseNotesDialog() {
   // Keyboard navigation for release list
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      // Always capture Enter to prevent it from reaching the chat input behind this modal
+      if (e.key === 'Enter') {
+        e.stopPropagation()
+      }
+
       if (phase !== 'select' || releases.length === 0) return
 
       const key = e.key.toLowerCase()
