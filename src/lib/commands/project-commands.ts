@@ -1,4 +1,4 @@
-import { FolderPlus, FolderGit, Bug, Keyboard } from 'lucide-react'
+import { FolderPlus, FolderGit, Bug, Keyboard, Archive, ArchiveRestore } from 'lucide-react'
 import type { AppCommand } from './types'
 import { useUIStore } from '@/store/ui-store'
 
@@ -59,6 +59,32 @@ export const projectCommands: AppCommand[] = [
 
     execute: () => {
       useUIStore.getState().setFeatureTourOpen(true)
+    },
+  },
+
+  {
+    id: 'open-archive',
+    label: 'Open Archive',
+    description: 'View archived worktrees and sessions',
+    icon: Archive,
+    group: 'projects',
+    keywords: ['archive', 'archived', 'trash', 'deleted', 'removed'],
+
+    execute: context => {
+      context.openArchivedModal()
+    },
+  },
+
+  {
+    id: 'restore-last-archived',
+    label: 'Restore Last Archived',
+    description: 'Restore the most recently archived item',
+    icon: ArchiveRestore,
+    group: 'projects',
+    keywords: ['archive', 'restore', 'undo', 'unarchive', 'recover'],
+
+    execute: context => {
+      context.restoreLastArchived()
     },
   },
 ]

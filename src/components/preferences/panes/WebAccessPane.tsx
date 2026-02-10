@@ -12,6 +12,7 @@ import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { usePreferences, useSavePreferences } from '@/services/preferences'
 import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
@@ -379,31 +380,39 @@ export const WebAccessPane: React.FC = () => {
                     value={`http://localhost:${serverStatus.port}`}
                     readOnly
                   />
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => {
-                      const base = `http://localhost:${serverStatus.port}`
-                      openExternal(
-                        tokenRequired && serverStatus.token
-                          ? `${base}?token=${serverStatus.token}`
-                          : base
-                      )
-                    }}
-                    title="Open in browser"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() =>
-                      handleCopyUrl(`http://localhost:${serverStatus.port}`)
-                    }
-                    title="Copy URL"
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          const base = `http://localhost:${serverStatus.port}`
+                          openExternal(
+                            tokenRequired && serverStatus.token
+                              ? `${base}?token=${serverStatus.token}`
+                              : base
+                          )
+                        }}
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Open in browser</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() =>
+                          handleCopyUrl(`http://localhost:${serverStatus.port}`)
+                        }
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Copy URL</TooltipContent>
+                  </Tooltip>
                 </div>
 
                 {/* Network URL - only when not localhost-only */}
@@ -415,30 +424,38 @@ export const WebAccessPane: React.FC = () => {
                       value={serverStatus.url}
                       readOnly
                     />
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => {
-                        const base = serverStatus.url!
-                        openExternal(
-                          tokenRequired && serverStatus.token
-                            ? `${base}?token=${serverStatus.token}`
-                            : base
-                        )
-                      }}
-                      title="Open in browser"
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                      onClick={() => handleCopyUrl(serverStatus.url!)}
-                      title="Copy URL"
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            const base = serverStatus.url ?? ''
+                            openExternal(
+                              tokenRequired && serverStatus.token
+                                ? `${base}?token=${serverStatus.token}`
+                                : base
+                            )
+                          }}
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Open in browser</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                          onClick={() => handleCopyUrl(serverStatus.url!)}
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Copy URL</TooltipContent>
+                    </Tooltip>
                   </div>
                 )}
               </div>

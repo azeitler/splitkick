@@ -58,7 +58,11 @@ import {
   type ClaudeModel,
 } from '@/store/chat-store'
 import { usePreferences, useSavePreferences } from '@/services/preferences'
-import { DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT } from '@/types/preferences'
+import {
+  DEFAULT_INVESTIGATE_ISSUE_PROMPT,
+  DEFAULT_INVESTIGATE_PR_PROMPT,
+  DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT,
+} from '@/types/preferences'
 import type { Project, Worktree } from '@/types/projects'
 import type {
   ChatMessage,
@@ -1572,45 +1576,7 @@ export function ChatWindow({
       const issueTemplate =
         customPrompt && customPrompt.trim()
           ? customPrompt
-          : `Investigate the loaded GitHub {issueWord} ({issueRefs}).
-
-## Investigation Steps
-
-1. **Read the issue context file(s)** to understand the full problem description and comments.
-
-2. **Analyze the problem**:
-   - What is the expected vs actual behavior?
-   - Are there error messages, stack traces, or reproduction steps?
-
-3. **Explore the codebase** to find relevant code:
-   - Search for files/functions mentioned in the {issueWord}
-   - Read source files to understand current implementation
-   - Trace the affected code path
-
-4. **Identify root cause**:
-   - Where does the bug originate OR where should the feature be implemented?
-   - What constraints/edge cases need handling?
-   - Any related issues or tech debt?
-
-5. **Check for regression**:
-   - If this is a bug fix, determine if this is a regression (something that worked before)
-   - Look at git history or related code to understand if the feature previously worked
-   - Identify what change may have caused the regression
-
-6. **Propose solution**:
-   - Clear explanation of needed changes
-   - Specific files to modify
-   - Potential risks/trade-offs
-   - Test cases to verify
-
-## Guidelines
-
-- Be thorough but focused - investigate deeply without getting sidetracked
-- Ask clarifying questions if requirements are unclear
-- If multiple solutions exist, explain trade-offs
-- Reference specific file paths and line numbers
-
-Begin your investigation now.`
+          : DEFAULT_INVESTIGATE_ISSUE_PROMPT
 
       promptParts.push(
         issueTemplate
@@ -1626,45 +1592,7 @@ Begin your investigation now.`
       const prTemplate =
         customPrompt && customPrompt.trim()
           ? customPrompt
-          : `Investigate the loaded GitHub {prWord} ({prRefs}).
-
-## Investigation Steps
-
-1. **Read the PR context file(s)** to understand the full description, reviews, and comments.
-
-2. **Understand the changes**:
-   - What is the PR trying to accomplish?
-   - What branches are involved (head → base)?
-   - Are there any review comments or requested changes?
-
-3. **Explore the codebase** to understand the context:
-   - Check out the PR branch if needed
-   - Read the files being modified
-   - Understand the current implementation
-
-4. **Analyze the approach**:
-   - Does the implementation match the PR description?
-   - Are there any concerns raised in reviews?
-   - What feedback has been given?
-
-5. **Identify action items**:
-   - What changes are requested by reviewers?
-   - Are there any failing checks or tests?
-   - What needs to be done to get this PR merged?
-
-6. **Propose next steps**:
-   - Address reviewer feedback
-   - Specific files to modify
-   - Test cases to add or update
-
-## Guidelines
-
-- Be thorough but focused - investigate deeply without getting sidetracked
-- Pay attention to reviewer feedback and requested changes
-- If multiple approaches exist, explain trade-offs
-- Reference specific file paths and line numbers
-
-Begin your investigation now.`
+          : DEFAULT_INVESTIGATE_PR_PROMPT
 
       promptParts.push(
         prTemplate.replace(/\{prRefs\}/g, prRefs).replace(/\{prWord\}/g, prWord)

@@ -345,6 +345,8 @@ pub struct MagicPrompts {
     pub resolve_conflicts: Option<String>,
     #[serde(default)]
     pub investigate_workflow_run: Option<String>,
+    #[serde(default)]
+    pub release_notes: Option<String>,
 }
 
 fn default_investigate_issue_prompt() -> String {
@@ -564,6 +566,8 @@ pub struct MagicPromptModels {
     pub context_summary_model: String,
     #[serde(default = "default_model")]
     pub resolve_conflicts_model: String,
+    #[serde(default = "default_haiku_model")]
+    pub release_notes_model: String,
 }
 
 fn default_haiku_model() -> String {
@@ -579,6 +583,7 @@ impl Default for MagicPromptModels {
             code_review_model: default_haiku_model(),
             context_summary_model: default_model(),
             resolve_conflicts_model: default_model(),
+            release_notes_model: default_haiku_model(),
         }
     }
 }
@@ -594,6 +599,7 @@ impl Default for MagicPrompts {
             context_summary: None,
             resolve_conflicts: None,
             investigate_workflow_run: None,
+            release_notes: None,
         }
     }
 }
@@ -1760,6 +1766,8 @@ pub fn run() {
             projects::create_pr_with_ai_content,
             projects::create_commit_with_ai,
             projects::run_review_with_ai,
+            projects::list_github_releases,
+            projects::generate_release_notes,
             projects::commit_changes,
             projects::open_project_on_github,
             projects::open_branch_on_github,

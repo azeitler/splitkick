@@ -308,6 +308,26 @@ export interface ReviewResponse {
 }
 
 // =============================================================================
+// Release Notes
+// =============================================================================
+
+/** A GitHub release from gh release list */
+export interface GitHubRelease {
+  tagName: string
+  name: string
+  publishedAt: string
+  isLatest: boolean
+  isDraft: boolean
+  isPrerelease: boolean
+}
+
+/** Response from generate_release_notes command */
+export interface ReleaseNotesResponse {
+  title: string
+  body: string
+}
+
+// =============================================================================
 // Local Merge
 // =============================================================================
 

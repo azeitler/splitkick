@@ -91,6 +91,7 @@ interface UIState {
   newWorktreeModalOpen: boolean
   newWorktreeModalDefaultTab: 'quick' | 'issues' | 'prs' | null
   checkoutPRModalOpen: boolean
+  releaseNotesModalOpen: boolean
   workflowRunsModalOpen: boolean
   workflowRunsModalProjectPath: string | null
   workflowRunsModalBranch: string | null
@@ -142,6 +143,7 @@ interface UIState {
     tab: 'quick' | 'issues' | 'prs' | null
   ) => void
   setCheckoutPRModalOpen: (open: boolean) => void
+  setReleaseNotesModalOpen: (open: boolean) => void
   setWorkflowRunsModalOpen: (
     open: boolean,
     projectPath?: string | null,
@@ -186,6 +188,7 @@ export const useUIStore = create<UIState>()(
       newWorktreeModalOpen: false,
       newWorktreeModalDefaultTab: null,
       checkoutPRModalOpen: false,
+      releaseNotesModalOpen: false,
       workflowRunsModalOpen: false,
       workflowRunsModalProjectPath: null,
       workflowRunsModalBranch: null,
@@ -302,6 +305,13 @@ export const useUIStore = create<UIState>()(
 
       setCheckoutPRModalOpen: open =>
         set({ checkoutPRModalOpen: open }, undefined, 'setCheckoutPRModalOpen'),
+
+      setReleaseNotesModalOpen: open =>
+        set(
+          { releaseNotesModalOpen: open },
+          undefined,
+          'setReleaseNotesModalOpen'
+        ),
 
       setWorkflowRunsModalOpen: (open, projectPath, branch) =>
         set(

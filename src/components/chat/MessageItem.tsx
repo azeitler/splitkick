@@ -20,6 +20,11 @@ import { SkillBadge } from './SkillBadge'
 import { ToolCallsDisplay } from './ToolCallsDisplay'
 import { ExitPlanModeButton } from './ExitPlanModeButton'
 import { EditedFilesDisplay } from './EditedFilesDisplay'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip'
 import { ThinkingBlock } from './ThinkingBlock'
 import {
   parseReviewFindings,
@@ -476,14 +481,18 @@ export const MessageItem = memo(function MessageItem({
         <div className="relative group flex items-start gap-1 max-w-[85%] sm:max-w-[70%]">
           {/* Copy to input button - appears on hover */}
           {onCopyToInput && (
-            <button
-              type="button"
-              onClick={handleCopyToInput}
-              className="shrink-0 mt-2 p-1 rounded cursor-pointer text-muted-foreground/0 hover:text-muted-foreground hover:bg-muted/50 group-hover:text-muted-foreground/50 transition-colors"
-              title="Copy to input"
-            >
-              <Copy className="h-3.5 w-3.5" />
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={handleCopyToInput}
+                  className="shrink-0 mt-2 p-1 rounded cursor-pointer text-muted-foreground/0 hover:text-muted-foreground hover:bg-muted/50 group-hover:text-muted-foreground/50 transition-colors"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Copy to input</TooltipContent>
+            </Tooltip>
           )}
           <div
             className={cn(

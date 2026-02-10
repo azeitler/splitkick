@@ -23,6 +23,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
@@ -243,24 +244,28 @@ export function CheckoutPRModal() {
                   className="pl-9 h-8 text-sm"
                 />
               </div>
-              <button
-                onClick={() => refetchPRs()}
-                disabled={isRefetchingPRs}
-                className={cn(
-                  'flex items-center justify-center h-8 w-8 rounded-md border border-border',
-                  'hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring',
-                  'transition-colors',
-                  isRefetchingPRs && 'opacity-50 cursor-not-allowed'
-                )}
-                title="Refresh pull requests"
-              >
-                <RefreshCw
-                  className={cn(
-                    'h-4 w-4 text-muted-foreground',
-                    isRefetchingPRs && 'animate-spin'
-                  )}
-                />
-              </button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => refetchPRs()}
+                    disabled={isRefetchingPRs}
+                    className={cn(
+                      'flex items-center justify-center h-8 w-8 rounded-md border border-border',
+                      'hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring',
+                      'transition-colors',
+                      isRefetchingPRs && 'opacity-50 cursor-not-allowed'
+                    )}
+                  >
+                    <RefreshCw
+                      className={cn(
+                        'h-4 w-4 text-muted-foreground',
+                        isRefetchingPRs && 'animate-spin'
+                      )}
+                    />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Refresh pull requests</TooltipContent>
+              </Tooltip>
             </div>
             <div className="flex items-center gap-2">
               <Checkbox
@@ -443,22 +448,26 @@ function CheckoutPRItem({
           </div>
         )}
       </div>
-      <div
-        role="button"
-        tabIndex={-1}
-        title="Checkout & Investigate"
-        onClick={e => {
-          e.stopPropagation()
-          onInvestigateClick()
-        }}
-        className={cn(
-          'flex-shrink-0 self-center p-1 rounded-md transition-colors',
-          'text-muted-foreground hover:text-foreground hover:bg-accent-foreground/10',
-          isCheckingOut && 'pointer-events-none'
-        )}
-      >
-        <Wand2 className="h-3.5 w-3.5" />
-      </div>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div
+            role="button"
+            tabIndex={-1}
+            onClick={e => {
+              e.stopPropagation()
+              onInvestigateClick()
+            }}
+            className={cn(
+              'flex-shrink-0 self-center p-1 rounded-md transition-colors',
+              'text-muted-foreground hover:text-foreground hover:bg-accent-foreground/10',
+              isCheckingOut && 'pointer-events-none'
+            )}
+          >
+            <Wand2 className="h-3.5 w-3.5" />
+          </div>
+        </TooltipTrigger>
+        <TooltipContent>Checkout & Investigate</TooltipContent>
+      </Tooltip>
     </button>
   )
 }

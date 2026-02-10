@@ -24,6 +24,11 @@ import {
 } from 'lucide-react'
 import type { ReviewFinding, ReviewResponse } from '@/types/projects'
 import { cn } from '@/lib/utils'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip'
 
 interface ReviewResultsPanelProps {
   worktreeId: string
@@ -493,15 +498,19 @@ Please apply all these fixes to the codebase.`
                 )}
               </Button>
             )}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 flex-shrink-0"
-              onClick={() => clearReviewResults(worktreeId)}
-              title="Clear review results"
-            >
-              <X className="h-4 w-4" />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 flex-shrink-0"
+                  onClick={() => clearReviewResults(worktreeId)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Clear review results</TooltipContent>
+            </Tooltip>
           </div>
         </div>
 

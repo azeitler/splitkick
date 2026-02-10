@@ -22,6 +22,7 @@ import {
   fetchWorktreesStatus,
   triggerImmediateGitPoll,
 } from '@/services/git-status'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { useSidebarWidth } from '@/components/layout/SidebarWidthContext'
 
 interface WorktreeItemProps {
@@ -487,42 +488,52 @@ export function WorktreeItem({
 
         {/* Pull badge - shown when behind remote */}
         {behindCount > 0 && (
-          <button
-            onClick={handlePull}
-            className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/20"
-            title={`Pull ${behindCount} commit${behindCount > 1 ? 's' : ''} from remote`}
-          >
-            <span className="flex items-center gap-0.5">
-              <ArrowDown className="h-3 w-3" />
-              {behindCount}
-            </span>
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={handlePull}
+                className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/20"
+              >
+                <span className="flex items-center gap-0.5">
+                  <ArrowDown className="h-3 w-3" />
+                  {behindCount}
+                </span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>{`Pull ${behindCount} commit${behindCount > 1 ? 's' : ''} from remote`}</TooltipContent>
+          </Tooltip>
         )}
 
         {/* Push badge - unpushed commits */}
         {pushCount > 0 && (
-          <button
-            onClick={handlePush}
-            className="shrink-0 rounded bg-orange-500/10 px-1.5 py-0.5 text-[11px] font-medium text-orange-500 transition-colors hover:bg-orange-500/20"
-            title={`Push ${pushCount} commit${pushCount > 1 ? 's' : ''} to remote`}
-          >
-            <span className="flex items-center gap-0.5">
-              <ArrowUp className="h-3 w-3" />
-              {pushCount}
-            </span>
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={handlePush}
+                className="shrink-0 rounded bg-orange-500/10 px-1.5 py-0.5 text-[11px] font-medium text-orange-500 transition-colors hover:bg-orange-500/20"
+              >
+                <span className="flex items-center gap-0.5">
+                  <ArrowUp className="h-3 w-3" />
+                  {pushCount}
+                </span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>{`Push ${pushCount} commit${pushCount > 1 ? 's' : ''} to remote`}</TooltipContent>
+          </Tooltip>
         )}
 
         {/* Uncommitted changes */}
         {hasUncommitted && (
-          <span
-            className="shrink-0 text-[11px] font-medium"
-            title={`Uncommitted: +${uncommittedAdded}/-${uncommittedRemoved} lines`}
-          >
-            <span className="text-green-500">+{uncommittedAdded}</span>
-            <span className="text-muted-foreground">/</span>
-            <span className="text-red-500">-{uncommittedRemoved}</span>
-          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="shrink-0 text-[11px] font-medium">
+                <span className="text-green-500">+{uncommittedAdded}</span>
+                <span className="text-muted-foreground">/</span>
+                <span className="text-red-500">-{uncommittedRemoved}</span>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>{`Uncommitted: +${uncommittedAdded}/-${uncommittedRemoved} lines`}</TooltipContent>
+          </Tooltip>
         )}
       </div>
     </WorktreeContextMenu>

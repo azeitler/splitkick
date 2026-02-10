@@ -25,6 +25,7 @@ import {
 import { NewIssuesBadge } from '@/components/shared/NewIssuesBadge'
 import { OpenPRsBadge } from '@/components/shared/OpenPRsBadge'
 import { FailedRunsBadge } from '@/components/shared/FailedRunsBadge'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { WorktreeList } from './WorktreeList'
 import { ProjectContextMenu } from './ProjectContextMenu'
 
@@ -192,28 +193,36 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
 
           {/* Base branch pull/push indicators (when no base session) */}
           {baseBranchBehindCount > 0 && (
-            <button
-              onClick={handleBasePull}
-              className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/20"
-              title={`Pull ${baseBranchBehindCount} commit${baseBranchBehindCount > 1 ? 's' : ''} on ${project.default_branch}`}
-            >
-              <span className="flex items-center gap-0.5">
-                <ArrowDown className="h-3 w-3" />
-                {baseBranchBehindCount}
-              </span>
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={handleBasePull}
+                  className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/20"
+                >
+                  <span className="flex items-center gap-0.5">
+                    <ArrowDown className="h-3 w-3" />
+                    {baseBranchBehindCount}
+                  </span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>{`Pull ${baseBranchBehindCount} commit${baseBranchBehindCount > 1 ? 's' : ''} on ${project.default_branch}`}</TooltipContent>
+            </Tooltip>
           )}
           {baseBranchAheadCount > 0 && (
-            <button
-              onClick={handleBasePush}
-              className="shrink-0 rounded bg-orange-500/10 px-1.5 py-0.5 text-[11px] font-medium text-orange-500 transition-colors hover:bg-orange-500/20"
-              title={`Push ${baseBranchAheadCount} commit${baseBranchAheadCount > 1 ? 's' : ''} on ${project.default_branch}`}
-            >
-              <span className="flex items-center gap-0.5">
-                <ArrowUp className="h-3 w-3" />
-                {baseBranchAheadCount}
-              </span>
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={handleBasePush}
+                  className="shrink-0 rounded bg-orange-500/10 px-1.5 py-0.5 text-[11px] font-medium text-orange-500 transition-colors hover:bg-orange-500/20"
+                >
+                  <span className="flex items-center gap-0.5">
+                    <ArrowUp className="h-3 w-3" />
+                    {baseBranchAheadCount}
+                  </span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>{`Push ${baseBranchAheadCount} commit${baseBranchAheadCount > 1 ? 's' : ''} on ${project.default_branch}`}</TooltipContent>
+            </Tooltip>
           )}
 
           {/* New issues indicator */}
@@ -222,25 +231,33 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
           <FailedRunsBadge projectPath={project.path} />
 
           {/* Settings */}
-          <button
-            onClick={e => {
-              e.stopPropagation()
-              openProjectSettings(project.id)
-            }}
-            className="flex size-4 shrink-0 items-center justify-center rounded opacity-50 hover:bg-accent-foreground/10 hover:opacity-100"
-            title="Project settings"
-          >
-            <MoreHorizontal className="size-3.5" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={e => {
+                  e.stopPropagation()
+                  openProjectSettings(project.id)
+                }}
+                className="flex size-4 shrink-0 items-center justify-center rounded opacity-50 hover:bg-accent-foreground/10 hover:opacity-100"
+              >
+                <MoreHorizontal className="size-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Project settings</TooltipContent>
+          </Tooltip>
 
           {/* Add Worktree */}
-          <button
-            onClick={handleAddWorktree}
-            className="flex size-4 shrink-0 items-center justify-center rounded opacity-50 hover:bg-accent-foreground/10 hover:opacity-100"
-            title="New worktree"
-          >
-            <Plus className="size-3.5" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={handleAddWorktree}
+                className="flex size-4 shrink-0 items-center justify-center rounded opacity-50 hover:bg-accent-foreground/10 hover:opacity-100"
+              >
+                <Plus className="size-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>New worktree</TooltipContent>
+          </Tooltip>
         </div>
 
         {/* Worktrees */}

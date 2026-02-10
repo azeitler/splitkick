@@ -10,6 +10,11 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { QueuedMessage } from '@/types/chat'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip'
 
 interface QueuedMessageItemProps {
   message: QueuedMessage
@@ -41,14 +46,18 @@ export const QueuedMessageItem = memo(function QueuedMessageItem({
           <span>#{index + 1}</span>
         </div>
         {/* Remove button */}
-        <button
-          type="button"
-          onClick={handleRemove}
-          className="absolute -top-2 -right-2 p-0.5 bg-muted hover:bg-destructive text-muted-foreground hover:text-destructive-foreground rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10"
-          title="Remove from queue"
-        >
-          <X className="h-3 w-3" />
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={handleRemove}
+              className="absolute -top-2 -right-2 p-0.5 bg-muted hover:bg-destructive text-muted-foreground hover:text-destructive-foreground rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Remove from queue</TooltipContent>
+        </Tooltip>
         {/* Message content */}
         <div className="text-sm">
           {message.message.length > 200

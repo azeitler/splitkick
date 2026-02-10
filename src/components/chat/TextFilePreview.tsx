@@ -3,6 +3,11 @@ import { X, FileText } from 'lucide-react'
 import { invoke } from '@/lib/transport'
 import type { PendingTextFile } from '@/types/chat'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Markdown } from '@/components/ui/markdown'
 
@@ -84,14 +89,18 @@ export function TextFilePreview({
               </div>
             </button>
             {!disabled && (
-              <button
-                type="button"
-                onClick={e => handleRemove(e, textFile)}
-                className="absolute -top-1.5 -right-1.5 p-0.5 bg-destructive text-destructive-foreground rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-destructive/90 z-10"
-                title="Remove text file"
-              >
-                <X className="h-3 w-3" />
-              </button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={e => handleRemove(e, textFile)}
+                    className="absolute -top-1.5 -right-1.5 p-0.5 bg-destructive text-destructive-foreground rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-destructive/90 z-10"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Remove text file</TooltipContent>
+              </Tooltip>
             )}
           </div>
         ))}

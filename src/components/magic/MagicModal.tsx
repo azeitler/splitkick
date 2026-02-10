@@ -7,6 +7,7 @@ import {
   GitMerge,
   GitPullRequest,
   Eye,
+  FileText,
   Wand2,
   BookmarkPlus,
   FolderOpen,
@@ -49,6 +50,7 @@ type MagicOption =
   | 'resolve-conflicts'
   | 'investigate'
   | 'checkout-pr'
+  | 'release-notes'
 
 /** Options that work on canvas without an open session (git-only operations) */
 const CANVAS_ALLOWED_OPTIONS = new Set<MagicOption>([
@@ -56,6 +58,7 @@ const CANVAS_ALLOWED_OPTIONS = new Set<MagicOption>([
   'commit-and-push',
   'pull',
   'push',
+  'release-notes',
 ])
 
 interface MagicOptionItem {
@@ -70,8 +73,14 @@ interface MagicSection {
   options: MagicOptionItem[]
 }
 
-function buildMagicSections(hasOpenPr: boolean): MagicSection[] {
-  return [
+interface MagicColumns {
+  left: MagicSection[]
+  right: MagicSection[]
+  all: MagicSection[]
+}
+
+function buildMagicColumns(hasOpenPr: boolean): MagicColumns {
+  const left: MagicSection[] = [
     {
       header: 'Context',
       options: [
@@ -108,6 +117,9 @@ function buildMagicSections(hasOpenPr: boolean): MagicSection[] {
         { id: 'push', label: 'Push', icon: ArrowUpToLine, key: 'U' },
       ],
     },
+  ]
+
+  const right: MagicSection[] = [
     {
       header: 'Pull Request',
       options: [
@@ -119,6 +131,17 @@ function buildMagicSections(hasOpenPr: boolean): MagicSection[] {
         },
         { id: 'review', label: 'Review', icon: Eye, key: 'R' },
         { id: 'checkout-pr', label: 'Checkout', icon: GitBranch, key: 'K' },
+      ],
+    },
+    {
+      header: 'Release',
+      options: [
+        {
+          id: 'release-notes',
+          label: 'Generate Notes',
+          icon: FileText,
+          key: 'G',
+        },
       ],
     },
     {
@@ -140,6 +163,8 @@ function buildMagicSections(hasOpenPr: boolean): MagicSection[] {
       ],
     },
   ]
+
+  return { left, right, all: [...left, ...right] }
 }
 
 /** Keyboard shortcut to option ID mapping */
@@ -156,6 +181,7 @@ const KEY_TO_OPTION: Record<string, MagicOption> = {
   f: 'resolve-conflicts',
   i: 'investigate',
   k: 'checkout-pr',
+  g: 'release-notes',
 }
 
 export function MagicModal() {
@@ -187,16 +213,16 @@ export function MagicModal() {
   const sessionModalOpen = useUIStore(state => state.sessionChatModalOpen)
   const isOnCanvas = isViewingCanvasTab && !sessionModalOpen
 
-  // Build sections dynamically based on PR state
-  const magicSections = useMemo(
-    () => buildMagicSections(hasOpenPr),
+  // Build columns dynamically based on PR state
+  const magicColumns = useMemo(
+    () => buildMagicColumns(hasOpenPr),
     [hasOpenPr]
   )
 
   // Flatten all options for arrow key navigation
   const allOptions = useMemo(
-    () => magicSections.flatMap(section => section.options.map(opt => opt.id)),
-    [magicSections]
+    () => magicColumns.all.flatMap(section => section.options.map(opt => opt.id)),
+    [magicColumns]
   )
 
   // Reset selection tracking when modal closes
@@ -319,6 +345,18 @@ export function MagicModal() {
         return
       }
 
+      // release-notes only needs a project selected, not a worktree
+      if (option === 'release-notes') {
+        if (!selectedProjectId) {
+          notify('No project selected', undefined, { type: 'error' })
+          setMagicModalOpen(false)
+          return
+        }
+        useUIStore.getState().setReleaseNotesModalOpen(true)
+        setMagicModalOpen(false)
+        return
+      }
+
       if (!selectedWorktreeId) {
         notify('No worktree selected', undefined, { type: 'error' })
         setMagicModalOpen(false)
@@ -386,7 +424,7 @@ export function MagicModal() {
 
   return (
     <Dialog open={magicModalOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-[340px] p-0" onKeyDown={handleKeyDown}>
+      <DialogContent className="sm:max-w-[560px] p-0" onKeyDown={handleKeyDown}>
         <DialogHeader className="px-4 pt-4 pb-2">
           <DialogTitle className="flex items-center gap-2">
             <Wand2 className="h-4 w-4" />
@@ -394,52 +432,63 @@ export function MagicModal() {
           </DialogTitle>
         </DialogHeader>
 
-        <div className="pb-2">
-          {magicSections.map((section, sectionIndex) => (
-            <div key={section.header}>
-              {/* Section header */}
-              <div className="px-4 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                {section.header}
-              </div>
-
-              {/* Section options */}
-              {section.options.map(option => {
-                const Icon = option.icon
-                const isSelected = selectedOption === option.id
-                const isDisabled =
-                  isOnCanvas && !CANVAS_ALLOWED_OPTIONS.has(option.id)
-
-                return (
-                  <button
-                    key={option.id}
-                    onClick={() => !isDisabled && executeAction(option.id)}
-                    onMouseEnter={() => setSelectedOption(option.id)}
-                    className={cn(
-                      'w-full flex items-center justify-between px-4 py-2 text-sm transition-colors',
-                      'focus:outline-none',
-                      isDisabled
-                        ? 'opacity-40 cursor-not-allowed'
-                        : 'hover:bg-accent',
-                      isSelected && !isDisabled && 'bg-accent'
-                    )}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Icon className="h-4 w-4 text-muted-foreground" />
-                      <span>{option.label}</span>
+        <div className="pb-2 grid grid-cols-2">
+          {[magicColumns.left, magicColumns.right].map(
+            (columnSections, colIndex) => (
+              <div
+                key={colIndex}
+                className={cn(colIndex === 0 && 'border-r border-border')}
+              >
+                {columnSections.map((section, sectionIndex) => (
+                  <div key={section.header}>
+                    {/* Section header */}
+                    <div className="px-4 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      {section.header}
                     </div>
-                    <kbd className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                      {option.key}
-                    </kbd>
-                  </button>
-                )
-              })}
 
-              {/* Separator between sections (not after last) */}
-              {sectionIndex < magicSections.length - 1 && (
-                <div className="my-1 mx-4 border-t border-border" />
-              )}
-            </div>
-          ))}
+                    {/* Section options */}
+                    {section.options.map(option => {
+                      const Icon = option.icon
+                      const isSelected = selectedOption === option.id
+                      const isDisabled =
+                        isOnCanvas && !CANVAS_ALLOWED_OPTIONS.has(option.id)
+
+                      return (
+                        <button
+                          key={option.id}
+                          onClick={() =>
+                            !isDisabled && executeAction(option.id)
+                          }
+                          onMouseEnter={() => setSelectedOption(option.id)}
+                          className={cn(
+                            'w-full flex items-center justify-between px-4 py-2 text-sm transition-colors',
+                            'focus:outline-none',
+                            isDisabled
+                              ? 'opacity-40 cursor-not-allowed'
+                              : 'hover:bg-accent',
+                            isSelected && !isDisabled && 'bg-accent'
+                          )}
+                        >
+                          <div className="flex items-center gap-3">
+                            <Icon className="h-4 w-4 text-muted-foreground" />
+                            <span>{option.label}</span>
+                          </div>
+                          <kbd className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                            {option.key}
+                          </kbd>
+                        </button>
+                      )
+                    })}
+
+                    {/* Separator between sections within column (not after last) */}
+                    {sectionIndex < columnSections.length - 1 && (
+                      <div className="my-1 mx-4 border-t border-border" />
+                    )}
+                  </div>
+                ))}
+              </div>
+            )
+          )}
         </div>
       </DialogContent>
     </Dialog>

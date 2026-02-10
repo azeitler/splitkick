@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useRef } from 'react'
 import { Plus, Folder, Archive, Briefcase } from 'lucide-react'
 import { useSidebarWidth } from '@/components/layout/SidebarWidthContext'
 import {
@@ -11,31 +11,15 @@ import { useProjects, useCreateFolder } from '@/services/projects'
 import { fetchWorktreesStatus } from '@/services/git-status'
 import { useProjectsStore } from '@/store/projects-store'
 import { ProjectTree } from './ProjectTree'
-import { ArchivedModal } from '@/components/archive/ArchivedModal'
 
 export function ProjectsSidebar() {
   const { data: projects = [], isLoading } = useProjects()
   const { setAddProjectDialogOpen } = useProjectsStore()
-  const [archivedModalOpen, setArchivedModalOpen] = useState(false)
   const createFolder = useCreateFolder()
   const sidebarWidth = useSidebarWidth()
 
   // Responsive layout threshold
   const isNarrow = sidebarWidth < 180
-
-  // Listen for command palette events
-  useEffect(() => {
-    const handleOpenArchivedModal = () => setArchivedModalOpen(true)
-    window.addEventListener(
-      'command:open-archived-modal',
-      handleOpenArchivedModal
-    )
-    return () =>
-      window.removeEventListener(
-        'command:open-archived-modal',
-        handleOpenArchivedModal
-      )
-  }, [])
 
   // Fetch worktree git status for all projects on startup
   // Priority: expanded projects first, then all others
@@ -155,18 +139,13 @@ export function ProjectsSidebar() {
         <button
           type="button"
           className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
-          onClick={() => setArchivedModalOpen(true)}
+          onClick={() => window.dispatchEvent(new CustomEvent('command:open-archived-modal'))}
         >
           {!isNarrow && <Archive className="size-3.5" />}
           Archived
         </button>
       </div>
 
-      {/* Dialogs */}
-      <ArchivedModal
-        open={archivedModalOpen}
-        onOpenChange={setArchivedModalOpen}
-      />
     </div>
   )
 }

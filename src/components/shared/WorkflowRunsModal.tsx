@@ -8,6 +8,7 @@ import {
   Loader2,
   Wand2,
 } from 'lucide-react'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import {
   Dialog,
   DialogContent,
@@ -382,16 +383,20 @@ export function WorkflowRunsModal() {
                     </div>
                   </div>
                   {isFailedRun(run) && (
-                    <button
-                      onClick={e => {
-                        e.stopPropagation()
-                        handleInvestigate(run)
-                      }}
-                      title="Investigate this failure"
-                      className="shrink-0 rounded-md p-1.5 opacity-50 transition-opacity hover:bg-accent-foreground/10 hover:opacity-100"
-                    >
-                      <Wand2 className="h-4 w-4 text-muted-foreground" />
-                    </button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          onClick={e => {
+                            e.stopPropagation()
+                            handleInvestigate(run)
+                          }}
+                          className="shrink-0 rounded-md p-1.5 opacity-50 transition-opacity hover:bg-accent-foreground/10 hover:opacity-100"
+                        >
+                          <Wand2 className="h-4 w-4 text-muted-foreground" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>Investigate this failure</TooltipContent>
+                    </Tooltip>
                   )}
                 </div>
               ))}

@@ -19,6 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import {
   Command,
   CommandEmpty,
@@ -69,21 +70,36 @@ function ProjectMcpHealthIndicator({
   switch (status) {
     case 'connected':
       return (
-        <span title="Server is connected and ready">
-          <CheckCircle className="size-3.5 text-green-600 dark:text-green-400" />
-        </span>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span>
+              <CheckCircle className="size-3.5 text-green-600 dark:text-green-400" />
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>Server is connected and ready</TooltipContent>
+        </Tooltip>
       )
     case 'needsAuthentication':
       return (
-        <span title="Run 'claude /mcp' in your terminal to authenticate">
-          <ShieldAlert className="size-3.5 text-amber-600 dark:text-amber-400" />
-        </span>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span>
+              <ShieldAlert className="size-3.5 text-amber-600 dark:text-amber-400" />
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>{"Run 'claude /mcp' in your terminal to authenticate"}</TooltipContent>
+        </Tooltip>
       )
     case 'couldNotConnect':
       return (
-        <span title="Could not connect — check that the server is running">
-          <XCircle className="size-3.5 text-red-600 dark:text-red-400" />
-        </span>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span>
+              <XCircle className="size-3.5 text-red-600 dark:text-red-400" />
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>Could not connect -- check that the server is running</TooltipContent>
+        </Tooltip>
       )
     default:
       return null

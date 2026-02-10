@@ -34,6 +34,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { usePreferences, useSavePreferences } from '@/services/preferences'
 import {
   modelOptions,
@@ -351,13 +352,17 @@ export const GeneralPane: React.FC = () => {
               label={cliStatus?.installed ? 'Version' : 'Status'}
               description={
                 cliStatus?.installed ? (
-                  <button
-                    onClick={() => handleCopyPath(cliStatus.path)}
-                    className="text-left hover:underline cursor-pointer"
-                    title="Click to copy path"
-                  >
-                    {claudeStatusDescription}
-                  </button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => handleCopyPath(cliStatus.path)}
+                        className="text-left hover:underline cursor-pointer"
+                      >
+                        {claudeStatusDescription}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Click to copy path</TooltipContent>
+                  </Tooltip>
                 ) : (
                   'Required'
                 )
@@ -416,13 +421,17 @@ export const GeneralPane: React.FC = () => {
               label={ghStatus?.installed ? 'Version' : 'Status'}
               description={
                 ghStatus?.installed ? (
-                  <button
-                    onClick={() => handleCopyPath(ghStatus.path)}
-                    className="text-left hover:underline cursor-pointer"
-                    title="Click to copy path"
-                  >
-                    {ghStatusDescription}
-                  </button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => handleCopyPath(ghStatus.path)}
+                        className="text-left hover:underline cursor-pointer"
+                      >
+                        {ghStatusDescription}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Click to copy path</TooltipContent>
+                  </Tooltip>
                 ) : (
                   'Optional'
                 )

@@ -19,6 +19,7 @@ import {
   DEFAULT_CONTEXT_SUMMARY_PROMPT,
   DEFAULT_RESOLVE_CONFLICTS_PROMPT,
   DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT,
+  DEFAULT_RELEASE_NOTES_PROMPT,
   DEFAULT_MAGIC_PROMPTS,
   DEFAULT_MAGIC_PROMPT_MODELS,
   type MagicPrompts,
@@ -190,6 +191,29 @@ const PROMPT_SECTIONS: PromptSection[] = [
         variables: [],
         defaultValue: DEFAULT_RESOLVE_CONFLICTS_PROMPT,
         defaultModel: 'opus',
+      },
+      {
+        key: 'release_notes',
+        modelKey: 'release_notes_model',
+        label: 'Release Notes',
+        description:
+          'Prompt for generating release notes from changes since a prior release.',
+        variables: [
+          {
+            name: '{tag}',
+            description: 'Tag of the selected release',
+          },
+          {
+            name: '{previous_release_name}',
+            description: 'Name of the selected release',
+          },
+          {
+            name: '{commits}',
+            description: 'Commit messages since the selected release',
+          },
+        ],
+        defaultValue: DEFAULT_RELEASE_NOTES_PROMPT,
+        defaultModel: 'haiku',
       },
     ],
   },

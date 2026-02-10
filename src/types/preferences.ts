@@ -49,6 +49,8 @@ export interface MagicPrompts {
   resolve_conflicts: string | null
   /** Prompt for investigating failed GitHub Actions workflow runs */
   investigate_workflow_run: string | null
+  /** Prompt for generating release notes */
+  release_notes: string | null
 }
 
 /** Default prompt for investigating GitHub issues */
@@ -62,18 +64,33 @@ Investigate the loaded GitHub {issueWord} ({issueRefs})
 <instructions>
 
 1. Read the issue context file(s) to understand the full problem description and comments
-2. Analyze the problem: expected vs actual behavior, error messages, reproduction steps
-3. Explore the codebase to find relevant code
-4. Identify root cause and constraints
-5. Check for regression if this is a bug fix
-6. Propose solution with specific files, risks, and test cases
+2. Analyze the problem:
+   - What is the expected vs actual behavior?
+   - Are there error messages, stack traces, or reproduction steps?
+3. Explore the codebase to find relevant code:
+   - Search for files/functions mentioned in the {issueWord}
+   - Read source files to understand current implementation
+   - Trace the affected code path
+4. Identify root cause:
+   - Where does the bug originate OR where should the feature be implemented?
+   - What constraints/edge cases need handling?
+   - Any related issues or tech debt?
+5. Check for regression:
+   - If this is a bug fix, determine if this is a regression
+   - Look at git history or related code to understand if the feature previously worked
+   - Identify what change may have caused the regression
+6. Propose solution:
+   - Clear explanation of needed changes
+   - Specific files to modify
+   - Potential risks/trade-offs
+   - Test cases to verify
 
 </instructions>
 
 
 <guidelines>
 
-- Be thorough but focused
+- Be thorough but focused - investigate deeply without getting sidetracked
 - Ask clarifying questions if requirements are unclear
 - If multiple solutions exist, explain trade-offs
 - Reference specific file paths and line numbers
@@ -91,9 +108,18 @@ Investigate the loaded GitHub {prWord} ({prRefs})
 <instructions>
 
 1. Read the PR context file(s) to understand the full description, reviews, and comments
-2. Understand what the PR is trying to accomplish and branch info (head → base)
-3. Explore the codebase to understand the context
-4. Analyze if the implementation matches the PR description
+2. Understand the changes:
+   - What is the PR trying to accomplish?
+   - What branches are involved (head → base)?
+   - Are there any review comments or requested changes?
+3. Explore the codebase to understand the context:
+   - Check out the PR branch if needed
+   - Read the files being modified
+   - Understand the current implementation
+4. Analyze the approach:
+   - Does the implementation match the PR description?
+   - Are there any concerns raised in reviews?
+   - What feedback has been given?
 5. Security review - check the changes for:
    - Malicious or obfuscated code (eval, encoded strings, hidden network calls, data exfiltration)
    - Suspicious dependency additions or version changes (typosquatting, hijacked packages)
@@ -102,15 +128,21 @@ Investigate the loaded GitHub {prWord} ({prRefs})
    - Unsafe deserialization, command injection, SQL injection, XSS
    - Weakened auth/permissions (removed checks, broadened access, disabled validation)
    - Suspicious file system or environment variable access
-6. Identify action items from reviewer feedback
-7. Propose next steps to get the PR merged
+6. Identify action items:
+   - What changes are requested by reviewers?
+   - Are there any failing checks or tests?
+   - What needs to be done to get this PR merged?
+7. Propose next steps:
+   - Address reviewer feedback
+   - Specific files to modify
+   - Test cases to add or update
 
 </instructions>
 
 
 <guidelines>
 
-- Be thorough but focused
+- Be thorough but focused - investigate deeply without getting sidetracked
 - Pay attention to reviewer feedback and requested changes
 - Flag any security concerns prominently, even minor ones
 - If multiple approaches exist, explain trade-offs
@@ -263,6 +295,23 @@ Investigate the failed GitHub Actions workflow run for "{workflowName}" on branc
 
 </guidelines>`
 
+/** Default prompt for generating release notes */
+export const DEFAULT_RELEASE_NOTES_PROMPT = `Generate release notes for changes since the \`{tag}\` release ({previous_release_name}).
+
+## Commits since {tag}
+
+{commits}
+
+## Instructions
+
+- Write a concise release title
+- Group changes into categories: Features, Fixes, Improvements, Breaking Changes (only include categories that have entries)
+- Use bullet points with brief descriptions
+- Reference PR numbers if visible in commit messages
+- Skip merge commits and trivial changes (typos, formatting)
+- Write in past tense ("Added", "Fixed", "Improved")
+- Keep it concise and user-facing (skip internal implementation details)`
+
 /** Default values for all magic prompts (null = use current app default) */
 export const DEFAULT_MAGIC_PROMPTS: MagicPrompts = {
   investigate_issue: null,
@@ -273,6 +322,7 @@ export const DEFAULT_MAGIC_PROMPTS: MagicPrompts = {
   context_summary: null,
   resolve_conflicts: null,
   investigate_workflow_run: null,
+  release_notes: null,
 }
 
 /**
@@ -285,6 +335,7 @@ export interface MagicPromptModels {
   code_review_model: ClaudeModel
   context_summary_model: ClaudeModel
   resolve_conflicts_model: ClaudeModel
+  release_notes_model: ClaudeModel
 }
 
 /** Default models for each magic prompt */
@@ -295,6 +346,7 @@ export const DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
   code_review_model: 'haiku',
   context_summary_model: 'opus',
   resolve_conflicts_model: 'opus',
+  release_notes_model: 'haiku',
 }
 
 // Types that match the Rust AppPreferences struct
