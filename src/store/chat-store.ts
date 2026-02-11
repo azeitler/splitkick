@@ -96,6 +96,9 @@ interface ChatUIState {
   // Selected model per session (for tracking what model was used)
   selectedModels: Record<string, string>
 
+  // Selected provider per session (null = default Anthropic, or custom profile name)
+  selectedProviders: Record<string, string>
+
   // Enabled MCP servers per session (server names that are active)
   enabledMcpServers: Record<string, string[]>
 
@@ -294,6 +297,9 @@ interface ChatUIState {
   // Actions - Selected model (session-based)
   setSelectedModel: (sessionId: string, model: string) => void
 
+  // Actions - Selected provider (session-based)
+  setSelectedProvider: (sessionId: string, provider: string | null) => void
+
   // Actions - MCP servers (session-based)
   setEnabledMcpServers: (sessionId: string, servers: string[]) => void
   toggleMcpServer: (sessionId: string, serverName: string) => void
@@ -476,6 +482,7 @@ export const useChatStore = create<ChatUIState>()(
       manualThinkingOverrides: {},
       effortLevels: {},
       selectedModels: {},
+      selectedProviders: {},
       enabledMcpServers: {},
       answeredQuestions: {},
       submittedAnswers: {},
@@ -1137,6 +1144,22 @@ export const useChatStore = create<ChatUIState>()(
           }),
           undefined,
           'setSelectedModel'
+        ),
+
+      // Selected provider (session-based)
+      setSelectedProvider: (sessionId: string, provider: string | null) =>
+        set(
+          state => {
+            const updated = { ...state.selectedProviders }
+            if (provider) {
+              updated[sessionId] = provider
+            } else {
+              delete updated[sessionId]
+            }
+            return { selectedProviders: updated }
+          },
+          undefined,
+          'setSelectedProvider'
         ),
 
       // MCP servers (session-based)

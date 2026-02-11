@@ -7,6 +7,7 @@ export type PreferencePane =
   | 'keybindings'
   | 'magic-prompts'
   | 'mcp-servers'
+  | 'providers'
   | 'experimental'
   | 'web-access'
 

@@ -165,6 +165,16 @@ pub struct AppPreferences {
     pub chrome_enabled: bool, // Enable browser automation via Chrome extension
     #[serde(default = "default_zoom_level")]
     pub zoom_level: u32, // Zoom level percentage (50-200, default 100)
+    #[serde(default)]
+    pub custom_cli_profiles: Vec<CustomCliProfile>, // Custom CLI settings profiles (e.g., OpenRouter, MiniMax)
+    #[serde(default)]
+    pub default_provider: Option<String>, // Default provider profile name (None = Anthropic direct)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomCliProfile {
+    pub name: String,
+    pub settings_json: String,
 }
 
 fn default_auto_branch_naming() -> bool {
@@ -627,15 +637,27 @@ impl MagicPrompts {
     /// This ensures users who never customized a prompt get auto-updated defaults.
     fn migrate_defaults(&mut self) {
         let defaults: [(fn() -> String, &mut Option<String>); 9] = [
-            (default_investigate_issue_prompt, &mut self.investigate_issue),
+            (
+                default_investigate_issue_prompt,
+                &mut self.investigate_issue,
+            ),
             (default_investigate_pr_prompt, &mut self.investigate_pr),
             (default_pr_content_prompt, &mut self.pr_content),
             (default_commit_message_prompt, &mut self.commit_message),
             (default_code_review_prompt, &mut self.code_review),
             (default_context_summary_prompt, &mut self.context_summary),
-            (default_resolve_conflicts_prompt, &mut self.resolve_conflicts),
-            (default_investigate_workflow_run_prompt, &mut self.investigate_workflow_run),
-            (default_parallel_execution_prompt, &mut self.parallel_execution),
+            (
+                default_resolve_conflicts_prompt,
+                &mut self.resolve_conflicts,
+            ),
+            (
+                default_investigate_workflow_run_prompt,
+                &mut self.investigate_workflow_run,
+            ),
+            (
+                default_parallel_execution_prompt,
+                &mut self.parallel_execution,
+            ),
         ];
 
         for (default_fn, field) in defaults {
@@ -698,6 +720,8 @@ impl Default for AppPreferences {
             has_seen_feature_tour: false,
             chrome_enabled: default_chrome_enabled(),
             zoom_level: default_zoom_level(),
+            custom_cli_profiles: Vec::new(),
+            default_provider: None,
         }
     }
 }

@@ -410,7 +410,85 @@ export interface AppPreferences {
   has_seen_feature_tour: boolean // Whether user has seen the feature tour onboarding
   chrome_enabled: boolean // Enable browser automation via Chrome extension
   zoom_level: number // Zoom level percentage (50-200, default 100)
+  custom_cli_profiles: CustomCliProfile[] // Custom CLI settings profiles (e.g., OpenRouter, MiniMax)
+  default_provider: string | null // Default provider profile name (null = Anthropic direct)
 }
+
+export interface CustomCliProfile {
+  name: string // Display name, e.g. "OpenRouter"
+  settings_json: string // JSON string matching Claude CLI settings format (with env block)
+}
+
+export const PREDEFINED_CLI_PROFILES: CustomCliProfile[] = [
+  {
+    name: 'OpenRouter',
+    settings_json: JSON.stringify(
+      {
+        env: {
+          ANTHROPIC_BASE_URL: 'https://openrouter.ai/api',
+          ANTHROPIC_API_KEY: '',
+          ANTHROPIC_AUTH_TOKEN: '<your_api_key>',
+        },
+      },
+      null,
+      2
+    ),
+  },
+  {
+    name: 'MiniMax',
+    settings_json: JSON.stringify(
+      {
+        env: {
+          ANTHROPIC_BASE_URL: 'https://api.minimax.io/anthropic',
+          ANTHROPIC_AUTH_TOKEN: '<your-minimax-api-key>',
+          API_TIMEOUT_MS: '3000000',
+          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+          ANTHROPIC_MODEL: 'MiniMax-M2.1',
+          ANTHROPIC_SMALL_FAST_MODEL: 'MiniMax-M2.1',
+          ANTHROPIC_DEFAULT_SONNET_MODEL: 'MiniMax-M2.1',
+          ANTHROPIC_DEFAULT_OPUS_MODEL: 'MiniMax-M2.1',
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: 'MiniMax-M2.1',
+        },
+      },
+      null,
+      2
+    ),
+  },
+  {
+    name: 'Z.ai',
+    settings_json: JSON.stringify(
+      {
+        env: {
+          ANTHROPIC_BASE_URL: 'https://api.z.ai/api/anthropic',
+          ANTHROPIC_AUTH_TOKEN: '<your-zai-api-key>',
+          API_TIMEOUT_MS: '3000000',
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: 'glm-4.5-air',
+          ANTHROPIC_DEFAULT_SONNET_MODEL: 'glm-4.7',
+          ANTHROPIC_DEFAULT_OPUS_MODEL: 'glm-4.7',
+        },
+      },
+      null,
+      2
+    ),
+  },
+  {
+    name: 'Moonshot',
+    settings_json: JSON.stringify(
+      {
+        env: {
+          ANTHROPIC_BASE_URL: 'https://api.moonshot.ai/anthropic',
+          ANTHROPIC_AUTH_TOKEN: '<your-moonshot-api-key>',
+          ANTHROPIC_MODEL: 'kimi-k2.5',
+          ANTHROPIC_DEFAULT_OPUS_MODEL: 'kimi-k2.5',
+          ANTHROPIC_DEFAULT_SONNET_MODEL: 'kimi-k2.5',
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: 'kimi-k2.5',
+        },
+      },
+      null,
+      2
+    ),
+  },
+]
 
 export type FileEditMode = 'inline' | 'external'
 
@@ -702,4 +780,6 @@ export const defaultPreferences: AppPreferences = {
   has_seen_feature_tour: false, // Default: not seen
   chrome_enabled: true, // Default: enabled
   zoom_level: ZOOM_LEVEL_DEFAULT,
+  custom_cli_profiles: [],
+  default_provider: null,
 }

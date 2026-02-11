@@ -1005,7 +1005,14 @@ export function useCloseSessionOrWorktreeKeybinding() {
         'close-session-or-worktree',
         handleCloseSessionOrWorktree
       )
-  }, [archiveSession, closeSession, archiveWorktree, deleteWorktree, closeBaseSessionClean, queryClient])
+  }, [
+    archiveSession,
+    closeSession,
+    archiveWorktree,
+    deleteWorktree,
+    closeBaseSessionClean,
+    queryClient,
+  ])
 }
 
 /**
@@ -1168,6 +1175,7 @@ export function useSendMessage() {
       allowedTools,
       mcpConfig,
       chromeEnabled,
+      customProfileSettings,
     }: {
       sessionId: string
       worktreeId: string
@@ -1183,6 +1191,7 @@ export function useSendMessage() {
       allowedTools?: string[]
       mcpConfig?: string
       chromeEnabled?: boolean
+      customProfileSettings?: string
     }): Promise<ChatMessage> => {
       if (!isTauri()) {
         throw new Error('Not in Tauri context')
@@ -1217,6 +1226,7 @@ export function useSendMessage() {
         allowedTools,
         mcpConfig,
         chromeEnabled,
+        customProfileSettings,
       })
       logger.info('Chat message sent', { responseId: response.id })
       return response

@@ -418,9 +418,17 @@ export function ChatWindow({
   const { data: runScript } = useRunScript(activeWorktreePath ?? null)
 
   // Per-session model selection, falls back to preferences default
-  const defaultModel =
+  const defaultModel: ClaudeModel =
     (preferences?.selected_model as ClaudeModel) ?? DEFAULT_MODEL
-  const selectedModel = (session?.selected_model as ClaudeModel) ?? defaultModel
+  const selectedModel: ClaudeModel =
+    (session?.selected_model as ClaudeModel) ?? defaultModel
+
+  // Per-session provider selection, falls back to preferences default
+  const defaultProvider = preferences?.default_provider ?? null
+  const sessionProvider = useChatStore(state =>
+    deferredSessionId ? state.selectedProviders[deferredSessionId] : undefined
+  )
+  const selectedProvider = sessionProvider !== undefined ? sessionProvider : defaultProvider
 
   // Per-session thinking level, falls back to preferences default
   const defaultThinkingLevel =
@@ -485,7 +493,8 @@ export function ChatWindow({
 
   // CLI version for adaptive thinking feature detection
   const { data: cliStatus } = useClaudeCliStatus()
-  const useAdaptiveThinkingFlag = supportsAdaptiveThinking(
+  // Custom providers don't support Opus 4.6 adaptive thinking — use thinking levels instead
+  const useAdaptiveThinkingFlag = !selectedProvider && supportsAdaptiveThinking(
     selectedModel,
     cliStatus?.version ?? null
   )
@@ -623,6 +632,7 @@ export function ChatWindow({
   const activeWorktreeIdRef = useRef(activeWorktreeId)
   const activeWorktreePathRef = useRef(activeWorktreePath)
   const selectedModelRef = useRef(selectedModel)
+  const selectedProviderRef = useRef(selectedProvider)
   const selectedThinkingLevelRef = useRef(selectedThinkingLevel)
   const selectedEffortLevelRef = useRef(selectedEffortLevel)
   const useAdaptiveThinkingRef = useRef(useAdaptiveThinkingFlag)
@@ -635,6 +645,7 @@ export function ChatWindow({
   activeWorktreeIdRef.current = activeWorktreeId
   activeWorktreePathRef.current = activeWorktreePath
   selectedModelRef.current = selectedModel
+  selectedProviderRef.current = selectedProvider
   selectedThinkingLevelRef.current = selectedThinkingLevel
   selectedEffortLevelRef.current = selectedEffortLevel
   useAdaptiveThinkingRef.current = useAdaptiveThinkingFlag
@@ -981,6 +992,22 @@ export function ChatWindow({
   // Note: Streaming event listeners are in App.tsx, not here
   // This ensures they stay active even when ChatWindow is unmounted (e.g., session board view)
 
+  // Helper to resolve custom CLI profile settings for the active provider
+  const resolveCustomProfile = useCallback(
+    (model: string, provider: string | null) => {
+      if (!provider)
+        return { model, customProfileSettings: undefined }
+      const profile = preferences?.custom_cli_profiles?.find(
+        p => p.name === provider
+      )
+      return {
+        model,
+        customProfileSettings: profile?.settings_json,
+      }
+    },
+    [preferences?.custom_cli_profiles]
+  )
+
   // Helper to build full message with attachment references for backend
   const buildMessageWithRefs = useCallback(
     (queuedMsg: QueuedMessage): string => {
@@ -1086,18 +1113,22 @@ export function ChatWindow({
       // Build full message with attachment refs for backend
       const fullMessage = buildMessageWithRefs(queuedMsg)
 
+      // Resolve custom CLI profile if provider is set
+      const resolved = resolveCustomProfile(queuedMsg.model, queuedMsg.provider)
+
       sendMessage.mutate(
         {
           sessionId: activeSessionId,
           worktreeId: activeWorktreeId,
           worktreePath: activeWorktreePath,
           message: fullMessage,
-          model: queuedMsg.model,
+          model: resolved.model,
           executionMode: queuedMsg.executionMode,
           thinkingLevel: queuedMsg.thinkingLevel,
           disableThinkingForMode: queuedMsg.disableThinkingForMode,
           effortLevel: queuedMsg.effortLevel,
           mcpConfig: queuedMsg.mcpConfig,
+          customProfileSettings: resolved.customProfileSettings,
           parallelExecutionPrompt:
             preferences?.parallel_execution_prompt_enabled
               ? (preferences.magic_prompts?.parallel_execution ??
@@ -1176,13 +1207,15 @@ export function ChatWindow({
       const hasManualOverride = useChatStore
         .getState()
         .hasManualThinkingOverride(activeSessionId)
+      const diffResolved = resolveCustomProfile(model, selectedProviderRef.current)
       sendMessage.mutate(
         {
           sessionId: activeSessionId,
           worktreeId: activeWorktreeId,
           worktreePath: activeWorktreePath,
           message,
-          model,
+          model: diffResolved.model,
+          customProfileSettings: diffResolved.customProfileSettings,
           executionMode: 'build',
           thinkingLevel,
           disableThinkingForMode: thinkingLevel !== 'off' && !hasManualOverride,
@@ -1295,6 +1328,7 @@ export function ChatWindow({
         pendingSkills: skills,
         pendingTextFiles: textFiles,
         model: selectedModelRef.current,
+        provider: selectedProviderRef.current,
         executionMode: mode,
         thinkingLevel: thinkingLvl,
         disableThinkingForMode:
@@ -1395,7 +1429,7 @@ export function ChatWindow({
 
   // PERFORMANCE: Stable callbacks for ChatToolbar to prevent re-renders
   const handleToolbarModelChange = useCallback(
-    (model: ClaudeModel) => {
+    (model: string) => {
       if (activeSessionId && activeWorktreeId && activeWorktreePath) {
         setSessionModel.mutate({
           sessionId: activeSessionId,
@@ -1414,6 +1448,15 @@ export function ChatWindow({
       }
     },
     [activeSessionId, activeWorktreeId, activeWorktreePath, setSessionModel]
+  )
+
+  const handleToolbarProviderChange = useCallback(
+    (provider: string | null) => {
+      if (activeSessionId) {
+        useChatStore.getState().setSelectedProvider(activeSessionId, provider)
+      }
+    },
+    [activeSessionId]
   )
 
   // PERFORMANCE: Use refs to keep callback stable, get store actions via getState()
@@ -1705,10 +1748,10 @@ export function ChatWindow({
               targetBranch: detail.branch,
               matchingWorktree: matching
                 ? {
-                    id: matching.id,
-                    branch: matching.branch,
-                    status: matching.status,
-                  }
+                  id: matching.id,
+                  branch: matching.branch,
+                  status: matching.status,
+                }
                 : null,
             })
             if (matching) {
@@ -2003,6 +2046,11 @@ export function ChatWindow({
     activeWorktreeIdRef,
     activeWorktreePathRef,
     selectedModelRef,
+    getCustomProfileSettings: () => {
+      const provider = selectedProviderRef.current
+      if (!provider) return undefined
+      return preferences?.custom_cli_profiles?.find(p => p.name === provider)?.settings_json
+    },
     executionModeRef,
     selectedThinkingLevelRef,
     selectedEffortLevelRef,
@@ -2156,13 +2204,15 @@ export function ChatWindow({
         const hasManualOverride = useChatStore
           .getState()
           .hasManualThinkingOverride(targetSessionId)
+        const fixResolved = resolveCustomProfile(selectedModelRef.current, selectedProviderRef.current)
         sendMessage.mutate(
           {
             sessionId: targetSessionId,
             worktreeId,
             worktreePath,
             message,
-            model: selectedModelRef.current,
+            model: fixResolved.model,
+            customProfileSettings: fixResolved.customProfileSettings,
             executionMode: 'build', // Always use build mode for fixes
             thinkingLevel: thinkingLvl,
             // Build mode: disable thinking if preference enabled and no manual override
@@ -2297,6 +2347,7 @@ export function ChatWindow({
         pendingSkills: [],
         pendingTextFiles: [],
         model: selectedModelRef.current,
+        provider: selectedProviderRef.current,
         executionMode: executionModeRef.current,
         thinkingLevel: selectedThinkingLevelRef.current,
         disableThinkingForMode: false,
@@ -2488,8 +2539,8 @@ export function ChatWindow({
                           />
                         )}
                         {isLoading ||
-                        isSessionsLoading ||
-                        isSessionSwitching ? (
+                          isSessionsLoading ||
+                          isSessionSwitching ? (
                           <div className="text-muted-foreground">
                             Loading...
                           </div>
@@ -2627,7 +2678,7 @@ export function ChatWindow({
                       className={cn(
                         'relative overflow-hidden rounded-lg transition-all duration-150',
                         isDragging &&
-                          'ring-2 ring-primary ring-inset bg-primary/5'
+                        'ring-2 ring-primary ring-inset bg-primary/5'
                       )}
                     >
                       {/* Pending file preview (@ mentions) */}
@@ -2672,7 +2723,7 @@ export function ChatWindow({
                         (dismissedTodoMessageId === null ||
                           (todoSourceMessageId !== null &&
                             todoSourceMessageId !==
-                              dismissedTodoMessageId)) && (
+                            dismissedTodoMessageId)) && (
                           <div className="px-4 md:px-6 pt-2">
                             <TodoWidget
                               todos={normalizeTodosForDisplay(
@@ -2714,6 +2765,7 @@ export function ChatWindow({
                         hasInputValue={hasInputValue}
                         executionMode={executionMode}
                         selectedModel={selectedModel}
+                        selectedProvider={selectedProvider}
                         selectedThinkingLevel={selectedThinkingLevel}
                         selectedEffortLevel={selectedEffortLevel}
                         thinkingOverrideActive={
@@ -2754,6 +2806,10 @@ export function ChatWindow({
                         hasOpenPr={Boolean(worktree?.pr_url)}
                         onSetDiffRequest={setDiffRequest}
                         onModelChange={handleToolbarModelChange}
+                        onProviderChange={handleToolbarProviderChange}
+                        customCliProfiles={
+                          preferences?.custom_cli_profiles ?? []
+                        }
                         onThinkingLevelChange={handleToolbarThinkingLevelChange}
                         onEffortLevelChange={handleToolbarEffortLevelChange}
                         onSetExecutionMode={handleToolbarSetExecutionMode}
@@ -2841,11 +2897,11 @@ export function ChatWindow({
               approvalContext={
                 activeWorktreeId && activeWorktreePath && activeSessionId
                   ? {
-                      worktreeId: activeWorktreeId,
-                      worktreePath: activeWorktreePath,
-                      sessionId: activeSessionId,
-                      pendingPlanMessageId: pendingPlanMessage?.id ?? null,
-                    }
+                    worktreeId: activeWorktreeId,
+                    worktreePath: activeWorktreePath,
+                    sessionId: activeSessionId,
+                    pendingPlanMessageId: pendingPlanMessage?.id ?? null,
+                  }
                   : undefined
               }
               onApprove={updatedPlan => {
@@ -2903,6 +2959,7 @@ export function ChatWindow({
                   pendingSkills: [],
                   pendingTextFiles: [],
                   model: selectedModelRef.current,
+                  provider: selectedProviderRef.current,
                   executionMode: 'build',
                   thinkingLevel: selectedThinkingLevelRef.current,
                   disableThinkingForMode: !useChatStore
@@ -2975,6 +3032,7 @@ export function ChatWindow({
                   pendingSkills: [],
                   pendingTextFiles: [],
                   model: selectedModelRef.current,
+                  provider: selectedProviderRef.current,
                   executionMode: 'yolo',
                   thinkingLevel: selectedThinkingLevelRef.current,
                   disableThinkingForMode: !useChatStore
@@ -3002,11 +3060,11 @@ export function ChatWindow({
               approvalContext={
                 activeWorktreeId && activeWorktreePath && activeSessionId
                   ? {
-                      worktreeId: activeWorktreeId,
-                      worktreePath: activeWorktreePath,
-                      sessionId: activeSessionId,
-                      pendingPlanMessageId: pendingPlanMessage?.id ?? null,
-                    }
+                    worktreeId: activeWorktreeId,
+                    worktreePath: activeWorktreePath,
+                    sessionId: activeSessionId,
+                    pendingPlanMessageId: pendingPlanMessage?.id ?? null,
+                  }
                   : undefined
               }
               onApprove={updatedPlan => {
@@ -3064,6 +3122,7 @@ export function ChatWindow({
                   pendingSkills: [],
                   pendingTextFiles: [],
                   model: selectedModelRef.current,
+                  provider: selectedProviderRef.current,
                   executionMode: 'build',
                   thinkingLevel: selectedThinkingLevelRef.current,
                   disableThinkingForMode: !useChatStore
@@ -3136,6 +3195,7 @@ export function ChatWindow({
                   pendingSkills: [],
                   pendingTextFiles: [],
                   model: selectedModelRef.current,
+                  provider: selectedProviderRef.current,
                   executionMode: 'yolo',
                   thinkingLevel: selectedThinkingLevelRef.current,
                   disableThinkingForMode: !useChatStore

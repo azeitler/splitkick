@@ -697,6 +697,8 @@ export interface QueuedMessage {
   pendingTextFiles: PendingTextFile[]
   /** Model to use for this message (snapshot at queue time) */
   model: string
+  /** Provider profile name to use (snapshot at queue time, null = default) */
+  provider: string | null
   /** Execution mode setting (snapshot at queue time) */
   executionMode: ExecutionMode
   /** Thinking level setting (snapshot at queue time) */

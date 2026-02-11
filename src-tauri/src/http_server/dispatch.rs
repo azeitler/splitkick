@@ -549,6 +549,8 @@ pub async fn dispatch_command(
                 field_opt(&args, "effortLevel", "effort_level")?;
             let mcp_config: Option<String> = field_opt(&args, "mcpConfig", "mcp_config")?;
             let chrome_enabled: Option<bool> = field_opt(&args, "chromeEnabled", "chrome_enabled")?;
+            let custom_profile_settings: Option<String> =
+                field_opt(&args, "customProfileSettings", "custom_profile_settings")?;
             let result = crate::chat::send_chat_message(
                 app.clone(),
                 session_id,
@@ -565,6 +567,7 @@ pub async fn dispatch_command(
                 allowed_tools,
                 mcp_config,
                 chrome_enabled,
+                custom_profile_settings,
             )
             .await?;
             to_value(result)
@@ -1135,8 +1138,7 @@ pub async fn dispatch_command(
                 field_opt(&args, "planFilePath", "plan_file_path")?;
             let pending_plan_message_id: Option<Option<String>> =
                 field_opt(&args, "pendingPlanMessageId", "pending_plan_message_id")?;
-            let label: Option<String> =
-                field_opt(&args, "label", "label")?;
+            let label: Option<String> = field_opt(&args, "label", "label")?;
             crate::chat::update_session_state(
                 app.clone(),
                 worktree_id,

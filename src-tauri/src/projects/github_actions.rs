@@ -43,9 +43,7 @@ pub async fn list_workflow_runs(
     project_path: String,
     branch: Option<String>,
 ) -> Result<WorkflowRunsResult, String> {
-    log::trace!(
-        "Listing workflow runs for {project_path} with branch: {branch:?}"
-    );
+    log::trace!("Listing workflow runs for {project_path} with branch: {branch:?}");
 
     let gh = resolve_gh_binary(&app);
 
@@ -79,9 +77,7 @@ pub async fn list_workflow_runs(
             return Err("Not a git repository".to_string());
         }
         if stderr.contains("Could not resolve") {
-            return Err(
-                "Could not resolve repository. Is this a GitHub repository?".to_string(),
-            );
+            return Err("Could not resolve repository. Is this a GitHub repository?".to_string());
         }
         return Err(format!("gh run list failed: {stderr}"));
     }
@@ -106,10 +102,7 @@ pub async fn list_workflow_runs(
         }
     }
 
-    log::trace!(
-        "Found {} workflow runs ({failed_count} failed)",
-        runs.len()
-    );
+    log::trace!("Found {} workflow runs ({failed_count} failed)", runs.len());
 
     Ok(WorkflowRunsResult { runs, failed_count })
 }
@@ -198,10 +191,7 @@ mod tests {
     #[test]
     fn test_failed_count_in_progress_not_counted() {
         // CI: latest=in_progress (no conclusion) → should NOT count
-        let runs = vec![
-            make_run(2, "CI", None),
-            make_run(1, "CI", Some("failure")),
-        ];
+        let runs = vec![make_run(2, "CI", None), make_run(1, "CI", Some("failure"))];
         assert_eq!(count_failed(&runs), 0);
     }
 

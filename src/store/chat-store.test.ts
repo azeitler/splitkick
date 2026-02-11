@@ -391,6 +391,7 @@ describe('ChatStore', () => {
       pendingSkills: [],
       pendingTextFiles: [],
       model: 'sonnet',
+      provider: null,
       executionMode: 'plan',
       thinkingLevel: 'off',
       disableThinkingForMode: false,
