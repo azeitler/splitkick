@@ -442,6 +442,14 @@ export function useCreateWorktree() {
         message = String(error)
       }
       logger.error('Failed to start worktree creation', { error, message })
+      // Don't show toast for path/branch conflicts — they're handled by
+      // worktree:path_exists / worktree:branch_exists event listeners
+      if (
+        message.includes('Directory already exists') ||
+        message.includes('Branch already exists')
+      ) {
+        return
+      }
       toast.error('Failed to create worktree', { description: message })
     },
   })
@@ -450,7 +458,7 @@ export function useCreateWorktree() {
 /**
  * Hook to create a worktree from an existing branch
  *
- * Used when the user chooses "Use Existing Branch" in the BranchConflictModal.
+ * Used when creating a worktree from an existing branch (e.g. after branch conflict auto-resolution).
  * This creates a worktree that checks out an existing branch instead of creating a new one.
  */
 export function useCreateWorktreeFromExistingBranch() {
@@ -691,98 +699,14 @@ export function useWorktreeEvents() {
         }
 
         // Check if this worktree was marked for auto-investigate (issue)
-        const shouldInvestigateIssue = useUIStore
-          .getState()
-          .autoInvestigateWorktreeIds.has(worktree.id)
-        if (shouldInvestigateIssue) {
-          // Wait for ChatWindow to signal readiness (session + contexts loaded)
-          // with timeout fallback for edge cases
-          const timeoutId = setTimeout(() => {
-            window.removeEventListener(
-              'chat-ready-for-investigate',
-              issueReadyHandler as EventListener
-            )
-            // Consume the flag before dispatching
-            useUIStore.getState().consumeAutoInvestigate(worktree.id)
-            window.dispatchEvent(
-              new CustomEvent('magic-command', {
-                detail: { command: 'investigate' },
-              })
-            )
-          }, 5000) // 5 second max wait
-
-          const issueReadyHandler = (
-            e: CustomEvent<{ worktreeId: string; type: string }>
-          ) => {
-            if (
-              e.detail.worktreeId === worktree.id &&
-              e.detail.type === 'issue'
-            ) {
-              clearTimeout(timeoutId)
-              window.removeEventListener(
-                'chat-ready-for-investigate',
-                issueReadyHandler as EventListener
-              )
-              // Consume the flag before dispatching
-              useUIStore.getState().consumeAutoInvestigate(worktree.id)
-              window.dispatchEvent(
-                new CustomEvent('magic-command', {
-                  detail: { command: 'investigate' },
-                })
-              )
-            }
-          }
-
-          window.addEventListener(
-            'chat-ready-for-investigate',
-            issueReadyHandler as EventListener
-          )
-        }
-
-        // Check if this worktree was marked for auto-investigate (PR)
-        const shouldInvestigatePR = useUIStore
-          .getState()
-          .autoInvestigatePRWorktreeIds.has(worktree.id)
-        if (shouldInvestigatePR) {
-          // Wait for ChatWindow to signal readiness (session + contexts loaded)
-          // with timeout fallback for edge cases
-          const prTimeoutId = setTimeout(() => {
-            window.removeEventListener(
-              'chat-ready-for-investigate',
-              prReadyHandler as EventListener
-            )
-            // Consume the flag before dispatching
-            useUIStore.getState().consumeAutoInvestigatePR(worktree.id)
-            window.dispatchEvent(
-              new CustomEvent('magic-command', {
-                detail: { command: 'investigate' },
-              })
-            )
-          }, 5000) // 5 second max wait
-
-          const prReadyHandler = (
-            e: CustomEvent<{ worktreeId: string; type: string }>
-          ) => {
-            if (e.detail.worktreeId === worktree.id && e.detail.type === 'pr') {
-              clearTimeout(prTimeoutId)
-              window.removeEventListener(
-                'chat-ready-for-investigate',
-                prReadyHandler as EventListener
-              )
-              // Consume the flag before dispatching
-              useUIStore.getState().consumeAutoInvestigatePR(worktree.id)
-              window.dispatchEvent(
-                new CustomEvent('magic-command', {
-                  detail: { command: 'investigate' },
-                })
-              )
-            }
-          }
-
-          window.addEventListener(
-            'chat-ready-for-investigate',
-            prReadyHandler as EventListener
-          )
+        // Check if this worktree was marked for auto-investigate
+        const uiState = useUIStore.getState()
+        if (uiState.autoInvestigateWorktreeIds.has(worktree.id)) {
+          uiState.consumeAutoInvestigate(worktree.id)
+          uiState.setPendingInvestigateType('issue')
+        } else if (uiState.autoInvestigatePRWorktreeIds.has(worktree.id)) {
+          uiState.consumeAutoInvestigatePR(worktree.id)
+          uiState.setPendingInvestigateType('pr')
         }
       })
     )
@@ -809,7 +733,14 @@ export function useWorktreeEvents() {
           selectWorktree(null)
         }
 
-        toast.error('Failed to create worktree', { description: error })
+        // Don't show toast for path/branch conflicts — they're handled by
+        // worktree:path_exists / worktree:branch_exists event listeners
+        if (
+          !error.includes('Directory already exists') &&
+          !error.includes('Branch already exists')
+        ) {
+          toast.error('Failed to create worktree', { description: error })
+        }
       })
     )
 
@@ -966,46 +897,21 @@ export function useWorktreeEvents() {
         // Invalidate archived worktrees query
         queryClient.invalidateQueries({ queryKey: ['archived-worktrees'] })
 
-        // Check if this worktree was marked for auto-investigate (PR)
-        const shouldInvestigatePR = useUIStore
-          .getState()
-          .autoInvestigatePRWorktreeIds.has(worktree.id)
-        if (shouldInvestigatePR) {
-          const prTimeoutId = setTimeout(() => {
-            window.removeEventListener(
-              'chat-ready-for-investigate',
-              prReadyHandler as EventListener
-            )
-            useUIStore.getState().consumeAutoInvestigatePR(worktree.id)
-            window.dispatchEvent(
-              new CustomEvent('magic-command', {
-                detail: { command: 'investigate' },
-              })
-            )
-          }, 5000)
+        // Check if this worktree was marked for auto-investigate
+        const uiState = useUIStore.getState()
+        const shouldInvestigateIssue = uiState.autoInvestigateWorktreeIds.has(worktree.id)
+        const shouldInvestigatePR = uiState.autoInvestigatePRWorktreeIds.has(worktree.id)
+        if (shouldInvestigateIssue || shouldInvestigatePR) {
+          // Open the session modal so ChatWindow mounts
+          uiState.markWorktreeForAutoOpenSession(worktree.id)
 
-          const prReadyHandler = (
-            e: CustomEvent<{ worktreeId: string; type: string }>
-          ) => {
-            if (e.detail.worktreeId === worktree.id && e.detail.type === 'pr') {
-              clearTimeout(prTimeoutId)
-              window.removeEventListener(
-                'chat-ready-for-investigate',
-                prReadyHandler as EventListener
-              )
-              useUIStore.getState().consumeAutoInvestigatePR(worktree.id)
-              window.dispatchEvent(
-                new CustomEvent('magic-command', {
-                  detail: { command: 'investigate' },
-                })
-              )
-            }
+          if (shouldInvestigateIssue) {
+            uiState.consumeAutoInvestigate(worktree.id)
+            uiState.setPendingInvestigateType('issue')
+          } else {
+            uiState.consumeAutoInvestigatePR(worktree.id)
+            uiState.setPendingInvestigateType('pr')
           }
-
-          window.addEventListener(
-            'chat-ready-for-investigate',
-            prReadyHandler as EventListener
-          )
         }
       })
     )
@@ -1033,59 +939,75 @@ export function useWorktreeEvents() {
       )
     )
 
-    // Listen for path exists conflicts
+    // Listen for path exists conflicts — auto-create with suffix name
     unlistenPromises.push(
       listen<WorktreePathExistsEvent>('worktree:path_exists', event => {
-        const {
+        const { project_id, path, suggested_name, issue_context } =
+          event.payload
+        logger.warn('Worktree path already exists, auto-creating with suffix', {
           project_id,
-          path,
-          suggested_name,
-          archived_worktree_id,
-          archived_worktree_name,
-          issue_context,
-        } = event.payload
-        logger.warn('Worktree path already exists', {
-          project_id,
-          path,
-          archived_worktree_id,
-        })
-
-        // Open the path conflict modal
-        const { openPathConflictModal } = useUIStore.getState()
-        openPathConflictModal({
-          projectId: project_id,
           path,
           suggestedName: suggested_name,
-          archivedWorktreeId: archived_worktree_id,
-          archivedWorktreeName: archived_worktree_name,
+        })
+
+        // Carry over any pending auto-investigate flags
+        const uiState = useUIStore.getState()
+        if (uiState.autoInvestigateWorktreeIds.size > 0) {
+          for (const id of uiState.autoInvestigateWorktreeIds) {
+            uiState.consumeAutoInvestigate(id)
+          }
+          uiState.setPendingInvestigateType('issue')
+        } else if (uiState.autoInvestigatePRWorktreeIds.size > 0) {
+          for (const id of uiState.autoInvestigatePRWorktreeIds) {
+            uiState.consumeAutoInvestigatePR(id)
+          }
+          uiState.setPendingInvestigateType('pr')
+        }
+
+        invoke('create_worktree', {
+          projectId: project_id,
+          customName: suggested_name,
           issueContext: issue_context,
+        }).catch(err => {
+          logger.error('Failed to create worktree with suffix', { error: err })
+          toast.error('Failed to create worktree', { description: String(err) })
         })
       })
     )
 
-    // Listen for branch exists conflicts
+    // Listen for branch exists conflicts — auto-create with suffix name
     unlistenPromises.push(
       listen<WorktreeBranchExistsEvent>('worktree:branch_exists', event => {
-        const {
+        const { project_id, branch, suggested_name, issue_context, pr_context } =
+          event.payload
+        logger.warn('Worktree branch already exists, auto-creating with suffix', {
           project_id,
-          branch,
-          suggested_name,
-          issue_context,
-          pr_context,
-        } = event.payload
-        logger.warn('Worktree branch already exists', {
-          project_id,
-          branch,
-        })
-
-        // Open the branch conflict modal
-        const { openBranchConflictModal } = useUIStore.getState()
-        openBranchConflictModal({
-          projectId: project_id,
           branch,
           suggestedName: suggested_name,
+        })
+
+        // Carry over any pending auto-investigate flags
+        const uiState = useUIStore.getState()
+        if (uiState.autoInvestigateWorktreeIds.size > 0) {
+          for (const id of uiState.autoInvestigateWorktreeIds) {
+            uiState.consumeAutoInvestigate(id)
+          }
+          uiState.setPendingInvestigateType('issue')
+        } else if (uiState.autoInvestigatePRWorktreeIds.size > 0) {
+          for (const id of uiState.autoInvestigatePRWorktreeIds) {
+            uiState.consumeAutoInvestigatePR(id)
+          }
+          uiState.setPendingInvestigateType('pr')
+        }
+
+        invoke('create_worktree', {
+          projectId: project_id,
+          customName: suggested_name,
           issueContext: issue_context,
           prContext: pr_context,
+        }).catch(err => {
+          logger.error('Failed to create worktree with suffix', { error: err })
+          toast.error('Failed to create worktree', { description: String(err) })
         })
       })
     )

@@ -28,6 +28,7 @@ import type {
   CompactedEvent,
   Session,
   SessionDigest,
+  WorktreeSessions,
 } from '@/types/chat'
 
 interface UseStreamingEventsParams {
@@ -737,8 +738,10 @@ export default function useStreamingEvents({
         // Determine if we should restore message to input:
         // - undo_send from backend, OR
         // - No content streamed yet (cancelled before any response)
+        // BUT: Don't restore if there are queued messages (user chose "Skip to Next")
         const hasContent = content || (toolCalls && toolCalls.length > 0)
-        const shouldRestoreMessage = undo_send || !hasContent
+        const hasQueuedMessages = (useChatStore.getState().messageQueues[session_id] ?? []).length > 0
+        const shouldRestoreMessage = !hasQueuedMessages && (undo_send || !hasContent)
 
         if (shouldRestoreMessage) {
           // Restore message to input and remove from chat (no content to preserve)
@@ -845,8 +848,22 @@ export default function useStreamingEvents({
         const { setLastCompaction, setCompacting } = useChatStore.getState()
         setCompacting(session_id, false)
         setLastCompaction(session_id, metadata.trigger)
+
+        // Look up session name from query cache
+        let sessionName: string | undefined
+        const queriesData = queryClient.getQueriesData<WorktreeSessions>({
+          queryKey: ['chat', 'sessions'],
+        })
+        for (const [, data] of queriesData) {
+          const match = data?.sessions?.find(s => s.id === session_id)
+          if (match) {
+            sessionName = match.name
+            break
+          }
+        }
+        const label = sessionName ? ` (${sessionName})` : ''
         toast.info(
-          `Context ${metadata.trigger === 'auto' ? 'auto-' : ''}compacted`
+          `Context ${metadata.trigger === 'auto' ? 'auto-' : ''}compacted${label}`
         )
       }
     )

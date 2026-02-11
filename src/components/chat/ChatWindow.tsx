@@ -54,6 +54,8 @@ import {
 } from '@/store/chat-store'
 import { usePreferences, useSavePreferences } from '@/services/preferences'
 import {
+  DEFAULT_INVESTIGATE_ISSUE_PROMPT,
+  DEFAULT_INVESTIGATE_PR_PROMPT,
   DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT,
   DEFAULT_PARALLEL_EXECUTION_PROMPT,
 } from '@/types/preferences'
@@ -383,45 +385,7 @@ export function ChatWindow({
     activeSessionId ?? null
   )
 
-  // Emit readiness event for auto-investigate coordination
-  // When a worktree is marked for auto-investigate, projects.ts waits for this event
-  // before dispatching the magic-command, ensuring session and contexts are ready
-  useEffect(() => {
-    if (!activeWorktreeId || !activeSessionId) return
 
-    // Check if this worktree was marked for auto-investigate
-    const { autoInvestigateWorktreeIds, autoInvestigatePRWorktreeIds } =
-      useUIStore.getState()
-    const shouldInvestigateIssue =
-      autoInvestigateWorktreeIds.has(activeWorktreeId)
-    const shouldInvestigatePR =
-      autoInvestigatePRWorktreeIds.has(activeWorktreeId)
-
-    if (!shouldInvestigateIssue && !shouldInvestigatePR) return
-
-    // Wait for contexts to be loaded
-    const hasIssueContexts =
-      shouldInvestigateIssue &&
-      loadedIssueContexts &&
-      loadedIssueContexts.length > 0
-    const hasPRContexts =
-      shouldInvestigatePR && loadedPRContexts && loadedPRContexts.length > 0
-
-    if (hasIssueContexts) {
-      window.dispatchEvent(
-        new CustomEvent('chat-ready-for-investigate', {
-          detail: { worktreeId: activeWorktreeId, type: 'issue' },
-        })
-      )
-    }
-    if (hasPRContexts) {
-      window.dispatchEvent(
-        new CustomEvent('chat-ready-for-investigate', {
-          detail: { worktreeId: activeWorktreeId, type: 'pr' },
-        })
-      )
-    }
-  }, [activeWorktreeId, activeSessionId, loadedIssueContexts, loadedPRContexts])
 
   // Attached saved contexts for indicator
   const { data: attachedSavedContexts } = useAttachedSavedContexts(
@@ -1540,6 +1504,112 @@ export function ChatWindow({
   )
 
   // Handle investigate workflow run - sends investigation prompt for a failed GitHub Actions run
+  const handleInvestigate = useCallback(
+    async (type: 'issue' | 'pr') => {
+      if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
+
+      const investigateModel =
+        preferences?.magic_prompt_models?.investigate_model ??
+        selectedModelRef.current
+
+      let prompt: string
+
+      if (type === 'issue') {
+        // Query by worktree ID — during auto-investigate, contexts are registered
+        // under worktree ID (not session ID) by the backend create_worktree command
+        const contexts = await queryClient.fetchQuery({
+          queryKey: ['investigate-contexts', 'issue', activeWorktreeId],
+          queryFn: () =>
+            invoke<{ number: number }[]>('list_loaded_issue_contexts', {
+              sessionId: activeWorktreeId,
+            }),
+          staleTime: 0,
+        })
+        const refs = (contexts ?? []).map(c => `#${c.number}`).join(', ')
+        const word = (contexts ?? []).length === 1 ? 'issue' : 'issues'
+        const customPrompt = preferences?.magic_prompts?.investigate_issue
+        const template =
+          customPrompt && customPrompt.trim()
+            ? customPrompt
+            : DEFAULT_INVESTIGATE_ISSUE_PROMPT
+        prompt = template
+          .replace(/\{issueWord\}/g, word)
+          .replace(/\{issueRefs\}/g, refs)
+      } else {
+        const contexts = await queryClient.fetchQuery({
+          queryKey: ['investigate-contexts', 'pr', activeWorktreeId],
+          queryFn: () =>
+            invoke<{ number: number }[]>('list_loaded_pr_contexts', {
+              sessionId: activeWorktreeId,
+            }),
+          staleTime: 0,
+        })
+        const refs = (contexts ?? []).map(c => `#${c.number}`).join(', ')
+        const word = (contexts ?? []).length === 1 ? 'PR' : 'PRs'
+        const customPrompt = preferences?.magic_prompts?.investigate_pr
+        const template =
+          customPrompt && customPrompt.trim()
+            ? customPrompt
+            : DEFAULT_INVESTIGATE_PR_PROMPT
+        prompt = template
+          .replace(/\{prWord\}/g, word)
+          .replace(/\{prRefs\}/g, refs)
+      }
+
+      const {
+        addSendingSession,
+        setLastSentMessage,
+        setError,
+        setSelectedModel,
+        setExecutingMode,
+      } = useChatStore.getState()
+
+      setLastSentMessage(activeSessionId, prompt)
+      setError(activeSessionId, null)
+      addSendingSession(activeSessionId)
+      setSelectedModel(activeSessionId, investigateModel)
+      setExecutingMode(activeSessionId, executionModeRef.current)
+
+      sendMessage.mutate(
+        {
+          sessionId: activeSessionId,
+          worktreeId: activeWorktreeId,
+          worktreePath: activeWorktreePath,
+          message: prompt,
+          model: investigateModel,
+          executionMode: executionModeRef.current,
+          thinkingLevel: selectedThinkingLevelRef.current,
+          effortLevel: useAdaptiveThinkingRef.current
+            ? selectedEffortLevelRef.current
+            : undefined,
+          mcpConfig: buildMcpConfigJson(
+            mcpServersDataRef.current,
+            enabledMcpServersRef.current
+          ),
+          parallelExecutionPrompt: preferences?.parallel_execution_prompt_enabled
+            ? (preferences.magic_prompts?.parallel_execution ?? DEFAULT_PARALLEL_EXECUTION_PROMPT)
+            : undefined,
+          chromeEnabled: preferences?.chrome_enabled ?? false,
+          aiLanguage: preferences?.ai_language,
+        },
+        { onSettled: () => inputRef.current?.focus() }
+      )
+    },
+    [
+      activeSessionId,
+      activeWorktreeId,
+      activeWorktreePath,
+      sendMessage,
+      queryClient,
+      preferences?.magic_prompts?.investigate_issue,
+      preferences?.magic_prompts?.investigate_pr,
+      preferences?.magic_prompt_models?.investigate_model,
+      preferences?.parallel_execution_prompt_enabled,
+      preferences?.chrome_enabled,
+      preferences?.ai_language,
+    ]
+  )
+
   const handleInvestigateWorkflowRun = useCallback(
     async (detail: WorkflowRunDetail) => {
       console.warn('[INVESTIGATE-WF] Handler called with detail:', {
@@ -1795,10 +1865,21 @@ export function ChatWindow({
     handleMerge,
     handleResolveConflicts,
     handleInvestigateWorkflowRun,
+    handleInvestigate,
     isModal,
     isViewingCanvasTab,
     sessionModalOpen,
   })
+
+  // Pick up pending investigate type from UI store (set by projects.ts when
+  // worktree is created/unarchived with auto-investigate flag)
+  useEffect(() => {
+    if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
+    const type = useUIStore.getState().consumePendingInvestigateType()
+    if (type) {
+      handleInvestigate(type)
+    }
+  }, [activeSessionId, activeWorktreeId, activeWorktreePath, handleInvestigate])
 
   // Listen for command palette context events
   useEffect(() => {
@@ -2613,6 +2694,7 @@ export function ChatWindow({
                         onEffortLevelChange={handleToolbarEffortLevelChange}
                         onSetExecutionMode={handleToolbarSetExecutionMode}
                         onCancel={handleCancel}
+                        queuedMessageCount={currentQueuedMessages.length}
                         availableMcpServers={availableMcpServers}
                         enabledMcpServers={enabledMcpServers}
                         onToggleMcpServer={handleToggleMcpServer}

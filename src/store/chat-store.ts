@@ -35,6 +35,8 @@ interface ChatUIState {
   // Currently active worktree for chat
   activeWorktreeId: string | null
   activeWorktreePath: string | null
+  // Last active worktree (survives clearActiveWorktree, used by dashboard to restore selection)
+  lastActiveWorktreeId: string | null
 
   // Active session ID per worktree (for tab selection)
   activeSessionIds: Record<string, string>
@@ -222,6 +224,7 @@ interface ChatUIState {
   // Actions - Worktree management
   setActiveWorktree: (id: string | null, path: string | null) => void
   clearActiveWorktree: () => void
+  setLastActiveWorktreeId: (id: string) => void
   registerWorktreePath: (worktreeId: string, path: string) => void
   getWorktreePath: (worktreeId: string) => string | undefined
 
@@ -446,6 +449,7 @@ export const useChatStore = create<ChatUIState>()(
       // Initial state
       activeWorktreeId: null,
       activeWorktreePath: null,
+      lastActiveWorktreeId: null,
       activeSessionIds: {},
       reviewResults: {},
       viewingReviewTab: {},
@@ -679,6 +683,8 @@ export const useChatStore = create<ChatUIState>()(
           state => ({
             activeWorktreeId: id,
             activeWorktreePath: path,
+            // Remember last active worktree for dashboard restoration
+            lastActiveWorktreeId: id ?? state.lastActiveWorktreeId,
             // Also register the path mapping when setting active worktree
             worktreePaths:
               id && path
@@ -695,6 +701,9 @@ export const useChatStore = create<ChatUIState>()(
           undefined,
           'clearActiveWorktree'
         ),
+
+      setLastActiveWorktreeId: id =>
+        set({ lastActiveWorktreeId: id }, undefined, 'setLastActiveWorktreeId'),
 
       registerWorktreePath: (worktreeId, path) =>
         set(

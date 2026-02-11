@@ -18,8 +18,6 @@ import { WorkflowRunsModal } from '@/components/shared/WorkflowRunsModal'
 import { MagicModal } from '@/components/magic/MagicModal'
 import { ReleaseNotesDialog } from '@/components/magic/ReleaseNotesDialog'
 import { NewWorktreeModal } from '@/components/worktree/NewWorktreeModal'
-import { PathConflictModal } from '@/components/worktree/PathConflictModal'
-import { BranchConflictModal } from '@/components/worktree/BranchConflictModal'
 import { SessionBoardModal } from '@/components/session-board'
 import { AddProjectDialog } from '@/components/projects/AddProjectDialog'
 import { GitInitModal } from '@/components/projects/GitInitModal'
@@ -285,8 +283,6 @@ export function MainWindow() {
       <MagicModal />
       <ReleaseNotesDialog />
       <NewWorktreeModal />
-      <PathConflictModal />
-      <BranchConflictModal />
       <SessionBoardModal />
       <AddProjectDialog />
       <GitInitModal />

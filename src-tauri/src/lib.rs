@@ -711,6 +711,10 @@ pub struct UIState {
     #[serde(default)]
     pub active_worktree_path: Option<String>,
 
+    /// Last active worktree ID (survives clearing, used by dashboard to restore selection)
+    #[serde(default)]
+    pub last_active_worktree_id: Option<String>,
+
     /// Last selected project ID (to restore project selection for GitHub issues)
     #[serde(default)]
     pub active_project_id: Option<String>,
@@ -777,6 +781,7 @@ impl Default for UIState {
         Self {
             active_worktree_id: None,
             active_worktree_path: None,
+            last_active_worktree_id: None,
             active_project_id: None,
             expanded_project_ids: Vec::new(),
             expanded_folder_ids: Vec::new(),

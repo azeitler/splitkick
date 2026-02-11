@@ -16,66 +16,6 @@ export type CliUpdateModalType = 'claude' | 'gh' | null
 
 export type CliLoginModalType = 'claude' | 'gh' | null
 
-/** Data for the path conflict modal when worktree creation finds an existing directory */
-export interface PathConflictData {
-  projectId: string
-  path: string
-  suggestedName: string
-  /** If the path matches an archived worktree, its ID */
-  archivedWorktreeId?: string
-  /** Name of the archived worktree */
-  archivedWorktreeName?: string
-  /** Issue context to pass when creating a new worktree */
-  issueContext?: {
-    number: number
-    title: string
-    body?: string
-    comments: {
-      author: { login: string }
-      body: string
-      createdAt: string
-    }[]
-  }
-}
-
-/** Data for the branch conflict modal when worktree creation finds an existing branch */
-export interface BranchConflictData {
-  projectId: string
-  branch: string
-  suggestedName: string
-  /** Issue context to pass when creating a new worktree */
-  issueContext?: {
-    number: number
-    title: string
-    body?: string
-    comments: {
-      author: { login: string }
-      body: string
-      createdAt: string
-    }[]
-  }
-  /** PR context to pass when creating a new worktree */
-  prContext?: {
-    number: number
-    title: string
-    body?: string
-    headRefName: string
-    baseRefName: string
-    comments: {
-      author: { login: string }
-      body: string
-      createdAt: string
-    }[]
-    reviews: {
-      author: { login: string }
-      body: string
-      state: string
-      submittedAt: string
-    }[]
-    diff?: string
-  }
-}
-
 interface UIState {
   leftSidebarVisible: boolean
   leftSidebarSize: number // Width in pixels, persisted across sessions
@@ -99,10 +39,6 @@ interface UIState {
   cliLoginModalOpen: boolean
   cliLoginModalType: CliLoginModalType
   cliLoginModalCommand: string | null
-  /** Data for the path conflict modal */
-  pathConflictData: PathConflictData | null
-  /** Data for the branch conflict modal */
-  branchConflictData: BranchConflictData | null
   /** Worktree IDs that should auto-trigger investigate-issue when created */
   autoInvestigateWorktreeIds: Set<string>
   /** Worktree IDs that should auto-trigger investigate-pr when created */
@@ -125,6 +61,8 @@ interface UIState {
   pendingUpdateVersion: string | null
   /** When non-null, shows the update available modal */
   updateModalVersion: string | null
+  /** Pending auto-investigate type — ChatWindow picks this up when it mounts */
+  pendingInvestigateType: 'issue' | 'pr' | null
 
   toggleLeftSidebar: () => void
   setLeftSidebarVisible: (visible: boolean) => void
@@ -155,10 +93,6 @@ interface UIState {
   closeCliUpdateModal: () => void
   openCliLoginModal: (type: 'claude' | 'gh', command: string) => void
   closeCliLoginModal: () => void
-  openPathConflictModal: (data: PathConflictData) => void
-  closePathConflictModal: () => void
-  openBranchConflictModal: (data: BranchConflictData) => void
-  closeBranchConflictModal: () => void
   markWorktreeForAutoInvestigate: (worktreeId: string) => void
   consumeAutoInvestigate: (worktreeId: string) => boolean
   markWorktreeForAutoInvestigatePR: (worktreeId: string) => void
@@ -173,11 +107,13 @@ interface UIState {
   setUIStateInitialized: (initialized: boolean) => void
   setPendingUpdateVersion: (version: string | null) => void
   setUpdateModalVersion: (version: string | null) => void
+  setPendingInvestigateType: (type: 'issue' | 'pr' | null) => void
+  consumePendingInvestigateType: () => 'issue' | 'pr' | null
 }
 
 export const useUIStore = create<UIState>()(
   devtools(
-    set => ({
+    (set, get) => ({
       leftSidebarVisible: false,
       leftSidebarSize: 250, // Default width in pixels
       rightSidebarVisible: false,
@@ -200,8 +136,6 @@ export const useUIStore = create<UIState>()(
       cliLoginModalOpen: false,
       cliLoginModalType: null,
       cliLoginModalCommand: null,
-      pathConflictData: null,
-      branchConflictData: null,
       autoInvestigateWorktreeIds: new Set(),
       autoInvestigatePRWorktreeIds: new Set(),
       autoOpenSessionWorktreeIds: new Set(),
@@ -213,6 +147,7 @@ export const useUIStore = create<UIState>()(
       uiStateInitialized: false,
       pendingUpdateVersion: null,
       updateModalVersion: null,
+      pendingInvestigateType: null,
 
       toggleLeftSidebar: () =>
         set(
@@ -362,22 +297,6 @@ export const useUIStore = create<UIState>()(
           'closeCliLoginModal'
         ),
 
-      openPathConflictModal: data =>
-        set({ pathConflictData: data }, undefined, 'openPathConflictModal'),
-
-      closePathConflictModal: () =>
-        set({ pathConflictData: null }, undefined, 'closePathConflictModal'),
-
-      openBranchConflictModal: data =>
-        set({ branchConflictData: data }, undefined, 'openBranchConflictModal'),
-
-      closeBranchConflictModal: () =>
-        set(
-          { branchConflictData: null },
-          undefined,
-          'closeBranchConflictModal'
-        ),
-
       markWorktreeForAutoInvestigate: worktreeId =>
         set(
           state => ({
@@ -503,6 +422,15 @@ export const useUIStore = create<UIState>()(
 
       setUpdateModalVersion: version =>
         set({ updateModalVersion: version }, undefined, 'setUpdateModalVersion'),
+      setPendingInvestigateType: type =>
+        set({ pendingInvestigateType: type }, undefined, 'setPendingInvestigateType'),
+      consumePendingInvestigateType: () => {
+        const current = get().pendingInvestigateType
+        if (current) {
+          set({ pendingInvestigateType: null }, undefined, 'consumePendingInvestigateType')
+        }
+        return current
+      },
     }),
     {
       name: 'ui-store',

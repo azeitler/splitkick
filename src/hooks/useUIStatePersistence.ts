@@ -70,6 +70,7 @@ export function useUIStatePersistence() {
     const {
       activeWorktreeId,
       activeWorktreePath,
+      lastActiveWorktreeId,
       activeSessionIds,
       reviewResults,
       viewingReviewTab,
@@ -89,6 +90,7 @@ export function useUIStatePersistence() {
     return {
       active_worktree_id: activeWorktreeId,
       active_worktree_path: activeWorktreePath,
+      last_active_worktree_id: lastActiveWorktreeId,
       active_project_id: selectedProjectId,
       expanded_project_ids: Array.from(expandedProjectIds),
       expanded_folder_ids: Array.from(expandedFolderIds),
@@ -227,6 +229,13 @@ export function useUIStatePersistence() {
       // 3. The worktree list from the backend is the source of truth
     }
 
+    // Restore last active worktree ID (for dashboard session selection)
+    // This must happen AFTER setActiveWorktree which also sets it,
+    // but covers the case where the user was on the dashboard (no active worktree)
+    if (uiState.last_active_worktree_id) {
+      useChatStore.getState().setLastActiveWorktreeId(uiState.last_active_worktree_id)
+    }
+
     // Restore active sessions per worktree
     // Defensive: ensure active_session_ids is an object (might be null/undefined from backend)
     const activeSessionIds = uiState.active_session_ids ?? {}
@@ -334,6 +343,7 @@ export function useUIStatePersistence() {
     let prevLeftSidebarVisible = useUIStore.getState().leftSidebarVisible
     let prevWorktreeId = useChatStore.getState().activeWorktreeId
     let prevWorktreePath = useChatStore.getState().activeWorktreePath
+    let prevLastActiveWorktreeId = useChatStore.getState().lastActiveWorktreeId
     let prevActiveSessionIds = useChatStore.getState().activeSessionIds
     // Worktree-scoped state (NOT session-specific - those are handled by useSessionStatePersistence)
     let prevReviewResults = useChatStore.getState().reviewResults
@@ -390,7 +400,8 @@ export function useUIStatePersistence() {
       // Check if active worktree or active sessions changed
       const worktreeChanged =
         state.activeWorktreeId !== prevWorktreeId ||
-        state.activeWorktreePath !== prevWorktreePath
+        state.activeWorktreePath !== prevWorktreePath ||
+        state.lastActiveWorktreeId !== prevLastActiveWorktreeId
       const sessionsChanged = state.activeSessionIds !== prevActiveSessionIds
       // Worktree-scoped state (NOT session-specific)
       const reviewResultsChanged =
@@ -410,6 +421,7 @@ export function useUIStatePersistence() {
       ) {
         prevWorktreeId = state.activeWorktreeId
         prevWorktreePath = state.activeWorktreePath
+        prevLastActiveWorktreeId = state.lastActiveWorktreeId
         prevActiveSessionIds = state.activeSessionIds
         prevReviewResults = state.reviewResults
         prevViewingReviewTab = state.viewingReviewTab

@@ -238,6 +238,7 @@ interface ChatToolbarProps {
   onEffortLevelChange: (level: EffortLevel) => void
   onSetExecutionMode: (mode: ExecutionMode) => void
   onCancel: () => void
+  queuedMessageCount?: number
 
   // MCP servers
   availableMcpServers: McpServerInfo[]
@@ -354,6 +355,7 @@ export const ChatToolbar = memo(function ChatToolbar({
   onEffortLevelChange,
   onSetExecutionMode,
   onCancel,
+  queuedMessageCount,
   availableMcpServers,
   enabledMcpServers,
   onToggleMcpServer,
@@ -1353,13 +1355,13 @@ export const ChatToolbar = memo(function ChatToolbar({
                 onClick={onCancel}
                 className="flex h-8 items-center justify-center gap-1.5 rounded-r-lg px-3 text-sm transition-colors bg-primary text-primary-foreground hover:bg-primary/90"
               >
-                <span>Cancel</span>
+                <span>{queuedMessageCount ? 'Skip to Next' : 'Cancel'}</span>
                 <Kbd className="ml-0.5 h-4 text-[10px] bg-primary-foreground/20 text-primary-foreground">
                   {isMacOS ? `${getModifierSymbol()}⌥⌫` : 'Ctrl+Alt+⌫'}
                 </Kbd>
               </button>
             </TooltipTrigger>
-            <TooltipContent>{`Cancel (${isMacOS ? `${getModifierSymbol()}+Option+Backspace` : 'Ctrl+Alt+Backspace'})`}</TooltipContent>
+            <TooltipContent>{queuedMessageCount ? `Skip to next queued message (${isMacOS ? `${getModifierSymbol()}+Option+Backspace` : 'Ctrl+Alt+Backspace'})` : `Cancel (${isMacOS ? `${getModifierSymbol()}+Option+Backspace` : 'Ctrl+Alt+Backspace'})`}</TooltipContent>
           </Tooltip>
         ) : (
           <Tooltip>

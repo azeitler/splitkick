@@ -11,6 +11,7 @@ import type { ReviewResponse } from './projects'
 export interface UIState {
   active_worktree_id: string | null
   active_worktree_path: string | null
+  last_active_worktree_id: string | null
   active_project_id: string | null
   expanded_project_ids: string[]
   expanded_folder_ids: string[]
@@ -40,6 +41,7 @@ export interface UIState {
 export const defaultUIState: UIState = {
   active_worktree_id: null,
   active_worktree_path: null,
+  last_active_worktree_id: null,
   active_project_id: null,
   expanded_project_ids: [],
   expanded_folder_ids: [],
