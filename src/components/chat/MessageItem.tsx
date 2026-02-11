@@ -244,9 +244,9 @@ export const MessageItem = memo(function MessageItem({
 
       {/* Render content blocks inline if available (new format) */}
       {message.role === 'assistant' &&
-      message.content_blocks &&
-      message.content_blocks.length > 0 &&
-      !skipToolCalls ? (
+        message.content_blocks &&
+        message.content_blocks.length > 0 &&
+        !skipToolCalls ? (
         <>
           {/* Build timeline preserving order of text and tools */}
           <div className="space-y-4">
@@ -336,9 +336,9 @@ export const MessageItem = memo(function MessageItem({
                       submittedAnswers={
                         isAnswered
                           ? getSubmittedAnswers(
-                              message.session_id,
-                              item.tool.id
-                            )
+                            message.session_id,
+                            item.tool.id
+                          )
                           : undefined
                       }
                     />
@@ -416,7 +416,7 @@ export const MessageItem = memo(function MessageItem({
           {showContent && (
             <div>
               {message.role === 'assistant' &&
-              hasReviewFindings(displayContent) ? (
+                hasReviewFindings(displayContent) ? (
                 <>
                   <Markdown>{stripFindingBlocks(displayContent)}</Markdown>
                   <ReviewFindingsList
@@ -479,7 +479,7 @@ export const MessageItem = memo(function MessageItem({
     >
       {message.role === 'user' ? (
         <div className="relative group flex items-start gap-1 max-w-[85%] sm:max-w-[70%]">
-          {/* Copy to input button - appears on hover */}
+          {/* Copy to clipboard button - appears on hover */}
           {onCopyToInput && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -491,7 +491,7 @@ export const MessageItem = memo(function MessageItem({
                   <Copy className="h-3.5 w-3.5" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent>Copy to input</TooltipContent>
+              <TooltipContent>Copy to clipboard</TooltipContent>
             </Tooltip>
           )}
           <div
