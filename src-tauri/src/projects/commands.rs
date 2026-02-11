@@ -27,7 +27,7 @@ use super::types::{
     WorktreeDeleteErrorEvent, WorktreeDeletedEvent, WorktreeDeletingEvent, WorktreePathExistsEvent,
     WorktreePermanentlyDeletedEvent, WorktreeUnarchivedEvent,
 };
-use crate::claude_cli::get_cli_binary_path;
+use crate::claude_cli::resolve_cli_binary;
 use crate::gh_cli::config::resolve_gh_binary;
 use crate::http_server::EmitExt;
 use crate::platform::silent_command;
@@ -3786,7 +3786,7 @@ fn generate_pr_content(
     model: Option<&str>,
     context: &str,
 ) -> Result<PrContentResponse, String> {
-    let cli_path = get_cli_binary_path(app)?;
+    let cli_path = resolve_cli_binary(app);
 
     if !cli_path.exists() {
         return Err("Claude CLI not installed".to_string());
@@ -4211,7 +4211,7 @@ fn generate_commit_message(
     prompt: &str,
     model: Option<&str>,
 ) -> Result<CommitMessageResponse, String> {
-    let cli_path = get_cli_binary_path(app)?;
+    let cli_path = resolve_cli_binary(app);
 
     if !cli_path.exists() {
         return Err("Claude CLI not installed".to_string());
@@ -4421,7 +4421,7 @@ fn generate_review(
     prompt: &str,
     model: Option<&str>,
 ) -> Result<ReviewResponse, String> {
-    let cli_path = get_cli_binary_path(app)?;
+    let cli_path = resolve_cli_binary(app);
 
     if !cli_path.exists() {
         return Err("Claude CLI not installed".to_string());
@@ -4699,7 +4699,7 @@ fn generate_release_notes_content(
     custom_prompt: Option<&str>,
     model: Option<&str>,
 ) -> Result<ReleaseNotesResponse, String> {
-    let cli_path = get_cli_binary_path(app)?;
+    let cli_path = resolve_cli_binary(app);
 
     if !cli_path.exists() {
         return Err("Claude CLI not installed".to_string());

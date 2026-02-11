@@ -17,7 +17,7 @@ use super::types::{
     AllSessionsEntry, AllSessionsResponse, ChatMessage, ClaudeContext, EffortLevel, MessageRole,
     RunStatus, Session, SessionDigest, ThinkingLevel, WorktreeSessions,
 };
-use crate::claude_cli::get_cli_binary_path;
+use crate::claude_cli::resolve_cli_binary;
 use crate::http_server::EmitExt;
 use crate::platform::silent_command;
 use crate::projects::storage::load_projects_data;
@@ -2379,7 +2379,7 @@ fn execute_summarization_claude(
     prompt: &str,
     model: Option<&str>,
 ) -> Result<ContextSummaryResponse, String> {
-    let cli_path = get_cli_binary_path(app)?;
+    let cli_path = resolve_cli_binary(app);
 
     if !cli_path.exists() {
         return Err("Claude CLI not installed".to_string());
@@ -2907,7 +2907,7 @@ fn execute_digest_claude(
     prompt: &str,
     model: &str,
 ) -> Result<SessionDigestResponse, String> {
-    let cli_path = get_cli_binary_path(app)?;
+    let cli_path = resolve_cli_binary(app);
 
     if !cli_path.exists() {
         return Err("Claude CLI not installed".to_string());
@@ -3271,7 +3271,7 @@ fn parse_mcp_list_output(output: &str) -> std::collections::HashMap<String, McpH
 /// Check health status of all MCP servers by running `claude mcp list`.
 #[tauri::command]
 pub async fn check_mcp_health(app: AppHandle) -> Result<McpHealthResult, String> {
-    let cli_path = get_cli_binary_path(&app)?;
+    let cli_path = resolve_cli_binary(&app);
 
     if !cli_path.exists() {
         return Err("Claude CLI not installed".to_string());

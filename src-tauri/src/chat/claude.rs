@@ -582,7 +582,7 @@ pub fn execute_claude_detached(
     chrome_enabled: bool,
 ) -> Result<(u32, ClaudeResponse), String> {
     use super::detached::spawn_detached_claude;
-    use crate::claude_cli::get_cli_binary_path;
+    use crate::claude_cli::resolve_cli_binary;
 
     log::trace!("Executing Claude CLI (detached) for session: {session_id}");
     log::trace!("Input file: {input_file:?}");
@@ -590,18 +590,7 @@ pub fn execute_claude_detached(
     log::trace!("Working directory: {working_dir:?}");
 
     // Get CLI path
-    let cli_path = get_cli_binary_path(app).map_err(|e| {
-        let error_msg =
-            format!("Failed to get CLI path: {e}. Please complete setup in Settings > Advanced.");
-        log::error!("{error_msg}");
-        let error_event = ErrorEvent {
-            session_id: session_id.to_string(),
-            worktree_id: worktree_id.to_string(),
-            error: error_msg.clone(),
-        };
-        let _ = app.emit_all("chat:error", &error_event);
-        error_msg
-    })?;
+    let cli_path = resolve_cli_binary(app);
 
     if !cli_path.exists() {
         let error_msg =
