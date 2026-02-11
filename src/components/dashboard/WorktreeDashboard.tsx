@@ -1067,7 +1067,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     <div className="relative flex h-full flex-col">
       <div className="flex-1 flex flex-col overflow-auto">
         {/* Header with Search - sticky over content */}
-        <div className="sticky top-0 z-10 flex items-center justify-between gap-4 bg-background/60 backdrop-blur-md px-4 py-3 border-b border-border/30">
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-4 bg-background/60 backdrop-blur-md px-4 py-3 border-b border-border/30 min-h-[61px]">
           <div className="flex items-center gap-1 shrink-0">
             <h2 className="text-lg font-semibold">{project.name}</h2>
             <NewIssuesBadge projectPath={project.path} projectId={projectId} />

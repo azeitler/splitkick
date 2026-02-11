@@ -109,6 +109,7 @@ export type TimelineItem =
   | { type: 'stackedGroup'; items: StackableItem[]; key: string }
   | { type: 'askUserQuestion'; tool: ToolCall; introText?: string; key: string }
   | { type: 'exitPlanMode'; tool: ToolCall; key: string }
+  | { type: 'unknown'; rawType: string; rawData: unknown; key: string }
 
 /**
  * Merge consecutive stackable items (thinking + standalone tools) into stackedGroup
@@ -342,6 +343,15 @@ export function buildTimeline(
           key: `tool-${toolCall.id}`,
         })
       }
+    } else {
+      // Unknown content block type — render a visible indicator
+      result.push({
+        type: 'unknown',
+        rawType:
+          ((block as Record<string, unknown>).type as string) ?? 'unknown',
+        rawData: block,
+        key: `unknown-${i}`,
+      })
     }
   }
 

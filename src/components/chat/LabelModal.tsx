@@ -64,7 +64,8 @@ export function LabelModal({
         setFocusedIndex(i => (i - 1 + allLabels.length) % allLabels.length)
       } else if (e.key === 'Enter') {
         e.preventDefault()
-        applyLabel(allLabels[focusedIndex])
+        const label = allLabels[focusedIndex]
+        if (label) applyLabel(label)
       } else if (e.key === 'Backspace') {
         e.preventDefault()
         applyLabel(null)

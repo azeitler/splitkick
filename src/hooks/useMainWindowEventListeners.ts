@@ -541,11 +541,6 @@ export function useMainWindowEventListeners() {
           }
         }),
 
-        listen('menu-open-pull-request', () => {
-          logger.debug('Open pull request menu event received')
-          commandContext.openPullRequest()
-        }),
-
         // Branch naming events (automatic branch renaming based on first message)
         listen<{ worktree_id: string; old_branch: string; new_branch: string }>(
           'branch-renamed',

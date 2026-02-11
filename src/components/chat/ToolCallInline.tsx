@@ -651,12 +651,14 @@ function getToolDisplay(toolCall: ToolCall): ToolDisplay {
       }
     }
 
-    default:
+    default: {
+      const isMcpTool = toolCall.name.startsWith('mcp__')
       return {
         icon: <Terminal className="h-4 w-4 shrink-0" />,
-        label: toolCall.name,
+        label: isMcpTool ? toolCall.name : `${toolCall.name} (unhandled tool)`,
         detail: undefined,
         expandedContent: JSON.stringify(input, null, 2),
       }
+    }
   }
 }

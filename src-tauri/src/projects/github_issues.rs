@@ -1419,18 +1419,6 @@ pub async fn list_loaded_pr_contexts(
     Ok(contexts)
 }
 
-/// Delete all PR context files for a session
-///
-/// This is a no-op since cleanup is handled by cleanup_issue_contexts_for_session
-/// which calls remove_all_session_references for both issues and PRs.
-pub fn cleanup_pr_contexts_for_session(
-    _app: &tauri::AppHandle,
-    _session_id: &str,
-) -> Result<(), String> {
-    // Cleanup is handled by cleanup_issue_contexts_for_session
-    // which calls remove_all_session_references for both issues and PRs
-    Ok(())
-}
 
 /// Remove a loaded PR context for a session
 #[tauri::command]

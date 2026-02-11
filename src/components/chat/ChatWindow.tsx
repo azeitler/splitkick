@@ -98,6 +98,9 @@ import { QueuedMessagesList } from './QueuedMessageItem'
 import { FloatingButtons } from './FloatingButtons'
 import { PlanDialog } from './PlanDialog'
 import { StreamingMessage } from './StreamingMessage'
+import { ChatErrorFallback } from './ChatErrorFallback'
+import { logger } from '@/lib/logger'
+import { saveCrashState } from '@/lib/recovery'
 import { ErrorBanner } from './ErrorBanner'
 import { SessionDigestReminder } from './SessionDigestReminder'
 import {
@@ -1745,10 +1748,10 @@ export function ChatWindow({
               targetBranch: detail.branch,
               matchingWorktree: matching
                 ? {
-                    id: matching.id,
-                    branch: matching.branch,
-                    status: matching.status,
-                  }
+                  id: matching.id,
+                  branch: matching.branch,
+                  status: matching.status,
+                }
                 : null,
             })
             if (matching) {
@@ -2448,18 +2451,29 @@ export function ChatWindow({
 
   return (
     <ErrorBoundary
-      fallback={
-        <div className="flex h-full flex-col items-center justify-center gap-4 text-muted-foreground">
-          <span>Something went wrong. Please refresh the page.</span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => window.location.reload()}
-          >
-            Refresh
-          </Button>
-        </div>
-      }
+      onError={(error, errorInfo) => {
+        logger.error('ChatWindow crashed', {
+          error: error.message,
+          stack: error.stack,
+        })
+        saveCrashState(
+          { activeWorktreeId, activeSessionId },
+          {
+            error: error.message,
+            stack: error.stack ?? '',
+            componentStack: errorInfo.componentStack ?? undefined,
+          }
+        ).catch(() => {
+          /* noop */
+        })
+      }}
+      fallbackRender={({ error, resetErrorBoundary }) => (
+        <ChatErrorFallback
+          error={error}
+          resetErrorBoundary={resetErrorBoundary}
+          activeWorktreeId={activeWorktreeId}
+        />
+      )}
     >
       <div className="flex h-full w-full min-w-0 flex-col overflow-hidden">
         {/* Session tab bar - hidden in modal mode and canvas-only mode */}
@@ -2525,8 +2539,8 @@ export function ChatWindow({
                           />
                         )}
                         {isLoading ||
-                        isSessionsLoading ||
-                        isSessionSwitching ? (
+                          isSessionsLoading ||
+                          isSessionSwitching ? (
                           <div className="text-muted-foreground">
                             Loading...
                           </div>
@@ -2664,7 +2678,7 @@ export function ChatWindow({
                       className={cn(
                         'relative overflow-hidden rounded-lg transition-all duration-150',
                         isDragging &&
-                          'ring-2 ring-primary ring-inset bg-primary/5'
+                        'ring-2 ring-primary ring-inset bg-primary/5'
                       )}
                     >
                       {/* Pending file preview (@ mentions) */}
@@ -2709,7 +2723,7 @@ export function ChatWindow({
                         (dismissedTodoMessageId === null ||
                           (todoSourceMessageId !== null &&
                             todoSourceMessageId !==
-                              dismissedTodoMessageId)) && (
+                            dismissedTodoMessageId)) && (
                           <div className="px-4 md:px-6 pt-2">
                             <TodoWidget
                               todos={normalizeTodosForDisplay(
@@ -2883,11 +2897,11 @@ export function ChatWindow({
               approvalContext={
                 activeWorktreeId && activeWorktreePath && activeSessionId
                   ? {
-                      worktreeId: activeWorktreeId,
-                      worktreePath: activeWorktreePath,
-                      sessionId: activeSessionId,
-                      pendingPlanMessageId: pendingPlanMessage?.id ?? null,
-                    }
+                    worktreeId: activeWorktreeId,
+                    worktreePath: activeWorktreePath,
+                    sessionId: activeSessionId,
+                    pendingPlanMessageId: pendingPlanMessage?.id ?? null,
+                  }
                   : undefined
               }
               onApprove={updatedPlan => {
@@ -3046,11 +3060,11 @@ export function ChatWindow({
               approvalContext={
                 activeWorktreeId && activeWorktreePath && activeSessionId
                   ? {
-                      worktreeId: activeWorktreeId,
-                      worktreePath: activeWorktreePath,
-                      sessionId: activeSessionId,
-                      pendingPlanMessageId: pendingPlanMessage?.id ?? null,
-                    }
+                    worktreeId: activeWorktreeId,
+                    worktreePath: activeWorktreePath,
+                    sessionId: activeSessionId,
+                    pendingPlanMessageId: pendingPlanMessage?.id ?? null,
+                  }
                   : undefined
               }
               onApprove={updatedPlan => {

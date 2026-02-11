@@ -1391,18 +1391,11 @@ fn create_app_menu(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error
         .item(&MenuItemBuilder::with_id("toggle-right-sidebar", "Toggle Right Sidebar").build(app)?)
         .build()?;
 
-    // Build the Git submenu
-    // Note: Accelerators removed since keybindings are user-configurable in preferences
-    let git_submenu = SubmenuBuilder::new(app, "Git")
-        .item(&MenuItemBuilder::with_id("open-pull-request", "Open Pull Request...").build(app)?)
-        .build()?;
-
     // Build the main menu with submenus
     let menu = MenuBuilder::new(app)
         .item(&app_submenu)
         .item(&edit_submenu)
         .item(&view_submenu)
-        .item(&git_submenu)
         .build()?;
 
     // Set the menu for the app
@@ -1651,18 +1644,6 @@ pub fn run() {
                                     log::error!(
                                         "Failed to emit menu-toggle-right-sidebar event: {e}"
                                     )
-                                }
-                            }
-                        }
-                        "open-pull-request" => {
-                            log::trace!("Open Pull Request menu item clicked");
-                            // Emit event to React for handling
-                            match app.emit("menu-open-pull-request", ()) {
-                                Ok(_) => {
-                                    log::trace!("Successfully emitted menu-open-pull-request event")
-                                }
-                                Err(e) => {
-                                    log::error!("Failed to emit menu-open-pull-request event: {e}")
                                 }
                             }
                         }
