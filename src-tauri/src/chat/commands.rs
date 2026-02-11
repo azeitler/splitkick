@@ -862,6 +862,7 @@ pub async fn send_chat_message(
     allowed_tools: Option<Vec<String>>,
     mcp_config: Option<String>,
     chrome_enabled: Option<bool>,
+    custom_profile_settings: Option<String>,
 ) -> Result<ChatMessage, String> {
     log::trace!("Sending chat message for session: {session_id}, worktree: {worktree_id}, model: {model:?}, execution_mode: {execution_mode:?}, thinking: {thinking_level:?}, effort: {effort_level:?}, disable_thinking_for_mode: {disable_thinking_for_mode:?}, allowed_tools: {allowed_tools:?}");
 
@@ -1106,6 +1107,7 @@ pub async fn send_chat_message(
             ai_language.as_deref(),
             mcp_config.as_deref(),
             chrome,
+            custom_profile_settings.as_deref(),
         ) {
             Ok((pid, response)) => {
                 log::trace!("execute_claude_detached succeeded (PID: {pid})");

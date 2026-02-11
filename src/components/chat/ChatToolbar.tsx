@@ -74,6 +74,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Markdown } from '@/components/ui/markdown'
 import { cn } from '@/lib/utils'
 import type { ClaudeModel } from '@/store/chat-store'
+import type { CustomCliProfile } from '@/types/preferences'
 import { useMcpHealthCheck } from '@/services/mcp'
 import type { McpServerInfo, McpHealthStatus } from '@/types/chat'
 import type { ThinkingLevel, EffortLevel, ExecutionMode } from '@/types/chat'
@@ -187,6 +188,7 @@ interface ChatToolbarProps {
   hasInputValue: boolean
   executionMode: ExecutionMode
   selectedModel: ClaudeModel
+  selectedProvider: string | null // null = default (Anthropic), or profile name
   selectedThinkingLevel: ThinkingLevel
   selectedEffortLevel: EffortLevel
   thinkingOverrideActive: boolean // True when thinking is disabled in build/yolo due to preference
@@ -234,6 +236,8 @@ interface ChatToolbarProps {
   hasOpenPr: boolean
   onSetDiffRequest: (request: DiffRequest) => void
   onModelChange: (model: ClaudeModel) => void
+  onProviderChange: (provider: string | null) => void
+  customCliProfiles: CustomCliProfile[]
   onThinkingLevelChange: (level: ThinkingLevel) => void
   onEffortLevelChange: (level: EffortLevel) => void
   onSetExecutionMode: (mode: ExecutionMode) => void
@@ -249,7 +253,9 @@ interface ChatToolbarProps {
 
 /** Compact health status dot for the toolbar MCP dropdown */
 /** Hover hint for MCP server health status in the toolbar dropdown */
-function mcpStatusHint(status: McpHealthStatus | undefined): string | undefined {
+function mcpStatusHint(
+  status: McpHealthStatus | undefined
+): string | undefined {
   switch (status) {
     case 'needsAuthentication':
       return "Needs authentication — run 'claude /mcp' to authenticate"
@@ -286,7 +292,9 @@ function McpStatusDot({ status }: { status: McpHealthStatus | undefined }) {
               <ShieldAlert className="size-3 text-amber-600 dark:text-amber-400" />
             </span>
           </TooltipTrigger>
-          <TooltipContent>{"Needs authentication — run 'claude /mcp' to authenticate"}</TooltipContent>
+          <TooltipContent>
+            {"Needs authentication — run 'claude /mcp' to authenticate"}
+          </TooltipContent>
         </Tooltip>
       )
     case 'couldNotConnect':
@@ -316,6 +324,7 @@ export const ChatToolbar = memo(function ChatToolbar({
   hasInputValue,
   executionMode,
   selectedModel,
+  selectedProvider,
   selectedThinkingLevel,
   selectedEffortLevel,
   thinkingOverrideActive,
@@ -351,6 +360,8 @@ export const ChatToolbar = memo(function ChatToolbar({
   hasOpenPr,
   onSetDiffRequest,
   onModelChange,
+  onProviderChange,
+  customCliProfiles,
   onThinkingLevelChange,
   onEffortLevelChange,
   onSetExecutionMode,
@@ -384,12 +395,38 @@ export const ChatToolbar = memo(function ChatToolbar({
     return enabledMcpServers.filter(name => availableNames.has(name)).length
   }, [availableMcpServers, enabledMcpServers])
 
+  // For custom providers: show generic tier names (Opus/Sonnet/Haiku) without version numbers,
+  // and drop Opus 4.5 (providers only have one opus-tier model)
+  const filteredModelOptions = useMemo(
+    () =>
+      selectedProvider
+        ? [
+            { value: 'opus' as ClaudeModel, label: 'Opus' },
+            { value: 'sonnet' as ClaudeModel, label: 'Sonnet' },
+            { value: 'haiku' as ClaudeModel, label: 'Haiku' },
+          ]
+        : MODEL_OPTIONS,
+    [selectedProvider]
+  )
+
   // Memoize callbacks to prevent Select re-renders
   const handleModelChange = useCallback(
     (value: string) => {
       onModelChange(value as ClaudeModel)
     },
     [onModelChange]
+  )
+
+  const handleProviderChange = useCallback(
+    (value: string) => {
+      const provider = value === 'default' ? null : value
+      onProviderChange(provider)
+      // Auto-switch from Opus 4.6 when selecting a custom provider (it's Anthropic-only)
+      if (provider && selectedModel === 'opus-4.5') {
+        onModelChange('opus' as ClaudeModel)
+      }
+    },
+    [onProviderChange, onModelChange, selectedModel]
   )
 
   const handleThinkingLevelChange = useCallback(
@@ -731,13 +768,45 @@ export const ChatToolbar = memo(function ChatToolbar({
 
             <DropdownMenuSeparator />
 
+            {/* Provider selector as submenu */}
+            {customCliProfiles.length > 0 && (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  <span>Provider</span>
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {selectedProvider ?? 'Default'}
+                  </span>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuRadioGroup
+                    value={selectedProvider ?? 'default'}
+                    onValueChange={handleProviderChange}
+                  >
+                    <DropdownMenuRadioItem value="default">
+                      Default
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuSeparator />
+                    {customCliProfiles.map(profile => (
+                      <DropdownMenuRadioItem
+                        key={profile.name}
+                        value={profile.name}
+                      >
+                        {profile.name}
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            )}
+
             {/* Model selector as submenu */}
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
                 <Sparkles className="mr-2 h-4 w-4" />
                 <span>Model</span>
                 <span className="ml-auto text-xs text-muted-foreground">
-                  {MODEL_OPTIONS.find(o => o.value === selectedModel)?.label}
+                  {filteredModelOptions.find(o => o.value === selectedModel)?.label}
                 </span>
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
@@ -745,7 +814,7 @@ export const ChatToolbar = memo(function ChatToolbar({
                   value={selectedModel}
                   onValueChange={handleModelChange}
                 >
-                  {MODEL_OPTIONS.map(option => (
+                  {filteredModelOptions.map(option => (
                     <DropdownMenuRadioItem
                       key={option.value}
                       value={option.value}
@@ -1057,7 +1126,9 @@ export const ChatToolbar = memo(function ChatToolbar({
                   <span>Conflicts</span>
                 </button>
               </TooltipTrigger>
-              <TooltipContent>PR has merge conflicts — click to resolve</TooltipContent>
+              <TooltipContent>
+                PR has merge conflicts — click to resolve
+              </TooltipContent>
             </Tooltip>
           </>
         )}
@@ -1078,9 +1149,7 @@ export const ChatToolbar = memo(function ChatToolbar({
                   )}
                 >
                   <Plug className="h-3.5 w-3.5" />
-                  {activeMcpCount > 0 && (
-                    <span>{activeMcpCount}</span>
-                  )}
+                  {activeMcpCount > 0 && <span>{activeMcpCount}</span>}
                   <ChevronDown className="h-3 w-3 opacity-50" />
                 </button>
               </DropdownMenuTrigger>
@@ -1114,16 +1183,18 @@ export const ChatToolbar = memo(function ChatToolbar({
                         disabled={server.disabled}
                         className={server.disabled ? 'opacity-50' : undefined}
                       >
-                    <span className="flex items-center gap-1.5">
-                      <McpStatusDot status={status} />
-                      {server.name}
-                    </span>
-                    <span className="ml-auto pl-4 text-xs text-muted-foreground">
-                      {server.disabled ? 'disabled' : server.scope}
-                    </span>
+                        <span className="flex items-center gap-1.5">
+                          <McpStatusDot status={status} />
+                          {server.name}
+                        </span>
+                        <span className="ml-auto pl-4 text-xs text-muted-foreground">
+                          {server.disabled ? 'disabled' : server.scope}
+                        </span>
                       </DropdownMenuCheckboxItem>
                     </TooltipTrigger>
-                    <TooltipContent side="left">{mcpStatusHint(status)}</TooltipContent>
+                    <TooltipContent side="left">
+                      {mcpStatusHint(status)}
+                    </TooltipContent>
                   </Tooltip>
                 )
               })
@@ -1147,6 +1218,49 @@ export const ChatToolbar = memo(function ChatToolbar({
           </DropdownMenuContent>
         </DropdownMenu>
 
+        {/* Provider selector - desktop only, shown when profiles exist */}
+        {customCliProfiles.length > 0 && (
+          <>
+            <div className="hidden @md:block h-4 w-px bg-border/50" />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  disabled={hasPendingQuestions}
+                  className={cn(
+                    'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
+                    selectedProvider
+                      ? 'border border-blue-500/50 bg-blue-500/10 text-blue-700 dark:border-blue-400/40 dark:bg-blue-500/10 dark:text-blue-400'
+                      : 'text-muted-foreground'
+                  )}
+                >
+                  <span>{selectedProvider ?? 'Default'}</span>
+                  <ChevronDown className="h-3 w-3 opacity-50" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="min-w-40">
+                <DropdownMenuRadioGroup
+                  value={selectedProvider ?? 'default'}
+                  onValueChange={handleProviderChange}
+                >
+                  <DropdownMenuRadioItem value="default">
+                    Default
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuSeparator />
+                  {customCliProfiles.map(profile => (
+                    <DropdownMenuRadioItem
+                      key={profile.name}
+                      value={profile.name}
+                    >
+                      {profile.name}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        )}
+
         {/* Divider - desktop only */}
         <div className="hidden @md:block h-4 w-px bg-border/50" />
 
@@ -1156,12 +1270,12 @@ export const ChatToolbar = memo(function ChatToolbar({
           onValueChange={handleModelChange}
           disabled={hasPendingQuestions}
         >
-          <SelectTrigger className="hidden @md:flex h-8 w-auto gap-1.5 rounded-none border-0 bg-transparent px-3 text-sm text-muted-foreground shadow-none hover:bg-muted/80 hover:text-foreground dark:bg-transparent dark:hover:bg-muted/80">
+          <SelectTrigger className="hidden @md:flex h-8 w-auto gap-1.5 rounded-none border-0 bg-transparent px-3 text-sm text-muted-foreground shadow-none hover:bg-muted/80 hover:text-foreground dark:bg-transparent dark:hover:bg-muted/80 [&>svg:last-child]:size-3">
             <Sparkles className="h-3.5 w-3.5" />
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {MODEL_OPTIONS.map(option => (
+            {filteredModelOptions.map(option => (
               <SelectItem key={option.value} value={option.value}>
                 {option.label}
               </SelectItem>
@@ -1302,7 +1416,9 @@ export const ChatToolbar = memo(function ChatToolbar({
                   {executionMode === 'plan' && (
                     <ClipboardList className="h-3.5 w-3.5" />
                   )}
-                  {executionMode === 'build' && <Hammer className="h-3.5 w-3.5" />}
+                  {executionMode === 'build' && (
+                    <Hammer className="h-3.5 w-3.5" />
+                  )}
                   {executionMode === 'yolo' && <Zap className="h-3.5 w-3.5" />}
                   <span className="capitalize">{executionMode}</span>
                   <ChevronDown className="h-3 w-3 opacity-50" />
@@ -1361,7 +1477,11 @@ export const ChatToolbar = memo(function ChatToolbar({
                 </Kbd>
               </button>
             </TooltipTrigger>
-            <TooltipContent>{queuedMessageCount ? `Skip to next queued message (${isMacOS ? `${getModifierSymbol()}+Option+Backspace` : 'Ctrl+Alt+Backspace'})` : `Cancel (${isMacOS ? `${getModifierSymbol()}+Option+Backspace` : 'Ctrl+Alt+Backspace'})`}</TooltipContent>
+            <TooltipContent>
+              {queuedMessageCount
+                ? `Skip to next queued message (${isMacOS ? `${getModifierSymbol()}+Option+Backspace` : 'Ctrl+Alt+Backspace'})`
+                : `Cancel (${isMacOS ? `${getModifierSymbol()}+Option+Backspace` : 'Ctrl+Alt+Backspace'})`}
+            </TooltipContent>
           </Tooltip>
         ) : (
           <Tooltip>

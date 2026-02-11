@@ -824,7 +824,11 @@ pub fn create_worktree_from_existing_branch(
 ///
 /// Fetch a PR ref into a local branch name, bypassing gh cli.
 /// Used when the PR's head branch name collides with a locally checked-out branch.
-pub fn fetch_pr_to_branch(repo_path: &str, pr_number: u32, local_branch: &str) -> Result<(), String> {
+pub fn fetch_pr_to_branch(
+    repo_path: &str,
+    pr_number: u32,
+    local_branch: &str,
+) -> Result<(), String> {
     let refspec = format!("pull/{pr_number}/head:{local_branch}");
     let output = silent_command("git")
         .args(["fetch", "origin", &refspec])
@@ -834,7 +838,9 @@ pub fn fetch_pr_to_branch(repo_path: &str, pr_number: u32, local_branch: &str) -
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Failed to fetch PR #{pr_number} into {local_branch}: {stderr}"));
+        return Err(format!(
+            "Failed to fetch PR #{pr_number} into {local_branch}: {stderr}"
+        ));
     }
     Ok(())
 }
