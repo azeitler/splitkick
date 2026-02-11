@@ -11,11 +11,11 @@ import { CommitModal } from '@/components/commit/CommitModal'
 import { OnboardingDialog } from '@/components/onboarding/OnboardingDialog'
 import { FeatureTourDialog } from '@/components/onboarding/FeatureTourDialog'
 import { CliUpdateModal } from '@/components/layout/CliUpdateModal'
+import { UpdateAvailableModal } from '@/components/layout/UpdateAvailableModal'
 import { CliLoginModal } from '@/components/preferences/CliLoginModal'
 import { OpenInModal } from '@/components/open-in/OpenInModal'
 import { WorkflowRunsModal } from '@/components/shared/WorkflowRunsModal'
 import { MagicModal } from '@/components/magic/MagicModal'
-import { CheckoutPRModal } from '@/components/magic/CheckoutPRModal'
 import { ReleaseNotesDialog } from '@/components/magic/ReleaseNotesDialog'
 import { NewWorktreeModal } from '@/components/worktree/NewWorktreeModal'
 import { PathConflictModal } from '@/components/worktree/PathConflictModal'
@@ -278,11 +278,11 @@ export function MainWindow() {
       <OnboardingDialog />
       <FeatureTourDialog />
       <CliUpdateModal />
+      <UpdateAvailableModal />
       <CliLoginModal />
       <OpenInModal />
       <WorkflowRunsModal />
       <MagicModal />
-      <CheckoutPRModal />
       <ReleaseNotesDialog />
       <NewWorktreeModal />
       <PathConflictModal />

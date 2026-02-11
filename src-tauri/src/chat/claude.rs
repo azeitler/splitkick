@@ -5,7 +5,7 @@ use super::types::{
 };
 use crate::http_server::EmitExt;
 use crate::projects::github_issues::{
-    get_github_contexts_dir, get_worktree_issue_refs, get_worktree_pr_refs,
+    get_github_contexts_dir, get_session_issue_refs, get_session_pr_refs,
 };
 use crate::projects::storage::load_projects_data;
 
@@ -363,12 +363,12 @@ fn build_claude_args(
     let mut all_context_paths: Vec<std::path::PathBuf> = Vec::new();
 
     // Check for issue context files (shared storage)
-    if let Ok(issue_keys) = get_worktree_issue_refs(app, worktree_id) {
+    if let Ok(issue_keys) = get_session_issue_refs(app, session_id) {
         if let Ok(contexts_dir) = get_github_contexts_dir(app) {
             log::debug!(
-                "Checking for issue context files in {:?} for worktree {}",
+                "Checking for issue context files in {:?} for session {}",
                 contexts_dir,
-                worktree_id
+                session_id
             );
             for key in issue_keys {
                 // key format: "{owner}-{repo}-{number}"
@@ -387,7 +387,7 @@ fn build_claude_args(
     }
 
     // Check for PR context files (shared storage)
-    if let Ok(pr_keys) = get_worktree_pr_refs(app, worktree_id) {
+    if let Ok(pr_keys) = get_session_pr_refs(app, session_id) {
         if let Ok(contexts_dir) = get_github_contexts_dir(app) {
             for key in pr_keys {
                 let parts: Vec<&str> = key.rsplitn(2, '-').collect();
@@ -408,7 +408,7 @@ fn build_claude_args(
     if let Ok(app_data_dir) = app.path().app_data_dir() {
         let saved_contexts_dir = app_data_dir.join("session-context");
         if saved_contexts_dir.exists() {
-            let prefix = format!("{worktree_id}-context-");
+            let prefix = format!("{session_id}-context-");
             if let Ok(entries) = std::fs::read_dir(&saved_contexts_dir) {
                 let mut context_files: Vec<_> = entries
                     .flatten()
@@ -420,9 +420,9 @@ fn build_claude_args(
 
                 context_files.sort_by_key(|e| e.file_name());
                 log::debug!(
-                    "Found {} saved context files for worktree {}",
+                    "Found {} saved context files for session {}",
                     context_files.len(),
-                    worktree_id
+                    session_id
                 );
 
                 for entry in context_files {
@@ -439,7 +439,7 @@ fn build_claude_args(
             let combined_contexts_dir = app_data_dir.join("combined-contexts");
             let _ = std::fs::create_dir_all(&combined_contexts_dir);
 
-            let combined_file = combined_contexts_dir.join(format!("{worktree_id}-combined.md"));
+            let combined_file = combined_contexts_dir.join(format!("{session_id}-combined.md"));
 
             // Count issues, PRs, and saved contexts for the header
             let issue_count = all_context_paths

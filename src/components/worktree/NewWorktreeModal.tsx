@@ -1355,14 +1355,10 @@ function IssueItem({
               onInvestigate()
             }}
             disabled={isCreating}
-            className={cn(
-              'opacity-50 hover:opacity-100 transition-opacity',
-              'p-2.5 sm:p-1.5 rounded-md hover:bg-accent-foreground/10',
-              'focus:outline-none focus:opacity-100',
-              'disabled:opacity-30 disabled:cursor-not-allowed'
-            )}
+            className="shrink-0 inline-flex items-center gap-0.5 rounded bg-black px-1 py-0.5 text-[10px] text-white transition-colors hover:bg-black/80 dark:bg-yellow-500/20 dark:text-yellow-400 dark:hover:bg-yellow-500/30 dark:hover:text-yellow-300 disabled:opacity-30 disabled:cursor-not-allowed"
           >
-            <Wand2 className="h-4 w-4 text-muted-foreground" />
+            <Wand2 className="h-3 w-3" />
+            <span>M</span>
           </button>
         </TooltipTrigger>
         <TooltipContent>Create worktree and investigate issue</TooltipContent>
@@ -1466,17 +1462,10 @@ function PRItem({
               onInvestigate()
             }}
             disabled={isCreating}
-            className={cn(
-              'opacity-50 hover:opacity-100 transition-opacity',
-              'p-2.5 sm:p-1.5 rounded-md hover:bg-accent-foreground/10',
-              'focus:outline-none focus:opacity-100',
-              'disabled:opacity-30 disabled:cursor-not-allowed'
-            )}
+            className="shrink-0 inline-flex items-center gap-0.5 rounded bg-black px-1 py-0.5 text-[10px] text-white transition-colors hover:bg-black/80 dark:bg-yellow-500/20 dark:text-yellow-400 dark:hover:bg-yellow-500/30 dark:hover:text-yellow-300 disabled:opacity-30 disabled:cursor-not-allowed"
           >
-            <Wand2 className="h-4 w-4 text-muted-foreground" />
-            <kbd className="hidden sm:inline text-[10px] text-muted-foreground bg-muted px-1 py-0.5 rounded">
-              M
-            </kbd>
+            <Wand2 className="h-3 w-3" />
+            <span>M</span>
           </button>
         </TooltipTrigger>
         <TooltipContent>Create worktree and investigate PR</TooltipContent>

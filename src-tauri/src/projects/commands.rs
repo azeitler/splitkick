@@ -16,8 +16,8 @@ use super::git::get_repo_identifier;
 use super::github_issues::{
     add_issue_reference, add_pr_reference, format_issue_context_markdown,
     format_pr_context_markdown, generate_branch_name_from_issue, generate_branch_name_from_pr,
-    get_github_contexts_dir, get_github_pr, get_pr_diff, get_worktree_context_content,
-    get_worktree_context_numbers, IssueContext, PullRequestContext,
+    get_github_contexts_dir, get_github_pr, get_pr_diff, get_session_context_content,
+    get_session_context_numbers, IssueContext, PullRequestContext,
 };
 use super::names::generate_unique_workspace_name;
 use super::storage::{get_project_worktrees_dir, load_projects_data, save_projects_data};
@@ -700,14 +700,38 @@ pub async fn create_worktree(
                 ctx.number
             );
 
-            match git::gh_pr_checkout(
-                &worktree_path_clone,
-                ctx.number,
-                Some(&ctx.head_ref_name),
-                &resolve_gh_binary(&app_clone),
-            ) {
+            // Check if PR head branch name collides with a locally checked-out branch
+            // (e.g. PR from fork with head "main" when local "main" is already checked out)
+            let branch_collision = git::branch_exists(&project_path, &ctx.head_ref_name);
+            let local_branch_name = if branch_collision {
+                let alt = format!("pr-{}-{}", ctx.number, ctx.head_ref_name);
+                log::trace!("Branch '{}' already exists, using '{alt}' instead", ctx.head_ref_name);
+                alt
+            } else {
+                ctx.head_ref_name.clone()
+            };
+
+            let checkout_result = if branch_collision {
+                // Bypass gh pr checkout which internally fetches into the conflicting ref.
+                // Manually fetch the PR into the alt branch name and switch to it.
+                log::trace!("Background: Branch collision, manual fetch PR #{} into {local_branch_name}", ctx.number);
+                git::fetch_pr_to_branch(&project_path, ctx.number, &local_branch_name)
+                    .and_then(|_| {
+                        git::checkout_branch(&worktree_path_clone, &local_branch_name)?;
+                        Ok(local_branch_name)
+                    })
+            } else {
+                git::gh_pr_checkout(
+                    &worktree_path_clone,
+                    ctx.number,
+                    Some(&local_branch_name),
+                    &resolve_gh_binary(&app_clone),
+                )
+            };
+
+            match checkout_result {
                 Ok(branch) => {
-                    log::trace!("Background: gh pr checkout succeeded, branch: {branch}");
+                    log::trace!("Background: PR checkout succeeded, branch: {branch}");
 
                     // Delete the temporary branch
                     if let Some(ref temp_branch) = temp_branch_to_delete {
@@ -1459,7 +1483,8 @@ pub async fn checkout_pr(
         // Determine safe local branch name for gh pr checkout -b
         // If pr_head_ref (e.g. "main") already exists locally, use an alternative
         // to avoid "refusing to fetch into branch" errors when the branch is checked out
-        let local_branch_name = if git::branch_exists(&project_path, &pr_head_ref) {
+        let branch_collision = git::branch_exists(&project_path, &pr_head_ref);
+        let local_branch_name = if branch_collision {
             let alt = format!("pr-{pr_number}-{pr_head_ref}");
             log::trace!("Branch '{pr_head_ref}' already exists, using '{alt}' instead");
             alt
@@ -1467,33 +1492,63 @@ pub async fn checkout_pr(
             pr_head_ref.clone()
         };
 
-        // Step 2: Run gh pr checkout inside the worktree
-        // This checks out the actual PR branch and sets up tracking
-        // Pass the local branch name to ensure no conflicts with checked-out branches
-        let actual_branch = match git::gh_pr_checkout(
-            &worktree_path_clone,
-            pr_number,
-            Some(&local_branch_name),
-            &resolve_gh_binary(&app_clone),
-        ) {
-            Ok(branch) => {
-                log::trace!("Background: gh pr checkout succeeded, branch: {branch}");
-                branch
-            }
-            Err(e) => {
-                log::error!("Background: Failed to checkout PR: {e}");
-                // Clean up the worktree we created
-                let _ = git::remove_worktree(&project_path, &worktree_path_clone);
-                let _ = git::delete_branch(&project_path, &temp_branch_clone);
-                let error_event = WorktreeCreateErrorEvent {
-                    id: worktree_id_clone,
-                    project_id: project_id_clone,
-                    error: e,
-                };
-                if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
-                    log::error!("Failed to emit worktree:error event: {emit_err}");
+        // Step 2: Checkout the PR branch into the worktree
+        // If branch name collides (e.g. PR head is "main" and "main" is checked out),
+        // bypass `gh pr checkout` which internally fetches into the conflicting ref.
+        // Instead, manually fetch the PR into the alt branch name and switch to it.
+        let actual_branch = if branch_collision {
+            log::trace!("Background: Branch collision detected, using manual fetch for PR #{pr_number} into {local_branch_name}");
+            match git::fetch_pr_to_branch(&project_path, pr_number, &local_branch_name)
+                .and_then(|_| {
+                    git::checkout_branch(&worktree_path_clone, &local_branch_name)?;
+                    Ok(local_branch_name.clone())
+                })
+            {
+                Ok(branch) => {
+                    log::trace!("Background: Manual PR fetch+checkout succeeded, branch: {branch}");
+                    branch
                 }
-                return;
+                Err(e) => {
+                    log::error!("Background: Failed to checkout PR: {e}");
+                    let _ = git::remove_worktree(&project_path, &worktree_path_clone);
+                    let _ = git::delete_branch(&project_path, &temp_branch_clone);
+                    let error_event = WorktreeCreateErrorEvent {
+                        id: worktree_id_clone,
+                        project_id: project_id_clone,
+                        error: e,
+                    };
+                    if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
+                        log::error!("Failed to emit worktree:error event: {emit_err}");
+                    }
+                    return;
+                }
+            }
+        } else {
+            // No collision - use gh pr checkout which sets up tracking nicely
+            match git::gh_pr_checkout(
+                &worktree_path_clone,
+                pr_number,
+                Some(&local_branch_name),
+                &resolve_gh_binary(&app_clone),
+            ) {
+                Ok(branch) => {
+                    log::trace!("Background: gh pr checkout succeeded, branch: {branch}");
+                    branch
+                }
+                Err(e) => {
+                    log::error!("Background: Failed to checkout PR: {e}");
+                    let _ = git::remove_worktree(&project_path, &worktree_path_clone);
+                    let _ = git::delete_branch(&project_path, &temp_branch_clone);
+                    let error_event = WorktreeCreateErrorEvent {
+                        id: worktree_id_clone,
+                        project_id: project_id_clone,
+                        error: e,
+                    };
+                    if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
+                        log::error!("Failed to emit worktree:error event: {emit_err}");
+                    }
+                    return;
+                }
             }
         };
 
@@ -1700,20 +1755,6 @@ pub async fn delete_worktree(app: AppHandle, worktree_id: String) -> Result<(), 
 
     // Cancel any running Claude processes for this worktree FIRST
     crate::chat::registry::cancel_processes_for_worktree(&app, &worktree_id);
-
-    // Clean up issue context files for this worktree
-    if let Err(e) =
-        crate::projects::github_issues::cleanup_issue_contexts_for_worktree(&app, &worktree_id)
-    {
-        log::warn!("Failed to cleanup issue contexts: {e}");
-    }
-
-    // Clean up PR context files for this worktree
-    if let Err(e) =
-        crate::projects::github_issues::cleanup_pr_contexts_for_worktree(&app, &worktree_id)
-    {
-        log::warn!("Failed to cleanup PR contexts: {e}");
-    }
 
     let data = load_projects_data(&app)?;
 
@@ -2242,22 +2283,6 @@ pub async fn permanently_delete_worktree(
     // Spawn background thread for git operations and cleanup only
     // Storage is already updated, so git failures won't corrupt other data
     thread::spawn(move || {
-        // Clean up issue context files for this worktree
-        if let Err(e) = crate::projects::github_issues::cleanup_issue_contexts_for_worktree(
-            &app_clone,
-            &worktree_id_clone,
-        ) {
-            log::warn!("Failed to cleanup issue contexts: {e}");
-        }
-
-        // Clean up PR context files for this worktree
-        if let Err(e) = crate::projects::github_issues::cleanup_pr_contexts_for_worktree(
-            &app_clone,
-            &worktree_id_clone,
-        ) {
-            log::warn!("Failed to cleanup PR contexts: {e}");
-        }
-
         // Only remove git worktree/branch for non-base sessions
         if !is_base_session {
             log::trace!("Background: Removing git worktree at {worktree_path}");
@@ -3883,6 +3908,7 @@ fn parse_pr_output(output: &str) -> Result<(u32, String), String> {
 pub async fn create_pr_with_ai_content(
     app: AppHandle,
     worktree_path: String,
+    session_id: Option<String>,
     custom_prompt: Option<String>,
     model: Option<String>,
 ) -> Result<CreatePrResponse, String> {
@@ -3958,11 +3984,12 @@ pub async fn create_pr_with_ai_content(
         }
     }
 
-    // Gather issue/PR context for this worktree
+    // Gather issue/PR context for this session
+    let effective_session_id = session_id.as_deref().unwrap_or("");
     let context_content =
-        get_worktree_context_content(&app, &worktree.id, &project.path).unwrap_or_default();
+        get_session_context_content(&app, effective_session_id, &project.path).unwrap_or_default();
     let (issue_nums, pr_nums) =
-        get_worktree_context_numbers(&app, &worktree.id).unwrap_or_default();
+        get_session_context_numbers(&app, effective_session_id).unwrap_or_default();
 
     // Generate PR content using Claude CLI
     log::trace!("Generating PR content with AI");

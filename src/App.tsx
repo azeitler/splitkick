@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   invoke,
@@ -13,6 +13,7 @@ import { chatQueryKeys } from '@/services/chat'
 import type { WorktreeSessions } from '@/types/chat'
 import { initializeCommandSystem } from './lib/commands'
 import { logger } from './lib/logger'
+import { toast } from 'sonner'
 import { cleanupOldFiles } from './lib/recovery'
 import './App.css'
 import MainWindow from './components/layout/MainWindow'
@@ -89,6 +90,65 @@ function App() {
   // Track preloading state for web view
   const [isPreloading, setIsPreloading] = useState(!isNativeApp())
   const queryClient = useQueryClient()
+
+  // Holds the update object so the title bar indicator can trigger install later
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pendingUpdateRef = useRef<any>(null)
+
+  const installAppUpdate = useCallback(async (update: { version: string; downloadAndInstall: (cb: (event: any) => void) => Promise<void> }) => {
+    let totalBytes = 0
+    let downloadedBytes = 0
+    const toastId = toast.loading(`Downloading update ${update.version}...`)
+
+    // Clear the pending indicator since we're installing now
+    useUIStore.getState().setPendingUpdateVersion(null)
+    pendingUpdateRef.current = null
+
+    try {
+      await update.downloadAndInstall(event => {
+        switch (event.event) {
+          case 'Started':
+            totalBytes = event.data.contentLength ?? 0
+            logger.info(`Downloading ${totalBytes} bytes`)
+            break
+          case 'Progress':
+            downloadedBytes += event.data.chunkLength
+            if (totalBytes > 0) {
+              const percent = Math.round((downloadedBytes / totalBytes) * 100)
+              toast.loading(`Downloading update... ${percent}%`, { id: toastId })
+            }
+            break
+          case 'Finished':
+            logger.info('Download complete, installing...')
+            toast.loading('Installing update...', { id: toastId })
+            break
+        }
+      })
+
+      toast.success(`Update ${update.version} installed!`, {
+        id: toastId,
+        duration: Infinity,
+        action: {
+          label: 'Restart',
+          onClick: async () => {
+            const { relaunch } = await import('@tauri-apps/plugin-process')
+            await relaunch()
+          },
+        },
+      })
+    } catch (updateError) {
+      const errorStr = String(updateError)
+      logger.error(`Update installation failed: ${errorStr}`)
+      if (errorStr.includes('invalid updater binary format')) {
+        toast.error(
+          `Auto-update not supported for this installation type. Please update manually.`,
+          { id: toastId, duration: 8000 }
+        )
+      } else {
+        toast.error(`Update failed: ${errorStr}`, { id: toastId, duration: 8000 })
+      }
+    }
+  }, [])
 
   // Preload initial data via HTTP for web view (faster than waiting for WebSocket)
   useEffect(() => {
@@ -438,61 +498,12 @@ function App() {
 
       try {
         const { check } = await import('@tauri-apps/plugin-updater')
-        const { ask, message } = await import('@tauri-apps/plugin-dialog')
 
         const update = await check()
         if (update) {
           logger.info(`Update available: ${update.version}`)
-
-          // Show confirmation dialog
-          const shouldUpdate = await ask(
-            `Update available: ${update.version}\n\nWould you like to install this update now?`,
-            { title: 'Update Available', kind: 'info' }
-          )
-
-          if (shouldUpdate) {
-            try {
-              // Download and install with progress logging
-              await update.downloadAndInstall(event => {
-                switch (event.event) {
-                  case 'Started':
-                    logger.info(`Downloading ${event.data.contentLength} bytes`)
-                    break
-                  case 'Progress':
-                    logger.info(`Downloaded: ${event.data.chunkLength} bytes`)
-                    break
-                  case 'Finished':
-                    logger.info('Download complete, installing...')
-                    break
-                }
-              })
-
-              // Ask if user wants to restart now
-              const shouldRestart = await ask(
-                'Update completed successfully!\n\nWould you like to restart the app now to use the new version?',
-                { title: 'Update Complete', kind: 'info' }
-              )
-
-              if (shouldRestart) {
-                const { relaunch } = await import('@tauri-apps/plugin-process')
-                await relaunch()
-              }
-            } catch (updateError) {
-              const errorStr = String(updateError)
-              logger.error(`Update installation failed: ${errorStr}`)
-              if (errorStr.includes('invalid updater binary format')) {
-                await message(
-                  `A new version (${update.version}) is available, but auto-update is not supported for this installation type.\n\nPlease update manually from the GitHub releases page or your package manager.`,
-                  { title: 'Update Available', kind: 'info' }
-                )
-              } else {
-                await message(
-                  `Update failed: There was a problem with the automatic download.\n\n${errorStr}`,
-                  { title: 'Update Failed', kind: 'error' }
-                )
-              }
-            }
-          }
+          pendingUpdateRef.current = update
+          useUIStore.getState().setUpdateModalVersion(update.version)
         }
       } catch (checkError) {
         logger.error(`Update check failed: ${String(checkError)}`)
@@ -500,12 +511,21 @@ function App() {
       }
     }
 
+    // Listen for install trigger from title bar indicator
+    const handleInstallPending = () => {
+      if (pendingUpdateRef.current) {
+        installAppUpdate(pendingUpdateRef.current)
+      }
+    }
+    window.addEventListener('install-pending-update', handleInstallPending)
+
     // Check for updates 5 seconds after app loads
     const updateTimer = setTimeout(checkForUpdates, 5000)
     return () => {
       clearTimeout(updateTimer)
+      window.removeEventListener('install-pending-update', handleInstallPending)
     }
-  }, [])
+  }, [installAppUpdate])
 
   // Show loading screen while preloading initial data (web view only)
   if (isPreloading) {

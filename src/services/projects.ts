@@ -187,11 +187,12 @@ export function useAddProject() {
       toast.success(`Added project: ${project.name}`)
 
       // Auto-expand the new project and parent folder if applicable
-      const { expandProject, expandFolder } = useProjectsStore.getState()
+      const { expandProject, expandFolder, selectProject } = useProjectsStore.getState()
       if (parentId) {
         expandFolder(parentId)
       }
       expandProject(project.id)
+      selectProject(project.id)
 
       // Auto-open the base session so the user lands in chat
       openBaseSessionForProject(project.id, queryClient)
@@ -238,11 +239,12 @@ export function useInitProject() {
       toast.success(`Created project: ${project.name}`)
 
       // Auto-expand the new project and parent folder if applicable
-      const { expandProject, expandFolder } = useProjectsStore.getState()
+      const { expandProject, expandFolder, selectProject } = useProjectsStore.getState()
       if (parentId) {
         expandFolder(parentId)
       }
       expandProject(project.id)
+      selectProject(project.id)
 
       // Auto-open the base session so the user lands in chat
       openBaseSessionForProject(project.id, queryClient)

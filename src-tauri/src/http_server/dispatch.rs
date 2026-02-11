@@ -196,11 +196,13 @@ pub async fn dispatch_command(
         }
         "create_pr_with_ai_content" => {
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let session_id: Option<String> = field_opt(&args, "sessionId", "session_id")?;
             let magic_prompt: Option<String> = field_opt(&args, "magicPrompt", "magic_prompt")?;
             let model: Option<String> = from_field_opt(&args, "model")?;
             let result = crate::projects::create_pr_with_ai_content(
                 app.clone(),
                 worktree_path,
+                session_id,
                 magic_prompt,
                 model,
             )
@@ -316,12 +318,12 @@ pub async fn dispatch_command(
             to_value(result)
         }
         "load_issue_context" => {
-            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let session_id: String = field(&args, "sessionId", "session_id")?;
             let issue_number: u32 = field(&args, "issueNumber", "issue_number")?;
             let project_path: String = field(&args, "projectPath", "project_path")?;
             let result = crate::projects::load_issue_context(
                 app.clone(),
-                worktree_id,
+                session_id,
                 issue_number,
                 project_path,
             )
@@ -329,18 +331,18 @@ pub async fn dispatch_command(
             to_value(result)
         }
         "list_loaded_issue_contexts" => {
-            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let session_id: String = field(&args, "sessionId", "session_id")?;
             let result =
-                crate::projects::list_loaded_issue_contexts(app.clone(), worktree_id).await?;
+                crate::projects::list_loaded_issue_contexts(app.clone(), session_id).await?;
             to_value(result)
         }
         "remove_issue_context" => {
-            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let session_id: String = field(&args, "sessionId", "session_id")?;
             let issue_number: u32 = field(&args, "issueNumber", "issue_number")?;
             let project_path: String = field(&args, "projectPath", "project_path")?;
             crate::projects::remove_issue_context(
                 app.clone(),
-                worktree_id,
+                session_id,
                 issue_number,
                 project_path,
             )
@@ -349,35 +351,35 @@ pub async fn dispatch_command(
             Ok(Value::Null)
         }
         "load_pr_context" => {
-            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let session_id: String = field(&args, "sessionId", "session_id")?;
             let pr_number: u32 = field(&args, "prNumber", "pr_number")?;
             let project_path: String = field(&args, "projectPath", "project_path")?;
             let result =
-                crate::projects::load_pr_context(app.clone(), worktree_id, pr_number, project_path)
+                crate::projects::load_pr_context(app.clone(), session_id, pr_number, project_path)
                     .await?;
             to_value(result)
         }
         "list_loaded_pr_contexts" => {
-            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
-            let result = crate::projects::list_loaded_pr_contexts(app.clone(), worktree_id).await?;
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let result = crate::projects::list_loaded_pr_contexts(app.clone(), session_id).await?;
             to_value(result)
         }
         "remove_pr_context" => {
-            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let session_id: String = field(&args, "sessionId", "session_id")?;
             let pr_number: u32 = field(&args, "prNumber", "pr_number")?;
             let project_path: String = field(&args, "projectPath", "project_path")?;
-            crate::projects::remove_pr_context(app.clone(), worktree_id, pr_number, project_path)
+            crate::projects::remove_pr_context(app.clone(), session_id, pr_number, project_path)
                 .await?;
             emit_cache_invalidation(app, &["contexts"]);
             Ok(Value::Null)
         }
         "get_issue_context_content" => {
-            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let session_id: String = field(&args, "sessionId", "session_id")?;
             let issue_number: u32 = field(&args, "issueNumber", "issue_number")?;
             let project_path: String = field(&args, "projectPath", "project_path")?;
             let result = crate::projects::get_issue_context_content(
                 app.clone(),
-                worktree_id,
+                session_id,
                 issue_number,
                 project_path,
             )
@@ -385,12 +387,12 @@ pub async fn dispatch_command(
             to_value(result)
         }
         "get_pr_context_content" => {
-            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let session_id: String = field(&args, "sessionId", "session_id")?;
             let pr_number: u32 = field(&args, "prNumber", "pr_number")?;
             let project_path: String = field(&args, "projectPath", "project_path")?;
             let result = crate::projects::get_pr_context_content(
                 app.clone(),
-                worktree_id,
+                session_id,
                 pr_number,
                 project_path,
             )
@@ -402,13 +404,13 @@ pub async fn dispatch_command(
         // Saved Contexts
         // =====================================================================
         "attach_saved_context" => {
-            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
-            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let source_path: String = field(&args, "sourcePath", "source_path")?;
             let context_slug: String = field(&args, "contextSlug", "context_slug")?;
             crate::projects::attach_saved_context(
                 app.clone(),
-                worktree_id,
-                worktree_path,
+                session_id,
+                source_path,
                 context_slug,
             )
             .await?;
@@ -416,23 +418,23 @@ pub async fn dispatch_command(
             Ok(Value::Null)
         }
         "remove_saved_context" => {
-            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let session_id: String = field(&args, "sessionId", "session_id")?;
             let context_slug: String = field(&args, "contextSlug", "context_slug")?;
-            crate::projects::remove_saved_context(app.clone(), worktree_id, context_slug).await?;
+            crate::projects::remove_saved_context(app.clone(), session_id, context_slug).await?;
             emit_cache_invalidation(app, &["contexts"]);
             Ok(Value::Null)
         }
         "list_attached_saved_contexts" => {
-            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let session_id: String = field(&args, "sessionId", "session_id")?;
             let result =
-                crate::projects::list_attached_saved_contexts(app.clone(), worktree_id).await?;
+                crate::projects::list_attached_saved_contexts(app.clone(), session_id).await?;
             to_value(result)
         }
         "get_saved_context_content" => {
-            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let session_id: String = field(&args, "sessionId", "session_id")?;
             let context_slug: String = field(&args, "contextSlug", "context_slug")?;
             let result =
-                crate::projects::get_saved_context_content(app.clone(), worktree_id, context_slug)
+                crate::projects::get_saved_context_content(app.clone(), session_id, context_slug)
                     .await?;
             to_value(result)
         }

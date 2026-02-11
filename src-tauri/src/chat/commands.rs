@@ -349,6 +349,18 @@ pub async fn close_session(
         log::warn!("Failed to delete session data: {e}");
     }
 
+    // Clean up context references for this session
+    if let Err(e) =
+        crate::projects::github_issues::cleanup_issue_contexts_for_session(&app, &session_id)
+    {
+        log::warn!("Failed to cleanup issue/PR contexts for session: {e}");
+    }
+    if let Err(e) =
+        crate::projects::saved_contexts::cleanup_saved_contexts_for_session(&app, &session_id)
+    {
+        log::warn!("Failed to cleanup saved contexts for session: {e}");
+    }
+
     // Now atomically modify the sessions file
     with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
         // Find the index of the session being closed before removing it
@@ -2868,7 +2880,7 @@ pub async fn check_resumable_sessions(
 // ============================================================================
 
 /// JSON schema for session digest response
-const SESSION_DIGEST_SCHEMA: &str = r#"{"type":"object","properties":{"chat_summary":{"type":"string","description":"One sentence (max 100 chars) summarizing the overall chat goal and progress"},"last_action":{"type":"string","description":"One sentence (max 80 chars) describing what was just completed"}},"required":["chat_summary","last_action"]}"#;
+const SESSION_DIGEST_SCHEMA: &str = r#"{"type":"object","properties":{"chat_summary":{"type":"string","description":"One sentence (max 100 chars) summarizing the overall chat goal and progress"},"last_action":{"type":"string","description":"One sentence (max 200 chars) describing what was just completed"}},"required":["chat_summary","last_action"]}"#;
 
 /// Prompt template for session digest generation
 const SESSION_DIGEST_PROMPT: &str = r#"You are a summarization assistant. Your ONLY job is to summarize the following conversation transcript. Do NOT continue the conversation or take any actions. Just summarize.
@@ -2880,7 +2892,7 @@ END OF TRANSCRIPT.
 
 Now provide a brief summary with exactly two fields:
 - chat_summary: One sentence (max 100 chars) describing the overall goal and current status
-- last_action: One sentence (max 80 chars) describing what was just completed in the last exchange"#;
+- last_action: One sentence (max 200 chars) describing what was just completed in the last exchange"#;
 
 /// Response from session digest generation
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

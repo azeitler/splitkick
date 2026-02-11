@@ -100,6 +100,19 @@ export function useCanvasKeyboardNav<T>({
     []
   )
 
+  // Track when command palette (or any modal) closes to prevent Enter key leaking
+  const lastModalCloseRef = useRef(0)
+  const prevCommandPaletteOpen = useRef(useUIStore.getState().commandPaletteOpen)
+
+  useEffect(() => {
+    return useUIStore.subscribe(state => {
+      if (prevCommandPaletteOpen.current && !state.commandPaletteOpen) {
+        lastModalCloseRef.current = Date.now()
+      }
+      prevCommandPaletteOpen.current = state.commandPaletteOpen
+    })
+  }, [])
+
   // Global keyboard navigation
   useEffect(() => {
     if (!enabled) return
@@ -107,18 +120,6 @@ export function useCanvasKeyboardNav<T>({
     const handleKeyDown = (e: KeyboardEvent) => {
       // Skip if any modal is open (magic, plan dialog, etc.)
       const uiState = useUIStore.getState()
-      console.log(
-        '[useCanvasKeyboardNav] keydown',
-        e.key,
-        'magicModalOpen:',
-        uiState.magicModalOpen,
-        'planDialogOpen:',
-        uiState.planDialogOpen,
-        'commandPaletteOpen:',
-        uiState.commandPaletteOpen,
-        'enabled:',
-        enabled
-      )
       if (
         uiState.magicModalOpen ||
         uiState.planDialogOpen ||
@@ -127,6 +128,12 @@ export function useCanvasKeyboardNav<T>({
       )
         return
       if (useProjectsStore.getState().projectSettingsDialogOpen) return
+
+      // Skip if a dialog just closed (prevents Enter/arrow keys leaking from command palette)
+      if (Date.now() - lastModalCloseRef.current < 150) return
+
+      // Skip if focus is inside any dialog (catches modals not tracked in UI store)
+      if (document.activeElement?.closest('[role="dialog"]')) return
 
       if (
         document.activeElement?.tagName === 'INPUT' ||

@@ -20,8 +20,6 @@ interface MagicCommandHandlers {
   handleReview: () => void
   handleMerge: () => void
   handleResolveConflicts: () => void
-  handleInvestigate: () => void
-  handleCheckoutPR: () => void
   handleInvestigateWorkflowRun: (detail: WorkflowRunDetail) => void
 }
 
@@ -54,8 +52,6 @@ export function useMagicCommands({
   handleReview,
   handleMerge,
   handleResolveConflicts,
-  handleInvestigate,
-  handleCheckoutPR,
   handleInvestigateWorkflowRun,
   isModal = false,
   isViewingCanvasTab = false,
@@ -73,8 +69,6 @@ export function useMagicCommands({
     handleReview,
     handleMerge,
     handleResolveConflicts,
-    handleInvestigate,
-    handleCheckoutPR,
     handleInvestigateWorkflowRun,
   })
 
@@ -92,8 +86,6 @@ export function useMagicCommands({
       handleReview,
       handleMerge,
       handleResolveConflicts,
-      handleInvestigate,
-      handleCheckoutPR,
       handleInvestigateWorkflowRun,
     }
   })
@@ -144,12 +136,6 @@ export function useMagicCommands({
           break
         case 'resolve-conflicts':
           handlers.handleResolveConflicts()
-          break
-        case 'investigate':
-          handlers.handleInvestigate()
-          break
-        case 'checkout-pr':
-          handlers.handleCheckoutPR()
           break
         case 'investigate-workflow-run':
           handlers.handleInvestigateWorkflowRun(rest as WorkflowRunDetail)

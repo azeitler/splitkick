@@ -29,7 +29,6 @@ import {
   MoreHorizontal,
   Pencil,
   Plug,
-  Search,
   Send,
   ShieldAlert,
   Sparkles,
@@ -213,6 +212,7 @@ interface ChatToolbarProps {
   // Worktree info
   activeWorktreePath: string | undefined
   worktreeId: string | null
+  activeSessionId: string | null | undefined
   projectId: string | undefined
 
   // Issue/PR/Saved context
@@ -228,11 +228,9 @@ interface ChatToolbarProps {
   onCommitAndPush: () => void
   onOpenPr: () => void
   onReview: () => void
-  onCheckoutPr: () => void
   onMerge: () => void
   onResolvePrConflicts: () => void
   onResolveConflicts: () => void
-  onInvestigate: () => void
   hasOpenPr: boolean
   onSetDiffRequest: (request: DiffRequest) => void
   onModelChange: (model: ClaudeModel) => void
@@ -334,6 +332,7 @@ export const ChatToolbar = memo(function ChatToolbar({
   magicModalShortcut,
   activeWorktreePath,
   worktreeId,
+  activeSessionId,
   projectId,
   loadedIssueContexts,
   loadedPRContexts,
@@ -345,11 +344,9 @@ export const ChatToolbar = memo(function ChatToolbar({
   onCommitAndPush,
   onOpenPr,
   onReview,
-  onCheckoutPr,
   onMerge,
   onResolvePrConflicts,
   onResolveConflicts,
-  onInvestigate,
   hasOpenPr,
   onSetDiffRequest,
   onModelChange,
@@ -483,10 +480,10 @@ export const ChatToolbar = memo(function ChatToolbar({
 
   const handleViewIssue = useCallback(
     async (ctx: LoadedIssueContext) => {
-      if (!worktreeId || !activeWorktreePath) return
+      if (!activeSessionId || !activeWorktreePath) return
       try {
         const content = await getIssueContextContent(
-          worktreeId,
+          activeSessionId,
           ctx.number,
           activeWorktreePath
         )
@@ -500,15 +497,15 @@ export const ChatToolbar = memo(function ChatToolbar({
         toast.error(`Failed to load context: ${error}`)
       }
     },
-    [worktreeId, activeWorktreePath]
+    [activeSessionId, activeWorktreePath]
   )
 
   const handleViewPR = useCallback(
     async (ctx: LoadedPullRequestContext) => {
-      if (!worktreeId || !activeWorktreePath) return
+      if (!activeSessionId || !activeWorktreePath) return
       try {
         const content = await getPRContextContent(
-          worktreeId,
+          activeSessionId,
           ctx.number,
           activeWorktreePath
         )
@@ -522,14 +519,14 @@ export const ChatToolbar = memo(function ChatToolbar({
         toast.error(`Failed to load context: ${error}`)
       }
     },
-    [worktreeId, activeWorktreePath]
+    [activeSessionId, activeWorktreePath]
   )
 
   const handleViewSavedContext = useCallback(
     async (ctx: AttachedSavedContext) => {
-      if (!worktreeId) return
+      if (!activeSessionId) return
       try {
-        const content = await getSavedContextContent(worktreeId, ctx.slug)
+        const content = await getSavedContextContent(activeSessionId, ctx.slug)
         setViewingContext({
           type: 'saved',
           slug: ctx.slug,
@@ -540,7 +537,7 @@ export const ChatToolbar = memo(function ChatToolbar({
         toast.error(`Failed to load context: ${error}`)
       }
     },
-    [worktreeId]
+    [activeSessionId]
   )
 
   // Compute counts from arrays
@@ -648,14 +645,6 @@ export const ChatToolbar = memo(function ChatToolbar({
                 R
               </span>
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={onCheckoutPr}>
-              <GitBranch className="h-4 w-4" />
-              Checkout
-              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                K
-              </span>
-            </DropdownMenuItem>
-
             <DropdownMenuSeparator />
 
             {/* Branch section */}
@@ -676,14 +665,6 @@ export const ChatToolbar = memo(function ChatToolbar({
                 F
               </span>
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={onInvestigate}>
-              <Search className="h-4 w-4" />
-              Investigate Context
-              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                I
-              </span>
-            </DropdownMenuItem>
-
             {/* Git stats section - conditional */}
             {(uncommittedAdded > 0 ||
               uncommittedRemoved > 0 ||

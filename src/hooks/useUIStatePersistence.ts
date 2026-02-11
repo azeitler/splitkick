@@ -53,7 +53,7 @@ export function useUIStatePersistence() {
   // Initialize debounced save function
   useEffect(() => {
     debouncedSaveRef.current = debounce((state: UIState) => {
-      logger.debug('Saving UI state (debounced)', { state })
+      logger.debug('Saving UI state (debounced)')
       saveUIState(state)
     }, 500)
 

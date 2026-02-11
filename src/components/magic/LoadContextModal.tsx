@@ -3,6 +3,7 @@ import { getModifierSymbol } from '@/lib/platform'
 import { invoke } from '@/lib/transport'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  Bookmark,
   FolderOpen,
   Loader2,
   Trash2,
@@ -16,6 +17,7 @@ import {
   GitPullRequest,
   Eye,
 } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { isGhAuthError } from '@/services/github'
 import { useGhLogin } from '@/hooks/useGhLogin'
@@ -78,12 +80,13 @@ interface Tab {
   id: TabId
   label: string
   key: string
+  icon: LucideIcon
 }
 
 const TABS: Tab[] = [
-  { id: 'issues', label: 'Issues', key: 'I' },
-  { id: 'prs', label: 'Pull Requests', key: 'P' },
-  { id: 'contexts', label: 'Contexts', key: 'C' },
+  { id: 'contexts', label: 'Contexts', key: '1', icon: Bookmark },
+  { id: 'issues', label: 'Issues', key: '2', icon: CircleDot },
+  { id: 'prs', label: 'PRs', key: '3', icon: GitPullRequest },
 ]
 
 interface LoadContextModalProps {
@@ -114,7 +117,7 @@ interface SessionWithContext {
 export function LoadContextModal({
   open,
   onOpenChange,
-  worktreeId,
+  worktreeId: _worktreeId,
   worktreePath,
   activeSessionId,
   projectName: _projectName,
@@ -158,26 +161,26 @@ export function LoadContextModal({
 
   const searchInputRef = useRef<HTMLInputElement>(null)
 
-  // Issue contexts for this worktree
+  // Issue contexts for this session
   const {
     data: loadedIssueContexts,
     isLoading: isLoadingIssueContexts,
     refetch: refetchIssueContexts,
-  } = useLoadedIssueContexts(worktreeId)
+  } = useLoadedIssueContexts(activeSessionId)
 
-  // PR contexts for this worktree
+  // PR contexts for this session
   const {
     data: loadedPRContexts,
     isLoading: isLoadingPRContexts,
     refetch: refetchPRContexts,
-  } = useLoadedPRContexts(worktreeId)
+  } = useLoadedPRContexts(activeSessionId)
 
-  // Attached saved contexts for this worktree
+  // Attached saved contexts for this session
   const {
     data: attachedSavedContexts,
     isLoading: isLoadingAttachedContexts,
     refetch: refetchAttachedContexts,
-  } = useAttachedSavedContexts(worktreeId)
+  } = useAttachedSavedContexts(activeSessionId)
 
   // GitHub issues query
   const issueState = includeClosed ? 'all' : 'open'
@@ -358,25 +361,25 @@ export function LoadContextModal({
           queryKey: githubQueryKeys.prs(worktreePath, 'all'),
         })
       }
-      if (worktreeId) {
+      if (activeSessionId) {
         queryClient.invalidateQueries({
-          queryKey: githubQueryKeys.loadedContexts(worktreeId),
+          queryKey: githubQueryKeys.loadedContexts(activeSessionId),
         })
         queryClient.invalidateQueries({
-          queryKey: githubQueryKeys.loadedPrContexts(worktreeId),
+          queryKey: githubQueryKeys.loadedPrContexts(activeSessionId),
         })
         queryClient.invalidateQueries({
-          queryKey: githubQueryKeys.attachedContexts(worktreeId),
+          queryKey: githubQueryKeys.attachedContexts(activeSessionId),
         })
       }
-      // Invalidate saved contexts list (not worktree-specific)
+      // Invalidate saved contexts list (not session-specific)
       queryClient.invalidateQueries({ queryKey: ['session-context'] })
     }
     prevOpenRef.current = open
   }, [
     open,
     worktreePath,
-    worktreeId,
+    activeSessionId,
     queryClient,
     loadedIssueContexts?.length,
     loadedPRContexts?.length,
@@ -418,8 +421,8 @@ export function LoadContextModal({
   // Handle loading/refreshing an issue
   const handleLoadIssue = useCallback(
     async (issueNumber: number, isRefresh = false) => {
-      if (!worktreeId || !worktreePath) {
-        toast.error('No active worktree')
+      if (!activeSessionId || !worktreePath) {
+        toast.error('No active session')
         return
       }
 
@@ -432,7 +435,7 @@ export function LoadContextModal({
 
       try {
         const result = await loadIssueContext(
-          worktreeId,
+          activeSessionId,
           issueNumber,
           worktreePath
         )
@@ -454,14 +457,14 @@ export function LoadContextModal({
         })
       }
     },
-    [worktreeId, worktreePath, refetchIssueContexts]
+    [activeSessionId, worktreePath, refetchIssueContexts]
   )
 
   // Handle loading/refreshing a PR
   const handleLoadPR = useCallback(
     async (prNumber: number, isRefresh = false) => {
-      if (!worktreeId || !worktreePath) {
-        toast.error('No active worktree')
+      if (!activeSessionId || !worktreePath) {
+        toast.error('No active session')
         return
       }
 
@@ -473,7 +476,7 @@ export function LoadContextModal({
       )
 
       try {
-        const result = await loadPRContext(worktreeId, prNumber, worktreePath)
+        const result = await loadPRContext(activeSessionId, prNumber, worktreePath)
 
         // Refresh loaded contexts list
         await refetchPRContexts()
@@ -492,18 +495,18 @@ export function LoadContextModal({
         })
       }
     },
-    [worktreeId, worktreePath, refetchPRContexts]
+    [activeSessionId, worktreePath, refetchPRContexts]
   )
 
   // Handle removing a loaded issue
   const handleRemoveIssue = useCallback(
     async (issueNumber: number) => {
-      if (!worktreeId || !worktreePath) return
+      if (!activeSessionId || !worktreePath) return
 
       setRemovingNumbers(prev => new Set(prev).add(issueNumber))
 
       try {
-        await removeIssueContext(worktreeId, issueNumber, worktreePath)
+        await removeIssueContext(activeSessionId, issueNumber, worktreePath)
         await refetchIssueContexts()
         toast.success(`Removed issue #${issueNumber} from context`)
       } catch (error) {
@@ -516,18 +519,18 @@ export function LoadContextModal({
         })
       }
     },
-    [worktreeId, worktreePath, refetchIssueContexts]
+    [activeSessionId, worktreePath, refetchIssueContexts]
   )
 
   // Handle removing a loaded PR
   const handleRemovePR = useCallback(
     async (prNumber: number) => {
-      if (!worktreeId || !worktreePath) return
+      if (!activeSessionId || !worktreePath) return
 
       setRemovingNumbers(prev => new Set(prev).add(prNumber))
 
       try {
-        await removePRContext(worktreeId, prNumber, worktreePath)
+        await removePRContext(activeSessionId, prNumber, worktreePath)
         await refetchPRContexts()
         toast.success(`Removed PR #${prNumber} from context`)
       } catch (error) {
@@ -540,17 +543,17 @@ export function LoadContextModal({
         })
       }
     },
-    [worktreeId, worktreePath, refetchPRContexts]
+    [activeSessionId, worktreePath, refetchPRContexts]
   )
 
   // Handle viewing an issue context
   const handleViewIssue = useCallback(
     async (ctx: LoadedIssueContext) => {
-      if (!worktreeId || !worktreePath) return
+      if (!activeSessionId || !worktreePath) return
 
       try {
         const content = await getIssueContextContent(
-          worktreeId,
+          activeSessionId,
           ctx.number,
           worktreePath
         )
@@ -564,17 +567,17 @@ export function LoadContextModal({
         toast.error(`Failed to load context: ${error}`)
       }
     },
-    [worktreeId, worktreePath]
+    [activeSessionId, worktreePath]
   )
 
   // Handle viewing a PR context
   const handleViewPR = useCallback(
     async (ctx: LoadedPullRequestContext) => {
-      if (!worktreeId || !worktreePath) return
+      if (!activeSessionId || !worktreePath) return
 
       try {
         const content = await getPRContextContent(
-          worktreeId,
+          activeSessionId,
           ctx.number,
           worktreePath
         )
@@ -588,7 +591,7 @@ export function LoadContextModal({
         toast.error(`Failed to load context: ${error}`)
       }
     },
-    [worktreeId, worktreePath]
+    [activeSessionId, worktreePath]
   )
 
   // Handle selecting an issue from the search list
@@ -628,8 +631,8 @@ export function LoadContextModal({
   // Handle attaching a saved context from the "Available Contexts" list
   const handleAttachContext = useCallback(
     async (context: SavedContext) => {
-      if (!worktreeId) {
-        toast.error('No active worktree')
+      if (!activeSessionId) {
+        toast.error('No active session')
         return
       }
 
@@ -639,7 +642,7 @@ export function LoadContextModal({
       )
 
       try {
-        await attachSavedContext(worktreeId, context.path, context.slug)
+        await attachSavedContext(activeSessionId, context.path, context.slug)
 
         // Refresh attached contexts list
         await refetchAttachedContexts()
@@ -659,18 +662,18 @@ export function LoadContextModal({
         })
       }
     },
-    [worktreeId, refetchAttachedContexts]
+    [activeSessionId, refetchAttachedContexts]
   )
 
   // Handle removing an attached saved context
   const handleRemoveAttachedContext = useCallback(
     async (slug: string) => {
-      if (!worktreeId) return
+      if (!activeSessionId) return
 
       setRemovingSlugs(prev => new Set(prev).add(slug))
 
       try {
-        await removeSavedContext(worktreeId, slug)
+        await removeSavedContext(activeSessionId, slug)
         await refetchAttachedContexts()
         toast.success(`Removed context "${slug}"`)
       } catch (error) {
@@ -683,16 +686,16 @@ export function LoadContextModal({
         })
       }
     },
-    [worktreeId, refetchAttachedContexts]
+    [activeSessionId, refetchAttachedContexts]
   )
 
   // Handle viewing an attached saved context
   const handleViewAttachedContext = useCallback(
     async (ctx: AttachedSavedContext) => {
-      if (!worktreeId) return
+      if (!activeSessionId) return
 
       try {
-        const content = await getSavedContextContent(worktreeId, ctx.slug)
+        const content = await getSavedContextContent(activeSessionId, ctx.slug)
         setViewingContext({
           type: 'saved',
           slug: ctx.slug,
@@ -703,7 +706,7 @@ export function LoadContextModal({
         toast.error(`Failed to load context: ${error}`)
       }
     },
-    [worktreeId]
+    [activeSessionId]
   )
 
   const handleStartEdit = useCallback(
@@ -748,8 +751,8 @@ export function LoadContextModal({
         projectName: sessionProjectName,
       } = sessionWithContext
 
-      if (!worktreeId) {
-        toast.error('No active worktree')
+      if (!activeSessionId) {
+        toast.error('No active session')
         return
       }
 
@@ -771,14 +774,14 @@ export function LoadContextModal({
         // Refetch saved contexts so the new one appears immediately
         refetchContexts()
 
-        // Extract slug from filename and attach to current worktree
+        // Extract slug from filename and attach to current session
         const slug = result.filename
           .split('-')
           .slice(2)
           .join('-')
           .replace('.md', '')
 
-        await attachSavedContext(worktreeId, result.path, slug)
+        await attachSavedContext(activeSessionId, result.path, slug)
 
         // Refresh attached contexts list
         await refetchAttachedContexts()
@@ -794,7 +797,7 @@ export function LoadContextModal({
       }
     },
     [
-      worktreeId,
+      activeSessionId,
       refetchContexts,
       refetchAttachedContexts,
       preferences?.magic_prompts?.context_summary,
@@ -809,19 +812,19 @@ export function LoadContextModal({
 
       // Tab shortcuts (Cmd+key, works even when input is focused)
       if (e.metaKey || e.ctrlKey) {
-        if (key === 'i') {
+        if (key === '1') {
+          e.preventDefault()
+          setActiveTab('contexts')
+          return
+        }
+        if (key === '2') {
           e.preventDefault()
           setActiveTab('issues')
           return
         }
-        if (key === 'p') {
+        if (key === '3') {
           e.preventDefault()
           setActiveTab('prs')
-          return
-        }
-        if (key === 'c') {
-          e.preventDefault()
-          setActiveTab('contexts')
           return
         }
       }
@@ -959,16 +962,20 @@ export function LoadContextModal({
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
+              tabIndex={-1}
               className={cn(
-                'flex-1 px-4 py-2 text-sm font-medium transition-colors border-b-2',
+                'flex-1 px-4 py-2 text-sm font-medium transition-colors',
+                'flex items-center justify-center gap-1.5',
                 'hover:bg-accent focus:outline-none',
+                'border-b-2',
                 activeTab === tab.id
                   ? 'border-primary text-foreground'
                   : 'border-transparent text-muted-foreground'
               )}
             >
-              {tab.label}
-              <kbd className="ml-2 text-xs text-muted-foreground bg-muted px-1 py-0.5 rounded">
+              <tab.icon className="h-4 w-4" />
+              <span className="text-xs sm:text-sm">{tab.label}</span>
+              <kbd className="hidden sm:inline ml-0.5 text-xs text-muted-foreground bg-muted px-1 py-0.5 rounded">
                 {getModifierSymbol()}+{tab.key}
               </kbd>
             </button>

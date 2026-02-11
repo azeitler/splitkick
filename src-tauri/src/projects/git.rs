@@ -822,6 +822,38 @@ pub fn create_worktree_from_existing_branch(
 /// - Setting up proper tracking
 /// - Checking out the actual PR branch
 ///
+/// Fetch a PR ref into a local branch name, bypassing gh cli.
+/// Used when the PR's head branch name collides with a locally checked-out branch.
+pub fn fetch_pr_to_branch(repo_path: &str, pr_number: u32, local_branch: &str) -> Result<(), String> {
+    let refspec = format!("pull/{pr_number}/head:{local_branch}");
+    let output = silent_command("git")
+        .args(["fetch", "origin", &refspec])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to fetch PR #{pr_number}: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to fetch PR #{pr_number} into {local_branch}: {stderr}"));
+    }
+    Ok(())
+}
+
+/// Checkout an existing branch in a worktree
+pub fn checkout_branch(worktree_path: &str, branch: &str) -> Result<(), String> {
+    let output = silent_command("git")
+        .args(["checkout", branch])
+        .current_dir(worktree_path)
+        .output()
+        .map_err(|e| format!("Failed to checkout branch {branch}: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to checkout branch {branch}: {stderr}"));
+    }
+    Ok(())
+}
+
 /// # Arguments
 /// * `worktree_path` - Path to the worktree where to checkout the PR
 /// * `pr_number` - The PR number to checkout

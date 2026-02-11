@@ -42,15 +42,10 @@ import {
   projectsQueryKeys,
 } from '@/services/projects'
 import {
-  githubQueryKeys,
   useLoadedIssueContexts,
   useLoadedPRContexts,
   useAttachedSavedContexts,
 } from '@/services/github'
-import type {
-  LoadedIssueContext,
-  LoadedPullRequestContext,
-} from '@/types/github'
 import {
   useChatStore,
   DEFAULT_MODEL,
@@ -59,8 +54,6 @@ import {
 } from '@/store/chat-store'
 import { usePreferences, useSavePreferences } from '@/services/preferences'
 import {
-  DEFAULT_INVESTIGATE_ISSUE_PROMPT,
-  DEFAULT_INVESTIGATE_PR_PROMPT,
   DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT,
   DEFAULT_PARALLEL_EXECUTION_PROMPT,
 } from '@/types/preferences'
@@ -382,12 +375,12 @@ export function ChatWindow({
 
   // Loaded issue contexts for indicator
   const { data: loadedIssueContexts } = useLoadedIssueContexts(
-    activeWorktreeId ?? null
+    activeSessionId ?? null
   )
 
   // Loaded PR contexts for indicator and investigate PR functionality
   const { data: loadedPRContexts } = useLoadedPRContexts(
-    activeWorktreeId ?? null
+    activeSessionId ?? null
   )
 
   // Emit readiness event for auto-investigate coordination
@@ -432,7 +425,7 @@ export function ChatWindow({
 
   // Attached saved contexts for indicator
   const { data: attachedSavedContexts } = useAttachedSavedContexts(
-    activeWorktreeId ?? null
+    activeSessionId ?? null
   )
   // Diff stats with cached fallback
   const uncommittedAdded =
@@ -696,7 +689,6 @@ export function ChatWindow({
 
   // Ref for approve button (passed to VirtualizedMessageList)
   const approveButtonRef = useRef<HTMLButtonElement>(null)
-  const pendingInvestigateRef = useRef(false)
 
   // Terminal panel ref for imperative collapse/expand
   const terminalPanelRef = useRef<ImperativePanelHandle>(null)
@@ -1386,6 +1378,7 @@ export function ChatWindow({
     setShowMergeDialog,
   } = useGitOperations({
     activeWorktreeId,
+    activeSessionId,
     activeWorktreePath,
     worktree,
     project,
@@ -1538,179 +1531,13 @@ export function ChatWindow({
     useUIStore.getState().setMagicModalOpen(true)
   }, [])
 
-  // Handle investigate context - sends prompt to analyze loaded issue(s) and/or PR(s)
-  // If nothing is loaded, opens the Load Context modal instead
-  const handleInvestigate = useCallback(async () => {
-    const sessionId = activeSessionIdRef.current
-    const worktreeId = activeWorktreeIdRef.current
-    const worktreePath = activeWorktreePathRef.current
-    if (!sessionId || !worktreeId || !worktreePath) {
-      toast.error('No active session')
-      return
-    }
-
-    // Fetch both loaded issues and PRs in parallel
-    const [loadedIssues, loadedPRs] = await Promise.all([
-      queryClient.fetchQuery({
-        queryKey: githubQueryKeys.loadedContexts(worktreeId),
-        queryFn: () =>
-          invoke<LoadedIssueContext[]>('list_loaded_issue_contexts', {
-            worktreeId,
-          }),
-        staleTime: 1000 * 60,
-      }),
-      queryClient.fetchQuery({
-        queryKey: githubQueryKeys.loadedPrContexts(worktreeId),
-        queryFn: () =>
-          invoke<LoadedPullRequestContext[]>('list_loaded_pr_contexts', {
-            worktreeId,
-          }),
-        staleTime: 1000 * 60,
-      }),
-    ])
-
-    const hasIssues = loadedIssues && loadedIssues.length > 0
-    const hasPRs = loadedPRs && loadedPRs.length > 0
-
-    // If nothing loaded, open the Load Context modal and re-trigger on close
-    if (!hasIssues && !hasPRs) {
-      pendingInvestigateRef.current = true
-      setLoadContextModalOpen(true)
-      return
-    }
-
-    // Build combined prompt from loaded issues and/or PRs
-    const promptParts: string[] = []
-
-    if (hasIssues) {
-      const issueRefs = loadedIssues.map(i => `#${i.number}`).join(', ')
-      const issueWord = loadedIssues.length === 1 ? 'issue' : 'issues'
-      const customPrompt = preferences?.magic_prompts?.investigate_issue
-      const issueTemplate =
-        customPrompt && customPrompt.trim()
-          ? customPrompt
-          : DEFAULT_INVESTIGATE_ISSUE_PROMPT
-
-      promptParts.push(
-        issueTemplate
-          .replace(/\{issueRefs\}/g, issueRefs)
-          .replace(/\{issueWord\}/g, issueWord)
-      )
-    }
-
-    if (hasPRs) {
-      const prRefs = loadedPRs.map(pr => `#${pr.number}`).join(', ')
-      const prWord = loadedPRs.length === 1 ? 'pull request' : 'pull requests'
-      const customPrompt = preferences?.magic_prompts?.investigate_pr
-      const prTemplate =
-        customPrompt && customPrompt.trim()
-          ? customPrompt
-          : DEFAULT_INVESTIGATE_PR_PROMPT
-
-      promptParts.push(
-        prTemplate.replace(/\{prRefs\}/g, prRefs).replace(/\{prWord\}/g, prWord)
-      )
-    }
-
-    const prompt = promptParts.join('\n\n---\n\n')
-
-    // Send message
-    const investigateModel =
-      preferences?.magic_prompt_models?.investigate_model ??
-      selectedModelRef.current
-
-    const {
-      addSendingSession,
-      setLastSentMessage,
-      setError,
-      setSelectedModel,
-      setExecutingMode,
-    } = useChatStore.getState()
-
-    setLastSentMessage(sessionId, prompt)
-    setError(sessionId, null)
-    addSendingSession(sessionId)
-    setSelectedModel(sessionId, investigateModel)
-    setExecutingMode(sessionId, executionModeRef.current)
-
-    sendMessage.mutate(
-      {
-        sessionId,
-        worktreeId,
-        worktreePath,
-        message: prompt,
-        model: investigateModel,
-        executionMode: executionModeRef.current,
-        thinkingLevel: selectedThinkingLevelRef.current,
-        effortLevel: useAdaptiveThinkingRef.current
-          ? selectedEffortLevelRef.current
-          : undefined,
-        mcpConfig: buildMcpConfigJson(
-          mcpServersDataRef.current,
-          enabledMcpServersRef.current
-        ),
-        parallelExecutionPrompt: preferences?.parallel_execution_prompt_enabled
-          ? (preferences.magic_prompts?.parallel_execution ?? DEFAULT_PARALLEL_EXECUTION_PROMPT)
-          : undefined,
-        chromeEnabled: preferences?.chrome_enabled ?? false,
-        aiLanguage: preferences?.ai_language,
-      },
-      { onSettled: () => inputRef.current?.focus() }
-    )
-  }, [
-    queryClient,
-    sendMessage,
-    setLoadContextModalOpen,
-    preferences?.magic_prompts?.investigate_issue,
-    preferences?.magic_prompts?.investigate_pr,
-    preferences?.magic_prompt_models?.investigate_model,
-    preferences?.parallel_execution_prompt_enabled,
-    preferences?.chrome_enabled,
-    preferences?.ai_language,
-  ])
-
-  // Wraps modal open/close to auto-trigger investigation after user loads context
+  // Wraps modal open/close for load context
   const handleLoadContextModalChange = useCallback(
-    async (open: boolean) => {
+    (open: boolean) => {
       setLoadContextModalOpen(open)
-      if (!open && pendingInvestigateRef.current) {
-        pendingInvestigateRef.current = false
-        // Only re-trigger investigate if the user actually loaded contexts
-        const worktreeId = activeWorktreeIdRef.current
-        if (!worktreeId) return
-        const [loadedIssues, loadedPRs] = await Promise.all([
-          queryClient.fetchQuery({
-            queryKey: githubQueryKeys.loadedContexts(worktreeId),
-            queryFn: () =>
-              invoke<LoadedIssueContext[]>('list_loaded_issue_contexts', {
-                worktreeId,
-              }),
-            staleTime: 1000 * 60,
-          }),
-          queryClient.fetchQuery({
-            queryKey: githubQueryKeys.loadedPrContexts(worktreeId),
-            queryFn: () =>
-              invoke<LoadedPullRequestContext[]>('list_loaded_pr_contexts', {
-                worktreeId,
-              }),
-            staleTime: 1000 * 60,
-          }),
-        ])
-        if (
-          (loadedIssues && loadedIssues.length > 0) ||
-          (loadedPRs && loadedPRs.length > 0)
-        ) {
-          handleInvestigate()
-        }
-      }
     },
-    [setLoadContextModalOpen, handleInvestigate, queryClient]
+    [setLoadContextModalOpen]
   )
-
-  // Handle checkout PR - opens modal to select and checkout a PR to a new worktree
-  const handleCheckoutPR = useCallback(() => {
-    useUIStore.getState().setCheckoutPRModalOpen(true)
-  }, [])
 
   // Handle investigate workflow run - sends investigation prompt for a failed GitHub Actions run
   const handleInvestigateWorkflowRun = useCallback(
@@ -1967,8 +1794,6 @@ export function ChatWindow({
     handleReview,
     handleMerge,
     handleResolveConflicts,
-    handleInvestigate,
-    handleCheckoutPR,
     handleInvestigateWorkflowRun,
     isModal,
     isViewingCanvasTab,
@@ -2766,6 +2591,7 @@ export function ChatWindow({
                         magicModalShortcut={magicModalShortcut}
                         activeWorktreePath={activeWorktreePath}
                         worktreeId={activeWorktreeId ?? null}
+                        activeSessionId={activeSessionId}
                         projectId={worktree?.project_id}
                         loadedIssueContexts={loadedIssueContexts ?? []}
                         loadedPRContexts={loadedPRContexts ?? []}
@@ -2777,11 +2603,9 @@ export function ChatWindow({
                         onCommitAndPush={handleCommitAndPush}
                         onOpenPr={handleOpenPr}
                         onReview={handleReview}
-                        onCheckoutPr={handleCheckoutPR}
                         onMerge={handleMerge}
                         onResolvePrConflicts={handleResolvePrConflicts}
                         onResolveConflicts={handleResolveConflicts}
-                        onInvestigate={handleInvestigate}
                         hasOpenPr={Boolean(worktree?.pr_url)}
                         onSetDiffRequest={setDiffRequest}
                         onModelChange={handleToolbarModelChange}

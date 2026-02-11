@@ -31,6 +31,7 @@ import {
 
 interface UseGitOperationsParams {
   activeWorktreeId: string | null | undefined
+  activeSessionId: string | null | undefined
   activeWorktreePath: string | null | undefined
   worktree: Worktree | null | undefined
   project: Project | null | undefined
@@ -74,6 +75,7 @@ interface UseGitOperationsReturn {
  */
 export function useGitOperations({
   activeWorktreeId,
+  activeSessionId,
   activeWorktreePath,
   worktree,
   project,
@@ -223,6 +225,7 @@ export function useGitOperations({
         'create_pr_with_ai_content',
         {
           worktreePath: activeWorktreePath,
+          sessionId: activeSessionId,
           customPrompt: preferences?.magic_prompts?.pr_content,
           model: preferences?.magic_prompt_models?.pr_content_model,
         }
@@ -253,6 +256,7 @@ export function useGitOperations({
     }
   }, [
     activeWorktreeId,
+    activeSessionId,
     activeWorktreePath,
     worktree,
     queryClient,

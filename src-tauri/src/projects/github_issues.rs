@@ -362,11 +362,12 @@ pub struct LoadedIssueContext {
 /// Reference tracking for a single context file (issue or PR)
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ContextRef {
-    pub worktrees: Vec<String>,
+    #[serde(alias = "worktrees")]
+    pub sessions: Vec<String>,
     pub orphaned_at: Option<u64>,
 }
 
-/// Tracks which worktrees reference which shared context files
+/// Tracks which sessions reference which shared context files
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ContextReferences {
     pub issues: std::collections::HashMap<String, ContextRef>,
@@ -413,20 +414,20 @@ pub fn save_context_references(
     std::fs::write(&path, content).map_err(|e| format!("Failed to write references.json: {e}"))
 }
 
-/// Add a worktree reference to an issue context
+/// Add a session reference to an issue context
 /// Key format: "{owner}-{repo}-{number}"
 pub fn add_issue_reference(
     app: &tauri::AppHandle,
     repo_key: &str,
     issue_number: u32,
-    worktree_id: &str,
+    session_id: &str,
 ) -> Result<(), String> {
     let mut refs = load_context_references(app)?;
     let key = format!("{repo_key}-{issue_number}");
 
     let entry = refs.issues.entry(key).or_default();
-    if !entry.worktrees.contains(&worktree_id.to_string()) {
-        entry.worktrees.push(worktree_id.to_string());
+    if !entry.sessions.contains(&session_id.to_string()) {
+        entry.sessions.push(session_id.to_string());
     }
     // Clear orphaned status when a reference is added
     entry.orphaned_at = None;
@@ -434,20 +435,20 @@ pub fn add_issue_reference(
     save_context_references(app, &refs)
 }
 
-/// Add a worktree reference to a PR context
+/// Add a session reference to a PR context
 /// Key format: "{owner}-{repo}-{number}"
 pub fn add_pr_reference(
     app: &tauri::AppHandle,
     repo_key: &str,
     pr_number: u32,
-    worktree_id: &str,
+    session_id: &str,
 ) -> Result<(), String> {
     let mut refs = load_context_references(app)?;
     let key = format!("{repo_key}-{pr_number}");
 
     let entry = refs.prs.entry(key).or_default();
-    if !entry.worktrees.contains(&worktree_id.to_string()) {
-        entry.worktrees.push(worktree_id.to_string());
+    if !entry.sessions.contains(&session_id.to_string()) {
+        entry.sessions.push(session_id.to_string());
     }
     // Clear orphaned status when a reference is added
     entry.orphaned_at = None;
@@ -455,20 +456,20 @@ pub fn add_pr_reference(
     save_context_references(app, &refs)
 }
 
-/// Remove a worktree reference from an issue context
+/// Remove a session reference from an issue context
 /// Returns true if the context is now orphaned (no more references)
 pub fn remove_issue_reference(
     app: &tauri::AppHandle,
     repo_key: &str,
     issue_number: u32,
-    worktree_id: &str,
+    session_id: &str,
 ) -> Result<bool, String> {
     let mut refs = load_context_references(app)?;
     let key = format!("{repo_key}-{issue_number}");
 
     let orphaned = if let Some(entry) = refs.issues.get_mut(&key) {
-        entry.worktrees.retain(|w| w != worktree_id);
-        if entry.worktrees.is_empty() && entry.orphaned_at.is_none() {
+        entry.sessions.retain(|s| s != session_id);
+        if entry.sessions.is_empty() && entry.orphaned_at.is_none() {
             entry.orphaned_at = Some(
                 SystemTime::now()
                     .duration_since(UNIX_EPOCH)
@@ -487,20 +488,20 @@ pub fn remove_issue_reference(
     Ok(orphaned)
 }
 
-/// Remove a worktree reference from a PR context
+/// Remove a session reference from a PR context
 /// Returns true if the context is now orphaned (no more references)
 pub fn remove_pr_reference(
     app: &tauri::AppHandle,
     repo_key: &str,
     pr_number: u32,
-    worktree_id: &str,
+    session_id: &str,
 ) -> Result<bool, String> {
     let mut refs = load_context_references(app)?;
     let key = format!("{repo_key}-{pr_number}");
 
     let orphaned = if let Some(entry) = refs.prs.get_mut(&key) {
-        entry.worktrees.retain(|w| w != worktree_id);
-        if entry.worktrees.is_empty() && entry.orphaned_at.is_none() {
+        entry.sessions.retain(|s| s != session_id);
+        if entry.sessions.is_empty() && entry.orphaned_at.is_none() {
             entry.orphaned_at = Some(
                 SystemTime::now()
                     .duration_since(UNIX_EPOCH)
@@ -519,32 +520,32 @@ pub fn remove_pr_reference(
     Ok(orphaned)
 }
 
-/// Get all issue keys referenced by a worktree
+/// Get all issue keys referenced by a session
 /// Returns keys in format "{owner}-{repo}-{number}"
-pub fn get_worktree_issue_refs(
+pub fn get_session_issue_refs(
     app: &tauri::AppHandle,
-    worktree_id: &str,
+    session_id: &str,
 ) -> Result<Vec<String>, String> {
     let refs = load_context_references(app)?;
     Ok(refs
         .issues
         .iter()
-        .filter(|(_, entry)| entry.worktrees.contains(&worktree_id.to_string()))
+        .filter(|(_, entry)| entry.sessions.contains(&session_id.to_string()))
         .map(|(key, _)| key.clone())
         .collect())
 }
 
-/// Get all PR keys referenced by a worktree
+/// Get all PR keys referenced by a session
 /// Returns keys in format "{owner}-{repo}-{number}"
-pub fn get_worktree_pr_refs(
+pub fn get_session_pr_refs(
     app: &tauri::AppHandle,
-    worktree_id: &str,
+    session_id: &str,
 ) -> Result<Vec<String>, String> {
     let refs = load_context_references(app)?;
     Ok(refs
         .prs
         .iter()
-        .filter(|(_, entry)| entry.worktrees.contains(&worktree_id.to_string()))
+        .filter(|(_, entry)| entry.sessions.contains(&session_id.to_string()))
         .map(|(key, _)| key.clone())
         .collect())
 }
@@ -554,14 +555,14 @@ fn extract_number_from_ref_key(key: &str) -> Option<u32> {
     key.rsplit('-').next()?.parse().ok()
 }
 
-/// Get all issue and PR numbers referenced by a worktree
+/// Get all issue and PR numbers referenced by a session
 /// Returns (issue_numbers, pr_numbers)
-pub fn get_worktree_context_numbers(
+pub fn get_session_context_numbers(
     app: &AppHandle,
-    worktree_id: &str,
+    session_id: &str,
 ) -> Result<(Vec<u32>, Vec<u32>), String> {
-    let issue_keys = get_worktree_issue_refs(app, worktree_id)?;
-    let pr_keys = get_worktree_pr_refs(app, worktree_id)?;
+    let issue_keys = get_session_issue_refs(app, session_id)?;
+    let pr_keys = get_session_pr_refs(app, session_id)?;
 
     let issue_nums: Vec<u32> = issue_keys
         .iter()
@@ -575,19 +576,19 @@ pub fn get_worktree_context_numbers(
     Ok((issue_nums, pr_nums))
 }
 
-/// Get all loaded context markdown content for a worktree
+/// Get all loaded context markdown content for a session
 /// Returns concatenated markdown of all issue and PR context files, or empty string if none
-pub fn get_worktree_context_content(
+pub fn get_session_context_content(
     app: &AppHandle,
-    worktree_id: &str,
+    session_id: &str,
     project_path: &str,
 ) -> Result<String, String> {
     let repo_id = get_repo_identifier(project_path)?;
     let repo_key = repo_id.to_key();
     let contexts_dir = get_github_contexts_dir(app)?;
 
-    let issue_keys = get_worktree_issue_refs(app, worktree_id)?;
-    let pr_keys = get_worktree_pr_refs(app, worktree_id)?;
+    let issue_keys = get_session_issue_refs(app, session_id)?;
+    let pr_keys = get_session_pr_refs(app, session_id)?;
 
     if issue_keys.is_empty() && pr_keys.is_empty() {
         return Ok(String::new());
@@ -620,11 +621,11 @@ pub fn get_worktree_context_content(
     Ok(parts.join("\n\n"))
 }
 
-/// Remove all references for a worktree
+/// Remove all references for a session
 /// Returns (orphaned_issue_keys, orphaned_pr_keys)
-pub fn remove_all_worktree_references(
+pub fn remove_all_session_references(
     app: &tauri::AppHandle,
-    worktree_id: &str,
+    session_id: &str,
 ) -> Result<(Vec<String>, Vec<String>), String> {
     let mut refs = load_context_references(app)?;
     let now = SystemTime::now()
@@ -636,16 +637,16 @@ pub fn remove_all_worktree_references(
     let mut orphaned_prs = Vec::new();
 
     for (key, entry) in refs.issues.iter_mut() {
-        entry.worktrees.retain(|w| w != worktree_id);
-        if entry.worktrees.is_empty() && entry.orphaned_at.is_none() {
+        entry.sessions.retain(|s| s != session_id);
+        if entry.sessions.is_empty() && entry.orphaned_at.is_none() {
             entry.orphaned_at = Some(now);
             orphaned_issues.push(key.clone());
         }
     }
 
     for (key, entry) in refs.prs.iter_mut() {
-        entry.worktrees.retain(|w| w != worktree_id);
-        if entry.worktrees.is_empty() && entry.orphaned_at.is_none() {
+        entry.sessions.retain(|s| s != session_id);
+        if entry.sessions.is_empty() && entry.orphaned_at.is_none() {
             entry.orphaned_at = Some(now);
             orphaned_prs.push(key.clone());
         }
@@ -755,18 +756,18 @@ pub fn cleanup_orphaned_contexts(
     Ok(deleted_count)
 }
 
-/// Load/refresh issue context for a worktree by fetching data from GitHub
+/// Load/refresh issue context for a session by fetching data from GitHub
 ///
 /// Context is stored in shared location: `git-context/{repo_key}-issue-{number}.md`
-/// Multiple worktrees can reference the same context file.
+/// Multiple sessions can reference the same context file.
 #[tauri::command]
 pub async fn load_issue_context(
     app: tauri::AppHandle,
-    worktree_id: String,
+    session_id: String,
     issue_number: u32,
     project_path: String,
 ) -> Result<LoadedIssueContext, String> {
-    log::trace!("Loading issue #{issue_number} context for worktree {worktree_id}");
+    log::trace!("Loading issue #{issue_number} context for session {session_id}");
 
     // Get repo identifier for shared storage
     let repo_id = get_repo_identifier(&project_path)?;
@@ -796,7 +797,7 @@ pub async fn load_issue_context(
         .map_err(|e| format!("Failed to write issue context file: {e}"))?;
 
     // Add reference tracking
-    add_issue_reference(&app, &repo_key, issue_number, &worktree_id)?;
+    add_issue_reference(&app, &repo_key, issue_number, &session_id)?;
 
     log::trace!(
         "Issue context loaded successfully for issue #{} ({} comments)",
@@ -813,16 +814,16 @@ pub async fn load_issue_context(
     })
 }
 
-/// List all loaded issue contexts for a worktree
+/// List all loaded issue contexts for a session
 #[tauri::command]
 pub async fn list_loaded_issue_contexts(
     app: tauri::AppHandle,
-    worktree_id: String,
+    session_id: String,
 ) -> Result<Vec<LoadedIssueContext>, String> {
-    log::trace!("Listing loaded issue contexts for worktree {worktree_id}");
+    log::trace!("Listing loaded issue contexts for session {session_id}");
 
-    // Get issue refs for this worktree from reference tracking
-    let issue_keys = get_worktree_issue_refs(&app, &worktree_id)?;
+    // Get issue refs for this session from reference tracking
+    let issue_keys = get_session_issue_refs(&app, &session_id)?;
 
     if issue_keys.is_empty() {
         return Ok(vec![]);
@@ -870,21 +871,21 @@ pub async fn list_loaded_issue_contexts(
     Ok(contexts)
 }
 
-/// Delete all context references for a worktree
+/// Delete all context references for a session
 ///
-/// Called during worktree deletion. Uses reference tracking - marks contexts as orphaned
+/// Called during session deletion. Uses reference tracking - marks contexts as orphaned
 /// but doesn't immediately delete shared files (they'll be cleaned up later by cleanup_orphaned_contexts).
-pub fn cleanup_issue_contexts_for_worktree(
+pub fn cleanup_issue_contexts_for_session(
     app: &tauri::AppHandle,
-    worktree_id: &str,
+    session_id: &str,
 ) -> Result<(), String> {
-    log::trace!("Cleaning up contexts for worktree {worktree_id}");
+    log::trace!("Cleaning up contexts for session {session_id}");
 
-    // Remove all references for this worktree (handles both issues and PRs)
-    let (orphaned_issues, orphaned_prs) = remove_all_worktree_references(app, worktree_id)?;
+    // Remove all references for this session (handles both issues and PRs)
+    let (orphaned_issues, orphaned_prs) = remove_all_session_references(app, session_id)?;
 
     log::trace!(
-        "Marked {} issues and {} PRs as orphaned for worktree {worktree_id}",
+        "Marked {} issues and {} PRs as orphaned for session {session_id}",
         orphaned_issues.len(),
         orphaned_prs.len()
     );
@@ -892,22 +893,22 @@ pub fn cleanup_issue_contexts_for_worktree(
     Ok(())
 }
 
-/// Remove a loaded issue context for a worktree
+/// Remove a loaded issue context for a session
 #[tauri::command]
 pub async fn remove_issue_context(
     app: tauri::AppHandle,
-    worktree_id: String,
+    session_id: String,
     issue_number: u32,
     project_path: String,
 ) -> Result<(), String> {
-    log::trace!("Removing issue #{issue_number} context for worktree {worktree_id}");
+    log::trace!("Removing issue #{issue_number} context for session {session_id}");
 
     // Get repo identifier
     let repo_id = get_repo_identifier(&project_path)?;
     let repo_key = repo_id.to_key();
 
     // Remove reference
-    let is_orphaned = remove_issue_reference(&app, &repo_key, issue_number, &worktree_id)?;
+    let is_orphaned = remove_issue_reference(&app, &repo_key, issue_number, &session_id)?;
 
     // If orphaned, delete the shared file immediately
     if is_orphaned {
@@ -1275,18 +1276,18 @@ pub fn get_pr_diff(
     }
 }
 
-/// Load/refresh PR context for a worktree by fetching data from GitHub
+/// Load/refresh PR context for a session by fetching data from GitHub
 ///
 /// Context is stored in shared location: `git-context/{repo_key}-pr-{number}.md`
-/// Multiple worktrees can reference the same context file.
+/// Multiple sessions can reference the same context file.
 #[tauri::command]
 pub async fn load_pr_context(
     app: tauri::AppHandle,
-    worktree_id: String,
+    session_id: String,
     pr_number: u32,
     project_path: String,
 ) -> Result<LoadedPullRequestContext, String> {
-    log::trace!("Loading PR #{pr_number} context for worktree {worktree_id}");
+    log::trace!("Loading PR #{pr_number} context for session {session_id}");
 
     // Get repo identifier for shared storage
     let repo_id = get_repo_identifier(&project_path)?;
@@ -1325,7 +1326,7 @@ pub async fn load_pr_context(
         .map_err(|e| format!("Failed to write PR context file: {e}"))?;
 
     // Add reference tracking
-    add_pr_reference(&app, &repo_key, pr_number, &worktree_id)?;
+    add_pr_reference(&app, &repo_key, pr_number, &session_id)?;
 
     log::debug!(
         "PR context loaded successfully for PR #{} ({} comments, {} reviews, diff: {} bytes)",
@@ -1345,16 +1346,16 @@ pub async fn load_pr_context(
     })
 }
 
-/// List all loaded PR contexts for a worktree
+/// List all loaded PR contexts for a session
 #[tauri::command]
 pub async fn list_loaded_pr_contexts(
     app: tauri::AppHandle,
-    worktree_id: String,
+    session_id: String,
 ) -> Result<Vec<LoadedPullRequestContext>, String> {
-    log::trace!("Listing loaded PR contexts for worktree {worktree_id}");
+    log::trace!("Listing loaded PR contexts for session {session_id}");
 
-    // Get PR refs for this worktree from reference tracking
-    let pr_keys = get_worktree_pr_refs(&app, &worktree_id)?;
+    // Get PR refs for this session from reference tracking
+    let pr_keys = get_session_pr_refs(&app, &session_id)?;
 
     if pr_keys.is_empty() {
         return Ok(vec![]);
@@ -1418,35 +1419,35 @@ pub async fn list_loaded_pr_contexts(
     Ok(contexts)
 }
 
-/// Delete all PR context files for a worktree
+/// Delete all PR context files for a session
 ///
-/// This is a no-op since cleanup is handled by cleanup_issue_contexts_for_worktree
-/// which calls remove_all_worktree_references for both issues and PRs.
-pub fn cleanup_pr_contexts_for_worktree(
+/// This is a no-op since cleanup is handled by cleanup_issue_contexts_for_session
+/// which calls remove_all_session_references for both issues and PRs.
+pub fn cleanup_pr_contexts_for_session(
     _app: &tauri::AppHandle,
-    _worktree_id: &str,
+    _session_id: &str,
 ) -> Result<(), String> {
-    // Cleanup is handled by cleanup_issue_contexts_for_worktree
-    // which calls remove_all_worktree_references for both issues and PRs
+    // Cleanup is handled by cleanup_issue_contexts_for_session
+    // which calls remove_all_session_references for both issues and PRs
     Ok(())
 }
 
-/// Remove a loaded PR context for a worktree
+/// Remove a loaded PR context for a session
 #[tauri::command]
 pub async fn remove_pr_context(
     app: tauri::AppHandle,
-    worktree_id: String,
+    session_id: String,
     pr_number: u32,
     project_path: String,
 ) -> Result<(), String> {
-    log::trace!("Removing PR #{pr_number} context for worktree {worktree_id}");
+    log::trace!("Removing PR #{pr_number} context for session {session_id}");
 
     // Get repo identifier
     let repo_id = get_repo_identifier(&project_path)?;
     let repo_key = repo_id.to_key();
 
     // Remove reference
-    let is_orphaned = remove_pr_reference(&app, &repo_key, pr_number, &worktree_id)?;
+    let is_orphaned = remove_pr_reference(&app, &repo_key, pr_number, &session_id)?;
 
     // If orphaned, delete the shared file immediately
     if is_orphaned {
@@ -1468,7 +1469,7 @@ pub async fn remove_pr_context(
 #[tauri::command]
 pub async fn get_issue_context_content(
     app: tauri::AppHandle,
-    worktree_id: String,
+    session_id: String,
     issue_number: u32,
     project_path: String,
 ) -> Result<String, String> {
@@ -1476,12 +1477,12 @@ pub async fn get_issue_context_content(
     let repo_id = get_repo_identifier(&project_path)?;
     let repo_key = repo_id.to_key();
 
-    // Verify this worktree has a reference to this context
-    let refs = get_worktree_issue_refs(&app, &worktree_id)?;
+    // Verify this session has a reference to this context
+    let refs = get_session_issue_refs(&app, &session_id)?;
     let expected_key = format!("{repo_key}-{issue_number}");
     if !refs.contains(&expected_key) {
         return Err(format!(
-            "Worktree does not have issue #{issue_number} loaded"
+            "Session does not have issue #{issue_number} loaded"
         ));
     }
 
@@ -1502,7 +1503,7 @@ pub async fn get_issue_context_content(
 #[tauri::command]
 pub async fn get_pr_context_content(
     app: tauri::AppHandle,
-    worktree_id: String,
+    session_id: String,
     pr_number: u32,
     project_path: String,
 ) -> Result<String, String> {
@@ -1510,11 +1511,11 @@ pub async fn get_pr_context_content(
     let repo_id = get_repo_identifier(&project_path)?;
     let repo_key = repo_id.to_key();
 
-    // Verify this worktree has a reference to this context
-    let refs = get_worktree_pr_refs(&app, &worktree_id)?;
+    // Verify this session has a reference to this context
+    let refs = get_session_pr_refs(&app, &session_id)?;
     let expected_key = format!("{repo_key}-{pr_number}");
     if !refs.contains(&expected_key) {
-        return Err(format!("Worktree does not have PR #{pr_number} loaded"));
+        return Err(format!("Session does not have PR #{pr_number} loaded"));
     }
 
     let contexts_dir = get_github_contexts_dir(&app)?;

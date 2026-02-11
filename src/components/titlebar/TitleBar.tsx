@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/tooltip'
 import { useUIStore } from '@/store/ui-store'
 import { useCommandContext } from '@/lib/commands'
-import { Heart, PanelLeft, PanelLeftClose, Plus, Settings } from 'lucide-react'
+import { ArrowUpCircle, Heart, PanelLeft, PanelLeftClose, Plus, Settings } from 'lucide-react'
 import { usePreferences } from '@/services/preferences'
 import { formatShortcutDisplay, DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 import { isNativeApp } from '@/lib/environment'
@@ -160,13 +160,35 @@ export function TitleBar({
       {/* Right side - Version + Windows/Linux window controls */}
       <div className="flex items-center">
         {appVersion && (
-          <span className="pr-2 text-[0.625rem] text-foreground/40">
+          <span className="flex items-center gap-1 pr-2 text-[0.625rem] text-foreground/40">
             v{appVersion}
+            <UpdateIndicator />
           </span>
         )}
         {native && !isMacOS && <WindowsWindowControls />}
       </div>
     </div>
+  )
+}
+
+function UpdateIndicator() {
+  const pendingVersion = useUIStore(state => state.pendingUpdateVersion)
+  if (!pendingVersion) return null
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          onClick={() => window.dispatchEvent(new Event('install-pending-update'))}
+          className="ml-0.5 text-primary hover:text-primary/80 transition-colors"
+        >
+          <ArrowUpCircle className="size-3.5" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">
+        Update to v{pendingVersion}
+      </TooltipContent>
+    </Tooltip>
   )
 }
 

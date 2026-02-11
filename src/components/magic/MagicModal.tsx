@@ -2,7 +2,6 @@ import { useCallback, useState, useRef, useEffect, useMemo } from 'react'
 import {
   ArrowDownToLine,
   ArrowUpToLine,
-  GitBranch,
   GitCommitHorizontal,
   GitMerge,
   GitPullRequest,
@@ -11,7 +10,6 @@ import {
   Wand2,
   BookmarkPlus,
   FolderOpen,
-  Search,
 } from 'lucide-react'
 import {
   Dialog,
@@ -48,8 +46,6 @@ type MagicOption =
   | 'review'
   | 'merge'
   | 'resolve-conflicts'
-  | 'investigate'
-  | 'checkout-pr'
   | 'release-notes'
 
 /** Options that work on canvas without an open session (git-only operations) */
@@ -59,6 +55,14 @@ const CANVAS_ALLOWED_OPTIONS = new Set<MagicOption>([
   'pull',
   'push',
   'release-notes',
+  'merge',
+  'resolve-conflicts',
+])
+
+/** Canvas options that need ChatWindow — switch off canvas first, then dispatch event */
+const CANVAS_SESSION_TRANSITION_OPTIONS = new Set<MagicOption>([
+  'merge',
+  'resolve-conflicts',
 ])
 
 interface MagicOptionItem {
@@ -130,7 +134,6 @@ function buildMagicColumns(hasOpenPr: boolean): MagicColumns {
           key: 'O',
         },
         { id: 'review', label: 'Review', icon: Eye, key: 'R' },
-        { id: 'checkout-pr', label: 'Checkout', icon: GitBranch, key: 'K' },
       ],
     },
     {
@@ -154,12 +157,6 @@ function buildMagicColumns(hasOpenPr: boolean): MagicColumns {
           icon: GitMerge,
           key: 'F',
         },
-        {
-          id: 'investigate',
-          label: 'Investigate Context',
-          icon: Search,
-          key: 'I',
-        },
       ],
     },
   ]
@@ -179,8 +176,6 @@ const KEY_TO_OPTION: Record<string, MagicOption> = {
   r: 'review',
   m: 'merge',
   f: 'resolve-conflicts',
-  i: 'investigate',
-  k: 'checkout-pr',
   g: 'release-notes',
 }
 
@@ -331,20 +326,6 @@ export function MagicModal() {
         return
       }
 
-      // checkout-pr only needs a project selected, not a worktree
-      // Handle it directly here since ChatWindow may not be rendered
-      if (option === 'checkout-pr') {
-        if (!selectedProjectId) {
-          notify('No project selected', undefined, { type: 'error' })
-          setMagicModalOpen(false)
-          return
-        }
-        // Open the checkout PR modal directly
-        useUIStore.getState().setCheckoutPRModalOpen(true)
-        setMagicModalOpen(false)
-        return
-      }
-
       // release-notes only needs a project selected, not a worktree
       if (option === 'release-notes') {
         if (!selectedProjectId) {
@@ -367,6 +348,19 @@ export function MagicModal() {
       if (option === 'open-pr' && worktree?.pr_url) {
         await openExternal(worktree.pr_url)
         setMagicModalOpen(false)
+        return
+      }
+
+      // Commands that need ChatWindow: switch off canvas first, then dispatch after mount
+      if (isOnCanvas && CANVAS_SESSION_TRANSITION_OPTIONS.has(option)) {
+        setMagicModalOpen(false)
+        useChatStore.getState().setViewingCanvasTab(selectedWorktreeId, false)
+        // Delay dispatch to allow ChatWindow to mount and register event listener
+        setTimeout(() => {
+          window.dispatchEvent(
+            new CustomEvent('magic-command', { detail: { command: option } })
+          )
+        }, 150)
         return
       }
 

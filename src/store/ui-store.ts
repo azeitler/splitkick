@@ -90,7 +90,6 @@ interface UIState {
   magicModalOpen: boolean
   newWorktreeModalOpen: boolean
   newWorktreeModalDefaultTab: 'quick' | 'issues' | 'prs' | null
-  checkoutPRModalOpen: boolean
   releaseNotesModalOpen: boolean
   workflowRunsModalOpen: boolean
   workflowRunsModalProjectPath: string | null
@@ -122,6 +121,10 @@ interface UIState {
   featureTourOpen: boolean
   /** Whether UI state has been restored from persisted storage */
   uiStateInitialized: boolean
+  /** Pending app update that user skipped — shown as indicator in title bar */
+  pendingUpdateVersion: string | null
+  /** When non-null, shows the update available modal */
+  updateModalVersion: string | null
 
   toggleLeftSidebar: () => void
   setLeftSidebarVisible: (visible: boolean) => void
@@ -142,7 +145,6 @@ interface UIState {
   setNewWorktreeModalDefaultTab: (
     tab: 'quick' | 'issues' | 'prs' | null
   ) => void
-  setCheckoutPRModalOpen: (open: boolean) => void
   setReleaseNotesModalOpen: (open: boolean) => void
   setWorkflowRunsModalOpen: (
     open: boolean,
@@ -169,6 +171,8 @@ interface UIState {
   setPlanDialogOpen: (open: boolean) => void
   setFeatureTourOpen: (open: boolean) => void
   setUIStateInitialized: (initialized: boolean) => void
+  setPendingUpdateVersion: (version: string | null) => void
+  setUpdateModalVersion: (version: string | null) => void
 }
 
 export const useUIStore = create<UIState>()(
@@ -187,7 +191,6 @@ export const useUIStore = create<UIState>()(
       magicModalOpen: false,
       newWorktreeModalOpen: false,
       newWorktreeModalDefaultTab: null,
-      checkoutPRModalOpen: false,
       releaseNotesModalOpen: false,
       workflowRunsModalOpen: false,
       workflowRunsModalProjectPath: null,
@@ -208,6 +211,8 @@ export const useUIStore = create<UIState>()(
       planDialogOpen: false,
       featureTourOpen: false,
       uiStateInitialized: false,
+      pendingUpdateVersion: null,
+      updateModalVersion: null,
 
       toggleLeftSidebar: () =>
         set(
@@ -302,9 +307,6 @@ export const useUIStore = create<UIState>()(
           undefined,
           'setNewWorktreeModalDefaultTab'
         ),
-
-      setCheckoutPRModalOpen: open =>
-        set({ checkoutPRModalOpen: open }, undefined, 'setCheckoutPRModalOpen'),
 
       setReleaseNotesModalOpen: open =>
         set(
@@ -495,6 +497,12 @@ export const useUIStore = create<UIState>()(
 
       setUIStateInitialized: initialized =>
         set({ uiStateInitialized: initialized }, undefined, 'setUIStateInitialized'),
+
+      setPendingUpdateVersion: version =>
+        set({ pendingUpdateVersion: version }, undefined, 'setPendingUpdateVersion'),
+
+      setUpdateModalVersion: version =>
+        set({ updateModalVersion: version }, undefined, 'setUpdateModalVersion'),
     }),
     {
       name: 'ui-store',
