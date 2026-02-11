@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, useRef, useEffect } from 'react'
+import { useCallback, useMemo, useState, useRef, useEffect, forwardRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   CheckCircle2,
@@ -26,6 +26,7 @@ import { useCreateSession, useSendMessage, chatQueryKeys } from '@/services/chat
 import type { WorktreeSessions } from '@/types/chat'
 import { usePreferences } from '@/services/preferences'
 import { openExternal } from '@/lib/platform'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT, DEFAULT_PARALLEL_EXECUTION_PROMPT } from '@/types/preferences'
 import type { WorkflowRun } from '@/types/github'
 import type { Project, Worktree } from '@/types/projects'
@@ -71,6 +72,47 @@ function RunStatusIcon({ run }: { run: WorkflowRun }) {
   }
 }
 
+interface WorkflowGroup {
+  workflowName: string
+  totalCount: number
+  failedCount: number
+  latestStatus: 'success' | 'failure' | 'pending'
+}
+
+const SidebarItem = forwardRef<HTMLButtonElement, {
+  label: string
+  count: number
+  latestStatus: 'success' | 'failure' | 'pending'
+  isSelected: boolean
+  isFocused: boolean
+  onClick: () => void
+}>(({ label, count, latestStatus, isSelected, isFocused, onClick }, ref) => {
+  const countBg =
+    latestStatus === 'success'
+      ? 'bg-green-500/10 text-green-600 dark:text-green-400'
+      : latestStatus === 'failure'
+        ? 'bg-red-500/10 text-red-500'
+        : 'bg-muted text-muted-foreground'
+
+  return (
+    <button
+      ref={ref}
+      onClick={onClick}
+      className={`w-full text-left rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent ${isSelected || isFocused ? 'bg-accent font-medium' : ''}`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="truncate">{label}</span>
+        <div className="flex items-center gap-1 shrink-0">
+          <span className={`rounded px-1 py-0.5 text-[10px] font-medium ${countBg}`}>
+            {count}
+          </span>
+        </div>
+      </div>
+    </button>
+  )
+})
+SidebarItem.displayName = 'SidebarItem'
+
 export function WorkflowRunsModal() {
   const queryClient = useQueryClient()
   const createSession = useCreateSession()
@@ -96,23 +138,74 @@ export function WorkflowRunsModal() {
   )
 
   const runs = result?.runs ?? []
+  const [selectedWorkflow, setSelectedWorkflow] = useState<string | null>(null)
   const [focusedIndex, setFocusedIndex] = useState(0)
+  const [focusedPane, setFocusedPane] = useState<'sidebar' | 'list'>('sidebar')
+  const [sidebarFocusedIndex, setSidebarFocusedIndex] = useState(0)
   const listRef = useRef<HTMLDivElement>(null)
+  const sidebarRef = useRef<HTMLDivElement>(null)
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
+  const sidebarItemRefs = useRef<(HTMLButtonElement | null)[]>([])
+
+  const groups = useMemo(() => {
+    const groupMap = new Map<string, WorkflowGroup>()
+    for (const run of runs) {
+      const existing = groupMap.get(run.workflowName)
+      if (existing) {
+        existing.totalCount++
+        if (isFailedRun(run)) existing.failedCount++
+      } else {
+        // First occurrence per workflow = latest (runs are sorted by date)
+        const status: WorkflowGroup['latestStatus'] =
+          run.status === 'in_progress' || run.status === 'queued'
+            ? 'pending'
+            : isFailedRun(run)
+              ? 'failure'
+              : run.conclusion === 'success'
+                ? 'success'
+                : 'pending'
+        groupMap.set(run.workflowName, {
+          workflowName: run.workflowName,
+          totalCount: 1,
+          failedCount: isFailedRun(run) ? 1 : 0,
+          latestStatus: status,
+        })
+      }
+    }
+    return Array.from(groupMap.values()).sort((a, b) =>
+      a.workflowName.localeCompare(b.workflowName)
+    )
+  }, [runs])
+
+  const displayedRuns = useMemo(() => {
+    if (!selectedWorkflow) return runs
+    return runs.filter(run => run.workflowName === selectedWorkflow)
+  }, [runs, selectedWorkflow])
 
   // Reset focus when modal opens or runs change
   useEffect(() => {
     if (workflowRunsModalOpen) {
+      setSelectedWorkflow(null)
       setFocusedIndex(0)
-      // Auto-focus the list for keyboard nav
-      requestAnimationFrame(() => listRef.current?.focus())
+      setFocusedPane('sidebar')
+      setSidebarFocusedIndex(0)
+      requestAnimationFrame(() => sidebarRef.current?.focus())
     }
   }, [workflowRunsModalOpen, runs.length])
 
-  // Scroll focused item into view
+  // Reset focus when filter changes
+  useEffect(() => {
+    setFocusedIndex(0)
+  }, [selectedWorkflow])
+
+  // Scroll focused items into view
   useEffect(() => {
     itemRefs.current[focusedIndex]?.scrollIntoView({ block: 'nearest' })
   }, [focusedIndex])
+
+  useEffect(() => {
+    sidebarItemRefs.current[sidebarFocusedIndex]?.scrollIntoView({ block: 'nearest' })
+  }, [sidebarFocusedIndex])
 
   const title = useMemo(() => {
     if (workflowRunsModalBranch) {
@@ -358,40 +451,79 @@ export function WorkflowRunsModal() {
     ]
   )
 
-  const handleListKeyDown = useCallback(
+  // Sidebar items: "All" + each group
+  const sidebarItems = useMemo(() => {
+    return [null, ...groups.map(g => g.workflowName)] as (string | null)[]
+  }, [groups])
+
+  const handleSidebarSelect = useCallback((index: number) => {
+    setSelectedWorkflow(sidebarItems[index] ?? null)
+    setSidebarFocusedIndex(index)
+  }, [sidebarItems])
+
+  const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (runs.length === 0) return
-      switch (e.key) {
-        case 'ArrowDown':
-        case 'j':
-          e.preventDefault()
-          setFocusedIndex(i => Math.min(i + 1, runs.length - 1))
-          break
-        case 'ArrowUp':
-        case 'k':
-          e.preventDefault()
-          setFocusedIndex(i => Math.max(i - 1, 0))
-          break
-        case 'Enter': {
-          e.preventDefault()
-          const run = runs[focusedIndex]
-          if (run) handleRunClick(run.url)
-          break
+      if (focusedPane === 'sidebar') {
+        switch (e.key) {
+          case 'ArrowDown':
+          case 'j': {
+            e.preventDefault()
+            const next = Math.min(sidebarFocusedIndex + 1, sidebarItems.length - 1)
+            handleSidebarSelect(next)
+            break
+          }
+          case 'ArrowUp':
+          case 'k': {
+            e.preventDefault()
+            const prev = Math.max(sidebarFocusedIndex - 1, 0)
+            handleSidebarSelect(prev)
+            break
+          }
+          case 'ArrowRight':
+          case 'l':
+            e.preventDefault()
+            setFocusedPane('list')
+            setFocusedIndex(0)
+            break
         }
-        case 'm': {
-          e.preventDefault()
-          const run = runs[focusedIndex]
-          if (run && isFailedRun(run)) handleInvestigate(run)
-          break
+      } else {
+        switch (e.key) {
+          case 'ArrowDown':
+          case 'j':
+            e.preventDefault()
+            setFocusedIndex(i => Math.min(i + 1, displayedRuns.length - 1))
+            break
+          case 'ArrowUp':
+          case 'k':
+            e.preventDefault()
+            setFocusedIndex(i => Math.max(i - 1, 0))
+            break
+          case 'ArrowLeft':
+          case 'h':
+            e.preventDefault()
+            setFocusedPane('sidebar')
+            break
+          case 'Enter': {
+            e.preventDefault()
+            const run = displayedRuns[focusedIndex]
+            if (run) handleRunClick(run.url)
+            break
+          }
+          case 'm': {
+            e.preventDefault()
+            const run = displayedRuns[focusedIndex]
+            if (run && isFailedRun(run)) handleInvestigate(run)
+            break
+          }
         }
       }
     },
-    [runs, focusedIndex, handleRunClick, handleInvestigate]
+    [focusedPane, sidebarItems, sidebarFocusedIndex, handleSidebarSelect, displayedRuns, focusedIndex, handleRunClick, handleInvestigate]
   )
 
   return (
     <Dialog open={workflowRunsModalOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-h-[80vh] sm:max-w-xl overflow-hidden flex flex-col" onOpenAutoFocus={e => e.preventDefault()}>
+      <DialogContent className="h-[80vh] sm:max-w-5xl overflow-hidden flex flex-col" onOpenAutoFocus={e => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
@@ -405,55 +537,79 @@ export function WorkflowRunsModal() {
             No workflow runs found
           </div>
         ) : (
-          <div ref={listRef} tabIndex={0} onKeyDown={handleListKeyDown} className="overflow-y-auto -mx-6 px-6 outline-none">
-            <div className="space-y-1 pb-2">
-              {runs.map((run, index) => (
-                <div
-                  key={run.databaseId}
-                  ref={el => { itemRefs.current[index] = el }}
-                  className={`group relative flex cursor-pointer items-center rounded-md px-2 py-2 transition-colors hover:bg-accent ${index === focusedIndex ? 'bg-accent' : ''}`}
-                  onClick={() => handleRunClick(run.url)}
-                  onMouseEnter={() => setFocusedIndex(index)}
-                >
-                  <div className="flex min-w-0 flex-1 items-center gap-2.5">
-                    <RunStatusIcon run={run} />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="truncate text-sm font-medium">
-                          {run.workflowName}
-                        </span>
-                        <span className="shrink-0 rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
-                          {run.headBranch}
-                        </span>
-                        {isFailedRun(run) && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <button
-                                onClick={e => {
-                                  e.stopPropagation()
-                                  handleInvestigate(run)
-                                }}
-                                className="shrink-0 inline-flex items-center gap-0.5 rounded bg-black px-1 py-0.5 text-[10px] text-white transition-colors hover:bg-black/80 dark:bg-yellow-500/20 dark:text-yellow-400 dark:hover:bg-yellow-500/30 dark:hover:text-yellow-300"
-                              >
-                                <Wand2 className="h-3 w-3" />
-                                <span>M</span>
-                              </button>
-                            </TooltipTrigger>
-                            <TooltipContent>Investigate this failure</TooltipContent>
-                          </Tooltip>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <span className="truncate">{run.displayTitle}</span>
-                        <span className="shrink-0">·</span>
-                        <span className="shrink-0">
-                          {timeAgo(run.createdAt)}
-                        </span>
+          <div ref={sidebarRef} tabIndex={0} onKeyDown={handleKeyDown} className="flex min-h-0 flex-1 gap-4 outline-none">
+            {/* Sidebar */}
+            <ScrollArea className="w-80 shrink-0">
+              <div className="space-y-0.5 pr-3">
+                {sidebarItems.map((workflowName, idx) => {
+                  const group = workflowName ? groups.find(g => g.workflowName === workflowName) : null
+                  return (
+                    <SidebarItem
+                      key={workflowName ?? '__all__'}
+                      ref={el => { sidebarItemRefs.current[idx] = el }}
+                      label={workflowName ?? 'All'}
+                      count={group ? group.totalCount : runs.length}
+                      latestStatus={group ? group.latestStatus : ((result?.failedCount ?? 0) > 0 ? 'failure' : runs.length > 0 ? 'success' : 'pending')}
+                      isSelected={selectedWorkflow === workflowName}
+                      isFocused={focusedPane === 'sidebar' && sidebarFocusedIndex === idx}
+                      onClick={() => { setSelectedWorkflow(workflowName); setSidebarFocusedIndex(idx) }}
+                    />
+                  )
+                })}
+              </div>
+            </ScrollArea>
+
+            {/* Run list */}
+            <div ref={listRef} className="flex-1 min-w-0 overflow-y-auto outline-none">
+              <div className="space-y-1 pb-2">
+                {displayedRuns.map((run, index) => (
+                  <div
+                    key={run.databaseId}
+                    ref={el => { itemRefs.current[index] = el }}
+                    className={`group relative flex cursor-pointer items-center rounded-md px-2 py-2 transition-colors hover:bg-accent ${focusedPane === 'list' && index === focusedIndex ? 'bg-accent' : ''}`}
+                    onClick={() => handleRunClick(run.url)}
+                    onMouseEnter={() => { setFocusedIndex(index); setFocusedPane('list') }}
+                  >
+                    <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                      <RunStatusIcon run={run} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="truncate text-sm font-medium">
+                            {run.workflowName}
+                          </span>
+                          <span className="shrink-0 rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
+                            {run.headBranch}
+                          </span>
+                          {isFailedRun(run) && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  onClick={e => {
+                                    e.stopPropagation()
+                                    handleInvestigate(run)
+                                  }}
+                                  className="shrink-0 inline-flex items-center gap-0.5 rounded bg-black px-1 py-0.5 text-[10px] text-white transition-colors hover:bg-black/80 dark:bg-yellow-500/20 dark:text-yellow-400 dark:hover:bg-yellow-500/30 dark:hover:text-yellow-300"
+                                >
+                                  <Wand2 className="h-3 w-3" />
+                                  <span>M</span>
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent>Investigate this failure</TooltipContent>
+                            </Tooltip>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <span className="truncate">{run.displayTitle}</span>
+                          <span className="shrink-0">·</span>
+                          <span className="shrink-0">
+                            {timeAgo(run.createdAt)}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
         )}

@@ -124,7 +124,7 @@ fn extract_json_object(text: &str) -> Option<&str> {
 const NAMING_PROMPT_BOTH: &str = r#"<task>Generate a session name AND a git branch name for a coding session based on the user's request.</task>
 
 <session_name_rules>
-- Maximum 3-4 words total
+- Maximum 4-5 words total
 - Use sentence case (only capitalize first word)
 - Be descriptive but concise
 - Focus on the main topic or goal
@@ -161,7 +161,7 @@ Respond with ONLY the raw JSON object, no markdown, no code fences, no explanati
 const NAMING_PROMPT_SESSION_ONLY: &str = r#"<task>Generate a short, human-friendly name for this chat session based on the user's request.</task>
 
 <rules>
-- Maximum 3-4 words total
+- Maximum 4-5 words total
 - Use sentence case (only capitalize first word)
 - Be descriptive but concise
 - Focus on the main topic or goal
@@ -489,8 +489,8 @@ fn validate_session_name(name: &str) -> Result<String, String> {
 
     // Enforce word limit (4 words max)
     let words: Vec<&str> = sanitized.split_whitespace().collect();
-    let final_name = if words.len() > 4 {
-        words[..4].join(" ")
+    let final_name = if words.len() > 6 {
+        words[..6].join(" ")
     } else {
         sanitized
     };

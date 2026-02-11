@@ -546,11 +546,11 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
   )
 
   // Handle selection change for tracking in store
-  const handleSelectionChange = useCallback(
+  const syncSelectionToStore = useCallback(
     (index: number) => {
       const item = flatCards[index]
       if (item) {
-        // Sync projects store so CMD+O uses the correct worktree
+        // Sync projects store so CMD+O, CMD+M (magic modal), etc. use the correct worktree
         useProjectsStore.getState().selectWorktree(item.worktreeId)
         // Register worktree path so OpenInModal can find it
         useChatStore
@@ -560,6 +560,15 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     },
     [flatCards]
   )
+
+  // Keep selectedWorktreeId in sync whenever selectedIndex changes (click, keyboard, or external)
+  // This fixes the bug where closing a session calls selectProject() which clears selectedWorktreeId,
+  // but the dashboard still has a card selected via selectedIndex
+  useEffect(() => {
+    if (selectedIndex !== null) {
+      syncSelectionToStore(selectedIndex)
+    }
+  }, [selectedIndex, syncSelectionToStore])
 
   // Get selected card for shortcut events
   const selectedCard = selectedFlatCard?.card ?? null
@@ -601,7 +610,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     onSelectedIndexChange: setSelectedIndex,
     onSelect: handleSelect,
     enabled: !isModalOpen,
-    onSelectionChange: handleSelectionChange,
+    onSelectionChange: syncSelectionToStore,
   })
 
   // Handle approve from dialog (with updated plan content)

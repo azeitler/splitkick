@@ -1467,50 +1467,19 @@ pub fn run() {
         }
     }
 
-    // Build log targets conditionally
+    // Build log targets conditionally (skip webview in headless mode)
     let mut log_targets = vec![tauri_plugin_log::Target::new(
         tauri_plugin_log::TargetKind::Stdout,
     )];
-    if cfg!(debug_assertions) {
-        // Dev mode: Stdout + LogDir (file) on all platforms.
-        // Skip Webview target — frontend console overrides forward to the plugin,
-        // so a Webview target would create an infinite loop:
-        //   console.log → plugin.trace → Webview → console.log → ...
-
-        // Clear old log files on startup so each dev session starts fresh.
-        // Tauri's LogDir writes to ~/Library/Logs/{bundle_id}/ on macOS,
-        // {LOCALAPPDATA}/{bundle_id}/logs/ on Windows, etc.
-        #[cfg(target_os = "macos")]
-        let log_dir = dirs::home_dir().map(|d| d.join("Library/Logs/com.jean.desktop"));
-        #[cfg(target_os = "windows")]
-        let log_dir = dirs::data_local_dir().map(|d| d.join("com.jean.desktop/logs"));
-        #[cfg(target_os = "linux")]
-        let log_dir = dirs::config_local_dir().map(|d| d.join("com.jean.desktop/logs"));
-        if let Some(log_dir) = log_dir {
-            if log_dir.exists() {
-                if let Ok(entries) = std::fs::read_dir(&log_dir) {
-                    for entry in entries.flatten() {
-                        let _ = std::fs::remove_file(entry.path());
-                    }
-                }
-            }
-        }
-
+    if !headless {
         log_targets.push(tauri_plugin_log::Target::new(
-            tauri_plugin_log::TargetKind::LogDir { file_name: None },
-        ));
-    } else {
-        // Prod: Webview target + macOS-only file logging
-        if !headless {
-            log_targets.push(tauri_plugin_log::Target::new(
-                tauri_plugin_log::TargetKind::Webview,
-            ));
-        }
-        #[cfg(target_os = "macos")]
-        log_targets.push(tauri_plugin_log::Target::new(
-            tauri_plugin_log::TargetKind::LogDir { file_name: None },
+            tauri_plugin_log::TargetKind::Webview,
         ));
     }
+    #[cfg(target_os = "macos")]
+    log_targets.push(tauri_plugin_log::Target::new(
+        tauri_plugin_log::TargetKind::LogDir { file_name: None },
+    ));
 
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
