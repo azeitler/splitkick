@@ -20,8 +20,11 @@ import {
   isTauri,
   projectsQueryKeys,
   useArchiveWorktree,
+  useDeleteWorktree,
   useCloseBaseSessionClean,
 } from '@/services/projects'
+import { preferencesQueryKeys } from '@/services/preferences'
+import type { AppPreferences } from '@/types/preferences'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import type { Worktree } from '@/types/projects'
@@ -149,15 +152,19 @@ export async function prefetchSessions(
     })
     queryClient.setQueryData(chatQueryKeys.sessions(worktreeId), sessions)
 
-    // Restore reviewingSessions and waitingForInputSessionIds state
+    // Restore reviewingSessions, waitingForInputSessionIds, and sessionLabels state
     const reviewingUpdates: Record<string, boolean> = {}
     const waitingUpdates: Record<string, boolean> = {}
+    const labelUpdates: Record<string, string> = {}
     for (const session of sessions.sessions) {
       if (session.is_reviewing) {
         reviewingUpdates[session.id] = true
       }
       if (session.waiting_for_input) {
         waitingUpdates[session.id] = true
+      }
+      if (session.label) {
+        labelUpdates[session.id] = session.label
       }
     }
 
@@ -193,6 +200,12 @@ export async function prefetchSessions(
       storeUpdates.waitingForInputSessionIds = {
         ...currentState.waitingForInputSessionIds,
         ...waitingUpdates,
+      }
+    }
+    if (Object.keys(labelUpdates).length > 0) {
+      storeUpdates.sessionLabels = {
+        ...currentState.sessionLabels,
+        ...labelUpdates,
       }
     }
     if (Object.keys(storeUpdates).length > 0) {
@@ -800,13 +813,15 @@ export function useAllArchivedSessions() {
  * Hook to handle the CMD+W keybinding for closing session or worktree.
  *
  * Listens for 'close-session-or-worktree' custom event and either:
- * - Archives the current session if there are multiple non-archived sessions
+ * - Removes the current session (archive or delete based on removal_behavior preference)
  * - Closes the base session cleanly (if it's a base session with last session)
- * - Archives the worktree (if it's a regular worktree with last session)
+ * - Removes the worktree (archive or delete based on removal_behavior preference)
  */
 export function useCloseSessionOrWorktreeKeybinding() {
   const archiveSession = useArchiveSession()
+  const closeSession = useCloseSession()
   const archiveWorktree = useArchiveWorktree()
+  const deleteWorktree = useDeleteWorktree()
   const closeBaseSessionClean = useCloseBaseSessionClean()
   const queryClient = useQueryClient()
 
@@ -841,17 +856,35 @@ export function useCloseSessionOrWorktreeKeybinding() {
       const activeSessions = sessionsData.sessions.filter(s => !s.archived_at)
       const sessionCount = activeSessions.length
 
+      // Read removal behavior preference from cache
+      const preferences = queryClient.getQueryData<AppPreferences>(
+        preferencesQueryKeys.preferences()
+      )
+      const shouldDelete = preferences?.removal_behavior === 'delete'
+
       if (sessionCount > 1) {
-        // Multiple sessions: just archive the current one
-        logger.debug('Archiving session (multiple sessions exist)', {
-          sessionId: activeSessionId,
-          sessionCount,
-        })
-        archiveSession.mutate({
-          worktreeId: activeWorktreeId,
-          worktreePath: activeWorktreePath,
-          sessionId: activeSessionId,
-        })
+        // Multiple sessions: remove the current one
+        if (shouldDelete) {
+          logger.debug('Deleting session (multiple sessions exist)', {
+            sessionId: activeSessionId,
+            sessionCount,
+          })
+          closeSession.mutate({
+            worktreeId: activeWorktreeId,
+            worktreePath: activeWorktreePath,
+            sessionId: activeSessionId,
+          })
+        } else {
+          logger.debug('Archiving session (multiple sessions exist)', {
+            sessionId: activeSessionId,
+            sessionCount,
+          })
+          archiveSession.mutate({
+            worktreeId: activeWorktreeId,
+            worktreePath: activeWorktreePath,
+            sessionId: activeSessionId,
+          })
+        }
       } else {
         // Last session: archive the worktree (which archives sessions automatically)
         // First, find the worktree to get project info
@@ -931,13 +964,22 @@ export function useCloseSessionOrWorktreeKeybinding() {
           clearActiveWorktree()
         }
 
-        // For base sessions, close cleanly (no session preservation) instead of archive
+        // For base sessions, close cleanly (no session preservation)
         if (isBaseSession(worktree)) {
           logger.debug('Closing base session cleanly (last session)', {
             worktreeId: activeWorktreeId,
             projectId,
           })
           closeBaseSessionClean.mutate({
+            worktreeId: activeWorktreeId,
+            projectId,
+          })
+        } else if (shouldDelete) {
+          logger.debug('Deleting worktree (last session)', {
+            worktreeId: activeWorktreeId,
+            projectId,
+          })
+          deleteWorktree.mutate({
             worktreeId: activeWorktreeId,
             projectId,
           })
@@ -963,7 +1005,7 @@ export function useCloseSessionOrWorktreeKeybinding() {
         'close-session-or-worktree',
         handleCloseSessionOrWorktree
       )
-  }, [archiveSession, archiveWorktree, closeBaseSessionClean, queryClient])
+  }, [archiveSession, closeSession, archiveWorktree, deleteWorktree, closeBaseSessionClean, queryClient])
 }
 
 /**

@@ -402,6 +402,7 @@ export interface AppPreferences {
   http_server_auto_start: boolean // Auto-start HTTP server on launch
   http_server_localhost_only: boolean // Bind to localhost only (more secure)
   http_server_token_required: boolean // Require token for web access (default true)
+  removal_behavior: RemovalBehavior // What happens when closing sessions/worktrees: 'archive' or 'delete'
   auto_archive_on_pr_merged: boolean // Auto-archive worktrees when their PR is merged
   show_keybinding_hints: boolean // Show keyboard shortcut hints at bottom of canvas views
   debug_mode_enabled: boolean // Show debug panel in chat sessions
@@ -561,6 +562,26 @@ export const remotePollIntervalOptions: { value: number; label: string }[] = [
   { value: 600, label: '10 minutes' },
 ]
 
+// Removal behavior options - what happens when closing sessions/worktrees
+export type RemovalBehavior = 'archive' | 'delete'
+
+export const removalBehaviorOptions: {
+  value: RemovalBehavior
+  label: string
+  description: string
+}[] = [
+  {
+    value: 'archive',
+    label: 'Archive',
+    description: 'Soft-delete; can be restored later',
+  },
+  {
+    value: 'delete',
+    label: 'Delete',
+    description: 'Permanently delete; cannot be undone',
+  },
+]
+
 // Archive retention options (days) - how long to keep archived items
 export const archiveRetentionOptions: { value: number; label: string }[] = [
   { value: 0, label: 'Never (keep forever)' },
@@ -673,6 +694,7 @@ export const defaultPreferences: AppPreferences = {
   http_server_auto_start: false,
   http_server_localhost_only: true, // Default to localhost-only for security
   http_server_token_required: true, // Default: require token for security
+  removal_behavior: 'archive', // Default: archive (soft-delete)
   auto_archive_on_pr_merged: true, // Default: enabled
   show_keybinding_hints: true, // Default: enabled
   debug_mode_enabled: false, // Default: disabled

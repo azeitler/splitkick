@@ -37,6 +37,7 @@ import { PlanDialog } from '@/components/chat/PlanDialog'
 import { RecapDialog } from '@/components/chat/RecapDialog'
 import { SessionChatModal } from '@/components/chat/SessionChatModal'
 import { SessionCard } from '@/components/chat/SessionCard'
+import { LabelModal } from '@/components/chat/LabelModal'
 import {
   type SessionCardData,
   computeSessionCardData,
@@ -48,6 +49,7 @@ import { useCanvasKeyboardNav } from '@/components/chat/hooks/useCanvasKeyboardN
 import { useCanvasShortcutEvents } from '@/components/chat/hooks/useCanvasShortcutEvents'
 import {
   useArchiveWorktree,
+  useDeleteWorktree,
   useCloseBaseSessionClean,
 } from '@/services/projects'
 import { useArchiveSession, useCloseSession } from '@/services/chat'
@@ -304,6 +306,14 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
         computeSessionCardData(session, storeState)
       )
 
+      // Sort: labeled first, grouped by label name, then unlabeled
+      cards.sort((a, b) => {
+        if (a.label && !b.label) return -1
+        if (!a.label && b.label) return 1
+        if (a.label && b.label) return a.label.localeCompare(b.label)
+        return 0
+      })
+
       // Only include worktrees that have sessions (after filtering)
       if (cards.length > 0) {
         result.push({ worktree, cards })
@@ -372,6 +382,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
   const archiveSession = useArchiveSession()
   const closeSession = useCloseSession()
   const archiveWorktree = useArchiveWorktree()
+  const deleteWorktree = useDeleteWorktree()
   const closeBaseSessionClean = useCloseBaseSessionClean()
 
   // Listen for focus-canvas-search event
@@ -604,6 +615,11 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     closeRecapDialog,
     handlePlanView,
     handleRecapView,
+    isLabelModalOpen,
+    labelModalSessionId,
+    labelModalCurrentLabel,
+    closeLabelModal,
+    handleOpenLabelModal,
   } = useCanvasShortcutEvents({
     selectedCard,
     enabled: !selectedSession && selectedIndex !== null,
@@ -620,7 +636,8 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     !!selectedSession ||
     !!planDialogPath ||
     !!planDialogContent ||
-    isRecapDialogOpen
+    isRecapDialogOpen ||
+    isLabelModalOpen
   const { cardRefs } = useCanvasKeyboardNav({
     cards: flatCards,
     selectedIndex,
@@ -734,7 +751,8 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     ]
   )
 
-  // Handle delete session for a specific worktree
+  // Handle delete session for a specific worktree (respects removal_behavior preference)
+  const removalBehavior = preferences?.removal_behavior ?? 'archive'
   const handleDeleteSessionForWorktree = useCallback(
     (worktreeId: string, worktreePath: string, sessionId: string) => {
       const worktree = readyWorktrees.find(w => w.id === worktreeId)
@@ -748,14 +766,25 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
             worktreeId,
             projectId: project.id,
           })
+        } else if (removalBehavior === 'delete') {
+          deleteWorktree.mutate({
+            worktreeId,
+            projectId: project.id,
+          })
         } else {
           archiveWorktree.mutate({
             worktreeId,
             projectId: project.id,
           })
         }
-      } else {
+      } else if (removalBehavior === 'delete') {
         closeSession.mutate({
+          worktreeId,
+          worktreePath,
+          sessionId,
+        })
+      } else {
+        archiveSession.mutate({
           worktreeId,
           worktreePath,
           sessionId,
@@ -766,8 +795,11 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
       readyWorktrees,
       sessionsByWorktreeId,
       project,
+      removalBehavior,
       closeSession,
+      archiveSession,
       archiveWorktree,
+      deleteWorktree,
       closeBaseSessionClean,
     ]
   )
@@ -775,13 +807,13 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
   // Listen for close-session-or-worktree event to handle CMD+W
   useEffect(() => {
     const handleCloseSessionOrWorktree = (e: Event) => {
-      // If modal is open, archive the session, close modal, pre-select next on canvas
+      // If modal is open, remove the session, close modal, pre-select next on canvas
       if (selectedSession) {
         e.stopImmediatePropagation()
         const closingWorktreeId = selectedSession.worktreeId
         const closingSessionId = selectedSession.sessionId
 
-        handleArchiveSessionForWorktree(
+        handleDeleteSessionForWorktree(
           selectedSession.worktreeId,
           selectedSession.worktreePath,
           closingSessionId
@@ -850,7 +882,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
         return
       }
 
-      // If there's a keyboard-selected session, archive it
+      // If there's a keyboard-selected session, remove it (respects removal behavior preference)
       // (skip for pending worktrees which have no sessions)
       if (selectedIndex !== null && flatCards[selectedIndex]) {
         const item = flatCards[selectedIndex]
@@ -860,7 +892,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
         e.stopImmediatePropagation()
         const closingWorktreeId = item.worktreeId
 
-        handleArchiveSessionForWorktree(
+        handleDeleteSessionForWorktree(
           item.worktreeId,
           item.worktreePath,
           item.card.session.id
@@ -939,7 +971,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     selectedSession,
     selectedIndex,
     flatCards,
-    handleArchiveSessionForWorktree,
+    handleDeleteSessionForWorktree,
   ])
 
   // Listen for create-new-session event to handle CMD+T
@@ -1165,6 +1197,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
                                 onRecapView={() => handleRecapView(card)}
                                 onApprove={() => handlePlanApproval(card)}
                                 onYolo={() => handlePlanApprovalYolo(card)}
+                                onToggleLabel={() => handleOpenLabelModal(card)}
                               />
                             )
                           })}
@@ -1209,6 +1242,15 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
         onRegenerate={regenerateRecap}
       />
 
+      {/* Label Modal */}
+      <LabelModal
+        key={labelModalSessionId}
+        isOpen={isLabelModalOpen}
+        onClose={closeLabelModal}
+        sessionId={labelModalSessionId}
+        currentLabel={labelModalCurrentLabel}
+      />
+
       {/* Session Chat Modal */}
       <SessionChatModal
         sessionId={selectedSession?.sessionId ?? null}
@@ -1233,6 +1275,10 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
             {
               shortcut: DEFAULT_KEYBINDINGS.new_session as string,
               label: 'new session',
+            },
+            {
+              shortcut: DEFAULT_KEYBINDINGS.toggle_session_label as string,
+              label: 'label',
             },
             {
               shortcut: DEFAULT_KEYBINDINGS.close_session_or_worktree as string,

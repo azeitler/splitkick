@@ -373,6 +373,9 @@ pub struct Session {
     /// Execution mode of the last run (plan/build/yolo)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_run_execution_mode: Option<String>,
+    /// User-assigned label (e.g. "Needs testing")
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
 }
 
 impl Session {
@@ -408,6 +411,7 @@ impl Session {
             digest: None,
             last_run_status: None,
             last_run_execution_mode: None,
+            label: None,
         }
     }
 
@@ -554,6 +558,7 @@ impl SessionMetadata {
             // Populate from last run for status recovery on app restart
             last_run_status: last_run.map(|r| r.status.clone()),
             last_run_execution_mode: last_run.and_then(|r| r.execution_mode.clone()),
+            label: self.label.clone(),
         }
     }
 
@@ -577,6 +582,7 @@ impl SessionMetadata {
         self.approved_plan_message_ids = session.approved_plan_message_ids.clone();
         self.plan_file_path = session.plan_file_path.clone();
         self.pending_plan_message_id = session.pending_plan_message_id.clone();
+        self.label = session.label.clone();
     }
 }
 
@@ -849,6 +855,9 @@ pub struct SessionMetadata {
     /// Persisted session digest (recap summary)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub digest: Option<SessionDigest>,
+    /// User-assigned label (e.g. "Needs testing")
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
 
     /// Run history - each entry corresponds to one Claude CLI execution
     #[serde(default)]
@@ -934,6 +943,7 @@ impl SessionMetadata {
             plan_file_path: None,
             pending_plan_message_id: None,
             digest: None,
+            label: None,
             runs: vec![],
             version: 1,
         }

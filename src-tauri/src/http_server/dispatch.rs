@@ -1135,6 +1135,8 @@ pub async fn dispatch_command(
                 field_opt(&args, "planFilePath", "plan_file_path")?;
             let pending_plan_message_id: Option<Option<String>> =
                 field_opt(&args, "pendingPlanMessageId", "pending_plan_message_id")?;
+            let label: Option<String> =
+                field_opt(&args, "label", "label")?;
             crate::chat::update_session_state(
                 app.clone(),
                 worktree_id,
@@ -1150,6 +1152,7 @@ pub async fn dispatch_command(
                 waiting_for_input_type,
                 plan_file_path,
                 pending_plan_message_id,
+                label,
             )
             .await?;
             emit_cache_invalidation(app, &["sessions"]);

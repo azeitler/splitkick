@@ -2192,6 +2192,11 @@ export function ChatWindow({
     []
   )
 
+  // Handle force-sending a stuck queued message
+  const handleForceSendQueued = useCallback((sessionId: string) => {
+    useChatStore.getState().forceProcessQueue(sessionId)
+  }, [])
+
   // Handle cancellation of running Claude process (triggered by Cmd+Option+Backspace / Ctrl+Alt+Backspace)
   const handleCancel = useCallback(async () => {
     if (!activeSessionId || !activeWorktreeId || !isSending) return
@@ -2519,6 +2524,8 @@ export function ChatWindow({
                             messages={currentQueuedMessages}
                             sessionId={activeSessionId}
                             onRemove={handleRemoveQueuedMessage}
+                            onForceSend={handleForceSendQueued}
+                            isSessionIdle={!isSending}
                           />
                         )}
                       </div>

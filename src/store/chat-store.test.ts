@@ -50,6 +50,7 @@ describe('ChatStore', () => {
       lastCompaction: {},
       compactingSessions: {},
       reviewingSessions: {},
+      sessionLabels: {},
       savingContext: {},
       skippedQuestionSessions: {},
     })

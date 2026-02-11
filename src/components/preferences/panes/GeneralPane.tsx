@@ -45,7 +45,9 @@ import {
   gitPollIntervalOptions,
   remotePollIntervalOptions,
   archiveRetentionOptions,
+  removalBehaviorOptions,
   notificationSoundOptions,
+  type RemovalBehavior,
   type ClaudeModel,
   type TerminalApp,
   type EditorApp,
@@ -754,6 +756,34 @@ export const GeneralPane: React.FC = () => {
 
       <SettingsSection title="Archive">
         <div className="space-y-4">
+          <InlineField
+            label="Removal behavior"
+            description="What happens when closing sessions or worktrees"
+          >
+            <Select
+              value={preferences?.removal_behavior ?? 'archive'}
+              onValueChange={(value: RemovalBehavior) => {
+                if (preferences) {
+                  savePreferences.mutate({
+                    ...preferences,
+                    removal_behavior: value,
+                  })
+                }
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {removalBehaviorOptions.map(option => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </InlineField>
+
           <InlineField
             label="Auto-archive on PR merge"
             description="Archive worktrees when their PR is merged"

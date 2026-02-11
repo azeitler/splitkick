@@ -3,6 +3,7 @@ import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
 import { SessionCard } from './SessionCard'
+import { LabelModal } from './LabelModal'
 import { SessionChatModal } from './SessionChatModal'
 import { PlanDialog } from './PlanDialog'
 import { RecapDialog } from './RecapDialog'
@@ -112,6 +113,11 @@ export function CanvasGrid({
     closeRecapDialog,
     handlePlanView,
     handleRecapView,
+    isLabelModalOpen,
+    labelModalSessionId,
+    labelModalCurrentLabel,
+    closeLabelModal,
+    handleOpenLabelModal,
   } = useCanvasShortcutEvents({
     selectedCard,
     enabled: !selectedSessionId && selectedIndex !== null,
@@ -126,7 +132,8 @@ export function CanvasGrid({
     !!selectedSessionId ||
     !!planDialogPath ||
     !!planDialogContent ||
-    isRecapDialogOpen
+    isRecapDialogOpen ||
+    isLabelModalOpen
   console.log(
     '[CanvasGrid] isModalOpen:',
     isModalOpen,
@@ -298,6 +305,7 @@ export function CanvasGrid({
             onRecapView={() => handleRecapView(card)}
             onApprove={() => onPlanApproval(card)}
             onYolo={() => onPlanApprovalYolo(card)}
+            onToggleLabel={() => handleOpenLabelModal(card)}
           />
         ))}
       </div>
@@ -334,6 +342,15 @@ export function CanvasGrid({
         onClose={closeRecapDialog}
         isGenerating={isGeneratingRecap}
         onRegenerate={regenerateRecap}
+      />
+
+      {/* Label Modal */}
+      <LabelModal
+        key={labelModalSessionId}
+        isOpen={isLabelModalOpen}
+        onClose={closeLabelModal}
+        sessionId={labelModalSessionId}
+        currentLabel={labelModalCurrentLabel}
       />
 
       {/* Session Chat Modal */}

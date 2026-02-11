@@ -407,6 +407,15 @@ function executeKeybindingAction(
       }
       break
     }
+    case 'toggle_session_label': {
+      logger.debug('Keybinding: toggle_session_label')
+      // Only works on canvas views (not in session modal)
+      const sessionModalOpenForLabel =
+        useUIStore.getState().sessionChatModalOpen
+      if (sessionModalOpenForLabel) break
+      window.dispatchEvent(new CustomEvent('toggle-session-label'))
+      break
+    }
   }
 }
 

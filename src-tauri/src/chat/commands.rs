@@ -232,6 +232,7 @@ pub async fn update_session_state(
     waiting_for_input_type: Option<Option<String>>,
     plan_file_path: Option<Option<String>>,
     pending_plan_message_id: Option<Option<String>>,
+    label: Option<String>,
 ) -> Result<(), String> {
     log::trace!("Updating session state for: {session_id}");
 
@@ -266,6 +267,9 @@ pub async fn update_session_state(
             }
             if let Some(v) = pending_plan_message_id {
                 session.pending_plan_message_id = v;
+            }
+            if let Some(v) = label {
+                session.label = if v.is_empty() { None } else { Some(v) };
             }
             Ok(())
         } else {

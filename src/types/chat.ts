@@ -168,6 +168,8 @@ export interface Session {
   last_run_status?: RunStatus
   /** Execution mode of the last run (plan/build/yolo) */
   last_run_execution_mode?: ExecutionMode
+  /** User-assigned label (e.g. "Needs testing") */
+  label?: string
 }
 
 /**

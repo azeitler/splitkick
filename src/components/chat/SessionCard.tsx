@@ -1,5 +1,5 @@
 import { forwardRef } from 'react'
-import { Archive, FileText, Shield, Sparkles, Trash2 } from 'lucide-react'
+import { Archive, FileText, Shield, Sparkles, Tag, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Kbd } from '@/components/ui/kbd'
@@ -29,6 +29,7 @@ export interface SessionCardProps {
   onRecapView: () => void
   onApprove?: () => void
   onYolo?: () => void
+  onToggleLabel?: () => void
 }
 
 export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
@@ -43,6 +44,7 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
       onRecapView,
       onApprove,
       onYolo,
+      onToggleLabel,
     },
     ref
   ) {
@@ -71,7 +73,13 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
                   variant={config.indicatorVariant}
                   className="h-2.5 w-2.5"
                 />
-                <span>Session</span>
+                {card.label ? (
+                  <span className="text-black dark:text-yellow-400">
+                    {card.label}
+                  </span>
+                ) : (
+                  <span>Session</span>
+                )}
               </div>
               <div className="flex items-center gap-1.5">
                 {/* Recap button - only shown when recap exists */}
@@ -123,8 +131,7 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
             {/* Bottom section: status badge + actions */}
             <div className="flex flex-col gap-2">
               {/* Status row */}
-              <div className="flex items-center gap-1.5">
-                {/* Permission denials indicator */}
+              <div className="flex items-center gap-1.5 flex-wrap">
                 {card.hasPermissionDenials && (
                   <span className="flex items-center h-6 px-2 text-[10px] uppercase tracking-wide border border-yellow-500/50 text-yellow-600 dark:text-yellow-400 rounded">
                     <Shield className="mr-1 h-3 w-3" />
@@ -176,6 +183,12 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
           </div>
         </ContextMenuTrigger>
         <ContextMenuContent className="w-48">
+          {onToggleLabel && (
+            <ContextMenuItem onSelect={onToggleLabel}>
+              <Tag className="mr-2 h-4 w-4" />
+              {card.label ? 'Remove Label' : 'Needs Testing'}
+            </ContextMenuItem>
+          )}
           <ContextMenuItem onSelect={onArchive}>
             <Archive className="mr-2 h-4 w-4" />
             Archive Session

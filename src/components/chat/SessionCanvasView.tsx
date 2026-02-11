@@ -150,6 +150,7 @@ export function SessionCanvasView({
     sessions: sessionsData?.sessions,
     worktree,
     project,
+    removalBehavior: preferences?.removal_behavior,
   })
 
   // Session creation
@@ -234,9 +235,19 @@ export function SessionCanvasView({
     )
 
     // Filter by search query
-    if (!searchQuery.trim()) return cards
-    const q = searchQuery.toLowerCase()
-    return cards.filter(card => card.session.name?.toLowerCase().includes(q))
+    const filtered = searchQuery.trim()
+      ? cards.filter(card =>
+          card.session.name?.toLowerCase().includes(searchQuery.toLowerCase())
+        )
+      : cards
+
+    // Sort: labeled first, grouped by label name, then unlabeled
+    return [...filtered].sort((a, b) => {
+      if (a.label && !b.label) return -1
+      if (!a.label && b.label) return 1
+      if (a.label && b.label) return a.label.localeCompare(b.label)
+      return 0
+    })
   }, [sessionsData?.sessions, storeState, searchQuery])
 
   // Sync selectedIndex when selectedSessionId changes and sessionCards updates
@@ -439,6 +450,10 @@ export function SessionCanvasView({
             {
               shortcut: DEFAULT_KEYBINDINGS.new_session as string,
               label: 'new session',
+            },
+            {
+              shortcut: DEFAULT_KEYBINDINGS.toggle_session_label as string,
+              label: 'label',
             },
             {
               shortcut: DEFAULT_KEYBINDINGS.close_session_or_worktree as string,

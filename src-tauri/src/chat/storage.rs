@@ -405,6 +405,7 @@ pub fn load_sessions(
                 digest: None,
                 last_run_status: None,
                 last_run_execution_mode: None,
+                label: None,
             }
         };
         sessions.push(session);

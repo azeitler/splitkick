@@ -12,17 +12,20 @@ export function useImmediateSessionStateSave() {
   // Track previous values to detect changes
   const prevReviewingRef = useRef<Record<string, boolean>>({})
   const prevWaitingRef = useRef<Record<string, boolean>>({})
+  const prevLabelsRef = useRef<Record<string, string>>({})
 
   useEffect(() => {
     // Initialize with current state
     const initialState = useChatStore.getState()
     prevReviewingRef.current = { ...initialState.reviewingSessions }
     prevWaitingRef.current = { ...initialState.waitingForInputSessionIds }
+    prevLabelsRef.current = { ...initialState.sessionLabels }
 
     const unsubscribe = useChatStore.subscribe(state => {
       const {
         reviewingSessions,
         waitingForInputSessionIds,
+        sessionLabels,
         sessionWorktreeMap,
         worktreePaths,
       } = state
@@ -65,8 +68,26 @@ export function useImmediateSessionStateSave() {
         }
       }
 
+      // Check for label changes
+      for (const [sessionId, label] of Object.entries(sessionLabels)) {
+        if (prevLabelsRef.current[sessionId] !== label) {
+          saveSessionStatus(sessionId, sessionWorktreeMap, worktreePaths, {
+            label,
+          })
+        }
+      }
+      // Check for removed labels
+      for (const sessionId of Object.keys(prevLabelsRef.current)) {
+        if (!(sessionId in sessionLabels)) {
+          saveSessionStatus(sessionId, sessionWorktreeMap, worktreePaths, {
+            label: null,
+          })
+        }
+      }
+
       prevReviewingRef.current = { ...reviewingSessions }
       prevWaitingRef.current = { ...waitingForInputSessionIds }
+      prevLabelsRef.current = { ...sessionLabels }
     })
 
     return unsubscribe
@@ -77,7 +98,11 @@ async function saveSessionStatus(
   sessionId: string,
   sessionWorktreeMap: Record<string, string>,
   worktreePaths: Record<string, string>,
-  updates: { isReviewing?: boolean; waitingForInput?: boolean }
+  updates: {
+    isReviewing?: boolean
+    waitingForInput?: boolean
+    label?: string | null
+  }
 ) {
   const worktreeId = sessionWorktreeMap[sessionId]
   const worktreePath = worktreeId ? worktreePaths[worktreeId] : null
@@ -96,6 +121,7 @@ async function saveSessionStatus(
       sessionId,
       isReviewing: updates.isReviewing,
       waitingForInput: updates.waitingForInput,
+      label: 'label' in updates ? (updates.label ?? '') : undefined,
     })
     logger.debug('Saved session status immediately', { sessionId, ...updates })
   } catch (error) {

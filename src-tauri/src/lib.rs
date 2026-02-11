@@ -149,6 +149,8 @@ pub struct AppPreferences {
     pub http_server_localhost_only: bool, // Bind to localhost only (more secure)
     #[serde(default = "default_http_server_token_required")]
     pub http_server_token_required: bool, // Require token for web access (default true)
+    #[serde(default = "default_removal_behavior")]
+    pub removal_behavior: String, // What happens when closing sessions/worktrees: archive, delete
     #[serde(default = "default_auto_archive_on_pr_merged")]
     pub auto_archive_on_pr_merged: bool, // Auto-archive worktrees when their PR is merged
     #[serde(default = "default_show_keybinding_hints")]
@@ -310,6 +312,10 @@ fn default_http_server_port() -> u16 {
 
 fn default_http_server_token_required() -> bool {
     true // Require token by default for security
+}
+
+fn default_removal_behavior() -> String {
+    "archive".to_string()
 }
 
 fn default_auto_archive_on_pr_merged() -> bool {
@@ -683,6 +689,7 @@ impl Default for AppPreferences {
             http_server_token: None,
             http_server_localhost_only: true, // Default to localhost-only for security
             http_server_token_required: default_http_server_token_required(),
+            removal_behavior: default_removal_behavior(),
             auto_archive_on_pr_merged: default_auto_archive_on_pr_merged(),
             show_keybinding_hints: default_show_keybinding_hints(),
             debug_mode_enabled: false,
