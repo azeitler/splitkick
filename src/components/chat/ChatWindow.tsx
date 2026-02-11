@@ -98,6 +98,9 @@ import { QueuedMessagesList } from './QueuedMessageItem'
 import { FloatingButtons } from './FloatingButtons'
 import { PlanDialog } from './PlanDialog'
 import { StreamingMessage } from './StreamingMessage'
+import { ChatErrorFallback } from './ChatErrorFallback'
+import { logger } from '@/lib/logger'
+import { saveCrashState } from '@/lib/recovery'
 import { ErrorBanner } from './ErrorBanner'
 import { SessionDigestReminder } from './SessionDigestReminder'
 import {
@@ -384,8 +387,6 @@ export function ChatWindow({
   const { data: loadedPRContexts } = useLoadedPRContexts(
     activeSessionId ?? null
   )
-
-
 
   // Attached saved contexts for indicator
   const { data: attachedSavedContexts } = useAttachedSavedContexts(
@@ -1097,9 +1098,11 @@ export function ChatWindow({
           disableThinkingForMode: queuedMsg.disableThinkingForMode,
           effortLevel: queuedMsg.effortLevel,
           mcpConfig: queuedMsg.mcpConfig,
-          parallelExecutionPrompt: preferences?.parallel_execution_prompt_enabled
-            ? (preferences.magic_prompts?.parallel_execution ?? DEFAULT_PARALLEL_EXECUTION_PROMPT)
-            : undefined,
+          parallelExecutionPrompt:
+            preferences?.parallel_execution_prompt_enabled
+              ? (preferences.magic_prompts?.parallel_execution ??
+                DEFAULT_PARALLEL_EXECUTION_PROMPT)
+              : undefined,
           chromeEnabled: preferences?.chrome_enabled ?? false,
           aiLanguage: preferences?.ai_language,
           allowedTools,
@@ -1190,9 +1193,11 @@ export function ChatWindow({
             mcpServersDataRef.current,
             enabledMcpServersRef.current
           ),
-          parallelExecutionPrompt: preferences?.parallel_execution_prompt_enabled
-            ? (preferences.magic_prompts?.parallel_execution ?? DEFAULT_PARALLEL_EXECUTION_PROMPT)
-            : undefined,
+          parallelExecutionPrompt:
+            preferences?.parallel_execution_prompt_enabled
+              ? (preferences.magic_prompts?.parallel_execution ??
+                DEFAULT_PARALLEL_EXECUTION_PROMPT)
+              : undefined,
           chromeEnabled: preferences?.chrome_enabled ?? false,
           aiLanguage: preferences?.ai_language,
         },
@@ -1586,9 +1591,11 @@ export function ChatWindow({
             mcpServersDataRef.current,
             enabledMcpServersRef.current
           ),
-          parallelExecutionPrompt: preferences?.parallel_execution_prompt_enabled
-            ? (preferences.magic_prompts?.parallel_execution ?? DEFAULT_PARALLEL_EXECUTION_PROMPT)
-            : undefined,
+          parallelExecutionPrompt:
+            preferences?.parallel_execution_prompt_enabled
+              ? (preferences.magic_prompts?.parallel_execution ??
+                DEFAULT_PARALLEL_EXECUTION_PROMPT)
+              : undefined,
           chromeEnabled: preferences?.chrome_enabled ?? false,
           aiLanguage: preferences?.ai_language,
         },
@@ -1619,8 +1626,7 @@ export function ChatWindow({
         runId: detail.runId,
       })
 
-      const customPrompt =
-        preferences?.magic_prompts?.investigate_workflow_run
+      const customPrompt = preferences?.magic_prompts?.investigate_workflow_run
       const template =
         customPrompt && customPrompt.trim()
           ? customPrompt
@@ -1661,7 +1667,10 @@ export function ChatWindow({
         if (project) {
           let worktrees: Worktree[] = []
           try {
-            console.warn('[INVESTIGATE-WF] Fetching worktrees for project:', project.id)
+            console.warn(
+              '[INVESTIGATE-WF] Fetching worktrees for project:',
+              project.id
+            )
             worktrees = await queryClient.fetchQuery({
               queryKey: projectsQueryKeys.worktrees(project.id),
               queryFn: () =>
@@ -1670,20 +1679,22 @@ export function ChatWindow({
                 }),
               staleTime: 1000 * 60,
             })
-            console.warn('[INVESTIGATE-WF] Worktrees fetched:', worktrees.map(w => ({
-              id: w.id,
-              branch: w.branch,
-              status: w.status,
-              session_type: w.session_type,
-              path: w.path,
-            })))
+            console.warn(
+              '[INVESTIGATE-WF] Worktrees fetched:',
+              worktrees.map(w => ({
+                id: w.id,
+                branch: w.branch,
+                status: w.status,
+                session_type: w.session_type,
+                path: w.path,
+              }))
+            )
           } catch (err) {
             console.error('[INVESTIGATE-WF] Failed to fetch worktrees:', err)
           }
 
           // status is optional — undefined or 'ready' both mean usable
-          const isUsable = (w: Worktree) =>
-            !w.status || w.status === 'ready'
+          const isUsable = (w: Worktree) => !w.status || w.status === 'ready'
 
           if (worktrees.length > 0) {
             // Find worktree matching the run's branch
@@ -1692,7 +1703,13 @@ export function ChatWindow({
             )
             console.warn('[INVESTIGATE-WF] Branch match:', {
               targetBranch: detail.branch,
-              matchingWorktree: matching ? { id: matching.id, branch: matching.branch, status: matching.status } : null,
+              matchingWorktree: matching
+                ? {
+                    id: matching.id,
+                    branch: matching.branch,
+                    status: matching.status,
+                  }
+                : null,
             })
             if (matching) {
               targetWorktreeId = matching.id
@@ -1700,9 +1717,14 @@ export function ChatWindow({
             } else {
               // Fall back to the base worktree (first usable one)
               const base = worktrees.find(w => isUsable(w))
-              console.warn('[INVESTIGATE-WF] No branch match, fallback to base:', {
-                baseWorktree: base ? { id: base.id, branch: base.branch, status: base.status } : null,
-              })
+              console.warn(
+                '[INVESTIGATE-WF] No branch match, fallback to base:',
+                {
+                  baseWorktree: base
+                    ? { id: base.id, branch: base.branch, status: base.status }
+                    : null,
+                }
+              )
               if (base) {
                 targetWorktreeId = base.id
                 targetWorktreePath = base.path
@@ -1714,7 +1736,10 @@ export function ChatWindow({
 
           // No usable worktrees — create the base session first
           if (!targetWorktreeId) {
-            console.warn('[INVESTIGATE-WF] No usable worktree found, creating base session for project:', project.id)
+            console.warn(
+              '[INVESTIGATE-WF] No usable worktree found, creating base session for project:',
+              project.id
+            )
             try {
               const baseSession = await invoke<Worktree>(
                 'create_base_session',
@@ -1732,22 +1757,30 @@ export function ChatWindow({
               targetWorktreeId = baseSession.id
               targetWorktreePath = baseSession.path
             } catch (error) {
-              console.error('[INVESTIGATE-WF] Failed to create base session:', error)
+              console.error(
+                '[INVESTIGATE-WF] Failed to create base session:',
+                error
+              )
               toast.error(`Failed to open base session: ${error}`)
               return
             }
           }
         }
       } else {
-        console.warn('[INVESTIGATE-WF] No projectPath in detail, skipping project lookup')
+        console.warn(
+          '[INVESTIGATE-WF] No projectPath in detail, skipping project lookup'
+        )
       }
 
       // Final fallback: use active worktree
       if (!targetWorktreeId || !targetWorktreePath) {
-        console.warn('[INVESTIGATE-WF] Using active worktree as final fallback:', {
-          activeWorktreeId: activeWorktreeIdRef.current,
-          activeWorktreePath: activeWorktreePathRef.current,
-        })
+        console.warn(
+          '[INVESTIGATE-WF] Using active worktree as final fallback:',
+          {
+            activeWorktreeId: activeWorktreeIdRef.current,
+            activeWorktreePath: activeWorktreePathRef.current,
+          }
+        )
         targetWorktreeId = activeWorktreeIdRef.current
         targetWorktreePath = activeWorktreePathRef.current
       }
@@ -1768,7 +1801,10 @@ export function ChatWindow({
       const worktreePath = targetWorktreePath
 
       const sendInvestigateMessage = (targetSessionId: string) => {
-        console.warn('[INVESTIGATE-WF] Sending investigate message to session:', targetSessionId)
+        console.warn(
+          '[INVESTIGATE-WF] Sending investigate message to session:',
+          targetSessionId
+        )
         const {
           addSendingSession,
           setLastSentMessage,
@@ -1799,9 +1835,11 @@ export function ChatWindow({
               mcpServersDataRef.current,
               enabledMcpServersRef.current
             ),
-            parallelExecutionPrompt: preferences?.parallel_execution_prompt_enabled
-              ? (preferences.magic_prompts?.parallel_execution ?? DEFAULT_PARALLEL_EXECUTION_PROMPT)
-              : undefined,
+            parallelExecutionPrompt:
+              preferences?.parallel_execution_prompt_enabled
+                ? (preferences.magic_prompts?.parallel_execution ??
+                  DEFAULT_PARALLEL_EXECUTION_PROMPT)
+                : undefined,
             chromeEnabled: preferences?.chrome_enabled ?? false,
             aiLanguage: preferences?.ai_language,
           },
@@ -1823,7 +1861,10 @@ export function ChatWindow({
       const project = projects?.find(p => p.path === detail.projectPath)
       if (project) expandProject(project.id)
 
-      console.warn('[INVESTIGATE-WF] Creating new session in worktree:', worktreeId)
+      console.warn(
+        '[INVESTIGATE-WF] Creating new session in worktree:',
+        worktreeId
+      )
       createSession.mutate(
         { worktreeId, worktreePath },
         {
@@ -2133,9 +2174,11 @@ export function ChatWindow({
               mcpServersDataRef.current,
               enabledMcpServersRef.current
             ),
-            parallelExecutionPrompt: preferences?.parallel_execution_prompt_enabled
-              ? (preferences.magic_prompts?.parallel_execution ?? DEFAULT_PARALLEL_EXECUTION_PROMPT)
-              : undefined,
+            parallelExecutionPrompt:
+              preferences?.parallel_execution_prompt_enabled
+                ? (preferences.magic_prompts?.parallel_execution ??
+                  DEFAULT_PARALLEL_EXECUTION_PROMPT)
+                : undefined,
             chromeEnabled: preferences?.chrome_enabled ?? false,
             aiLanguage: preferences?.ai_language,
           },
@@ -2357,18 +2400,29 @@ export function ChatWindow({
 
   return (
     <ErrorBoundary
-      fallback={
-        <div className="flex h-full flex-col items-center justify-center gap-4 text-muted-foreground">
-          <span>Something went wrong. Please refresh the page.</span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => window.location.reload()}
-          >
-            Refresh
-          </Button>
-        </div>
-      }
+      onError={(error, errorInfo) => {
+        logger.error('ChatWindow crashed', {
+          error: error.message,
+          stack: error.stack,
+        })
+        saveCrashState(
+          { activeWorktreeId, activeSessionId },
+          {
+            error: error.message,
+            stack: error.stack ?? '',
+            componentStack: errorInfo.componentStack ?? undefined,
+          }
+        ).catch(() => {
+          /* noop */
+        })
+      }}
+      fallbackRender={({ error, resetErrorBoundary }) => (
+        <ChatErrorFallback
+          error={error}
+          resetErrorBoundary={resetErrorBoundary}
+          activeWorktreeId={activeWorktreeId}
+        />
+      )}
     >
       <div className="flex h-full w-full min-w-0 flex-col overflow-hidden">
         {/* Session tab bar - hidden in modal mode and canvas-only mode */}
@@ -2604,7 +2658,9 @@ export function ChatWindow({
                             <SkillBadge
                               key={skill.id}
                               skill={skill}
-                              onRemove={() => handleRemovePendingSkill(skill.id)}
+                              onRemove={() =>
+                                handleRemovePendingSkill(skill.id)
+                              }
                             />
                           ))}
                         </div>
@@ -2615,7 +2671,8 @@ export function ChatWindow({
                       {activeTodos.length > 0 &&
                         (dismissedTodoMessageId === null ||
                           (todoSourceMessageId !== null &&
-                            todoSourceMessageId !== dismissedTodoMessageId)) && (
+                            todoSourceMessageId !==
+                              dismissedTodoMessageId)) && (
                           <div className="px-4 md:px-6 pt-2">
                             <TodoWidget
                               todos={normalizeTodosForDisplay(
@@ -2848,7 +2905,9 @@ export function ChatWindow({
                   model: selectedModelRef.current,
                   executionMode: 'build',
                   thinkingLevel: selectedThinkingLevelRef.current,
-                  disableThinkingForMode: !useChatStore.getState().hasManualThinkingOverride(activeSessionId),
+                  disableThinkingForMode: !useChatStore
+                    .getState()
+                    .hasManualThinkingOverride(activeSessionId),
                   effortLevel: useAdaptiveThinkingRef.current
                     ? selectedEffortLevelRef.current
                     : undefined,
@@ -2918,7 +2977,9 @@ export function ChatWindow({
                   model: selectedModelRef.current,
                   executionMode: 'yolo',
                   thinkingLevel: selectedThinkingLevelRef.current,
-                  disableThinkingForMode: !useChatStore.getState().hasManualThinkingOverride(activeSessionId),
+                  disableThinkingForMode: !useChatStore
+                    .getState()
+                    .hasManualThinkingOverride(activeSessionId),
                   effortLevel: useAdaptiveThinkingRef.current
                     ? selectedEffortLevelRef.current
                     : undefined,
@@ -3005,7 +3066,9 @@ export function ChatWindow({
                   model: selectedModelRef.current,
                   executionMode: 'build',
                   thinkingLevel: selectedThinkingLevelRef.current,
-                  disableThinkingForMode: !useChatStore.getState().hasManualThinkingOverride(activeSessionId),
+                  disableThinkingForMode: !useChatStore
+                    .getState()
+                    .hasManualThinkingOverride(activeSessionId),
                   effortLevel: useAdaptiveThinkingRef.current
                     ? selectedEffortLevelRef.current
                     : undefined,
@@ -3075,7 +3138,9 @@ export function ChatWindow({
                   model: selectedModelRef.current,
                   executionMode: 'yolo',
                   thinkingLevel: selectedThinkingLevelRef.current,
-                  disableThinkingForMode: !useChatStore.getState().hasManualThinkingOverride(activeSessionId),
+                  disableThinkingForMode: !useChatStore
+                    .getState()
+                    .hasManualThinkingOverride(activeSessionId),
                   effortLevel: useAdaptiveThinkingRef.current
                     ? selectedEffortLevelRef.current
                     : undefined,
