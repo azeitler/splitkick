@@ -33,7 +33,9 @@ import {
   triggerImmediateGitPoll,
   fetchWorktreesStatus,
 } from '@/services/git-status'
-import type { CreateCommitResponse } from '@/types/projects'
+import type { CreateCommitResponse, CreatePrResponse } from '@/types/projects'
+import { saveWorktreePr, projectsQueryKeys } from '@/services/projects'
+import { useQueryClient } from '@tanstack/react-query'
 
 type MagicOption =
   | 'save-context'
@@ -54,6 +56,7 @@ const CANVAS_ALLOWED_OPTIONS = new Set<MagicOption>([
   'commit-and-push',
   'pull',
   'push',
+  'open-pr',
   'release-notes',
   'merge',
   'resolve-conflicts',
@@ -239,6 +242,7 @@ export function MagicModal() {
     [setMagicModalOpen, isOnCanvas]
   )
 
+  const queryClient = useQueryClient()
   const selectedProjectId = useProjectsStore(state => state.selectedProjectId)
   const { data: preferences } = usePreferences()
   const { data: projects } = useProjects()
@@ -314,9 +318,49 @@ export function MagicModal() {
           }
           break
         }
+        case 'open-pr': {
+          if (worktree.pr_url) {
+            await openExternal(worktree.pr_url)
+            return
+          }
+          setWorktreeLoading(selectedWorktreeId, 'pr')
+          const branch = worktree.branch ?? ''
+          const toastId = toast.loading(`Creating PR for ${branch}...`)
+          try {
+            const result = await invoke<CreatePrResponse>(
+              'create_pr_with_ai_content',
+              {
+                worktreePath: worktree.path,
+                customPrompt: preferences?.magic_prompts?.pr_content,
+                model: preferences?.magic_prompt_models?.pr_content_model,
+              }
+            )
+            await saveWorktreePr(selectedWorktreeId, result.pr_number, result.pr_url)
+            queryClient.invalidateQueries({
+              queryKey: projectsQueryKeys.worktrees(worktree.project_id),
+            })
+            queryClient.invalidateQueries({
+              queryKey: [...projectsQueryKeys.all, 'worktree', selectedWorktreeId],
+            })
+            triggerImmediateGitPoll()
+            if (worktree.project_id) fetchWorktreesStatus(worktree.project_id)
+            toast.success(`PR created: ${result.title}`, {
+              id: toastId,
+              action: {
+                label: 'Open',
+                onClick: () => openExternal(result.pr_url),
+              },
+            })
+          } catch (error) {
+            toast.error(`Failed to create PR: ${error}`, { id: toastId })
+          } finally {
+            clearWorktreeLoading(selectedWorktreeId)
+          }
+          break
+        }
       }
     },
-    [selectedWorktreeId, worktree, preferences, project]
+    [selectedWorktreeId, worktree, preferences, project, queryClient]
   )
 
   const executeAction = useCallback(

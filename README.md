@@ -1,18 +1,63 @@
 # Jean
 
-Jean (Claude haha) is an AI assistant application that helps you to manage multiple projects, worktrees, session with Claude CLI.
+Jean is a desktop AI assistant for managing multiple projects, worktrees, and chat sessions with Claude CLI.
 
-# Features
+## Features
 
-- Automated worktree management
-- Load context from sessions, GitHub Issues / Pull requests
-- Automated (magic) Git commands / prompts (review, commit, open PR, investigate issue/pr)
-- Automated GitHub PR or local merge worktrees
-- Automated merge conflict resolver
-- Archive worktrees / branches so you can restore them and continue to work
-- A lot more
+### Project & Worktree Management
+- Multi-project support with folder organization
+- Git worktree automation (create, archive, restore, delete)
+- Base session mode (work on main without worktrees)
+- Custom project avatars
 
-# Screenshots
+### Session Management
+- Multiple sessions per worktree
+- Execution modes: Plan, Build, Yolo
+- Session archiving, recovery, auto-naming
+- Canvas views for visual session overview
+
+### AI Chat (Claude CLI)
+- Model selection (Opus, Sonnet, Haiku)
+- Thinking levels (Think, Megathink, Ultrathink) and effort levels for Opus
+- MCP server support
+- File mentions, image support, context loading
+- Customizable system prompts per project
+
+### Magic Commands
+- Investigate Issue / PR / Workflow
+- Code Review with finding tracking
+- AI Commit messages, PR content generation
+- Merge conflict resolution
+- Release notes generation
+
+### GitHub Integration
+- Issue & PR investigation
+- Checkout PRs as worktrees
+- Auto-archive on PR merge
+- GitHub Actions workflow investigation
+
+### Developer Tools
+- Integrated terminal (multiple per worktree)
+- Open in editor (VS Code, Cursor, Xcode)
+- Git status, diff viewer (unified & side-by-side)
+- File tree with preview
+
+### Remote Access
+- Built-in HTTP server with WebSocket support
+- Token-based authentication
+- Web browser access
+
+### Customization
+- Themes (light/dark/system)
+- Custom fonts and font sizes
+- Customizable AI prompts
+- Configurable keybindings
+
+## Tech Stack
+
+Tauri v2 · React 19 · Rust · TypeScript · Tailwind CSS v4 · shadcn/ui v4 · Zustand v5 · TanStack Query · CodeMirror 6 · xterm.js
+
+## Screenshots
 
 ![Main Interface](screenshots/SCR-20260209-nigu.png)
 ![Development Mode](screenshots/SCR-20260209-ninl.png)
@@ -36,7 +81,7 @@ Jean (Claude haha) is an AI assistant application that helps you to manage multi
 # Roadmap
 
 - Add [Opencode](https://opencode.ai/) support
-- Add remote access support through an API
+- Enhance remote web access
 
 # Contributing
 

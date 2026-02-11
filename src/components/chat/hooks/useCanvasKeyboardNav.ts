@@ -124,7 +124,8 @@ export function useCanvasKeyboardNav<T>({
         uiState.magicModalOpen ||
         uiState.planDialogOpen ||
         uiState.commandPaletteOpen ||
-        uiState.preferencesOpen
+        uiState.preferencesOpen ||
+        uiState.releaseNotesModalOpen
       )
         return
       if (useProjectsStore.getState().projectSettingsDialogOpen) return
