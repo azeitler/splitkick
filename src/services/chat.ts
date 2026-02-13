@@ -1175,7 +1175,7 @@ export function useSendMessage() {
       allowedTools,
       mcpConfig,
       chromeEnabled,
-      customProfileSettings,
+      customProfileName,
     }: {
       sessionId: string
       worktreeId: string
@@ -1191,7 +1191,7 @@ export function useSendMessage() {
       allowedTools?: string[]
       mcpConfig?: string
       chromeEnabled?: boolean
-      customProfileSettings?: string
+      customProfileName?: string
     }): Promise<ChatMessage> => {
       if (!isTauri()) {
         throw new Error('Not in Tauri context')
@@ -1226,7 +1226,7 @@ export function useSendMessage() {
         allowedTools,
         mcpConfig,
         chromeEnabled,
-        customProfileSettings,
+        customProfileName,
       })
       logger.info('Chat message sent', { responseId: response.id })
       return response
@@ -1526,6 +1526,58 @@ export function useSetSessionModel() {
             : 'Unknown error occurred'
       logger.error('Failed to save model selection', { error })
       toast.error('Failed to save model', { description: message })
+    },
+  })
+}
+
+/**
+ * Hook to set the selected provider (custom CLI profile) for a session
+ */
+export function useSetSessionProvider() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      worktreeId,
+      worktreePath,
+      sessionId,
+      provider,
+    }: {
+      worktreeId: string
+      worktreePath: string
+      sessionId: string
+      provider: string | null
+    }): Promise<void> => {
+      if (!isTauri()) {
+        throw new Error('Not in Tauri context')
+      }
+
+      logger.debug('Setting session provider', { sessionId, provider })
+      await invoke('set_session_provider', {
+        worktreeId,
+        worktreePath,
+        sessionId,
+        provider,
+      })
+      logger.info('Session provider saved')
+    },
+    onSuccess: (_, { sessionId, worktreeId }) => {
+      queryClient.invalidateQueries({
+        queryKey: chatQueryKeys.session(sessionId),
+      })
+      queryClient.invalidateQueries({
+        queryKey: chatQueryKeys.sessions(worktreeId),
+      })
+    },
+    onError: error => {
+      const message =
+        error instanceof Error
+          ? error.message
+          : typeof error === 'string'
+            ? error
+            : 'Unknown error occurred'
+      logger.error('Failed to save provider selection', { error })
+      toast.error('Failed to save provider', { description: message })
     },
   })
 }

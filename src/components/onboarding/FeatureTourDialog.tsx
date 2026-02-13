@@ -70,6 +70,24 @@ const steps = [
       { shortcut: 'mod+r' as ShortcutString, label: 'Run script' },
     ] satisfies ShortcutRow[],
   },
+  {
+    title: 'Automation',
+    description: 'Automate your workflow with jean.json',
+    shortcuts: [
+      {
+        shortcut: 'jean.json' as ShortcutString,
+        label: 'Config file in your project root',
+      },
+      {
+        shortcut: 'setup' as ShortcutString,
+        label: 'Runs after each worktree is created',
+      },
+      {
+        shortcut: 'run' as ShortcutString,
+        label: 'Dev server script, launched via ⌘R',
+      },
+    ] satisfies ShortcutRow[],
+  },
 ] as const
 
 function formatArrowKeys(shortcut: string): string {

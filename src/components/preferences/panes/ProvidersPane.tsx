@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { invoke } from '@tauri-apps/api/core'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
 import { Button } from '@/components/ui/button'
@@ -11,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { usePreferences, useSavePreferences } from '@/services/preferences'
 import {
   type CustomCliProfile,
@@ -84,7 +86,7 @@ export const ProvidersPane: React.FC = () => {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="default">Default</SelectItem>
+                <SelectItem value="default">Anthropic</SelectItem>
                 {profiles.map(p => (
                   <SelectItem key={p.name} value={p.name}>
                     {p.name}
@@ -108,6 +110,7 @@ const CliProfilesEditor: React.FC<{
   const [isAdding, setIsAdding] = useState(false)
   const [editName, setEditName] = useState('')
   const [editJson, setEditJson] = useState('')
+  const [editSupportsThinking, setEditSupportsThinking] = useState(true)
   const [jsonError, setJsonError] = useState<string | null>(null)
 
   const existingNames = new Set(profiles.map(p => p.name))
@@ -115,7 +118,7 @@ const CliProfilesEditor: React.FC<{
     t => !existingNames.has(t.name)
   )
 
-  const validateAndSave = () => {
+  const validateAndSave = async () => {
     const name = editName.trim()
     if (!name) {
       setJsonError('Name is required')
@@ -129,7 +132,18 @@ const CliProfilesEditor: React.FC<{
     }
     setJsonError(null)
 
-    const newProfile: CustomCliProfile = { name, settings_json: editJson }
+    // Write settings to standalone file in ~/.claude/
+    try {
+      await invoke<string>('save_cli_profile', {
+        name,
+        settingsJson: editJson,
+      })
+    } catch (e) {
+      setJsonError(`Failed to save: ${e}`)
+      return
+    }
+
+    const newProfile: CustomCliProfile = { name, settings_json: editJson, supports_thinking: editSupportsThinking }
     if (editingIndex !== null) {
       const updated = [...profiles]
       updated[editingIndex] = newProfile
@@ -149,6 +163,10 @@ const CliProfilesEditor: React.FC<{
     setEditingIndex(index)
     setEditName(profile.name)
     setEditJson(profile.settings_json)
+    const predefined = PREDEFINED_CLI_PROFILES.find(p => p.name === profile.name)
+    setEditSupportsThinking(
+      (profile.supports_thinking ?? predefined?.supports_thinking) !== false
+    )
     setJsonError(null)
     setIsAdding(false)
   }
@@ -157,6 +175,7 @@ const CliProfilesEditor: React.FC<{
     setIsAdding(true)
     setEditName(template?.name ?? '')
     setEditJson(template?.settings_json ?? '{\n  "env": {\n    \n  }\n}')
+    setEditSupportsThinking(template?.supports_thinking !== false)
     setJsonError(null)
     setEditingIndex(null)
   }
@@ -169,7 +188,15 @@ const CliProfilesEditor: React.FC<{
     setJsonError(null)
   }
 
-  const deleteProfile = (index: number) => {
+  const deleteProfile = async (index: number) => {
+    const profile = profiles[index]
+    if (profile) {
+      try {
+        await invoke('delete_cli_profile', { name: profile.name })
+      } catch (e) {
+        console.error('Failed to delete CLI profile file:', e)
+      }
+    }
     onSave(profiles.filter((_, i) => i !== index))
     if (editingIndex === index) cancelEdit()
   }
@@ -182,7 +209,14 @@ const CliProfilesEditor: React.FC<{
           key={profile.name}
           className="flex items-center gap-2 rounded-md border border-border px-3 py-2"
         >
-          <span className="flex-1 text-sm font-medium">{profile.name}</span>
+          <div className="flex-1 min-w-0">
+            <span className="text-sm font-medium">{profile.name}</span>
+            {profile.file_path && (
+              <p className="text-xs text-muted-foreground truncate">
+                {profile.file_path}
+              </p>
+            )}
+          </div>
           <Button
             variant="ghost"
             size="icon"
@@ -220,6 +254,13 @@ const CliProfilesEditor: React.FC<{
             }}
             className="min-h-[120px] font-mono text-xs"
           />
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={editSupportsThinking}
+              onCheckedChange={setEditSupportsThinking}
+            />
+            <p className="text-sm text-muted-foreground">Supports thinking/effort levels</p>
+          </div>
           {jsonError && <p className="text-xs text-destructive">{jsonError}</p>}
           <div className="flex gap-2">
             <Button size="sm" onClick={validateAndSave}>

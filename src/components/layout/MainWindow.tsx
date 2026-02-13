@@ -10,6 +10,7 @@ import { ProjectSettingsDialog } from '@/components/projects/ProjectSettingsDial
 import { CommitModal } from '@/components/commit/CommitModal'
 import { OnboardingDialog } from '@/components/onboarding/OnboardingDialog'
 import { FeatureTourDialog } from '@/components/onboarding/FeatureTourDialog'
+import { JeanConfigWizard } from '@/components/onboarding/JeanConfigWizard'
 import { CliUpdateModal } from '@/components/layout/CliUpdateModal'
 import { UpdateAvailableModal } from '@/components/layout/UpdateAvailableModal'
 import { CliLoginModal } from '@/components/preferences/CliLoginModal'
@@ -33,6 +34,7 @@ import { useSessionStatePersistence } from '@/hooks/useSessionStatePersistence'
 import { useSessionPrefetch } from '@/hooks/useSessionPrefetch'
 import { useRestoreLastArchived } from '@/hooks/useRestoreLastArchived'
 import { useArchiveCleanup } from '@/hooks/useArchiveCleanup'
+import { usePrWorktreeSweep } from '@/hooks/usePrWorktreeSweep'
 import {
   useAppFocusTracking,
   useGitStatusEvents,
@@ -170,6 +172,9 @@ export function MainWindow() {
   // Auto-cleanup old archived items on startup
   useArchiveCleanup()
 
+  // Sync all worktrees with open PRs to backend for sweep polling
+  usePrWorktreeSweep(projects)
+
   // Track app focus state for background task manager
   useAppFocusTracking()
 
@@ -275,6 +280,7 @@ export function MainWindow() {
       <CommitModal />
       <OnboardingDialog />
       <FeatureTourDialog />
+      <JeanConfigWizard />
       <CliUpdateModal />
       <UpdateAvailableModal />
       <CliLoginModal />

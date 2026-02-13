@@ -27,6 +27,8 @@ pub struct NamingRequest {
     pub existing_branch_names: Vec<String>,
     pub generate_session_name: bool,
     pub generate_branch_name: bool,
+    /// Optional custom prompt for session naming (from magic prompts settings)
+    pub custom_session_prompt: Option<String>,
 }
 
 /// Successful session rename result (for event emission)
@@ -313,7 +315,13 @@ fn generate_names(app: &AppHandle, request: &NamingRequest) -> Result<NamingOutp
             .replace("{message}", &request.first_message)
             .replace("{existing_names}", &existing)
     } else if request.generate_session_name {
-        NAMING_PROMPT_SESSION_ONLY.replace("{message}", &request.first_message)
+        let template = request
+            .custom_session_prompt
+            .as_ref()
+            .filter(|p| !p.trim().is_empty())
+            .map(|s| s.as_str())
+            .unwrap_or(NAMING_PROMPT_SESSION_ONLY);
+        template.replace("{message}", &request.first_message)
     } else {
         let existing = if request.existing_branch_names.is_empty() {
             "(none)".to_string()

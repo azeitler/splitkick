@@ -17,7 +17,7 @@ Tests frontend with mocked IPC - fast, works on all platforms.
 ### Install
 
 ```bash
-npm install -D @playwright/test
+bun add --dev @playwright/test
 npx playwright install chromium
 ```
 
@@ -31,7 +31,7 @@ import { defineConfig } from '@playwright/test'
 export default defineConfig({
   testDir: './e2e',
   webServer: {
-    command: 'npm run dev',
+    command: 'bun run dev',
     url: 'http://localhost:1420',
     reuseExistingServer: true,
     env: { VITE_PLAYWRIGHT: 'true' },
@@ -78,7 +78,7 @@ Tests actual Rust backend. Requires built app.
 
 ```bash
 cargo install tauri-driver --locked
-npm install -D @wdio/cli @wdio/local-runner @wdio/mocha-framework
+bun add --dev @wdio/cli @wdio/local-runner @wdio/mocha-framework
 ```
 
 ### Files to create
@@ -114,7 +114,7 @@ export const config = {
 ### Run
 
 ```bash
-npm run tauri:build -- --debug  # Build first
+bun run tauri:build -- --debug  # Build first
 npx wdio run wdio.conf.js
 ```
 

@@ -193,6 +193,8 @@ interface ChatToolbarProps {
   selectedEffortLevel: EffortLevel
   thinkingOverrideActive: boolean // True when thinking is disabled in build/yolo due to preference
   useAdaptiveThinking: boolean // True when model supports effort (Opus on CLI >= 2.1.32)
+  hideThinkingLevel?: boolean // True when selected provider doesn't support thinking
+  providerLocked?: boolean // True after first message — provider can't change mid-session
 
   // Git state
   baseBranch: string
@@ -329,6 +331,8 @@ export const ChatToolbar = memo(function ChatToolbar({
   selectedEffortLevel,
   thinkingOverrideActive,
   useAdaptiveThinking,
+  hideThinkingLevel,
+  providerLocked,
   baseBranch,
   uncommittedAdded,
   uncommittedRemoved,
@@ -396,18 +400,33 @@ export const ChatToolbar = memo(function ChatToolbar({
   }, [availableMcpServers, enabledMcpServers])
 
   // For custom providers: show generic tier names (Opus/Sonnet/Haiku) without version numbers,
-  // and drop Opus 4.5 (providers only have one opus-tier model)
-  const filteredModelOptions = useMemo(
-    () =>
-      selectedProvider
-        ? [
-            { value: 'opus' as ClaudeModel, label: 'Opus' },
-            { value: 'sonnet' as ClaudeModel, label: 'Sonnet' },
-            { value: 'haiku' as ClaudeModel, label: 'Haiku' },
-          ]
-        : MODEL_OPTIONS,
-    [selectedProvider]
-  )
+  // and drop Opus 4.5 (providers only have one opus-tier model).
+  // Parse actual model names from the provider's settings JSON when available.
+  const filteredModelOptions = useMemo(() => {
+    if (!selectedProvider) return MODEL_OPTIONS
+    // Try to extract model names from the active profile's settings_json
+    const profile = customCliProfiles.find(p => p.name === selectedProvider)
+    let opusModel: string | undefined
+    let sonnetModel: string | undefined
+    let haikuModel: string | undefined
+    if (profile?.settings_json) {
+      try {
+        const settings = JSON.parse(profile.settings_json)
+        const env = settings?.env
+        if (env) {
+          opusModel = env.ANTHROPIC_DEFAULT_OPUS_MODEL || env.ANTHROPIC_MODEL
+          sonnetModel = env.ANTHROPIC_DEFAULT_SONNET_MODEL || env.ANTHROPIC_MODEL
+          haikuModel = env.ANTHROPIC_DEFAULT_HAIKU_MODEL || env.ANTHROPIC_MODEL
+        }
+      } catch { /* ignore parse errors */ }
+    }
+    const suffix = (model?: string) => model ? ` (${model})` : ''
+    return [
+      { value: 'opus' as ClaudeModel, label: `Opus${suffix(opusModel)}` },
+      { value: 'sonnet' as ClaudeModel, label: `Sonnet${suffix(sonnetModel)}` },
+      { value: 'haiku' as ClaudeModel, label: `Haiku${suffix(haikuModel)}` },
+    ]
+  }, [selectedProvider, customCliProfiles])
 
   // Memoize callbacks to prevent Select re-renders
   const handleModelChange = useCallback(
@@ -422,7 +441,7 @@ export const ChatToolbar = memo(function ChatToolbar({
       const provider = value === 'default' ? null : value
       onProviderChange(provider)
       // Auto-switch from Opus 4.6 when selecting a custom provider (it's Anthropic-only)
-      if (provider && selectedModel === 'opus-4.5') {
+      if (provider && provider !== '__anthropic__' && selectedModel === 'opus-4.5') {
         onModelChange('opus' as ClaudeModel)
       }
     },
@@ -771,30 +790,37 @@ export const ChatToolbar = memo(function ChatToolbar({
             {/* Provider selector as submenu */}
             {customCliProfiles.length > 0 && (
               <DropdownMenuSub>
-                <DropdownMenuSubTrigger>
+                <DropdownMenuSubTrigger disabled={providerLocked}>
                   <Sparkles className="mr-2 h-4 w-4" />
                   <span>Provider</span>
                   <span className="ml-auto text-xs text-muted-foreground">
-                    {selectedProvider ?? 'Default'}
+                    {!selectedProvider || selectedProvider === '__anthropic__' ? 'Anthropic' : selectedProvider}
                   </span>
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent>
                   <DropdownMenuRadioGroup
-                    value={selectedProvider ?? 'default'}
+                    value={selectedProvider ?? '__anthropic__'}
                     onValueChange={handleProviderChange}
                   >
-                    <DropdownMenuRadioItem value="default">
-                      Default
+                    <DropdownMenuRadioItem value="__anthropic__">
+                      Anthropic
                     </DropdownMenuRadioItem>
-                    <DropdownMenuSeparator />
-                    {customCliProfiles.map(profile => (
-                      <DropdownMenuRadioItem
-                        key={profile.name}
-                        value={profile.name}
-                      >
-                        {profile.name}
-                      </DropdownMenuRadioItem>
-                    ))}
+                    {customCliProfiles.length > 0 && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuLabel className="text-xs text-muted-foreground">
+                          Custom Providers
+                        </DropdownMenuLabel>
+                        {customCliProfiles.map(profile => (
+                          <DropdownMenuRadioItem
+                            key={profile.name}
+                            value={profile.name}
+                          >
+                            {profile.name}
+                          </DropdownMenuRadioItem>
+                        ))}
+                      </>
+                    )}
                   </DropdownMenuRadioGroup>
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
@@ -827,7 +853,7 @@ export const ChatToolbar = memo(function ChatToolbar({
             </DropdownMenuSub>
 
             {/* Thinking/Effort level as submenu */}
-            {useAdaptiveThinking ? (
+            {hideThinkingLevel ? null : useAdaptiveThinking ? (
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger>
                   <Brain className="mr-2 h-4 w-4" />
@@ -1133,91 +1159,6 @@ export const ChatToolbar = memo(function ChatToolbar({
           </>
         )}
 
-        {/* MCP servers button - desktop only */}
-        <div className="hidden @md:block h-4 w-px bg-border/50" />
-        <DropdownMenu open={mcpDropdownOpen} onOpenChange={setMcpDropdownOpen}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  disabled={hasPendingQuestions}
-                  className={cn(
-                    'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
-                    activeMcpCount > 0 &&
-                      'border border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:border-emerald-400/40 dark:bg-emerald-500/10 dark:text-emerald-400'
-                  )}
-                >
-                  <Plug className="h-3.5 w-3.5" />
-                  {activeMcpCount > 0 && <span>{activeMcpCount}</span>}
-                  <ChevronDown className="h-3 w-3 opacity-50" />
-                </button>
-              </DropdownMenuTrigger>
-            </TooltipTrigger>
-            <TooltipContent>
-              {activeMcpCount > 0
-                ? `${activeMcpCount} MCP server(s) enabled`
-                : 'No MCP servers enabled'}
-            </TooltipContent>
-          </Tooltip>
-          <DropdownMenuContent align="start">
-            <DropdownMenuLabel className="flex items-center gap-2">
-              MCP Servers
-              {isHealthChecking && (
-                <Loader2 className="size-3 animate-spin text-muted-foreground" />
-              )}
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {availableMcpServers.length > 0 ? (
-              availableMcpServers.map(server => {
-                const status = healthResult?.statuses[server.name]
-                return (
-                  <Tooltip key={server.name}>
-                    <TooltipTrigger asChild>
-                      <DropdownMenuCheckboxItem
-                        checked={
-                          !server.disabled &&
-                          enabledMcpServers.includes(server.name)
-                        }
-                        onCheckedChange={() => onToggleMcpServer(server.name)}
-                        disabled={server.disabled}
-                        className={server.disabled ? 'opacity-50' : undefined}
-                      >
-                        <span className="flex items-center gap-1.5">
-                          <McpStatusDot status={status} />
-                          {server.name}
-                        </span>
-                        <span className="ml-auto pl-4 text-xs text-muted-foreground">
-                          {server.disabled ? 'disabled' : server.scope}
-                        </span>
-                      </DropdownMenuCheckboxItem>
-                    </TooltipTrigger>
-                    <TooltipContent side="left">
-                      {mcpStatusHint(status)}
-                    </TooltipContent>
-                  </Tooltip>
-                )
-              })
-            ) : (
-              <DropdownMenuItem disabled>
-                <span className="text-xs text-muted-foreground">
-                  No MCP servers configured
-                </span>
-              </DropdownMenuItem>
-            )}
-            {onOpenProjectSettings && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={onOpenProjectSettings}>
-                  <span className="text-xs text-muted-foreground">
-                    Set defaults in project settings
-                  </span>
-                </DropdownMenuItem>
-              </>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-
         {/* Provider selector - desktop only, shown when profiles exist */}
         {customCliProfiles.length > 0 && (
           <>
@@ -1226,7 +1167,7 @@ export const ChatToolbar = memo(function ChatToolbar({
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  disabled={hasPendingQuestions}
+                  disabled={hasPendingQuestions || providerLocked}
                   className={cn(
                     'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
                     selectedProvider
@@ -1234,27 +1175,35 @@ export const ChatToolbar = memo(function ChatToolbar({
                       : 'text-muted-foreground'
                   )}
                 >
-                  <span>{selectedProvider ?? 'Default'}</span>
+                  <span>{!selectedProvider || selectedProvider === '__anthropic__' ? 'Anthropic' : selectedProvider}</span>
                   <ChevronDown className="h-3 w-3 opacity-50" />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="min-w-40">
                 <DropdownMenuRadioGroup
-                  value={selectedProvider ?? 'default'}
+                  value={selectedProvider ?? '__anthropic__'}
                   onValueChange={handleProviderChange}
                 >
-                  <DropdownMenuRadioItem value="default">
-                    Default
+                  <DropdownMenuRadioItem value="__anthropic__">
+                    Anthropic
                   </DropdownMenuRadioItem>
-                  <DropdownMenuSeparator />
-                  {customCliProfiles.map(profile => (
-                    <DropdownMenuRadioItem
-                      key={profile.name}
-                      value={profile.name}
-                    >
-                      {profile.name}
-                    </DropdownMenuRadioItem>
-                  ))}
+                  {customCliProfiles.length > 0 && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuLabel className="text-xs text-muted-foreground flex items-center gap-1.5">
+                        Custom Providers
+                        <span className="rounded bg-muted px-1 py-0.5 text-[10px] font-medium leading-none">cc</span>
+                      </DropdownMenuLabel>
+                      {customCliProfiles.map(profile => (
+                        <DropdownMenuRadioItem
+                          key={profile.name}
+                          value={profile.name}
+                        >
+                          {profile.name}
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </>
+                  )}
                 </DropdownMenuRadioGroup>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -1284,10 +1233,10 @@ export const ChatToolbar = memo(function ChatToolbar({
         </Select>
 
         {/* Divider - desktop only */}
-        <div className="hidden @md:block h-4 w-px bg-border/50" />
+        {!hideThinkingLevel && <div className="hidden @md:block h-4 w-px bg-border/50" />}
 
         {/* Thinking/Effort level dropdown - desktop only */}
-        {useAdaptiveThinking ? (
+        {hideThinkingLevel ? null : useAdaptiveThinking ? (
           <DropdownMenu>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -1461,6 +1410,90 @@ export const ChatToolbar = memo(function ChatToolbar({
 
         {/* Divider */}
         <div className="h-4 w-px bg-border/50" />
+
+        {/* MCP servers button - desktop only */}
+        <DropdownMenu open={mcpDropdownOpen} onOpenChange={setMcpDropdownOpen}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  disabled={hasPendingQuestions}
+                  className={cn(
+                    'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
+                    activeMcpCount > 0 &&
+                      'border border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:border-emerald-400/40 dark:bg-emerald-500/10 dark:text-emerald-400'
+                  )}
+                >
+                  <Plug className="h-3.5 w-3.5" />
+                  {activeMcpCount > 0 && <span>{activeMcpCount}</span>}
+                  <ChevronDown className="h-3 w-3 opacity-50" />
+                </button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent>
+              {activeMcpCount > 0
+                ? `${activeMcpCount} MCP server(s) enabled`
+                : 'No MCP servers enabled'}
+            </TooltipContent>
+          </Tooltip>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel className="flex items-center gap-2">
+              MCP Servers
+              {isHealthChecking && (
+                <Loader2 className="size-3 animate-spin text-muted-foreground" />
+              )}
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {availableMcpServers.length > 0 ? (
+              availableMcpServers.map(server => {
+                const status = healthResult?.statuses[server.name]
+                return (
+                  <Tooltip key={server.name}>
+                    <TooltipTrigger asChild>
+                      <DropdownMenuCheckboxItem
+                        checked={
+                          !server.disabled &&
+                          enabledMcpServers.includes(server.name)
+                        }
+                        onCheckedChange={() => onToggleMcpServer(server.name)}
+                        disabled={server.disabled}
+                        className={server.disabled ? 'opacity-50' : undefined}
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <McpStatusDot status={status} />
+                          {server.name}
+                        </span>
+                        <span className="ml-auto pl-4 text-xs text-muted-foreground">
+                          {server.disabled ? 'disabled' : server.scope}
+                        </span>
+                      </DropdownMenuCheckboxItem>
+                    </TooltipTrigger>
+                    <TooltipContent side="left">
+                      {mcpStatusHint(status)}
+                    </TooltipContent>
+                  </Tooltip>
+                )
+              })
+            ) : (
+              <DropdownMenuItem disabled>
+                <span className="text-xs text-muted-foreground">
+                  No MCP servers configured
+                </span>
+              </DropdownMenuItem>
+            )}
+            {onOpenProjectSettings && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={onOpenProjectSettings}>
+                  <span className="text-xs text-muted-foreground">
+                    Set defaults in project settings
+                  </span>
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         {/* Send/Cancel button */}
         {isSending ? (

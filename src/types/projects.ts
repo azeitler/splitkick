@@ -41,6 +41,8 @@ export interface Project {
   enabled_mcp_servers?: string[]
   /** Custom system prompt appended to every session execution */
   custom_system_prompt?: string
+  /** Default provider profile name for sessions in this project (undefined = use global default) */
+  default_provider?: string | null
 }
 
 /**

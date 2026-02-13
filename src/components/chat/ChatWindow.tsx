@@ -30,6 +30,7 @@ import {
   useSendMessage,
   useSetSessionModel,
   useSetSessionThinkingLevel,
+  useSetSessionProvider,
   useCreateSession,
   cancelChatMessage,
   chatQueryKeys,
@@ -58,6 +59,7 @@ import {
   DEFAULT_INVESTIGATE_PR_PROMPT,
   DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT,
   DEFAULT_PARALLEL_EXECUTION_PROMPT,
+  PREDEFINED_CLI_PROFILES,
 } from '@/types/preferences'
 import type { Project, Worktree } from '@/types/projects'
 import type {
@@ -365,6 +367,7 @@ export function ChatWindow({
   const createSession = useCreateSession()
   const setSessionModel = useSetSessionModel()
   const setSessionThinkingLevel = useSetSessionThinkingLevel()
+  const setSessionProvider = useSetSessionProvider()
 
   // Fetch worktree data for PR link display
   const { data: worktree } = useWorktree(activeWorktreeId ?? null)
@@ -423,12 +426,17 @@ export function ChatWindow({
   const selectedModel: ClaudeModel =
     (session?.selected_model as ClaudeModel) ?? defaultModel
 
-  // Per-session provider selection, falls back to preferences default
-  const defaultProvider = preferences?.default_provider ?? null
-  const sessionProvider = useChatStore(state =>
+  // Per-session provider selection: persisted session → zustand → project default → global default
+  const projectDefaultProvider = project?.default_provider ?? null
+  const globalDefaultProvider = preferences?.default_provider ?? null
+  const defaultProvider = projectDefaultProvider ?? globalDefaultProvider
+  const zustandProvider = useChatStore(state =>
     deferredSessionId ? state.selectedProviders[deferredSessionId] : undefined
   )
+  const sessionProvider = session?.selected_provider ?? zustandProvider
   const selectedProvider = sessionProvider !== undefined ? sessionProvider : defaultProvider
+  // __anthropic__ is the sentinel for "use default Anthropic" — treat as non-custom for feature detection
+  const isCustomProvider = Boolean(selectedProvider && selectedProvider !== '__anthropic__')
 
   // Per-session thinking level, falls back to preferences default
   const defaultThinkingLevel =
@@ -494,10 +502,20 @@ export function ChatWindow({
   // CLI version for adaptive thinking feature detection
   const { data: cliStatus } = useClaudeCliStatus()
   // Custom providers don't support Opus 4.6 adaptive thinking — use thinking levels instead
-  const useAdaptiveThinkingFlag = !selectedProvider && supportsAdaptiveThinking(
+  const useAdaptiveThinkingFlag = !isCustomProvider && supportsAdaptiveThinking(
     selectedModel,
     cliStatus?.version ?? null
   )
+
+  // Hide thinking level UI entirely for providers that don't support it
+  const customCliProfiles = preferences?.custom_cli_profiles ?? []
+  const activeProfile = isCustomProvider
+    ? customCliProfiles.find(p => p.name === selectedProvider)
+    : null
+  // Fall back to predefined template's supports_thinking for profiles saved before this field existed
+  const activeSupportsThinking = activeProfile?.supports_thinking
+    ?? PREDEFINED_CLI_PROFILES.find(p => p.name === selectedProvider)?.supports_thinking
+  const hideThinkingLevel = activeSupportsThinking === false
 
   const isSending = isSendingForSession
 
@@ -992,17 +1010,18 @@ export function ChatWindow({
   // Note: Streaming event listeners are in App.tsx, not here
   // This ensures they stay active even when ChatWindow is unmounted (e.g., session board view)
 
-  // Helper to resolve custom CLI profile settings for the active provider
+  // Helper to resolve custom CLI profile name for the active provider
   const resolveCustomProfile = useCallback(
     (model: string, provider: string | null) => {
-      if (!provider)
-        return { model, customProfileSettings: undefined }
+      if (!provider || provider === '__anthropic__')
+        return { model, customProfileName: undefined }
+      // Verify the provider exists in profiles
       const profile = preferences?.custom_cli_profiles?.find(
         p => p.name === provider
       )
       return {
         model,
-        customProfileSettings: profile?.settings_json,
+        customProfileName: profile?.name,
       }
     },
     [preferences?.custom_cli_profiles]
@@ -1128,7 +1147,7 @@ export function ChatWindow({
           disableThinkingForMode: queuedMsg.disableThinkingForMode,
           effortLevel: queuedMsg.effortLevel,
           mcpConfig: queuedMsg.mcpConfig,
-          customProfileSettings: resolved.customProfileSettings,
+          customProfileName: resolved.customProfileName,
           parallelExecutionPrompt:
             preferences?.parallel_execution_prompt_enabled
               ? (preferences.magic_prompts?.parallel_execution ??
@@ -1215,7 +1234,7 @@ export function ChatWindow({
           worktreePath: activeWorktreePath,
           message,
           model: diffResolved.model,
-          customProfileSettings: diffResolved.customProfileSettings,
+          customProfileName: diffResolved.customProfileName,
           executionMode: 'build',
           thinkingLevel,
           disableThinkingForMode: thinkingLevel !== 'off' && !hasManualOverride,
@@ -1454,9 +1473,17 @@ export function ChatWindow({
     (provider: string | null) => {
       if (activeSessionId) {
         useChatStore.getState().setSelectedProvider(activeSessionId, provider)
+        if (activeWorktreeId && activeWorktreePath) {
+          setSessionProvider.mutate({
+            sessionId: activeSessionId,
+            worktreeId: activeWorktreeId,
+            worktreePath: activeWorktreePath,
+            provider,
+          })
+        }
       }
     },
-    [activeSessionId]
+    [activeSessionId, activeWorktreeId, activeWorktreePath, setSessionProvider]
   )
 
   // PERFORMANCE: Use refs to keep callback stable, get store actions via getState()
@@ -2046,10 +2073,8 @@ export function ChatWindow({
     activeWorktreeIdRef,
     activeWorktreePathRef,
     selectedModelRef,
-    getCustomProfileSettings: () => {
-      const provider = selectedProviderRef.current
-      if (!provider) return undefined
-      return preferences?.custom_cli_profiles?.find(p => p.name === provider)?.settings_json
+    getCustomProfileName: () => {
+      return selectedProviderRef.current ?? undefined
     },
     executionModeRef,
     selectedThinkingLevelRef,
@@ -2212,7 +2237,7 @@ export function ChatWindow({
             worktreePath,
             message,
             model: fixResolved.model,
-            customProfileSettings: fixResolved.customProfileSettings,
+            customProfileName: fixResolved.customProfileName,
             executionMode: 'build', // Always use build mode for fixes
             thinkingLevel: thinkingLvl,
             // Build mode: disable thinking if preference enabled and no manual override
@@ -2766,6 +2791,7 @@ export function ChatWindow({
                         executionMode={executionMode}
                         selectedModel={selectedModel}
                         selectedProvider={selectedProvider}
+                        providerLocked={(session?.messages?.length ?? 0) > 0}
                         selectedThinkingLevel={selectedThinkingLevel}
                         selectedEffortLevel={selectedEffortLevel}
                         thinkingOverrideActive={
@@ -2775,6 +2801,7 @@ export function ChatWindow({
                           !hasManualThinkingOverride
                         }
                         useAdaptiveThinking={useAdaptiveThinkingFlag}
+                        hideThinkingLevel={hideThinkingLevel}
                         baseBranch={gitStatus?.base_branch ?? 'main'}
                         uncommittedAdded={uncommittedAdded}
                         uncommittedRemoved={uncommittedRemoved}

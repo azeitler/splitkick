@@ -70,6 +70,9 @@ pub struct Project {
     /// Custom system prompt appended to every session execution
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_system_prompt: Option<String>,
+    /// Default provider profile name for sessions in this project (None = use global default)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_provider: Option<String>,
 }
 
 /// A git worktree created for a project

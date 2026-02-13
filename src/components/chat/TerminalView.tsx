@@ -114,16 +114,17 @@ export function TerminalView({
     setTerminalPanelOpen,
   } = useTerminalStore.getState()
 
-  // Auto-create first terminal if none exists AND panel wasn't explicitly closed
-  // terminalPanelOpen[worktreeId] === false means user explicitly closed all terminals
-  // terminalPanelOpen[worktreeId] === undefined means never opened (should auto-create)
+  // Auto-create a terminal only on initial mount (not when tabs are closed)
+  const mountedRef = useRef(false)
   useEffect(() => {
-    const { terminalPanelOpen } = useTerminalStore.getState()
-    const explicitlyClosed = terminalPanelOpen[worktreeId] === false
-    if (terminals.length === 0 && !explicitlyClosed) {
-      addTerminal(worktreeId)
+    if (!mountedRef.current) {
+      mountedRef.current = true
+      const existing = useTerminalStore.getState().terminals[worktreeId] ?? []
+      if (existing.length === 0) {
+        addTerminal(worktreeId)
+      }
     }
-  }, [terminals.length, worktreeId, addTerminal])
+  }, [worktreeId, addTerminal])
 
   const handleAddTerminal = useCallback(() => {
     addTerminal(worktreeId)
@@ -142,14 +143,14 @@ export function TerminalView({
       disposeTerminal(terminalId)
       // Remove from store
       removeTerminal(worktreeId, terminalId)
-      // If this was the last terminal, close the panel for THIS worktree only
-      // Don't set terminalVisible=false as that's global and affects other worktrees
       const remaining = useTerminalStore.getState().terminals[worktreeId] ?? []
       if (remaining.length === 0) {
         setTerminalPanelOpen(worktreeId, false)
+        setTerminalVisible(false)
+        useTerminalStore.getState().setModalTerminalOpen(worktreeId, false)
       }
     },
-    [worktreeId, removeTerminal, setTerminalPanelOpen]
+    [worktreeId, removeTerminal, setTerminalPanelOpen, setTerminalVisible]
   )
 
   const handleSelectTerminal = useCallback(

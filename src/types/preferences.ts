@@ -51,6 +51,8 @@ export interface MagicPrompts {
   investigate_workflow_run: string | null
   /** Prompt for generating release notes */
   release_notes: string | null
+  /** Prompt for generating session names from the first message */
+  session_naming: string | null
   /** System prompt for parallel execution (appended to every chat session when enabled) */
   parallel_execution: string | null
 }
@@ -314,6 +316,28 @@ export const DEFAULT_RELEASE_NOTES_PROMPT = `Generate release notes for changes 
 - Write in past tense ("Added", "Fixed", "Improved")
 - Keep it concise and user-facing (skip internal implementation details)`
 
+/** Default prompt for generating session names */
+export const DEFAULT_SESSION_NAMING_PROMPT = `<task>Generate a short, human-friendly name for this chat session based on the user's request.</task>
+
+<rules>
+- Maximum 4-5 words total
+- Use sentence case (only capitalize first word)
+- Be descriptive but concise
+- Focus on the main topic or goal
+- No special characters or punctuation
+- No generic names like "Chat session" or "New task"
+- Do NOT use commit-style prefixes like "Add", "Fix", "Update", "Refactor"
+</rules>
+
+<user_request>
+{message}
+</user_request>
+
+<output_format>
+Respond with ONLY the raw JSON object, no markdown, no code fences, no explanation:
+{"session_name": "Your session name here"}
+</output_format>`
+
 export const DEFAULT_PARALLEL_EXECUTION_PROMPT = `In plan mode, structure plans so sub-agents can work simultaneously. In build/execute mode, use sub-agents in parallel for faster implementation.
 
 When launching multiple Task sub-agents, prefer sending them in a single message rather than sequentially. Group independent work items (e.g., editing separate files, researching unrelated questions) into parallel Task calls. Only sequence Tasks when one depends on another's output.
@@ -331,6 +355,7 @@ export const DEFAULT_MAGIC_PROMPTS: MagicPrompts = {
   resolve_conflicts: null,
   investigate_workflow_run: null,
   release_notes: null,
+  session_naming: null,
   parallel_execution: null,
 }
 
@@ -345,6 +370,7 @@ export interface MagicPromptModels {
   context_summary_model: ClaudeModel
   resolve_conflicts_model: ClaudeModel
   release_notes_model: ClaudeModel
+  session_naming_model: ClaudeModel
 }
 
 /** Default models for each magic prompt */
@@ -356,6 +382,7 @@ export const DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
   context_summary_model: 'opus',
   resolve_conflicts_model: 'opus',
   release_notes_model: 'haiku',
+  session_naming_model: 'haiku',
 }
 
 // Types that match the Rust AppPreferences struct
@@ -408,15 +435,21 @@ export interface AppPreferences {
   debug_mode_enabled: boolean // Show debug panel in chat sessions
   default_enabled_mcp_servers: string[] // MCP server names enabled by default (empty = none)
   has_seen_feature_tour: boolean // Whether user has seen the feature tour onboarding
+  has_seen_jean_config_wizard: boolean // Whether user has seen the jean.json setup wizard
   chrome_enabled: boolean // Enable browser automation via Chrome extension
   zoom_level: number // Zoom level percentage (50-200, default 100)
   custom_cli_profiles: CustomCliProfile[] // Custom CLI settings profiles (e.g., OpenRouter, MiniMax)
   default_provider: string | null // Default provider profile name (null = Anthropic direct)
+  canvas_layout: CanvasLayout // Canvas display mode: grid (cards) or list (compact rows)
 }
+
+export type CanvasLayout = 'grid' | 'list'
 
 export interface CustomCliProfile {
   name: string // Display name, e.g. "OpenRouter"
   settings_json: string // JSON string matching Claude CLI settings format (with env block)
+  file_path?: string // Path to settings file on disk (e.g. ~/.claude/settings.jean.openrouter.json)
+  supports_thinking?: boolean // Whether this provider supports thinking/effort levels (default: true)
 }
 
 export const PREDEFINED_CLI_PROFILES: CustomCliProfile[] = [
@@ -436,6 +469,7 @@ export const PREDEFINED_CLI_PROFILES: CustomCliProfile[] = [
   },
   {
     name: 'MiniMax',
+    supports_thinking: false,
     settings_json: JSON.stringify(
       {
         env: {
@@ -443,11 +477,11 @@ export const PREDEFINED_CLI_PROFILES: CustomCliProfile[] = [
           ANTHROPIC_AUTH_TOKEN: '<your-minimax-api-key>',
           API_TIMEOUT_MS: '3000000',
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
-          ANTHROPIC_MODEL: 'MiniMax-M2.1',
-          ANTHROPIC_SMALL_FAST_MODEL: 'MiniMax-M2.1',
-          ANTHROPIC_DEFAULT_SONNET_MODEL: 'MiniMax-M2.1',
-          ANTHROPIC_DEFAULT_OPUS_MODEL: 'MiniMax-M2.1',
-          ANTHROPIC_DEFAULT_HAIKU_MODEL: 'MiniMax-M2.1',
+          ANTHROPIC_MODEL: 'MiniMax-M2.5',
+          ANTHROPIC_SMALL_FAST_MODEL: 'MiniMax-M2.5',
+          ANTHROPIC_DEFAULT_SONNET_MODEL: 'MiniMax-M2.5',
+          ANTHROPIC_DEFAULT_OPUS_MODEL: 'MiniMax-M2.5',
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: 'MiniMax-M2.5',
         },
       },
       null,
@@ -456,6 +490,7 @@ export const PREDEFINED_CLI_PROFILES: CustomCliProfile[] = [
   },
   {
     name: 'Z.ai',
+    supports_thinking: false,
     settings_json: JSON.stringify(
       {
         env: {
@@ -473,6 +508,7 @@ export const PREDEFINED_CLI_PROFILES: CustomCliProfile[] = [
   },
   {
     name: 'Moonshot',
+    supports_thinking: false,
     settings_json: JSON.stringify(
       {
         env: {
@@ -778,8 +814,10 @@ export const defaultPreferences: AppPreferences = {
   debug_mode_enabled: false, // Default: disabled
   default_enabled_mcp_servers: [], // Default: no MCP servers enabled
   has_seen_feature_tour: false, // Default: not seen
+  has_seen_jean_config_wizard: false, // Default: not seen
   chrome_enabled: true, // Default: enabled
   zoom_level: ZOOM_LEVEL_DEFAULT,
   custom_cli_profiles: [],
   default_provider: null,
+  canvas_layout: 'grid',
 }

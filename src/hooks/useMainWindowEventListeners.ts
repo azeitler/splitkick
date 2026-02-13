@@ -11,6 +11,7 @@ import { projectsQueryKeys } from '@/services/projects'
 import { chatQueryKeys } from '@/services/chat'
 import { setActiveWorktreeForPolling } from '@/services/git-status'
 import { disposeTerminal } from '@/lib/terminal-instances'
+import { toast } from 'sonner'
 import { useCommandContext } from './use-command-context'
 import { usePreferences } from '@/services/preferences'
 import { logger } from '@/lib/logger'
@@ -210,40 +211,62 @@ function executeKeybindingAction(
 
       const chatStore = useChatStore.getState()
       const uiStore = useUIStore.getState()
-      const { activeWorktreeId, activeWorktreePath } = chatStore
       const sessionModalOpen = uiStore.sessionChatModalOpen
 
-      // Project canvas (no worktree selected) → error
-      if (!activeWorktreePath) {
+      // Resolve target worktree: modal > active worktree > selected worktree (dashboard)
+      const targetWorktreeId = sessionModalOpen && uiStore.sessionChatModalWorktreeId
+        ? uiStore.sessionChatModalWorktreeId
+        : chatStore.activeWorktreeId ?? useProjectsStore.getState().selectedWorktreeId
+
+      const targetWorktreePath = targetWorktreeId
+        ? chatStore.activeWorktreePath ?? chatStore.worktreePaths[targetWorktreeId]
+        : null
+
+      if (!targetWorktreeId || !targetWorktreePath) {
         notify('Open a worktree to run', undefined, { type: 'error' })
         break
       }
 
-      if (!activeWorktreeId) {
-        notify('No active worktree', undefined, { type: 'error' })
-        break
-      }
+      // Fetch run script - use fetchQuery to handle uncached dashboard worktrees
+      ;(async () => {
+        let runScript = queryClient.getQueryData<string | null>([
+          'run-script',
+          targetWorktreePath,
+        ])
 
-      // Fetch run script from query cache
-      const runScript = queryClient.getQueryData<string | null>([
-        'run-script',
-        activeWorktreePath,
-      ])
+        if (runScript === undefined) {
+          try {
+            runScript = await queryClient.fetchQuery<string | null>({
+              queryKey: ['run-script', targetWorktreePath],
+              queryFn: () => invoke<string | null>('get_run_script', { worktreePath: targetWorktreePath }),
+            })
+          } catch {
+            runScript = null
+          }
+        }
 
-      if (!runScript) {
-        notify('No run script configured in jean.json', undefined, {
-          type: 'error',
-        })
-        break
-      }
+        if (!runScript) {
+          const projectId = useProjectsStore.getState().selectedProjectId
+          toast.error('No run script configured in jean.json', {
+            action: projectId
+              ? {
+                  label: 'Configure',
+                  onClick: () =>
+                    useProjectsStore.getState().openProjectSettings(projectId, 'jean-json'),
+                }
+              : undefined,
+          })
+          return
+        }
 
-      // Start run (works on canvas, modal, or main view)
-      useTerminalStore.getState().startRun(activeWorktreeId, runScript)
+        // Start run (works on canvas, modal, or main view)
+        useTerminalStore.getState().startRun(targetWorktreeId, runScript)
 
-      // If modal is open, also open the terminal drawer
-      if (sessionModalOpen) {
-        useTerminalStore.getState().setModalTerminalOpen(activeWorktreeId, true)
-      }
+        // If modal is open, also open the terminal drawer
+        if (sessionModalOpen) {
+          useTerminalStore.getState().setModalTerminalOpen(targetWorktreeId, true)
+        }
+      })()
       break
     }
     case 'open_in_modal':

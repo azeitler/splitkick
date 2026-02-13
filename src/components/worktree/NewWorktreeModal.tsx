@@ -13,6 +13,7 @@ import {
   AlertCircle,
   Wand2,
   Zap,
+  Settings,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
@@ -55,6 +56,7 @@ import {
   useCreateBaseSession,
   useProjectBranches,
   useCreateWorktreeFromExistingBranch,
+  useJeanConfig,
   projectsQueryKeys,
 } from '@/services/projects'
 import { isBaseSession } from '@/types/projects'
@@ -761,6 +763,8 @@ export function NewWorktreeModal() {
               isCreating={
                 createWorktree.isPending || createBaseSession.isPending
               }
+              projectId={selectedProjectId}
+              projectPath={selectedProject?.path ?? null}
             />
           )}
 
@@ -872,6 +876,8 @@ export interface QuickActionsTabProps {
   onCreateWorktree: () => void
   onBaseSession: () => void
   isCreating: boolean
+  projectId: string | null
+  projectPath: string | null
 }
 
 export function QuickActionsTab({
@@ -879,9 +885,25 @@ export function QuickActionsTab({
   onCreateWorktree,
   onBaseSession,
   isCreating,
+  projectId,
+  projectPath,
 }: QuickActionsTabProps) {
+  const { data: jeanConfig } = useJeanConfig(projectPath)
+  const setupScript = jeanConfig?.scripts.setup
+  const runScript = jeanConfig?.scripts.run
+  const { setNewWorktreeModalOpen } = useUIStore.getState()
+
+  const handleRunClick = () => {
+    if (!projectId) return
+    if (!runScript) {
+      // No run script — open project settings to jean.json pane
+      setNewWorktreeModalOpen(false)
+      useProjectsStore.getState().openProjectSettings(projectId, 'jean-json')
+    }
+  }
+
   return (
-    <div className="flex items-center justify-center flex-1 p-4 sm:p-10">
+    <div className="flex flex-col items-center justify-center flex-1 p-4 sm:p-10">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 w-full max-w-xl">
         {/* Base Session button */}
         <button
@@ -927,12 +949,36 @@ export function QuickActionsTab({
             <span className="text-xs text-muted-foreground text-center">
               Create an isolated branch for your task
             </span>
+            {setupScript && (
+              <span className="text-xs text-muted-foreground/70 font-mono truncate max-w-[200px]">
+                Setup: {setupScript}
+              </span>
+            )}
           </div>
           <kbd className="hidden sm:block absolute top-3 right-3 text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
             N
           </kbd>
         </button>
       </div>
+
+      {/* Configure jean.json - only show when not configured */}
+      {!runScript && projectId && (
+        <div className="flex items-center gap-1 mt-6">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={handleRunClick}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs text-muted-foreground/40 hover:text-foreground hover:bg-accent cursor-pointer transition-colors"
+              >
+                <Settings className="h-4 w-4" />
+                <span>Configure jean.json</span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Configure jean.json</TooltipContent>
+          </Tooltip>
+        </div>
+      )}
     </div>
   )
 }

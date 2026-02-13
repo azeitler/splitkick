@@ -12,21 +12,23 @@ import {
 } from '@/services/git-status'
 import { isBaseSession } from '@/types/projects'
 import { GitStatusBadges } from '@/components/ui/git-status-badges'
-import { NewIssuesBadge } from '@/components/shared/NewIssuesBadge'
-import { OpenPRsBadge } from '@/components/shared/OpenPRsBadge'
-import { FailedRunsBadge } from '@/components/shared/FailedRunsBadge'
 import { GitDiffModal } from './GitDiffModal'
 import type { DiffRequest } from '@/types/git-diff'
 import { toast } from 'sonner'
-import { computeSessionCardData } from './session-card-utils'
+import {
+  computeSessionCardData,
+  groupCardsByStatus,
+  flattenGroups,
+} from './session-card-utils'
 import { useCanvasStoreState } from './hooks/useCanvasStoreState'
 import { usePlanApproval } from './hooks/usePlanApproval'
 import { useSessionArchive } from './hooks/useSessionArchive'
 import { CanvasGrid } from './CanvasGrid'
+import { CanvasList } from './CanvasList'
 import { KeybindingHints } from '@/components/ui/keybinding-hints'
-import { usePreferences } from '@/services/preferences'
+import { usePreferences, useSavePreferences } from '@/services/preferences'
 import { DEFAULT_KEYBINDINGS } from '@/types/keybindings'
-import { Search, Loader2, MoreHorizontal, Settings, Plus, GitBranch } from 'lucide-react'
+import { Search, Loader2, MoreHorizontal, Settings, Plus, LayoutGrid, List } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -36,7 +38,14 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { useProjectsStore } from '@/store/projects-store'
+import { useTerminalStore } from '@/store/terminal-store'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 
 interface SessionCanvasViewProps {
   worktreeId: string
@@ -55,9 +64,13 @@ export function SessionCanvasView({
   const project = worktree
     ? projects?.find(p => p.id === worktree.project_id)
     : null
-  const sessionLabel =
-    worktree && isBaseSession(worktree) ? 'base' : worktree?.name
   const isBase = worktree ? isBaseSession(worktree) : false
+
+  // Running terminal indicator
+  const hasRunningTerminal = useTerminalStore(state => {
+    const terminals = state.terminals[worktreeId] ?? []
+    return terminals.some(t => state.runningTerminals.has(t.id))
+  })
 
   // Git status for header badges
   const { data: gitStatus } = useGitStatus(worktreeId)
@@ -125,8 +138,10 @@ export function SessionCanvasView({
     })
   }, [isBase, worktreePath, defaultBranch])
 
-  // Preferences for keybinding hints
+  // Preferences for keybinding hints and layout
   const { data: preferences } = usePreferences()
+  const savePreferences = useSavePreferences()
+  const canvasLayout = preferences?.canvas_layout ?? 'grid'
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('')
@@ -242,12 +257,15 @@ export function SessionCanvasView({
       : cards
 
     // Sort: labeled first, grouped by label name, then unlabeled
-    return [...filtered].sort((a, b) => {
+    const sorted = [...filtered].sort((a, b) => {
       if (a.label && !b.label) return -1
       if (!a.label && b.label) return 1
       if (a.label && b.label) return a.label.localeCompare(b.label)
       return 0
     })
+
+    // Re-order by status group so flat array matches visual group order
+    return flattenGroups(groupCardsByStatus(sorted))
   }, [sessionsData?.sessions, storeState, searchQuery])
 
   // Sync selectedIndex when selectedSessionId changes and sessionCards updates
@@ -310,48 +328,23 @@ export function SessionCanvasView({
             <div className="flex items-center gap-1">
               <h2 className="text-lg font-semibold">
                 {project?.name}
-                {sessionLabel && (
-                  <span className="ml-2 text-sm font-normal text-muted-foreground">
-                    ({sessionLabel})
-                  </span>
-                )}
+                {(() => {
+                  const displayBranch = gitStatus?.current_branch ?? worktree?.branch
+                  return displayBranch ? (
+                    <span className="ml-1.5 text-sm font-normal text-muted-foreground">
+                      · {displayBranch}
+                    </span>
+                  ) : null
+                })()}
               </h2>
-              {(() => {
-                const displayBranch = gitStatus?.current_branch ?? worktree?.branch
-                return displayBranch && displayBranch !== sessionLabel ? (
-                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                    <GitBranch className="h-3 w-3" />
-                    <span className="max-w-[150px] truncate">{displayBranch}</span>
-                  </span>
-                ) : null
-              })()}
-              {project && worktree && (
-                <NewIssuesBadge
-                  projectPath={project.path}
-                  projectId={worktree.project_id}
-                />
+              {hasRunningTerminal && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                  </TooltipTrigger>
+                  <TooltipContent>Run active</TooltipContent>
+                </Tooltip>
               )}
-              {project && worktree && (
-                <OpenPRsBadge
-                  projectPath={project.path}
-                  projectId={worktree.project_id}
-                />
-              )}
-              {project && worktree && (
-                <FailedRunsBadge
-                  projectPath={project.path}
-                  branch={worktree.branch}
-                />
-              )}
-              <GitStatusBadges
-                behindCount={behindCount}
-                unpushedCount={unpushedCount}
-                diffAdded={diffAdded}
-                diffRemoved={diffRemoved}
-                onPull={handlePull}
-                onPush={handlePush}
-                onDiffClick={handleDiffClick}
-              />
               {worktree?.project_id && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -388,18 +381,47 @@ export function SessionCanvasView({
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
+              <GitStatusBadges
+                behindCount={behindCount}
+                unpushedCount={unpushedCount}
+                diffAdded={diffAdded}
+                diffRemoved={diffRemoved}
+                onPull={handlePull}
+                onPush={handlePush}
+                onDiffClick={handleDiffClick}
+              />
             </div>
           </div>
 
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              ref={searchInputRef}
-              placeholder="Search sessions..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="pl-9 bg-transparent border-border/30"
-            />
+          <div className="flex items-center gap-2 flex-1 max-w-md">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                ref={searchInputRef}
+                placeholder="Search sessions..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="pl-9 bg-transparent border-border/30"
+              />
+            </div>
+            <ToggleGroup
+              type="single"
+              size="sm"
+              variant="outline"
+              value={canvasLayout}
+              onValueChange={value => {
+                if (value && preferences) {
+                  savePreferences.mutate({ ...preferences, canvas_layout: value as 'grid' | 'list' })
+                }
+              }}
+            >
+              <ToggleGroupItem value="grid" aria-label="Grid view">
+                <LayoutGrid className="h-3.5 w-3.5" />
+              </ToggleGroupItem>
+              <ToggleGroupItem value="list" aria-label="List view">
+                <List className="h-3.5 w-3.5" />
+              </ToggleGroupItem>
+            </ToggleGroup>
           </div>
         </div>
 
@@ -416,23 +438,39 @@ export function SessionCanvasView({
                 ? 'No sessions match your search'
                 : 'No sessions yet'}
             </div>
-          ) : (
-            <CanvasGrid
-              cards={sessionCards}
-              worktreeId={worktreeId}
-              worktreePath={worktreePath}
-              selectedIndex={selectedIndex}
-              onSelectedIndexChange={setSelectedIndex}
-              selectedSessionId={selectedSessionId}
-              onSelectedSessionIdChange={setSelectedSessionId}
-              onOpenFullView={handleOpenFullView}
-              onArchiveSession={handleArchiveSession}
-              onDeleteSession={handleDeleteSession}
-              onPlanApproval={handlePlanApproval}
-              onPlanApprovalYolo={handlePlanApprovalYolo}
-              searchInputRef={searchInputRef}
-            />
-          )}
+          ) : canvasLayout === 'list' ? (
+              <CanvasList
+                cards={sessionCards}
+                worktreeId={worktreeId}
+                worktreePath={worktreePath}
+                selectedIndex={selectedIndex}
+                onSelectedIndexChange={setSelectedIndex}
+                selectedSessionId={selectedSessionId}
+                onSelectedSessionIdChange={setSelectedSessionId}
+                onOpenFullView={handleOpenFullView}
+                onArchiveSession={handleArchiveSession}
+                onDeleteSession={handleDeleteSession}
+                onPlanApproval={handlePlanApproval}
+                onPlanApprovalYolo={handlePlanApprovalYolo}
+                searchInputRef={searchInputRef}
+              />
+            ) : (
+              <CanvasGrid
+                cards={sessionCards}
+                worktreeId={worktreeId}
+                worktreePath={worktreePath}
+                selectedIndex={selectedIndex}
+                onSelectedIndexChange={setSelectedIndex}
+                selectedSessionId={selectedSessionId}
+                onSelectedSessionIdChange={setSelectedSessionId}
+                onOpenFullView={handleOpenFullView}
+                onArchiveSession={handleArchiveSession}
+                onDeleteSession={handleDeleteSession}
+                onPlanApproval={handlePlanApproval}
+                onPlanApprovalYolo={handlePlanApprovalYolo}
+                searchInputRef={searchInputRef}
+              />
+            )}
         </div>
       </div>
 

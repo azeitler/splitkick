@@ -75,12 +75,10 @@ export function WorktreeContextMenu({
           </ContextMenuItem>
         )}
 
-        {isNativeApp() && (
-          <ContextMenuItem onClick={handleOpenJeanConfig}>
-            <FileJson className="mr-2 h-4 w-4" />
-            Edit jean.json
-          </ContextMenuItem>
-        )}
+        <ContextMenuItem onClick={handleOpenJeanConfig}>
+          <FileJson className="mr-2 h-4 w-4" />
+          Edit jean.json
+        </ContextMenuItem>
 
         {hasMessages && (
           <ContextMenuItem onClick={handleGenerateRecap}>

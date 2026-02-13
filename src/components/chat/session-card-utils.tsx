@@ -311,3 +311,41 @@ export function computeSessionCardData(
     label,
   }
 }
+
+// --- Status grouping ---
+
+export interface StatusGroup {
+  key: 'inProgress' | 'waiting' | 'review' | 'completed' | 'idle'
+  title: string
+  cards: SessionCardData[]
+}
+
+const STATUS_GROUP_ORDER: {
+  key: StatusGroup['key']
+  title: string
+  statuses: SessionStatus[]
+}[] = [
+  { key: 'idle', title: 'Idle', statuses: ['idle'] },
+  { key: 'waiting', title: 'Waiting', statuses: ['waiting', 'permission'] },
+  { key: 'review', title: 'Review', statuses: ['review'] },
+  {
+    key: 'inProgress',
+    title: 'In Progress',
+    statuses: ['planning', 'vibing', 'yoloing'],
+  },
+  { key: 'completed', title: 'Completed', statuses: ['completed'] },
+]
+
+/** Group cards by status. Returns only non-empty groups. Preserves card order within groups. */
+export function groupCardsByStatus(cards: SessionCardData[]): StatusGroup[] {
+  return STATUS_GROUP_ORDER.map(({ key, title, statuses }) => ({
+    key,
+    title,
+    cards: cards.filter(c => statuses.includes(c.status)),
+  })).filter(g => g.cards.length > 0)
+}
+
+/** Flatten grouped cards back into a single array (for keyboard nav indices). */
+export function flattenGroups(groups: StatusGroup[]): SessionCardData[] {
+  return groups.flatMap(g => g.cards)
+}

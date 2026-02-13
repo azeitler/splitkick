@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/dialog'
 import { useUIStore } from '@/store/ui-store'
 import { useTerminal } from '@/hooks/useTerminal'
-import { disposeTerminal } from '@/lib/terminal-instances'
+import { disposeTerminal, setOnStopped } from '@/lib/terminal-instances'
 
 export function CliLoginModal() {
   const isOpen = useUIStore(state => state.cliLoginModalOpen)
@@ -165,6 +165,16 @@ function CliLoginModalContent({
     },
     [terminalId, onClose, cliType, queryClient]
   )
+
+  // Auto-close modal when auth process exits successfully
+  useEffect(() => {
+    setOnStopped(terminalId, exitCode => {
+      if (exitCode === 0) {
+        setTimeout(() => handleOpenChange(false), 1500)
+      }
+    })
+    return () => setOnStopped(terminalId, undefined)
+  }, [terminalId, handleOpenChange])
 
   return (
     <Dialog open={true} onOpenChange={handleOpenChange}>

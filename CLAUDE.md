@@ -27,7 +27,7 @@ This repository is a template with sensible defaults for building Tauri React ap
 4. **Batch Operations**: Use multiple tool calls in single responses
 5. **Match Code Style**: Follow existing formatting and patterns
 6. **Test Coverage**: Write comprehensive tests for business logic
-7. **Quality Gates**: Run `npm run check:all` after significant changes
+7. **Quality Gates**: Run `bun run check:all` after significant changes
 8. **No Dev Server**: Ask user to run and report back
 9. **No Unsolicited Commits**: Only when explicitly requested
 10. **Documentation**: Update relevant `docs/developer/` files for new patterns

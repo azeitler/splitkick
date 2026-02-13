@@ -242,6 +242,8 @@ function getGroupLabel(groupName: string): string {
       return 'Notifications'
     case 'github':
       return 'GitHub'
+    case 'sessions':
+      return 'Sessions'
     case 'other':
       return 'Other'
     default:

@@ -316,6 +316,9 @@ pub struct Session {
     /// Selected thinking level for this session
     #[serde(default)]
     pub selected_thinking_level: Option<ThinkingLevel>,
+    /// Selected provider (custom CLI profile name) for this session
+    #[serde(default)]
+    pub selected_provider: Option<String>,
     /// Whether session naming has been attempted for this session
     /// Prevents re-triggering on app restart
     #[serde(default)]
@@ -394,6 +397,7 @@ impl Session {
             claude_session_id: None,
             selected_model: None,
             selected_thinking_level: None,
+            selected_provider: None,
             session_naming_completed: false,
             archived_at: None,
             // Session-specific UI state
@@ -541,6 +545,7 @@ impl SessionMetadata {
             claude_session_id: self.claude_session_id.clone(),
             selected_model: self.selected_model.clone(),
             selected_thinking_level: self.selected_thinking_level.clone(),
+            selected_provider: self.selected_provider.clone(),
             session_naming_completed: self.session_naming_completed,
             archived_at: self.archived_at,
             answered_questions: self.answered_questions.clone(),
@@ -569,6 +574,7 @@ impl SessionMetadata {
         self.claude_session_id = session.claude_session_id.clone();
         self.selected_model = session.selected_model.clone();
         self.selected_thinking_level = session.selected_thinking_level.clone();
+        self.selected_provider = session.selected_provider.clone();
         self.session_naming_completed = session.session_naming_completed;
         self.archived_at = session.archived_at;
         self.answered_questions = session.answered_questions.clone();
@@ -811,6 +817,9 @@ pub struct SessionMetadata {
     /// Selected thinking level for this session
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selected_thinking_level: Option<ThinkingLevel>,
+    /// Selected provider (custom CLI profile name) for this session
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_provider: Option<String>,
     /// Whether session naming has been attempted
     #[serde(default)]
     pub session_naming_completed: bool,
@@ -929,6 +938,7 @@ impl SessionMetadata {
             claude_session_id: None,
             selected_model: None,
             selected_thinking_level: None,
+            selected_provider: None,
             session_naming_completed: false,
             archived_at: None,
             answered_questions: vec![],

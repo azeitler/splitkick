@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
@@ -9,7 +9,10 @@ import { PlanDialog } from './PlanDialog'
 import { RecapDialog } from './RecapDialog'
 import { useCanvasKeyboardNav } from './hooks/useCanvasKeyboardNav'
 import { useCanvasShortcutEvents } from './hooks/useCanvasShortcutEvents'
-import type { SessionCardData } from './session-card-utils'
+import {
+  type SessionCardData,
+  groupCardsByStatus,
+} from './session-card-utils'
 
 interface CanvasGridProps {
   cards: SessionCardData[]
@@ -203,10 +206,10 @@ export function CanvasGrid({
   // Listen for close-session-or-worktree event to handle CMD+W
   useEffect(() => {
     const handleCloseSessionOrWorktree = (e: Event) => {
-      // If modal is open, archive the session and close modal with next card pre-selected
+      // If modal is open, remove the session and close modal with next card pre-selected
       if (selectedSessionId) {
         e.stopImmediatePropagation()
-        onArchiveSession(selectedSessionId)
+        onDeleteSession(selectedSessionId)
         onSelectedSessionIdChange(null)
 
         const closingIndex = cards.findIndex(
@@ -233,11 +236,11 @@ export function CanvasGrid({
         return
       }
 
-      // If there's a keyboard-selected session, archive it
+      // If there's a keyboard-selected session, remove it (respects removal preference)
       if (selectedIndex !== null && cards[selectedIndex]) {
         e.stopImmediatePropagation()
         const sessionId = cards[selectedIndex].session.id
-        onArchiveSession(sessionId)
+        onDeleteSession(sessionId)
 
         // Move selection to previous card, or clear if none left
         const total = cards.length
@@ -266,7 +269,7 @@ export function CanvasGrid({
     selectedSessionId,
     selectedIndex,
     cards,
-    onArchiveSession,
+    onDeleteSession,
     onSelectedIndexChange,
     onSelectedSessionIdChange,
   ])
@@ -284,30 +287,56 @@ export function CanvasGrid({
     )
   }
 
+  const groups = useMemo(() => groupCardsByStatus(cards), [cards])
+
+  // Track cumulative index offset per group for correct keyboard nav indices
+  let indexOffset = 0
+
   return (
     <>
-      <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3">
-        {cards.map((card, index) => (
-          <SessionCard
-            key={card.session.id}
-            ref={el => {
-              cardRefs.current[index] = el
-            }}
-            card={card}
-            isSelected={selectedIndex === index}
-            onSelect={() => {
-              onSelectedIndexChange(index)
-              handleSessionClick(card.session.id)
-            }}
-            onArchive={() => onArchiveSession(card.session.id)}
-            onDelete={() => onDeleteSession(card.session.id)}
-            onPlanView={() => handlePlanView(card)}
-            onRecapView={() => handleRecapView(card)}
-            onApprove={() => onPlanApproval(card)}
-            onYolo={() => onPlanApprovalYolo(card)}
-            onToggleLabel={() => handleOpenLabelModal(card)}
-          />
-        ))}
+      <div className="flex flex-col gap-4">
+        {groups.map(group => {
+          const groupStartIndex = indexOffset
+          indexOffset += group.cards.length
+          return (
+            <div key={group.key}>
+              <div className="mb-2 flex items-baseline gap-1.5">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  {group.title}
+                </span>
+                <span className="text-[10px] text-muted-foreground/60">
+                  {group.cards.length}
+                </span>
+              </div>
+              <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3">
+                {group.cards.map((card, i) => {
+                  const globalIndex = groupStartIndex + i
+                  return (
+                    <SessionCard
+                      key={card.session.id}
+                      ref={el => {
+                        cardRefs.current[globalIndex] = el
+                      }}
+                      card={card}
+                      isSelected={selectedIndex === globalIndex}
+                      onSelect={() => {
+                        onSelectedIndexChange(globalIndex)
+                        handleSessionClick(card.session.id)
+                      }}
+                      onArchive={() => onArchiveSession(card.session.id)}
+                      onDelete={() => onDeleteSession(card.session.id)}
+                      onPlanView={() => handlePlanView(card)}
+                      onRecapView={() => handleRecapView(card)}
+                      onApprove={() => onPlanApproval(card)}
+                      onYolo={() => onPlanApprovalYolo(card)}
+                      onToggleLabel={() => handleOpenLabelModal(card)}
+                    />
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })}
       </div>
 
       {/* Plan Dialog */}

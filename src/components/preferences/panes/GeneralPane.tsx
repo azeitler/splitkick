@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, type FC } from 'react'
 import { invoke } from '@/lib/transport'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -39,7 +39,11 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from '@/components/ui/tooltip'
-import { usePreferences, useSavePreferences } from '@/services/preferences'
+import {
+  usePreferences,
+  useSavePreferences,
+} from '@/services/preferences'
+import type { AppPreferences } from '@/types/preferences'
 import {
   modelOptions,
   thinkingLevelOptions,
@@ -549,24 +553,10 @@ export const GeneralPane: React.FC = () => {
             />
           </InlineField>
 
-          <InlineField
-            label="AI Language"
-            description="Language for AI responses (e.g. French, 日本語)"
-          >
-            <Input
-              className="w-40"
-              placeholder="Default"
-              value={preferences?.ai_language ?? ''}
-              onChange={e => {
-                if (preferences) {
-                  savePreferences.mutate({
-                    ...preferences,
-                    ai_language: e.target.value,
-                  })
-                }
-              }}
-            />
-          </InlineField>
+          <AiLanguageField
+            preferences={preferences}
+            savePreferences={savePreferences}
+          />
 
           <InlineField
             label="Allow web tools in plan mode"
@@ -868,5 +858,49 @@ export const GeneralPane: React.FC = () => {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  )
+}
+
+const AiLanguageField: FC<{
+  preferences: AppPreferences | undefined
+  savePreferences: ReturnType<typeof useSavePreferences>
+}> = ({ preferences, savePreferences }) => {
+  const [localValue, setLocalValue] = useState(preferences?.ai_language ?? '')
+
+  const hasChanges =
+    localValue !== (preferences?.ai_language ?? '')
+
+  const handleSave = useCallback(() => {
+    if (!preferences) return
+    savePreferences.mutate({
+      ...preferences,
+      ai_language: localValue,
+    })
+  }, [preferences, savePreferences, localValue])
+
+  return (
+    <InlineField
+      label="AI Language"
+      description="Language for AI responses (e.g. French, 日本語)"
+    >
+      <div className="flex items-center gap-2">
+        <Input
+          className="w-40"
+          placeholder="Default"
+          value={localValue}
+          onChange={e => setLocalValue(e.target.value)}
+        />
+        <Button
+          size="sm"
+          onClick={handleSave}
+          disabled={!hasChanges || savePreferences.isPending}
+        >
+          {savePreferences.isPending && (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          )}
+          Save
+        </Button>
+      </div>
+    </InlineField>
   )
 }

@@ -13,6 +13,8 @@ interface UseCanvasKeyboardNavOptions<T> {
   onSelect: (index: number) => void
   /** Whether keyboard navigation is enabled (disable when modal open) */
   enabled: boolean
+  /** Layout mode: 'grid' uses horizontal + visual-position nav, 'list' uses simple up/down */
+  layout?: 'grid' | 'list'
   /** Optional callback when selection changes (for tracking in store) */
   onSelectionChange?: (index: number) => void
 }
@@ -36,6 +38,7 @@ export function useCanvasKeyboardNav<T>({
   onSelectedIndexChange,
   onSelect,
   enabled,
+  layout = 'grid',
   onSelectionChange,
 }: UseCanvasKeyboardNavOptions<T>): UseCanvasKeyboardNavResult {
   const cardRefs = useRef<(HTMLDivElement | null)[]>([])
@@ -170,41 +173,64 @@ export function useCanvasKeyboardNav<T>({
         onSelectionChange?.(newIndex)
       }
 
-      switch (e.key) {
-        case 'ArrowRight':
-          e.preventDefault()
-          if (currentIndex < total - 1) {
-            updateSelection(currentIndex + 1)
-          }
-          break
-        case 'ArrowLeft':
-          e.preventDefault()
-          if (currentIndex > 0) {
-            updateSelection(currentIndex - 1)
-          }
-          break
-        case 'ArrowDown': {
-          e.preventDefault()
-          const nextIndex = findVerticalNeighbor(currentIndex, 'down')
-          if (nextIndex !== null) {
-            updateSelection(nextIndex)
-          }
-          break
+      if (layout === 'list') {
+        // List layout: simple up/down navigation, left/right ignored
+        switch (e.key) {
+          case 'ArrowDown':
+            e.preventDefault()
+            if (currentIndex < total - 1) {
+              updateSelection(currentIndex + 1)
+            }
+            break
+          case 'ArrowUp':
+            e.preventDefault()
+            if (currentIndex > 0) {
+              updateSelection(currentIndex - 1)
+            }
+            break
+          case 'Enter':
+            if (e.metaKey || e.ctrlKey) return
+            e.preventDefault()
+            onSelect(currentIndex)
+            break
         }
-        case 'ArrowUp': {
-          e.preventDefault()
-          const prevIndex = findVerticalNeighbor(currentIndex, 'up')
-          if (prevIndex !== null) {
-            updateSelection(prevIndex)
+      } else {
+        // Grid layout: horizontal left/right, visual-position up/down
+        switch (e.key) {
+          case 'ArrowRight':
+            e.preventDefault()
+            if (currentIndex < total - 1) {
+              updateSelection(currentIndex + 1)
+            }
+            break
+          case 'ArrowLeft':
+            e.preventDefault()
+            if (currentIndex > 0) {
+              updateSelection(currentIndex - 1)
+            }
+            break
+          case 'ArrowDown': {
+            e.preventDefault()
+            const nextIndex = findVerticalNeighbor(currentIndex, 'down')
+            if (nextIndex !== null) {
+              updateSelection(nextIndex)
+            }
+            break
           }
-          break
+          case 'ArrowUp': {
+            e.preventDefault()
+            const prevIndex = findVerticalNeighbor(currentIndex, 'up')
+            if (prevIndex !== null) {
+              updateSelection(prevIndex)
+            }
+            break
+          }
+          case 'Enter':
+            if (e.metaKey || e.ctrlKey) return
+            e.preventDefault()
+            onSelect(currentIndex)
+            break
         }
-        case 'Enter':
-          // Only handle plain Enter (no modifiers) - CMD+Enter is for approve_plan keybinding
-          if (e.metaKey || e.ctrlKey) return
-          e.preventDefault()
-          onSelect(currentIndex)
-          break
       }
     }
 
@@ -212,6 +238,7 @@ export function useCanvasKeyboardNav<T>({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [
     enabled,
+    layout,
     findVerticalNeighbor,
     onSelectedIndexChange,
     onSelect,
@@ -219,11 +246,39 @@ export function useCanvasKeyboardNav<T>({
   ])
 
   // Scroll selected card into view when selection changes
+  // Uses manual scroll to ensure group/section headers above the card stay visible
   const scrollSelectedIntoView = useCallback(() => {
     if (selectedIndex === null) return
     const card = cardRefs.current[selectedIndex]
-    if (card) {
+    if (!card) return
+
+    const scrollContainer = card.closest('.overflow-auto')
+    if (!scrollContainer) {
       card.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+      return
+    }
+
+    // Find the sticky header inside the scroll container to get the actual visible top edge
+    const stickyHeader = scrollContainer.querySelector('.sticky')
+    const visibleTop = stickyHeader
+      ? stickyHeader.getBoundingClientRect().bottom
+      : scrollContainer.getBoundingClientRect().top
+
+    const containerRect = scrollContainer.getBoundingClientRect()
+    const cardRect = card.getBoundingClientRect()
+
+    // Extra margin above to keep section/group headers visible (~60px for worktree header + group label)
+    const topPadding = 60
+    const bottomMargin = 80
+
+    if (cardRect.top < visibleTop + topPadding) {
+      // Card is behind sticky header or too close — scroll up
+      const scrollDelta = cardRect.top - visibleTop - topPadding
+      scrollContainer.scrollBy({ top: scrollDelta, behavior: 'smooth' })
+    } else if (cardRect.bottom > containerRect.bottom - bottomMargin) {
+      // Card is below visible area — scroll down
+      const scrollDelta = cardRect.bottom - containerRect.bottom + bottomMargin
+      scrollContainer.scrollBy({ top: scrollDelta, behavior: 'smooth' })
     }
   }, [selectedIndex])
 

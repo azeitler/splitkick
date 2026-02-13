@@ -8,12 +8,12 @@ Testing patterns and utilities for both Rust and TypeScript code, with comprehen
 
 ```bash
 # Run all tests and checks
-npm run check:all
+bun run check:all
 
 # Individual test commands
-npm run test        # TypeScript tests (watch mode)
-npm run test:run    # TypeScript tests (single run)
-npm run rust:test   # Rust tests
+bun run test        # TypeScript tests (watch mode)
+bun run test:run    # TypeScript tests (single run)
+bun run rust:test   # Rust tests
 ```
 
 ### Writing a Simple Test
@@ -297,7 +297,7 @@ fn is_valid_filename(filename: &str) -> bool {
     "rust:clippy": "cd src-tauri && cargo clippy -- -D warnings",
     "rust:test": "cd src-tauri && cargo test",
     "test:run": "vitest run",
-    "check:all": "npm run typecheck && npm run lint && npm run format:check && npm run test:run && npm run rust:fmt:check && npm run rust:clippy && npm run rust:test"
+    "check:all": "bun run typecheck && bun run lint && bun run format:check && bun run test:run && bun run rust:fmt:check && bun run rust:clippy && bun run rust:test"
   }
 }
 ```
@@ -321,8 +321,8 @@ jobs:
         with:
           toolchain: stable
 
-      - run: npm ci
-      - run: npm run check:all
+      - run: bun install --frozen-lockfile
+      - run: bun run check:all
 ```
 
 ## Test Organization

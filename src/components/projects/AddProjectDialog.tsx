@@ -29,7 +29,7 @@ export function AddProjectDialog() {
     if (!isNativeApp()) {
       toast.error('Not running in Tauri', {
         description:
-          'Run the app with "npm run tauri:dev" to use native features.',
+          'Run the app with "bun run tauri:dev" to use native features.',
       })
       return
     }
@@ -83,7 +83,7 @@ export function AddProjectDialog() {
     if (!isNativeApp()) {
       toast.error('Not running in Tauri', {
         description:
-          'Run the app with "npm run tauri:dev" to use native features.',
+          'Run the app with "bun run tauri:dev" to use native features.',
       })
       return
     }

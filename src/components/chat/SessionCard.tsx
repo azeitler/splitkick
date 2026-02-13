@@ -59,10 +59,13 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
             tabIndex={-1}
             onClick={onSelect}
             className={cn(
-              'group flex w-full sm:w-[260px] min-h-[132px] flex-col gap-3 rounded-md overflow-hidden bg-muted/30 border p-4 transition-colors text-left cursor-pointer scroll-mt-28 scroll-mb-20',
+              'group flex w-full sm:w-[260px] flex-col rounded-md overflow-hidden bg-muted/30 border transition-colors text-left cursor-pointer scroll-mt-28 scroll-mb-20',
               'hover:border-foreground/20 hover:bg-muted/50',
               isSelected &&
-                'border-primary/50 bg-primary/5 hover:border-primary/50 hover:bg-primary/10 opacity-100'
+                'border-primary/50 bg-primary/5 hover:border-primary/50 hover:bg-primary/10 opacity-100',
+              card.status === 'idle'
+                ? 'gap-1.5 p-2.5'
+                : 'gap-3 p-4 min-h-[132px]'
             )}
           >
             {/* Top row: status indicator + plan/recap buttons */}
@@ -124,7 +127,12 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
             </div>
 
             {/* Session name */}
-            <div className="text-sm font-medium leading-snug line-clamp-2 min-h-[2.75em]">
+            <div
+              className={cn(
+                'text-sm font-medium leading-snug line-clamp-2',
+                card.status !== 'idle' && 'min-h-[2.75em]'
+              )}
+            >
               {card.session.name}
             </div>
 

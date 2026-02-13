@@ -157,10 +157,11 @@ export function FileDiffModal({
       },
       themeType: resolvedThemeType,
       diffStyle,
+      overflow: 'wrap' as const,
       enableLineSelection: false,
       disableFileHeader: true,
       unsafeCSS: `
-        pre { font-family: var(--font-family-sans) !important; font-size: var(--ui-font-size) !important; line-height: var(--ui-line-height) !important; }
+        pre { font-family: var(--font-family-mono) !important; font-size: calc(var(--ui-font-size) * 0.85) !important; line-height: var(--ui-line-height) !important; }
       `,
     }),
     [

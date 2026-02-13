@@ -48,6 +48,7 @@ import {
   useSessions,
   useCreateSession,
   useArchiveSession,
+  useCloseSession,
   useRenameSession,
   useReorderSessions,
 } from '@/services/chat'
@@ -514,6 +515,7 @@ export function SessionTabBar({
   )
   const createSession = useCreateSession()
   const archiveSession = useArchiveSession()
+  const closeSession = useCloseSession()
   const closeBaseSessionClean = useCloseBaseSessionClean()
   const renameSession = useRenameSession()
   const reorderSessions = useReorderSessions()
@@ -679,8 +681,20 @@ export function SessionTabBar({
         clearActiveWorktree()
 
         closeBaseSessionClean.mutate({ worktreeId, projectId })
+      } else if (preferences?.removal_behavior === 'delete') {
+        // Preference is delete: permanently remove the session
+        closeSession.mutate(
+          { worktreeId, worktreePath, sessionId },
+          {
+            onSuccess: newActiveId => {
+              if (newActiveId) {
+                setActiveSession(worktreeId, newActiveId)
+              }
+            },
+          }
+        )
       } else {
-        // Normal case: archive the session
+        // Default: archive the session
         archiveSession.mutate(
           { worktreeId, worktreePath, sessionId },
           {
@@ -699,7 +713,9 @@ export function SessionTabBar({
       projectId,
       isBase,
       sessionsData,
+      preferences?.removal_behavior,
       archiveSession,
+      closeSession,
       closeBaseSessionClean,
       setActiveSession,
       isSending,

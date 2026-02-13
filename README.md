@@ -1,96 +1,86 @@
+<div align="center">
+
 # Jean
 
-Jean is a desktop AI assistant for managing multiple projects, worktrees, and chat sessions with Claude CLI.
-
-## Features
-
-### Project & Worktree Management
-- Multi-project support with folder organization
-- Git worktree automation (create, archive, restore, delete)
-- Base session mode (work on main without worktrees)
-- Custom project avatars
-
-### Session Management
-- Multiple sessions per worktree
-- Execution modes: Plan, Build, Yolo
-- Session archiving, recovery, auto-naming
-- Canvas views for visual session overview
-
-### AI Chat (Claude CLI)
-- Model selection (Opus, Sonnet, Haiku)
-- Thinking levels (Think, Megathink, Ultrathink) and effort levels for Opus
-- MCP server support
-- File mentions, image support, context loading
-- Customizable system prompts per project
-
-### Magic Commands
-- Investigate Issue / PR / Workflow
-- Code Review with finding tracking
-- AI Commit messages, PR content generation
-- Merge conflict resolution
-- Release notes generation
-
-### GitHub Integration
-- Issue & PR investigation
-- Checkout PRs as worktrees
-- Auto-archive on PR merge
-- GitHub Actions workflow investigation
-
-### Developer Tools
-- Integrated terminal (multiple per worktree)
-- Open in editor (VS Code, Cursor, Xcode)
-- Git status, diff viewer (unified & side-by-side)
-- File tree with preview
-
-### Remote Access
-- Built-in HTTP server with WebSocket support
-- Token-based authentication
-- Web browser access
-
-### Customization
-- Themes (light/dark/system)
-- Custom fonts and font sizes
-- Customizable AI prompts
-- Configurable keybindings
-
-## Tech Stack
+A desktop AI assistant for managing multiple projects, worktrees, and chat sessions with Claude CLI.
 
 Tauri v2 · React 19 · Rust · TypeScript · Tailwind CSS v4 · shadcn/ui v4 · Zustand v5 · TanStack Query · CodeMirror 6 · xterm.js
 
+</div>
+
+## About the Project
+
+Jean is a native desktop app built with Tauri that gives you a powerful interface for working with Claude CLI across multiple projects. It manages git worktrees, chat sessions, terminals, and GitHub integrations — all in one place.
+
+No vendor lock-in. Everything runs locally on your machine with your own Claude CLI installation.
+
+For more information, take a look at [jean.build](https://jean.build).
+
 ## Screenshots
 
-![Main Interface](screenshots/SCR-20260209-nigu.png)
-![Development Mode](screenshots/SCR-20260209-ninl.png)
-![Diff View](screenshots/SCR-20260209-niug.png)
-![Plan Mode](screenshots/SCR-20260209-njel.png)
+<table>
+<tr>
+<td><img src="screenshots/SCR-20260209-nigu.png" width="400" alt="Main Interface" /></td>
+<td><img src="screenshots/SCR-20260209-ninl.png" width="400" alt="Development Mode" /></td>
+</tr>
+<tr>
+<td><img src="screenshots/SCR-20260209-niug.png" width="400" alt="Diff View" /></td>
+<td><img src="screenshots/SCR-20260209-njel.png" width="400" alt="Plan Mode" /></td>
+</tr>
+</table>
 
-# Prerequisites
+## Features
 
+- **Project & Worktree Management** — Multi-project support, git worktree automation (create, archive, restore, delete), custom project avatars
+- **Session Management** — Multiple sessions per worktree, execution modes (Plan, Build, Yolo), archiving, recovery, auto-naming, canvas views
+- **AI Chat (Claude CLI)** — Model selection (Opus, Sonnet, Haiku), thinking/effort levels, MCP server support, file mentions, image support, custom system prompts
+- **Magic Commands** — Investigate issues/PRs/workflows, code review with finding tracking, AI commit messages, PR content generation, merge conflict resolution, release notes
+- **GitHub Integration** — Issue & PR investigation, checkout PRs as worktrees, auto-archive on PR merge, workflow investigation
+- **Developer Tools** — Integrated terminal, open in editor (VS Code, Cursor, Xcode), git status, diff viewer (unified & side-by-side), file tree with preview
+- **Remote Access** — Built-in HTTP server with WebSocket support, token-based auth, web browser access
+- **Customization** — Themes (light/dark/system), custom fonts, customizable AI prompts, configurable keybindings
+
+## Installation
+
+Download the latest version from the [GitHub Releases](https://github.com/coollabsio/jean/releases) page or visit [jean.build](https://jean.build).
+
+### Building from Source
+
+Prerequisites:
 - [Node.js](https://nodejs.org/)
 - [Rust](https://www.rust-lang.org/tools/install)
 - **Windows only**: In the Visual Studio Installer, ensure the **"Desktop development with C++"** workload is selected, which includes:
   - MSVC C++ build tools
   - Windows SDK (provides `kernel32.lib` and other system libraries required by Rust)
 
-# Platform Support
+See [CONTRIBUTING.md](CONTRIBUTING.md) for full development setup and guidelines.
+
+## Platform Support
 
 - **macOS**: Tested
 - **Windows**: Not fully tested
 - **Linux**: Not tested at all
 
-# Roadmap
+## Roadmap
 
 - Add [Opencode](https://opencode.ai/) support
 - Enhance remote web access
 
-# Contributing
+## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
-# Philosophy
+## Core Maintainer
+
+| Andras Bacsai |
+|:---:|
+| <img src="https://github.com/andrasbacsai.png" width="200px" alt="Andras Bacsai" /> |
+| <a href="https://github.com/andrasbacsai"><img src="https://api.iconify.design/devicon:github.svg" width="25px"></a> <a href="https://x.com/heyandras"><img src="https://api.iconify.design/devicon:twitter.svg" width="25px"></a> <a href="https://bsky.app/profile/heyandras.dev"><img src="https://api.iconify.design/simple-icons:bluesky.svg" width="25px"></a> |
+
+## Philosophy
 
 Learn more about our approach: [Philosophy](https://coollabs.io/philosophy/)
 
----
+## Star History
 
-Made by [Andras Bacsai](https://x.com/heyandras).
+[![Star History Chart](https://api.star-history.com/svg?repos=coollabsio/jean&type=Date)](https://star-history.com/#coollabsio/jean&Date)

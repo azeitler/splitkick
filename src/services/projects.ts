@@ -24,6 +24,7 @@ import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 
+import type { AppPreferences } from '@/types/preferences'
 import { hasBackend } from '@/lib/environment'
 import { openExternal } from '@/lib/platform'
 
@@ -160,6 +161,21 @@ async function openBaseSessionForProject(
 }
 
 /**
+ * Show the jean.json config wizard if the user hasn't seen it yet
+ */
+function maybeShowJeanConfigWizard(
+  projectId: string,
+  queryClient: ReturnType<typeof useQueryClient>
+) {
+  const prefs = queryClient.getQueryData<AppPreferences>(['preferences'])
+  if (prefs && !prefs.has_seen_jean_config_wizard) {
+    setTimeout(() => {
+      useProjectsStore.getState().openJeanConfigWizard(projectId)
+    }, 400)
+  }
+}
+
+/**
  * Hook to add a new project
  */
 export function useAddProject() {
@@ -187,7 +203,8 @@ export function useAddProject() {
       toast.success(`Added project: ${project.name}`)
 
       // Auto-expand the new project and parent folder if applicable
-      const { expandProject, expandFolder, selectProject } = useProjectsStore.getState()
+      const { expandProject, expandFolder, selectProject } =
+        useProjectsStore.getState()
       if (parentId) {
         expandFolder(parentId)
       }
@@ -196,6 +213,9 @@ export function useAddProject() {
 
       // Auto-open the base session so the user lands in chat
       openBaseSessionForProject(project.id, queryClient)
+
+      // Show jean.json wizard if not seen yet
+      maybeShowJeanConfigWizard(project.id, queryClient)
     },
     onError: error => {
       // Tauri invoke errors are thrown as strings, not Error objects
@@ -239,7 +259,8 @@ export function useInitProject() {
       toast.success(`Created project: ${project.name}`)
 
       // Auto-expand the new project and parent folder if applicable
-      const { expandProject, expandFolder, selectProject } = useProjectsStore.getState()
+      const { expandProject, expandFolder, selectProject } =
+        useProjectsStore.getState()
       if (parentId) {
         expandFolder(parentId)
       }
@@ -248,6 +269,9 @@ export function useInitProject() {
 
       // Auto-open the base session so the user lands in chat
       openBaseSessionForProject(project.id, queryClient)
+
+      // Show jean.json wizard if not seen yet
+      maybeShowJeanConfigWizard(project.id, queryClient)
     },
     onError: error => {
       const message =
@@ -899,8 +923,12 @@ export function useWorktreeEvents() {
 
         // Check if this worktree was marked for auto-investigate
         const uiState = useUIStore.getState()
-        const shouldInvestigateIssue = uiState.autoInvestigateWorktreeIds.has(worktree.id)
-        const shouldInvestigatePR = uiState.autoInvestigatePRWorktreeIds.has(worktree.id)
+        const shouldInvestigateIssue = uiState.autoInvestigateWorktreeIds.has(
+          worktree.id
+        )
+        const shouldInvestigatePR = uiState.autoInvestigatePRWorktreeIds.has(
+          worktree.id
+        )
         if (shouldInvestigateIssue || shouldInvestigatePR) {
           // Open the session modal so ChatWindow mounts
           uiState.markWorktreeForAutoOpenSession(worktree.id)
@@ -978,13 +1006,21 @@ export function useWorktreeEvents() {
     // Listen for branch exists conflicts — auto-create with suffix name
     unlistenPromises.push(
       listen<WorktreeBranchExistsEvent>('worktree:branch_exists', event => {
-        const { project_id, branch, suggested_name, issue_context, pr_context } =
-          event.payload
-        logger.warn('Worktree branch already exists, auto-creating with suffix', {
+        const {
           project_id,
           branch,
-          suggestedName: suggested_name,
-        })
+          suggested_name,
+          issue_context,
+          pr_context,
+        } = event.payload
+        logger.warn(
+          'Worktree branch already exists, auto-creating with suffix',
+          {
+            project_id,
+            branch,
+            suggestedName: suggested_name,
+          }
+        )
 
         // Carry over any pending auto-investigate flags
         const uiState = useUIStore.getState()
@@ -1661,6 +1697,62 @@ export function useOpenWorktreeInEditor() {
 }
 
 /**
+ * Jean.json config shape
+ */
+export interface JeanConfig {
+  scripts: {
+    setup: string | null
+    run: string | null
+  }
+}
+
+/**
+ * Hook to get full jean.json config for a project
+ */
+export function useJeanConfig(projectPath: string | null) {
+  return useQuery<JeanConfig | null>({
+    queryKey: ['jean-config', projectPath],
+    queryFn: async () => {
+      if (!isTauri() || !projectPath) return null
+      const config = await invoke<JeanConfig | null>('get_jean_config', {
+        projectPath,
+      })
+      return config ?? null
+    },
+    enabled: !!projectPath,
+    staleTime: 30_000,
+  })
+}
+
+/**
+ * Mutation hook to save jean.json config to disk
+ */
+export function useSaveJeanConfig() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      projectPath,
+      config,
+    }: {
+      projectPath: string
+      config: JeanConfig
+    }) => {
+      await invoke('save_jean_config', { projectPath, config })
+    },
+    onSuccess: (_, { projectPath }) => {
+      queryClient.invalidateQueries({ queryKey: ['jean-config', projectPath] })
+      queryClient.invalidateQueries({ queryKey: ['run-script'] })
+    },
+    onError: error => {
+      toast.error('Failed to save jean.json', {
+        description: String(error),
+      })
+    },
+  })
+}
+
+/**
  * Hook to get the run script from jean.json for a worktree
  */
 export function useRunScript(worktreePath: string | null) {
@@ -1934,11 +2026,13 @@ export function useUpdateProjectSettings() {
       defaultBranch,
       enabledMcpServers,
       customSystemPrompt,
+      defaultProvider,
     }: {
       projectId: string
       defaultBranch?: string
       enabledMcpServers?: string[]
       customSystemPrompt?: string
+      defaultProvider?: string | null
     }): Promise<Project> => {
       if (!isTauri()) {
         throw new Error('Not in Tauri context')
@@ -1950,13 +2044,13 @@ export function useUpdateProjectSettings() {
         defaultBranch,
         enabledMcpServers,
         customSystemPrompt,
+        defaultProvider,
       })
       logger.info('Project settings updated', { project })
       return project
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: projectsQueryKeys.list() })
-      toast.success('Project settings saved')
     },
     onError: error => {
       const message =

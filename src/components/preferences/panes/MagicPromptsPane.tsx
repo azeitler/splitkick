@@ -20,6 +20,7 @@ import {
   DEFAULT_RESOLVE_CONFLICTS_PROMPT,
   DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT,
   DEFAULT_RELEASE_NOTES_PROMPT,
+  DEFAULT_SESSION_NAMING_PROMPT,
   DEFAULT_PARALLEL_EXECUTION_PROMPT,
   DEFAULT_MAGIC_PROMPTS,
   DEFAULT_MAGIC_PROMPT_MODELS,
@@ -239,6 +240,21 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_CONTEXT_SUMMARY_PROMPT,
+        defaultModel: 'haiku',
+      },
+      {
+        key: 'session_naming',
+        modelKey: 'session_naming_model',
+        label: 'Session Naming',
+        description:
+          'Prompt for generating session titles from the first message. Used for both auto-naming and manual regeneration.',
+        variables: [
+          {
+            name: '{message}',
+            description: "The user's first message in the session",
+          },
+        ],
+        defaultValue: DEFAULT_SESSION_NAMING_PROMPT,
         defaultModel: 'haiku',
       },
     ],

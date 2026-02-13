@@ -389,6 +389,7 @@ pub fn load_sessions(
                 claude_session_id: None,
                 selected_model: None,
                 selected_thinking_level: None,
+                selected_provider: None,
                 session_naming_completed: false,
                 archived_at: entry.archived_at,
                 answered_questions: vec![],

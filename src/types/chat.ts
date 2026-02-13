@@ -131,6 +131,8 @@ export interface Session {
   selected_model?: string
   /** Selected thinking level for this session */
   selected_thinking_level?: ThinkingLevel
+  /** Selected provider (custom CLI profile name) for this session */
+  selected_provider?: string
   /** Whether session naming has been attempted for this session */
   session_naming_completed?: boolean
   /** Unix timestamp when session was archived (undefined = not archived) */

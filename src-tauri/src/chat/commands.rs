@@ -213,6 +213,46 @@ pub async fn rename_session(
     })
 }
 
+/// Regenerate session name using AI based on the first user message
+#[tauri::command]
+pub async fn regenerate_session_name(
+    app: AppHandle,
+    worktree_id: String,
+    worktree_path: String,
+    session_id: String,
+    custom_prompt: Option<String>,
+    model: Option<String>,
+) -> Result<(), String> {
+    log::trace!("Regenerating session name for {session_id}");
+
+    // Load messages from NDJSON (load_sessions returns empty messages)
+    let messages = run_log::load_session_messages(&app, &session_id)?;
+
+    // Find the first user message to use for naming
+    let first_message = messages
+        .iter()
+        .find(|m| m.role == MessageRole::User)
+        .map(|m| m.content.clone())
+        .ok_or_else(|| "No user messages in session to generate name from".to_string())?;
+
+    let naming_model = model.unwrap_or_else(|| "haiku".to_string());
+
+    let request = NamingRequest {
+        session_id,
+        worktree_id,
+        worktree_path: std::path::PathBuf::from(&worktree_path),
+        first_message,
+        model: naming_model,
+        existing_branch_names: Vec::new(),
+        generate_session_name: true,
+        generate_branch_name: false,
+        custom_session_prompt: custom_prompt,
+    };
+
+    spawn_naming_task(app, request);
+    Ok(())
+}
+
 /// Update session-specific UI state (answered questions, fixed findings, etc.)
 /// All fields are optional - only provided fields are updated
 #[tauri::command]
@@ -862,7 +902,7 @@ pub async fn send_chat_message(
     allowed_tools: Option<Vec<String>>,
     mcp_config: Option<String>,
     chrome_enabled: Option<bool>,
-    custom_profile_settings: Option<String>,
+    custom_profile_name: Option<String>,
 ) -> Result<ChatMessage, String> {
     log::trace!("Sending chat message for session: {session_id}, worktree: {worktree_id}, model: {model:?}, execution_mode: {execution_mode:?}, thinking: {thinking_level:?}, effort: {effort_level:?}, disable_thinking_for_mode: {disable_thinking_for_mode:?}, allowed_tools: {allowed_tools:?}");
 
@@ -941,15 +981,22 @@ pub async fn send_chat_message(
                     Vec::new()
                 };
 
+                let custom_session_prompt = if generate_session {
+                    prefs.magic_prompts.session_naming.clone()
+                } else {
+                    None
+                };
+
                 let request = NamingRequest {
                     session_id: session_id.clone(),
                     worktree_id: worktree_id.clone(),
                     worktree_path: PathBuf::from(&worktree_path),
                     first_message: message.clone(),
-                    model: prefs.session_naming_model.clone(), // Use session naming model
+                    model: prefs.magic_prompt_models.session_naming_model.clone(),
                     existing_branch_names: existing_names,
                     generate_session_name: generate_session,
                     generate_branch_name: generate_branch,
+                    custom_session_prompt,
                 };
 
                 // Spawn in background - does not block chat
@@ -1107,7 +1154,7 @@ pub async fn send_chat_message(
             ai_language.as_deref(),
             mcp_config.as_deref(),
             chrome,
-            custom_profile_settings.as_deref(),
+            custom_profile_name.as_deref(),
         ) {
             Ok((pid, response)) => {
                 log::trace!("execute_claude_detached succeeded (PID: {pid})");
@@ -1286,11 +1333,13 @@ pub async fn clear_session_history(
         if let Some(session) = sessions.find_session_mut(&session_id) {
             let selected_model = session.selected_model.clone();
             let selected_thinking_level = session.selected_thinking_level.clone();
+            let selected_provider = session.selected_provider.clone();
 
             session.messages.clear();
             session.claude_session_id = None;
             session.selected_model = selected_model;
             session.selected_thinking_level = selected_thinking_level;
+            session.selected_provider = selected_provider;
 
             log::trace!("Session history cleared");
             Ok(())
@@ -1337,6 +1386,28 @@ pub async fn set_session_thinking_level(
         if let Some(session) = sessions.find_session_mut(&session_id) {
             session.selected_thinking_level = Some(thinking_level);
             log::trace!("Thinking level selection saved");
+            Ok(())
+        } else {
+            Err(format!("Session not found: {session_id}"))
+        }
+    })
+}
+
+/// Set the selected provider (custom CLI profile) for a session
+#[tauri::command]
+pub async fn set_session_provider(
+    app: AppHandle,
+    worktree_id: String,
+    worktree_path: String,
+    session_id: String,
+    provider: Option<String>,
+) -> Result<(), String> {
+    log::trace!("Setting provider for session {session_id}: {provider:?}");
+
+    with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
+        if let Some(session) = sessions.find_session_mut(&session_id) {
+            session.selected_provider = provider;
+            log::trace!("Provider selection saved");
             Ok(())
         } else {
             Err(format!("Session not found: {session_id}"))

@@ -39,6 +39,7 @@ const createMockContext = (): CommandContext => ({
   clearSessionHistory: vi.fn().mockResolvedValue(undefined),
   renameSession: vi.fn(),
   resumeSession: vi.fn().mockResolvedValue(undefined),
+  regenerateSessionName: vi.fn().mockResolvedValue(undefined),
 
   // Worktrees
   createWorktree: vi.fn(),
@@ -72,6 +73,7 @@ const createMockContext = (): CommandContext => ({
   addProject: vi.fn(),
   initProject: vi.fn(),
   removeProject: vi.fn(),
+  openProjectSettings: vi.fn(),
 
   // AI
   runAIReview: vi.fn().mockResolvedValue(undefined),

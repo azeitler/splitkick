@@ -98,6 +98,9 @@ export const MemoizedFileDiff = memo(
     onLineSelected,
     onRemoveComment,
   }: MemoizedFileDiffProps) {
+    const [forceShow, setForceShow] = useState(false)
+    const [isLoadingDiff, startLoadingDiff] = useTransition()
+
     // Memoize options to keep reference stable
     const options = useMemo(
       () => ({
@@ -107,11 +110,12 @@ export const MemoizedFileDiff = memo(
         },
         themeType,
         diffStyle,
+        overflow: 'wrap' as const,
         enableLineSelection: true,
         onLineSelected,
         disableFileHeader: true, // We render file info in sidebar
         unsafeCSS: `
-      pre { font-family: var(--font-family-sans) !important; font-size: var(--ui-font-size) !important; line-height: var(--ui-line-height) !important; }
+      pre { font-family: var(--font-family-mono) !important; font-size: calc(var(--ui-font-size) * 0.85) !important; line-height: var(--ui-line-height) !important; }
     `,
       }),
       [themeType, syntaxThemeDark, syntaxThemeLight, diffStyle, onLineSelected]
@@ -178,7 +182,33 @@ export const MemoizedFileDiff = memo(
         {fileDiff.hunks.length === 0 ||
         fileDiff.hunks.every(h => h.hunkContent.length === 0) ? (
           <div className="px-4 py-8 text-center text-muted-foreground text-sm">
-            Empty file
+            {fileDiff.type === 'deleted'
+              ? 'This file was deleted'
+              : fileDiff.type === 'new'
+                ? 'Empty file added'
+                : 'Empty file'}
+          </div>
+        ) : stats.additions + stats.deletions > 1500 && !forceShow ? (
+          <div className="px-4 py-8 flex flex-col items-center gap-3 text-muted-foreground text-sm">
+            {isLoadingDiff ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Rendering diff...</span>
+              </>
+            ) : (
+              <>
+                <span>
+                  Large diff — {(stats.additions + stats.deletions).toLocaleString()} lines changed
+                </span>
+                <button
+                  type="button"
+                  onClick={() => startLoadingDiff(() => setForceShow(true))}
+                  className="px-3 py-1.5 text-xs font-medium rounded-md bg-muted hover:bg-accent transition-colors"
+                >
+                  Show diff
+                </button>
+              </>
+            )}
           </div>
         ) : (
           <FileDiff
@@ -259,6 +289,7 @@ const CommentInputBar = memo(function CommentInputBar({
       if (e.key === 'Enter' && inputValue.trim()) {
         handleSubmit()
       } else if (e.key === 'Escape') {
+        e.stopPropagation()
         onCancel()
       }
     },
@@ -536,8 +567,9 @@ export function GitDiffModal({
 
   // Flatten files into stable array for sidebar and selection
   // Pre-compute stats to avoid calculation during render
+  // Also merge any files from the backend that the patch parser missed (e.g., deleted/binary files)
   const flattenedFiles = useMemo(() => {
-    return parsedFiles.flatMap((patch, patchIndex) =>
+    const fromPatch = parsedFiles.flatMap((patch, patchIndex) =>
       patch.files.map((fileDiff, fileIndex) => {
         // Pre-compute stats from hunks
         let additions = 0
@@ -555,7 +587,38 @@ export function GitDiffModal({
         }
       })
     )
-  }, [parsedFiles])
+
+    // Add files from backend that the patch parser missed (deleted, binary, etc.)
+    if (diff?.files) {
+      const parsedPaths = new Set(fromPatch.map(f => f.fileName))
+      const statusToType: Record<string, string> = {
+        deleted: 'deleted',
+        added: 'new',
+        renamed: 'rename-changed',
+        modified: 'change',
+      }
+      for (const backendFile of diff.files) {
+        if (!parsedPaths.has(backendFile.path)) {
+          fromPatch.push({
+            fileDiff: {
+              name: backendFile.path,
+              prevName: backendFile.old_path ?? undefined,
+              type: (statusToType[backendFile.status] ?? 'change') as FileDiffMetadata['type'],
+              hunks: [],
+              splitLineCount: 0,
+              unifiedLineCount: 0,
+            } as FileDiffMetadata,
+            fileName: backendFile.path,
+            key: `backend-${backendFile.path}`,
+            additions: backendFile.additions,
+            deletions: backendFile.deletions,
+          })
+        }
+      }
+    }
+
+    return fromPatch
+  }, [parsedFiles, diff?.files])
 
   // Get currently selected file
   const selectedFile =
@@ -661,6 +724,21 @@ export function GitDiffModal({
         ref={dialogContentRef}
         className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none p-0 sm:!w-[calc(100vw-4rem)] sm:!max-w-[calc(100vw-4rem)] sm:!h-[85vh] sm:!rounded-lg sm:p-4 bg-background/95 backdrop-blur-sm overflow-hidden flex flex-col"
         style={{ fontSize: 'var(--ui-font-size)' }}
+        onOpenAutoFocus={(e) => {
+          // Prevent Radix from focusing the first focusable element (a tooltip trigger button),
+          // which would cause the tooltip to open immediately on modal open
+          e.preventDefault()
+          dialogContentRef.current?.focus()
+        }}
+        onEscapeKeyDown={(e) => {
+          if (showCommentInput) {
+            e.preventDefault()
+            handleCancelComment()
+          } else {
+            e.preventDefault()
+            onClose()
+          }
+        }}
       >
         <DialogTitle className="flex items-center gap-2 shrink-0">
           <FileText className="h-4 w-4" />

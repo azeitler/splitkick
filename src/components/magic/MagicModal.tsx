@@ -33,7 +33,10 @@ import {
   triggerImmediateGitPoll,
   fetchWorktreesStatus,
 } from '@/services/git-status'
-import type { CreateCommitResponse, CreatePrResponse } from '@/types/projects'
+import type { CreateCommitResponse, CreatePrResponse, MergeConflictsResponse } from '@/types/projects'
+import type { Session } from '@/types/chat'
+import { DEFAULT_RESOLVE_CONFLICTS_PROMPT } from '@/types/preferences'
+import { chatQueryKeys } from '@/services/chat'
 import { saveWorktreePr, projectsQueryKeys } from '@/services/projects'
 import { useQueryClient } from '@tanstack/react-query'
 
@@ -65,7 +68,6 @@ const CANVAS_ALLOWED_OPTIONS = new Set<MagicOption>([
 /** Canvas options that need ChatWindow — switch off canvas first, then dispatch event */
 const CANVAS_SESSION_TRANSITION_OPTIONS = new Set<MagicOption>([
   'merge',
-  'resolve-conflicts',
 ])
 
 interface MagicOptionItem {
@@ -355,6 +357,64 @@ export function MagicModal() {
             toast.error(`Failed to create PR: ${error}`, { id: toastId })
           } finally {
             clearWorktreeLoading(selectedWorktreeId)
+          }
+          break
+        }
+        case 'resolve-conflicts': {
+          const toastId = toast.loading('Checking for merge conflicts...')
+          try {
+            const result = await invoke<MergeConflictsResponse>(
+              'get_merge_conflicts',
+              { worktreeId: selectedWorktreeId }
+            )
+
+            if (!result.has_conflicts) {
+              toast.info('No merge conflicts detected', { id: toastId })
+              return
+            }
+
+            toast.warning(`Found conflicts in ${result.conflicts.length} file(s)`, {
+              id: toastId,
+              description: 'Opening conflict resolution session...',
+            })
+
+            const { setActiveWorktree, setActiveSession, setInputDraft, setViewingCanvasTab } =
+              useChatStore.getState()
+
+            const newSession = await invoke<Session>('create_session', {
+              worktreeId: selectedWorktreeId,
+              worktreePath: worktree.path,
+              name: 'Resolve conflicts',
+            })
+
+            // Navigate to worktree (mounts ChatWindow if on dashboard) and open session
+            setActiveWorktree(selectedWorktreeId, worktree.path)
+            setActiveSession(selectedWorktreeId, newSession.id)
+            setViewingCanvasTab(selectedWorktreeId, false)
+
+            // Build conflict resolution prompt
+            const conflictFiles = result.conflicts.join('\n- ')
+            const diffSection = result.conflict_diff
+              ? `\n\nHere is the diff showing the conflict details:\n\n\`\`\`diff\n${result.conflict_diff}\n\`\`\``
+              : ''
+            const resolveInstructions =
+              preferences?.magic_prompts?.resolve_conflicts ??
+              DEFAULT_RESOLVE_CONFLICTS_PROMPT
+
+            const conflictPrompt = `I have merge conflicts that need to be resolved.
+
+Conflicts in these files:
+- ${conflictFiles}${diffSection}
+
+${resolveInstructions}`
+
+            setInputDraft(newSession.id, conflictPrompt)
+
+            queryClient.invalidateQueries({
+              queryKey: chatQueryKeys.sessions(selectedWorktreeId),
+            })
+          } catch (error) {
+            toast.error(`Failed to check conflicts: ${error}`, { id: toastId })
           }
           break
         }

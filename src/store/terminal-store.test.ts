@@ -85,17 +85,17 @@ describe('TerminalStore', () => {
     it('adds terminal with command', () => {
       const { addTerminal, getTerminals } = useTerminalStore.getState()
 
-      addTerminal('worktree-1', 'npm run dev')
+      addTerminal('worktree-1', 'bun run dev')
 
       const terminals = getTerminals('worktree-1')
-      expect(terminals[0]?.command).toBe('npm run dev')
-      expect(terminals[0]?.label).toBe('npm')
+      expect(terminals[0]?.command).toBe('bun run dev')
+      expect(terminals[0]?.label).toBe('bun')
     })
 
     it('adds terminal with custom label', () => {
       const { addTerminal, getTerminals } = useTerminalStore.getState()
 
-      addTerminal('worktree-1', 'npm run dev', 'Dev Server')
+      addTerminal('worktree-1', 'bun run dev', 'Dev Server')
 
       const terminals = getTerminals('worktree-1')
       expect(terminals[0]?.label).toBe('Dev Server')
@@ -204,22 +204,22 @@ describe('TerminalStore', () => {
     it('creates new terminal for command', () => {
       const { startRun, getTerminals } = useTerminalStore.getState()
 
-      const id = startRun('worktree-1', 'npm test')
+      const id = startRun('worktree-1', 'bun test')
 
       const terminals = getTerminals('worktree-1')
       expect(terminals).toHaveLength(1)
       expect(terminals[0]?.id).toBe(id)
-      expect(terminals[0]?.command).toBe('npm test')
+      expect(terminals[0]?.command).toBe('bun test')
     })
 
     it('reuses existing running terminal with same command', () => {
       const { startRun, setTerminalRunning, getTerminals } =
         useTerminalStore.getState()
 
-      const id1 = startRun('worktree-1', 'npm test')
+      const id1 = startRun('worktree-1', 'bun test')
       setTerminalRunning(id1, true)
 
-      const id2 = startRun('worktree-1', 'npm test')
+      const id2 = startRun('worktree-1', 'bun test')
 
       expect(id1).toBe(id2)
       expect(getTerminals('worktree-1')).toHaveLength(1)
@@ -228,9 +228,9 @@ describe('TerminalStore', () => {
     it('creates new terminal if existing terminal is not running', () => {
       const { startRun, getTerminals } = useTerminalStore.getState()
 
-      startRun('worktree-1', 'npm test')
+      startRun('worktree-1', 'bun test')
       // Not marked as running
-      const id2 = startRun('worktree-1', 'npm test')
+      const id2 = startRun('worktree-1', 'bun test')
 
       const terminals = getTerminals('worktree-1')
       expect(terminals).toHaveLength(2)
@@ -246,7 +246,7 @@ describe('TerminalStore', () => {
       })
       const { startRun, isTerminalPanelOpen } = useTerminalStore.getState()
 
-      startRun('worktree-1', 'npm test')
+      startRun('worktree-1', 'bun test')
 
       const state = useTerminalStore.getState()
       expect(state.terminalVisible).toBe(true)
@@ -324,8 +324,8 @@ describe('TerminalStore', () => {
     it('extracts first word from command', () => {
       const { addTerminal, getTerminals } = useTerminalStore.getState()
 
-      addTerminal('worktree-1', 'npm run build')
-      expect(getTerminals('worktree-1')[0]?.label).toBe('npm')
+      addTerminal('worktree-1', 'bun run build')
+      expect(getTerminals('worktree-1')[0]?.label).toBe('bun')
     })
 
     it('removes path from command', () => {

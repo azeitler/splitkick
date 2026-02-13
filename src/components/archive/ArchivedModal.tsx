@@ -46,6 +46,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
+import { navigateToRestoredItem } from '@/lib/restore-navigation'
 import type { Worktree, Project } from '@/types/projects'
 import type { ArchivedSessionEntry } from '@/types/chat'
 
@@ -305,15 +306,7 @@ export function ArchivedModal({ open, onOpenChange }: ArchivedModalProps) {
   const handleRestoreWorktree = (worktree: Worktree) => {
     unarchiveWorktree.mutate(worktree.id, {
       onSuccess: () => {
-        // Select the worktree in the sidebar
-        const { selectWorktree } = useProjectsStore.getState()
-        selectWorktree(worktree.id)
-
-        // Set the restored worktree as active
-        const { setActiveWorktree } = useChatStore.getState()
-        setActiveWorktree(worktree.id, worktree.path)
-
-        // Close the modal
+        navigateToRestoredItem(worktree.id, worktree.path)
         onOpenChange(false)
       },
     })
@@ -343,17 +336,11 @@ export function ArchivedModal({ open, onOpenChange }: ArchivedModalProps) {
               queryKey: ['all-archived-sessions'],
             })
 
-            // Select the worktree in the sidebar
-            const { selectWorktree } = useProjectsStore.getState()
-            selectWorktree(response.worktree.id)
-
-            // Set the worktree as active and the restored session as active
-            const { setActiveWorktree, setActiveSession } =
-              useChatStore.getState()
-            setActiveWorktree(response.worktree.id, response.worktree.path)
-            setActiveSession(response.worktree.id, entry.session.id)
-
-            // Close the modal
+            navigateToRestoredItem(
+              response.worktree.id,
+              response.worktree.path,
+              entry.session.id
+            )
             onOpenChange(false)
           },
         }

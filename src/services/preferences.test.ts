@@ -124,10 +124,12 @@ describe('preferences service', () => {
         default_effort_level: 'high',
         default_enabled_mcp_servers: [],
         has_seen_feature_tour: false,
+        has_seen_jean_config_wizard: false,
         chrome_enabled: true,
         zoom_level: 100,
         custom_cli_profiles: [],
         default_provider: null,
+        canvas_layout: 'grid',
       }
       vi.mocked(invoke).mockResolvedValueOnce(mockPreferences)
 
@@ -220,10 +222,12 @@ describe('preferences service', () => {
         default_effort_level: 'high',
         default_enabled_mcp_servers: [],
         has_seen_feature_tour: false,
+        has_seen_jean_config_wizard: false,
         chrome_enabled: true,
         zoom_level: 100,
         custom_cli_profiles: [],
         default_provider: null,
+        canvas_layout: 'grid',
       }
       vi.mocked(invoke).mockResolvedValueOnce(prefsWithOldBinding)
 
@@ -293,10 +297,12 @@ describe('preferences service', () => {
         default_effort_level: 'high',
         default_enabled_mcp_servers: [],
         has_seen_feature_tour: false,
+        has_seen_jean_config_wizard: false,
         chrome_enabled: true,
         zoom_level: 100,
         custom_cli_profiles: [],
         default_provider: null,
+        canvas_layout: 'grid',
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -364,10 +370,12 @@ describe('preferences service', () => {
         default_effort_level: 'high',
         default_enabled_mcp_servers: [],
         has_seen_feature_tour: false,
+        has_seen_jean_config_wizard: false,
         chrome_enabled: true,
         zoom_level: 100,
         custom_cli_profiles: [],
         default_provider: null,
+        canvas_layout: 'grid',
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -435,10 +443,12 @@ describe('preferences service', () => {
         default_effort_level: 'high',
         default_enabled_mcp_servers: [],
         has_seen_feature_tour: false,
+        has_seen_jean_config_wizard: false,
         chrome_enabled: true,
         zoom_level: 100,
         custom_cli_profiles: [],
         default_provider: null,
+        canvas_layout: 'grid',
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -504,10 +514,12 @@ describe('preferences service', () => {
         default_effort_level: 'high',
         default_enabled_mcp_servers: [],
         has_seen_feature_tour: false,
+        has_seen_jean_config_wizard: false,
         chrome_enabled: true,
         zoom_level: 100,
         custom_cli_profiles: [],
         default_provider: null,
+        canvas_layout: 'grid',
       }
 
       const { result } = renderHook(() => useSavePreferences(), {

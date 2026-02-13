@@ -157,7 +157,7 @@ fn build_claude_args(
     ai_language: Option<&str>,
     mcp_config: Option<&str>,
     chrome_enabled: bool,
-    custom_profile_settings: Option<&str>,
+    custom_profile_name: Option<&str>,
 ) -> (Vec<String>, Vec<(String, String)>) {
     let mut args = Vec::new();
     let mut env_vars = Vec::new();
@@ -227,9 +227,22 @@ fn build_claude_args(
         mode == "build" || mode == "yolo"
     };
 
-    // Build settings JSON: start with custom profile settings (if any), then merge thinking/effort
-    let mut settings_json: Option<serde_json::Value> =
-        custom_profile_settings.and_then(|s| serde_json::from_str(s).ok());
+    // Custom profile settings: resolve name → file path, pass to --settings (secrets stay in file, not in ps)
+    if let Some(name) = custom_profile_name {
+        if !name.is_empty() {
+            if let Ok(path) = crate::get_cli_profile_path(name) {
+                if path.exists() {
+                    args.push("--settings".to_string());
+                    args.push(path.to_string_lossy().to_string());
+                } else {
+                    log::warn!("CLI profile file not found for '{name}': {}", path.display());
+                }
+            }
+        }
+    }
+
+    // Thinking/effort settings: passed as separate --settings JSON (no secrets here)
+    let mut settings_json: Option<serde_json::Value> = None;
 
     if let Some(effort) = effort_level {
         // Opus 4.6 adaptive thinking: use effort parameter via --settings JSON
@@ -595,7 +608,7 @@ pub fn execute_claude_detached(
     ai_language: Option<&str>,
     mcp_config: Option<&str>,
     chrome_enabled: bool,
-    custom_profile_settings: Option<&str>,
+    custom_profile_name: Option<&str>,
 ) -> Result<(u32, ClaudeResponse), String> {
     use super::detached::spawn_detached_claude;
     use crate::claude_cli::get_cli_binary_path;
@@ -648,7 +661,7 @@ pub fn execute_claude_detached(
         ai_language,
         mcp_config,
         chrome_enabled,
-        custom_profile_settings,
+        custom_profile_name,
     );
 
     // Log the full Claude CLI command for debugging
@@ -657,6 +670,11 @@ pub fn execute_claude_detached(
         cli_path.display(),
         args.join(" ")
     );
+    if !env_vars.is_empty() {
+        // Log env var keys only (not values, which may contain secrets)
+        let env_keys: Vec<&str> = env_vars.iter().map(|(k, _)| k.as_str()).collect();
+        log::debug!("Claude CLI env vars: {}", env_keys.join(", "));
+    }
 
     // Convert env_vars to &str references for spawn_detached_claude
     let env_refs: Vec<(&str, &str)> = env_vars

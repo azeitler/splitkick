@@ -204,6 +204,25 @@ export async function getRemotePollInterval(): Promise<number> {
 }
 
 /**
+ * Set all worktrees with open PRs for background sweep polling.
+ *
+ * The sweep polls these worktrees round-robin at a slow interval (5 min)
+ * to detect PR merges even when the worktree isn't actively selected.
+ */
+export async function setPrWorktreesForPolling(
+  worktrees: Array<{
+    worktreeId: string
+    worktreePath: string
+    baseBranch: string
+    prNumber: number
+    prUrl: string
+  }>
+): Promise<void> {
+  if (!isTauri()) return
+  await invoke('set_pr_worktrees_for_polling', { worktrees })
+}
+
+/**
  * Trigger an immediate remote poll.
  *
  * This bypasses the normal remote polling interval.
