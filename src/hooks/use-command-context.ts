@@ -673,20 +673,24 @@ export function useCommandContext(
   // Session - Regenerate session name using AI
   // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const regenerateSessionName = useCallback(async () => {
-    const { activeWorktreeId, getActiveSession, getWorktreePath } =
-      useChatStore.getState()
-    if (!activeWorktreeId) {
+    const chatState = useChatStore.getState()
+    const worktreeId =
+      chatState.activeWorktreeId ??
+      useProjectsStore.getState().selectedWorktreeId
+    if (!worktreeId) {
       notify('No worktree selected', undefined, { type: 'error' })
       return
     }
 
-    const sessionId = getActiveSession(activeWorktreeId)
+    const sessionId =
+      chatState.getActiveSession(worktreeId) ??
+      chatState.getCanvasSelectedSession(worktreeId)
     if (!sessionId) {
       notify('No session selected', undefined, { type: 'error' })
       return
     }
 
-    const worktreePath = getWorktreePath(activeWorktreeId)
+    const worktreePath = chatState.getWorktreePath(worktreeId)
     if (!worktreePath) {
       notify('No worktree path found', undefined, { type: 'error' })
       return
@@ -695,7 +699,7 @@ export function useCommandContext(
     const toastId = toast.loading('Regenerating session title...')
     try {
       await invoke('regenerate_session_name', {
-        worktreeId: activeWorktreeId,
+        worktreeId,
         worktreePath,
         sessionId,
         customPrompt: preferences?.magic_prompts?.session_naming ?? null,

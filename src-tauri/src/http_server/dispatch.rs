@@ -333,8 +333,10 @@ pub async fn dispatch_command(
         }
         "list_loaded_issue_contexts" => {
             let session_id: String = field(&args, "sessionId", "session_id")?;
+            let worktree_id: Option<String> = field_opt(&args, "worktreeId", "worktree_id")?;
             let result =
-                crate::projects::list_loaded_issue_contexts(app.clone(), session_id).await?;
+                crate::projects::list_loaded_issue_contexts(app.clone(), session_id, worktree_id)
+                    .await?;
             to_value(result)
         }
         "remove_issue_context" => {
@@ -362,7 +364,10 @@ pub async fn dispatch_command(
         }
         "list_loaded_pr_contexts" => {
             let session_id: String = field(&args, "sessionId", "session_id")?;
-            let result = crate::projects::list_loaded_pr_contexts(app.clone(), session_id).await?;
+            let worktree_id: Option<String> = field_opt(&args, "worktreeId", "worktree_id")?;
+            let result =
+                crate::projects::list_loaded_pr_contexts(app.clone(), session_id, worktree_id)
+                    .await?;
             to_value(result)
         }
         "remove_pr_context" => {
@@ -1140,6 +1145,8 @@ pub async fn dispatch_command(
             let pending_plan_message_id: Option<Option<String>> =
                 field_opt(&args, "pendingPlanMessageId", "pending_plan_message_id")?;
             let label: Option<String> = field_opt(&args, "label", "label")?;
+            let review_results: Option<Option<serde_json::Value>> =
+                field_opt(&args, "reviewResults", "review_results")?;
             crate::chat::update_session_state(
                 app.clone(),
                 worktree_id,
@@ -1156,6 +1163,7 @@ pub async fn dispatch_command(
                 plan_file_path,
                 pending_plan_message_id,
                 label,
+                review_results,
             )
             .await?;
             emit_cache_invalidation(app, &["sessions"]);

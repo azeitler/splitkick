@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowLeft, Maximize2, Terminal, Play } from 'lucide-react'
+import { ArrowLeft, Eye, Maximize2, Terminal, Play } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -28,6 +28,7 @@ import { GitDiffModal } from './GitDiffModal'
 import type { DiffRequest } from '@/types/git-diff'
 import { ChatWindow } from './ChatWindow'
 import { ModalTerminalDrawer } from './ModalTerminalDrawer'
+import { OpenInButton } from '@/components/open-in/OpenInButton'
 
 interface SessionChatModalProps {
   sessionId: string | null
@@ -221,6 +222,24 @@ export function SessionChatModal({
             <div className="flex items-center gap-1">
               {isNativeApp() && (
                 <>
+                  <OpenInButton worktreePath={worktreePath} branch={worktree?.branch} />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => {
+                      const { reviewResults, toggleReviewSidebar } = useChatStore.getState()
+                      if (sessionId && reviewResults[sessionId]) {
+                        toggleReviewSidebar()
+                      } else {
+                        window.dispatchEvent(
+                          new CustomEvent('magic-command', { detail: { command: 'review' } })
+                        )
+                      }
+                    }}
+                  >
+                    <Eye className="h-3 w-3" />
+                  </Button>
                   <Button
                     variant="ghost"
                     size="sm"

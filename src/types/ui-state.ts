@@ -5,8 +5,7 @@
 // Session-specific state (answered_questions, submitted_answers, fixed_findings,
 // pending_permission_denials, denied_message_context, reviewing_sessions) is now
 // stored in the Session files. See useSessionStatePersistence.
-
-import type { ReviewResponse } from './projects'
+// Review results are also stored in Session files (review_results field).
 
 export interface UIState {
   active_worktree_id: string | null
@@ -21,12 +20,8 @@ export interface UIState {
   left_sidebar_visible?: boolean
   /** Active session ID per worktree (for restoring open tabs) */
   active_session_ids: Record<string, string>
-  /** AI review results per worktree: worktreeId → ReviewResponse */
-  review_results: Record<string, ReviewResponse>
-  /** Whether viewing review tab per worktree: worktreeId → viewing */
-  viewing_review_tab: Record<string, boolean>
-  /** Fixed AI review findings per worktree: worktreeId → array of fixed findingKeys */
-  fixed_review_findings: Record<string, string[]>
+  /** Whether the review sidebar is visible */
+  review_sidebar_visible?: boolean
   /** Session IDs that completed while out of focus, need digest on open */
   pending_digest_session_ids: string[]
   /** Modal terminal drawer open state per worktree */
@@ -48,9 +43,6 @@ export const defaultUIState: UIState = {
   left_sidebar_size: 250,
   left_sidebar_visible: false,
   active_session_ids: {},
-  review_results: {},
-  viewing_review_tab: {},
-  fixed_review_findings: {},
   pending_digest_session_ids: [],
   modal_terminal_open: {},
   modal_terminal_width: 400,

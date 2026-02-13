@@ -33,7 +33,7 @@ import {
   triggerImmediateGitPoll,
   fetchWorktreesStatus,
 } from '@/services/git-status'
-import type { CreateCommitResponse, CreatePrResponse, MergeConflictsResponse } from '@/types/projects'
+import type { CreateCommitResponse, CreatePrResponse, MergeConflictsResponse, ReviewResponse } from '@/types/projects'
 import type { Session } from '@/types/chat'
 import { DEFAULT_RESOLVE_CONFLICTS_PROMPT } from '@/types/preferences'
 import { chatQueryKeys } from '@/services/chat'
@@ -60,6 +60,7 @@ const CANVAS_ALLOWED_OPTIONS = new Set<MagicOption>([
   'pull',
   'push',
   'open-pr',
+  'review',
   'release-notes',
   'merge',
   'resolve-conflicts',
@@ -415,6 +416,53 @@ ${resolveInstructions}`
             })
           } catch (error) {
             toast.error(`Failed to check conflicts: ${error}`, { id: toastId })
+          }
+          break
+        }
+        case 'review': {
+          setWorktreeLoading(selectedWorktreeId, 'review')
+          const toastId = toast.loading(`Reviewing ${worktree.branch ?? ''}...`)
+          try {
+            const result = await invoke<ReviewResponse>('run_review_with_ai', {
+              worktreePath: worktree.path,
+              customPrompt: preferences?.magic_prompts?.code_review,
+              model: preferences?.magic_prompt_models?.code_review_model,
+            })
+
+            const newSession = await invoke<Session>('create_session', {
+              worktreeId: selectedWorktreeId,
+              worktreePath: worktree.path,
+              name: 'Code Review',
+            })
+
+            const { setReviewResults, setActiveSession, setActiveWorktree, setViewingCanvasTab } =
+              useChatStore.getState()
+            setReviewResults(newSession.id, result)
+            setActiveWorktree(selectedWorktreeId, worktree.path)
+            setActiveSession(selectedWorktreeId, newSession.id)
+            setViewingCanvasTab(selectedWorktreeId, false)
+
+            // Persist review results to session file
+            invoke('update_session_state', {
+              worktreeId: selectedWorktreeId,
+              worktreePath: worktree.path,
+              sessionId: newSession.id,
+              reviewResults: result,
+            }).catch(() => {})
+
+            queryClient.invalidateQueries({
+              queryKey: chatQueryKeys.sessions(selectedWorktreeId),
+            })
+
+            const findingCount = result.findings.length
+            const statusEmoji =
+              result.approval_status === 'approved' ? 'Approved' :
+              result.approval_status === 'changes_requested' ? 'Changes requested' : 'Reviewed'
+            toast.success(`${statusEmoji} (${findingCount} findings)`, { id: toastId })
+          } catch (error) {
+            toast.error(`Review failed: ${error}`, { id: toastId })
+          } finally {
+            clearWorktreeLoading(selectedWorktreeId)
           }
           break
         }

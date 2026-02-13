@@ -253,7 +253,10 @@ export function useSearchGitHubIssues(
  *
  * @param sessionId - The session ID
  */
-export function useLoadedIssueContexts(sessionId: string | null) {
+export function useLoadedIssueContexts(
+  sessionId: string | null,
+  worktreeId?: string | null
+) {
   return useQuery({
     queryKey: githubQueryKeys.loadedContexts(sessionId ?? ''),
     queryFn: async (): Promise<LoadedIssueContext[]> => {
@@ -267,6 +270,7 @@ export function useLoadedIssueContexts(sessionId: string | null) {
           'list_loaded_issue_contexts',
           {
             sessionId,
+            worktreeId: worktreeId ?? undefined,
           }
         )
         logger.info('Loaded issue contexts fetched', { count: contexts.length })
@@ -399,7 +403,10 @@ export function useGitHubPR(
  *
  * @param sessionId - The session ID
  */
-export function useLoadedPRContexts(sessionId: string | null) {
+export function useLoadedPRContexts(
+  sessionId: string | null,
+  worktreeId?: string | null
+) {
   return useQuery({
     queryKey: githubQueryKeys.loadedPrContexts(sessionId ?? ''),
     queryFn: async (): Promise<LoadedPullRequestContext[]> => {
@@ -413,6 +420,7 @@ export function useLoadedPRContexts(sessionId: string | null) {
           'list_loaded_pr_contexts',
           {
             sessionId,
+            worktreeId: worktreeId ?? undefined,
           }
         )
         logger.info('Loaded PR contexts fetched', { count: contexts.length })

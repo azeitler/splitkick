@@ -48,6 +48,7 @@ import {
   flattenGroups,
 } from '@/components/chat/session-card-utils'
 import { WorktreeSetupCard } from '@/components/chat/WorktreeSetupCard'
+import { OpenInButton } from '@/components/open-in/OpenInButton'
 import { useCanvasStoreState } from '@/components/chat/hooks/useCanvasStoreState'
 import { usePlanApproval } from '@/components/chat/hooks/usePlanApproval'
 import { useCanvasKeyboardNav } from '@/components/chat/hooks/useCanvasKeyboardNav'
@@ -729,6 +730,11 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
       )
       setActiveSession(selectedSession.worktreeId, selectedSession.sessionId)
       setViewingCanvasTab(selectedSession.worktreeId, false)
+      // Auto-open review sidebar if session has review results
+      const { reviewResults, setReviewSidebarVisible } = useChatStore.getState()
+      if (reviewResults[selectedSession.sessionId]) {
+        setReviewSidebarVisible(true)
+      }
       setSelectedSession(null)
     }
   }, [
@@ -1133,36 +1139,42 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
             </DropdownMenu>
           </div>
           {worktreeSections.length > 0 && (
-            <div className="flex items-center gap-2 flex-1 max-w-md">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  ref={searchInputRef}
-                  placeholder="Search worktrees and sessions..."
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  className="pl-9 bg-transparent border-border/30"
-                />
+            <>
+              <div className="flex-1 flex justify-center max-w-md mx-auto">
+                <div className="relative w-full">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    ref={searchInputRef}
+                    placeholder="Search worktrees and sessions..."
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    className="pl-9 bg-transparent border-border/30"
+                  />
+                </div>
               </div>
-              <ToggleGroup
-                type="single"
-                size="sm"
-                variant="outline"
-                value={canvasLayout}
-                onValueChange={value => {
-                  if (value && preferences) {
-                    savePreferences.mutate({ ...preferences, canvas_layout: value as 'grid' | 'list' })
-                  }
-                }}
-              >
-                <ToggleGroupItem value="grid" aria-label="Grid view">
-                  <LayoutGrid className="h-3.5 w-3.5" />
-                </ToggleGroupItem>
-                <ToggleGroupItem value="list" aria-label="List view">
-                  <List className="h-3.5 w-3.5" />
-                </ToggleGroupItem>
-              </ToggleGroup>
-            </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <OpenInButton worktreePath={project.path} />
+                <ToggleGroup
+                  type="single"
+                  size="sm"
+                  variant="outline"
+                  value={canvasLayout}
+                  onValueChange={value => {
+                    if (value && preferences) {
+                      savePreferences.mutate({ ...preferences, canvas_layout: value as 'grid' | 'list' })
+                    }
+                  }}
+                >
+                  <ToggleGroupItem value="grid" aria-label="Grid view">
+                    <LayoutGrid className="h-3.5 w-3.5" />
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="list" aria-label="List view">
+                    <List className="h-3.5 w-3.5" />
+                  </ToggleGroupItem>
+                </ToggleGroup>
+              </div>
+            </>
           )}
         </div>
 

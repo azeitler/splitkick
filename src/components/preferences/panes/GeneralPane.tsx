@@ -60,6 +60,8 @@ import {
   type TerminalApp,
   type EditorApp,
   type NotificationSound,
+  openInDefaultOptions,
+  type OpenInDefault,
 } from '@/types/preferences'
 import { playNotificationSound } from '@/lib/sounds'
 import type { ThinkingLevel, EffortLevel } from '@/types/chat'
@@ -201,6 +203,12 @@ export const GeneralPane: React.FC = () => {
   const handleEditorChange = (value: EditorApp) => {
     if (preferences) {
       savePreferences.mutate({ ...preferences, editor: value })
+    }
+  }
+
+  const handleOpenInChange = (value: OpenInDefault) => {
+    if (preferences) {
+      savePreferences.mutate({ ...preferences, open_in: value })
     }
   }
 
@@ -626,6 +634,29 @@ export const GeneralPane: React.FC = () => {
                 </SelectTrigger>
                 <SelectContent>
                   {terminalOptions.map(option => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </InlineField>
+          )}
+
+          {isNativeApp() && (
+            <InlineField
+              label="Open In"
+              description="Default app for Open button"
+            >
+              <Select
+                value={preferences?.open_in ?? 'editor'}
+                onValueChange={handleOpenInChange}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {openInDefaultOptions.map(option => (
                     <SelectItem key={option.value} value={option.value}>
                       {option.label}
                     </SelectItem>

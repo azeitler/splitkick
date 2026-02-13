@@ -395,6 +395,7 @@ export interface AppPreferences {
   default_effort_level: EffortLevel // Effort level for Opus 4.6 adaptive thinking: 'low' | 'medium' | 'high' | 'max'
   terminal: TerminalApp // Terminal app: 'terminal' | 'warp' | 'ghostty'
   editor: EditorApp // Editor app: 'vscode' | 'cursor' | 'xcode'
+  open_in: OpenInDefault // Default Open In action: 'editor' | 'terminal' | 'finder' | 'github'
   auto_branch_naming: boolean // Automatically generate branch names from first message
   branch_naming_model: ClaudeModel // Model for generating branch names
   auto_session_naming: boolean // Automatically generate session names from first message
@@ -589,6 +590,34 @@ export const editorOptions: { value: EditorApp; label: string }[] = [
   { value: 'xcode', label: 'Xcode' },
 ]
 
+export type OpenInDefault = 'editor' | 'terminal' | 'finder' | 'github'
+
+export const openInDefaultOptions: { value: OpenInDefault; label: string }[] = [
+  { value: 'editor', label: 'Editor' },
+  { value: 'terminal', label: 'Terminal' },
+  { value: 'finder', label: 'Finder' },
+  { value: 'github', label: 'GitHub' },
+]
+
+export function getOpenInDefaultLabel(
+  openIn: OpenInDefault | undefined,
+  editor: EditorApp | undefined,
+  terminal: TerminalApp | undefined
+): string {
+  switch (openIn) {
+    case 'editor':
+      return getEditorLabel(editor)
+    case 'terminal':
+      return getTerminalLabel(terminal)
+    case 'finder':
+      return 'Finder'
+    case 'github':
+      return 'GitHub'
+    default:
+      return getEditorLabel(editor)
+  }
+}
+
 // Font size is now a pixel value
 export type FontSize = number
 
@@ -774,6 +803,7 @@ export const defaultPreferences: AppPreferences = {
   default_effort_level: 'high',
   terminal: 'terminal',
   editor: 'vscode',
+  open_in: 'editor',
   auto_branch_naming: true,
   branch_naming_model: 'haiku',
   auto_session_naming: true,

@@ -221,11 +221,10 @@ export function ChatWindow({
   const answeredQuestions = useChatStore(state =>
     activeSessionId ? state.answeredQuestions[activeSessionId] : undefined
   )
-  // PERFORMANCE: Proper selector for isViewingReviewTab - subscribes to actual data
-  const isViewingReviewTab = useChatStore(state =>
-    state.activeWorktreeId
-      ? (state.viewingReviewTab[state.activeWorktreeId] ?? false)
-      : false
+  // Review sidebar state
+  const reviewSidebarVisible = useChatStore(state => state.reviewSidebarVisible)
+  const hasReviewResults = useChatStore(state =>
+    activeSessionId ? !!state.reviewResults[activeSessionId] : false
   )
   // PERFORMANCE: Proper selector for isViewingCanvasTab - subscribes to actual data
   // Default to true so Canvas is the initial view when opening a worktree
@@ -273,6 +272,28 @@ export function ChatWindow({
   const handleTerminalExpand = useCallback(() => {
     setTerminalVisible(true)
   }, [setTerminalVisible])
+
+  // Sync review sidebar panel with reviewSidebarVisible state
+  useEffect(() => {
+    const panel = reviewPanelRef.current
+    if (!panel) return
+
+    if (reviewSidebarVisible) {
+      panel.expand()
+    } else {
+      panel.collapse()
+    }
+  }, [reviewSidebarVisible])
+
+  // Review sidebar collapse/expand handlers
+  const handleReviewSidebarCollapse = useCallback(() => {
+    useChatStore.getState().setReviewSidebarVisible(false)
+  }, [])
+
+  const handleReviewSidebarExpand = useCallback(() => {
+    useChatStore.getState().setReviewSidebarVisible(true)
+  }, [])
+
 
   // Actions - get via getState() for stable references (no subscriptions needed)
   const {
@@ -383,12 +404,14 @@ export function ChatWindow({
 
   // Loaded issue contexts for indicator
   const { data: loadedIssueContexts } = useLoadedIssueContexts(
-    activeSessionId ?? null
+    activeSessionId ?? null,
+    activeWorktreeId
   )
 
   // Loaded PR contexts for indicator and investigate PR functionality
   const { data: loadedPRContexts } = useLoadedPRContexts(
-    activeSessionId ?? null
+    activeSessionId ?? null,
+    activeWorktreeId
   )
 
   // Attached saved contexts for indicator
@@ -686,6 +709,8 @@ export function ChatWindow({
 
   // Terminal panel ref for imperative collapse/expand
   const terminalPanelRef = useRef<ImperativePanelHandle>(null)
+  // Review sidebar panel ref for imperative collapse/expand
+  const reviewPanelRef = useRef<ImperativePanelHandle>(null)
 
   // Scroll management hook - handles scroll state and callbacks
   const {
@@ -2200,89 +2225,64 @@ export function ChatWindow({
   ])
 
   // Listen for review-fix-message events from ReviewResultsPanel
-  // This allows the panel to trigger message sends without prop drilling
+  // Fix messages are sent in the same session (the review session)
   useEffect(() => {
     const handleReviewFixMessage = (e: CustomEvent) => {
-      const { worktreeId, worktreePath, message, createNewSession } = e.detail
-      if (!worktreeId || !worktreePath || !message) return
+      const { sessionId, worktreeId, worktreePath, message } = e.detail
+      if (!sessionId || !worktreeId || !worktreePath || !message) return
+      // Only handle events for this ChatWindow's worktree (avoids duplicate from modal)
+      if (worktreeId !== activeWorktreeIdRef.current) return
 
-      const sendFixMessage = (targetSessionId: string) => {
-        const {
-          addSendingSession,
-          setSelectedModel,
-          setViewingReviewTab,
-          setExecutingMode,
-          setLastSentMessage,
-          setError,
-        } = useChatStore.getState()
+      const {
+        addSendingSession,
+        setSelectedModel,
+        setExecutingMode,
+        setLastSentMessage,
+        setError,
+      } = useChatStore.getState()
 
-        // Switch back to chat view to show the fix message
-        setViewingReviewTab(worktreeId, false)
-
-        // Send the fix message
-        setLastSentMessage(targetSessionId, message)
-        setError(targetSessionId, null)
-        addSendingSession(targetSessionId)
-        setSelectedModel(targetSessionId, selectedModelRef.current)
-        setExecutingMode(targetSessionId, 'build') // Always use build mode for fixes
-        const thinkingLvl = selectedThinkingLevelRef.current
-        const hasManualOverride = useChatStore
-          .getState()
-          .hasManualThinkingOverride(targetSessionId)
-        const fixResolved = resolveCustomProfile(selectedModelRef.current, selectedProviderRef.current)
-        sendMessage.mutate(
-          {
-            sessionId: targetSessionId,
-            worktreeId,
-            worktreePath,
-            message,
-            model: fixResolved.model,
-            customProfileName: fixResolved.customProfileName,
-            executionMode: 'build', // Always use build mode for fixes
-            thinkingLevel: thinkingLvl,
-            // Build mode: disable thinking if preference enabled and no manual override
-            disableThinkingForMode: thinkingLvl !== 'off' && !hasManualOverride,
-            effortLevel: useAdaptiveThinkingRef.current
-              ? selectedEffortLevelRef.current
+      setLastSentMessage(sessionId, message)
+      setError(sessionId, null)
+      addSendingSession(sessionId)
+      setSelectedModel(sessionId, selectedModelRef.current)
+      setExecutingMode(sessionId, 'build')
+      const thinkingLvl = selectedThinkingLevelRef.current
+      const hasManualOverride = useChatStore
+        .getState()
+        .hasManualThinkingOverride(sessionId)
+      const fixResolved = resolveCustomProfile(selectedModelRef.current, selectedProviderRef.current)
+      sendMessage.mutate(
+        {
+          sessionId,
+          worktreeId,
+          worktreePath,
+          message,
+          model: fixResolved.model,
+          customProfileName: fixResolved.customProfileName,
+          executionMode: 'build',
+          thinkingLevel: thinkingLvl,
+          disableThinkingForMode: thinkingLvl !== 'off' && !hasManualOverride,
+          effortLevel: useAdaptiveThinkingRef.current
+            ? selectedEffortLevelRef.current
+            : undefined,
+          mcpConfig: buildMcpConfigJson(
+            mcpServersDataRef.current,
+            enabledMcpServersRef.current
+          ),
+          parallelExecutionPrompt:
+            preferences?.parallel_execution_prompt_enabled
+              ? (preferences.magic_prompts?.parallel_execution ??
+                DEFAULT_PARALLEL_EXECUTION_PROMPT)
               : undefined,
-            mcpConfig: buildMcpConfigJson(
-              mcpServersDataRef.current,
-              enabledMcpServersRef.current
-            ),
-            parallelExecutionPrompt:
-              preferences?.parallel_execution_prompt_enabled
-                ? (preferences.magic_prompts?.parallel_execution ??
-                  DEFAULT_PARALLEL_EXECUTION_PROMPT)
-                : undefined,
-            chromeEnabled: preferences?.chrome_enabled ?? false,
-            aiLanguage: preferences?.ai_language,
+          chromeEnabled: preferences?.chrome_enabled ?? false,
+          aiLanguage: preferences?.ai_language,
+        },
+        {
+          onSettled: () => {
+            inputRef.current?.focus()
           },
-          {
-            onSettled: () => {
-              inputRef.current?.focus()
-            },
-          }
-        )
-      }
-
-      if (createNewSession) {
-        // Create a new session first, then send the message
-        createSession.mutate(
-          { worktreeId, worktreePath },
-          {
-            onSuccess: session => {
-              useChatStore.getState().setActiveSession(worktreeId, session.id)
-              sendFixMessage(session.id)
-            },
-          }
-        )
-      } else {
-        // Use existing session (legacy behavior, shouldn't happen with new code)
-        const { sessionId } = e.detail
-        if (sessionId) {
-          sendFixMessage(sessionId)
         }
-      }
+      )
     }
 
     window.addEventListener(
@@ -2296,7 +2296,6 @@ export function ChatWindow({
       )
   }, [
     sendMessage,
-    createSession,
     preferences?.parallel_execution_prompt_enabled,
     preferences?.chrome_enabled,
     preferences?.ai_language,
@@ -2512,16 +2511,15 @@ export function ChatWindow({
         )}
 
         {/* Canvas view (when canvas tab is active) */}
-        {/* Canvas and review views - not shown in modal mode */}
         {!isModal && isViewingCanvasTab ? (
           <SessionCanvasView
             worktreeId={activeWorktreeId}
             worktreePath={activeWorktreePath}
           />
-        ) : !isModal && isViewingReviewTab ? (
-          <ReviewResultsPanel worktreeId={activeWorktreeId} />
         ) : (
-          <ResizablePanelGroup direction="vertical" className="flex-1">
+          <ResizablePanelGroup direction="horizontal" className="flex-1">
+            <ResizablePanel defaultSize={hasReviewResults && reviewSidebarVisible ? 70 : 100} minSize={40}>
+          <ResizablePanelGroup direction="vertical" className="h-full">
             <ResizablePanel
               defaultSize={terminalVisible ? 70 : 100}
               minSize={30}
@@ -2710,21 +2708,18 @@ export function ChatWindow({
                       <FilePreview
                         files={currentPendingFiles}
                         onRemove={handleRemovePendingFile}
-                        disabled={isSending}
                       />
 
                       {/* Pending image preview */}
                       <ImagePreview
                         images={currentPendingImages}
                         onRemove={handleRemovePendingImage}
-                        disabled={isSending}
                       />
 
                       {/* Pending text file preview */}
                       <TextFilePreview
                         textFiles={currentPendingTextFiles}
                         onRemove={handleRemovePendingTextFile}
-                        disabled={isSending}
                       />
 
                       {/* Pending skills preview */}
@@ -2876,6 +2871,28 @@ export function ChatWindow({
                   </ResizablePanel>
                 </>
               )}
+          </ResizablePanelGroup>
+            </ResizablePanel>
+
+            {/* Review sidebar - shown when active session has review results */}
+            {hasReviewResults && (
+              <>
+                <ResizableHandle withHandle />
+                <ResizablePanel
+                  ref={reviewPanelRef}
+                  defaultSize={reviewSidebarVisible ? 30 : 0}
+                  minSize={reviewSidebarVisible ? 20 : 0}
+                  collapsible
+                  collapsedSize={0}
+                  onCollapse={handleReviewSidebarCollapse}
+                  onExpand={handleReviewSidebarExpand}
+                >
+                  {activeSessionId && (
+                    <ReviewResultsPanel sessionId={activeSessionId} />
+                  )}
+                </ResizablePanel>
+              </>
+            )}
           </ResizablePanelGroup>
         )}
 

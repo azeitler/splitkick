@@ -339,6 +339,9 @@ pub struct Session {
     /// Finding keys that have been marked as fixed
     #[serde(default)]
     pub fixed_findings: Vec<String>,
+    /// AI code review results for this session
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_results: Option<serde_json::Value>,
     /// Pending permission denials awaiting user approval
     #[serde(default)]
     pub pending_permission_denials: Vec<PermissionDenial>,
@@ -404,6 +407,7 @@ impl Session {
             answered_questions: vec![],
             submitted_answers: HashMap::new(),
             fixed_findings: vec![],
+            review_results: None,
             pending_permission_denials: vec![],
             denied_message_context: None,
             is_reviewing: false,
@@ -551,6 +555,7 @@ impl SessionMetadata {
             answered_questions: self.answered_questions.clone(),
             submitted_answers: self.submitted_answers.clone(),
             fixed_findings: self.fixed_findings.clone(),
+            review_results: self.review_results.clone(),
             pending_permission_denials: self.pending_permission_denials.clone(),
             denied_message_context: self.denied_message_context.clone(),
             is_reviewing: self.is_reviewing,
@@ -580,6 +585,7 @@ impl SessionMetadata {
         self.answered_questions = session.answered_questions.clone();
         self.submitted_answers = session.submitted_answers.clone();
         self.fixed_findings = session.fixed_findings.clone();
+        self.review_results = session.review_results.clone();
         self.pending_permission_denials = session.pending_permission_denials.clone();
         self.denied_message_context = session.denied_message_context.clone();
         self.is_reviewing = session.is_reviewing;
@@ -837,6 +843,9 @@ pub struct SessionMetadata {
     /// Finding keys that have been marked as fixed
     #[serde(default)]
     pub fixed_findings: Vec<String>,
+    /// AI code review results for this session
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_results: Option<serde_json::Value>,
     /// Pending permission denials awaiting user approval
     #[serde(default)]
     pub pending_permission_denials: Vec<PermissionDenial>,
@@ -944,6 +953,7 @@ impl SessionMetadata {
             answered_questions: vec![],
             submitted_answers: HashMap::new(),
             fixed_findings: vec![],
+            review_results: None,
             pending_permission_denials: vec![],
             denied_message_context: None,
             is_reviewing: false,

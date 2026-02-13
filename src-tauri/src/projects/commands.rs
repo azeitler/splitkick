@@ -731,6 +731,9 @@ pub async fn create_worktree(
                 ctx.head_ref_name.clone()
             };
 
+            // Clean up stale branch from a previous checkout of this PR
+            git::cleanup_stale_branch(&project_path, &local_branch_name);
+
             let checkout_result = if branch_collision {
                 // Bypass gh pr checkout which internally fetches into the conflicting ref.
                 // Manually fetch the PR into the alt branch name and switch to it.
@@ -1357,7 +1360,7 @@ pub async fn checkout_pr(
 ) -> Result<Worktree, String> {
     log::trace!("Checking out PR #{pr_number} for project: {project_id}");
 
-    let data = load_projects_data(&app)?;
+    let mut data = load_projects_data(&app)?;
 
     let project = data
         .find_project(&project_id)
@@ -1369,9 +1372,10 @@ pub async fn checkout_pr(
         w.project_id == project_id && w.pr_number == Some(pr_number) && w.archived_at.is_some()
     }) {
         let worktree_id = archived_wt.id.clone();
-        log::trace!("Found archived worktree {worktree_id} for PR #{pr_number}, restoring instead of creating new");
+        log::info!("[checkout_pr] Found archived worktree {worktree_id} for PR #{pr_number}, attempting unarchive");
         return unarchive_worktree(app, worktree_id).await;
     }
+    log::info!("[checkout_pr] No archived worktree found for PR #{pr_number}, creating new");
 
     // Fetch PR details from GitHub (for context and worktree naming)
     let pr_detail = get_github_pr(app.clone(), project.path.clone(), pr_number).await?;
@@ -1381,18 +1385,50 @@ pub async fn checkout_pr(
 
     // Generate worktree name from PR (for the directory/worktree name, not the branch)
     let worktree_name = generate_branch_name_from_pr(pr_number, &pr_detail.title);
+    log::info!("[checkout_pr] Generated base worktree name: '{worktree_name}'");
 
-    // Check if worktree name already exists, add suffix if needed
-    let final_worktree_name = if data.worktree_name_exists(&project_id, &worktree_name) {
+    // Remove any archived worktree records for this PR from data so they don't
+    // interfere with name dedup. The background thread will clean up leftover
+    // git worktrees/branches/directories.
+    let project_worktrees_dir = get_project_worktrees_dir(&project.name)?;
+    let had_archived = data
+        .worktrees
+        .iter()
+        .any(|w| w.project_id == project_id && w.pr_number == Some(pr_number) && w.archived_at.is_some());
+    if had_archived {
+        log::info!("[checkout_pr] Removing archived worktree records for PR #{pr_number} from data");
+        data.worktrees.retain(|w| {
+            !(w.project_id == project_id && w.pr_number == Some(pr_number) && w.archived_at.is_some())
+        });
+        save_projects_data(&app, &data)?;
+    }
+
+    // Log all worktrees for this project to understand name collision state
+    let existing_names: Vec<String> = data
+        .worktrees
+        .iter()
+        .filter(|w| w.project_id == project_id)
+        .map(|w| format!("'{}' (archived={})", w.name, w.archived_at.is_some()))
+        .collect();
+    log::info!("[checkout_pr] Existing worktrees for project: [{existing_names:?}]");
+    let dir_exists = project_worktrees_dir.join(&worktree_name).exists();
+    let name_in_data = data.worktree_name_exists(&project_id, &worktree_name);
+    log::info!("[checkout_pr] Name '{worktree_name}' — in_data={name_in_data}, dir_exists={dir_exists}");
+
+    // Check if worktree name already exists among active worktrees, add suffix if needed.
+    // Don't check filesystem here — the background thread will clean up leftover dirs.
+    let final_worktree_name = if name_in_data {
         let mut counter = 2;
         loop {
             let candidate = format!("{worktree_name}-{counter}");
             if !data.worktree_name_exists(&project_id, &candidate) {
+                log::info!("[checkout_pr] Name collision, using '{candidate}'");
                 break candidate;
             }
             counter += 1;
         }
     } else {
+        log::info!("[checkout_pr] Using base name '{worktree_name}'");
         worktree_name
     };
 
@@ -1408,7 +1444,6 @@ pub async fn checkout_pr(
     );
 
     // Build worktree path: ~/jean/<project-name>/<workspace-name>
-    let project_worktrees_dir = get_project_worktrees_dir(&project.name)?;
     let worktree_path = project_worktrees_dir.join(&final_worktree_name);
     let worktree_path_str = worktree_path
         .to_str()
@@ -1482,6 +1517,21 @@ pub async fn checkout_pr(
     thread::spawn(move || {
         log::trace!("Background: Creating worktree for PR #{pr_number}");
 
+        // Clean up leftover directory from a previous checkout of this PR
+        // (e.g. permanently_delete_worktree's background cleanup hasn't finished yet)
+        let dir_exists_before = std::path::Path::new(&worktree_path_clone).exists();
+        log::info!("[checkout_pr bg] worktree_path={worktree_path_clone}, dir_exists={dir_exists_before}");
+        if dir_exists_before {
+            log::info!("[checkout_pr bg] Removing leftover directory at {worktree_path_clone}");
+            let remove_result = git::remove_worktree(&project_path, &worktree_path_clone);
+            log::info!("[checkout_pr bg] remove_worktree result: {remove_result:?}");
+            if std::path::Path::new(&worktree_path_clone).exists() {
+                log::info!("[checkout_pr bg] Dir still exists after remove_worktree, force removing");
+                let _ = std::fs::remove_dir_all(&worktree_path_clone);
+            }
+            log::info!("[checkout_pr bg] Dir exists after cleanup: {}", std::path::Path::new(&worktree_path_clone).exists());
+        }
+
         // Step 1: Create worktree with a temporary branch based on base branch
         // This gives us a working directory where we can run gh pr checkout
         if let Err(e) = git::create_worktree(
@@ -1515,6 +1565,11 @@ pub async fn checkout_pr(
         } else {
             pr_head_ref.clone()
         };
+
+        // Clean up stale branch from a previous checkout of this PR
+        // Handles: archived worktree still has branch checked out, or
+        // permanently-deleted worktree whose background cleanup didn't finish
+        git::cleanup_stale_branch(&project_path, &local_branch_name);
 
         // Step 2: Checkout the PR branch into the worktree
         // If branch name collides (e.g. PR head is "main" and "main" is checked out),

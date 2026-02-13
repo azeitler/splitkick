@@ -26,8 +26,6 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { restrictToHorizontalAxis } from '@dnd-kit/modifiers'
 import {
-  AlertTriangle,
-  CheckCircle2,
   ChevronDown,
   Clock,
   Eye,
@@ -38,6 +36,8 @@ import {
   Zap,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { isNativeApp } from '@/lib/environment'
+import { OpenInButton } from '@/components/open-in/OpenInButton'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Popover,
@@ -320,7 +320,6 @@ interface SessionGroupDropdownProps {
   label: string
   sessions: SessionState[]
   activeSessionId: string | undefined
-  isViewingReviewTab: boolean
   reviewingSessions: Record<string, boolean>
   /** Whether closing the last session is allowed (true for base sessions) */
   canCloseLastSession: boolean
@@ -375,7 +374,6 @@ function SessionGroupDropdown({
   label,
   sessions,
   activeSessionId,
-  isViewingReviewTab,
   reviewingSessions,
   canCloseLastSession,
   onTabClick,
@@ -390,7 +388,7 @@ function SessionGroupDropdown({
 
   // Check if active session is in this group
   const containsActiveSession = sessions.some(
-    s => s.id === activeSessionId && !isViewingReviewTab
+    s => s.id === activeSessionId
   )
 
   // Hover-to-open with delay (disabled when empty)
@@ -478,7 +476,7 @@ function SessionGroupDropdown({
       >
         <div className="flex flex-col gap-0.5">
           {sessions.map(state => {
-            const isActive = state.id === activeSessionId && !isViewingReviewTab
+            const isActive = state.id === activeSessionId
             const isSessionReviewing = reviewingSessions[state.id] ?? false
 
             return (
@@ -538,9 +536,6 @@ export function SessionTabBar({
   const activeSessionId = useChatStore(
     state => state.activeSessionIds[worktreeId]
   )
-  const isViewingReviewTab = useChatStore(
-    state => state.viewingReviewTab[worktreeId] ?? false
-  )
   const isViewingCanvasTabRaw = useChatStore(
     state => state.viewingCanvasTab[worktreeId] ?? true // Default to canvas view
   )
@@ -550,16 +545,13 @@ export function SessionTabBar({
   const isViewingCanvasTab = canvasEnabled
     ? canvasOnlyMode || isViewingCanvasTabRaw
     : false
-  const reviewResults = useChatStore(state => state.reviewResults[worktreeId])
   const reviewingSessions = useChatStore(state => state.reviewingSessions)
   const uiStateInitialized = useUIStore(state => state.uiStateInitialized)
 
   // Actions via getState() - no subscription, stable references
   const {
     setActiveSession,
-    setViewingReviewTab,
     setViewingCanvasTab,
-    clearReviewResults,
     getActiveSession,
     isSending,
   } = useChatStore.getState()
@@ -726,33 +718,18 @@ export function SessionTabBar({
   const handleTabClick = useCallback(
     (sessionId: string) => {
       startTransition(() => {
-        setViewingReviewTab(worktreeId, false)
         setViewingCanvasTab(worktreeId, false)
         setActiveSession(worktreeId, sessionId)
       })
       // Fire-and-forget: persist active session to backend index
       invoke('set_active_session', { worktreeId, worktreePath, sessionId })
     },
-    [worktreeId, worktreePath, setActiveSession, setViewingReviewTab, setViewingCanvasTab]
+    [worktreeId, worktreePath, setActiveSession, setViewingCanvasTab]
   )
-
-  const handleReviewTabClick = useCallback(() => {
-    setViewingReviewTab(worktreeId, true)
-    setViewingCanvasTab(worktreeId, false)
-  }, [worktreeId, setViewingReviewTab, setViewingCanvasTab])
 
   const handleCanvasTabClick = useCallback(() => {
     setViewingCanvasTab(worktreeId, true)
-    setViewingReviewTab(worktreeId, false)
-  }, [worktreeId, setViewingCanvasTab, setViewingReviewTab])
-
-  const handleCloseReviewTab = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation()
-      clearReviewResults(worktreeId)
-    },
-    [worktreeId, clearReviewResults]
-  )
+  }, [worktreeId, setViewingCanvasTab])
 
   const handleDoubleClick = useCallback(
     (sessionId: string, currentName: string) => {
@@ -1110,47 +1087,6 @@ export function SessionTabBar({
             </button>
           )}
 
-          {/* AI Review results tab - shown when review results exist */}
-          {reviewResults && (
-            <div
-              onClick={handleReviewTabClick}
-              className={cn(
-                'group relative flex h-7 shrink-0 cursor-pointer items-center gap-1 rounded-t px-2 text-sm transition-colors',
-                isViewingReviewTab
-                  ? 'text-foreground font-medium border-b-2 border-foreground'
-                  : 'text-muted-foreground hover:text-foreground/70'
-              )}
-            >
-              {/* Status icon based on approval status */}
-              {reviewResults.approval_status === 'approved' ? (
-                <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
-              ) : reviewResults.approval_status === 'changes_requested' ? (
-                <AlertTriangle className="h-3.5 w-3.5 text-yellow-500" />
-              ) : (
-                <MessageSquare className="h-3.5 w-3.5 text-blue-500" />
-              )}
-              <span className="whitespace-nowrap">Review</span>
-              {reviewResults.findings.length > 0 && (
-                <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium">
-                  {reviewResults.findings.length}
-                </span>
-              )}
-
-              {/* Close button */}
-              <button
-                type="button"
-                onClick={handleCloseReviewTab}
-                className={cn(
-                  'ml-auto shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100',
-                  isViewingReviewTab && 'opacity-50'
-                )}
-                aria-label="Close review results"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-          )}
-
           {/* Session tabs - grouped or flat depending on count (hidden in canvas-only mode) */}
           {canvasOnlyMode ? null : shouldGroup ? (
             // GROUPED MODE (> 6 sessions) - no drag-and-drop
@@ -1159,7 +1095,7 @@ export function SessionTabBar({
                 label="Idle"
                 sessions={activeGroupStates}
                 activeSessionId={activeSessionId}
-                isViewingReviewTab={isViewingReviewTab}
+
                 reviewingSessions={reviewingSessions}
                 canCloseLastSession={isBase}
                 onTabClick={handleTabClick}
@@ -1170,7 +1106,7 @@ export function SessionTabBar({
                 label="Planning"
                 sessions={planningGroupStates}
                 activeSessionId={activeSessionId}
-                isViewingReviewTab={isViewingReviewTab}
+
                 reviewingSessions={reviewingSessions}
                 canCloseLastSession={isBase}
                 onTabClick={handleTabClick}
@@ -1181,7 +1117,7 @@ export function SessionTabBar({
                 label="Waiting"
                 sessions={waitingGroupStates}
                 activeSessionId={activeSessionId}
-                isViewingReviewTab={isViewingReviewTab}
+
                 reviewingSessions={reviewingSessions}
                 canCloseLastSession={isBase}
                 onTabClick={handleTabClick}
@@ -1192,7 +1128,7 @@ export function SessionTabBar({
                 label="Vibing"
                 sessions={vibingGroupStates}
                 activeSessionId={activeSessionId}
-                isViewingReviewTab={isViewingReviewTab}
+
                 reviewingSessions={reviewingSessions}
                 canCloseLastSession={isBase}
                 onTabClick={handleTabClick}
@@ -1203,7 +1139,7 @@ export function SessionTabBar({
                 label="Yoloing"
                 sessions={yoloingGroupStates}
                 activeSessionId={activeSessionId}
-                isViewingReviewTab={isViewingReviewTab}
+
                 reviewingSessions={reviewingSessions}
                 canCloseLastSession={isBase}
                 onTabClick={handleTabClick}
@@ -1214,7 +1150,7 @@ export function SessionTabBar({
                 label="Review"
                 sessions={reviewingGroupStates}
                 activeSessionId={activeSessionId}
-                isViewingReviewTab={isViewingReviewTab}
+
                 reviewingSessions={reviewingSessions}
                 canCloseLastSession={isBase}
                 onTabClick={handleTabClick}
@@ -1237,7 +1173,7 @@ export function SessionTabBar({
                 {/* PERFORMANCE: Use pre-computed sessionStates instead of inline computation */}
                 {sessionStates.map(state => {
                   const isActive =
-                    state.id === activeSessionId && !isViewingReviewTab
+                    state.id === activeSessionId
                   const isEditing = editingId === state.id
                   const isSessionReviewing =
                     reviewingSessions[state.id] ?? false
@@ -1267,6 +1203,11 @@ export function SessionTabBar({
                 })}
               </SortableContext>
             </DndContext>
+          )}
+
+          {/* Open In button (native app only, hidden in canvas-only mode) */}
+          {!canvasOnlyMode && isNativeApp() && (
+            <OpenInButton worktreePath={worktreePath} />
           )}
 
           {/* Add new session button (hidden in canvas-only mode) */}

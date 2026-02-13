@@ -1,3 +1,5 @@
+import type { ReviewResponse } from '@/types/projects'
+
 /**
  * Role of a chat message sender
  */
@@ -152,6 +154,8 @@ export interface Session {
   pending_permission_denials?: PermissionDenial[]
   /** Original message context for re-send after permission approval */
   denied_message_context?: DeniedMessageContext
+  /** AI code review results for this session */
+  review_results?: ReviewResponse
   /** Whether this session is marked for review in session board */
   is_reviewing?: boolean
   /** Whether this session is waiting for user input (AskUserQuestion, ExitPlanMode) */

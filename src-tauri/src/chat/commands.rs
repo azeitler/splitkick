@@ -20,6 +20,9 @@ use super::types::{
 use crate::claude_cli::get_cli_binary_path;
 use crate::http_server::EmitExt;
 use crate::platform::silent_command;
+use crate::projects::github_issues::{
+    add_issue_reference, add_pr_reference, get_session_issue_refs, get_session_pr_refs,
+};
 use crate::projects::storage::load_projects_data;
 use crate::projects::types::SessionType;
 
@@ -86,6 +89,39 @@ pub async fn get_sessions(
             session.last_run_status,
             session.last_run_execution_mode
         );
+    }
+
+    // Propagate issue/PR references from worktree_id to session IDs
+    // (create_worktree stores refs under worktree_id, but toolbar queries by session_id)
+    let worktree_issue_keys = get_session_issue_refs(&app, &worktree_id).unwrap_or_default();
+    let worktree_pr_keys = get_session_pr_refs(&app, &worktree_id).unwrap_or_default();
+
+    if !worktree_issue_keys.is_empty() || !worktree_pr_keys.is_empty() {
+        for session in &sessions.sessions {
+            let session_issues = get_session_issue_refs(&app, &session.id).unwrap_or_default();
+            let session_prs = get_session_pr_refs(&app, &session.id).unwrap_or_default();
+
+            if session_issues.is_empty() && !worktree_issue_keys.is_empty() {
+                for key in &worktree_issue_keys {
+                    if let Some(number_str) = key.rsplit('-').next() {
+                        if let Ok(number) = number_str.parse::<u32>() {
+                            let repo_key = &key[..key.len() - number_str.len() - 1];
+                            let _ = add_issue_reference(&app, repo_key, number, &session.id);
+                        }
+                    }
+                }
+            }
+            if session_prs.is_empty() && !worktree_pr_keys.is_empty() {
+                for key in &worktree_pr_keys {
+                    if let Some(number_str) = key.rsplit('-').next() {
+                        if let Ok(number) = number_str.parse::<u32>() {
+                            let repo_key = &key[..key.len() - number_str.len() - 1];
+                            let _ = add_pr_reference(&app, repo_key, number, &session.id);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     Ok(sessions)
@@ -176,7 +212,7 @@ pub async fn create_session(
 ) -> Result<Session, String> {
     log::trace!("Creating new session for worktree: {worktree_id}");
 
-    with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
+    let session = with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
         // Generate name if not provided
         let session_number = sessions.next_session_number();
         let session_name = name.unwrap_or_else(|| format!("Session {session_number}"));
@@ -189,7 +225,32 @@ pub async fn create_session(
 
         log::trace!("Created session: {}", session.id);
         Ok(session)
-    })
+    })?;
+
+    // Copy issue/PR context references from worktree_id to new session_id
+    // (worktree creation stores refs under worktree_id, but toolbar queries by session_id)
+    if let Ok(issue_keys) = get_session_issue_refs(&app, &worktree_id) {
+        for key in &issue_keys {
+            if let Some(number_str) = key.rsplit('-').next() {
+                if let Ok(number) = number_str.parse::<u32>() {
+                    let repo_key = &key[..key.len() - number_str.len() - 1];
+                    let _ = add_issue_reference(&app, repo_key, number, &session.id);
+                }
+            }
+        }
+    }
+    if let Ok(pr_keys) = get_session_pr_refs(&app, &worktree_id) {
+        for key in &pr_keys {
+            if let Some(number_str) = key.rsplit('-').next() {
+                if let Ok(number) = number_str.parse::<u32>() {
+                    let repo_key = &key[..key.len() - number_str.len() - 1];
+                    let _ = add_pr_reference(&app, repo_key, number, &session.id);
+                }
+            }
+        }
+    }
+
+    Ok(session)
 }
 
 /// Rename a session tab
@@ -273,6 +334,7 @@ pub async fn update_session_state(
     plan_file_path: Option<Option<String>>,
     pending_plan_message_id: Option<Option<String>>,
     label: Option<String>,
+    review_results: Option<Option<serde_json::Value>>,
 ) -> Result<(), String> {
     log::trace!("Updating session state for: {session_id}");
 
@@ -310,6 +372,9 @@ pub async fn update_session_state(
             }
             if let Some(v) = label {
                 session.label = if v.is_empty() { None } else { Some(v) };
+            }
+            if let Some(v) = review_results {
+                session.review_results = v;
             }
             Ok(())
         } else {

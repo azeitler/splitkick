@@ -785,7 +785,7 @@ export const ChatInput = memo(function ChatInput({
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
         disabled={false}
-        className="min-h-[80px] max-h-[200px] w-full resize-none border-0 bg-transparent dark:bg-transparent p-0 font-mono text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+        className="field-sizing-fixed min-h-[80px] max-h-[200px] w-full resize-none border-0 bg-transparent dark:bg-transparent p-0 font-mono text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
         rows={2}
         autoFocus
       />

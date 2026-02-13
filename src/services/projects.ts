@@ -672,16 +672,20 @@ export function useWorktreeEvents() {
         })
 
         // Update cache: replace pending worktree with completed one
+        const readyWorktree = { ...worktree, status: 'ready' as const }
         queryClient.setQueryData<Worktree[]>(
           projectsQueryKeys.worktrees(worktree.project_id),
           old => {
-            if (!old) return [{ ...worktree, status: 'ready' as const }]
+            if (!old) return [readyWorktree]
             return old.map(w =>
-              w.id === worktree.id
-                ? { ...worktree, status: 'ready' as const }
-                : w
+              w.id === worktree.id ? readyWorktree : w
             )
           }
+        )
+        // Also update the single worktree cache (used by useWorktree hook)
+        queryClient.setQueryData<Worktree>(
+          [...projectsQueryKeys.all, 'worktree', worktree.id],
+          readyWorktree
         )
 
         // Select worktree in sidebar

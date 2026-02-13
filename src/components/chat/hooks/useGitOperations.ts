@@ -264,7 +264,7 @@ export function useGitOperations({
     preferences?.magic_prompt_models?.pr_content_model,
   ])
 
-  // Handle Review - runs AI code review in background
+  // Handle Review - runs AI code review in background, creates new session with results
   const handleReview = useCallback(async () => {
     if (!activeWorktreeId || !activeWorktreePath) return
 
@@ -280,9 +280,31 @@ export function useGitOperations({
         model: preferences?.magic_prompt_models?.code_review_model,
       })
 
-      // Store review results in Zustand (also activates review tab)
-      const { setReviewResults } = useChatStore.getState()
-      setReviewResults(activeWorktreeId, result)
+      // Create a new session for the review
+      const newSession = await invoke<Session>('create_session', {
+        worktreeId: activeWorktreeId,
+        worktreePath: activeWorktreePath,
+        name: 'Code Review',
+      })
+
+      // Store review results in Zustand (session-scoped, auto-opens sidebar)
+      const { setReviewResults, setActiveSession, setViewingCanvasTab } = useChatStore.getState()
+      setReviewResults(newSession.id, result)
+      setActiveSession(activeWorktreeId, newSession.id)
+      setViewingCanvasTab(activeWorktreeId, false)
+
+      // Persist review results to session file
+      invoke('update_session_state', {
+        worktreeId: activeWorktreeId,
+        worktreePath: activeWorktreePath,
+        sessionId: newSession.id,
+        reviewResults: result,
+      }).catch(() => { /* noop - best effort persist */ })
+
+      // Invalidate sessions query to refresh tab bar
+      queryClient.invalidateQueries({
+        queryKey: chatQueryKeys.sessions(activeWorktreeId),
+      })
 
       const findingCount = result.findings.length
       const statusEmoji =
@@ -306,6 +328,8 @@ export function useGitOperations({
   }, [
     activeWorktreeId,
     activeWorktreePath,
+    worktree,
+    queryClient,
     preferences?.magic_prompts?.code_review,
     preferences?.magic_prompt_models?.code_review_model,
   ])

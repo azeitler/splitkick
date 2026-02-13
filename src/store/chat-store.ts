@@ -41,16 +41,16 @@ interface ChatUIState {
   // Active session ID per worktree (for tab selection)
   activeSessionIds: Record<string, string>
 
-  // AI review results per worktree
+  // AI review results per session (sessionId → results)
   reviewResults: Record<string, ReviewResponse>
 
-  // Track if user is viewing review tab (instead of chat) per worktree
-  viewingReviewTab: Record<string, boolean>
+  // Whether the review sidebar is visible (global toggle)
+  reviewSidebarVisible: boolean
 
   // Track if user is viewing canvas tab (session overview grid) per worktree
   viewingCanvasTab: Record<string, boolean>
 
-  // Fixed AI review findings per worktree (keyed by finding identifier)
+  // Fixed AI review findings per session (sessionId → fixed finding keys)
   fixedReviewFindings: Record<string, Set<string>>
 
   // Mapping of worktree IDs to paths (for looking up paths by ID)
@@ -200,20 +200,20 @@ interface ChatUIState {
   setActiveSession: (worktreeId: string, sessionId: string) => void
   getActiveSession: (worktreeId: string) => string | undefined
 
-  // Actions - AI Review results management
-  setReviewResults: (worktreeId: string, results: ReviewResponse) => void
-  clearReviewResults: (worktreeId: string) => void
-  setViewingReviewTab: (worktreeId: string, viewing: boolean) => void
-  isViewingReviewTab: (worktreeId: string) => boolean
+  // Actions - AI Review results management (session-scoped)
+  setReviewResults: (sessionId: string, results: ReviewResponse) => void
+  clearReviewResults: (sessionId: string) => void
+  setReviewSidebarVisible: (visible: boolean) => void
+  toggleReviewSidebar: () => void
 
   // Actions - Canvas tab management
   setViewingCanvasTab: (worktreeId: string, viewing: boolean) => void
   isViewingCanvasTab: (worktreeId: string) => boolean
 
-  // Actions - AI Review fixed findings (worktree-based)
-  markReviewFindingFixed: (worktreeId: string, findingKey: string) => void
-  isReviewFindingFixed: (worktreeId: string, findingKey: string) => boolean
-  clearFixedReviewFindings: (worktreeId: string) => void
+  // Actions - AI Review fixed findings (session-scoped)
+  markReviewFindingFixed: (sessionId: string, findingKey: string) => void
+  isReviewFindingFixed: (sessionId: string, findingKey: string) => boolean
+  clearFixedReviewFindings: (sessionId: string) => void
 
   // Actions - Reviewing status management (persisted)
   setSessionReviewing: (sessionId: string, reviewing: boolean) => void
@@ -465,7 +465,7 @@ export const useChatStore = create<ChatUIState>()(
       lastActiveWorktreeId: null,
       activeSessionIds: {},
       reviewResults: {},
-      viewingReviewTab: {},
+      reviewSidebarVisible: false,
       viewingCanvasTab: {},
       fixedReviewFindings: {},
       worktreePaths: {},
@@ -534,27 +534,25 @@ export const useChatStore = create<ChatUIState>()(
 
       getActiveSession: worktreeId => get().activeSessionIds[worktreeId],
 
-      // AI Review results management
-      setReviewResults: (worktreeId, results) =>
+      // AI Review results management (session-scoped)
+      setReviewResults: (sessionId, results) =>
         set(
           state => ({
-            reviewResults: { ...state.reviewResults, [worktreeId]: results },
-            viewingReviewTab: { ...state.viewingReviewTab, [worktreeId]: true },
+            reviewResults: { ...state.reviewResults, [sessionId]: results },
+            reviewSidebarVisible: true,
           }),
           undefined,
           'setReviewResults'
         ),
 
-      clearReviewResults: worktreeId =>
+      clearReviewResults: sessionId =>
         set(
           state => {
-            const { [worktreeId]: _, ...restResults } = state.reviewResults
-            const { [worktreeId]: __, ...restViewing } = state.viewingReviewTab
-            const { [worktreeId]: ___, ...restFixed } =
+            const { [sessionId]: _, ...restResults } = state.reviewResults
+            const { [sessionId]: __, ...restFixed } =
               state.fixedReviewFindings
             return {
               reviewResults: restResults,
-              viewingReviewTab: restViewing,
               fixedReviewFindings: restFixed,
             }
           },
@@ -562,20 +560,15 @@ export const useChatStore = create<ChatUIState>()(
           'clearReviewResults'
         ),
 
-      setViewingReviewTab: (worktreeId, viewing) =>
-        set(
-          state => ({
-            viewingReviewTab: {
-              ...state.viewingReviewTab,
-              [worktreeId]: viewing,
-            },
-          }),
-          undefined,
-          'setViewingReviewTab'
-        ),
+      setReviewSidebarVisible: visible =>
+        set({ reviewSidebarVisible: visible }, undefined, 'setReviewSidebarVisible'),
 
-      isViewingReviewTab: worktreeId =>
-        get().viewingReviewTab[worktreeId] ?? false,
+      toggleReviewSidebar: () =>
+        set(
+          state => ({ reviewSidebarVisible: !state.reviewSidebarVisible }),
+          undefined,
+          'toggleReviewSidebar'
+        ),
 
       // Canvas tab management
       setViewingCanvasTab: (worktreeId, viewing) =>
@@ -593,17 +586,17 @@ export const useChatStore = create<ChatUIState>()(
       isViewingCanvasTab: worktreeId =>
         get().viewingCanvasTab[worktreeId] ?? true, // Default to canvas view
 
-      // AI Review fixed findings (worktree-based)
-      markReviewFindingFixed: (worktreeId, findingKey) =>
+      // AI Review fixed findings (session-scoped)
+      markReviewFindingFixed: (sessionId, findingKey) =>
         set(
           state => {
-            const existing = state.fixedReviewFindings[worktreeId] ?? new Set()
+            const existing = state.fixedReviewFindings[sessionId] ?? new Set()
             const updated = new Set(existing)
             updated.add(findingKey)
             return {
               fixedReviewFindings: {
                 ...state.fixedReviewFindings,
-                [worktreeId]: updated,
+                [sessionId]: updated,
               },
             }
           },
@@ -611,13 +604,13 @@ export const useChatStore = create<ChatUIState>()(
           'markReviewFindingFixed'
         ),
 
-      isReviewFindingFixed: (worktreeId, findingKey) =>
-        get().fixedReviewFindings[worktreeId]?.has(findingKey) ?? false,
+      isReviewFindingFixed: (sessionId, findingKey) =>
+        get().fixedReviewFindings[sessionId]?.has(findingKey) ?? false,
 
-      clearFixedReviewFindings: worktreeId =>
+      clearFixedReviewFindings: sessionId =>
         set(
           state => {
-            const { [worktreeId]: _, ...rest } = state.fixedReviewFindings
+            const { [sessionId]: _, ...rest } = state.fixedReviewFindings
             return { fixedReviewFindings: rest }
           },
           undefined,

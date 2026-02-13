@@ -754,6 +754,12 @@ pub fn create_worktree(
             .map_err(|e| format!("Failed to create parent directory: {e}"))?;
     }
 
+    // Prune stale worktree entries (folders deleted outside the app)
+    let _ = silent_command("git")
+        .args(["worktree", "prune"])
+        .current_dir(repo_path)
+        .output();
+
     // git worktree add -b <new_branch> <path> <base_branch>
     let output = silent_command("git")
         .args([
@@ -796,6 +802,12 @@ pub fn create_worktree_from_existing_branch(
         std::fs::create_dir_all(parent)
             .map_err(|e| format!("Failed to create parent directory: {e}"))?;
     }
+
+    // Prune stale worktree entries (folders deleted outside the app)
+    let _ = silent_command("git")
+        .args(["worktree", "prune"])
+        .current_dir(repo_path)
+        .output();
 
     // git worktree add <path> <existing_branch> (no -b flag)
     let output = silent_command("git")
@@ -911,6 +923,13 @@ pub fn gh_pr_checkout(
 /// * `worktree_path` - Path to the worktree to remove
 pub fn remove_worktree(repo_path: &str, worktree_path: &str) -> Result<(), String> {
     log::trace!("Removing worktree at {worktree_path}");
+
+    // Prune stale worktree entries (folders deleted outside the app)
+    let _ = silent_command("git")
+        .args(["worktree", "prune"])
+        .current_dir(repo_path)
+        .output();
+
     log::trace!("git worktree remove {worktree_path} --force (in {repo_path})");
 
     // git worktree remove <path>
@@ -988,6 +1007,62 @@ pub fn delete_branch(repo_path: &str, branch_name: &str) -> Result<(), String> {
 
     log::trace!("Successfully deleted branch {branch_name}");
     Ok(())
+}
+
+/// Find which worktree (if any) has a given branch checked out.
+/// Parses `git worktree list --porcelain` output. Returns the worktree path or None.
+pub fn find_worktree_for_branch(repo_path: &str, branch: &str) -> Option<String> {
+    let output = silent_command("git")
+        .args(["worktree", "list", "--porcelain"])
+        .current_dir(repo_path)
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let target_ref = format!("refs/heads/{branch}");
+    let mut current_path: Option<String> = None;
+
+    for line in stdout.lines() {
+        if let Some(path) = line.strip_prefix("worktree ") {
+            current_path = Some(path.to_string());
+        } else if let Some(branch_ref) = line.strip_prefix("branch ") {
+            if branch_ref == target_ref {
+                return current_path;
+            }
+        } else if line.is_empty() {
+            current_path = None;
+        }
+    }
+
+    None
+}
+
+/// Clean up a stale branch that may be checked out in a defunct worktree.
+/// Used before PR checkout to handle archived/deleted worktrees whose branch still exists.
+pub fn cleanup_stale_branch(repo_path: &str, branch: &str) {
+    log::trace!("Cleaning up stale branch '{branch}' in {repo_path}");
+
+    // Prune worktrees whose directories no longer exist
+    let _ = silent_command("git")
+        .args(["worktree", "prune"])
+        .current_dir(repo_path)
+        .output();
+
+    // If branch is checked out in a worktree, remove that worktree first
+    if let Some(wt_path) = find_worktree_for_branch(repo_path, branch) {
+        log::trace!("Branch '{branch}' is checked out at '{wt_path}', removing worktree");
+        let _ = remove_worktree(repo_path, &wt_path);
+    }
+
+    // Delete the branch
+    if branch_exists(repo_path, branch) {
+        log::trace!("Deleting stale branch '{branch}'");
+        let _ = delete_branch(repo_path, branch);
+    }
 }
 
 /// List existing worktrees for a repository

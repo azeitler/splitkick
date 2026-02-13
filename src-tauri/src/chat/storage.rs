@@ -395,6 +395,7 @@ pub fn load_sessions(
                 answered_questions: vec![],
                 submitted_answers: std::collections::HashMap::new(),
                 fixed_findings: vec![],
+                review_results: None,
                 pending_permission_denials: vec![],
                 denied_message_context: None,
                 is_reviewing: false,

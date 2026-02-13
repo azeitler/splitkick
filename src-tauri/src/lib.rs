@@ -83,6 +83,8 @@ pub struct AppPreferences {
     pub terminal: String, // Terminal app: terminal, warp, ghostty
     #[serde(default = "default_editor")]
     pub editor: String, // Editor app: vscode, cursor, xcode
+    #[serde(default = "default_open_in")]
+    pub open_in: String, // Default Open In action: editor, terminal, finder, github
     #[serde(default = "default_auto_branch_naming")]
     pub auto_branch_naming: bool, // Automatically generate branch names from first message
     #[serde(default = "default_branch_naming_model")]
@@ -275,6 +277,10 @@ fn default_terminal() -> String {
 
 fn default_editor() -> String {
     "vscode".to_string()
+}
+
+fn default_open_in() -> String {
+    "editor".to_string()
 }
 
 fn default_git_poll_interval() -> u64 {
@@ -721,6 +727,7 @@ impl Default for AppPreferences {
             thinking_level: default_thinking_level(),
             terminal: default_terminal(),
             editor: default_editor(),
+            open_in: default_open_in(),
             auto_branch_naming: default_auto_branch_naming(),
             branch_naming_model: default_branch_naming_model(),
             auto_session_naming: default_auto_session_naming(),
@@ -815,17 +822,9 @@ pub struct UIState {
     #[serde(default)]
     pub active_session_ids: std::collections::HashMap<String, String>,
 
-    /// AI review results per worktree: worktreeId → ReviewResponse JSON
+    /// Whether the review sidebar is visible
     #[serde(default)]
-    pub review_results: std::collections::HashMap<String, serde_json::Value>,
-
-    /// Whether viewing review tab per worktree: worktreeId → viewing
-    #[serde(default)]
-    pub viewing_review_tab: std::collections::HashMap<String, bool>,
-
-    /// Fixed AI review findings per worktree: worktreeId → array of fixed findingKeys
-    #[serde(default)]
-    pub fixed_review_findings: std::collections::HashMap<String, Vec<String>>,
+    pub review_sidebar_visible: Option<bool>,
 
     /// Session IDs that completed while out of focus, need digest on open
     #[serde(default)]
@@ -864,9 +863,7 @@ impl Default for UIState {
             left_sidebar_size: None,
             left_sidebar_visible: None,
             active_session_ids: std::collections::HashMap::new(),
-            review_results: std::collections::HashMap::new(),
-            viewing_review_tab: std::collections::HashMap::new(),
-            fixed_review_findings: std::collections::HashMap::new(),
+            review_sidebar_visible: None,
             pending_digest_session_ids: Vec::new(),
             modal_terminal_open: std::collections::HashMap::new(),
             modal_terminal_width: None,

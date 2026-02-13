@@ -268,7 +268,7 @@ export function computeSessionCardData(
     status = 'vibing'
   } else if (sessionSending && executionMode === 'yolo') {
     status = 'yoloing'
-  } else if (reviewingSessions[session.id]) {
+  } else if (reviewingSessions[session.id] || session.review_results) {
     status = 'review'
   } else if (
     !sessionSending &&

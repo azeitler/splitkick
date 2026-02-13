@@ -40,6 +40,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { useProjectsStore } from '@/store/projects-store'
+import { OpenInButton } from '@/components/open-in/OpenInButton'
 import { useTerminalStore } from '@/store/terminal-store'
 import {
   Tooltip,
@@ -315,6 +316,11 @@ export function SessionCanvasView({
     if (selectedSessionId) {
       setViewingCanvasTab(worktreeId, false)
       setActiveSession(worktreeId, selectedSessionId)
+      // Auto-open review sidebar if the session has review results
+      const { reviewResults, setReviewSidebarVisible } = useChatStore.getState()
+      if (reviewResults[selectedSessionId]) {
+        setReviewSidebarVisible(true)
+      }
       setSelectedSessionId(null)
     }
   }, [worktreeId, selectedSessionId, setViewingCanvasTab, setActiveSession])
@@ -393,8 +399,8 @@ export function SessionCanvasView({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-1 max-w-md">
-            <div className="relative flex-1">
+          <div className="flex-1 flex justify-center max-w-md mx-auto">
+            <div className="relative w-full">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 ref={searchInputRef}
@@ -404,6 +410,10 @@ export function SessionCanvasView({
                 className="pl-9 bg-transparent border-border/30"
               />
             </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <OpenInButton worktreePath={worktreePath} branch={gitStatus?.current_branch ?? worktree?.branch} />
             <ToggleGroup
               type="single"
               size="sm"
