@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useChatStore } from '@/store/chat-store'
 import { invoke } from '@/lib/transport'
 import { logger } from '@/lib/logger'
+import type { LabelData } from '@/types/chat'
 
 /**
  * Saves reviewing/waiting state immediately when it changes.
@@ -12,7 +13,7 @@ export function useImmediateSessionStateSave() {
   // Track previous values to detect changes
   const prevReviewingRef = useRef<Record<string, boolean>>({})
   const prevWaitingRef = useRef<Record<string, boolean>>({})
-  const prevLabelsRef = useRef<Record<string, string>>({})
+  const prevLabelsRef = useRef<Record<string, LabelData>>({})
 
   useEffect(() => {
     // Initialize with current state
@@ -70,7 +71,7 @@ export function useImmediateSessionStateSave() {
 
       // Check for label changes
       for (const [sessionId, label] of Object.entries(sessionLabels)) {
-        if (prevLabelsRef.current[sessionId] !== label) {
+        if (JSON.stringify(prevLabelsRef.current[sessionId]) !== JSON.stringify(label)) {
           saveSessionStatus(sessionId, sessionWorktreeMap, worktreePaths, {
             label,
           })
@@ -101,7 +102,7 @@ async function saveSessionStatus(
   updates: {
     isReviewing?: boolean
     waitingForInput?: boolean
-    label?: string | null
+    label?: LabelData | null
   }
 ) {
   const worktreeId = sessionWorktreeMap[sessionId]
@@ -115,15 +116,19 @@ async function saveSessionStatus(
   }
 
   try {
+    // Send explicit null to remove, or the label object to set
+    // Use undefined for label when we want to set/clear to avoid Tauri treating null as missing
+    const labelValue = updates.label ?? undefined
+    const clearLabel = 'label' in updates && updates.label === null
     await invoke('update_session_state', {
       worktreeId,
       worktreePath,
       sessionId,
       isReviewing: updates.isReviewing,
       waitingForInput: updates.waitingForInput,
-      label: 'label' in updates ? (updates.label ?? '') : undefined,
+      label: labelValue,
+      clearLabel,
     })
-    logger.debug('Saved session status immediately', { sessionId, ...updates })
   } catch (error) {
     logger.error('Failed to save session status', { sessionId, error })
   }

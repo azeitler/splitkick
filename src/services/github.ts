@@ -27,15 +27,6 @@ export function isGhAuthError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error)
   const lower = message.toLowerCase()
 
-  if (import.meta.env.DEV) {
-    console.log(
-      '[isGhAuthError] error type:',
-      typeof error,
-      'message:',
-      message
-    )
-  }
-
   return (
     lower.includes('not authenticated') ||
     lower.includes('gh auth login') ||

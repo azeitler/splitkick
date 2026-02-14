@@ -290,13 +290,6 @@ export function useGitStatusEvents(
     unlistenPromises.push(
       listen<GitStatusEvent>('git:status-update', event => {
         const status = event.payload
-        console.info(
-          '[git-status] Received status update for worktree:',
-          status.worktree_id,
-          'behind:',
-          status.behind_count
-        )
-
         // Update the query cache
         queryClient.setQueryData(
           gitStatusQueryKeys.worktree(status.worktree_id),
@@ -339,9 +332,7 @@ export function useGitStatusEvents(
           status.base_branch_behind_count,
           status.worktree_ahead_count,
           status.unpushed_count
-        ).catch(err =>
-          console.warn('[git-status] Failed to cache status:', err)
-        )
+        ).catch(console.error)
 
         // Call the optional callback
         onStatusUpdate?.(status)
@@ -377,22 +368,12 @@ export function useAppFocusTracking() {
 
     const handleFocus = () => {
       if (isMounted.current) {
-        console.debug(
-          '[git-status] App gained focus at',
-          new Date().toISOString(),
-          '- resuming polling'
-        )
         setAppFocusState(true)
       }
     }
 
     const handleBlur = () => {
       if (isMounted.current) {
-        console.debug(
-          '[git-status] App lost focus at',
-          new Date().toISOString(),
-          '- pausing polling'
-        )
         setAppFocusState(false)
       }
     }
@@ -452,7 +433,6 @@ export function useWorktreePolling(info: WorktreePollingInfo | null) {
       info?.prUrl !== prevInfo?.prUrl
 
     if (hasChanged) {
-      console.debug('[git-status] Worktree polling info changed:', info)
       setActiveWorktreeForPolling(info)
       prevInfoRef.current = info
     }

@@ -118,18 +118,6 @@ export function PlanDialog({
     return () => clearTimeout(timer)
   }, [filePath, editedContent, hasChanges, isOpen, editable, queryClient])
 
-  // Debug logging
-  console.log(
-    '[PlanDialog] render - canApprove:',
-    canApprove,
-    'onApprove:',
-    !!onApprove,
-    'onApproveYolo:',
-    !!onApproveYolo,
-    'editable:',
-    editable
-  )
-
   const handleReset = useCallback(() => {
     setEditedContent(originalContent)
   }, [originalContent])

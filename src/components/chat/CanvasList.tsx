@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
@@ -61,6 +61,10 @@ export function CanvasList({
   const setCanvasSelectedSession =
     useChatStore.getState().setCanvasSelectedSession
 
+  // Use ref for cards to avoid stale closures in keyboard nav callbacks
+  const cardsRef = useRef(cards)
+  cardsRef.current = cards
+
   const handleSessionClick = useCallback(
     (sessionId: string) => {
       onSelectedSessionIdChange(sessionId)
@@ -71,24 +75,24 @@ export function CanvasList({
 
   const handleSelect = useCallback(
     (index: number) => {
-      const card = cards[index]
+      const card = cardsRef.current[index]
       if (card) {
         handleSessionClick(card.session.id)
       }
     },
-    [cards, handleSessionClick]
+    [handleSessionClick]
   )
 
   const handleSelectionChange = useCallback(
     (index: number) => {
-      const card = cards[index]
+      const card = cardsRef.current[index]
       if (card) {
         setCanvasSelectedSession(worktreeId, card.session.id)
         useProjectsStore.getState().selectWorktree(worktreeId)
         useChatStore.getState().registerWorktreePath(worktreeId, worktreePath)
       }
     },
-    [cards, worktreeId, worktreePath, setCanvasSelectedSession]
+    [worktreeId, worktreePath, setCanvasSelectedSession]
   )
 
   const selectedCard =
@@ -179,17 +183,21 @@ export function CanvasList({
         if (remaining.length === 0) {
           onSelectedIndexChange(null)
         } else {
-          const nextCard =
-            closingIndex < remaining.length
-              ? remaining[closingIndex]
-              : remaining[remaining.length - 1]
-          if (nextCard) {
+          // Prefer previous card; fall back to first if deleting the first item
+          const targetCard =
+            closingIndex > 0
+              ? remaining[closingIndex - 1]
+              : remaining[0]
+          if (targetCard) {
             const newIndex = cards.findIndex(
-              c => c.session.id === nextCard.session.id
+              c => c.session.id === targetCard.session.id
             )
-            onSelectedIndexChange(
+            const adjustedIndex =
               newIndex > closingIndex ? newIndex - 1 : newIndex
-            )
+            onSelectedIndexChange(adjustedIndex)
+            useChatStore
+              .getState()
+              .setCanvasSelectedSession(worktreeId, targetCard.session.id)
           }
         }
         return
@@ -203,8 +211,22 @@ export function CanvasList({
         const total = cards.length
         if (total <= 1) {
           onSelectedIndexChange(null)
-        } else if (selectedIndex >= total - 1) {
+        } else if (selectedIndex > 0) {
+          const prevCard = cards[selectedIndex - 1]
           onSelectedIndexChange(selectedIndex - 1)
+          if (prevCard) {
+            useChatStore
+              .getState()
+              .setCanvasSelectedSession(worktreeId, prevCard.session.id)
+          }
+        } else {
+          // Deleting first item: next card slides into index 0
+          const nextCard = cards[1]
+          if (nextCard) {
+            useChatStore
+              .getState()
+              .setCanvasSelectedSession(worktreeId, nextCard.session.id)
+          }
         }
       }
     }
@@ -271,6 +293,11 @@ export function CanvasList({
                       onApprove={() => onPlanApproval(card)}
                       onYolo={() => onPlanApprovalYolo(card)}
                       onToggleLabel={() => handleOpenLabelModal(card)}
+                      onToggleReview={() => {
+                        const { reviewingSessions, setSessionReviewing } = useChatStore.getState()
+                        const isReviewing = reviewingSessions[card.session.id] || !!card.session.review_results
+                        setSessionReviewing(card.session.id, !isReviewing)
+                      }}
                     />
                   )
                 })}

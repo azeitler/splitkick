@@ -4,7 +4,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import type { SaveContextResponse } from '@/types/chat'
 import type { Worktree } from '@/types/projects'
-import type { AppPreferences } from '@/types/preferences'
+import { resolveMagicPromptProvider, type AppPreferences } from '@/types/preferences'
 
 interface UseContextOperationsParams {
   activeSessionId: string | null | undefined
@@ -63,6 +63,7 @@ export function useContextOperations({
           projectName,
           customPrompt: preferences?.magic_prompts?.context_summary,
           model: preferences?.magic_prompt_models?.context_summary_model,
+          customProfileName: resolveMagicPromptProvider(preferences?.magic_prompt_providers, 'context_summary_provider', preferences?.default_provider),
         }
       )
 
@@ -82,6 +83,8 @@ export function useContextOperations({
     queryClient,
     preferences?.magic_prompts?.context_summary,
     preferences?.magic_prompt_models?.context_summary_model,
+    preferences?.magic_prompt_providers?.context_summary_provider,
+    preferences?.default_provider,
   ])
 
   // Handle Load Context - opens modal to select saved context

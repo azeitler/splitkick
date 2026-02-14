@@ -35,7 +35,7 @@ import {
 } from '@/services/git-status'
 import type { CreateCommitResponse, CreatePrResponse, MergeConflictsResponse, ReviewResponse } from '@/types/projects'
 import type { Session } from '@/types/chat'
-import { DEFAULT_RESOLVE_CONFLICTS_PROMPT } from '@/types/preferences'
+import { DEFAULT_RESOLVE_CONFLICTS_PROMPT, resolveMagicPromptProvider } from '@/types/preferences'
 import { chatQueryKeys } from '@/services/chat'
 import { saveWorktreePr, projectsQueryKeys } from '@/services/projects'
 import { useQueryClient } from '@tanstack/react-query'
@@ -278,6 +278,7 @@ export function MagicModal() {
                 customPrompt: preferences?.magic_prompts?.commit_message,
                 push: isPush,
                 model: preferences?.magic_prompt_models?.commit_message_model,
+                customProfileName: resolveMagicPromptProvider(preferences?.magic_prompt_providers, 'commit_message_provider', preferences?.default_provider),
               }
             )
             triggerImmediateGitPoll()
@@ -336,6 +337,7 @@ export function MagicModal() {
                 worktreePath: worktree.path,
                 customPrompt: preferences?.magic_prompts?.pr_content,
                 model: preferences?.magic_prompt_models?.pr_content_model,
+                customProfileName: resolveMagicPromptProvider(preferences?.magic_prompt_providers, 'pr_content_provider', preferences?.default_provider),
               }
             )
             await saveWorktreePr(selectedWorktreeId, result.pr_number, result.pr_url)
@@ -427,6 +429,7 @@ ${resolveInstructions}`
               worktreePath: worktree.path,
               customPrompt: preferences?.magic_prompts?.code_review,
               model: preferences?.magic_prompt_models?.code_review_model,
+              customProfileName: resolveMagicPromptProvider(preferences?.magic_prompt_providers, 'code_review_provider', preferences?.default_provider),
             })
 
             const newSession = await invoke<Session>('create_session', {
@@ -438,6 +441,10 @@ ${resolveInstructions}`
             const { setReviewResults, setActiveSession, setActiveWorktree, setViewingCanvasTab,
               activeWorktreePath } = useChatStore.getState()
             setReviewResults(newSession.id, result)
+
+            // Navigate to worktree view (needed for WorktreeDashboard → worktree transition)
+            useProjectsStore.getState().selectWorktree(selectedWorktreeId)
+            setActiveWorktree(selectedWorktreeId, worktree.path)
             setActiveSession(selectedWorktreeId, newSession.id)
 
             if (activeWorktreePath) {

@@ -131,6 +131,8 @@ pub struct AppPreferences {
     pub magic_prompts: MagicPrompts, // Customizable prompts for AI-powered features
     #[serde(default)]
     pub magic_prompt_models: MagicPromptModels, // Per-prompt model overrides
+    #[serde(default)]
+    pub magic_prompt_providers: MagicPromptProviders, // Per-prompt provider overrides (None = use default_provider)
     #[serde(default = "default_file_edit_mode")]
     pub file_edit_mode: String, // How to edit files: inline (CodeMirror) or external (VS Code, etc.)
     #[serde(default)]
@@ -619,7 +621,9 @@ fn default_parallel_execution_prompt() -> String {
 
 When launching multiple Task sub-agents, prefer sending them in a single message rather than sequentially. Group independent work items (e.g., editing separate files, researching unrelated questions) into parallel Task calls. Only sequence Tasks when one depends on another's output.
 
-Instruct each sub-agent to briefly outline its approach before implementing, so it can course-correct early without formal plan mode overhead."#
+Instruct each sub-agent to briefly outline its approach before implementing, so it can course-correct early without formal plan mode overhead.
+
+When specifying subagent_type for Task tool calls, always use the fully qualified name exactly as listed in the system prompt (e.g., "code-simplifier:code-simplifier", not just "code-simplifier"). If the agent type contains a colon, include the full namespace:name string."#
         .to_string()
 }
 
@@ -627,7 +631,11 @@ Instruct each sub-agent to briefly outline its approach before implementing, so 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MagicPromptModels {
     #[serde(default = "default_model")]
-    pub investigate_model: String,
+    pub investigate_issue_model: String,
+    #[serde(default = "default_model")]
+    pub investigate_pr_model: String,
+    #[serde(default = "default_model")]
+    pub investigate_workflow_run_model: String,
     #[serde(default = "default_haiku_model")]
     pub pr_content_model: String,
     #[serde(default = "default_haiku_model")]
@@ -651,7 +659,9 @@ fn default_haiku_model() -> String {
 impl Default for MagicPromptModels {
     fn default() -> Self {
         Self {
-            investigate_model: default_model(),
+            investigate_issue_model: default_model(),
+            investigate_pr_model: default_model(),
+            investigate_workflow_run_model: default_model(),
             pr_content_model: default_haiku_model(),
             commit_message_model: default_haiku_model(),
             code_review_model: default_haiku_model(),
@@ -661,6 +671,31 @@ impl Default for MagicPromptModels {
             session_naming_model: default_haiku_model(),
         }
     }
+}
+
+/// Per-prompt provider overrides for magic prompts (None = use global default_provider)
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MagicPromptProviders {
+    #[serde(default)]
+    pub investigate_issue_provider: Option<String>,
+    #[serde(default)]
+    pub investigate_pr_provider: Option<String>,
+    #[serde(default)]
+    pub investigate_workflow_run_provider: Option<String>,
+    #[serde(default)]
+    pub pr_content_provider: Option<String>,
+    #[serde(default)]
+    pub commit_message_provider: Option<String>,
+    #[serde(default)]
+    pub code_review_provider: Option<String>,
+    #[serde(default)]
+    pub context_summary_provider: Option<String>,
+    #[serde(default)]
+    pub resolve_conflicts_provider: Option<String>,
+    #[serde(default)]
+    pub release_notes_provider: Option<String>,
+    #[serde(default)]
+    pub session_naming_provider: Option<String>,
 }
 
 impl Default for MagicPrompts {
@@ -751,6 +786,7 @@ impl Default for AppPreferences {
             parallel_execution_prompt_enabled: default_parallel_execution_prompt_enabled(),
             magic_prompts: MagicPrompts::default(),
             magic_prompt_models: MagicPromptModels::default(),
+            magic_prompt_providers: MagicPromptProviders::default(),
             file_edit_mode: default_file_edit_mode(),
             ai_language: String::new(),
             allow_web_tools_in_plan_mode: default_allow_web_tools_in_plan_mode(),

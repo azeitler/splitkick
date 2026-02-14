@@ -24,11 +24,6 @@ import {
 } from 'lucide-react'
 import type { ReviewFinding, ReviewResponse } from '@/types/projects'
 import { cn } from '@/lib/utils'
-import {
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-} from '@/components/ui/tooltip'
 
 interface ReviewResultsPanelProps {
   sessionId: string
@@ -294,7 +289,6 @@ export function ReviewResultsPanel({ sessionId }: ReviewResultsPanelProps) {
   const fixedReviewFindings = useChatStore(
     state => state.fixedReviewFindings[sessionId]
   )
-  const clearReviewResults = useChatStore(state => state.clearReviewResults)
 
   // Check if a finding is fixed
   const isFindingFixed = useCallback(
@@ -510,19 +504,6 @@ Please apply all these fixes to the codebase.`
                 )}
               </Button>
             )}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 flex-shrink-0"
-                  onClick={() => clearReviewResults(sessionId)}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Clear review results</TooltipContent>
-            </Tooltip>
           </div>
         </div>
 

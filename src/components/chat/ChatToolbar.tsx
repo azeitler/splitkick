@@ -1170,7 +1170,7 @@ export const ChatToolbar = memo(function ChatToolbar({
                   disabled={hasPendingQuestions || providerLocked}
                   className={cn(
                     'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
-                    selectedProvider
+                    selectedProvider && selectedProvider !== '__anthropic__'
                       ? 'border border-blue-500/50 bg-blue-500/10 text-blue-700 dark:border-blue-400/40 dark:bg-blue-500/10 dark:text-blue-400'
                       : 'text-muted-foreground'
                   )}

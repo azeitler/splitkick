@@ -43,6 +43,7 @@ import type {
   Session,
 } from '@/types/chat'
 import { usePreferences } from '@/services/preferences'
+import { resolveMagicPromptProvider } from '@/types/preferences'
 import {
   useGitHubIssues,
   useGitHubPRs,
@@ -768,6 +769,7 @@ export function LoadContextModal({
             projectName: sessionProjectName,
             customPrompt: preferences?.magic_prompts?.context_summary,
             model: preferences?.magic_prompt_models?.context_summary_model,
+            customProfileName: resolveMagicPromptProvider(preferences?.magic_prompt_providers, 'context_summary_provider', preferences?.default_provider),
           }
         )
 

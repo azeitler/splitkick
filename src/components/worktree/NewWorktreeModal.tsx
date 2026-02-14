@@ -429,15 +429,14 @@ export function NewWorktreeModal() {
             })),
         }
 
-        // Create worktree and mark for auto-investigate
-        const pendingWorktree = await createWorktree.mutateAsync({
+        // Set investigate flag BEFORE mutateAsync so it's available
+        // when worktree:created or worktree:unarchived fires
+        useUIStore.getState().setPendingInvestigateType('issue')
+
+        await createWorktree.mutateAsync({
           projectId: selectedProjectId,
           issueContext,
         })
-
-        // Mark this worktree to trigger investigate-issue when it's ready
-        const { markWorktreeForAutoInvestigate } = useUIStore.getState()
-        markWorktreeForAutoInvestigate(pendingWorktree.id)
 
         handleOpenChange(false)
       } catch (error) {
@@ -574,15 +573,14 @@ export function NewWorktreeModal() {
             })),
         }
 
-        // Create worktree and mark for auto-investigate
-        const pendingWorktree = await createWorktree.mutateAsync({
+        // Set investigate flag BEFORE mutateAsync so it's available
+        // when worktree:created or worktree:unarchived fires
+        useUIStore.getState().setPendingInvestigateType('pr')
+
+        await createWorktree.mutateAsync({
           projectId: selectedProjectId,
           prContext,
         })
-
-        // Mark this worktree to trigger investigate-pr when it's ready
-        const { markWorktreeForAutoInvestigatePR } = useUIStore.getState()
-        markWorktreeForAutoInvestigatePR(pendingWorktree.id)
 
         handleOpenChange(false)
       } catch (error) {

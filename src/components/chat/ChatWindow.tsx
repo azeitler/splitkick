@@ -60,6 +60,7 @@ import {
   DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT,
   DEFAULT_PARALLEL_EXECUTION_PROMPT,
   PREDEFINED_CLI_PROFILES,
+  resolveMagicPromptProvider,
 } from '@/types/preferences'
 import type { Project, Worktree } from '@/types/projects'
 import type {
@@ -233,6 +234,8 @@ export function ChatWindow({
       ? (state.viewingCanvasTab[state.activeWorktreeId] ?? true)
       : false
   )
+
+
   const isStreamingPlanApproved = useChatStore(
     state => state.isStreamingPlanApproved
   )
@@ -1016,21 +1019,36 @@ export function ChatWindow({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
-        e.key === 'Backspace' &&
-        (e.metaKey || e.ctrlKey) &&
-        e.altKey &&
-        isSending &&
-        activeSessionId &&
-        activeWorktreeId
-      ) {
-        e.preventDefault()
-        cancelChatMessage(activeSessionId, activeWorktreeId)
-      }
+        e.key !== 'Backspace' ||
+        !(e.metaKey || e.ctrlKey) ||
+        !e.altKey
+      ) return
+
+      // Read all state fresh via getState() to avoid stale closures
+      const state = useChatStore.getState()
+      const wtId = state.activeWorktreeId
+      if (!wtId) return
+
+      const isCanvas = state.viewingCanvasTab[wtId] ?? true
+      const canvasSession = state.canvasSelectedSessionIds[wtId] ?? null
+      const activeSession = state.activeSessionIds[wtId] ?? null
+
+      const sessionToCancel = isCanvas && canvasSession
+        ? canvasSession
+        : activeSession
+
+      if (!sessionToCancel) return
+
+      const isSendingTarget = state.sendingSessionIds[sessionToCancel] ?? false
+      if (!isSendingTarget) return
+
+      e.preventDefault()
+      cancelChatMessage(sessionToCancel, wtId)
     }
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [isSending, activeSessionId, activeWorktreeId])
+  }, [])
 
   // Note: Streaming event listeners are in App.tsx, not here
   // This ensures they stay active even when ChatWindow is unmounted (e.g., session board view)
@@ -1608,9 +1626,18 @@ export function ChatWindow({
     async (type: 'issue' | 'pr') => {
       if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
 
+      const modelKey = type === 'issue' ? 'investigate_issue_model' : 'investigate_pr_model'
+      const providerKey = type === 'issue' ? 'investigate_issue_provider' : 'investigate_pr_provider'
       const investigateModel =
-        preferences?.magic_prompt_models?.investigate_model ??
+        preferences?.magic_prompt_models?.[modelKey] ??
         selectedModelRef.current
+      const investigateProvider = resolveMagicPromptProvider(
+        preferences?.magic_prompt_providers,
+        providerKey,
+        preferences?.default_provider
+      )
+      const { customProfileName: resolvedInvestigateProfile } =
+        resolveCustomProfile(investigateModel, investigateProvider)
 
       let prompt: string
 
@@ -1661,6 +1688,7 @@ export function ChatWindow({
         setLastSentMessage,
         setError,
         setSelectedModel,
+        setSelectedProvider,
         setExecutingMode,
       } = useChatStore.getState()
 
@@ -1668,7 +1696,22 @@ export function ChatWindow({
       setError(activeSessionId, null)
       addSendingSession(activeSessionId)
       setSelectedModel(activeSessionId, investigateModel)
+      setSelectedProvider(activeSessionId, investigateProvider)
       setExecutingMode(activeSessionId, executionModeRef.current)
+
+      // Persist the provider to backend so subsequent messages use the same one
+      setSessionProvider.mutate({
+        sessionId: activeSessionId,
+        worktreeId: activeWorktreeId,
+        worktreePath: activeWorktreePath,
+        provider: investigateProvider,
+      })
+
+      // Compute adaptive thinking for the resolved provider (not the stale ref)
+      const investigateIsCustom = Boolean(investigateProvider && investigateProvider !== '__anthropic__')
+      const investigateUseAdaptive = !investigateIsCustom && supportsAdaptiveThinking(
+        investigateModel, cliStatus?.version ?? null
+      )
 
       sendMessage.mutate(
         {
@@ -1679,13 +1722,14 @@ export function ChatWindow({
           model: investigateModel,
           executionMode: executionModeRef.current,
           thinkingLevel: selectedThinkingLevelRef.current,
-          effortLevel: useAdaptiveThinkingRef.current
+          effortLevel: investigateUseAdaptive
             ? selectedEffortLevelRef.current
             : undefined,
           mcpConfig: buildMcpConfigJson(
             mcpServersDataRef.current,
             enabledMcpServersRef.current
           ),
+          customProfileName: resolvedInvestigateProfile,
           parallelExecutionPrompt:
             preferences?.parallel_execution_prompt_enabled
               ? (preferences.magic_prompts?.parallel_execution ??
@@ -1705,22 +1749,22 @@ export function ChatWindow({
       queryClient,
       preferences?.magic_prompts?.investigate_issue,
       preferences?.magic_prompts?.investigate_pr,
-      preferences?.magic_prompt_models?.investigate_model,
+      preferences?.magic_prompt_models?.investigate_issue_model,
+      preferences?.magic_prompt_models?.investigate_pr_model,
+      preferences?.magic_prompt_providers?.investigate_issue_provider,
+      preferences?.magic_prompt_providers?.investigate_pr_provider,
+      preferences?.default_provider,
       preferences?.parallel_execution_prompt_enabled,
       preferences?.chrome_enabled,
       preferences?.ai_language,
+      setSessionProvider,
+      resolveCustomProfile,
+      cliStatus?.version,
     ]
   )
 
   const handleInvestigateWorkflowRun = useCallback(
     async (detail: WorkflowRunDetail) => {
-      console.warn('[INVESTIGATE-WF] Handler called with detail:', {
-        workflowName: detail.workflowName,
-        branch: detail.branch,
-        projectPath: detail.projectPath,
-        runId: detail.runId,
-      })
-
       const customPrompt = preferences?.magic_prompts?.investigate_workflow_run
       const template =
         customPrompt && customPrompt.trim()
@@ -1735,15 +1779,21 @@ export function ChatWindow({
         .replace(/\{displayTitle\}/g, detail.displayTitle)
 
       const investigateModel =
-        preferences?.magic_prompt_models?.investigate_model ??
+        preferences?.magic_prompt_models?.investigate_workflow_run_model ??
         selectedModelRef.current
+      const investigateProvider = resolveMagicPromptProvider(
+        preferences?.magic_prompt_providers,
+        'investigate_workflow_run_provider',
+        preferences?.default_provider
+      )
+      const { customProfileName: resolvedInvestigateProfile } =
+        resolveCustomProfile(investigateModel, investigateProvider)
 
       // Find the right worktree for this branch
       let targetWorktreeId: string | null = null
       let targetWorktreePath: string | null = null
 
       if (detail.projectPath) {
-        console.warn('[INVESTIGATE-WF] Fetching projects...')
         // Use fetchQuery to ensure data is loaded (not just cached)
         const projects = await queryClient.fetchQuery({
           queryKey: projectsQueryKeys.list(),
@@ -1751,21 +1801,10 @@ export function ChatWindow({
           staleTime: 1000 * 60,
         })
         const project = projects?.find(p => p.path === detail.projectPath)
-        console.warn('[INVESTIGATE-WF] Project lookup:', {
-          projectPath: detail.projectPath,
-          found: !!project,
-          projectId: project?.id,
-          projectName: project?.name,
-          allProjectPaths: projects?.map(p => p.path),
-        })
 
         if (project) {
           let worktrees: Worktree[] = []
           try {
-            console.warn(
-              '[INVESTIGATE-WF] Fetching worktrees for project:',
-              project.id
-            )
             worktrees = await queryClient.fetchQuery({
               queryKey: projectsQueryKeys.worktrees(project.id),
               queryFn: () =>
@@ -1774,16 +1813,6 @@ export function ChatWindow({
                 }),
               staleTime: 1000 * 60,
             })
-            console.warn(
-              '[INVESTIGATE-WF] Worktrees fetched:',
-              worktrees.map(w => ({
-                id: w.id,
-                branch: w.branch,
-                status: w.status,
-                session_type: w.session_type,
-                path: w.path,
-              }))
-            )
           } catch (err) {
             console.error('[INVESTIGATE-WF] Failed to fetch worktrees:', err)
           }
@@ -1796,56 +1825,26 @@ export function ChatWindow({
             const matching = worktrees.find(
               w => w.branch === detail.branch && isUsable(w)
             )
-            console.warn('[INVESTIGATE-WF] Branch match:', {
-              targetBranch: detail.branch,
-              matchingWorktree: matching
-                ? {
-                  id: matching.id,
-                  branch: matching.branch,
-                  status: matching.status,
-                }
-                : null,
-            })
             if (matching) {
               targetWorktreeId = matching.id
               targetWorktreePath = matching.path
             } else {
               // Fall back to the base worktree (first usable one)
               const base = worktrees.find(w => isUsable(w))
-              console.warn(
-                '[INVESTIGATE-WF] No branch match, fallback to base:',
-                {
-                  baseWorktree: base
-                    ? { id: base.id, branch: base.branch, status: base.status }
-                    : null,
-                }
-              )
               if (base) {
                 targetWorktreeId = base.id
                 targetWorktreePath = base.path
               }
             }
-          } else {
-            console.warn('[INVESTIGATE-WF] No worktrees found (empty array)')
           }
 
           // No usable worktrees — create the base session first
           if (!targetWorktreeId) {
-            console.warn(
-              '[INVESTIGATE-WF] No usable worktree found, creating base session for project:',
-              project.id
-            )
             try {
               const baseSession = await invoke<Worktree>(
                 'create_base_session',
                 { projectId: project.id }
               )
-              console.warn('[INVESTIGATE-WF] Base session created:', {
-                id: baseSession.id,
-                path: baseSession.path,
-                branch: baseSession.branch,
-                status: baseSession.status,
-              })
               queryClient.invalidateQueries({
                 queryKey: projectsQueryKeys.worktrees(project.id),
               })
@@ -1861,21 +1860,10 @@ export function ChatWindow({
             }
           }
         }
-      } else {
-        console.warn(
-          '[INVESTIGATE-WF] No projectPath in detail, skipping project lookup'
-        )
       }
 
       // Final fallback: use active worktree
       if (!targetWorktreeId || !targetWorktreePath) {
-        console.warn(
-          '[INVESTIGATE-WF] Using active worktree as final fallback:',
-          {
-            activeWorktreeId: activeWorktreeIdRef.current,
-            activeWorktreePath: activeWorktreePathRef.current,
-          }
-        )
         targetWorktreeId = activeWorktreeIdRef.current
         targetWorktreePath = activeWorktreePathRef.current
       }
@@ -1886,25 +1874,23 @@ export function ChatWindow({
         return
       }
 
-      console.warn('[INVESTIGATE-WF] Target worktree resolved:', {
-        worktreeId: targetWorktreeId,
-        worktreePath: targetWorktreePath,
-      })
-
       // Capture for closure stability
       const worktreeId = targetWorktreeId
       const worktreePath = targetWorktreePath
 
+      // Compute adaptive thinking for the resolved provider (not the stale ref)
+      const investigateIsCustom = Boolean(investigateProvider && investigateProvider !== '__anthropic__')
+      const investigateUseAdaptive = !investigateIsCustom && supportsAdaptiveThinking(
+        investigateModel, cliStatus?.version ?? null
+      )
+
       const sendInvestigateMessage = (targetSessionId: string) => {
-        console.warn(
-          '[INVESTIGATE-WF] Sending investigate message to session:',
-          targetSessionId
-        )
         const {
           addSendingSession,
           setLastSentMessage,
           setError,
           setSelectedModel,
+          setSelectedProvider,
           setExecutingMode,
         } = useChatStore.getState()
 
@@ -1912,7 +1898,16 @@ export function ChatWindow({
         setError(targetSessionId, null)
         addSendingSession(targetSessionId)
         setSelectedModel(targetSessionId, investigateModel)
+        setSelectedProvider(targetSessionId, investigateProvider)
         setExecutingMode(targetSessionId, executionModeRef.current)
+
+        // Persist the provider to backend so subsequent messages use the same one
+        setSessionProvider.mutate({
+          sessionId: targetSessionId,
+          worktreeId,
+          worktreePath,
+          provider: investigateProvider,
+        })
 
         sendMessage.mutate(
           {
@@ -1923,13 +1918,14 @@ export function ChatWindow({
             model: investigateModel,
             executionMode: executionModeRef.current,
             thinkingLevel: selectedThinkingLevelRef.current,
-            effortLevel: useAdaptiveThinkingRef.current
+            effortLevel: investigateUseAdaptive
               ? selectedEffortLevelRef.current
               : undefined,
             mcpConfig: buildMcpConfigJson(
               mcpServersDataRef.current,
               enabledMcpServersRef.current
             ),
+            customProfileName: resolvedInvestigateProfile,
             parallelExecutionPrompt:
               preferences?.parallel_execution_prompt_enabled
                 ? (preferences.magic_prompts?.parallel_execution ??
@@ -1945,7 +1941,6 @@ export function ChatWindow({
       // Switch to the target worktree, create a new session, then send the prompt
       const { setActiveWorktree, setActiveSession } = useChatStore.getState()
       const { selectWorktree, expandProject } = useProjectsStore.getState()
-      console.warn('[INVESTIGATE-WF] Switching to worktree:', worktreeId)
       setActiveWorktree(worktreeId, worktreePath)
       selectWorktree(worktreeId)
 
@@ -1956,15 +1951,10 @@ export function ChatWindow({
       const project = projects?.find(p => p.path === detail.projectPath)
       if (project) expandProject(project.id)
 
-      console.warn(
-        '[INVESTIGATE-WF] Creating new session in worktree:',
-        worktreeId
-      )
       createSession.mutate(
         { worktreeId, worktreePath },
         {
           onSuccess: session => {
-            console.warn('[INVESTIGATE-WF] New session created:', session.id)
             setActiveSession(worktreeId, session.id)
             sendInvestigateMessage(session.id)
           },
@@ -1980,10 +1970,15 @@ export function ChatWindow({
       createSession,
       queryClient,
       preferences?.magic_prompts?.investigate_workflow_run,
-      preferences?.magic_prompt_models?.investigate_model,
+      preferences?.magic_prompt_models?.investigate_workflow_run_model,
+      preferences?.magic_prompt_providers?.investigate_workflow_run_provider,
+      preferences?.default_provider,
       preferences?.parallel_execution_prompt_enabled,
       preferences?.chrome_enabled,
       preferences?.ai_language,
+      setSessionProvider,
+      resolveCustomProfile,
+      cliStatus?.version,
     ]
   )
 
@@ -2228,6 +2223,9 @@ export function ChatWindow({
   // Fix messages are sent in the same session (the review session)
   useEffect(() => {
     const handleReviewFixMessage = (e: CustomEvent) => {
+      // Skip if this is the modal ChatWindow (the main window handles the event)
+      if (isModal) return
+
       const { sessionId, worktreeId, worktreePath, message } = e.detail
       if (!sessionId || !worktreeId || !worktreePath || !message) return
       // Only handle events for this ChatWindow's worktree (avoids duplicate from modal)
@@ -2299,6 +2297,7 @@ export function ChatWindow({
     preferences?.parallel_execution_prompt_enabled,
     preferences?.chrome_enabled,
     preferences?.ai_language,
+    isModal,
   ])
 
   // Handle removing a queued message
@@ -2548,6 +2547,8 @@ export function ChatWindow({
                                 worktreeId={activeWorktreeId}
                                 worktreePath={activeWorktreePath}
                                 sessionId={activeSessionId}
+                                selectedModel={selectedModel}
+                                selectedProvider={selectedProvider}
                                 onFileClick={setViewingFilePath}
                               />
                             </div>
@@ -2821,7 +2822,7 @@ export function ChatWindow({
                         onCommit={handleCommit}
                         onCommitAndPush={handleCommitAndPush}
                         onOpenPr={handleOpenPr}
-                        onReview={handleReview}
+                        onReview={() => handleReview(activeSessionId ?? undefined)}
                         onMerge={handleMerge}
                         onResolvePrConflicts={handleResolvePrConflicts}
                         onResolveConflicts={handleResolveConflicts}

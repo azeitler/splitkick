@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { SessionCardData } from '../session-card-utils'
-import type { SessionDigest } from '@/types/chat'
+import type { LabelData, SessionDigest } from '@/types/chat'
 import type { ApprovalContext } from '../PlanDialog'
 import { useChatStore } from '@/store/chat-store'
 import { invoke } from '@/lib/transport'
@@ -51,7 +51,7 @@ interface UseCanvasShortcutEventsResult {
   /** Session ID for the label modal */
   labelModalSessionId: string | null
   /** Current label for the label modal session */
-  labelModalCurrentLabel: string | null
+  labelModalCurrentLabel: LabelData | null
   /** Close label modal */
   closeLabelModal: () => void
   /** Open label modal for a card */
@@ -86,7 +86,7 @@ export function useCanvasShortcutEvents({
     null
   )
   const [labelModalCurrentLabel, setLabelModalCurrentLabel] = useState<
-    string | null
+    LabelData | null
   >(null)
 
   // Recap dialog state

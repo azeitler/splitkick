@@ -214,8 +214,6 @@ export function SessionCanvasView({
   // Listen for create-new-session event to handle Cmd+T
   useEffect(() => {
     const handleCreateNewSession = () => {
-      console.log('[SessionCanvasView] handleCreateNewSession called')
-      console.log('[SessionCanvasView] selectedSessionId:', selectedSessionId)
       // Don't create if modal is already open
       if (selectedSessionId) return
 
@@ -223,10 +221,6 @@ export function SessionCanvasView({
         { worktreeId, worktreePath },
         {
           onSuccess: session => {
-            console.log(
-              '[SessionCanvasView] onSuccess - session.id:',
-              session.id
-            )
             // Update highlighted ref so canvas stays on new session after modal close
             highlightedSessionIdRef.current = session.id
             setSelectedSessionId(session.id)
@@ -243,14 +237,6 @@ export function SessionCanvasView({
   // Compute session card data (must be before effects that depend on it)
   const sessionCards = useMemo(() => {
     const sessions = sessionsData?.sessions ?? []
-    console.log(
-      '[SessionCanvasView] sessionCards useMemo - sessions count:',
-      sessions.length
-    )
-    console.log(
-      '[SessionCanvasView] sessionCards useMemo - first session id:',
-      sessions[0]?.id
-    )
     const cards = sessions.map(session =>
       computeSessionCardData(session, storeState)
     )
@@ -266,7 +252,7 @@ export function SessionCanvasView({
     const sorted = [...filtered].sort((a, b) => {
       if (a.label && !b.label) return -1
       if (!a.label && b.label) return 1
-      if (a.label && b.label) return a.label.localeCompare(b.label)
+      if (a.label && b.label) return a.label.name.localeCompare(b.label.name)
       return 0
     })
 
@@ -322,6 +308,25 @@ export function SessionCanvasView({
       useChatStore.getState().registerWorktreePath(worktreeId, worktreePath)
     }
   }, [sessionCards, selectedIndex, selectedSessionId, worktreeId, worktreePath])
+
+  // Keep selectedIndex stable when sessionCards reorders (e.g. status changes during streaming)
+  useEffect(() => {
+    if (selectedIndex === null) return
+    const currentSessionId = useChatStore.getState().canvasSelectedSessionIds[worktreeId]
+    if (!currentSessionId) return
+    const newIndex = sessionCards.findIndex(c => c.session.id === currentSessionId)
+    if (newIndex !== -1 && newIndex !== selectedIndex) {
+      setSelectedIndex(newIndex)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionCards, worktreeId]) // intentionally omit selectedIndex to avoid loops
+
+  // Sync selection to store for cancel shortcut - updates when user navigates with arrow keys
+  useEffect(() => {
+    if (selectedSessionId) {
+      useChatStore.getState().setCanvasSelectedSession(worktreeId, selectedSessionId)
+    }
+  }, [selectedSessionId, worktreeId])
 
   // Handle opening full view from modal
   const handleOpenFullView = useCallback(() => {

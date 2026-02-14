@@ -138,6 +138,22 @@ struct CompactedEvent {
 // Detached Claude CLI execution
 // =============================================================================
 
+/// Apply custom CLI profile settings to a Command (adds --settings flag if profile exists).
+/// Reusable for both main chat sessions and one-shot magic prompt operations.
+pub fn apply_custom_profile_settings(cmd: &mut std::process::Command, profile_name: Option<&str>) {
+    if let Some(name) = profile_name {
+        if !name.is_empty() {
+            if let Ok(path) = crate::get_cli_profile_path(name) {
+                if path.exists() {
+                    cmd.arg("--settings").arg(&path);
+                } else {
+                    log::warn!("CLI profile file not found for '{name}': {}", path.display());
+                }
+            }
+        }
+    }
+}
+
 /// Build CLI arguments for Claude CLI.
 ///
 /// Returns a tuple of (args, env_vars) where env_vars are (key, value) pairs.
@@ -763,6 +779,7 @@ pub fn tail_claude_output(
     let mut completed = false;
     let mut cancelled = false;
     let mut usage: Option<UsageData> = None;
+    let mut error_lines: Vec<String> = Vec::new();
 
     // Timeout configuration:
     // - Startup timeout: Wait up to 120 seconds for first Claude output (API connection time)
@@ -803,7 +820,11 @@ pub fn tail_claude_output(
             let msg: serde_json::Value = match serde_json::from_str(&line) {
                 Ok(m) => m,
                 Err(e) => {
-                    log::trace!("Failed to parse line: {e}");
+                    log::trace!("Failed to parse line as JSON: {e}");
+                    let trimmed = line.trim().to_string();
+                    if !trimmed.is_empty() {
+                        error_lines.push(trimmed);
+                    }
                     continue;
                 }
             };
@@ -1196,6 +1217,16 @@ pub fn tail_claude_output(
             // During startup, wait longer but check for complete failure
             let elapsed = started_at.elapsed();
 
+            // Early exit if process died during startup (5s grace for slow spawning)
+            if !process_alive && elapsed > Duration::from_secs(5) {
+                log::warn!(
+                    "Process {pid} died during startup after {:.1}s with no Claude output",
+                    elapsed.as_secs_f64()
+                );
+                cancelled = true;
+                break;
+            }
+
             if elapsed > startup_timeout {
                 log::warn!(
                     "Startup timeout ({:?}) exceeded waiting for Claude output, process_alive: {process_alive}",
@@ -1217,6 +1248,39 @@ pub fn tail_claude_output(
 
         // Sleep before next poll
         std::thread::sleep(POLL_INTERVAL);
+    }
+
+    // Surface CLI errors when process failed with no meaningful output
+    if cancelled || (full_content.is_empty() && !received_claude_output) {
+        // Drain any remaining buffered content from the output file
+        if let Ok(remaining) = tailer.poll() {
+            for line in remaining {
+                let trimmed = line.trim();
+                if !trimmed.is_empty()
+                    && !trimmed.contains("\"_run_meta\"")
+                    && serde_json::from_str::<serde_json::Value>(trimmed).is_err()
+                {
+                    error_lines.push(trimmed.to_string());
+                }
+            }
+        }
+        let drained = tailer.drain_buffer();
+        if !drained.trim().is_empty() {
+            error_lines.push(drained.trim().to_string());
+        }
+    }
+
+    if !error_lines.is_empty() && full_content.is_empty() {
+        let error_text = error_lines.join("\n");
+        log::warn!("CLI error output for session {session_id}: {error_text}");
+        let _ = app.emit_all(
+            "chat:error",
+            &ErrorEvent {
+                session_id: session_id.to_string(),
+                worktree_id: worktree_id.to_string(),
+                error: format!("Claude CLI failed: {error_text}"),
+            },
+        );
     }
 
     // Emit done event only if not cancelled

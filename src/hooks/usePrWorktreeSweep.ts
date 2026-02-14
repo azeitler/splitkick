@@ -59,9 +59,7 @@ export function usePrWorktreeSweep(projects: Project[] | undefined) {
       const json = JSON.stringify(prWorktrees)
       if (json !== lastJsonRef.current) {
         lastJsonRef.current = json
-        setPrWorktreesForPolling(prWorktrees).catch(err =>
-          console.warn('[pr-sweep] Failed to set PR worktrees for polling:', err)
-        )
+        setPrWorktreesForPolling(prWorktrees).catch(() => { /* silent */ })
       }
     }
 

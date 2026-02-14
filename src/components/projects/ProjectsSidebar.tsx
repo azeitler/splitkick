@@ -48,24 +48,13 @@ export function ProjectsSidebar() {
     const fetchGitStatusBatch = async (batch: typeof actualProjects) => {
       await Promise.all(
         batch.map(p =>
-          fetchWorktreesStatus(p.id).catch(err =>
-            console.warn(
-              `[startup] Failed to fetch git status for ${p.name}:`,
-              err
-            )
-          )
+          fetchWorktreesStatus(p.id).catch(() => { /* silent */ })
         )
       )
     }
 
     const fetchAll = async () => {
       const concurrencyLimit = 3
-
-      console.info(
-        '[startup] Fetching worktree git status: expanded=%d, collapsed=%d',
-        expandedProjects.length,
-        collapsedProjects.length
-      )
 
       // First: fetch expanded projects (user sees these immediately)
       for (let i = 0; i < expandedProjects.length; i += concurrencyLimit) {
@@ -79,9 +68,6 @@ export function ProjectsSidebar() {
         await fetchGitStatusBatch(batch)
       }
 
-      console.info(
-        '[startup] Done fetching worktree git status for all projects'
-      )
     }
 
     fetchAll()

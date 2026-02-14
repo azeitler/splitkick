@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 
 // ============================================================================
@@ -18,6 +18,42 @@ pub struct SessionDigest {
     /// Number of messages in the session when this digest was generated
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub message_count: Option<usize>,
+}
+
+// ============================================================================
+// Label Types
+// ============================================================================
+
+const DEFAULT_LABEL_COLOR: &str = "#eab308";
+
+/// User-assigned label with color for session cards
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LabelData {
+    /// Label name (e.g. "Needs testing")
+    pub name: String,
+    /// Background color hex value (e.g. "#eab308")
+    pub color: String,
+}
+
+/// Deserializes label from either a plain string (old format) or a LabelData object (new format).
+fn deserialize_label_compat<'de, D>(deserializer: D) -> Result<Option<LabelData>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value: Option<serde_json::Value> = Option::deserialize(deserializer)?;
+    match value {
+        None => Ok(None),
+        Some(serde_json::Value::String(s)) => Ok(Some(LabelData {
+            name: s,
+            color: DEFAULT_LABEL_COLOR.to_string(),
+        })),
+        Some(serde_json::Value::Object(_)) => {
+            let label: LabelData =
+                serde_json::from_value(value.unwrap()).map_err(serde::de::Error::custom)?;
+            Ok(Some(label))
+        }
+        Some(_) => Ok(None),
+    }
 }
 
 // ============================================================================
@@ -379,9 +415,9 @@ pub struct Session {
     /// Execution mode of the last run (plan/build/yolo)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_run_execution_mode: Option<String>,
-    /// User-assigned label (e.g. "Needs testing")
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub label: Option<String>,
+    /// User-assigned label with color (e.g. "Needs testing")
+    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "deserialize_label_compat")]
+    pub label: Option<LabelData>,
 }
 
 impl Session {
@@ -873,9 +909,9 @@ pub struct SessionMetadata {
     /// Persisted session digest (recap summary)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub digest: Option<SessionDigest>,
-    /// User-assigned label (e.g. "Needs testing")
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub label: Option<String>,
+    /// User-assigned label with color (e.g. "Needs testing")
+    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "deserialize_label_compat")]
+    pub label: Option<LabelData>,
 
     /// Run history - each entry corresponds to one Claude CLI execution
     #[serde(default)]

@@ -341,11 +341,6 @@ export function useMessageHandlers({
       const message = updatedPlan
         ? `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
         : 'Approved'
-      console.log(
-        '[useMessageHandlers] handlePlanApproval - message:',
-        message.substring(0, 100)
-      )
-
       // Send approval message to Claude so it continues with execution
       // NOTE: setLastSentMessage is critical for permission denial flow - without it,
       // the denied message context won't be set and approval UI won't work
@@ -454,11 +449,6 @@ export function useMessageHandlers({
       const message = updatedPlan
         ? `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
         : 'Approved - yolo'
-      console.log(
-        '[useMessageHandlers] handlePlanApprovalYolo - message:',
-        message.substring(0, 100)
-      )
-
       // Send approval message to Claude so it continues with execution
       setLastSentMessage(sessionId, message)
       setError(sessionId, null)

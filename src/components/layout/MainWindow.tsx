@@ -145,13 +145,6 @@ export function MainWindow() {
   // Ref for the sidebar element to update width directly during drag
   const sidebarRef = useRef<HTMLDivElement>(null)
 
-  // Debug: log sidebar state on each render
-  console.log('[MainWindow] render', {
-    isInitialized,
-    leftSidebarSize,
-    leftSidebarVisible,
-  })
-
   // Set up global event listeners (keyboard shortcuts, etc.)
   useMainWindowEventListeners()
 

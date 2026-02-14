@@ -458,6 +458,39 @@ pub async fn create_worktree(
 
     let data = load_projects_data(&app)?;
 
+    // Check if there's an archived worktree for this PR — restore it instead of creating a new one
+    // (similar logic to checkout_pr command)
+    if let Some(ref pr_ctx) = pr_context {
+        if let Some(archived_wt) = data.worktrees.iter().find(|w| {
+            w.project_id == project_id
+                && w.pr_number == Some(pr_ctx.number)
+                && w.archived_at.is_some()
+        }) {
+            let worktree_id = archived_wt.id.clone();
+            log::info!(
+                "[create_worktree] Found archived worktree {worktree_id} for PR #{}, restoring instead",
+                pr_ctx.number
+            );
+            return unarchive_worktree(app, worktree_id).await;
+        }
+    }
+
+    // Check if there's an archived worktree for this issue — restore it instead of creating a new one
+    if let Some(ref issue_ctx) = issue_context {
+        if let Some(archived_wt) = data.worktrees.iter().find(|w| {
+            w.project_id == project_id
+                && w.issue_number == Some(issue_ctx.number)
+                && w.archived_at.is_some()
+        }) {
+            let worktree_id = archived_wt.id.clone();
+            log::info!(
+                "[create_worktree] Found archived worktree {worktree_id} for issue #{}, restoring instead",
+                issue_ctx.number
+            );
+            return unarchive_worktree(app, worktree_id).await;
+        }
+    }
+
     let project = data
         .find_project(&project_id)
         .ok_or_else(|| format!("Project not found: {project_id}"))?
@@ -542,6 +575,7 @@ pub async fn create_worktree(
         session_type: SessionType::Worktree,
         pr_number: None,
         pr_url: None,
+        issue_number: issue_context.as_ref().map(|ctx| ctx.number),
         cached_pr_status: None,
         cached_check_status: None,
         cached_behind_count: None,
@@ -572,6 +606,12 @@ pub async fn create_worktree(
 
     // Spawn background thread for git operations
     thread::spawn(move || {
+        // Clone IDs for panic handler (before they're moved into the inner closure)
+        let panic_wt_id = worktree_id_clone.clone();
+        let panic_proj_id = project_id_clone.clone();
+        let panic_app = app_clone.clone();
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
         log::trace!("Background: Creating git worktree {name_clone} at {worktree_path_clone}");
 
         // Check if path already exists
@@ -948,6 +988,7 @@ pub async fn create_worktree(
                 session_type: SessionType::Worktree,
                 pr_number: pr_context_clone.as_ref().map(|ctx| ctx.number),
                 pr_url: None,
+                issue_number: issue_context_clone.as_ref().map(|ctx| ctx.number),
                 cached_pr_status: None,
                 cached_check_status: None,
                 cached_behind_count: None,
@@ -998,6 +1039,17 @@ pub async fn create_worktree(
             if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
                 log::error!("Failed to emit worktree:error event: {emit_err}");
             }
+        }
+        })); // end catch_unwind
+
+        if let Err(panic_info) = result {
+            log::error!("Background thread panicked during worktree creation: {panic_info:?}");
+            let error_event = WorktreeCreateErrorEvent {
+                id: panic_wt_id,
+                project_id: panic_proj_id,
+                error: "Internal error: worktree creation failed unexpectedly".to_string(),
+            };
+            let _ = panic_app.emit_all("worktree:error", &error_event);
         }
     });
 
@@ -1068,6 +1120,7 @@ pub async fn create_worktree_from_existing_branch(
         session_type: SessionType::Worktree,
         pr_number: None,
         pr_url: None,
+        issue_number: issue_context.as_ref().map(|ctx| ctx.number),
         cached_pr_status: None,
         cached_check_status: None,
         cached_behind_count: None,
@@ -1098,6 +1151,12 @@ pub async fn create_worktree_from_existing_branch(
 
     // Spawn background thread for git operations
     thread::spawn(move || {
+        // Clone IDs for panic handler (before they're moved into the inner closure)
+        let panic_wt_id = worktree_id_clone.clone();
+        let panic_proj_id = project_id_clone.clone();
+        let panic_app = app_clone.clone();
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
         log::trace!("Background: Creating git worktree {name_clone} at {worktree_path_clone} using existing branch {branch_name_clone}");
 
         // Check if path already exists
@@ -1283,6 +1342,7 @@ pub async fn create_worktree_from_existing_branch(
                 session_type: SessionType::Worktree,
                 pr_number: None,
                 pr_url: None,
+                issue_number: issue_context_clone.as_ref().map(|ctx| ctx.number),
                 cached_pr_status: None,
                 cached_check_status: None,
                 cached_behind_count: None,
@@ -1333,6 +1393,17 @@ pub async fn create_worktree_from_existing_branch(
             if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
                 log::error!("Failed to emit worktree:error event: {emit_err}");
             }
+        }
+        })); // end catch_unwind
+
+        if let Err(panic_info) = result {
+            log::error!("Background thread panicked during worktree creation from existing branch: {panic_info:?}");
+            let error_event = WorktreeCreateErrorEvent {
+                id: panic_wt_id,
+                project_id: panic_proj_id,
+                error: "Internal error: worktree creation failed unexpectedly".to_string(),
+            };
+            let _ = panic_app.emit_all("worktree:error", &error_event);
         }
     });
 
@@ -1480,6 +1551,7 @@ pub async fn checkout_pr(
         session_type: SessionType::Worktree,
         pr_number: Some(pr_number),
         pr_url: None,
+        issue_number: None,
         cached_pr_status: None,
         cached_check_status: None,
         cached_behind_count: None,
@@ -1515,6 +1587,12 @@ pub async fn checkout_pr(
 
     // Do the heavy lifting in a background thread
     thread::spawn(move || {
+        // Clone IDs for panic handler (before they're moved into the inner closure)
+        let panic_wt_id = worktree_id_clone.clone();
+        let panic_proj_id = project_id_clone.clone();
+        let panic_app = app_clone.clone();
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
         log::trace!("Background: Creating worktree for PR #{pr_number}");
 
         // Clean up leftover directory from a previous checkout of this PR
@@ -1758,6 +1836,7 @@ pub async fn checkout_pr(
                 session_type: SessionType::Worktree,
                 pr_number: Some(pr_number),
                 pr_url: None,
+                issue_number: None,
                 cached_pr_status: None,
                 cached_check_status: None,
                 cached_behind_count: None,
@@ -1809,6 +1888,17 @@ pub async fn checkout_pr(
             if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
                 log::error!("Failed to emit worktree:error event: {emit_err}");
             }
+        }
+        })); // end catch_unwind
+
+        if let Err(panic_info) = result {
+            log::error!("Background thread panicked during PR checkout: {panic_info:?}");
+            let error_event = WorktreeCreateErrorEvent {
+                id: panic_wt_id,
+                project_id: panic_proj_id,
+                error: "Internal error: PR checkout failed unexpectedly".to_string(),
+            };
+            let _ = panic_app.emit_all("worktree:error", &error_event);
         }
     });
 
@@ -1969,6 +2059,7 @@ pub async fn create_base_session(app: AppHandle, project_id: String) -> Result<W
         session_type: SessionType::Base,
         pr_number: None,
         pr_url: None,
+        issue_number: None,
         cached_pr_status: None,
         cached_check_status: None,
         cached_behind_count: None,
@@ -2280,6 +2371,7 @@ pub async fn import_worktree(
         session_type: SessionType::Worktree,
         pr_number: None,
         pr_url: None,
+        issue_number: None,
         cached_pr_status: None,
         cached_check_status: None,
         cached_behind_count: None,
@@ -3727,24 +3819,25 @@ const PR_CONTENT_SCHEMA: &str = r#"{"type":"object","properties":{"title":{"type
 
 /// Prompt template for PR content generation
 /// Focuses on context - format requirements are in the JSON schema
-const PR_CONTENT_PROMPT: &str = r#"Generate a pull request title and description for the following changes.
+const PR_CONTENT_PROMPT: &str = r#"<task>Generate a pull request title and description</task>
 
-Branch: {current_branch} → {target_branch}
-Commits: {commit_count}
+<context>
+<source_branch>{current_branch}</source_branch>
+<target_branch>{target_branch}</target_branch>
+<commit_count>{commit_count}</commit_count>
+</context>
 
-## Related Context
-
+<related_context>
 {context}
+</related_context>
 
-## Commit Messages
-
+<commits>
 {commits}
+</commits>
 
-## Diff
-
-```diff
+<diff>
 {diff}
-```"#;
+</diff>"#;
 
 /// Structured response from PR content generation
 #[derive(Debug, Deserialize, Serialize)]
@@ -3862,6 +3955,7 @@ fn count_branch_commits(repo_path: &str, target_branch: &str) -> Result<u32, Str
 }
 
 /// Generate PR content using Claude CLI with JSON schema
+#[allow(clippy::too_many_arguments)]
 fn generate_pr_content(
     app: &AppHandle,
     repo_path: &str,
@@ -3870,6 +3964,7 @@ fn generate_pr_content(
     custom_prompt: Option<&str>,
     model: Option<&str>,
     context: &str,
+    custom_profile_name: Option<&str>,
 ) -> Result<PrContentResponse, String> {
     let cli_path = get_cli_binary_path(app)?;
 
@@ -3902,6 +3997,7 @@ fn generate_pr_content(
     log::trace!("Generating PR content with Claude CLI (JSON schema)");
 
     let mut cmd = silent_command(&cli_path);
+    crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
     cmd.args([
         "--print",
         "--verbose",
@@ -3996,6 +4092,7 @@ pub async fn create_pr_with_ai_content(
     session_id: Option<String>,
     custom_prompt: Option<String>,
     model: Option<String>,
+    custom_profile_name: Option<String>,
 ) -> Result<CreatePrResponse, String> {
     log::trace!("Creating PR for: {worktree_path}");
 
@@ -4086,6 +4183,7 @@ pub async fn create_pr_with_ai_content(
         custom_prompt.as_deref(),
         model.as_deref(),
         &context_content,
+        custom_profile_name.as_deref(),
     )?;
 
     // Append unconditional issue/PR references to the body
@@ -4148,21 +4246,23 @@ pub async fn create_pr_with_ai_content(
 const COMMIT_MESSAGE_SCHEMA: &str = r#"{"type":"object","properties":{"message":{"type":"string","description":"Commit message using Conventional Commits format. First line: type(scope): description (max 72 chars). Types: feat, fix, docs, style, refactor, perf, test, chore. Followed by blank line and optional body explaining what and why."}},"required":["message"]}"#;
 
 /// Prompt template for commit message generation
-const COMMIT_MESSAGE_PROMPT: &str = r#"Generate a commit message for the following changes.
+const COMMIT_MESSAGE_PROMPT: &str = r#"<task>Generate a commit message for the following changes</task>
 
-## Git Status
+<git_status>
 {status}
+</git_status>
 
-## Staged Changes (Diff)
-```diff
+<staged_diff>
 {diff}
-```
+</staged_diff>
 
-## Recent Commits (for style reference)
+<recent_commits>
 {recent_commits}
+</recent_commits>
 
-## Remote Info
-{remote_info}"#;
+<remote_info>
+{remote_info}
+</remote_info>"#;
 
 /// Structured response from commit message generation
 #[derive(Debug, Deserialize)]
@@ -4295,6 +4395,7 @@ fn generate_commit_message(
     app: &AppHandle,
     prompt: &str,
     model: Option<&str>,
+    custom_profile_name: Option<&str>,
 ) -> Result<CommitMessageResponse, String> {
     let cli_path = get_cli_binary_path(app)?;
 
@@ -4306,6 +4407,7 @@ fn generate_commit_message(
 
     let model_str = model.unwrap_or("haiku");
     let mut cmd = silent_command(&cli_path);
+    crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
     cmd.args([
         "--print",
         "--verbose",
@@ -4377,6 +4479,7 @@ pub async fn create_commit_with_ai(
     custom_prompt: Option<String>,
     push: bool,
     model: Option<String>,
+    custom_profile_name: Option<String>,
 ) -> Result<CreateCommitResponse, String> {
     log::trace!("Creating commit for: {worktree_path}");
 
@@ -4413,7 +4516,7 @@ pub async fn create_commit_with_ai(
         .replace("{remote_info}", &remote_info);
 
     // 6. Generate commit message with Claude CLI
-    let response = generate_commit_message(&app, &prompt, model.as_deref())?;
+    let response = generate_commit_message(&app, &prompt, model.as_deref(), custom_profile_name.as_deref())?;
 
     log::trace!(
         "Generated commit message: {}",
@@ -4449,21 +4552,21 @@ pub async fn create_commit_with_ai(
 const REVIEW_SCHEMA: &str = r#"{"type":"object","properties":{"summary":{"type":"string","description":"Brief 1-2 sentence summary of the overall changes"},"findings":{"type":"array","items":{"type":"object","properties":{"severity":{"type":"string","enum":["critical","warning","suggestion","praise"],"description":"Severity level of the finding"},"file":{"type":"string","description":"File path where the finding applies"},"line":{"type":"integer","description":"Line number if applicable, 0 if not specific"},"title":{"type":"string","description":"Short title for the finding (max 80 chars)"},"description":{"type":"string","description":"Detailed explanation of the finding"},"suggestion":{"type":"string","description":"Optional code suggestion or fix"}},"required":["severity","file","title","description"]},"description":"List of review findings"},"approval_status":{"type":"string","enum":["approved","changes_requested","needs_discussion"],"description":"Overall review verdict"}},"required":["summary","findings","approval_status"]}"#;
 
 /// Prompt template for code review
-const REVIEW_PROMPT: &str = r#"Review the following code changes and provide structured feedback.
+const REVIEW_PROMPT: &str = r#"<task>Review the following code changes and provide structured feedback</task>
 
-## Branch Info
-{branch_info}
+<branch_info>{branch_info}</branch_info>
 
-## Commit History
+<commits>
 {commits}
+</commits>
 
-## Changes (Diff)
-```diff
+<diff>
 {diff}
-```
+</diff>
 
 {uncommitted_section}
 
+<instructions>
 Focus on:
 - Security & supply-chain risks:
   - Malicious or obfuscated code (eval, encoded strings, hidden network calls, data exfiltration)
@@ -4474,12 +4577,15 @@ Focus on:
   - Weakened auth/permissions (removed checks, broadened access, disabled validation)
   - Suspicious file system or environment variable access
 - Performance issues
-- Code quality and maintainability
+- Code quality and maintainability (use /check skill if available to run linters/tests)
 - Potential bugs
 - Best practices violations
 
+If there are uncommitted changes, review those as well.
+
 Be constructive and specific. Include praise for good patterns.
-Provide actionable suggestions when possible."#;
+Provide actionable suggestions when possible.
+</instructions>"#;
 
 /// A single finding from the AI code review
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -4505,6 +4611,7 @@ fn generate_review(
     app: &AppHandle,
     prompt: &str,
     model: Option<&str>,
+    custom_profile_name: Option<&str>,
 ) -> Result<ReviewResponse, String> {
     let cli_path = get_cli_binary_path(app)?;
 
@@ -4516,6 +4623,7 @@ fn generate_review(
 
     let model_str = model.unwrap_or("haiku");
     let mut cmd = silent_command(&cli_path);
+    crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
     cmd.args([
         "--print",
         "--verbose",
@@ -4586,6 +4694,7 @@ pub async fn run_review_with_ai(
     worktree_path: String,
     custom_prompt: Option<String>,
     model: Option<String>,
+    custom_profile_name: Option<String>,
 ) -> Result<ReviewResponse, String> {
     log::trace!("Running AI code review for: {worktree_path}");
 
@@ -4607,13 +4716,13 @@ pub async fn run_review_with_ai(
     let target_branch = &project.default_branch;
     let current_branch = git::get_current_branch(&worktree_path)?;
 
-    // Get branch diff
-    let diff = get_branch_diff(&worktree_path, target_branch)?;
+    // Get branch diff (non-fatal — may fail if origin ref doesn't exist)
+    let diff = get_branch_diff(&worktree_path, target_branch).unwrap_or_default();
 
-    // Get commit history
-    let commits = get_branch_commits(&worktree_path, target_branch)?;
+    // Get commit history (non-fatal — same reason)
+    let commits = get_branch_commits(&worktree_path, target_branch).unwrap_or_default();
 
-    // Get uncommitted changes
+    // Get uncommitted changes (staged + unstaged for tracked files)
     let uncommitted_output = silent_command("git")
         .args(["diff", "HEAD"])
         .current_dir(&worktree_path)
@@ -4626,17 +4735,67 @@ pub async fn run_review_with_ai(
         String::new()
     };
 
+    // Get untracked files
+    let untracked_output = silent_command("git")
+        .args(["ls-files", "--others", "--exclude-standard"])
+        .current_dir(&worktree_path)
+        .output()
+        .map_err(|e| format!("Failed to list untracked files: {e}"))?;
+
+    let untracked_files: Vec<String> = if untracked_output.status.success() {
+        String::from_utf8_lossy(&untracked_output.stdout)
+            .lines()
+            .map(|s| s.to_string())
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    // Read content of untracked files (skip binary and large files)
+    let mut untracked_content = String::new();
+    for file in &untracked_files {
+        let file_path = std::path::Path::new(&worktree_path).join(file);
+        if let Ok(metadata) = std::fs::metadata(&file_path) {
+            if metadata.len() > 100_000 {
+                untracked_content
+                    .push_str(&format!("\n--- New file: {file} (skipped: file too large)\n"));
+                continue;
+            }
+        }
+        if let Ok(content) = std::fs::read_to_string(&file_path) {
+            untracked_content.push_str(&format!("\n--- New file: {file}\n"));
+            untracked_content.push_str(&content);
+            untracked_content.push('\n');
+        } else {
+            untracked_content
+                .push_str(&format!("\n--- New file: {file} (binary or unreadable)\n"));
+        }
+    }
+
     // Check if there's anything to review
-    if diff.trim().is_empty() && commits.trim().is_empty() && uncommitted_diff.trim().is_empty() {
+    if diff.trim().is_empty()
+        && commits.trim().is_empty()
+        && uncommitted_diff.trim().is_empty()
+        && untracked_content.trim().is_empty()
+    {
         return Err("No changes to review".to_string());
     }
 
     // Build uncommitted section if there are uncommitted changes
-    let uncommitted_section = if !uncommitted_diff.trim().is_empty() {
-        format!(
-            "## Uncommitted Changes\n\n```diff\n{}\n```",
-            uncommitted_diff.trim()
-        )
+    let has_uncommitted =
+        !uncommitted_diff.trim().is_empty() || !untracked_content.trim().is_empty();
+    let uncommitted_section = if has_uncommitted {
+        let mut section = String::from("## Uncommitted Changes\n\n");
+        if !uncommitted_diff.trim().is_empty() {
+            section.push_str(&format!("```diff\n{}\n```\n", uncommitted_diff.trim()));
+        }
+        if !untracked_content.trim().is_empty() {
+            section.push_str(&format!(
+                "### New Untracked Files\n\n{}\n",
+                untracked_content.trim()
+            ));
+        }
+        section
     } else {
         String::new()
     };
@@ -4656,7 +4815,7 @@ pub async fn run_review_with_ai(
         .replace("{uncommitted_section}", &uncommitted_section);
 
     // Run review with Claude CLI
-    let response = generate_review(&app, &prompt, model.as_deref())?;
+    let response = generate_review(&app, &prompt, model.as_deref(), custom_profile_name.as_deref())?;
 
     log::trace!(
         "Review complete: {} findings, status: {}",
@@ -4783,6 +4942,7 @@ fn generate_release_notes_content(
     release_name: &str,
     custom_prompt: Option<&str>,
     model: Option<&str>,
+    custom_profile_name: Option<&str>,
 ) -> Result<ReleaseNotesResponse, String> {
     let cli_path = get_cli_binary_path(app)?;
 
@@ -4849,6 +5009,7 @@ fn generate_release_notes_content(
     log::trace!("Generating release notes with Claude CLI (JSON schema)");
 
     let mut cmd = silent_command(&cli_path);
+    crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
     cmd.args([
         "--print",
         "--verbose",
@@ -4921,6 +5082,7 @@ pub async fn generate_release_notes(
     release_name: String,
     custom_prompt: Option<String>,
     model: Option<String>,
+    custom_profile_name: Option<String>,
 ) -> Result<ReleaseNotesResponse, String> {
     log::trace!("Generating release notes for {project_path} since {tag}");
 
@@ -4931,6 +5093,7 @@ pub async fn generate_release_notes(
         &release_name,
         custom_prompt.as_deref(),
         model.as_deref(),
+        custom_profile_name.as_deref(),
     )
 }
 
@@ -5018,7 +5181,7 @@ pub async fn merge_worktree_to_base(
             .replace("{recent_commits}", &recent_commits)
             .replace("{remote_info}", &remote_info);
 
-        match generate_commit_message(&app, &prompt, None) {
+        match generate_commit_message(&app, &prompt, None, None) {
             Ok(response) => {
                 // Create the commit with AI-generated message
                 match create_git_commit(&worktree.path, &response.message) {

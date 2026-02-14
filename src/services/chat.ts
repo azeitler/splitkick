@@ -15,6 +15,7 @@ import type {
   QuestionAnswer,
   ThinkingLevel,
   ExecutionMode,
+  LabelData,
 } from '@/types/chat'
 import {
   isTauri,
@@ -27,7 +28,7 @@ import { preferencesQueryKeys } from '@/services/preferences'
 import type { AppPreferences } from '@/types/preferences'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
-import type { Worktree } from '@/types/projects'
+import type { ReviewResponse, Worktree } from '@/types/projects'
 import { isBaseSession } from '@/types/projects'
 
 // Query keys for chat
@@ -152,10 +153,12 @@ export async function prefetchSessions(
     })
     queryClient.setQueryData(chatQueryKeys.sessions(worktreeId), sessions)
 
-    // Restore reviewingSessions, waitingForInputSessionIds, and sessionLabels state
+    // Restore reviewingSessions, waitingForInputSessionIds, sessionLabels, reviewResults, and fixedFindings
     const reviewingUpdates: Record<string, boolean> = {}
     const waitingUpdates: Record<string, boolean> = {}
-    const labelUpdates: Record<string, string> = {}
+    const labelUpdates: Record<string, LabelData> = {}
+    const reviewResultsUpdates: Record<string, ReviewResponse> = {}
+    const fixedFindingsUpdates: Record<string, Set<string>> = {}
     for (const session of sessions.sessions) {
       if (session.is_reviewing) {
         reviewingUpdates[session.id] = true
@@ -165,6 +168,12 @@ export async function prefetchSessions(
       }
       if (session.label) {
         labelUpdates[session.id] = session.label
+      }
+      if (session.review_results) {
+        reviewResultsUpdates[session.id] = session.review_results
+      }
+      if (session.fixed_findings && session.fixed_findings.length > 0) {
+        fixedFindingsUpdates[session.id] = new Set(session.fixed_findings)
       }
     }
 
@@ -206,6 +215,18 @@ export async function prefetchSessions(
       storeUpdates.sessionLabels = {
         ...currentState.sessionLabels,
         ...labelUpdates,
+      }
+    }
+    if (Object.keys(reviewResultsUpdates).length > 0) {
+      storeUpdates.reviewResults = {
+        ...currentState.reviewResults,
+        ...reviewResultsUpdates,
+      }
+    }
+    if (Object.keys(fixedFindingsUpdates).length > 0) {
+      storeUpdates.fixedReviewFindings = {
+        ...currentState.fixedReviewFindings,
+        ...fixedFindingsUpdates,
       }
     }
     if (Object.keys(storeUpdates).length > 0) {
@@ -324,31 +345,9 @@ export function useCreateSession() {
     },
     onSuccess: (newSession, { worktreeId }) => {
       // Optimistically update cache with new session at front
-      const oldData = queryClient.getQueryData<WorktreeSessions>(
-        chatQueryKeys.sessions(worktreeId)
-      )
-      console.log(
-        '[useCreateSession] onSuccess - oldData sessions count:',
-        oldData?.sessions?.length
-      )
-      console.log(
-        '[useCreateSession] onSuccess - newSession.id:',
-        newSession.id
-      )
       queryClient.setQueryData<WorktreeSessions>(
         chatQueryKeys.sessions(worktreeId),
         old => (old ? { ...old, sessions: [newSession, ...old.sessions] } : old)
-      )
-      const newData = queryClient.getQueryData<WorktreeSessions>(
-        chatQueryKeys.sessions(worktreeId)
-      )
-      console.log(
-        '[useCreateSession] onSuccess - newData sessions count:',
-        newData?.sessions?.length
-      )
-      console.log(
-        '[useCreateSession] onSuccess - newData[0].id:',
-        newData?.sessions?.[0]?.id
       )
       // Then invalidate for consistency
       queryClient.invalidateQueries({
@@ -1350,7 +1349,7 @@ export function useSendMessage() {
         queryKey: chatQueryKeys.sessions(worktreeId),
       })
     },
-    onError: (error, { sessionId }, context) => {
+    onError: (error, { sessionId, worktreeId }, context) => {
       // Check for cancellation - Tauri errors may not be Error instances
       // so we check both the stringified error and the message property
       const errorStr = String(error)
@@ -1364,6 +1363,13 @@ export function useSendMessage() {
         return
       }
 
+      // Clean up sending state so session doesn't stay stuck in active status
+      const { removeSendingSession, clearExecutingMode, setError } =
+        useChatStore.getState()
+      removeSendingSession(sessionId)
+      clearExecutingMode(sessionId)
+      setError(sessionId, errorMessage || 'Unknown error occurred')
+
       // Rollback to previous state on actual errors (not cancellation)
       if (context?.previous) {
         queryClient.setQueryData(
@@ -1371,6 +1377,11 @@ export function useSendMessage() {
           context.previous
         )
       }
+
+      // Invalidate sessions to reflect current run status from backend
+      queryClient.invalidateQueries({
+        queryKey: chatQueryKeys.sessions(worktreeId),
+      })
 
       const message = errorMessage || 'Unknown error occurred'
       logger.error('Failed to send message', { error })

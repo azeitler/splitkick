@@ -1,6 +1,7 @@
 import { forwardRef } from 'react'
-import { Archive, FileText, Shield, Sparkles, Tag, Trash2 } from 'lucide-react'
+import { Archive, Eye, EyeOff, FileText, Shield, Sparkles, Tag, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { getLabelTextColor } from '@/lib/label-colors'
 import { Button } from '@/components/ui/button'
 import { Kbd } from '@/components/ui/kbd'
 import { StatusIndicator } from '@/components/ui/status-indicator'
@@ -33,6 +34,7 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
       onApprove,
       onYolo,
       onToggleLabel,
+      onToggleReview,
     },
     ref
   ) {
@@ -75,8 +77,14 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
 
             {/* Label */}
             {card.label && (
-              <span className="text-[10px] uppercase tracking-wide text-black dark:text-yellow-400 shrink-0">
-                {card.label}
+              <span
+                className="px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide shrink-0"
+                style={{
+                  backgroundColor: card.label.color,
+                  color: getLabelTextColor(card.label.color),
+                }}
+              >
+                {card.label.name}
               </span>
             )}
 
@@ -165,7 +173,22 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
           {onToggleLabel && (
             <ContextMenuItem onSelect={onToggleLabel}>
               <Tag className="mr-2 h-4 w-4" />
-              {card.label ? 'Remove Label' : 'Needs Testing'}
+              {card.label ? 'Remove Label' : 'Add Label'}
+            </ContextMenuItem>
+          )}
+          {onToggleReview && (
+            <ContextMenuItem onSelect={onToggleReview}>
+              {card.status === 'review' ? (
+                <>
+                  <EyeOff className="mr-2 h-4 w-4" />
+                  Mark as Idle
+                </>
+              ) : (
+                <>
+                  <Eye className="mr-2 h-4 w-4" />
+                  Mark for Review
+                </>
+              )}
             </ContextMenuItem>
           )}
           <ContextMenuItem onSelect={onArchive}>

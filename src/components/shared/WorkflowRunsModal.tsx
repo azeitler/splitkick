@@ -229,12 +229,6 @@ export function WorkflowRunsModal() {
     async (run: WorkflowRun) => {
       const projectPath = workflowRunsModalProjectPath
 
-      console.warn('[WF-MODAL] Investigate clicked:', {
-        workflowName: run.workflowName,
-        branch: run.headBranch,
-        projectPath,
-      })
-
       // Close modal immediately
       setWorkflowRunsModalOpen(false)
 
@@ -255,7 +249,7 @@ export function WorkflowRunsModal() {
         .replace(/\{displayTitle\}/g, run.displayTitle)
 
       const investigateModel =
-        preferences?.magic_prompt_models?.investigate_model ?? DEFAULT_MODEL
+        preferences?.magic_prompt_models?.investigate_workflow_run_model ?? DEFAULT_MODEL
 
       // --- Find/create the target worktree ---
       let targetWorktreeId: string | null = null
@@ -268,10 +262,6 @@ export function WorkflowRunsModal() {
           staleTime: 1000 * 60,
         })
         const project = projects?.find(p => p.path === projectPath)
-        console.warn('[WF-MODAL] Project lookup:', {
-          found: !!project,
-          projectId: project?.id,
-        })
 
         if (project) {
           let worktrees: Worktree[] = []
@@ -284,11 +274,6 @@ export function WorkflowRunsModal() {
                 }),
               staleTime: 1000 * 60,
             })
-            console.warn('[WF-MODAL] Worktrees:', worktrees.map(w => ({
-              id: w.id,
-              branch: w.branch,
-              status: w.status,
-            })))
           } catch (err) {
             console.error('[WF-MODAL] Failed to fetch worktrees:', err)
           }
@@ -314,13 +299,11 @@ export function WorkflowRunsModal() {
 
           // No usable worktrees — create the base session
           if (!targetWorktreeId) {
-            console.warn('[WF-MODAL] Creating base session for project:', project.id)
             try {
               const baseSession = await invoke<Worktree>(
                 'create_base_session',
                 { projectId: project.id }
               )
-              console.warn('[WF-MODAL] Base session created:', baseSession.id)
               queryClient.invalidateQueries({
                 queryKey: projectsQueryKeys.worktrees(project.id),
               })
@@ -352,8 +335,6 @@ export function WorkflowRunsModal() {
       const worktreeId = targetWorktreeId
       const worktreePath = targetWorktreePath
 
-      console.warn('[WF-MODAL] Target worktree:', { worktreeId, worktreePath })
-
       // Switch to the target worktree
       const { setActiveWorktree, setActiveSession } = useChatStore.getState()
       const { selectWorktree } = useProjectsStore.getState()
@@ -361,7 +342,6 @@ export function WorkflowRunsModal() {
       selectWorktree(worktreeId)
 
       const sendInvestigateToSession = (sessionId: string) => {
-        console.warn('[WF-MODAL] Sending investigate to session:', sessionId)
         setActiveSession(worktreeId, sessionId)
 
         const {
@@ -422,15 +402,12 @@ export function WorkflowRunsModal() {
       )
 
       if (emptySession) {
-        console.warn('[WF-MODAL] Reusing empty session:', emptySession.id)
         sendInvestigateToSession(emptySession.id)
       } else {
-        console.warn('[WF-MODAL] Creating new session in worktree:', worktreeId)
         createSession.mutate(
           { worktreeId, worktreePath },
           {
             onSuccess: session => {
-              console.warn('[WF-MODAL] New session created:', session.id)
               sendInvestigateToSession(session.id)
             },
             onError: error => {
