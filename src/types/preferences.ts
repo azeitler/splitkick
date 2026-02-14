@@ -342,7 +342,9 @@ export const DEFAULT_PARALLEL_EXECUTION_PROMPT = `In plan mode, structure plans 
 
 When launching multiple Task sub-agents, prefer sending them in a single message rather than sequentially. Group independent work items (e.g., editing separate files, researching unrelated questions) into parallel Task calls. Only sequence Tasks when one depends on another's output.
 
-Instruct each sub-agent to briefly outline its approach before implementing, so it can course-correct early without formal plan mode overhead.`
+Instruct each sub-agent to briefly outline its approach before implementing, so it can course-correct early without formal plan mode overhead.
+
+When specifying subagent_type for Task tool calls, always use the fully qualified name exactly as listed in the system prompt (e.g., "code-simplifier:code-simplifier", not just "code-simplifier"). If the agent type contains a colon, include the full namespace:name string.`
 
 /** Default values for all magic prompts (null = use current app default) */
 export const DEFAULT_MAGIC_PROMPTS: MagicPrompts = {
@@ -363,7 +365,9 @@ export const DEFAULT_MAGIC_PROMPTS: MagicPrompts = {
  * Per-prompt model overrides. Field names use snake_case to match Rust struct exactly.
  */
 export interface MagicPromptModels {
-  investigate_model: ClaudeModel
+  investigate_issue_model: ClaudeModel
+  investigate_pr_model: ClaudeModel
+  investigate_workflow_run_model: ClaudeModel
   pr_content_model: ClaudeModel
   commit_message_model: ClaudeModel
   code_review_model: ClaudeModel
@@ -375,7 +379,9 @@ export interface MagicPromptModels {
 
 /** Default models for each magic prompt */
 export const DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
-  investigate_model: 'opus',
+  investigate_issue_model: 'opus',
+  investigate_pr_model: 'opus',
+  investigate_workflow_run_model: 'opus',
   pr_content_model: 'haiku',
   commit_message_model: 'haiku',
   code_review_model: 'haiku',
@@ -383,6 +389,59 @@ export const DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
   resolve_conflicts_model: 'opus',
   release_notes_model: 'haiku',
   session_naming_model: 'haiku',
+}
+
+/**
+ * Per-prompt provider overrides. null = use global default_provider.
+ * Field names use snake_case to match Rust struct exactly.
+ */
+export interface MagicPromptProviders {
+  investigate_issue_provider: string | null
+  investigate_pr_provider: string | null
+  investigate_workflow_run_provider: string | null
+  pr_content_provider: string | null
+  commit_message_provider: string | null
+  code_review_provider: string | null
+  context_summary_provider: string | null
+  resolve_conflicts_provider: string | null
+  release_notes_provider: string | null
+  session_naming_provider: string | null
+}
+
+/** Default providers for each magic prompt (null = use global default_provider) */
+export const DEFAULT_MAGIC_PROMPT_PROVIDERS: MagicPromptProviders = {
+  investigate_issue_provider: null,
+  investigate_pr_provider: null,
+  investigate_workflow_run_provider: null,
+  pr_content_provider: null,
+  commit_message_provider: null,
+  code_review_provider: null,
+  context_summary_provider: null,
+  resolve_conflicts_provider: null,
+  release_notes_provider: null,
+  session_naming_provider: null,
+}
+
+/**
+ * Resolve a magic prompt provider for a given key.
+ * The settings UI stores null = "Anthropic" (explicit choice).
+ * When the key is missing from saved prefs (undefined), we fall back to
+ * DEFAULT_MAGIC_PROMPT_PROVIDERS (which defaults to null = Anthropic),
+ * NOT to the global default_provider.
+ *
+ * Only uses global default_provider when DEFAULT_MAGIC_PROMPT_PROVIDERS
+ * also doesn't have a value (which shouldn't happen for known keys).
+ */
+export function resolveMagicPromptProvider(
+  providers: MagicPromptProviders | undefined,
+  key: keyof MagicPromptProviders,
+  globalDefaultProvider: string | null | undefined
+): string | null {
+  const merged = { ...DEFAULT_MAGIC_PROMPT_PROVIDERS, ...providers }
+  const value = merged[key]
+  // null = explicitly Anthropic, string = custom provider
+  // Only fall back to global default if the merged value is somehow undefined
+  return value !== undefined ? value : (globalDefaultProvider ?? null)
 }
 
 // Types that match the Rust AppPreferences struct
@@ -419,6 +478,7 @@ export interface AppPreferences {
   parallel_execution_prompt_enabled: boolean // Add system prompt to encourage parallel sub-agent execution
   magic_prompts: MagicPrompts // Customizable prompts for AI-powered features
   magic_prompt_models: MagicPromptModels // Per-prompt model overrides
+  magic_prompt_providers: MagicPromptProviders // Per-prompt provider overrides (null = use default_provider)
   file_edit_mode: FileEditMode // How to edit files: inline (CodeMirror) or external (VS Code, etc.)
   ai_language: string // Preferred language for AI responses (empty = default)
   allow_web_tools_in_plan_mode: boolean // Allow WebFetch/WebSearch in plan mode without prompts
@@ -827,6 +887,7 @@ export const defaultPreferences: AppPreferences = {
   parallel_execution_prompt_enabled: false, // Default: disabled (experimental)
   magic_prompts: DEFAULT_MAGIC_PROMPTS,
   magic_prompt_models: DEFAULT_MAGIC_PROMPT_MODELS,
+  magic_prompt_providers: DEFAULT_MAGIC_PROMPT_PROVIDERS,
   file_edit_mode: 'external',
   ai_language: '', // Default: empty (Claude's default behavior)
   allow_web_tools_in_plan_mode: true, // Default: enabled

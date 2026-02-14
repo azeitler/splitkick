@@ -80,6 +80,8 @@ export interface Worktree {
   pr_number?: number
   /** GitHub PR URL (if a PR has been created) */
   pr_url?: string
+  /** GitHub issue number (if created from an issue) */
+  issue_number?: number
   /** Cached PR display status (draft, open, review, merged, closed) */
   cached_pr_status?: string
   /** Cached CI check status (success, failure, pending, error) */

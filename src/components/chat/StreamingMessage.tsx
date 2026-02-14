@@ -89,11 +89,6 @@ export const StreamingMessage = memo(function StreamingMessage({
   onStreamingPlanApproval,
   onStreamingPlanApprovalYolo,
 }: StreamingMessageProps) {
-  // DEBUG: Log callback chain
-  console.log(
-    '[StreamingMessage] render, onStreamingPlanApproval:',
-    typeof onStreamingPlanApproval
-  )
   return (
     <div className="text-muted-foreground">
       {/* Render streaming content blocks inline if available */}

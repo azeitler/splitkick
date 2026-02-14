@@ -10,6 +10,7 @@ import {
   type ExecutionMode,
   type ToolCall,
   type PermissionDenial,
+  type LabelData,
 } from '@/types/chat'
 import { findPlanFilePath } from './tool-call-utils'
 
@@ -38,7 +39,7 @@ export interface SessionCardData {
   pendingPlanMessageId: string | null
   hasRecap: boolean
   recapDigest: SessionDigest | null
-  label: string | null
+  label: LabelData | null
 }
 
 export const statusConfig: Record<
@@ -94,7 +95,7 @@ export interface ChatStoreState {
   reviewingSessions: Record<string, boolean>
   pendingPermissionDenials: Record<string, PermissionDenial[]>
   sessionDigests: Record<string, SessionDigest>
-  sessionLabels: Record<string, string>
+  sessionLabels: Record<string, LabelData>
 }
 
 export function computeSessionCardData(
@@ -117,14 +118,6 @@ export function computeSessionCardData(
   const sessionSending = sendingSessionIds[session.id] ?? false
   const toolCalls = activeToolCalls[session.id] ?? []
   const answeredSet = answeredQuestions[session.id]
-
-  // Debug logging for session recovery
-  console.log('[session-card] computeSessionCardData:', {
-    sessionId: session.id,
-    sessionSending,
-    last_run_status: session.last_run_status,
-    last_run_execution_mode: session.last_run_execution_mode,
-  })
 
   // Check streaming tool calls for waiting state
   const hasStreamingQuestion = toolCalls.some(
@@ -315,7 +308,7 @@ export function computeSessionCardData(
 // --- Status grouping ---
 
 export interface StatusGroup {
-  key: 'inProgress' | 'waiting' | 'review' | 'completed' | 'idle'
+  key: 'inProgress' | 'waiting' | 'review' | 'idle'
   title: string
   cards: SessionCardData[]
 }
@@ -326,23 +319,33 @@ const STATUS_GROUP_ORDER: {
   statuses: SessionStatus[]
 }[] = [
   { key: 'idle', title: 'Idle', statuses: ['idle'] },
+  { key: 'review', title: 'Review', statuses: ['review', 'completed'] },
   { key: 'waiting', title: 'Waiting', statuses: ['waiting', 'permission'] },
-  { key: 'review', title: 'Review', statuses: ['review'] },
   {
     key: 'inProgress',
     title: 'In Progress',
     statuses: ['planning', 'vibing', 'yoloing'],
   },
-  { key: 'completed', title: 'Completed', statuses: ['completed'] },
 ]
 
-/** Group cards by status. Returns only non-empty groups. Preserves card order within groups. */
+/** Group cards by status. Returns only non-empty groups.
+ * - inProgress group: reversed so newest appears first
+ * - review group: sorted by created_at (oldest first) */
 export function groupCardsByStatus(cards: SessionCardData[]): StatusGroup[] {
-  return STATUS_GROUP_ORDER.map(({ key, title, statuses }) => ({
-    key,
-    title,
-    cards: cards.filter(c => statuses.includes(c.status)),
-  })).filter(g => g.cards.length > 0)
+  return STATUS_GROUP_ORDER.map(({ key, title, statuses }) => {
+    let filteredCards = cards.filter(c => statuses.includes(c.status))
+    // Reverse inProgress group so newest (most recently started) is first
+    if (key === 'inProgress') {
+      filteredCards = [...filteredCards].reverse()
+    }
+    // Sort review group by created_at (oldest first)
+    if (key === 'review') {
+      filteredCards = [...filteredCards].sort(
+        (a, b) => a.session.created_at - b.session.created_at
+      )
+    }
+    return { key, title, cards: filteredCards }
+  }).filter(g => g.cards.length > 0)
 }
 
 /** Flatten grouped cards back into a single array (for keyboard nav indices). */

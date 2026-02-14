@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react'
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -24,8 +24,10 @@ import {
   DEFAULT_PARALLEL_EXECUTION_PROMPT,
   DEFAULT_MAGIC_PROMPTS,
   DEFAULT_MAGIC_PROMPT_MODELS,
+  DEFAULT_MAGIC_PROMPT_PROVIDERS,
   type MagicPrompts,
   type MagicPromptModels,
+  type MagicPromptProviders,
   type ClaudeModel,
 } from '@/types/preferences'
 import { cn } from '@/lib/utils'
@@ -38,6 +40,7 @@ interface VariableInfo {
 interface PromptConfig {
   key: keyof MagicPrompts
   modelKey?: keyof MagicPromptModels
+  providerKey?: keyof MagicPromptProviders
   label: string
   description: string
   variables: VariableInfo[]
@@ -56,7 +59,8 @@ const PROMPT_SECTIONS: PromptSection[] = [
     configs: [
       {
         key: 'investigate_issue',
-        modelKey: 'investigate_model',
+        modelKey: 'investigate_issue_model',
+        providerKey: 'investigate_issue_provider',
         label: 'Investigate Issue',
         description:
           'Prompt for analyzing GitHub issues loaded into the context.',
@@ -75,7 +79,8 @@ const PROMPT_SECTIONS: PromptSection[] = [
       },
       {
         key: 'investigate_pr',
-        modelKey: 'investigate_model',
+        modelKey: 'investigate_pr_model',
+        providerKey: 'investigate_pr_provider',
         label: 'Investigate PR',
         description:
           'Prompt for analyzing GitHub pull requests loaded into the context.',
@@ -94,7 +99,8 @@ const PROMPT_SECTIONS: PromptSection[] = [
       },
       {
         key: 'investigate_workflow_run',
-        modelKey: 'investigate_model',
+        modelKey: 'investigate_workflow_run_model',
+        providerKey: 'investigate_workflow_run_provider',
         label: 'Investigate Workflow Run',
         description:
           'Prompt for investigating failed GitHub Actions workflow runs.',
@@ -125,6 +131,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
       {
         key: 'code_review',
         modelKey: 'code_review_model',
+        providerKey: 'code_review_provider',
         label: 'Code Review',
         description: 'Prompt for AI-powered code review of your changes.',
         variables: [
@@ -145,6 +152,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
       {
         key: 'commit_message',
         modelKey: 'commit_message_model',
+        providerKey: 'commit_message_provider',
         label: 'Commit Message',
         description:
           'Prompt for generating commit messages from staged changes.',
@@ -163,6 +171,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
       {
         key: 'pr_content',
         modelKey: 'pr_content_model',
+        providerKey: 'pr_content_provider',
         label: 'PR Description',
         description:
           'Prompt for generating pull request titles and descriptions.',
@@ -188,6 +197,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
       {
         key: 'resolve_conflicts',
         modelKey: 'resolve_conflicts_model',
+        providerKey: 'resolve_conflicts_provider',
         label: 'Resolve Conflicts',
         description: 'Instructions appended to conflict resolution prompts.',
         variables: [],
@@ -197,6 +207,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
       {
         key: 'release_notes',
         modelKey: 'release_notes_model',
+        providerKey: 'release_notes_provider',
         label: 'Release Notes',
         description:
           'Prompt for generating release notes from changes since a prior release.',
@@ -225,6 +236,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
       {
         key: 'context_summary',
         modelKey: 'context_summary_model',
+        providerKey: 'context_summary_provider',
         label: 'Context Summary',
         description:
           'Prompt for summarizing conversations when saving context.',
@@ -245,6 +257,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
       {
         key: 'session_naming',
         modelKey: 'session_naming_model',
+        providerKey: 'session_naming_provider',
         label: 'Session Naming',
         description:
           'Prompt for generating session titles from the first message. Used for both auto-naming and manual regeneration.',
@@ -294,6 +307,9 @@ export const MagicPromptsPane: React.FC = () => {
   const currentPrompts = preferences?.magic_prompts ?? DEFAULT_MAGIC_PROMPTS
   const currentModels =
     preferences?.magic_prompt_models ?? DEFAULT_MAGIC_PROMPT_MODELS
+  const currentProviders =
+    preferences?.magic_prompt_providers ?? DEFAULT_MAGIC_PROMPT_PROVIDERS
+  const profiles = preferences?.custom_cli_profiles ?? []
   // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
   const selectedConfig = PROMPT_CONFIGS.find(c => c.key === selectedKey)!
   const currentValue =
@@ -301,6 +317,28 @@ export const MagicPromptsPane: React.FC = () => {
   const currentModel = selectedConfig.modelKey
     ? (currentModels[selectedConfig.modelKey] ?? selectedConfig.defaultModel)
     : undefined
+  const currentProvider = selectedConfig.providerKey
+    ? (currentProviders[selectedConfig.providerKey] ?? null)
+    : undefined
+  const filteredModelOptions = useMemo(() => {
+    if (!currentProvider) return MODEL_OPTIONS
+    const profile = profiles.find(p => p.name === currentProvider)
+    if (!profile?.settings_json) return MODEL_OPTIONS
+    try {
+      const settings = JSON.parse(profile.settings_json)
+      const env = settings?.env
+      if (!env) return MODEL_OPTIONS
+      const suffix = (m?: string) => (m ? ` (${m})` : '')
+      return [
+        { value: 'opus' as const, label: `Opus${suffix(env.ANTHROPIC_DEFAULT_OPUS_MODEL || env.ANTHROPIC_MODEL)}` },
+        { value: 'sonnet' as const, label: `Sonnet${suffix(env.ANTHROPIC_DEFAULT_SONNET_MODEL || env.ANTHROPIC_MODEL)}` },
+        { value: 'haiku' as const, label: `Haiku${suffix(env.ANTHROPIC_DEFAULT_HAIKU_MODEL || env.ANTHROPIC_MODEL)}` },
+      ]
+    } catch {
+      return MODEL_OPTIONS
+    }
+  }, [currentProvider, profiles])
+
   const isModified = currentPrompts[selectedKey] !== null
 
   // Sync local value when selection changes or external value updates
@@ -396,6 +434,20 @@ export const MagicPromptsPane: React.FC = () => {
     [preferences, savePreferences, currentModels, selectedConfig.modelKey]
   )
 
+  const handleProviderChange = useCallback(
+    (provider: string) => {
+      if (!preferences || !selectedConfig.providerKey) return
+      savePreferences.mutate({
+        ...preferences,
+        magic_prompt_providers: {
+          ...currentProviders,
+          [selectedConfig.providerKey]: provider === 'anthropic' ? null : provider,
+        },
+      })
+    },
+    [preferences, savePreferences, currentProviders, selectedConfig.providerKey]
+  )
+
   return (
     <div className="flex flex-col min-h-0 flex-1">
       {/* Prompt selector grid grouped by section */}
@@ -410,6 +462,9 @@ export const MagicPromptsPane: React.FC = () => {
                 const promptIsModified = currentPrompts[config.key] !== null
                 const promptModel = config.modelKey
                   ? (currentModels[config.modelKey] ?? config.defaultModel)
+                  : undefined
+                const promptProvider = config.providerKey
+                  ? (currentProviders[config.providerKey] ?? null)
                   : undefined
                 return (
                   <button
@@ -430,16 +485,28 @@ export const MagicPromptsPane: React.FC = () => {
                           <span className="text-muted-foreground ml-1">*</span>
                         )}
                       </span>
-                      {promptModel && (
-                        <span
-                          className={cn(
-                            'text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0',
-                            'bg-muted text-muted-foreground'
-                          )}
-                        >
-                          {promptModel}
-                        </span>
-                      )}
+                      <div className="flex items-center gap-1 shrink-0">
+                        {promptProvider && (
+                          <span
+                            className={cn(
+                              'text-[10px] px-1.5 py-0.5 rounded font-medium',
+                              'bg-primary/10 text-primary'
+                            )}
+                          >
+                            {promptProvider}
+                          </span>
+                        )}
+                        {promptModel && (
+                          <span
+                            className={cn(
+                              'text-[10px] px-1.5 py-0.5 rounded font-medium',
+                              'bg-muted text-muted-foreground'
+                            )}
+                          >
+                            {promptModel}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </button>
                 )
@@ -458,18 +525,39 @@ export const MagicPromptsPane: React.FC = () => {
             {selectedConfig.description}
           </p>
           <div className="flex items-center gap-2 mt-2">
+            {currentProvider !== undefined && profiles.length > 0 && (
+              <>
+                <span className="text-xs text-muted-foreground">Provider</span>
+                <Select
+                  value={currentProvider ?? 'anthropic'}
+                  onValueChange={handleProviderChange}
+                >
+                  <SelectTrigger className="w-[130px] h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="anthropic">Anthropic</SelectItem>
+                    {profiles.map(p => (
+                      <SelectItem key={p.name} value={p.name}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
+            )}
             {currentModel && (
               <>
-                <span className="text-xs text-muted-foreground">Used model</span>
+                <span className="text-xs text-muted-foreground">Model</span>
                 <Select
                   value={currentModel}
                   onValueChange={(v: string) => handleModelChange(v as ClaudeModel)}
                 >
-                  <SelectTrigger className="w-[110px] h-8 text-xs">
+                  <SelectTrigger className="w-[220px] h-8 text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {MODEL_OPTIONS.map(opt => (
+                    {filteredModelOptions.map(opt => (
                       <SelectItem key={opt.value} value={opt.value}>
                         {opt.label}
                       </SelectItem>

@@ -32,6 +32,7 @@ import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useProjects } from '@/services/projects'
 import { usePreferences } from '@/services/preferences'
+import { resolveMagicPromptProvider } from '@/types/preferences'
 import type { GitHubRelease, ReleaseNotesResponse } from '@/types/projects'
 
 type Phase = 'select' | 'generate' | 'result'
@@ -136,6 +137,7 @@ export function ReleaseNotesDialog() {
             releaseName: release.name || release.tagName,
             customPrompt: preferences?.magic_prompts?.release_notes,
             model: preferences?.magic_prompt_models?.release_notes_model,
+            customProfileName: resolveMagicPromptProvider(preferences?.magic_prompt_providers, 'release_notes_provider', preferences?.default_provider),
           }
         )
         setGeneratedTitle(result.title)

@@ -102,7 +102,7 @@ const InlineField: React.FC<{
     <div className="space-y-0.5 sm:w-96 sm:shrink-0">
       <Label className="text-sm text-foreground">{label}</Label>
       {description && (
-        <div className="text-xs text-muted-foreground truncate">
+        <div className="text-xs text-muted-foreground break-all">
           {description}
         </div>
       )}

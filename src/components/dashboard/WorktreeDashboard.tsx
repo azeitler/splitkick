@@ -335,7 +335,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
       cards.sort((a, b) => {
         if (a.label && !b.label) return -1
         if (!a.label && b.label) return 1
-        if (a.label && b.label) return a.label.localeCompare(b.label)
+        if (a.label && b.label) return a.label.name.localeCompare(b.label.name)
         return 0
       })
 
@@ -541,6 +541,15 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     }
   }, [flatCards, selectedIndex, selectedSession])
 
+  // Sync selection to store for cancel shortcut - updates when user navigates with arrow keys
+  useEffect(() => {
+    if (selectedSession?.sessionId && selectedSession?.worktreeId) {
+      useChatStore
+        .getState()
+        .setCanvasSelectedSession(selectedSession.worktreeId, selectedSession.sessionId)
+    }
+  }, [selectedSession?.sessionId, selectedSession?.worktreeId])
+
   // Projects store actions
   const selectProject = useProjectsStore(state => state.selectProject)
   const selectWorktree = useProjectsStore(state => state.selectWorktree)
@@ -679,20 +688,8 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
   // Handle approve from dialog (with updated plan content)
   const handleDialogApprove = useCallback(
     (updatedPlan: string) => {
-      console.log(
-        '[WorktreeDashboard] handleDialogApprove called, updatedPlan length:',
-        updatedPlan?.length
-      )
-      console.log(
-        '[WorktreeDashboard] planDialogCard:',
-        planDialogCard?.session?.id
-      )
       if (planDialogCard) {
         handlePlanApproval(planDialogCard, updatedPlan)
-      } else {
-        console.log(
-          '[WorktreeDashboard] handleDialogApprove - planDialogCard is null!'
-        )
       }
     },
     [planDialogCard, handlePlanApproval]
@@ -700,20 +697,8 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
 
   const handleDialogApproveYolo = useCallback(
     (updatedPlan: string) => {
-      console.log(
-        '[WorktreeDashboard] handleDialogApproveYolo called, updatedPlan length:',
-        updatedPlan?.length
-      )
-      console.log(
-        '[WorktreeDashboard] planDialogCard:',
-        planDialogCard?.session?.id
-      )
       if (planDialogCard) {
         handlePlanApprovalYolo(planDialogCard, updatedPlan)
-      } else {
-        console.log(
-          '[WorktreeDashboard] handleDialogApproveYolo - planDialogCard is null!'
-        )
       }
     },
     [planDialogCard, handlePlanApprovalYolo]
@@ -1011,9 +996,6 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
   // Listen for create-new-session event to handle CMD+T
   useEffect(() => {
     const handleCreateNewSession = (e: Event) => {
-      console.log('[WorktreeDashboard] handleCreateNewSession called')
-      console.log('[WorktreeDashboard] selectedSession:', selectedSession)
-      console.log('[WorktreeDashboard] selectedIndex:', selectedIndex)
       // Don't create if modal is already open
       if (selectedSession) return
 
@@ -1028,10 +1010,6 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
         { worktreeId: item.worktreeId, worktreePath: item.worktreePath },
         {
           onSuccess: session => {
-            console.log(
-              '[WorktreeDashboard] onSuccess - session.id:',
-              session.id
-            )
             setSelectedSession({
               sessionId: session.id,
               worktreeId: item.worktreeId,
@@ -1204,7 +1182,13 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
 
                     {/* Session cards grid */}
                     {section.isPending ? (
-                      <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3">
+                      <div
+                        className={
+                          canvasLayout === 'list'
+                            ? 'flex flex-col'
+                            : 'flex flex-col sm:flex-row sm:flex-wrap gap-3'
+                        }
+                      >
                         {(() => {
                           const currentIndex = cardIndex++
                           return (
@@ -1214,6 +1198,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
                                 cardRefs.current[currentIndex] = el
                               }}
                               worktree={section.worktree}
+                              layout={canvasLayout}
                               isSelected={selectedIndex === currentIndex}
                               onSelect={() => setSelectedIndex(currentIndex)}
                             />
@@ -1273,6 +1258,11 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
                                     onToggleLabel={() =>
                                       handleOpenLabelModal(card)
                                     }
+                                    onToggleReview={() => {
+                                      const { reviewingSessions, setSessionReviewing } = useChatStore.getState()
+                                      const isReviewing = reviewingSessions[card.session.id] || !!card.session.review_results
+                                      setSessionReviewing(card.session.id, !isReviewing)
+                                    }}
                                   />
                                 )
                               })}

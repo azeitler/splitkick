@@ -29,6 +29,8 @@ pub struct NamingRequest {
     pub generate_branch_name: bool,
     /// Optional custom prompt for session naming (from magic prompts settings)
     pub custom_session_prompt: Option<String>,
+    /// Optional custom CLI profile name for alternative providers (e.g., OpenRouter)
+    pub custom_profile_name: Option<String>,
 }
 
 /// Successful session rename result (for event emission)
@@ -352,6 +354,7 @@ fn generate_names(app: &AppHandle, request: &NamingRequest) -> Result<NamingOutp
     );
 
     let mut cmd = silent_command(&cli_path);
+    crate::chat::claude::apply_custom_profile_settings(&mut cmd, request.custom_profile_name.as_deref());
     cmd.args([
         "--print",
         "--input-format",

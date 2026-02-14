@@ -80,13 +80,6 @@ export default function useStreamingEvents({
     })
 
     const unlistenChunk = listen<ChunkEvent>('chat:chunk', event => {
-      // Log chunks that might contain ExitPlanMode
-      if (event.payload.content.includes('ExitPlanMode')) {
-        console.log(
-          '[ChatWindow] Chunk contains ExitPlanMode:',
-          event.payload.content
-        )
-      }
       appendStreamingContent(event.payload.session_id, event.payload.content)
       // Also add to content blocks for inline rendering
       addTextBlock(event.payload.session_id, event.payload.content)
@@ -94,12 +87,6 @@ export default function useStreamingEvents({
 
     const unlistenToolUse = listen<ToolUseEvent>('chat:tool_use', event => {
       const { session_id, id, name, input, parent_tool_use_id } = event.payload
-      console.log('[ChatWindow] Tool use received:', {
-        name,
-        id,
-        input,
-        parent_tool_use_id,
-      })
       addToolCall(session_id, { id, name, input, parent_tool_use_id })
     })
 
@@ -107,7 +94,6 @@ export default function useStreamingEvents({
       'chat:tool_block',
       event => {
         const { session_id, tool_call_id } = event.payload
-        console.log('[ChatWindow] Tool block received:', { tool_call_id })
         addToolBlock(session_id, tool_call_id)
       }
     )
@@ -115,9 +101,6 @@ export default function useStreamingEvents({
     // Handle thinking content blocks (extended thinking)
     const unlistenThinking = listen<ThinkingEvent>('chat:thinking', event => {
       const { session_id, content } = event.payload
-      console.log('[ChatWindow] Thinking block received:', {
-        length: content.length,
-      })
       addThinkingBlock(session_id, content)
     })
 
@@ -138,10 +121,6 @@ export default function useStreamingEvents({
             d => d.tool_use_id !== tool_use_id
           )
           setPendingDenials(session_id, remainingDenials)
-          console.log(
-            '[ChatWindow] Cleared executed tool from pending denials:',
-            tool_use_id
-          )
         }
 
         // Look up the tool call to get its name
@@ -150,17 +129,9 @@ export default function useStreamingEvents({
 
         // Skip storing output for Read tool (files can be large, users can click to open)
         if (toolCall?.name === 'Read') {
-          console.log('[ChatWindow] Tool result skipped (Read tool):', {
-            tool_use_id,
-            outputLength: output.length,
-          })
           return
         }
 
-        console.log('[ChatWindow] Tool result received:', {
-          tool_use_id,
-          outputLength: output.length,
-        })
         updateToolCallOutput(session_id, tool_use_id, output)
       }
     )
@@ -170,14 +141,6 @@ export default function useStreamingEvents({
       'chat:permission_denied',
       event => {
         const { session_id, denials } = event.payload
-        console.log('[ChatWindow] Permission denied:', {
-          session_id,
-          denials: denials.map(d => ({
-            tool_name: d.tool_name,
-            tool_use_id: d.tool_use_id,
-          })),
-        })
-
         const {
           setPendingDenials,
           lastSentMessages,
@@ -253,19 +216,11 @@ export default function useStreamingEvents({
       if (!isCurrentlyViewing && sessionRecapEnabled && !wasAlreadyReviewing) {
         // Mark for digest and generate it in the background immediately
         markSessionNeedsDigest(sessionId)
-        console.log(
-          '[useStreamingEvents] Session completed while not viewing, generating digest:',
-          sessionId
-        )
 
         // Generate digest in background (fire and forget)
         invoke<SessionDigest>('generate_session_digest', { sessionId })
           .then(digest => {
             useChatStore.getState().setSessionDigest(sessionId, digest)
-            console.log(
-              '[useStreamingEvents] Digest generated for session:',
-              sessionId
-            )
             // Persist digest to disk so it survives app reload
             invoke('update_session_digest', { sessionId, digest }).catch(
               err => {
@@ -329,9 +284,6 @@ export default function useStreamingEvents({
           clearToolCalls(sessionId)
           clearExecutingMode(sessionId)
           removeSendingSession(sessionId)
-          console.log(
-            '[useStreamingEvents] ExitPlanMode with queued messages - skipping wait state, queue will process'
-          )
         } else {
           // Original behavior: show blocking tool UI and wait for user input
           // Keep tool calls and content blocks so UI shows question
@@ -491,15 +443,9 @@ export default function useStreamingEvents({
         const prUrl = prMatch?.[2]
         if (prNumberStr && prUrl) {
           const prNumber = parseInt(prNumberStr, 10)
-          console.log('[ChatWindow] PR created detected:', {
-            prNumber,
-            prUrl,
-            worktreeId,
-          })
           // Save PR info to worktree (async, fire and forget)
           saveWorktreePr(worktreeId, prNumber, prUrl)
             .then(() => {
-              console.log('[ChatWindow] PR info saved successfully')
               // Invalidate worktree query to refresh PR link in UI
               queryClient.invalidateQueries({
                 queryKey: [...projectsQueryKeys.all, 'worktree', worktreeId],
@@ -571,10 +517,6 @@ export default function useStreamingEvents({
       if (!isCurrentlyViewing && sessionRecapEnabled && !wasAlreadyReviewing) {
         // Mark for digest and generate it in the background immediately
         markSessionNeedsDigest(session_id)
-        console.log(
-          '[useStreamingEvents] Session errored while not viewing, generating digest:',
-          session_id
-        )
 
         invoke<SessionDigest>('generate_session_digest', {
           sessionId: session_id,
@@ -688,10 +630,6 @@ export default function useStreamingEvents({
         ) {
           // Mark for digest and generate it in the background immediately
           markSessionNeedsDigest(session_id)
-          console.log(
-            '[useStreamingEvents] Session cancelled while not viewing, generating digest:',
-            session_id
-          )
 
           invoke<SessionDigest>('generate_session_digest', {
             sessionId: session_id,

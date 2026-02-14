@@ -26,6 +26,7 @@ import type {
 import type { Session } from '@/types/chat'
 import {
   DEFAULT_RESOLVE_CONFLICTS_PROMPT,
+  resolveMagicPromptProvider,
   type AppPreferences,
 } from '@/types/preferences'
 
@@ -51,8 +52,8 @@ interface UseGitOperationsReturn {
   handlePush: () => Promise<void>
   /** Creates PR with AI-generated title and description */
   handleOpenPr: () => Promise<void>
-  /** Runs AI code review */
-  handleReview: () => Promise<void>
+  /** Runs AI code review. If existingSessionId is provided, stores results on that session instead of creating a new one. */
+  handleReview: (existingSessionId?: string) => Promise<void>
   /** Validates and shows merge options dialog */
   handleMerge: () => Promise<void>
   /** Detects existing merge conflicts and opens resolution session */
@@ -105,6 +106,7 @@ export function useGitOperations({
           customPrompt: preferences?.magic_prompts?.commit_message,
           push: false,
           model: preferences?.magic_prompt_models?.commit_message_model,
+          customProfileName: resolveMagicPromptProvider(preferences?.magic_prompt_providers, 'commit_message_provider', preferences?.default_provider),
         }
       )
 
@@ -125,6 +127,8 @@ export function useGitOperations({
     worktree?.branch,
     preferences?.magic_prompts?.commit_message,
     preferences?.magic_prompt_models?.commit_message_model,
+    preferences?.magic_prompt_providers?.commit_message_provider,
+    preferences?.default_provider,
   ])
 
   // Handle Commit & Push - creates commit with AI-generated message and pushes
@@ -144,6 +148,7 @@ export function useGitOperations({
           customPrompt: preferences?.magic_prompts?.commit_message,
           push: true,
           model: preferences?.magic_prompt_models?.commit_message_model,
+          customProfileName: resolveMagicPromptProvider(preferences?.magic_prompt_providers, 'commit_message_provider', preferences?.default_provider),
         }
       )
 
@@ -164,6 +169,8 @@ export function useGitOperations({
     worktree?.branch,
     preferences?.magic_prompts?.commit_message,
     preferences?.magic_prompt_models?.commit_message_model,
+    preferences?.magic_prompt_providers?.commit_message_provider,
+    preferences?.default_provider,
   ])
 
   // Handle Pull - pulls changes from remote
@@ -228,6 +235,7 @@ export function useGitOperations({
           sessionId: activeSessionId,
           customPrompt: preferences?.magic_prompts?.pr_content,
           model: preferences?.magic_prompt_models?.pr_content_model,
+          customProfileName: resolveMagicPromptProvider(preferences?.magic_prompt_providers, 'pr_content_provider', preferences?.default_provider),
         }
       )
 
@@ -262,10 +270,14 @@ export function useGitOperations({
     queryClient,
     preferences?.magic_prompts?.pr_content,
     preferences?.magic_prompt_models?.pr_content_model,
+    preferences?.magic_prompt_providers?.pr_content_provider,
+    preferences?.default_provider,
   ])
 
-  // Handle Review - runs AI code review in background, creates new session with results
-  const handleReview = useCallback(async () => {
+  // Handle Review - runs AI code review in background
+  // If existingSessionId is provided, stores results on that session (in-place review from ChatWindow)
+  // Otherwise creates a new session for the results
+  const handleReview = useCallback(async (existingSessionId?: string) => {
     if (!activeWorktreeId || !activeWorktreePath) return
 
     const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
@@ -278,26 +290,37 @@ export function useGitOperations({
         worktreePath: activeWorktreePath,
         customPrompt: preferences?.magic_prompts?.code_review,
         model: preferences?.magic_prompt_models?.code_review_model,
+        customProfileName: resolveMagicPromptProvider(preferences?.magic_prompt_providers, 'code_review_provider', preferences?.default_provider),
       })
 
-      // Create a new session for the review
-      const newSession = await invoke<Session>('create_session', {
-        worktreeId: activeWorktreeId,
-        worktreePath: activeWorktreePath,
-        name: 'Code Review',
-      })
+      let targetSessionId: string
+
+      if (existingSessionId) {
+        // Reuse existing session (triggered from ChatWindow/SessionChatModal)
+        targetSessionId = existingSessionId
+      } else {
+        // Create a new session for the review
+        const newSession = await invoke<Session>('create_session', {
+          worktreeId: activeWorktreeId,
+          worktreePath: activeWorktreePath,
+          name: 'Code Review',
+        })
+        targetSessionId = newSession.id
+
+        // Navigate to the new session
+        const { setActiveSession, setViewingCanvasTab } = useChatStore.getState()
+        setActiveSession(activeWorktreeId, targetSessionId)
+        setViewingCanvasTab(activeWorktreeId, false)
+      }
 
       // Store review results in Zustand (session-scoped, auto-opens sidebar)
-      const { setReviewResults, setActiveSession, setViewingCanvasTab } = useChatStore.getState()
-      setReviewResults(newSession.id, result)
-      setActiveSession(activeWorktreeId, newSession.id)
-      setViewingCanvasTab(activeWorktreeId, false)
+      useChatStore.getState().setReviewResults(targetSessionId, result)
 
       // Persist review results to session file
       invoke('update_session_state', {
         worktreeId: activeWorktreeId,
         worktreePath: activeWorktreePath,
-        sessionId: newSession.id,
+        sessionId: targetSessionId,
         reviewResults: result,
       }).catch(() => { /* noop - best effort persist */ })
 
@@ -332,6 +355,8 @@ export function useGitOperations({
     queryClient,
     preferences?.magic_prompts?.code_review,
     preferences?.magic_prompt_models?.code_review_model,
+    preferences?.magic_prompt_providers?.code_review_provider,
+    preferences?.default_provider,
   ])
 
   // Handle Merge - validates and shows merge options dialog

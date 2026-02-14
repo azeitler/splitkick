@@ -45,30 +45,16 @@ export function useSessionPrefetch(projects: Project[] | undefined) {
         })
         await Promise.all(
           worktrees.map(w =>
-            prefetchSessions(queryClient, w.id, w.path).catch(err =>
-              console.warn(
-                `[startup] Failed to prefetch sessions for ${w.name}:`,
-                err
-              )
-            )
+            prefetchSessions(queryClient, w.id, w.path).catch(() => { /* silent */ })
           )
         )
-      } catch (err) {
-        console.warn(
-          `[startup] Failed to list worktrees for project ${projectId}:`,
-          err
-        )
+      } catch {
+        // Silently ignore — worktrees may not be available yet
       }
     }
 
     const fetchAll = async () => {
       const concurrencyLimit = 3
-
-      console.info(
-        '[startup] Prefetching sessions: expanded=%d, collapsed=%d',
-        expandedProjects.length,
-        collapsedProjects.length
-      )
 
       // First: fetch expanded projects (user sees these immediately)
       for (let i = 0; i < expandedProjects.length; i += concurrencyLimit) {
@@ -82,7 +68,6 @@ export function useSessionPrefetch(projects: Project[] | undefined) {
         await Promise.all(batch.map(p => fetchSessionsForProject(p.id)))
       }
 
-      console.info('[startup] Done prefetching sessions for all projects')
     }
 
     fetchAll()

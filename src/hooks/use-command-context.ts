@@ -10,6 +10,7 @@ import { notify } from '@/lib/notifications'
 import { logger } from '@/lib/logger'
 import type { CommandContext } from '@/lib/commands/types'
 import type { AppPreferences, ClaudeModel } from '@/types/preferences'
+import { resolveMagicPromptProvider } from '@/types/preferences'
 import type { ThinkingLevel, ExecutionMode } from '@/types/chat'
 import type { Project, ReviewResponse } from '@/types/projects'
 import { useQueryClient } from '@tanstack/react-query'
@@ -563,6 +564,7 @@ export function useCommandContext(
         worktreePath: activeWorktreePath,
         customPrompt: preferences?.magic_prompts?.code_review,
         model: preferences?.magic_prompt_models?.code_review_model,
+        customProfileName: resolveMagicPromptProvider(preferences?.magic_prompt_providers, 'code_review_provider', preferences?.default_provider),
       })
 
       // Store review results in Zustand (also activates review tab)
@@ -704,6 +706,7 @@ export function useCommandContext(
         sessionId,
         customPrompt: preferences?.magic_prompts?.session_naming ?? null,
         model: preferences?.magic_prompt_models?.session_naming_model ?? null,
+        customProfileName: resolveMagicPromptProvider(preferences?.magic_prompt_providers, 'session_naming_provider', preferences?.default_provider),
       })
       toast.success('Session title will update shortly', { id: toastId })
     } catch (error) {

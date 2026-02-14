@@ -7,7 +7,7 @@ import {
   markPlanApproved,
   chatQueryKeys,
 } from '@/services/chat'
-import type { Session } from '@/types/chat'
+import type { Session, WorktreeSessions } from '@/types/chat'
 import type { SessionCardData } from '../session-card-utils'
 
 interface UsePlanApprovalParams {
@@ -62,13 +62,6 @@ export function usePlanApproval({
 
   const handlePlanApproval = useCallback(
     (card: SessionCardData, updatedPlan?: string) => {
-      console.log('[usePlanApproval] handlePlanApproval called')
-      console.log(
-        '[usePlanApproval] card.pendingPlanMessageId:',
-        card.pendingPlanMessageId
-      )
-      console.log('[usePlanApproval] updatedPlan length:', updatedPlan?.length)
-
       const sessionId = card.session.id
       const messageId = card.pendingPlanMessageId
       const originalPlan = card.planContent
@@ -98,6 +91,28 @@ export function usePlanApproval({
         queryClient.invalidateQueries({
           queryKey: chatQueryKeys.sessions(worktreeId),
         })
+
+        // Optimistically clear waiting_for_input in sessions cache to prevent
+        // stale "waiting" status during the refetch window
+        queryClient.setQueryData<WorktreeSessions>(
+          chatQueryKeys.sessions(worktreeId),
+          old => {
+            if (!old) return old
+            return {
+              ...old,
+              sessions: old.sessions.map(s =>
+                s.id === sessionId
+                  ? {
+                      ...s,
+                      waiting_for_input: false,
+                      pending_plan_message_id: undefined,
+                      waiting_for_input_type: undefined,
+                    }
+                  : s
+              ),
+            }
+          }
+        )
       }
 
       setExecutionMode(sessionId, 'build')
@@ -115,11 +130,6 @@ export function usePlanApproval({
         ? formatApprovalMessage('Approved', updatedPlan, originalPlan)
         : `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
 
-      console.log(
-        '[usePlanApproval] sending message:',
-        message.substring(0, 100)
-      )
-
       setLastSentMessage(sessionId, message)
       setError(sessionId, null)
       addSendingSession(sessionId)
@@ -135,6 +145,7 @@ export function usePlanApproval({
         executionMode: 'build',
         thinkingLevel,
         disableThinkingForMode: true,
+        customProfileName: card.session.selected_provider ?? undefined,
       })
     },
     [
@@ -159,13 +170,6 @@ export function usePlanApproval({
 
   const handlePlanApprovalYolo = useCallback(
     (card: SessionCardData, updatedPlan?: string) => {
-      console.log('[usePlanApproval] handlePlanApprovalYolo called')
-      console.log(
-        '[usePlanApproval] card.pendingPlanMessageId:',
-        card.pendingPlanMessageId
-      )
-      console.log('[usePlanApproval] updatedPlan length:', updatedPlan?.length)
-
       const sessionId = card.session.id
       const messageId = card.pendingPlanMessageId
       const originalPlan = card.planContent
@@ -195,6 +199,28 @@ export function usePlanApproval({
         queryClient.invalidateQueries({
           queryKey: chatQueryKeys.sessions(worktreeId),
         })
+
+        // Optimistically clear waiting_for_input in sessions cache to prevent
+        // stale "waiting" status during the refetch window
+        queryClient.setQueryData<WorktreeSessions>(
+          chatQueryKeys.sessions(worktreeId),
+          old => {
+            if (!old) return old
+            return {
+              ...old,
+              sessions: old.sessions.map(s =>
+                s.id === sessionId
+                  ? {
+                      ...s,
+                      waiting_for_input: false,
+                      pending_plan_message_id: undefined,
+                      waiting_for_input_type: undefined,
+                    }
+                  : s
+              ),
+            }
+          }
+        )
       }
 
       setExecutionMode(sessionId, 'yolo')
@@ -212,11 +238,6 @@ export function usePlanApproval({
         ? formatApprovalMessage('Approved - yolo', updatedPlan, originalPlan)
         : `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
 
-      console.log(
-        '[usePlanApproval] sending message:',
-        message.substring(0, 100)
-      )
-
       setLastSentMessage(sessionId, message)
       setError(sessionId, null)
       addSendingSession(sessionId)
@@ -232,6 +253,7 @@ export function usePlanApproval({
         executionMode: 'yolo',
         thinkingLevel,
         disableThinkingForMode: true,
+        customProfileName: card.session.selected_provider ?? undefined,
       })
     },
     [

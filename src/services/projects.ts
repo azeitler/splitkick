@@ -425,10 +425,28 @@ export function useCreateWorktree() {
         prContext,
         customName,
       })
-      // Mark as pending since creation is happening in background
-      return { ...worktree, status: 'pending' as const }
+      return worktree
     },
-    onSuccess: (pendingWorktree, { projectId }) => {
+    onSuccess: (worktree, { projectId }) => {
+      // Check if this worktree was already resolved by an event handler
+      // (e.g. unarchive_worktree emits worktree:unarchived which sets status: 'ready')
+      const existing = queryClient.getQueryData<Worktree[]>(
+        projectsQueryKeys.worktrees(projectId)
+      )
+      const existingEntry = existing?.find(w => w.id === worktree.id)
+      if (existingEntry?.status === 'ready') {
+        logger.info('Worktree already ready (unarchived), skipping pending', {
+          id: worktree.id,
+          name: worktree.name,
+        })
+        const { expandProject, selectWorktree } = useProjectsStore.getState()
+        expandProject(projectId)
+        selectWorktree(worktree.id)
+        return
+      }
+
+      // Normal creation flow: mark as pending
+      const pendingWorktree = { ...worktree, status: 'pending' as const }
       logger.info('Worktree creation started (pending)', {
         id: pendingWorktree.id,
         name: pendingWorktree.name,
@@ -609,6 +627,48 @@ export function useCreateWorktreeKeybinding() {
   }, [])
 }
 
+/** Shared post-ready logic for both new and unarchived worktrees */
+function handleWorktreeReady(
+  worktree: Worktree,
+  queryClient: ReturnType<typeof useQueryClient>
+) {
+  // Update cache
+  const readyWorktree = { ...worktree, status: 'ready' as const }
+  queryClient.setQueryData<Worktree[]>(
+    projectsQueryKeys.worktrees(worktree.project_id),
+    old => {
+      if (!old) return [readyWorktree]
+      const exists = old.some(w => w.id === worktree.id)
+      if (exists)
+        return old.map(w => (w.id === worktree.id ? readyWorktree : w))
+      return [...old, readyWorktree]
+    }
+  )
+  queryClient.setQueryData<Worktree>(
+    [...projectsQueryKeys.all, 'worktree', worktree.id],
+    readyWorktree
+  )
+
+  // Select in sidebar
+  const { expandProject, selectWorktree } = useProjectsStore.getState()
+  expandProject(worktree.project_id)
+  selectWorktree(worktree.id)
+
+  // Register worktree path
+  const { activeWorktreePath, setActiveWorktree, registerWorktreePath } =
+    useChatStore.getState()
+  registerWorktreePath(worktree.id, worktree.path)
+
+  // Mark for auto-open BEFORE navigation (critical ordering)
+  useUIStore.getState().markWorktreeForAutoOpenSession(worktree.id)
+
+  // Only switch to worktree view if already viewing a worktree
+  if (activeWorktreePath) {
+    setActiveWorktree(worktree.id, worktree.path)
+  }
+
+}
+
 /**
  * Hook to listen for worktree events (background creation/deletion)
  *
@@ -624,6 +684,39 @@ export function useWorktreeEvents() {
     if (!isTauri()) return
 
     const unlistenPromises: Promise<UnlistenFn>[] = []
+
+    // Track pending worktree timeouts for recovery if events are missed
+    const pendingTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
+
+    const clearPendingTimeout = (worktreeId: string) => {
+      const timeout = pendingTimeouts.get(worktreeId)
+      if (timeout) {
+        clearTimeout(timeout)
+        pendingTimeouts.delete(worktreeId)
+      }
+    }
+
+    const startPendingTimeout = (
+      worktreeId: string,
+      projectId: string
+    ) => {
+      clearPendingTimeout(worktreeId)
+      const timeoutId = setTimeout(() => {
+        pendingTimeouts.delete(worktreeId)
+        logger.warn('Pending worktree timed out, forcing refetch', {
+          worktreeId,
+          projectId,
+        })
+        // Force refetch to get actual state from backend
+        queryClient.invalidateQueries({
+          queryKey: projectsQueryKeys.worktrees(projectId),
+        })
+        queryClient.invalidateQueries({
+          queryKey: [...projectsQueryKeys.all, 'worktree', worktreeId],
+        })
+      }, 60_000) // 60s timeout
+      pendingTimeouts.set(worktreeId, timeoutId)
+    }
 
     // =========================================================================
     // Creation events
@@ -659,6 +752,9 @@ export function useWorktreeEvents() {
         // Auto-expand the project so the new worktree is visible in sidebar
         const { expandProject } = useProjectsStore.getState()
         expandProject(project_id)
+
+        // Start timeout recovery in case worktree:created/error events are never received
+        startPendingTimeout(id, project_id)
       })
     )
 
@@ -671,52 +767,12 @@ export function useWorktreeEvents() {
           name: worktree.name,
         })
 
-        // Update cache: replace pending worktree with completed one
-        const readyWorktree = { ...worktree, status: 'ready' as const }
-        queryClient.setQueryData<Worktree[]>(
-          projectsQueryKeys.worktrees(worktree.project_id),
-          old => {
-            if (!old) return [readyWorktree]
-            return old.map(w =>
-              w.id === worktree.id ? readyWorktree : w
-            )
-          }
-        )
-        // Also update the single worktree cache (used by useWorktree hook)
-        queryClient.setQueryData<Worktree>(
-          [...projectsQueryKeys.all, 'worktree', worktree.id],
-          readyWorktree
-        )
-
-        // Select worktree in sidebar
-        const { expandProject, selectWorktree } = useProjectsStore.getState()
-        const {
-          activeWorktreePath,
-          setActiveWorktree,
-          addSetupScriptResult,
-          registerWorktreePath,
-        } = useChatStore.getState()
-        expandProject(worktree.project_id)
-        selectWorktree(worktree.id)
-
-        // Always register worktree path so it's available for CMD+O etc.
-        registerWorktreePath(worktree.id, worktree.path)
-
-        // Only switch to worktree view if already viewing a worktree
-        // If on project canvas (activeWorktreePath is null), stay there
-        if (activeWorktreePath) {
-          setActiveWorktree(worktree.id, worktree.path)
-        }
-
-        // In canvas-only mode, mark worktree for auto-open first session modal
-        console.log('[AUTO-OPEN] Marking worktree for auto-open:', worktree.id)
-        useUIStore.getState().markWorktreeForAutoOpenSession(worktree.id)
-        console.log('[AUTO-OPEN] Store state after mark:', [
-          ...useUIStore.getState().autoOpenSessionWorktreeIds,
-        ])
+        clearPendingTimeout(worktree.id)
+        handleWorktreeReady(worktree, queryClient)
 
         // Add setup script output to chat store if present
         if (worktree.setup_output) {
+          const { addSetupScriptResult } = useChatStore.getState()
           addSetupScriptResult(worktree.id, {
             worktreeName: worktree.name,
             worktreePath: worktree.path,
@@ -724,17 +780,6 @@ export function useWorktreeEvents() {
             output: worktree.setup_output,
             success: true,
           })
-        }
-
-        // Check if this worktree was marked for auto-investigate (issue)
-        // Check if this worktree was marked for auto-investigate
-        const uiState = useUIStore.getState()
-        if (uiState.autoInvestigateWorktreeIds.has(worktree.id)) {
-          uiState.consumeAutoInvestigate(worktree.id)
-          uiState.setPendingInvestigateType('issue')
-        } else if (uiState.autoInvestigatePRWorktreeIds.has(worktree.id)) {
-          uiState.consumeAutoInvestigatePR(worktree.id)
-          uiState.setPendingInvestigateType('pr')
         }
       })
     )
@@ -744,6 +789,9 @@ export function useWorktreeEvents() {
       listen<WorktreeCreateErrorEvent>('worktree:error', event => {
         const { id, project_id, error } = event.payload
         logger.error('Worktree creation failed', { id, project_id, error })
+
+        // Clear recovery timeout since we got the error event
+        clearPendingTimeout(id)
 
         // Remove pending worktree from cache
         queryClient.setQueryData<Worktree[]>(
@@ -897,54 +945,8 @@ export function useWorktreeEvents() {
         const { worktree } = event.payload
         logger.info('Worktree unarchived', { id: worktree.id })
 
-        // Add worktree back to cache
-        queryClient.setQueryData<Worktree[]>(
-          projectsQueryKeys.worktrees(worktree.project_id),
-          old => {
-            if (!old) return [{ ...worktree, status: 'ready' as const }]
-            // Check if already exists (shouldn't, but be safe)
-            const exists = old.some(w => w.id === worktree.id)
-            if (exists) {
-              return old.map(w =>
-                w.id === worktree.id
-                  ? { ...worktree, status: 'ready' as const }
-                  : w
-              )
-            }
-            return [...old, { ...worktree, status: 'ready' as const }]
-          }
-        )
-
-        // Select the restored worktree and set as active for chat
-        const { expandProject, selectWorktree } = useProjectsStore.getState()
-        const { setActiveWorktree } = useChatStore.getState()
-        expandProject(worktree.project_id)
-        selectWorktree(worktree.id)
-        setActiveWorktree(worktree.id, worktree.path)
-
-        // Invalidate archived worktrees query
+        handleWorktreeReady(worktree, queryClient)
         queryClient.invalidateQueries({ queryKey: ['archived-worktrees'] })
-
-        // Check if this worktree was marked for auto-investigate
-        const uiState = useUIStore.getState()
-        const shouldInvestigateIssue = uiState.autoInvestigateWorktreeIds.has(
-          worktree.id
-        )
-        const shouldInvestigatePR = uiState.autoInvestigatePRWorktreeIds.has(
-          worktree.id
-        )
-        if (shouldInvestigateIssue || shouldInvestigatePR) {
-          // Open the session modal so ChatWindow mounts
-          uiState.markWorktreeForAutoOpenSession(worktree.id)
-
-          if (shouldInvestigateIssue) {
-            uiState.consumeAutoInvestigate(worktree.id)
-            uiState.setPendingInvestigateType('issue')
-          } else {
-            uiState.consumeAutoInvestigatePR(worktree.id)
-            uiState.setPendingInvestigateType('pr')
-          }
-        }
       })
     )
 
@@ -971,92 +973,54 @@ export function useWorktreeEvents() {
       )
     )
 
-    // Listen for path exists conflicts — auto-create with suffix name
+    // Listen for path exists conflicts — show error toast instead of auto-creating
     unlistenPromises.push(
       listen<WorktreePathExistsEvent>('worktree:path_exists', event => {
-        const { project_id, path, suggested_name, issue_context } =
+        const { path, archived_worktree_id, archived_worktree_name } =
           event.payload
-        logger.warn('Worktree path already exists, auto-creating with suffix', {
-          project_id,
-          path,
-          suggestedName: suggested_name,
-        })
 
-        // Carry over any pending auto-investigate flags
-        const uiState = useUIStore.getState()
-        if (uiState.autoInvestigateWorktreeIds.size > 0) {
-          for (const id of uiState.autoInvestigateWorktreeIds) {
-            uiState.consumeAutoInvestigate(id)
-          }
-          uiState.setPendingInvestigateType('issue')
-        } else if (uiState.autoInvestigatePRWorktreeIds.size > 0) {
-          for (const id of uiState.autoInvestigatePRWorktreeIds) {
-            uiState.consumeAutoInvestigatePR(id)
-          }
-          uiState.setPendingInvestigateType('pr')
+        if (archived_worktree_id) {
+          logger.warn('Path conflict with archived worktree', {
+            path,
+            archivedName: archived_worktree_name,
+            archivedId: archived_worktree_id,
+          })
+          toast.error(
+            `Path conflict with archived worktree "${archived_worktree_name}"`,
+            {
+              description:
+                'Restore it or permanently delete it first.',
+            }
+          )
+        } else {
+          logger.warn('Path conflict with unknown directory', { path })
+          toast.error('Worktree path already exists', {
+            description: `Remove directory manually: ${path}`,
+          })
         }
-
-        invoke('create_worktree', {
-          projectId: project_id,
-          customName: suggested_name,
-          issueContext: issue_context,
-        }).catch(err => {
-          logger.error('Failed to create worktree with suffix', { error: err })
-          toast.error('Failed to create worktree', { description: String(err) })
-        })
       })
     )
 
-    // Listen for branch exists conflicts — auto-create with suffix name
+    // Listen for branch exists conflicts — show error toast instead of auto-creating
     unlistenPromises.push(
       listen<WorktreeBranchExistsEvent>('worktree:branch_exists', event => {
-        const {
-          project_id,
-          branch,
-          suggested_name,
-          issue_context,
-          pr_context,
-        } = event.payload
-        logger.warn(
-          'Worktree branch already exists, auto-creating with suffix',
-          {
-            project_id,
-            branch,
-            suggestedName: suggested_name,
-          }
-        )
-
-        // Carry over any pending auto-investigate flags
-        const uiState = useUIStore.getState()
-        if (uiState.autoInvestigateWorktreeIds.size > 0) {
-          for (const id of uiState.autoInvestigateWorktreeIds) {
-            uiState.consumeAutoInvestigate(id)
-          }
-          uiState.setPendingInvestigateType('issue')
-        } else if (uiState.autoInvestigatePRWorktreeIds.size > 0) {
-          for (const id of uiState.autoInvestigatePRWorktreeIds) {
-            uiState.consumeAutoInvestigatePR(id)
-          }
-          uiState.setPendingInvestigateType('pr')
-        }
-
-        invoke('create_worktree', {
-          projectId: project_id,
-          customName: suggested_name,
-          issueContext: issue_context,
-          prContext: pr_context,
-        }).catch(err => {
-          logger.error('Failed to create worktree with suffix', { error: err })
-          toast.error('Failed to create worktree', { description: String(err) })
+        const { branch } = event.payload
+        logger.warn('Branch conflict', { branch })
+        toast.error(`Branch "${branch}" already exists`, {
+          description: 'Delete the branch or choose a different name.',
         })
       })
     )
 
-    // Cleanup listeners on unmount
+    // Cleanup listeners and pending timeouts on unmount
     return () => {
       Promise.all(unlistenPromises).then(unlistens => {
         unlistens.forEach(unlisten => unlisten())
       })
+      for (const timeout of pendingTimeouts.values()) {
+        clearTimeout(timeout)
+      }
+      pendingTimeouts.clear()
     }
   }, [queryClient, wsConnected])
 }
@@ -1415,11 +1379,7 @@ export function useCreateBaseSession() {
       setActiveWorktree(session.id, session.path)
 
       // In canvas-only mode, mark worktree for auto-open first session modal
-      console.log('[AUTO-OPEN] Marking base session for auto-open:', session.id)
       useUIStore.getState().markWorktreeForAutoOpenSession(session.id)
-      console.log('[AUTO-OPEN] Store state after mark:', [
-        ...useUIStore.getState().autoOpenSessionWorktreeIds,
-      ])
 
       toast.success(`Base session: ${session.name}`)
     },

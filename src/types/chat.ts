@@ -174,8 +174,8 @@ export interface Session {
   last_run_status?: RunStatus
   /** Execution mode of the last run (plan/build/yolo) */
   last_run_execution_mode?: ExecutionMode
-  /** User-assigned label (e.g. "Needs testing") */
-  label?: string
+  /** User-assigned label with color (e.g. "Needs testing") */
+  label?: LabelData
 }
 
 /**
@@ -889,4 +889,12 @@ export interface SessionDigest {
   created_at?: number
   /** Number of messages when this digest was generated */
   message_count?: number
+}
+
+/** User-assigned label with color for session cards */
+export interface LabelData {
+  /** Label name (e.g. "Needs testing") */
+  name: string
+  /** Background color hex value (e.g. "#eab308") */
+  color: string
 }

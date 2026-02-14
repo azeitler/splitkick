@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ArrowLeft, Eye, Maximize2, Terminal, Play } from 'lucide-react'
 import {
   Dialog,
@@ -7,6 +7,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip'
 import { GitStatusBadges } from '@/components/ui/git-status-badges'
 import { useChatStore } from '@/store/chat-store'
 import { useTerminalStore } from '@/store/terminal-store'
@@ -80,20 +85,22 @@ export function SessionChatModal({
   const previousSessionRef = useRef<string | undefined>(undefined)
   const hasSetActiveRef = useRef<string | null>(null)
 
-  // Synchronously set active session before render to avoid race conditions
-  // This ensures ChatWindow inside the modal sees the correct session immediately
+  // Set active session synchronously before paint (useLayoutEffect) to avoid
+  // ChatWindow inside the modal seeing a stale session on first render.
   // NOTE: We don't set activeWorktree - we pass it as props to ChatWindow instead
   // This prevents navigation away from WorktreeDashboard when opening modals
-  if (isOpen && sessionId && hasSetActiveRef.current !== sessionId) {
-    const { activeSessionIds, setActiveSession } = useChatStore.getState()
-    // Only store previous if this is a new modal open (not a sessionId change)
-    if (hasSetActiveRef.current === null) {
-      previousSessionRef.current = activeSessionIds[worktreeId]
+  useLayoutEffect(() => {
+    if (isOpen && sessionId && hasSetActiveRef.current !== sessionId) {
+      const { activeSessionIds, setActiveSession } = useChatStore.getState()
+      // Only store previous if this is a new modal open (not a sessionId change)
+      if (hasSetActiveRef.current === null) {
+        previousSessionRef.current = activeSessionIds[worktreeId]
+      }
+      // Only set the session, not the worktree (worktree is passed as props)
+      setActiveSession(worktreeId, sessionId)
+      hasSetActiveRef.current = sessionId
     }
-    // Only set the session, not the worktree (worktree is passed as props)
-    setActiveSession(worktreeId, sessionId)
-    hasSetActiveRef.current = sessionId
-  }
+  }, [isOpen, sessionId, worktreeId])
 
   // Reset refs when modal closes (isOpen→false without handleClose, e.g. parent state reset)
   useEffect(() => {
@@ -223,44 +230,65 @@ export function SessionChatModal({
               {isNativeApp() && (
                 <>
                   <OpenInButton worktreePath={worktreePath} branch={worktree?.branch} />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-xs"
-                    onClick={() => {
-                      const { reviewResults, toggleReviewSidebar } = useChatStore.getState()
-                      if (sessionId && reviewResults[sessionId]) {
-                        toggleReviewSidebar()
-                      } else {
-                        window.dispatchEvent(
-                          new CustomEvent('magic-command', { detail: { command: 'review' } })
-                        )
-                      }
-                    }}
-                  >
-                    <Eye className="h-3 w-3" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-xs"
-                    onClick={() => {
-                      useTerminalStore
-                        .getState()
-                        .toggleModalTerminal(worktreeId)
-                    }}
-                  >
-                    <Terminal className="h-3 w-3" />
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => {
+                          const { reviewResults, toggleReviewSidebar } = useChatStore.getState()
+                          // Check both Zustand store and session data for review results
+                          const hasReviewResults = sessionId && (reviewResults[sessionId] || session?.review_results)
+                          if (hasReviewResults) {
+                            // If results exist in Zustand, open sidebar; otherwise restore from session data first
+                            if (!reviewResults[sessionId] && session?.review_results) {
+                              useChatStore.getState().setReviewResults(sessionId, session.review_results)
+                            }
+                            toggleReviewSidebar()
+                          } else {
+                            window.dispatchEvent(
+                              new CustomEvent('magic-command', { detail: { command: 'review', sessionId } })
+                            )
+                          }
+                        }}
+                      >
+                        <Eye className="h-3 w-3" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Review</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => {
+                          useTerminalStore
+                            .getState()
+                            .toggleModalTerminal(worktreeId)
+                        }}
+                      >
+                        <Terminal className="h-3 w-3" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Terminal</TooltipContent>
+                  </Tooltip>
                   {runScript && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 px-2 text-xs"
-                      onClick={handleRun}
-                    >
-                      <Play className="h-3 w-3" />
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs"
+                          onClick={handleRun}
+                        >
+                          <Play className="h-3 w-3" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Run</TooltipContent>
+                    </Tooltip>
                   )}
                 </>
               )}

@@ -17,9 +17,6 @@ export function initializeCommandSystem(): void {
   registerCommands(projectCommands)
   registerCommands(githubCommands)
 
-  if (import.meta.env.DEV) {
-    console.log('Command system initialized')
-  }
 }
 
 export { appearanceCommands, notificationCommands, projectCommands, githubCommands }

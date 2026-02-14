@@ -105,6 +105,9 @@ pub struct Worktree {
     /// GitHub PR URL (if a PR has been created)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pr_url: Option<String>,
+    /// GitHub issue number (if created from an issue)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issue_number: Option<u32>,
     /// Cached PR display status (draft, open, review, merged, closed)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cached_pr_status: Option<String>,
@@ -362,6 +365,10 @@ pub struct WorktreeCreatingEvent {
     pub path: String,
     /// The branch name
     pub branch: String,
+    /// PR number (if created from a PR)
+    pub pr_number: Option<u64>,
+    /// Issue number (if created from an issue)
+    pub issue_number: Option<u64>,
 }
 
 /// Event emitted when worktree creation completes successfully

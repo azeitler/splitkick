@@ -87,6 +87,12 @@ export const ChatInput = memo(function ChatInput({
   const fileMentionHandleRef = useRef<FileMentionPopoverHandle | null>(null)
   const slashPopoverHandleRef = useRef<SlashPopoverHandle | null>(null)
 
+  // Stable ref for parent callback to avoid re-subscribing effects
+  const onHasValueChangeRef = useRef(onHasValueChange)
+  useEffect(() => {
+    onHasValueChangeRef.current = onHasValueChange
+  }, [onHasValueChange])
+
   // Track empty state for showing keyboard hint (only re-renders at boundary)
   const [showHint, setShowHint] = useState(() => {
     // Lazy initializer - check draft on mount
@@ -104,7 +110,7 @@ export const ChatInput = memo(function ChatInput({
     valueRef.current = draft
 
     // Notify parent of current value (on mount AND session change)
-    onHasValueChange?.(Boolean(draft.trim()))
+    onHasValueChangeRef.current?.(Boolean(draft.trim()))
 
     // Only update showHint if session actually changed (not on mount)
     if (lastSessionRef.current !== activeSessionId) {
@@ -119,7 +125,7 @@ export const ChatInput = memo(function ChatInput({
       inputRef.current.style.height = 'auto'
       inputRef.current.style.height = `${inputRef.current.scrollHeight}px`
     }
-  }, [activeSessionId, inputRef, onHasValueChange])
+  }, [activeSessionId, inputRef])
 
   // Listen for command:focus-chat-input event from command palette
   useEffect(() => {
@@ -147,7 +153,7 @@ export const ChatInput = memo(function ChatInput({
         valueRef.current = ''
         inputRef.current.style.height = 'auto'
         setShowHint(true)
-        onHasValueChange?.(false)
+        onHasValueChangeRef.current?.(false)
       }
 
       // React to external restores (draft went from empty to non-empty)
@@ -158,10 +164,10 @@ export const ChatInput = memo(function ChatInput({
         inputRef.current.style.height = 'auto'
         inputRef.current.style.height = `${inputRef.current.scrollHeight}px`
         setShowHint(false)
-        onHasValueChange?.(true)
+        onHasValueChangeRef.current?.(true)
       }
     })
-  }, [activeSessionId, inputRef, onHasValueChange])
+  }, [activeSessionId, inputRef])
 
   // Handle textarea value changes
   const handleChange = useCallback(
@@ -179,15 +185,10 @@ export const ChatInput = memo(function ChatInput({
       }, 1000)
 
       // Update hint visibility only at empty/non-empty boundary (minimal re-renders)
-      // Also notify parent of hasValue change for send button styling
       const isEmpty = !value.trim()
-      setShowHint(prev => {
-        if (prev !== isEmpty) {
-          onHasValueChange?.(!isEmpty)
-          return isEmpty
-        }
-        return prev
-      })
+      setShowHint(prev => (prev !== isEmpty ? isEmpty : prev))
+      // Notify parent of hasValue change for send button styling
+      onHasValueChangeRef.current?.(!isEmpty)
 
       // Sync pending files with @mentions in input
       // Remove any pending files whose @filename is no longer in the text
@@ -314,44 +315,26 @@ export const ChatInput = memo(function ChatInput({
       slashTriggerIndex,
       slashPopoverOpen,
       formRef,
-      onHasValueChange,
     ]
   )
 
   // Handle keyboard events
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      console.log('[ChatInput] handleKeyDown:', {
-        key: e.key,
-        fileMentionOpen,
-        slashPopoverOpen,
-        fileMentionHandleRef: !!fileMentionHandleRef.current,
-        slashPopoverHandleRef: !!slashPopoverHandleRef.current,
-      })
-
       // When file mention popover is open, handle navigation
       if (fileMentionOpen) {
-        console.log(
-          '[ChatInput] File mention popover open, handling key:',
-          e.key
-        )
         switch (e.key) {
           case 'ArrowDown':
             e.preventDefault()
-            console.log('[ChatInput] Calling fileMentionHandleRef.moveDown()')
             fileMentionHandleRef.current?.moveDown()
             return
           case 'ArrowUp':
             e.preventDefault()
-            console.log('[ChatInput] Calling fileMentionHandleRef.moveUp()')
             fileMentionHandleRef.current?.moveUp()
             return
           case 'Enter':
           case 'Tab':
             e.preventDefault()
-            console.log(
-              '[ChatInput] Calling fileMentionHandleRef.selectCurrent()'
-            )
             fileMentionHandleRef.current?.selectCurrent()
             return
           case 'Escape':
@@ -364,24 +347,18 @@ export const ChatInput = memo(function ChatInput({
 
       // When slash popover is open, handle navigation
       if (slashPopoverOpen) {
-        console.log('[ChatInput] Slash popover open, handling key:', e.key)
         switch (e.key) {
           case 'ArrowDown':
             e.preventDefault()
-            console.log('[ChatInput] Calling slashPopoverHandleRef.moveDown()')
             slashPopoverHandleRef.current?.moveDown()
             return
           case 'ArrowUp':
             e.preventDefault()
-            console.log('[ChatInput] Calling slashPopoverHandleRef.moveUp()')
             slashPopoverHandleRef.current?.moveUp()
             return
           case 'Enter':
           case 'Tab':
             e.preventDefault()
-            console.log(
-              '[ChatInput] Calling slashPopoverHandleRef.selectCurrent()'
-            )
             slashPopoverHandleRef.current?.selectCurrent()
             return
           case 'Escape':
@@ -475,7 +452,7 @@ export const ChatInput = memo(function ChatInput({
               useChatStore
                 .getState()
                 .setInputDraft(activeSessionId, textarea.value)
-              onHasValueChange?.(Boolean(textarea.value.trim()))
+              onHasValueChangeRef.current?.(Boolean(textarea.value.trim()))
             }
 
             const {
@@ -646,7 +623,7 @@ export const ChatInput = memo(function ChatInput({
         }
       }
     },
-    [activeSessionId, inputRef, onHasValueChange]
+    [activeSessionId, inputRef]
   )
 
   // Handle file selection from @ mention popover
@@ -717,7 +694,7 @@ export const ChatInput = memo(function ChatInput({
         useChatStore
           .getState()
           .setInputDraft(activeSessionId, newValue)
-        onHasValueChange?.(Boolean(newValue.trim()))
+        onHasValueChangeRef.current?.(Boolean(newValue.trim()))
 
         // Set cursor position where the slash was
         requestAnimationFrame(() => {
@@ -733,7 +710,7 @@ export const ChatInput = memo(function ChatInput({
       // Refocus input
       inputRef.current?.focus()
     },
-    [activeSessionId, slashTriggerIndex, inputRef, onHasValueChange]
+    [activeSessionId, slashTriggerIndex, inputRef]
   )
 
   // Handle command selection from / mention popover (executes immediately)

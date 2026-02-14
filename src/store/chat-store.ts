@@ -17,6 +17,7 @@ import {
   type PermissionDenial,
   type ExecutionMode,
   type SessionDigest,
+  type LabelData,
   EXECUTION_MODE_CYCLE,
   isExitPlanMode,
 } from '@/types/chat'
@@ -97,7 +98,7 @@ interface ChatUIState {
   selectedModels: Record<string, string>
 
   // Selected provider per session (null = default Anthropic, or custom profile name)
-  selectedProviders: Record<string, string>
+  selectedProviders: Record<string, string | null>
 
   // Enabled MCP servers per session (server names that are active)
   enabledMcpServers: Record<string, string[]>
@@ -191,7 +192,7 @@ interface ChatUIState {
   worktreeLoadingOperations: Record<string, string | null>
 
   // User-assigned labels per session (e.g. "Needs testing")
-  sessionLabels: Record<string, string>
+  sessionLabels: Record<string, LabelData>
 
   // Canvas-selected session per worktree (for magic menu targeting)
   canvasSelectedSessionIds: Record<string, string | null>
@@ -220,7 +221,7 @@ interface ChatUIState {
   isSessionReviewing: (sessionId: string) => boolean
 
   // Actions - Session label management (persisted)
-  setSessionLabel: (sessionId: string, label: string | null) => void
+  setSessionLabel: (sessionId: string, label: LabelData | null) => void
 
   // Actions - Plan file path management (persisted)
   setPlanFilePath: (sessionId: string, path: string | null) => void
@@ -1144,10 +1145,10 @@ export const useChatStore = create<ChatUIState>()(
         set(
           state => {
             const updated = { ...state.selectedProviders }
-            if (provider) {
-              updated[sessionId] = provider
-            } else {
+            if (provider === undefined) {
               delete updated[sessionId]
+            } else {
+              updated[sessionId] = provider
             }
             return { selectedProviders: updated }
           },

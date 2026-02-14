@@ -14,8 +14,8 @@ use super::storage::{
     load_sessions, with_sessions_mut,
 };
 use super::types::{
-    AllSessionsEntry, AllSessionsResponse, ChatMessage, ClaudeContext, EffortLevel, MessageRole,
-    RunStatus, Session, SessionDigest, ThinkingLevel, WorktreeSessions,
+    AllSessionsEntry, AllSessionsResponse, ChatMessage, ClaudeContext, EffortLevel, LabelData,
+    MessageRole, RunStatus, Session, SessionDigest, ThinkingLevel, WorktreeSessions,
 };
 use crate::claude_cli::get_cli_binary_path;
 use crate::http_server::EmitExt;
@@ -283,6 +283,7 @@ pub async fn regenerate_session_name(
     session_id: String,
     custom_prompt: Option<String>,
     model: Option<String>,
+    custom_profile_name: Option<String>,
 ) -> Result<(), String> {
     log::trace!("Regenerating session name for {session_id}");
 
@@ -308,6 +309,7 @@ pub async fn regenerate_session_name(
         generate_session_name: true,
         generate_branch_name: false,
         custom_session_prompt: custom_prompt,
+        custom_profile_name,
     };
 
     spawn_naming_task(app, request);
@@ -333,7 +335,8 @@ pub async fn update_session_state(
     waiting_for_input_type: Option<Option<String>>,
     plan_file_path: Option<Option<String>>,
     pending_plan_message_id: Option<Option<String>>,
-    label: Option<String>,
+    label: Option<Option<LabelData>>,
+    clear_label: Option<bool>,
     review_results: Option<Option<serde_json::Value>>,
 ) -> Result<(), String> {
     log::trace!("Updating session state for: {session_id}");
@@ -371,7 +374,12 @@ pub async fn update_session_state(
                 session.pending_plan_message_id = v;
             }
             if let Some(v) = label {
-                session.label = if v.is_empty() { None } else { Some(v) };
+                session.label = v;
+            }
+            if let Some(clear) = clear_label {
+                if clear {
+                    session.label = None;
+                }
             }
             if let Some(v) = review_results {
                 session.review_results = v;
@@ -734,6 +742,7 @@ pub async fn restore_session_with_base(
         session_type: SessionType::Base,
         pr_number: None,
         pr_url: None,
+        issue_number: None,
         cached_pr_status: None,
         cached_check_status: None,
         cached_behind_count: None,
@@ -1062,6 +1071,7 @@ pub async fn send_chat_message(
                     generate_session_name: generate_session,
                     generate_branch_name: generate_branch,
                     custom_session_prompt,
+                    custom_profile_name: prefs.magic_prompt_providers.session_naming_provider.clone().or_else(|| prefs.default_provider.clone()),
                 };
 
                 // Spawn in background - does not block chat
@@ -1223,6 +1233,27 @@ pub async fn send_chat_message(
         ) {
             Ok((pid, response)) => {
                 log::trace!("execute_claude_detached succeeded (PID: {pid})");
+
+                // Detect silent resume failure: CLI started but produced no content
+                // (e.g., "session not found" error written to stderr, process exited)
+                // Clear the stale session ID so the next message starts fresh
+                if response.content.is_empty()
+                    && response.usage.is_none()
+                    && claude_session_id_for_call.is_some()
+                {
+                    log::warn!(
+                        "Empty response while resuming session {}, clearing stale session ID for next attempt",
+                        claude_session_id_for_call.as_deref().unwrap_or("")
+                    );
+
+                    with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
+                        if let Some(session) = sessions.find_session_mut(&session_id) {
+                            session.claude_session_id = None;
+                        }
+                        Ok(())
+                    })?;
+                }
+
                 break (pid, response);
             }
             Err(e) => {
@@ -1278,12 +1309,11 @@ pub async fn send_chat_message(
             log::warn!("Failed to cancel run log: {e}");
         }
 
-        // Atomically update session (store claude_session_id, remove last user message if present)
+        // Atomically update session (remove last user message for undo send)
+        // NOTE: Do NOT persist claude_session_id here — a cancelled run with no content
+        // means the CLI session is invalid/incomplete and would break future --resume
         with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
             if let Some(session) = sessions.find_session_mut(&session_id) {
-                if !claude_session_id_for_log.is_empty() {
-                    session.claude_session_id = Some(claude_session_id_for_log.clone());
-                }
                 // Remove user message (undo send) - allows frontend to restore to input field
                 if session
                     .messages
@@ -1319,6 +1349,7 @@ pub async fn send_chat_message(
     }
 
     // Create assistant message with tool calls and content blocks
+    let has_content = !claude_response.content.is_empty();
     let assistant_msg_id = Uuid::new_v4().to_string();
     let assistant_msg = ChatMessage {
         id: assistant_msg_id.clone(),
@@ -1360,9 +1391,11 @@ pub async fn send_chat_message(
 
     // Atomically save session metadata (claude_session_id for resumption)
     // Note: Messages are NOT saved here - they're in NDJSON only
+    // Only persist session ID if the run produced meaningful content —
+    // a "completed" run with empty content means CLI failed silently and the session ID is stale
     with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
         if let Some(session) = sessions.find_session_mut(&session_id) {
-            if !claude_session_id_for_log.is_empty() {
+            if !claude_session_id_for_log.is_empty() && has_content {
                 session.claude_session_id = Some(claude_session_id_for_log.clone());
             }
         }
@@ -2346,28 +2379,30 @@ pub async fn rename_saved_context(
 // ============================================================================
 
 /// Prompt template for context summarization (JSON schema output)
-const CONTEXT_SUMMARY_PROMPT: &str = r#"Summarize the following conversation for future context loading.
+const CONTEXT_SUMMARY_PROMPT: &str = r#"<task>Summarize the following conversation for future context loading</task>
 
+<output_format>
 Your summary should include:
-1. **Main Goal**: What was the primary objective?
-2. **Key Decisions & Rationale**: Important decisions made and WHY they were chosen over alternatives
-3. **Trade-offs Considered**: What approaches were weighed? What was rejected and why?
-4. **Problems Solved**: Errors, blockers, or gotchas encountered and how they were resolved
-5. **Current State**: What has been implemented or discussed so far?
-6. **Unresolved Questions**: Open questions, blockers, or things that need user input
-7. **Key Files & Patterns**: Critical file paths, function names, or code patterns established
-8. **Next Steps**: What remains to be done?
+1. Main Goal - What was the primary objective?
+2. Key Decisions & Rationale - Important decisions and WHY they were chosen
+3. Trade-offs Considered - What approaches were weighed and rejected?
+4. Problems Solved - Errors, blockers, or gotchas and how resolved
+5. Current State - What has been implemented so far?
+6. Unresolved Questions - Open questions or blockers
+7. Key Files & Patterns - Critical file paths and code patterns
+8. Next Steps - What remains to be done?
 
-Format the summary as clean markdown. Be concise but capture the reasoning behind decisions.
+Format as clean markdown. Be concise but capture reasoning.
+</output_format>
 
----
-**Project:** {project_name}
-**Date:** {date}
----
+<context>
+<project>{project_name}</project>
+<date>{date}</date>
+</context>
 
-## Conversation History
-
-{conversation}"#;
+<conversation>
+{conversation}
+</conversation>"#;
 
 /// JSON schema for structured context summarization output
 const CONTEXT_SUMMARY_SCHEMA: &str = r#"{"type":"object","properties":{"summary":{"type":"string","description":"The markdown context summary including main goal, key decisions with rationale, trade-offs considered, problems solved, current state, unresolved questions, key files/patterns, and next steps"},"slug":{"type":"string","description":"A 2-4 word lowercase hyphenated slug describing the main topic (e.g. implement-magic-commands, fix-auth-bug)"}},"required":["summary","slug"]}"#;
@@ -2520,6 +2555,7 @@ fn execute_summarization_claude(
     app: &AppHandle,
     prompt: &str,
     model: Option<&str>,
+    custom_profile_name: Option<&str>,
 ) -> Result<ContextSummaryResponse, String> {
     let cli_path = get_cli_binary_path(app)?;
 
@@ -2531,6 +2567,7 @@ fn execute_summarization_claude(
 
     let model_str = model.unwrap_or("opus");
     let mut cmd = silent_command(&cli_path);
+    crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
     cmd.args([
         "--print",
         "--input-format",
@@ -2617,6 +2654,7 @@ fn execute_summarization_claude(
 /// This command loads a session's messages, sends them to Claude for summarization,
 /// and saves the result as a context file. It does NOT show anything in the current chat.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn generate_context_from_session(
     app: AppHandle,
     worktree_path: String,
@@ -2625,6 +2663,7 @@ pub async fn generate_context_from_session(
     project_name: String,
     custom_prompt: Option<String>,
     model: Option<String>,
+    custom_profile_name: Option<String>,
 ) -> Result<SaveContextResponse, String> {
     log::trace!(
         "Generating context from session {} for project {}",
@@ -2663,7 +2702,7 @@ pub async fn generate_context_from_session(
 
     // 4. Call Claude CLI with JSON schema (non-streaming)
     // If JSON parsing fails, use fallback slug from project + session name
-    let (summary, slug) = match execute_summarization_claude(&app, &prompt, model.as_deref()) {
+    let (summary, slug) = match execute_summarization_claude(&app, &prompt, model.as_deref(), custom_profile_name.as_deref()) {
         Ok(response) => {
             // Validate slug is not empty
             let slug = if response.slug.trim().is_empty() {
