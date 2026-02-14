@@ -16,7 +16,7 @@ import type { Project, ReviewResponse } from '@/types/projects'
 import { useQueryClient } from '@tanstack/react-query'
 import { chatQueryKeys } from '@/services/chat'
 import { projectsQueryKeys } from '@/services/projects'
-import { gitPull, triggerImmediateGitPoll } from '@/services/git-status'
+import { triggerImmediateGitPoll, performGitPull } from '@/services/git-status'
 
 /**
  * Command context hook - provides essential actions for commands
@@ -532,15 +532,12 @@ export function useCommandContext(
       }
     }
 
-    const toastId = toast.loading(`Pulling from ${baseBranch}...`)
-    try {
-      const result = await gitPull(worktreePath, baseBranch)
-      triggerImmediateGitPoll()
-      toast.success(result || 'Already up to date', { id: toastId })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      toast.error(`Pull failed: ${message}`, { id: toastId })
-    }
+    const { activeWorktreeId } = useChatStore.getState()
+    await performGitPull({
+      worktreeId: activeWorktreeId ?? '',
+      worktreePath,
+      baseBranch,
+    })
   }, [getTargetPath, queryClient])
 
   // Git - Refresh git status immediately

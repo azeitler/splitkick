@@ -2,10 +2,10 @@ import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { getModifierSymbol, isMacOS } from '@/lib/platform'
 import { toast } from 'sonner'
 import {
-  gitPull,
   gitPush,
   triggerImmediateGitPoll,
   fetchWorktreesStatus,
+  performGitPull,
 } from '@/services/git-status'
 import { useChatStore } from '@/store/chat-store'
 import {
@@ -464,28 +464,13 @@ export const ChatToolbar = memo(function ChatToolbar({
 
   const handlePullClick = useCallback(async () => {
     if (!activeWorktreePath || !worktreeId) return
-    const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
-    setWorktreeLoading(worktreeId, 'pull')
-    const toastId = toast.loading('Pulling changes...')
-    try {
-      await gitPull(activeWorktreePath, baseBranch)
-      triggerImmediateGitPoll()
-      if (projectId) fetchWorktreesStatus(projectId)
-      toast.success('Changes pulled', { id: toastId })
-    } catch (error) {
-      const errorStr = String(error)
-      if (errorStr.includes('Merge conflicts in:')) {
-        toast.warning('Pull resulted in conflicts', {
-          id: toastId,
-          description: 'Opening conflict resolution...',
-        })
-        onResolveConflicts()
-      } else {
-        toast.error(`Pull failed: ${errorStr}`, { id: toastId })
-      }
-    } finally {
-      clearWorktreeLoading(worktreeId)
-    }
+    await performGitPull({
+      worktreeId,
+      worktreePath: activeWorktreePath,
+      baseBranch,
+      projectId,
+      onMergeConflict: onResolveConflicts,
+    })
   }, [
     activeWorktreePath,
     baseBranch,

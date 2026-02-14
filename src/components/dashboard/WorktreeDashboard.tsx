@@ -72,10 +72,10 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import {
-  gitPull,
   gitPush,
   fetchWorktreesStatus,
   triggerImmediateGitPoll,
+  performGitPull,
 } from '@/services/git-status'
 
 interface WorktreeDashboardProps {
@@ -133,20 +133,12 @@ function WorktreeSectionHeader({
   const handlePull = useCallback(
     async (e: React.MouseEvent) => {
       e.stopPropagation()
-      const { setWorktreeLoading, clearWorktreeLoading } =
-        useChatStore.getState()
-      setWorktreeLoading(worktree.id, 'pull')
-      const toastId = toast.loading('Pulling changes...')
-      try {
-        await gitPull(worktree.path, defaultBranch)
-        triggerImmediateGitPoll()
-        fetchWorktreesStatus(projectId)
-        toast.success('Changes pulled', { id: toastId })
-      } catch (error) {
-        toast.error(`Pull failed: ${error}`, { id: toastId })
-      } finally {
-        clearWorktreeLoading(worktree.id)
-      }
+      await performGitPull({
+        worktreeId: worktree.id,
+        worktreePath: worktree.path,
+        baseBranch: defaultBranch,
+        projectId,
+      })
     },
     [worktree.id, worktree.path, defaultBranch, projectId]
   )

@@ -125,6 +125,8 @@ export interface WorktreeCreatingEvent {
   name: string
   path: string
   branch: string
+  pr_number?: number
+  issue_number?: number
 }
 
 /** Event payload when worktree creation completes */

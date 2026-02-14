@@ -461,6 +461,48 @@ pub fn git_pull(repo_path: &str, base_branch: &str) -> Result<String, String> {
     }
 }
 
+/// Stash all local changes including untracked files
+pub fn git_stash(repo_path: &str) -> Result<String, String> {
+    log::trace!("Stashing changes in {repo_path}");
+
+    let output = silent_command("git")
+        .args(["stash", "--include-untracked"])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to run git stash: {e}"))?;
+
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        log::trace!("Stash result: {stdout}");
+        Ok(stdout)
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        log::error!("Failed to stash: {stderr}");
+        Err(stderr)
+    }
+}
+
+/// Pop the most recent stash
+pub fn git_stash_pop(repo_path: &str) -> Result<String, String> {
+    log::trace!("Popping stash in {repo_path}");
+
+    let output = silent_command("git")
+        .args(["stash", "pop"])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to run git stash pop: {e}"))?;
+
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        log::trace!("Stash pop result: {stdout}");
+        Ok(stdout)
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        log::error!("Failed to pop stash: {stderr}");
+        Err(stderr)
+    }
+}
+
 /// Push current branch to remote origin
 pub fn git_push(repo_path: &str) -> Result<String, String> {
     log::trace!("Pushing to origin in {repo_path}");

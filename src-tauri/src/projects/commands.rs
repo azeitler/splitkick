@@ -557,6 +557,8 @@ pub async fn create_worktree(
         name: name.clone(),
         path: worktree_path_str.clone(),
         branch: name.clone(),
+        pr_number: pr_context.as_ref().map(|ctx| ctx.number as u64),
+        issue_number: issue_context.as_ref().map(|ctx| ctx.number as u64),
     };
     if let Err(e) = app.emit_all("worktree:creating", &creating_event) {
         log::error!("Failed to emit worktree:creating event: {e}");
@@ -573,7 +575,7 @@ pub async fn create_worktree(
         setup_output: None,
         setup_script: None,
         session_type: SessionType::Worktree,
-        pr_number: None,
+        pr_number: pr_context.as_ref().map(|ctx| ctx.number),
         pr_url: None,
         issue_number: issue_context.as_ref().map(|ctx| ctx.number),
         cached_pr_status: None,
@@ -1102,6 +1104,8 @@ pub async fn create_worktree_from_existing_branch(
         name: name.clone(),
         path: worktree_path_str.clone(),
         branch: name.clone(),
+        pr_number: pr_context.as_ref().map(|ctx| ctx.number as u64),
+        issue_number: issue_context.as_ref().map(|ctx| ctx.number as u64),
     };
     if let Err(e) = app.emit_all("worktree:creating", &creating_event) {
         log::error!("Failed to emit worktree:creating event: {e}");
@@ -1118,7 +1122,7 @@ pub async fn create_worktree_from_existing_branch(
         setup_output: None,
         setup_script: None,
         session_type: SessionType::Worktree,
-        pr_number: None,
+        pr_number: pr_context.as_ref().map(|ctx| ctx.number),
         pr_url: None,
         issue_number: issue_context.as_ref().map(|ctx| ctx.number),
         cached_pr_status: None,
@@ -1532,6 +1536,8 @@ pub async fn checkout_pr(
         name: final_worktree_name.clone(),
         path: worktree_path_str.clone(),
         branch: pr_detail.head_ref_name.clone(), // Use PR's actual branch name
+        pr_number: Some(pr_number as u64),
+        issue_number: None,
     };
     if let Err(e) = app.emit_all("worktree:creating", &creating_event) {
         log::error!("Failed to emit worktree:creating event: {e}");
@@ -4831,6 +4837,20 @@ pub async fn run_review_with_ai(
 pub async fn git_pull(worktree_path: String, base_branch: String) -> Result<String, String> {
     log::trace!("Pulling changes for worktree: {worktree_path}, base branch: {base_branch}");
     git::git_pull(&worktree_path, &base_branch)
+}
+
+/// Stash all local changes including untracked files
+#[tauri::command]
+pub async fn git_stash(worktree_path: String) -> Result<String, String> {
+    log::trace!("Stashing changes for worktree: {worktree_path}");
+    git::git_stash(&worktree_path)
+}
+
+/// Pop the most recent stash
+#[tauri::command]
+pub async fn git_stash_pop(worktree_path: String) -> Result<String, String> {
+    log::trace!("Popping stash for worktree: {worktree_path}");
+    git::git_stash_pop(&worktree_path)
 }
 
 /// Push current branch to remote. If pr_number is provided, uses PR-aware push

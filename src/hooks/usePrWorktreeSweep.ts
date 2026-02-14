@@ -8,7 +8,7 @@
 import { useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
-import { setPrWorktreesForPolling } from '@/services/git-status'
+import { setPrWorktreesForPolling, setAllWorktreesForPolling } from '@/services/git-status'
 import { projectsQueryKeys, isTauri } from '@/services/projects'
 import type { Project, Worktree } from '@/types/projects'
 
@@ -35,6 +35,12 @@ export function usePrWorktreeSweep(projects: Project[] | undefined) {
         prUrl: string
       }> = []
 
+      const allWorktrees: Array<{
+        worktreeId: string
+        worktreePath: string
+        baseBranch: string
+      }> = []
+
       for (const project of projects) {
         if (project.is_folder) continue
 
@@ -43,23 +49,37 @@ export function usePrWorktreeSweep(projects: Project[] | undefined) {
         )
         if (!worktrees) continue
 
+        const baseBranch = project.default_branch ?? 'main'
+
         for (const w of worktrees) {
-          if (w.archived_at || !w.pr_number || !w.pr_url) continue
-          prWorktrees.push({
+          if (w.archived_at) continue
+
+          // All non-archived worktrees for git status sweep
+          allWorktrees.push({
             worktreeId: w.id,
             worktreePath: w.path,
-            baseBranch: project.default_branch ?? 'main',
-            prNumber: w.pr_number,
-            prUrl: w.pr_url,
+            baseBranch,
           })
+
+          // PR worktrees for PR status sweep
+          if (w.pr_number && w.pr_url) {
+            prWorktrees.push({
+              worktreeId: w.id,
+              worktreePath: w.path,
+              baseBranch,
+              prNumber: w.pr_number,
+              prUrl: w.pr_url,
+            })
+          }
         }
       }
 
       // Only send if the list actually changed
-      const json = JSON.stringify(prWorktrees)
+      const json = JSON.stringify({ prWorktrees, allWorktrees })
       if (json !== lastJsonRef.current) {
         lastJsonRef.current = json
         setPrWorktreesForPolling(prWorktrees).catch(() => { /* silent */ })
+        setAllWorktreesForPolling(allWorktrees).catch(() => { /* silent */ })
       }
     }
 

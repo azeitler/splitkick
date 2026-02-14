@@ -2237,18 +2237,48 @@ export function ChatWindow({
         setExecutingMode,
         setLastSentMessage,
         setError,
+        isSending,
+        enqueueMessage,
       } = useChatStore.getState()
+
+      const thinkingLvl = selectedThinkingLevelRef.current
+      const hasManualOverride = useChatStore
+        .getState()
+        .hasManualThinkingOverride(sessionId)
+      const fixResolved = resolveCustomProfile(selectedModelRef.current, selectedProviderRef.current)
+
+      // If session is already busy, queue the fix message instead of sending immediately
+      if (isSending(sessionId)) {
+        enqueueMessage(sessionId, {
+          id: generateId(),
+          message,
+          pendingImages: [],
+          pendingFiles: [],
+          pendingSkills: [],
+          pendingTextFiles: [],
+          model: fixResolved.model,
+          provider: fixResolved.customProfileName ?? null,
+          executionMode: 'build',
+          thinkingLevel: thinkingLvl,
+          disableThinkingForMode: thinkingLvl !== 'off' && !hasManualOverride,
+          effortLevel: useAdaptiveThinkingRef.current
+            ? selectedEffortLevelRef.current
+            : undefined,
+          mcpConfig: buildMcpConfigJson(
+            mcpServersDataRef.current,
+            enabledMcpServersRef.current
+          ),
+          queuedAt: Date.now(),
+        })
+        toast.info('Fix queued — will start when current task completes')
+        return
+      }
 
       setLastSentMessage(sessionId, message)
       setError(sessionId, null)
       addSendingSession(sessionId)
       setSelectedModel(sessionId, selectedModelRef.current)
       setExecutingMode(sessionId, 'build')
-      const thinkingLvl = selectedThinkingLevelRef.current
-      const hasManualOverride = useChatStore
-        .getState()
-        .hasManualThinkingOverride(sessionId)
-      const fixResolved = resolveCustomProfile(selectedModelRef.current, selectedProviderRef.current)
       sendMessage.mutate(
         {
           sessionId,

@@ -22,6 +22,7 @@ import {
   DEFAULT_RELEASE_NOTES_PROMPT,
   DEFAULT_SESSION_NAMING_PROMPT,
   DEFAULT_PARALLEL_EXECUTION_PROMPT,
+  DEFAULT_GLOBAL_SYSTEM_PROMPT,
   DEFAULT_MAGIC_PROMPTS,
   DEFAULT_MAGIC_PROMPT_MODELS,
   DEFAULT_MAGIC_PROMPT_PROVIDERS,
@@ -275,6 +276,14 @@ const PROMPT_SECTIONS: PromptSection[] = [
   {
     label: 'System Prompts',
     configs: [
+      {
+        key: 'global_system_prompt',
+        label: 'Global System Prompt',
+        description:
+          'Appended to every chat session. Works like ~/.claude/CLAUDE.md but managed in settings.',
+        variables: [],
+        defaultValue: DEFAULT_GLOBAL_SYSTEM_PROMPT,
+      },
       {
         key: 'parallel_execution',
         label: 'Parallel Execution',

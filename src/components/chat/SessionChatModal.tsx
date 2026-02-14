@@ -20,10 +20,10 @@ import { usePreferences } from '@/services/preferences'
 import { useWorktree, useProjects, useRunScript } from '@/services/projects'
 import {
   useGitStatus,
-  gitPull,
   gitPush,
   fetchWorktreesStatus,
   triggerImmediateGitPoll,
+  performGitPull,
 } from '@/services/git-status'
 import { isBaseSession } from '@/types/projects'
 import { isNativeApp } from '@/lib/environment'
@@ -129,22 +129,14 @@ export function SessionChatModal({
   const handlePull = useCallback(
     async (e: React.MouseEvent) => {
       e.stopPropagation()
-      const { setWorktreeLoading, clearWorktreeLoading } =
-        useChatStore.getState()
-      setWorktreeLoading(worktreeId, 'pull')
-      const toastId = toast.loading('Pulling changes...')
-      try {
-        await gitPull(worktreePath, defaultBranch)
-        triggerImmediateGitPoll()
-        if (project) fetchWorktreesStatus(project.id)
-        toast.success('Changes pulled', { id: toastId })
-      } catch (error) {
-        toast.error(`Pull failed: ${error}`, { id: toastId })
-      } finally {
-        clearWorktreeLoading(worktreeId)
-      }
+      await performGitPull({
+        worktreeId,
+        worktreePath,
+        baseBranch: defaultBranch,
+        projectId: project?.id,
+      })
     },
-    [worktreeId, worktreePath, defaultBranch, project]
+    [worktreeId, worktreePath, defaultBranch, project?.id]
   )
 
   const handlePush = useCallback(

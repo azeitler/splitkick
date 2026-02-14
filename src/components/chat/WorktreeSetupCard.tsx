@@ -10,6 +10,12 @@ export interface WorktreeSetupCardProps {
   layout?: 'grid' | 'list'
 }
 
+function getStatusText(worktree: Worktree): string {
+  if (worktree.pr_number) return `Checking out PR #${worktree.pr_number}...`
+  if (worktree.issue_number) return 'Setting up branch...'
+  return 'Running setup script...'
+}
+
 /**
  * Card shown in canvas views while a worktree is being set up (jean.json setup script running).
  * Matches SessionCard dimensions for consistent grid layout, or list layout for list view.
@@ -21,6 +27,8 @@ export const WorktreeSetupCard = forwardRef<
   { worktree, isSelected, onSelect, layout = 'grid' },
   ref
 ) {
+  const statusText = getStatusText(worktree)
+
   if (layout === 'list') {
     return (
       <div
@@ -45,7 +53,7 @@ export const WorktreeSetupCard = forwardRef<
 
         {/* Status text */}
         <span className="text-xs text-muted-foreground shrink-0">
-          Running setup script...
+          {statusText}
         </span>
       </div>
     )
@@ -81,7 +89,7 @@ export const WorktreeSetupCard = forwardRef<
       {/* Bottom section: status text */}
       <div className="flex items-center gap-1.5 mt-auto">
         <span className="text-xs text-muted-foreground">
-          Running setup script...
+          {statusText}
         </span>
       </div>
     </div>

@@ -18,9 +18,9 @@ import { useWorktrees, useAppDataDir } from '@/services/projects'
 import {
   useFetchWorktreesStatus,
   useGitStatus,
-  gitPull,
   gitPush,
   fetchWorktreesStatus,
+  performGitPull,
 } from '@/services/git-status'
 import { NewIssuesBadge } from '@/components/shared/NewIssuesBadge'
 import { OpenPRsBadge } from '@/components/shared/OpenPRsBadge'
@@ -117,14 +117,12 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
   const handleBasePull = useCallback(
     async (e: React.MouseEvent) => {
       e.stopPropagation()
-      const toastId = toast.loading('Pulling changes...')
-      try {
-        await gitPull(project.path, project.default_branch)
-        fetchWorktreesStatus(project.id)
-        toast.success('Changes pulled', { id: toastId })
-      } catch (error) {
-        toast.error(`Pull failed: ${error}`, { id: toastId })
-      }
+      await performGitPull({
+        worktreeId: '',
+        worktreePath: project.path,
+        baseBranch: project.default_branch,
+        projectId: project.id,
+      })
     },
     [project.id, project.path, project.default_branch]
   )

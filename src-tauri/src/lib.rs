@@ -412,6 +412,8 @@ pub struct MagicPrompts {
     pub session_naming: Option<String>,
     #[serde(default)]
     pub parallel_execution: Option<String>,
+    #[serde(default)]
+    pub global_system_prompt: Option<String>,
 }
 
 fn default_investigate_issue_prompt() -> String {
@@ -712,6 +714,7 @@ impl Default for MagicPrompts {
             release_notes: None,
             session_naming: None,
             parallel_execution: None,
+            global_system_prompt: None,
         }
     }
 }
@@ -909,7 +912,7 @@ impl Default for UIState {
     }
 }
 
-fn get_preferences_path(app: &AppHandle) -> Result<PathBuf, String> {
+pub fn get_preferences_path(app: &AppHandle) -> Result<PathBuf, String> {
     let app_data_dir = app
         .path()
         .app_data_dir()
@@ -1970,6 +1973,8 @@ pub fn run() {
             projects::has_uncommitted_changes,
             projects::get_git_diff,
             projects::git_pull,
+            projects::git_stash,
+            projects::git_stash_pop,
             projects::git_push,
             projects::merge_worktree_to_base,
             projects::get_merge_conflicts,
@@ -2096,6 +2101,7 @@ pub fn run() {
             background_tasks::commands::set_app_focus_state,
             background_tasks::commands::set_active_worktree_for_polling,
             background_tasks::commands::set_pr_worktrees_for_polling,
+            background_tasks::commands::set_all_worktrees_for_polling,
             background_tasks::commands::set_git_poll_interval,
             background_tasks::commands::get_git_poll_interval,
             background_tasks::commands::trigger_immediate_git_poll,

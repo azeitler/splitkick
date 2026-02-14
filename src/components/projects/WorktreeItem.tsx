@@ -23,10 +23,10 @@ import { useCanvasStoreState } from '@/components/chat/hooks/useCanvasStoreState
 import {
   setActiveWorktreeForPolling,
   useGitStatus,
-  gitPull,
   gitPush,
   fetchWorktreesStatus,
   triggerImmediateGitPoll,
+  performGitPull,
 } from '@/services/git-status'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { useSidebarWidth } from '@/components/layout/SidebarWidthContext'
@@ -442,25 +442,13 @@ export function WorktreeItem({
   const handlePull = useCallback(
     async (e: React.MouseEvent) => {
       e.stopPropagation()
-      const { setWorktreeLoading, clearWorktreeLoading } =
-        useChatStore.getState()
-      setWorktreeLoading(worktree.id, 'pull')
-      const toastId = toast.loading('Pulling changes...')
-      try {
-        await gitPull(worktree.path, defaultBranch)
-        triggerImmediateGitPoll()
-        fetchWorktreesStatus(projectId)
-        toast.success('Changes pulled', { id: toastId })
-      } catch (error) {
-        const errorStr = String(error)
-        if (errorStr.includes('Merge conflicts in:')) {
-          toast.warning('Pull resulted in conflicts', {
-            id: toastId,
-            description: 'Opening conflict resolution...',
-          })
-          // Select this worktree and trigger resolve-conflicts via magic command
+      await performGitPull({
+        worktreeId: worktree.id,
+        worktreePath: worktree.path,
+        baseBranch: defaultBranch,
+        projectId,
+        onMergeConflict: () => {
           selectWorktree(worktree.id)
-          // Small delay to ensure worktree is selected before dispatching
           setTimeout(() => {
             window.dispatchEvent(
               new CustomEvent('magic-command', {
@@ -468,12 +456,8 @@ export function WorktreeItem({
               })
             )
           }, 100)
-        } else {
-          toast.error(`Pull failed: ${error}`, { id: toastId })
-        }
-      } finally {
-        clearWorktreeLoading(worktree.id)
-      }
+        },
+      })
     },
     [worktree.id, worktree.path, defaultBranch, projectId, selectWorktree]
   )

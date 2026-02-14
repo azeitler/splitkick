@@ -249,6 +249,7 @@ interface ChatUIState {
 
   // Actions - Worktree-level state checks (checks all sessions in a worktree)
   isWorktreeRunning: (worktreeId: string) => boolean
+  isWorktreeRunningNonPlan: (worktreeId: string) => boolean
   isWorktreeWaiting: (worktreeId: string) => boolean
 
   // Actions - Streaming content (session-based)
@@ -802,6 +803,24 @@ export const useChatStore = create<ChatUIState>()(
         )) {
           if (isSending && state.sessionWorktreeMap[sessionId] === worktreeId) {
             return true
+          }
+        }
+        return false
+      },
+
+      isWorktreeRunningNonPlan: worktreeId => {
+        const state = get()
+        for (const [sessionId, isSending] of Object.entries(
+          state.sendingSessionIds
+        )) {
+          if (
+            isSending &&
+            state.sessionWorktreeMap[sessionId] === worktreeId
+          ) {
+            const mode = state.executingModes[sessionId]
+            if (mode === 'build' || mode === 'yolo') {
+              return true
+            }
           }
         }
         return false

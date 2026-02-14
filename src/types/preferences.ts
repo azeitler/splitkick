@@ -55,6 +55,8 @@ export interface MagicPrompts {
   session_naming: string | null
   /** System prompt for parallel execution (appended to every chat session when enabled) */
   parallel_execution: string | null
+  /** Global system prompt appended to every chat session (like ~/.claude/CLAUDE.md) */
+  global_system_prompt: string | null
 }
 
 /** Default prompt for investigating GitHub issues */
@@ -338,6 +340,15 @@ Respond with ONLY the raw JSON object, no markdown, no code fences, no explanati
 {"session_name": "Your session name here"}
 </output_format>`
 
+export const DEFAULT_GLOBAL_SYSTEM_PROMPT = `## Plan Mode
+
+- Make the plan extremely concise. Sacrifice grammar for the sake of concision.
+- At the end of each plan, give me a list of unresolved questions to answer, if any.
+
+## Not Plan Mode
+
+- After each finished task, please write a few bullet points on how to test the changes.`
+
 export const DEFAULT_PARALLEL_EXECUTION_PROMPT = `In plan mode, structure plans so sub-agents can work simultaneously. In build/execute mode, use sub-agents in parallel for faster implementation.
 
 When launching multiple Task sub-agents, prefer sending them in a single message rather than sequentially. Group independent work items (e.g., editing separate files, researching unrelated questions) into parallel Task calls. Only sequence Tasks when one depends on another's output.
@@ -359,6 +370,7 @@ export const DEFAULT_MAGIC_PROMPTS: MagicPrompts = {
   release_notes: null,
   session_naming: null,
   parallel_execution: null,
+  global_system_prompt: null,
 }
 
 /**

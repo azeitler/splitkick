@@ -8,9 +8,9 @@ import { useProjectsStore } from '@/store/projects-store'
 import { chatQueryKeys } from '@/services/chat'
 import { saveWorktreePr, projectsQueryKeys } from '@/services/projects'
 import {
-  gitPull,
   gitPush,
   triggerImmediateGitPoll,
+  performGitPull,
 } from '@/services/git-status'
 import { isBaseSession } from '@/types/projects'
 import type {
@@ -177,25 +177,12 @@ export function useGitOperations({
   const handlePull = useCallback(async () => {
     if (!activeWorktreePath || !activeWorktreeId) return
 
-    const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
-    setWorktreeLoading(activeWorktreeId, 'commit')
-    const branch = worktree?.branch ?? ''
-    const toastId = toast.loading(`Pulling changes on ${branch}...`)
-
-    try {
-      const baseBranch = project?.default_branch ?? 'main'
-      await gitPull(activeWorktreePath, baseBranch)
-      triggerImmediateGitPoll()
-      toast.success('Changes pulled', { id: toastId })
-    } catch (error) {
-      if (String(error).includes('Merge conflicts in:')) {
-        toast.warning('Pull resulted in conflicts', { id: toastId })
-      } else {
-        toast.error(`Pull failed: ${error}`, { id: toastId })
-      }
-    } finally {
-      clearWorktreeLoading(activeWorktreeId)
-    }
+    await performGitPull({
+      worktreeId: activeWorktreeId,
+      worktreePath: activeWorktreePath,
+      baseBranch: project?.default_branch ?? 'main',
+      branchLabel: worktree?.branch,
+    })
   }, [activeWorktreeId, activeWorktreePath, worktree?.branch, project?.default_branch])
 
   // Handle Push - pushes commits to remote

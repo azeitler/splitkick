@@ -20,6 +20,7 @@ import type {
 import type { ReviewFinding } from '@/types/chat'
 import { formatAnswersAsNaturalLanguage } from '@/services/chat'
 import { parseReviewFindings, getFindingKey } from '../review-finding-utils'
+import { generateId } from '@/lib/uuid'
 
 /** Git commands to auto-approve for magic prompts (no permission prompts needed) */
 export const GIT_ALLOWED_TOOLS = [
@@ -952,12 +953,9 @@ Please apply this fix to the file.`
         setSelectedModel,
         setExecutingMode,
         markFindingFixed,
+        isSending,
+        enqueueMessage,
       } = useChatStore.getState()
-      setLastSentMessage(sessionId, message)
-      setError(sessionId, null)
-      addSendingSession(sessionId)
-      setSelectedModel(sessionId, selectedModelRef.current)
-      setExecutingMode(sessionId, 'build') // Fixes are always in build mode
 
       // Mark this finding as fixed (we don't have the index here, so we generate a key based on file+line)
       // The finding key format is: file:line:index - we'll match on file:line prefix
@@ -981,6 +979,36 @@ Please apply this fix to the file.`
       if (findingIndex >= 0) {
         markFindingFixed(sessionId, getFindingKey(finding, findingIndex))
       }
+
+      // If session is already busy, queue the fix message
+      if (isSending(sessionId)) {
+        enqueueMessage(sessionId, {
+          id: generateId(),
+          message,
+          pendingImages: [],
+          pendingFiles: [],
+          pendingSkills: [],
+          pendingTextFiles: [],
+          model: selectedModelRef.current,
+          provider: getCustomProfileName() ?? null,
+          executionMode: 'build',
+          thinkingLevel: selectedThinkingLevelRef.current,
+          disableThinkingForMode: false,
+          effortLevel: useAdaptiveThinkingRef.current
+            ? selectedEffortLevelRef.current
+            : undefined,
+          mcpConfig: getMcpConfig(),
+          queuedAt: Date.now(),
+        })
+        toast.info('Fix queued — will start when current task completes')
+        return
+      }
+
+      setLastSentMessage(sessionId, message)
+      setError(sessionId, null)
+      addSendingSession(sessionId)
+      setSelectedModel(sessionId, selectedModelRef.current)
+      setExecutingMode(sessionId, 'build') // Fixes are always in build mode
 
       sendMessage.mutate(
         {
@@ -1062,12 +1090,9 @@ Please apply all these fixes to the respective files.`
         setSelectedModel,
         setExecutingMode,
         markFindingFixed,
+        isSending,
+        enqueueMessage,
       } = useChatStore.getState()
-      setLastSentMessage(sessionId, message)
-      setError(sessionId, null)
-      addSendingSession(sessionId)
-      setSelectedModel(sessionId, selectedModelRef.current)
-      setExecutingMode(sessionId, 'build') // Fixes are always in build mode
 
       // Mark all findings as fixed
       // Get sessions data from query cache instead of closure for stable callback
@@ -1093,6 +1118,36 @@ Please apply all these fixes to the respective files.`
           markFindingFixed(sessionId, getFindingKey(finding, findingIndex))
         }
       }
+
+      // If session is already busy, queue the fix message
+      if (isSending(sessionId)) {
+        enqueueMessage(sessionId, {
+          id: generateId(),
+          message,
+          pendingImages: [],
+          pendingFiles: [],
+          pendingSkills: [],
+          pendingTextFiles: [],
+          model: selectedModelRef.current,
+          provider: getCustomProfileName() ?? null,
+          executionMode: 'build',
+          thinkingLevel: selectedThinkingLevelRef.current,
+          disableThinkingForMode: false,
+          effortLevel: useAdaptiveThinkingRef.current
+            ? selectedEffortLevelRef.current
+            : undefined,
+          mcpConfig: getMcpConfig(),
+          queuedAt: Date.now(),
+        })
+        toast.info('Fix queued — will start when current task completes')
+        return
+      }
+
+      setLastSentMessage(sessionId, message)
+      setError(sessionId, null)
+      addSendingSession(sessionId)
+      setSelectedModel(sessionId, selectedModelRef.current)
+      setExecutingMode(sessionId, 'build') // Fixes are always in build mode
 
       sendMessage.mutate(
         {

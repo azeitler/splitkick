@@ -360,6 +360,20 @@ fn build_claude_args(
         }
     }
 
+    // Global system prompt from preferences (like ~/.claude/CLAUDE.md)
+    if let Ok(prefs_path) = crate::get_preferences_path(app) {
+        if let Ok(contents) = std::fs::read_to_string(&prefs_path) {
+            if let Ok(prefs) = serde_json::from_str::<crate::AppPreferences>(&contents) {
+                if let Some(prompt) = &prefs.magic_prompts.global_system_prompt {
+                    let prompt = prompt.trim();
+                    if !prompt.is_empty() {
+                        system_prompt_parts.push(prompt.to_string());
+                    }
+                }
+            }
+        }
+    }
+
     // Parallel execution prompt - encourages sub-agent parallelization
     if let Some(prompt) = parallel_execution_prompt {
         let prompt = prompt.trim();
@@ -407,7 +421,17 @@ fn build_claude_args(
     let mut all_context_paths: Vec<std::path::PathBuf> = Vec::new();
 
     // Check for issue context files (shared storage)
-    if let Ok(issue_keys) = get_session_issue_refs(app, session_id) {
+    // Merge session_id refs + worktree_id refs (worktree refs cover PR/issue-based worktrees
+    // where the background thread may not have copied refs to the session yet)
+    let mut issue_keys = get_session_issue_refs(app, session_id).unwrap_or_default();
+    if let Ok(wt_keys) = get_session_issue_refs(app, worktree_id) {
+        for key in wt_keys {
+            if !issue_keys.contains(&key) {
+                issue_keys.push(key);
+            }
+        }
+    }
+    if !issue_keys.is_empty() {
         if let Ok(contexts_dir) = get_github_contexts_dir(app) {
             log::debug!(
                 "Checking for issue context files in {:?} for session {}",
@@ -431,7 +455,15 @@ fn build_claude_args(
     }
 
     // Check for PR context files (shared storage)
-    if let Ok(pr_keys) = get_session_pr_refs(app, session_id) {
+    let mut pr_keys = get_session_pr_refs(app, session_id).unwrap_or_default();
+    if let Ok(wt_keys) = get_session_pr_refs(app, worktree_id) {
+        for key in wt_keys {
+            if !pr_keys.contains(&key) {
+                pr_keys.push(key);
+            }
+        }
+    }
+    if !pr_keys.is_empty() {
         if let Ok(contexts_dir) = get_github_contexts_dir(app) {
             for key in pr_keys {
                 let parts: Vec<&str> = key.rsplitn(2, '-').collect();

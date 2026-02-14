@@ -28,10 +28,10 @@ import { notify } from '@/lib/notifications'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import {
-  gitPull,
   gitPush,
   triggerImmediateGitPoll,
   fetchWorktreesStatus,
+  performGitPull,
 } from '@/services/git-status'
 import type { CreateCommitResponse, CreatePrResponse, MergeConflictsResponse, ReviewResponse } from '@/types/projects'
 import type { Session } from '@/types/chat'
@@ -66,8 +66,8 @@ const CANVAS_ALLOWED_OPTIONS = new Set<MagicOption>([
   'resolve-conflicts',
 ])
 
-/** Canvas options that need ChatWindow — switch off canvas first, then dispatch event */
-const CANVAS_SESSION_TRANSITION_OPTIONS = new Set<MagicOption>([
+/** Canvas options that navigate to worktree chat and dispatch a magic-command event */
+const CANVAS_NAVIGATE_AND_DISPATCH_OPTIONS = new Set<MagicOption>([
   'merge',
 ])
 
@@ -295,19 +295,13 @@ export function MagicModal() {
           break
         }
         case 'pull': {
-          setWorktreeLoading(selectedWorktreeId, 'pull')
-          const toastId = toast.loading(`Pulling changes on ${worktree.branch}...`)
-          try {
-            const baseBranch = project?.default_branch ?? 'main'
-            await gitPull(worktree.path, baseBranch)
-            triggerImmediateGitPoll()
-            if (worktree.project_id) fetchWorktreesStatus(worktree.project_id)
-            toast.success('Changes pulled', { id: toastId })
-          } catch (error) {
-            toast.error(`Pull failed: ${error}`, { id: toastId })
-          } finally {
-            clearWorktreeLoading(selectedWorktreeId)
-          }
+          await performGitPull({
+            worktreeId: selectedWorktreeId,
+            worktreePath: worktree.path,
+            baseBranch: project?.default_branch ?? 'main',
+            branchLabel: worktree.branch,
+            projectId: worktree.project_id ?? undefined,
+          })
           break
         }
         case 'push': {
@@ -509,10 +503,14 @@ ${resolveInstructions}`
         return
       }
 
-      // Commands that need ChatWindow: switch off canvas first, then dispatch after mount
-      if (isOnCanvas && CANVAS_SESSION_TRANSITION_OPTIONS.has(option)) {
+      // Commands that need ChatWindow: navigate to worktree first, then dispatch after mount
+      if (isOnCanvas && CANVAS_NAVIGATE_AND_DISPATCH_OPTIONS.has(option) && worktree?.path) {
         setMagicModalOpen(false)
-        useChatStore.getState().setViewingCanvasTab(selectedWorktreeId, false)
+        const { setActiveWorktree, setViewingCanvasTab } = useChatStore.getState()
+        // Navigate to worktree view (needed for WorktreeDashboard → worktree transition)
+        useProjectsStore.getState().selectWorktree(selectedWorktreeId)
+        setActiveWorktree(selectedWorktreeId, worktree.path)
+        setViewingCanvasTab(selectedWorktreeId, false)
         // Delay dispatch to allow ChatWindow to mount and register event listener
         setTimeout(() => {
           window.dispatchEvent(

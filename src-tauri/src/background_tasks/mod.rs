@@ -58,6 +58,10 @@ pub const DEFAULT_REMOTE_POLL_INTERVAL: u64 = 60;
 /// Default sweep polling interval in seconds (5 minutes)
 pub const DEFAULT_SWEEP_POLL_INTERVAL: u64 = 300;
 
+/// Default git sweep polling interval in seconds (60 seconds)
+/// This controls how often non-active worktrees get their git status polled (round-robin).
+pub const DEFAULT_GIT_SWEEP_INTERVAL: u64 = 60;
+
 /// Manages background tasks for the application
 ///
 /// The task manager runs a polling loop that periodically checks git status
@@ -89,6 +93,12 @@ pub struct BackgroundTaskManager {
     sweep_index: Arc<AtomicU64>,
     /// Timestamp of last sweep poll
     last_sweep_poll_time: Arc<AtomicU64>,
+    /// All worktrees for git status sweep polling (non-active worktrees)
+    all_worktrees: Arc<Mutex<Vec<ActiveWorktreeInfo>>>,
+    /// Index for round-robin git sweep
+    git_sweep_index: Arc<AtomicU64>,
+    /// Timestamp of last git sweep poll
+    last_git_sweep_time: Arc<AtomicU64>,
 }
 
 impl BackgroundTaskManager {
@@ -108,6 +118,9 @@ impl BackgroundTaskManager {
             pr_worktrees: Arc::new(Mutex::new(Vec::new())),
             sweep_index: Arc::new(AtomicU64::new(0)),
             last_sweep_poll_time: Arc::new(AtomicU64::new(0)),
+            all_worktrees: Arc::new(Mutex::new(Vec::new())),
+            git_sweep_index: Arc::new(AtomicU64::new(0)),
+            last_git_sweep_time: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -135,6 +148,9 @@ impl BackgroundTaskManager {
         let pr_worktrees = Arc::clone(&self.pr_worktrees);
         let sweep_index = Arc::clone(&self.sweep_index);
         let last_sweep_poll_time = Arc::clone(&self.last_sweep_poll_time);
+        let all_worktrees = Arc::clone(&self.all_worktrees);
+        let git_sweep_index = Arc::clone(&self.git_sweep_index);
+        let last_git_sweep_time = Arc::clone(&self.last_git_sweep_time);
 
         thread::spawn(move || {
             log::trace!("Background task polling loop started");
@@ -344,6 +360,62 @@ impl BackgroundTaskManager {
                     }
                 }
 
+                // ================================================================
+                // Git status sweep (round-robin git status for non-active worktrees)
+                // Runs even when no worktree is selected on the canvas
+                // ================================================================
+                {
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
+                    let last_git_sweep = last_git_sweep_time.load(Ordering::Relaxed);
+                    let time_since_git_sweep = now.saturating_sub(last_git_sweep);
+
+                    if time_since_git_sweep >= DEFAULT_GIT_SWEEP_INTERVAL {
+                        let worktrees = all_worktrees.lock().unwrap().clone();
+
+                        // Filter out the currently active worktree (already polled above)
+                        let candidates: Vec<_> = worktrees
+                            .iter()
+                            .filter(|w| {
+                                active_worktree_id
+                                    .as_ref()
+                                    .map_or(true, |id| &w.worktree_id != id)
+                            })
+                            .collect();
+
+                        if !candidates.is_empty() {
+                            let idx = git_sweep_index.fetch_add(1, Ordering::Relaxed) as usize
+                                % candidates.len();
+                            let candidate = candidates[idx];
+
+                            log::trace!(
+                                "Git sweep: polling git status for worktree {}",
+                                candidate.worktree_id
+                            );
+
+                            match get_branch_status(candidate) {
+                                Ok(status) => {
+                                    if let Err(e) = emit_git_status(&app, status) {
+                                        log::error!(
+                                            "Git sweep: failed to emit git status: {e}"
+                                        );
+                                    }
+                                }
+                                Err(e) => {
+                                    log::warn!(
+                                        "Git sweep: failed git status for {}: {e}",
+                                        candidate.worktree_id
+                                    );
+                                }
+                            }
+                        }
+
+                        last_git_sweep_time.store(now, Ordering::Relaxed);
+                    }
+                }
+
                 // Wait for a short interval before next check
                 // Use 1-second sleep intervals to respond to shutdown/focus/immediate changes quickly
                 let interval = poll_interval_secs.load(Ordering::Relaxed);
@@ -478,6 +550,16 @@ impl BackgroundTaskManager {
     pub fn set_pr_worktrees(&self, worktrees: Vec<ActiveWorktreeInfo>) {
         log::trace!("Setting {} PR worktrees for sweep polling", worktrees.len());
         let mut guard = self.pr_worktrees.lock().unwrap();
+        *guard = worktrees;
+    }
+
+    /// Set all worktrees for git status sweep polling.
+    ///
+    /// The sweep polls these worktrees round-robin at a slow interval (60s)
+    /// to keep uncommitted diff stats up to date even when not actively selected.
+    pub fn set_all_worktrees(&self, worktrees: Vec<ActiveWorktreeInfo>) {
+        log::trace!("Setting {} worktrees for git status sweep polling", worktrees.len());
+        let mut guard = self.all_worktrees.lock().unwrap();
         *guard = worktrees;
     }
 

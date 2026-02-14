@@ -153,3 +153,35 @@ pub fn set_pr_worktrees_for_polling(
     state.set_pr_worktrees(infos);
     Ok(())
 }
+
+/// Info about a worktree for git status sweep polling
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AllWorktreeInfo {
+    pub worktree_id: String,
+    pub worktree_path: String,
+    pub base_branch: String,
+}
+
+/// Set all worktrees for background git status sweep polling.
+///
+/// The sweep polls these worktrees round-robin at a slow interval (60s)
+/// to keep uncommitted diff stats up to date even when not actively selected.
+#[tauri::command]
+pub fn set_all_worktrees_for_polling(
+    state: State<'_, BackgroundTaskManager>,
+    worktrees: Vec<AllWorktreeInfo>,
+) -> Result<(), String> {
+    let infos: Vec<ActiveWorktreeInfo> = worktrees
+        .into_iter()
+        .map(|w| ActiveWorktreeInfo {
+            worktree_id: w.worktree_id,
+            worktree_path: w.worktree_path,
+            base_branch: w.base_branch,
+            pr_number: None,
+            pr_url: None,
+        })
+        .collect();
+    state.set_all_worktrees(infos);
+    Ok(())
+}
