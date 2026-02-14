@@ -46,6 +46,8 @@ interface UIState {
   autoInvestigatePRWorktreeIds: Set<string>
   /** Worktree IDs that should auto-open first session modal when canvas mounts */
   autoOpenSessionWorktreeIds: Set<string>
+  /** Specific session ID to auto-open per worktree (overrides first-session default) */
+  pendingAutoOpenSessionIds: Record<string, string>
   /** Project ID for the Session Board modal (null = closed) */
   sessionBoardProjectId: string | null
   /** Whether a session chat modal is open (for magic command keybinding checks) */
@@ -98,8 +100,8 @@ interface UIState {
   consumeAutoInvestigate: (worktreeId: string) => boolean
   markWorktreeForAutoInvestigatePR: (worktreeId: string) => void
   consumeAutoInvestigatePR: (worktreeId: string) => boolean
-  markWorktreeForAutoOpenSession: (worktreeId: string) => void
-  consumeAutoOpenSession: (worktreeId: string) => boolean
+  markWorktreeForAutoOpenSession: (worktreeId: string, sessionId?: string) => void
+  consumeAutoOpenSession: (worktreeId: string) => { shouldOpen: boolean; sessionId?: string }
   openSessionBoardModal: (projectId: string) => void
   closeSessionBoardModal: () => void
   setSessionChatModalOpen: (open: boolean, worktreeId?: string | null) => void
@@ -140,6 +142,7 @@ export const useUIStore = create<UIState>()(
       autoInvestigateWorktreeIds: new Set(),
       autoInvestigatePRWorktreeIds: new Set(),
       autoOpenSessionWorktreeIds: new Set(),
+      pendingAutoOpenSessionIds: {},
       sessionBoardProjectId: null,
       sessionChatModalOpen: false,
       sessionChatModalWorktreeId: null,
@@ -356,13 +359,16 @@ export const useUIStore = create<UIState>()(
         return false
       },
 
-      markWorktreeForAutoOpenSession: worktreeId =>
+      markWorktreeForAutoOpenSession: (worktreeId, sessionId) =>
         set(
           state => ({
             autoOpenSessionWorktreeIds: new Set([
               ...state.autoOpenSessionWorktreeIds,
               worktreeId,
             ]),
+            pendingAutoOpenSessionIds: sessionId
+              ? { ...state.pendingAutoOpenSessionIds, [worktreeId]: sessionId }
+              : state.pendingAutoOpenSessionIds,
           }),
           undefined,
           'markWorktreeForAutoOpenSession'
@@ -371,18 +377,20 @@ export const useUIStore = create<UIState>()(
       consumeAutoOpenSession: worktreeId => {
         const state = useUIStore.getState()
         if (state.autoOpenSessionWorktreeIds.has(worktreeId)) {
+          const sessionId = state.pendingAutoOpenSessionIds[worktreeId]
           set(
             state => {
               const newSet = new Set(state.autoOpenSessionWorktreeIds)
               newSet.delete(worktreeId)
-              return { autoOpenSessionWorktreeIds: newSet }
+              const { [worktreeId]: _, ...restPending } = state.pendingAutoOpenSessionIds
+              return { autoOpenSessionWorktreeIds: newSet, pendingAutoOpenSessionIds: restPending }
             },
             undefined,
             'consumeAutoOpenSession'
           )
-          return true
+          return { shouldOpen: true, sessionId }
         }
-        return false
+        return { shouldOpen: false }
       },
 
       openSessionBoardModal: projectId =>

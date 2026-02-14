@@ -1410,9 +1410,12 @@ export function useCreateBaseSession() {
       expandProject(projectId)
       selectWorktree(session.id)
 
-      // Set as active for chat
-      const { setActiveWorktree } = useChatStore.getState()
-      setActiveWorktree(session.id, session.path)
+      // Only switch to worktree view if already viewing a worktree
+      // If on project canvas (activeWorktreePath is null), stay there
+      const { activeWorktreePath, setActiveWorktree } = useChatStore.getState()
+      if (activeWorktreePath) {
+        setActiveWorktree(session.id, session.path)
+      }
 
       // In canvas-only mode, mark worktree for auto-open first session modal
       console.log('[AUTO-OPEN] Marking base session for auto-open:', session.id)

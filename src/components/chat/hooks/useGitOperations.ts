@@ -290,8 +290,8 @@ export function useGitOperations({
       // Store review results in Zustand (session-scoped, auto-opens sidebar)
       const { setReviewResults, setActiveSession, setViewingCanvasTab } = useChatStore.getState()
       setReviewResults(newSession.id, result)
-      setActiveSession(activeWorktreeId, newSession.id)
       setViewingCanvasTab(activeWorktreeId, false)
+      setActiveSession(activeWorktreeId, newSession.id)
 
       // Persist review results to session file
       invoke('update_session_state', {

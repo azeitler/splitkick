@@ -395,6 +395,11 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     worktreePath: string
   } | null>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  // Track highlighted card to survive reordering
+  const highlightedCardRef = useRef<{
+    worktreeId: string
+    sessionId: string
+  } | null>(null)
 
   // Get current selected card's worktree info for hooks
   const selectedFlatCard =
@@ -431,13 +436,30 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
       )
   }, [selectedSession])
 
-  // Sync selectedIndex when selectedSession changes and flatCards updates
+  // Track highlighted card when selectedIndex changes (for surviving reorders)
+  const handleSelectedIndexChange = useCallback(
+    (index: number | null) => {
+      setSelectedIndex(index)
+      if (index !== null && flatCards[index]?.card) {
+        highlightedCardRef.current = {
+          worktreeId: flatCards[index].worktreeId,
+          sessionId: flatCards[index].card!.session.id,
+        }
+      }
+    },
+    [flatCards]
+  )
+
+  // Re-sync selectedIndex when flatCards reorders (status changes, etc.)
   useEffect(() => {
-    if (!selectedSession) return
+    const highlighted = selectedSession
+      ? { worktreeId: selectedSession.worktreeId, sessionId: selectedSession.sessionId }
+      : highlightedCardRef.current
+    if (!highlighted) return
     const cardIndex = flatCards.findIndex(
       fc =>
-        fc.worktreeId === selectedSession.worktreeId &&
-        fc.card?.session.id === selectedSession.sessionId
+        fc.worktreeId === highlighted.worktreeId &&
+        fc.card?.session.id === highlighted.sessionId
     )
     if (cardIndex !== -1 && cardIndex !== selectedIndex) {
       setSelectedIndex(cardIndex)
@@ -449,26 +471,30 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     for (const [worktreeId, sessionData] of sessionsByWorktreeId) {
       if (!sessionData.sessions.length) continue
 
-      const shouldAutoOpen = useUIStore
+      const autoOpen = useUIStore
         .getState()
         .consumeAutoOpenSession(worktreeId)
-      if (!shouldAutoOpen) continue
+      if (!autoOpen.shouldOpen) continue
 
       const worktree = readyWorktrees.find(w => w.id === worktreeId)
-      const firstSession = sessionData.sessions[0]
-      if (worktree && firstSession) {
+      // Use specific session if provided, otherwise fall back to first session
+      const targetSessionId = autoOpen.sessionId
+      const targetSession = targetSessionId
+        ? sessionData.sessions.find(s => s.id === targetSessionId)
+        : sessionData.sessions[0]
+      if (worktree && targetSession) {
         // Find the index in flatCards for keyboard selection
         const cardIndex = flatCards.findIndex(
           fc =>
             fc.worktreeId === worktreeId &&
-            fc.card?.session.id === firstSession.id
+            fc.card?.session.id === targetSession.id
         )
         if (cardIndex !== -1) {
           setSelectedIndex(cardIndex)
         }
 
         setSelectedSession({
-          sessionId: firstSession.id,
+          sessionId: targetSession.id,
           worktreeId,
           worktreePath: worktree.path,
         })
@@ -669,7 +695,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
   const { cardRefs } = useCanvasKeyboardNav({
     cards: flatCards,
     selectedIndex,
-    onSelectedIndexChange: setSelectedIndex,
+    onSelectedIndexChange: handleSelectedIndexChange,
     onSelect: handleSelect,
     enabled: !isModalOpen,
     layout: canvasLayout,
@@ -1032,6 +1058,11 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
               '[WorktreeDashboard] onSuccess - session.id:',
               session.id
             )
+            // Update highlighted ref so canvas stays on new session after modal close
+            highlightedCardRef.current = {
+              worktreeId: item.worktreeId,
+              sessionId: session.id,
+            }
             setSelectedSession({
               sessionId: session.id,
               worktreeId: item.worktreeId,
