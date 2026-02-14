@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ArrowLeft, Eye, Maximize2, Terminal, Play } from 'lucide-react'
+import { ArrowLeft, Eye, Maximize2, Terminal, Play, X } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -282,6 +282,14 @@ export function SessionChatModal({
                   Open Full View
                 </Button>
               )}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0"
+                onClick={handleClose}
+              >
+                <X className="h-4 w-4" />
+              </Button>
             </div>
           </div>
         </DialogHeader>

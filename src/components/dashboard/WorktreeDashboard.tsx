@@ -118,17 +118,13 @@ function WorktreeSectionHeader({
   const unpushedCount =
     gitStatus?.unpushed_count ?? worktree.cached_unpushed_count ?? 0
 
-  // Non-base: branch diff vs base; base: uncommitted changes
-  const diffAdded = isBase
-    ? (gitStatus?.uncommitted_added ?? worktree.cached_uncommitted_added ?? 0)
-    : (gitStatus?.branch_diff_added ?? worktree.cached_branch_diff_added ?? 0)
-  const diffRemoved = isBase
-    ? (gitStatus?.uncommitted_removed ??
-      worktree.cached_uncommitted_removed ??
-      0)
-    : (gitStatus?.branch_diff_removed ??
-      worktree.cached_branch_diff_removed ??
-      0)
+  // Diff stats: branch diff + uncommitted for non-base; uncommitted only for base
+  const branchDiffAdded = gitStatus?.branch_diff_added ?? worktree.cached_branch_diff_added ?? 0
+  const branchDiffRemoved = gitStatus?.branch_diff_removed ?? worktree.cached_branch_diff_removed ?? 0
+  const uncommittedAdded = gitStatus?.uncommitted_added ?? worktree.cached_uncommitted_added ?? 0
+  const uncommittedRemoved = gitStatus?.uncommitted_removed ?? worktree.cached_uncommitted_removed ?? 0
+  const diffAdded = isBase ? uncommittedAdded : branchDiffAdded + uncommittedAdded
+  const diffRemoved = isBase ? uncommittedRemoved : branchDiffRemoved + uncommittedRemoved
 
   const handlePull = useCallback(
     async (e: React.MouseEvent) => {
@@ -483,6 +479,10 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
         )
         if (cardIndex !== -1) {
           setSelectedIndex(cardIndex)
+          highlightedCardRef.current = {
+            worktreeId,
+            sessionId: targetSession.id,
+          }
         }
 
         setSelectedSession({
@@ -884,6 +884,15 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
             if (nearestIndex !== null && nearestIndex > closingIndex) {
               nearestIndex--
             }
+            // Update highlightedCardRef so re-sync effect anchors to the correct card
+            if (nearestIndex !== null) {
+              const nearestCard = flatCards[nearestIndex > closingIndex ? nearestIndex + 1 : nearestIndex]
+              highlightedCardRef.current = nearestCard?.card
+                ? { worktreeId: nearestCard.worktreeId, sessionId: nearestCard.card.session.id }
+                : null
+            } else {
+              highlightedCardRef.current = null
+            }
             setSelectedIndex(nearestIndex)
           }
         } else {
@@ -909,6 +918,11 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
             const closingGlobalIndex = flatCards.findIndex(
               fc => fc.card?.session.id === closingSessionId
             )
+            // Update highlightedCardRef so re-sync effect anchors to the correct card
+            highlightedCardRef.current = {
+              worktreeId: nextCard.worktreeId,
+              sessionId: nextCard.card.session.id,
+            }
             setSelectedIndex(
               newGlobalIndex > closingGlobalIndex
                 ? newGlobalIndex - 1
@@ -960,6 +974,15 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
           if (nearestIndex !== null && nearestIndex > closingIndex) {
             nearestIndex--
           }
+          // Update highlightedCardRef so re-sync effect anchors to the correct card
+          if (nearestIndex !== null) {
+            const nearestCard = flatCards[nearestIndex > closingIndex ? nearestIndex + 1 : nearestIndex]
+            highlightedCardRef.current = nearestCard?.card
+              ? { worktreeId: nearestCard.worktreeId, sessionId: nearestCard.card.session.id }
+              : null
+          } else {
+            highlightedCardRef.current = null
+          }
           setSelectedIndex(nearestIndex)
         } else {
           // Sessions remain in same worktree - pick next (or last if closing last)
@@ -976,6 +999,12 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
               : sameWorktreeSessions[sameWorktreeSessions.length - 1]
 
           if (!nextInWorktree || !nextInWorktree.card) return
+
+          // Update highlightedCardRef so re-sync effect anchors to the correct card
+          highlightedCardRef.current = {
+            worktreeId: nextInWorktree.worktreeId,
+            sessionId: nextInWorktree.card.session.id,
+          }
 
           // Find global index and adjust for removal
           const newGlobalIndex = flatCards.findIndex(
