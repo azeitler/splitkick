@@ -438,15 +438,22 @@ ${resolveInstructions}`
               name: 'Code Review',
             })
 
-            const { setReviewResults, setActiveSession, setActiveWorktree, setViewingCanvasTab } =
-              useChatStore.getState()
+            const { setReviewResults, setActiveSession, setActiveWorktree, setViewingCanvasTab,
+              activeWorktreePath } = useChatStore.getState()
             setReviewResults(newSession.id, result)
 
             // Navigate to worktree view (needed for WorktreeDashboard → worktree transition)
             useProjectsStore.getState().selectWorktree(selectedWorktreeId)
             setActiveWorktree(selectedWorktreeId, worktree.path)
             setActiveSession(selectedWorktreeId, newSession.id)
-            setViewingCanvasTab(selectedWorktreeId, false)
+
+            if (activeWorktreePath) {
+              // Already inside a worktree (worktree canvas or chat view) — switch to chat view
+              setViewingCanvasTab(selectedWorktreeId, false)
+            } else {
+              // On project canvas — stay on dashboard and auto-open session modal
+              useUIStore.getState().markWorktreeForAutoOpenSession(selectedWorktreeId, newSession.id)
+            }
 
             // Persist review results to session file
             invoke('update_session_state', {

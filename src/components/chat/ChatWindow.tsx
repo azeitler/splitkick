@@ -2517,7 +2517,7 @@ export function ChatWindow({
           />
         ) : (
           <ResizablePanelGroup direction="horizontal" className="flex-1">
-            <ResizablePanel defaultSize={hasReviewResults && reviewSidebarVisible ? 70 : 100} minSize={40}>
+            <ResizablePanel defaultSize={hasReviewResults && reviewSidebarVisible ? 50 : 100} minSize={40}>
           <ResizablePanelGroup direction="vertical" className="h-full">
             <ResizablePanel
               defaultSize={terminalVisible ? 70 : 100}
@@ -2881,7 +2881,7 @@ export function ChatWindow({
                 <ResizableHandle withHandle />
                 <ResizablePanel
                   ref={reviewPanelRef}
-                  defaultSize={reviewSidebarVisible ? 30 : 0}
+                  defaultSize={reviewSidebarVisible ? 50 : 0}
                   minSize={reviewSidebarVisible ? 20 : 0}
                   collapsible
                   collapsedSize={0}
