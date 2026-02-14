@@ -145,6 +145,8 @@ export function SessionCanvasView({
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
     null
   )
+  // Track highlighted session to survive card reordering
+  const highlightedSessionIdRef = useRef<string | null>(null)
 
   // Use shared hooks
   const storeState = useCanvasStoreState()
@@ -188,14 +190,16 @@ export function SessionCanvasView({
   useEffect(() => {
     if (!sessionsData?.sessions?.length) return
 
-    const shouldAutoOpen = useUIStore
+    const autoOpen = useUIStore
       .getState()
       .consumeAutoOpenSession(worktreeId)
-    if (!shouldAutoOpen) return
+    if (!autoOpen.shouldOpen) return
 
-    const firstSession = sessionsData.sessions[0]
-    if (firstSession) {
-      setSelectedSessionId(firstSession.id)
+    const targetSession = autoOpen.sessionId
+      ? sessionsData.sessions.find(s => s.id === autoOpen.sessionId)
+      : sessionsData.sessions[0]
+    if (targetSession) {
+      setSelectedSessionId(targetSession.id)
     }
   }, [worktreeId, sessionsData?.sessions])
 
@@ -209,8 +213,9 @@ export function SessionCanvasView({
         { worktreeId, worktreePath },
         {
           onSuccess: session => {
+            // Update highlighted ref so canvas stays on new session after modal close
+            highlightedSessionIdRef.current = session.id
             setSelectedSessionId(session.id)
-            // selectedIndex will be synced reactively by the effect below
           },
         }
       )
@@ -247,11 +252,24 @@ export function SessionCanvasView({
     return flattenGroups(groupCardsByStatus(sorted))
   }, [sessionsData?.sessions, storeState, searchQuery])
 
-  // Sync selectedIndex when selectedSessionId changes and sessionCards updates
+  // Track highlighted session when selectedIndex changes (for surviving reorders)
+  const handleSelectedIndexChange = useCallback(
+    (index: number | null) => {
+      setSelectedIndex(index)
+      if (index !== null && sessionCards[index]) {
+        highlightedSessionIdRef.current = sessionCards[index].session.id
+      }
+    },
+    [sessionCards]
+  )
+
+  // Re-sync selectedIndex when sessionCards reorders (status changes, etc.)
   useEffect(() => {
-    if (!selectedSessionId) return
+    const highlightedId =
+      selectedSessionId ?? highlightedSessionIdRef.current
+    if (!highlightedId) return
     const cardIndex = sessionCards.findIndex(
-      card => card.session.id === selectedSessionId
+      card => card.session.id === highlightedId
     )
     if (cardIndex !== -1 && cardIndex !== selectedIndex) {
       setSelectedIndex(cardIndex)
@@ -445,7 +463,7 @@ export function SessionCanvasView({
                 worktreeId={worktreeId}
                 worktreePath={worktreePath}
                 selectedIndex={selectedIndex}
-                onSelectedIndexChange={setSelectedIndex}
+                onSelectedIndexChange={handleSelectedIndexChange}
                 selectedSessionId={selectedSessionId}
                 onSelectedSessionIdChange={setSelectedSessionId}
                 onOpenFullView={handleOpenFullView}
@@ -461,7 +479,7 @@ export function SessionCanvasView({
                 worktreeId={worktreeId}
                 worktreePath={worktreePath}
                 selectedIndex={selectedIndex}
-                onSelectedIndexChange={setSelectedIndex}
+                onSelectedIndexChange={handleSelectedIndexChange}
                 selectedSessionId={selectedSessionId}
                 onSelectedSessionIdChange={setSelectedSessionId}
                 onOpenFullView={handleOpenFullView}

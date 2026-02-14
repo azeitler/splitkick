@@ -195,16 +195,18 @@ const FindingCard = memo(function FindingCard({
                 Fixed
               </Badge>
             )}
-            <span className="text-xs text-muted-foreground shrink-0 font-mono">
-              {finding.file}
-              {finding.line ? `:${finding.line}` : ''}
-            </span>
           </div>
         </CollapsibleTrigger>
 
         {/* Content */}
         <CollapsibleContent>
           <div className="px-4 pb-4 pt-3 space-y-3 border-t border-border/50">
+            {/* File location */}
+            <p className="text-xs font-mono">
+              <span className="text-muted-foreground">Affected code: </span>
+              <span className="text-foreground">{finding.file}{finding.line ? `:${finding.line}` : ''}</span>
+            </p>
+
             {/* Description */}
             <p className="text-sm text-muted-foreground">
               {finding.description}

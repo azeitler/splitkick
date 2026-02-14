@@ -81,8 +81,6 @@ export function SessionChatModal({
 
   const [diffRequest, setDiffRequest] = useState<DiffRequest | null>(null)
 
-  // Store the previous active session to restore on close
-  const previousSessionRef = useRef<string | undefined>(undefined)
   const hasSetActiveRef = useRef<string | null>(null)
 
   // Set active session synchronously before paint (useLayoutEffect) to avoid
@@ -91,11 +89,7 @@ export function SessionChatModal({
   // This prevents navigation away from WorktreeDashboard when opening modals
   useLayoutEffect(() => {
     if (isOpen && sessionId && hasSetActiveRef.current !== sessionId) {
-      const { activeSessionIds, setActiveSession } = useChatStore.getState()
-      // Only store previous if this is a new modal open (not a sessionId change)
-      if (hasSetActiveRef.current === null) {
-        previousSessionRef.current = activeSessionIds[worktreeId]
-      }
+      const { setActiveSession } = useChatStore.getState()
       // Only set the session, not the worktree (worktree is passed as props)
       setActiveSession(worktreeId, sessionId)
       hasSetActiveRef.current = sessionId
@@ -109,20 +103,13 @@ export function SessionChatModal({
     }
   }, [isOpen])
 
-  // When user explicitly closes the modal (X button, back button, click outside),
-  // restore the previous session so the canvas highlight goes back.
-  // On forced unmount (project switch), we intentionally keep the modal's session
-  // as activeSessionIds[worktreeId] — that's the "last used session" we want to persist.
+  // Keep the modal's session as activeSessionIds[worktreeId] on close
+  // so the canvas highlights the last-viewed session.
   const handleClose = useCallback(() => {
-    if (previousSessionRef.current) {
-      useChatStore.getState().setActiveSession(worktreeId, previousSessionRef.current)
-    }
     onClose()
-  }, [worktreeId, onClose])
+  }, [onClose])
 
   const handleOpenFullView = useCallback(() => {
-    // Don't restore previous session - keep this one active
-    previousSessionRef.current = undefined
     onOpenFullView()
   }, [onOpenFullView])
 
