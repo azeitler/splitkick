@@ -33,7 +33,7 @@ interface CanvasGridProps {
 
 /**
  * Shared canvas grid component with keyboard navigation and dialogs.
- * Used by SessionCanvasView for worktree-level session display.
+ * Used by WorktreeCanvasView for worktree-level session display.
  */
 export function CanvasGrid({
   cards,

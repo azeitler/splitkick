@@ -97,7 +97,7 @@ import { ChatInput } from './ChatInput'
 import { SessionDebugPanel } from './SessionDebugPanel'
 import { ChatToolbar } from './ChatToolbar'
 import { ReviewResultsPanel } from './ReviewResultsPanel'
-import { SessionCanvasView } from './SessionCanvasView'
+import { WorktreeCanvasView } from './WorktreeCanvasView'
 import { QueuedMessagesList } from './QueuedMessageItem'
 import { FloatingButtons } from './FloatingButtons'
 import { PlanDialog } from './PlanDialog'
@@ -519,9 +519,13 @@ export function ChatWindow({
       preferences?.default_enabled_mcp_servers,
     ]
   )
+  const knownMcpServers = useMemo(
+    () => project?.known_mcp_servers ?? preferences?.known_mcp_servers ?? [],
+    [project?.known_mcp_servers, preferences?.known_mcp_servers]
+  )
   const newAutoEnabled = useMemo(
-    () => getNewServersToAutoEnable(availableMcpServers, baseEnabledMcpServers),
-    [availableMcpServers, baseEnabledMcpServers]
+    () => getNewServersToAutoEnable(availableMcpServers, baseEnabledMcpServers, knownMcpServers),
+    [availableMcpServers, baseEnabledMcpServers, knownMcpServers]
   )
   const enabledMcpServers = useMemo(
     () =>
@@ -1591,7 +1595,7 @@ export function ChatWindow({
   const handleToggleMcpServer = useCallback((serverName: string) => {
     const sessionId = activeSessionIdRef.current
     if (!sessionId) return
-    useChatStore.getState().toggleMcpServer(sessionId, serverName)
+    useChatStore.getState().toggleMcpServer(sessionId, serverName, enabledMcpServersRef.current)
   }, [])
 
   const handleOpenProjectSettings = useCallback(() => {
@@ -2552,7 +2556,7 @@ export function ChatWindow({
 
         {/* Canvas view (when canvas tab is active) */}
         {!isModal && isViewingCanvasTab ? (
-          <SessionCanvasView
+          <WorktreeCanvasView
             worktreeId={activeWorktreeId}
             worktreePath={activeWorktreePath}
           />

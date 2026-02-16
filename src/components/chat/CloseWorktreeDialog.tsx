@@ -29,7 +29,15 @@ export function CloseWorktreeDialog({
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
+      <AlertDialogContent
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            onConfirm()
+            onOpenChange(false)
+          }
+        }}
+      >
         <AlertDialogHeader>
           <AlertDialogTitle>
             {isDelete ? 'Delete worktree?' : 'Archive & close worktree?'}

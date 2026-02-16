@@ -79,7 +79,7 @@ import {
   performGitPull,
 } from '@/services/git-status'
 
-interface WorktreeDashboardProps {
+interface ProjectCanvasViewProps {
   projectId: string
 }
 
@@ -97,11 +97,23 @@ interface FlatCard {
   isPending?: boolean
 }
 
+type ActiveStatus = 'waiting' | 'planning' | 'vibing' | 'yoloing' | 'review' | null
+
+function getActiveStatus(cards: SessionCardData[]): ActiveStatus {
+  if (cards.some(c => c.status === 'waiting' || c.status === 'permission')) return 'waiting'
+  if (cards.some(c => c.status === 'yoloing')) return 'yoloing'
+  if (cards.some(c => c.status === 'vibing')) return 'vibing'
+  if (cards.some(c => c.status === 'planning')) return 'planning'
+  if (cards.some(c => c.status === 'review' || c.status === 'completed')) return 'review'
+  return null
+}
+
 function WorktreeSectionHeader({
   worktree,
   projectId,
   defaultBranch,
   sessionSummary,
+  activeStatus,
   isSelected,
   onRowClick,
 }: {
@@ -109,6 +121,7 @@ function WorktreeSectionHeader({
   projectId: string
   defaultBranch: string
   sessionSummary?: string
+  activeStatus?: ActiveStatus
   isSelected?: boolean
   onRowClick?: () => void
 }) {
@@ -174,9 +187,9 @@ function WorktreeSectionHeader({
     <>
       <div
         className={cn(
-          'mb-0.5 flex items-center gap-2 border border-transparent',
-          onRowClick && 'cursor-pointer rounded-md px-2 -mx-2 py-1 hover:bg-muted/50 transition-colors',
-          isSelected && onRowClick && 'bg-primary/5  border-primary/50'
+          'mb-0.5 flex items-center gap-2 border border-transparent transition-colors',
+          onRowClick && 'cursor-pointer px-2 -mx-2 py-1 hover:bg-muted/50',
+          isSelected && onRowClick && 'bg-primary/5 border-primary/50',
         )}
         onClick={onRowClick}
         role={onRowClick ? 'button' : undefined}
@@ -187,7 +200,7 @@ function WorktreeSectionHeader({
             const displayBranch = gitStatus?.current_branch ?? worktree.branch
             const displayName = isBase ? 'Base Session' : worktree.name
             return displayBranch && displayBranch !== displayName ? (
-              <span className="text-xs font-normal text-muted-foreground">
+              <span className="text-xs leading-none font-normal text-muted-foreground">
                 · {displayBranch}
               </span>
             ) : null
@@ -200,7 +213,7 @@ function WorktreeSectionHeader({
               <TooltipContent>Run active</TooltipContent>
             </Tooltip>
           )}
-          <span className="font-normal" onClick={e => e.stopPropagation()}>
+          <span className="inline-flex items-center font-normal" onClick={e => e.stopPropagation()}>
             <GitStatusBadges
               behindCount={behindCount}
               unpushedCount={unpushedCount}
@@ -213,7 +226,14 @@ function WorktreeSectionHeader({
           </span>
         </span>
         {sessionSummary && (
-          <span className="ml-auto text-xs text-muted-foreground/70">
+          <span className={cn(
+            'ml-auto text-xs',
+            activeStatus === 'waiting' ? 'text-yellow-500 font-medium animate-blink' :
+              activeStatus === 'yoloing' ? 'text-destructive font-medium' :
+                activeStatus === 'review' ? 'text-green-500 font-medium' :
+                  activeStatus ? 'text-yellow-500 font-medium' :
+                    'text-muted-foreground/70'
+          )}>
             {sessionSummary}
           </span>
         )}
@@ -226,7 +246,7 @@ function WorktreeSectionHeader({
   )
 }
 
-export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
+export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   // Preferences for keybinding hints and layout
   const { data: preferences } = usePreferences()
   const savePreferences = useSavePreferences()
@@ -1150,7 +1170,18 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
             <div className="flex flex-col">
               {worktreeSections.map(section => {
                 const currentIndex = cardIndex++
-                return (
+                return section.isPending ? (
+                  <WorktreeSetupCard
+                    key={section.worktree.id}
+                    ref={el => {
+                      cardRefs.current[currentIndex] = el
+                    }}
+                    worktree={section.worktree}
+                    layout="list"
+                    isSelected={selectedIndex === currentIndex}
+                    onSelect={() => setSelectedIndex(currentIndex)}
+                  />
+                ) : (
                   <div
                     key={section.worktree.id}
                     ref={el => {
@@ -1161,16 +1192,13 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
                       worktree={section.worktree}
                       projectId={projectId}
                       defaultBranch={project.default_branch}
-                      sessionSummary={section.isPending ? undefined : getSessionSummary(section.cards)}
+                      sessionSummary={getSessionSummary(section.cards)}
+                      activeStatus={getActiveStatus(section.cards)}
                       isSelected={selectedIndex === currentIndex}
-                      onRowClick={
-                        section.isPending
-                          ? undefined
-                          : () => {
-                            setSelectedIndex(currentIndex)
-                            handleWorktreeClick(section.worktree.id, section.worktree.path)
-                          }
-                      }
+                      onRowClick={() => {
+                        setSelectedIndex(currentIndex)
+                        handleWorktreeClick(section.worktree.id, section.worktree.path)
+                      }}
                     />
                   </div>
                 )
@@ -1185,6 +1213,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
                     worktree={section.worktree}
                     projectId={projectId}
                     defaultBranch={project.default_branch}
+                    activeStatus={getActiveStatus(section.cards)}
                   />
 
                   {section.isPending ? (

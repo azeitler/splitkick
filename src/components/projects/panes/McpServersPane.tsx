@@ -121,19 +121,28 @@ export function McpServersPane({
     checkHealth()
   }, [projectPath, checkHealth])
 
-  // Auto-enable newly discovered servers
+  // Auto-enable newly discovered servers (but not ones the user has previously disabled)
   const enabledServers = useMemo(
     () => project?.enabled_mcp_servers ?? [],
     [project?.enabled_mcp_servers]
   )
+  const knownServers = useMemo(
+    () => project?.known_mcp_servers ?? [],
+    [project?.known_mcp_servers]
+  )
 
   useEffect(() => {
     if (!mcpServers.length) return
-    const newServers = getNewServersToAutoEnable(mcpServers, enabledServers)
-    if (newServers.length > 0) {
+    const allServerNames = mcpServers.filter(s => !s.disabled).map(s => s.name)
+    const newServers = getNewServersToAutoEnable(mcpServers, enabledServers, knownServers)
+    // Always update known servers to include all current server names
+    const updatedKnown = [...new Set([...knownServers, ...allServerNames])]
+    const knownChanged = updatedKnown.length !== knownServers.length
+    if (newServers.length > 0 || knownChanged) {
       updateSettings.mutate({
         projectId,
         enabledMcpServers: [...enabledServers, ...newServers],
+        knownMcpServers: updatedKnown,
       })
     }
   }, [mcpServers]) // eslint-disable-line react-hooks/exhaustive-deps

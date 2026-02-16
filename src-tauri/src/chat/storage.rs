@@ -356,6 +356,52 @@ pub fn list_all_session_ids(app: &AppHandle) -> Result<Vec<String>, String> {
     Ok(session_ids)
 }
 
+/// Delete orphaned session data directories that are not referenced by any index file.
+/// Returns the number of orphaned directories deleted.
+pub fn cleanup_orphaned_session_data(app: &AppHandle) -> Result<u32, String> {
+    // Collect all session IDs referenced in index files
+    let index_dir = get_index_dir(app)?;
+    let mut referenced_ids = std::collections::HashSet::new();
+
+    if let Ok(entries) = fs::read_dir(&index_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().map_or(false, |ext| ext == "json") {
+                if let Ok(content) = fs::read_to_string(&path) {
+                    if let Ok(index) =
+                        serde_json::from_str::<crate::chat::types::WorktreeIndex>(&content)
+                    {
+                        for session in &index.sessions {
+                            referenced_ids.insert(session.id.clone());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Compare with what's on disk
+    let all_on_disk = list_all_session_ids(app)?;
+    let mut deleted = 0u32;
+
+    for session_id in all_on_disk {
+        if !referenced_ids.contains(&session_id) {
+            log::trace!("Deleting orphaned session data: {session_id}");
+            if let Err(e) = delete_session_data(app, &session_id) {
+                log::warn!("Failed to delete orphaned session data {session_id}: {e}");
+            } else {
+                deleted += 1;
+            }
+        }
+    }
+
+    if deleted > 0 {
+        log::info!("Cleaned up {deleted} orphaned session data directories");
+    }
+
+    Ok(deleted)
+}
+
 // ============================================================================
 // High-Level Session API (Backward Compatibility)
 // ============================================================================

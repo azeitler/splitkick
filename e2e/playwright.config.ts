@@ -10,7 +10,7 @@ export default defineConfig({
   timeout: 30_000,
 
   use: {
-    baseURL: 'http://localhost:1420',
+    baseURL: 'http://localhost:1421',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
@@ -24,7 +24,7 @@ export default defineConfig({
 
   webServer: {
     command: 'bun run dev:e2e',
-    port: 1420,
+    port: 1421,
     reuseExistingServer: !process.env.CI,
     timeout: 30_000,
   },

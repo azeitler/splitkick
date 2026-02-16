@@ -478,7 +478,7 @@ ${resolveInstructions}`
               activeWorktreePath } = useChatStore.getState()
             setReviewResults(newSession.id, result)
 
-            // Navigate to worktree view (needed for WorktreeDashboard → worktree transition)
+            // Navigate to worktree view (needed for ProjectCanvasView → worktree transition)
             useProjectsStore.getState().selectWorktree(selectedWorktreeId)
             setActiveWorktree(selectedWorktreeId, worktree.path)
             setActiveSession(selectedWorktreeId, newSession.id)
@@ -584,7 +584,7 @@ ${resolveInstructions}`
       if (isOnCanvas && CANVAS_NAVIGATE_AND_DISPATCH_OPTIONS.has(option) && worktree?.path) {
         setMagicModalOpen(false)
         const { setActiveWorktree, setViewingCanvasTab } = useChatStore.getState()
-        // Navigate to worktree view (needed for WorktreeDashboard → worktree transition)
+        // Navigate to worktree view (needed for ProjectCanvasView → worktree transition)
         useProjectsStore.getState().selectWorktree(selectedWorktreeId)
         setActiveWorktree(selectedWorktreeId, worktree.path)
         setViewingCanvasTab(selectedWorktreeId, false)

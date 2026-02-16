@@ -135,7 +135,15 @@ export function WorktreeContextMenu({
       </ContextMenuContent>
 
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <AlertDialogContent>
+        <AlertDialogContent
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              handleDelete()
+              setShowDeleteConfirm(false)
+            }
+          }}
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Worktree</AlertDialogTitle>
             <AlertDialogDescription>
@@ -146,6 +154,7 @@ export function WorktreeContextMenu({
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
+              autoFocus
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >

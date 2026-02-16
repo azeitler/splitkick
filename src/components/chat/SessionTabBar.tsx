@@ -38,7 +38,6 @@ import {
 import { cn } from '@/lib/utils'
 import { isNativeApp } from '@/lib/environment'
 import { OpenInButton } from '@/components/open-in/OpenInButton'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Popover,
   PopoverContent,
@@ -85,10 +84,11 @@ interface SortableTabProps {
   sessionsCount: number
   /** Whether closing the last session is allowed (true for base sessions) */
   canCloseLastSession: boolean
+  /** 1–9 shortcut number, or undefined if no shortcut */
+  shortcutNumber?: number
   editValue: string
   editInputRef: React.RefObject<HTMLInputElement | null>
   onTabClick: (sessionId: string) => void
-  onDoubleClick: (sessionId: string, currentName: string) => void
   onCloseSession: (e: React.MouseEvent, sessionId: string) => void
   onEditValueChange: (value: string) => void
   onRenameSubmit: (sessionId: string) => void
@@ -105,10 +105,10 @@ function SortableTab({
   sessionExecutionMode,
   sessionsCount,
   canCloseLastSession,
+  shortcutNumber,
   editValue,
   editInputRef,
   onTabClick,
-  onDoubleClick,
   onCloseSession,
   onEditValueChange,
   onRenameSubmit,
@@ -141,7 +141,6 @@ function SortableTab({
       {...attributes}
       {...listeners}
       onClick={() => onTabClick(session.id)}
-      onDoubleClick={() => onDoubleClick(session.id, session.name)}
       className={cn(
         'group relative flex h-7 shrink-0 items-center gap-1 rounded-t px-2 text-sm transition-colors',
         isActive
@@ -166,6 +165,11 @@ function SortableTab({
         />
       ) : (
         <>
+          {shortcutNumber && (
+            <kbd className="shrink-0 rounded border border-border/50 px-1 py-px text-[9px] font-medium leading-none text-muted-foreground/70">
+              ⌘{shortcutNumber}
+            </kbd>
+          )}
           <span className="whitespace-nowrap">{session.name}</span>
           {/* Status badges - same style as WorktreeItem */}
           {isSessionSending &&
@@ -563,6 +567,24 @@ export function SessionTabBar({
   const tabScrollRef = useRef<HTMLDivElement>(null)
   const pendingScrollSessionRef = useRef<string | null>(null)
 
+  // Scroll a tab into view within the tab bar scroll container
+  const scrollTabIntoView = useCallback((sessionId: string) => {
+    const viewport = tabScrollRef.current
+    if (!viewport) return
+    const tab = viewport.querySelector(`[data-session-id="${sessionId}"]`) as HTMLElement | null
+    if (!tab) return
+
+    const viewportRect = viewport.getBoundingClientRect()
+    const tabRect = tab.getBoundingClientRect()
+    const padding = 32
+
+    if (tabRect.left < viewportRect.left + padding) {
+      viewport.scrollLeft += tabRect.left - viewportRect.left - padding
+    } else if (tabRect.right > viewportRect.right - padding) {
+      viewport.scrollLeft += tabRect.right - viewportRect.right + padding
+    }
+  }, [])
+
   // Focus input when editing starts
   useEffect(() => {
     if (editingId && editInputRef.current) {
@@ -612,14 +634,7 @@ export function SessionTabBar({
     if (sessionExists) {
       pendingScrollSessionRef.current = null
       requestAnimationFrame(() => {
-        const tab = tabScrollRef.current?.querySelector(
-          `[data-session-id="${pendingId}"]`
-        )
-        tab?.scrollIntoView({
-          behavior: 'smooth',
-          inline: 'nearest',
-          block: 'nearest',
-        })
+        scrollTabIntoView(pendingId)
       })
     }
   }, [sessionsData?.sessions])
@@ -730,14 +745,6 @@ export function SessionTabBar({
   const handleCanvasTabClick = useCallback(() => {
     setViewingCanvasTab(worktreeId, true)
   }, [worktreeId, setViewingCanvasTab])
-
-  const handleDoubleClick = useCallback(
-    (sessionId: string, currentName: string) => {
-      setEditingId(sessionId)
-      setEditValue(currentName)
-    },
-    []
-  )
 
   const handleRenameSubmit = useCallback(
     (sessionId: string) => {
@@ -1006,7 +1013,7 @@ export function SessionTabBar({
 
   useEffect(() => {
     const handleSwitchSession = (
-      e: CustomEvent<{ direction: 'next' | 'previous' }>
+      e: CustomEvent<{ direction?: 'next' | 'previous'; index?: number }>
     ) => {
       // Throttle rapid switches
       const now = Date.now()
@@ -1016,14 +1023,20 @@ export function SessionTabBar({
       if (!visualOrderSessions.length) return
 
       const sessions = visualOrderSessions
-      const currentIndex = sessions.findIndex(s => s.id === activeSessionId)
-      if (currentIndex === -1) return
 
       let newIndex: number
-      if (e.detail.direction === 'next') {
-        newIndex = (currentIndex + 1) % sessions.length
+      if (e.detail.index !== undefined) {
+        // CMD+1–9: switch by index directly
+        if (e.detail.index >= sessions.length) return
+        newIndex = e.detail.index
       } else {
-        newIndex = (currentIndex - 1 + sessions.length) % sessions.length
+        const currentIndex = sessions.findIndex(s => s.id === activeSessionId)
+        if (currentIndex === -1) return
+        if (e.detail.direction === 'next') {
+          newIndex = (currentIndex + 1) % sessions.length
+        } else {
+          newIndex = (currentIndex - 1 + sessions.length) % sessions.length
+        }
       }
 
       const newSession = sessions[newIndex]
@@ -1034,16 +1047,7 @@ export function SessionTabBar({
         })
 
         // Scroll the new tab into view
-        requestAnimationFrame(() => {
-          const tab = tabScrollRef.current?.querySelector(
-            `[data-session-id="${newSession.id}"]`
-          )
-          tab?.scrollIntoView({
-            behavior: 'smooth',
-            inline: 'nearest',
-            block: 'nearest',
-          })
-        })
+        requestAnimationFrame(() => scrollTabIntoView(newSession.id))
       }
     }
 
@@ -1070,9 +1074,9 @@ export function SessionTabBar({
     <div
       className="flex h-8 items-center border-b border-border/50"
     >
-      <ScrollArea
-        className="h-full w-full [&_[data-slot=scroll-area-viewport]]:!overflow-y-hidden [&_[data-slot=scroll-area-viewport]]:!overflow-x-scroll [&_[data-slot=scroll-area-scrollbar]]:hidden"
-        viewportRef={tabScrollRef}
+      <div
+        ref={tabScrollRef}
+        className="h-full w-full overflow-x-auto overflow-y-hidden [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
       >
         <div className="flex h-8 items-center gap-0.5 px-2">
           {/* Canvas tab - session overview grid (shown when canvas is enabled) */}
@@ -1179,7 +1183,7 @@ export function SessionTabBar({
                 strategy={horizontalListSortingStrategy}
               >
                 {/* PERFORMANCE: Use pre-computed sessionStates instead of inline computation */}
-                {sessionStates.map(state => {
+                {sessionStates.map((state, idx) => {
                   const isActive =
                     state.id === activeSessionId
                   const isEditing = editingId === state.id
@@ -1198,10 +1202,10 @@ export function SessionTabBar({
                       sessionExecutionMode={state.executionMode}
                       sessionsCount={sessionStates.length}
                       canCloseLastSession={isBase}
+                      shortcutNumber={idx < 9 ? idx + 1 : undefined}
                       editValue={editValue}
                       editInputRef={editInputRef}
                       onTabClick={handleTabClick}
-                      onDoubleClick={handleDoubleClick}
                       onCloseSession={handleCloseSession}
                       onEditValueChange={setEditValue}
                       onRenameSubmit={handleRenameSubmit}
@@ -1231,7 +1235,7 @@ export function SessionTabBar({
             </button>
           )}
         </div>
-      </ScrollArea>
+      </div>
     </div>
   )
 }

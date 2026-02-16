@@ -175,6 +175,7 @@ pub async fn add_project(
         is_folder: false,
         avatar_path: None,
         enabled_mcp_servers: Vec::new(),
+        known_mcp_servers: Vec::new(),
         custom_system_prompt: None,
         default_provider: None,
     };
@@ -328,6 +329,7 @@ pub async fn init_project(
         is_folder: false,
         avatar_path: None,
         enabled_mcp_servers: Vec::new(),
+        known_mcp_servers: Vec::new(),
         custom_system_prompt: None,
         default_provider: None,
     };
@@ -3216,6 +3218,7 @@ pub async fn update_project_settings(
     project_id: String,
     default_branch: Option<String>,
     enabled_mcp_servers: Option<Vec<String>>,
+    known_mcp_servers: Option<Vec<String>>,
     custom_system_prompt: Option<String>,
     default_provider: Option<Option<String>>,
 ) -> Result<Project, String> {
@@ -3239,6 +3242,11 @@ pub async fn update_project_settings(
     if let Some(servers) = enabled_mcp_servers {
         log::trace!("Updating enabled MCP servers: {servers:?}");
         project.enabled_mcp_servers = servers;
+    }
+
+    if let Some(servers) = known_mcp_servers {
+        log::trace!("Updating known MCP servers: {servers:?}");
+        project.known_mcp_servers = servers;
     }
 
     if let Some(prompt) = custom_system_prompt {
@@ -5714,7 +5722,23 @@ pub async fn cleanup_old_archives(
             }
         }
 
-        // Delete the sessions file
+        // Collect session IDs before deleting the index so we can clean up data dirs
+        let session_ids: Vec<String> = crate::chat::storage::load_sessions(
+            &app,
+            &worktree.path,
+            &worktree.id,
+        )
+        .map(|ws| ws.sessions.iter().map(|s| s.id.clone()).collect())
+        .unwrap_or_default();
+
+        // Delete session data directories
+        for sid in &session_ids {
+            if let Err(e) = crate::chat::storage::delete_session_data(&app, sid) {
+                log::warn!("Failed to delete session data for {sid}: {e}");
+            }
+        }
+
+        // Delete the sessions index file
         if let Ok(app_data_dir) = app.path().app_data_dir() {
             let sessions_file = app_data_dir
                 .join("sessions")
@@ -5739,9 +5763,11 @@ pub async fn cleanup_old_archives(
             continue;
         }
 
-        // Atomically clean up old archived sessions
+        // Atomically clean up old archived sessions, collecting removed IDs
         let worktree_path = worktree.path.clone();
         let worktree_id = worktree.id.clone();
+        let removed_ids = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let removed_ids_clone = removed_ids.clone();
         let result =
             crate::chat::with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
                 let original_count = sessions.sessions.len();
@@ -5756,6 +5782,7 @@ pub async fn cleanup_old_archives(
                                 s.name,
                                 (now() - archived_at) / 86400
                             );
+                            removed_ids_clone.lock().unwrap().push(s.id.clone());
                             removed_count += 1;
                             return false; // Remove this session
                         }
@@ -5770,10 +5797,24 @@ pub async fn cleanup_old_archives(
                 }
             });
 
+        // Delete session data directories for removed sessions
+        if let Ok(ids) = removed_ids.lock() {
+            for sid in ids.iter() {
+                if let Err(e) = crate::chat::storage::delete_session_data(&app, sid) {
+                    log::warn!("Failed to delete session data for {sid}: {e}");
+                }
+            }
+        }
+
         if let Ok(count) = result {
             deleted_sessions += count;
         }
     }
+
+    // --- Clean up orphaned session data directories ---
+    let orphaned =
+        crate::chat::storage::cleanup_orphaned_session_data(&app).unwrap_or(0);
+    deleted_sessions += orphaned;
 
     // --- Clean up orphaned context files ---
     let deleted_contexts =
@@ -5842,7 +5883,23 @@ pub async fn delete_all_archives(app: AppHandle) -> Result<CleanupResult, String
             }
         }
 
-        // Delete the sessions file
+        // Collect session IDs before deleting the index so we can clean up data dirs
+        let session_ids: Vec<String> = crate::chat::storage::load_sessions(
+            &app,
+            &worktree.path,
+            &worktree.id,
+        )
+        .map(|ws| ws.sessions.iter().map(|s| s.id.clone()).collect())
+        .unwrap_or_default();
+
+        // Delete session data directories
+        for sid in &session_ids {
+            if let Err(e) = crate::chat::storage::delete_session_data(&app, sid) {
+                log::warn!("Failed to delete session data for {sid}: {e}");
+            }
+        }
+
+        // Delete the sessions index file
         if let Ok(app_data_dir) = app.path().app_data_dir() {
             let sessions_file = app_data_dir
                 .join("sessions")
@@ -5866,9 +5923,11 @@ pub async fn delete_all_archives(app: AppHandle) -> Result<CleanupResult, String
             continue;
         }
 
-        // Atomically delete all archived sessions
+        // Atomically delete all archived sessions, collecting removed IDs
         let worktree_path = worktree.path.clone();
         let worktree_id = worktree.id.clone();
+        let removed_ids = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let removed_ids_clone = removed_ids.clone();
         let result =
             crate::chat::with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
                 let original_count = sessions.sessions.len();
@@ -5878,6 +5937,7 @@ pub async fn delete_all_archives(app: AppHandle) -> Result<CleanupResult, String
                 sessions.sessions.retain(|s| {
                     if s.archived_at.is_some() {
                         log::trace!("Deleting archived session: {}", s.name);
+                        removed_ids_clone.lock().unwrap().push(s.id.clone());
                         removed_count += 1;
                         return false; // Remove this session
                     }
@@ -5890,6 +5950,15 @@ pub async fn delete_all_archives(app: AppHandle) -> Result<CleanupResult, String
                     Ok(0)
                 }
             });
+
+        // Delete session data directories for removed sessions
+        if let Ok(ids) = removed_ids.lock() {
+            for sid in ids.iter() {
+                if let Err(e) = crate::chat::storage::delete_session_data(&app, sid) {
+                    log::warn!("Failed to delete session data for {sid}: {e}");
+                }
+            }
+        }
 
         if let Ok(count) = result {
             deleted_sessions += count;
@@ -5972,6 +6041,7 @@ pub async fn create_folder(
         is_folder: true,
         avatar_path: None,
         enabled_mcp_servers: Vec::new(),
+        known_mcp_servers: Vec::new(),
         custom_system_prompt: None,
         default_provider: None,
     };

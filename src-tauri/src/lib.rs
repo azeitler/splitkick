@@ -166,6 +166,8 @@ pub struct AppPreferences {
     #[serde(default)]
     pub default_enabled_mcp_servers: Vec<String>, // MCP server names enabled by default (empty = none)
     #[serde(default)]
+    pub known_mcp_servers: Vec<String>, // All MCP server names ever seen (prevents re-enabling user-disabled servers)
+    #[serde(default)]
     pub has_seen_feature_tour: bool, // Whether user has seen the feature tour onboarding
     #[serde(default)]
     pub has_seen_jean_config_wizard: bool, // Whether user has seen the jean.json setup wizard
@@ -821,6 +823,7 @@ impl Default for AppPreferences {
             debug_mode_enabled: false,
             default_effort_level: default_effort_level(),
             default_enabled_mcp_servers: Vec::new(),
+            known_mcp_servers: Vec::new(),
             has_seen_feature_tour: false,
             has_seen_jean_config_wizard: false,
             chrome_enabled: default_chrome_enabled(),
@@ -1730,7 +1733,8 @@ pub fn run() {
                 // Silence noisy external crates
                 .level_for("globset", log::LevelFilter::Warn)
                 .level_for("ignore", log::LevelFilter::Warn)
-                .level_for("tauri_plugin_updater", log::LevelFilter::Info)
+                .level_for("tauri_plugin_updater", log::LevelFilter::Trace)
+                .level_for("reqwest", log::LevelFilter::Debug)
                 .targets(log_targets)
                 .build(),
         )

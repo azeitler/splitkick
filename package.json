@@ -1,7 +1,7 @@
 {
   "name": "jean",
   "private": true,
-  "version": "0.1.11",
+  "version": "0.1.13",
   "type": "module",
   "author": "Andras Bacsai",
   "copyright": "Copyright © 2025 Andras Bacsai. All rights reserved.",
@@ -34,7 +34,7 @@
     "tauri:build:linux:appimage": "NO_STRIP=true tauri build --bundles appimage 2>&1 || (echo 'AppImage build failed due to Arch Linux .relr.dyn incompatibility. Run manually:' && cd src-tauri/target/release/bundle/appimage && NO_STRIP=1 ~/.cache/tauri/linuxdeploy-x86_64.AppImage --appdir Jean.AppDir --output appimage)",
     "tauri:build:windows": "tauri build --bundles msi,nsis",
     "tauri:check": "bun run typecheck && bun run tauri build --check",
-    "dev:e2e": "vite --config e2e/vite.config.e2e.ts",
+    "dev:e2e": "vite --config e2e/vite.config.e2e.ts --port 1421",
     "test:e2e": "playwright test --config e2e/playwright.config.ts",
     "test:all": "bun run test:run && bun run rust:test",
     "check:all": "bun run typecheck && bun run lint && bun run format:check && bun run rust:fmt:check && bun run rust:clippy && bun run test:run && bun run rust:test",

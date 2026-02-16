@@ -67,6 +67,9 @@ pub struct Project {
     /// MCP server names enabled by default for this project
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub enabled_mcp_servers: Vec<String>,
+    /// All MCP server names ever seen for this project (prevents re-enabling user-disabled servers)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub known_mcp_servers: Vec<String>,
     /// Custom system prompt appended to every session execution
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_system_prompt: Option<String>,

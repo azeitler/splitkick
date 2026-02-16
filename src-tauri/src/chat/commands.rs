@@ -801,6 +801,23 @@ pub async fn delete_archived_session(
 ) -> Result<(), String> {
     log::trace!("Permanently deleting archived session: {session_id}");
 
+    // Delete session data directory (outside lock - separate directory)
+    if let Err(e) = delete_session_data(&app, &session_id) {
+        log::warn!("Failed to delete session data: {e}");
+    }
+
+    // Clean up context references
+    if let Err(e) =
+        crate::projects::github_issues::cleanup_issue_contexts_for_session(&app, &session_id)
+    {
+        log::warn!("Failed to cleanup issue/PR contexts for session: {e}");
+    }
+    if let Err(e) =
+        crate::projects::saved_contexts::cleanup_saved_contexts_for_session(&app, &session_id)
+    {
+        log::warn!("Failed to cleanup saved contexts for session: {e}");
+    }
+
     with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
         let session_idx = sessions
             .sessions

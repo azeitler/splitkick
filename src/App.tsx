@@ -519,11 +519,18 @@ function App() {
     }
     window.addEventListener('install-pending-update', handleInstallPending)
 
+    // Listen for update object from manual "Check for Updates" menu
+    const handleUpdateAvailable = (e: Event) => {
+      pendingUpdateRef.current = (e as CustomEvent).detail
+    }
+    window.addEventListener('update-available', handleUpdateAvailable)
+
     // Check for updates 5 seconds after app loads
     const updateTimer = setTimeout(checkForUpdates, 5000)
     return () => {
       clearTimeout(updateTimer)
       window.removeEventListener('install-pending-update', handleInstallPending)
+      window.removeEventListener('update-available', handleUpdateAvailable)
     }
   }, [installAppUpdate])
 

@@ -304,7 +304,7 @@ interface ChatUIState {
 
   // Actions - MCP servers (session-based)
   setEnabledMcpServers: (sessionId: string, servers: string[]) => void
-  toggleMcpServer: (sessionId: string, serverName: string) => void
+  toggleMcpServer: (sessionId: string, serverName: string, currentDefaults?: string[]) => void
 
   // Actions - Question answering (session-based)
   markQuestionAnswered: (
@@ -1189,10 +1189,10 @@ export const useChatStore = create<ChatUIState>()(
           'setEnabledMcpServers'
         ),
 
-      toggleMcpServer: (sessionId, serverName) =>
+      toggleMcpServer: (sessionId, serverName, currentDefaults) =>
         set(
           state => {
-            const current = state.enabledMcpServers[sessionId] ?? []
+            const current = state.enabledMcpServers[sessionId] ?? currentDefaults ?? []
             const updated = current.includes(serverName)
               ? current.filter(n => n !== serverName)
               : [...current, serverName]

@@ -112,15 +112,20 @@ export const McpServersPane: React.FC = () => {
   }, [checkHealth])
 
   const enabledServers = preferences?.default_enabled_mcp_servers ?? []
+  const knownServers = preferences?.known_mcp_servers ?? []
 
-  // Auto-enable newly discovered (non-disabled) servers
+  // Auto-enable newly discovered (non-disabled) servers, but not ones the user has previously disabled
   useEffect(() => {
     if (!preferences || !mcpServers) return
-    const newServers = getNewServersToAutoEnable(mcpServers, enabledServers)
-    if (newServers.length > 0) {
+    const allServerNames = mcpServers.filter(s => !s.disabled).map(s => s.name)
+    const newServers = getNewServersToAutoEnable(mcpServers, enabledServers, knownServers)
+    const updatedKnown = [...new Set([...knownServers, ...allServerNames])]
+    const knownChanged = updatedKnown.length !== knownServers.length
+    if (newServers.length > 0 || knownChanged) {
       savePreferences.mutate({
         ...preferences,
         default_enabled_mcp_servers: [...enabledServers, ...newServers],
+        known_mcp_servers: updatedKnown,
       })
     }
   }, [mcpServers]) // eslint-disable-line react-hooks/exhaustive-deps

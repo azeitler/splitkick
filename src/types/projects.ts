@@ -39,6 +39,8 @@ export interface Project {
   avatar_path?: string
   /** MCP server names enabled by default for this project */
   enabled_mcp_servers?: string[]
+  /** All MCP server names ever seen for this project (prevents re-enabling user-disabled servers) */
+  known_mcp_servers?: string[]
   /** Custom system prompt appended to every session execution */
   custom_system_prompt?: string
   /** Default provider profile name for sessions in this project (undefined = use global default) */

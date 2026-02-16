@@ -270,12 +270,33 @@ export function WorktreeItem({
   const isExpanded = expandedWorktreeIds.has(worktree.id)
   const storeState = useCanvasStoreState()
 
+  // Compute card data for all sessions (needed for both summary and expanded list)
+  const allCards = useMemo(() => {
+    const sessions = sessionsData?.sessions ?? []
+    return sessions.map(s => computeSessionCardData(s, storeState))
+  }, [sessionsData?.sessions, storeState])
+
   const sessionGroups = useMemo(() => {
     if (!isExpanded) return []
-    const sessions = sessionsData?.sessions ?? []
-    const cards = sessions.map(s => computeSessionCardData(s, storeState))
-    return groupCardsByStatus(cards)
-  }, [isExpanded, sessionsData?.sessions, storeState])
+    return groupCardsByStatus(allCards)
+  }, [isExpanded, allCards])
+
+  // Compute active status for colored summary (same logic as ProjectCanvasView)
+  const activeStatus = useMemo(() => {
+    if (allCards.some(c => c.status === 'waiting' || c.status === 'permission')) return 'waiting' as const
+    if (allCards.some(c => c.status === 'yoloing')) return 'yoloing' as const
+    if (allCards.some(c => c.status === 'vibing')) return 'vibing' as const
+    if (allCards.some(c => c.status === 'planning')) return 'planning' as const
+    if (allCards.some(c => c.status === 'review' || c.status === 'completed')) return 'review' as const
+    return null
+  }, [allCards])
+
+  // Session status summary text (e.g. "1 waiting · 2 idle")
+  const sessionSummary = useMemo(() => {
+    if (allCards.length === 0) return null
+    const groups = groupCardsByStatus(allCards)
+    return groups.map(g => `${g.cards.length} ${g.title.toLowerCase()}`).join(' · ')
+  }, [allCards])
 
   const handleChevronClick = useCallback(
     (e: React.MouseEvent) => {
@@ -496,108 +517,122 @@ export function WorktreeItem({
           onClick={handleClick}
           onDoubleClick={handleDoubleClick}
         >
-        {/* Status indicator */}
-        <StatusIndicator
-          status={indicatorStatus}
-          variant={indicatorVariant}
-          className="h-2 w-2"
-        />
-
-        {/* Workspace name - editable on double-click */}
-        {isEditing ? (
-          <input
-            ref={inputRef}
-            type="text"
-            value={editValue}
-            onChange={e => setEditValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onBlur={handleBlur}
-            onClick={e => e.stopPropagation()}
-            className="flex-1 bg-transparent text-sm outline-none ring-1 ring-ring rounded px-1"
+          {/* Status indicator */}
+          <StatusIndicator
+            status={indicatorStatus}
+            variant={indicatorVariant}
+            className="h-2 w-2"
           />
-        ) : (
-          <span
-            className={cn('flex flex-1 items-center gap-0.5 truncate text-sm', isBase && 'font-medium')}
-          >
-            <span className="truncate">
-              {worktree.name}
-            </span>
-            {/* Chevron for expand/collapse sessions */}
-            <button
-              className="flex size-4 shrink-0 items-center justify-center rounded opacity-0 transition-opacity group-hover:opacity-50 hover:!opacity-100 hover:bg-accent-foreground/10"
-              onClick={handleChevronClick}
+
+          {/* Workspace name - editable on double-click */}
+          {isEditing ? (
+            <input
+              ref={inputRef}
+              type="text"
+              value={editValue}
+              onChange={e => setEditValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onBlur={handleBlur}
+              onClick={e => e.stopPropagation()}
+              className="flex-1 bg-transparent text-sm outline-none ring-1 ring-ring rounded px-1"
+            />
+          ) : (
+            <span
+              className={cn('flex flex-1 items-center gap-0.5 truncate text-sm', isBase && 'font-medium')}
             >
-              <ChevronDown
-                className={cn(
-                  'size-3 transition-transform',
-                  isExpanded && 'rotate-180'
-                )}
-              />
-            </button>
-            {/* Show branch name only when different from displayed name */}
-            {(() => {
-              const displayBranch = gitStatus?.current_branch ?? worktree.branch
-              return displayBranch !== worktree.name ? (
-                <span className="ml-0.5 inline-flex items-center gap-0.5 text-xs text-muted-foreground">
-                  <GitBranch className="h-2.5 w-2.5" />
-                  {displayBranch}
-                </span>
-              ) : null
-            })()}
-          </span>
-        )}
-
-        {/* Pull badge - shown when behind remote */}
-        {behindCount > 0 && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={handlePull}
-                className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/20"
-              >
-                <span className="flex items-center gap-0.5">
-                  <ArrowDown className="h-3 w-3" />
-                  {behindCount}
-                </span>
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>{`Pull ${behindCount} commit${behindCount > 1 ? 's' : ''} from remote`}</TooltipContent>
-          </Tooltip>
-        )}
-
-        {/* Push badge - unpushed commits */}
-        {pushCount > 0 && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={handlePush}
-                className="shrink-0 rounded bg-orange-500/10 px-1.5 py-0.5 text-[11px] font-medium text-orange-500 transition-colors hover:bg-orange-500/20"
-              >
-                <span className="flex items-center gap-0.5">
-                  <ArrowUp className="h-3 w-3" />
-                  {pushCount}
-                </span>
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>{`Push ${pushCount} commit${pushCount > 1 ? 's' : ''} to remote`}</TooltipContent>
-          </Tooltip>
-        )}
-
-        {/* Uncommitted changes */}
-        {hasUncommitted && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="shrink-0 text-[11px] font-medium">
-                <span className="text-green-500">+{uncommittedAdded}</span>
-                <span className="text-muted-foreground">/</span>
-                <span className="text-red-500">-{uncommittedRemoved}</span>
+              <span className="truncate">
+                {worktree.name}
               </span>
-            </TooltipTrigger>
-            <TooltipContent>{`Uncommitted: +${uncommittedAdded}/-${uncommittedRemoved} lines`}</TooltipContent>
-          </Tooltip>
-        )}
-      </div>
-    </WorktreeContextMenu>
+              {/* Chevron for expand/collapse sessions */}
+              <button
+                className="flex size-4 shrink-0 items-center justify-center rounded opacity-0 transition-opacity group-hover:opacity-50 hover:!opacity-100 hover:bg-accent-foreground/10"
+                onClick={handleChevronClick}
+              >
+                <ChevronDown
+                  className={cn(
+                    'size-3 transition-transform',
+                    isExpanded && 'rotate-180'
+                  )}
+                />
+              </button>
+              {/* Show branch name only when different from displayed name */}
+              {(() => {
+                const displayBranch = gitStatus?.current_branch ?? worktree.branch
+                return displayBranch !== worktree.name ? (
+                  <span className="ml-0.5 inline-flex items-center gap-0.5 text-xs text-muted-foreground">
+                    <GitBranch className="h-2.5 w-2.5" />
+                    {displayBranch}
+                  </span>
+                ) : null
+              })()}
+            </span>
+          )}
+
+          {/* Pull badge - shown when behind remote */}
+          {behindCount > 0 && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={handlePull}
+                  className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/20"
+                >
+                  <span className="flex items-center gap-0.5">
+                    <ArrowDown className="h-3 w-3" />
+                    {behindCount}
+                  </span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>{`Pull ${behindCount} commit${behindCount > 1 ? 's' : ''} from remote`}</TooltipContent>
+            </Tooltip>
+          )}
+
+          {/* Push badge - unpushed commits */}
+          {pushCount > 0 && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={handlePush}
+                  className="shrink-0 rounded bg-orange-500/10 px-1.5 py-0.5 text-[11px] font-medium text-orange-500 transition-colors hover:bg-orange-500/20"
+                >
+                  <span className="flex items-center gap-0.5">
+                    <ArrowUp className="h-3 w-3" />
+                    {pushCount}
+                  </span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>{`Push ${pushCount} commit${pushCount > 1 ? 's' : ''} to remote`}</TooltipContent>
+            </Tooltip>
+          )}
+
+          {/* Uncommitted changes */}
+          {hasUncommitted && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex shrink-0 items-center gap-0.5 text-[11px] font-medium">
+                  <span className="text-green-500">+{uncommittedAdded}</span>
+                  <span className="text-muted-foreground">/</span>
+                  <span className="text-red-500">-{uncommittedRemoved}</span>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>{`Uncommitted: +${uncommittedAdded}/-${uncommittedRemoved} lines`}</TooltipContent>
+            </Tooltip>
+          )}
+
+          {/* Session status summary */}
+          {sessionSummary && (
+            <span className={cn(
+              'ml-auto shrink-0 text-[10px]',
+              activeStatus === 'waiting' ? 'text-yellow-500 font-medium animate-blink' :
+                activeStatus === 'yoloing' ? 'text-destructive font-medium' :
+                  activeStatus === 'review' ? 'text-green-500 font-medium' :
+                    activeStatus ? 'text-yellow-500 font-medium' :
+                      'text-muted-foreground/50'
+            )}>
+              {sessionSummary}
+            </span>
+          )}
+        </div>
+      </WorktreeContextMenu>
 
       {/* Expandable session list grouped by status */}
       {isExpanded && sessionGroups.length > 0 && (

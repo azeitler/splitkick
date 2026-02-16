@@ -205,9 +205,10 @@ function UpdateIndicator() {
       <TooltipTrigger asChild>
         <button
           onClick={() => window.dispatchEvent(new Event('install-pending-update'))}
-          className="ml-0.5 text-primary hover:text-primary/80 transition-colors"
+          className="mr-1.5 flex items-center gap-1 rounded-md bg-primary/15 px-1.5 py-0.5 text-[0.625rem] font-medium text-primary hover:bg-primary/25 transition-colors cursor-pointer"
         >
-          <ArrowUpCircle className="size-3.5" />
+          <ArrowUpCircle className="size-3" />
+          Update available
         </button>
       </TooltipTrigger>
       <TooltipContent side="bottom">

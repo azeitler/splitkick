@@ -273,11 +273,11 @@ The helper is defined in `src-tauri/src/platform/process.rs` and exported via `p
 
 **"Canvas"** refers to two distinct grid views that display session cards:
 
-1. **SessionCanvasView** (`src/components/chat/SessionCanvasView.tsx`)
+1. **WorktreeCanvasView** (`src/components/chat/WorktreeCanvasView.tsx`)
    - Worktree-level canvas showing sessions within a single worktree
    - Uses the shared `CanvasGrid` component
 
-2. **WorktreeDashboard** (`src/components/dashboard/WorktreeDashboard.tsx`)
+2. **ProjectCanvasView** (`src/components/dashboard/ProjectCanvasView.tsx`)
    - Project-level canvas showing sessions grouped by worktree (with section headers)
    - Has its own rendering logic but uses shared hooks
 
@@ -290,7 +290,7 @@ The helper is defined in `src-tauri/src/platform/process.rs` and exported via `p
 **Shared Components**:
 
 - `SessionCard.tsx` - Individual card component used by both canvas views
-- `CanvasGrid.tsx` - Shared grid component (used by SessionCanvasView only)
+- `CanvasGrid.tsx` - Shared grid component (used by WorktreeCanvasView only)
 - `session-card-utils.tsx` - `computeSessionCardData()` function and `SessionCardData` type
 
 When user mentions "Canvas", consider both views and their shared infrastructure.

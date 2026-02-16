@@ -1,7 +1,7 @@
 import { useCallback, useEffect } from 'react'
 import { cn } from '@/lib/utils'
 import { ChatWindow } from '@/components/chat'
-import { WorktreeDashboard } from '@/components/dashboard'
+import { ProjectCanvasView } from '@/components/dashboard'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useProjects } from '@/services/projects'
@@ -65,7 +65,7 @@ export function MainWindowContent({
       {activeWorktreePath ? (
         <ChatWindow />
       ) : selectedProjectId ? (
-        <WorktreeDashboard
+        <ProjectCanvasView
           key={selectedProjectId}
           projectId={selectedProjectId}
         />

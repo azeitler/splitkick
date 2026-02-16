@@ -50,15 +50,15 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { useProjectsStore } from '@/store/projects-store'
 import { OpenInButton } from '@/components/open-in/OpenInButton'
 
-interface SessionCanvasViewProps {
+interface WorktreeCanvasViewProps {
   worktreeId: string
   worktreePath: string
 }
 
-export function SessionCanvasView({
+export function WorktreeCanvasView({
   worktreeId,
   worktreePath,
-}: SessionCanvasViewProps) {
+}: WorktreeCanvasViewProps) {
   const { data: sessionsData } = useSessions(worktreeId, worktreePath)
 
   // Project and worktree info for title display

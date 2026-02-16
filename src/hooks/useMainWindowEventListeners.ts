@@ -337,6 +337,19 @@ export function useMainWindowEventListeners() {
         return
       if (useProjectsStore.getState().projectSettingsDialogOpen) return
 
+      // CMD/Ctrl+1–9: switch to session tab by index (hardcoded, like browser tabs)
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
+        const digit = parseInt(e.key, 10)
+        if (digit >= 1 && digit <= 9) {
+          e.preventDefault()
+          e.stopPropagation()
+          window.dispatchEvent(
+            new CustomEvent('switch-session', { detail: { index: digit - 1 } })
+          )
+          return
+        }
+      }
+
       // Look up matching action in keybindings
       const keybindings = keybindingsRef.current
       for (const [action, binding] of Object.entries(keybindings)) {
@@ -377,10 +390,10 @@ export function useMainWindowEventListeners() {
             const { check } = await import('@tauri-apps/plugin-updater')
             const update = await check()
             if (update) {
-              commandContext.showToast(
-                `Update available: ${update.version}`,
-                'info'
-              )
+              // Pass update object to App.tsx for installation handling
+              window.dispatchEvent(new CustomEvent('update-available', { detail: update }))
+              // Show the update modal (same as auto-check on startup)
+              useUIStore.getState().setUpdateModalVersion(update.version)
             } else {
               commandContext.showToast(
                 'You are running the latest version',

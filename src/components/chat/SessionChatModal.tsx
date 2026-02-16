@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Archive, ArrowLeft, Eye, EyeOff, Maximize2, Tag, Terminal, Play, Plus, Trash2, X } from 'lucide-react'
+import { Archive, ArrowLeft, Eye, EyeOff, Maximize2, Pencil, Tag, Terminal, Play, Plus, Trash2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   Dialog,
@@ -18,7 +18,7 @@ import { GitStatusBadges } from '@/components/ui/git-status-badges'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { useChatStore } from '@/store/chat-store'
 import { useTerminalStore } from '@/store/terminal-store'
-import { useSessions, useCreateSession } from '@/services/chat'
+import { useSessions, useCreateSession, useRenameSession } from '@/services/chat'
 import { usePreferences } from '@/services/preferences'
 import { useWorktree, useProjects, useRunScript } from '@/services/projects'
 import {
@@ -173,6 +173,41 @@ export function SessionChatModal({
     labelSessionId ? state.sessionLabels[labelSessionId] ?? null : null
   )
 
+  // Rename session state
+  const renameSession = useRenameSession()
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  // Delay rename start so the input renders after the context menu fully closes
+  // (Radix restores focus to the trigger on close, which would steal focus from the input)
+  const handleStartRename = useCallback((sessionId: string, currentName: string) => {
+    setRenameValue(currentName)
+    setTimeout(() => setRenamingSessionId(sessionId), 200)
+  }, [])
+
+  const handleRenameSubmit = useCallback((sessionId: string) => {
+    const newName = renameValue.trim()
+    if (newName && newName !== sessions.find(s => s.id === sessionId)?.name) {
+      renameSession.mutate({ worktreeId, worktreePath, sessionId, newName })
+    }
+    setRenamingSessionId(null)
+  }, [renameValue, worktreeId, worktreePath, renameSession, sessions])
+
+  const handleRenameKeyDown = useCallback((e: React.KeyboardEvent, sessionId: string) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      handleRenameSubmit(sessionId)
+    } else if (e.key === 'Escape') {
+      setRenamingSessionId(null)
+    }
+  }, [handleRenameSubmit])
+
+  const renameInputRef = useCallback((node: HTMLInputElement | null) => {
+    if (node) {
+      node.focus()
+      node.select()
+    }
+  }, [])
+
   // Session archive/delete handlers
   const { handleArchiveSession, handleDeleteSession } = useSessionArchive({
     worktreeId,
@@ -253,15 +288,22 @@ export function SessionChatModal({
     if (!isOpen || sortedSessions.length <= 1) return
 
     const handleSwitchSession = (e: Event) => {
-      const direction = (e as CustomEvent).detail?.direction as 'next' | 'previous'
-      if (!direction) return
+      const detail = (e as CustomEvent).detail
+      let newIndex: number
 
-      const currentIndex = sortedSessions.findIndex(s => s.id === currentSessionId)
-      if (currentIndex === -1) return
-
-      const newIndex = direction === 'next'
-        ? (currentIndex + 1) % sortedSessions.length
-        : (currentIndex - 1 + sortedSessions.length) % sortedSessions.length
+      if (detail?.index !== undefined) {
+        // CMD+1–9: switch by index directly
+        if (detail.index >= sortedSessions.length) return
+        newIndex = detail.index
+      } else {
+        const direction = detail?.direction as 'next' | 'previous'
+        if (!direction) return
+        const currentIndex = sortedSessions.findIndex(s => s.id === currentSessionId)
+        if (currentIndex === -1) return
+        newIndex = direction === 'next'
+          ? (currentIndex + 1) % sortedSessions.length
+          : (currentIndex - 1 + sortedSessions.length) % sortedSessions.length
+      }
 
       const target = sortedSessions[newIndex]
       if (!target) return
@@ -460,7 +502,7 @@ export function SessionChatModal({
           <div className="shrink-0 border-b px-2 flex items-center gap-0.5 overflow-x-auto">
             <ScrollArea className="flex-1" viewportRef={modalTabScrollRef}>
               <div className="flex items-center gap-0.5 py-1">
-                {sortedSessions.map(session => {
+                {sortedSessions.map((session, idx) => {
                   const isActive = session.id === currentSessionId
                   const status = getSessionStatus(session, storeState)
                   const config = statusConfig[status]
@@ -482,8 +524,26 @@ export function SessionChatModal({
                             variant={config.indicatorVariant}
                             className="h-1.5 w-1.5"
                           />
-                          {session.name}
-                          {sessions.length > 1 && status === 'idle' && (
+                          {idx < 9 && (
+                            <kbd className="shrink-0 rounded border border-border/50 px-1 py-px text-[9px] font-medium leading-none text-muted-foreground/70">
+                              ⌘{idx + 1}
+                            </kbd>
+                          )}
+                          {renamingSessionId === session.id ? (
+                            <input
+                              ref={renameInputRef}
+                              type="text"
+                              value={renameValue}
+                              onChange={e => setRenameValue(e.target.value)}
+                              onBlur={() => handleRenameSubmit(session.id)}
+                              onKeyDown={e => handleRenameKeyDown(e, session.id)}
+                              onClick={e => e.stopPropagation()}
+                              className="w-full min-w-0 bg-transparent text-xs outline-none"
+                            />
+                          ) : (
+                            session.name
+                          )}
+                          {sessions.length > 1 && status === 'idle' && renamingSessionId !== session.id && (
                             <span
                               role="button"
                               onClick={e => {
@@ -498,6 +558,10 @@ export function SessionChatModal({
                         </button>
                       </ContextMenuTrigger>
                       <ContextMenuContent className="w-48">
+                        <ContextMenuItem onSelect={() => handleStartRename(session.id, session.name)}>
+                          <Pencil className="mr-2 h-4 w-4" />
+                          Rename
+                        </ContextMenuItem>
                         <ContextMenuItem onSelect={() => {
                           setLabelTargetSessionId(session.id)
                           setLabelModalOpen(true)

@@ -790,7 +790,19 @@ export function useWorktreeEvents() {
         })
 
         clearPendingTimeout(worktree.id)
-        toast.success('Worktree ready', { id: `worktree-creating-${worktree.id}` })
+        toast.success('Worktree ready', {
+          id: `worktree-creating-${worktree.id}`,
+          action: {
+            label: 'Open',
+            onClick: () => {
+              const { selectWorktree, selectProject } = useProjectsStore.getState()
+              selectProject(worktree.project_id)
+              selectWorktree(worktree.id)
+              const { setActiveWorktree } = useChatStore.getState()
+              setActiveWorktree(worktree.id, worktree.path)
+            },
+          },
+        })
         handleWorktreeReady(worktree, queryClient)
 
         // Add setup script output to chat store if present
@@ -2068,12 +2080,14 @@ export function useUpdateProjectSettings() {
       projectId,
       defaultBranch,
       enabledMcpServers,
+      knownMcpServers,
       customSystemPrompt,
       defaultProvider,
     }: {
       projectId: string
       defaultBranch?: string
       enabledMcpServers?: string[]
+      knownMcpServers?: string[]
       customSystemPrompt?: string
       defaultProvider?: string | null
     }): Promise<Project> => {
@@ -2086,6 +2100,7 @@ export function useUpdateProjectSettings() {
         projectId,
         defaultBranch,
         enabledMcpServers,
+        knownMcpServers,
         customSystemPrompt,
         defaultProvider,
       })

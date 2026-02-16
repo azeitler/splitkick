@@ -297,8 +297,6 @@ function mcpStatusHint(
       return "Needs authentication — run 'claude /mcp' to authenticate"
     case 'couldNotConnect':
       return 'Could not connect to server'
-    case 'connected':
-      return 'Connected'
     default:
       return undefined
   }
@@ -1467,30 +1465,32 @@ export const ChatToolbar = memo(function ChatToolbar({
             {availableMcpServers.length > 0 ? (
               availableMcpServers.map(server => {
                 const status = healthResult?.statuses[server.name]
+                const hint = mcpStatusHint(status)
+                const item = (
+                  <DropdownMenuCheckboxItem
+                    key={server.name}
+                    checked={
+                      !server.disabled &&
+                      enabledMcpServers.includes(server.name)
+                    }
+                    onCheckedChange={() => onToggleMcpServer(server.name)}
+                    disabled={server.disabled}
+                    className={server.disabled ? 'opacity-50' : undefined}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <McpStatusDot status={status} />
+                      {server.name}
+                    </span>
+                    <span className="ml-auto pl-4 text-xs text-muted-foreground">
+                      {server.disabled ? 'disabled' : server.scope}
+                    </span>
+                  </DropdownMenuCheckboxItem>
+                )
+                if (!hint) return item
                 return (
                   <Tooltip key={server.name}>
-                    <TooltipTrigger asChild>
-                      <DropdownMenuCheckboxItem
-                        checked={
-                          !server.disabled &&
-                          enabledMcpServers.includes(server.name)
-                        }
-                        onCheckedChange={() => onToggleMcpServer(server.name)}
-                        disabled={server.disabled}
-                        className={server.disabled ? 'opacity-50' : undefined}
-                      >
-                        <span className="flex items-center gap-1.5">
-                          <McpStatusDot status={status} />
-                          {server.name}
-                        </span>
-                        <span className="ml-auto pl-4 text-xs text-muted-foreground">
-                          {server.disabled ? 'disabled' : server.scope}
-                        </span>
-                      </DropdownMenuCheckboxItem>
-                    </TooltipTrigger>
-                    <TooltipContent side="left">
-                      {mcpStatusHint(status)}
-                    </TooltipContent>
+                    <TooltipTrigger asChild>{item}</TooltipTrigger>
+                    <TooltipContent side="left">{hint}</TooltipContent>
                   </Tooltip>
                 )
               })

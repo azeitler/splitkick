@@ -44,6 +44,7 @@ export const defaultResponses: Record<string, unknown> = {
 
   // Sessions
   get_sessions: { sessions: [], active_session_id: null },
+  get_session: { id: 'unknown', name: 'Session', order: 0, created_at: 0, messages: [] },
   list_all_sessions: { worktrees: {} },
   create_session: {
     id: 'session-new',
@@ -120,6 +121,15 @@ export const defaultResponses: Record<string, unknown> = {
 
   // Branches
   get_project_branches: [],
+
+  // Session settings
+  set_active_session: null,
+  set_session_model: null,
+  set_session_provider: null,
+  broadcast_session_setting: null,
+  rename_session: null,
+  send_chat_message: null,
+  cancel_chat_message: false,
 
   // Misc
   save_emergency_data: null,
