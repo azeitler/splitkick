@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueries } from '@tanstack/react-query'
 import { invoke } from '@/lib/transport'
+import { cn } from '@/lib/utils'
 import { Search, MoreHorizontal, Settings, Plus, FileJson, LayoutGrid, List } from 'lucide-react'
-import { WorktreeDropdownMenu } from '@/components/projects/WorktreeDropdownMenu'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -38,7 +38,6 @@ import { PlanDialog } from '@/components/chat/PlanDialog'
 import { RecapDialog } from '@/components/chat/RecapDialog'
 import { SessionChatModal } from '@/components/chat/SessionChatModal'
 import { SessionCard } from '@/components/chat/SessionCard'
-import { SessionListRow } from '@/components/chat/SessionListRow'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { LabelModal } from '@/components/chat/LabelModal'
 import {
@@ -100,10 +99,16 @@ function WorktreeSectionHeader({
   worktree,
   projectId,
   defaultBranch,
+  sessionSummary,
+  isSelected,
+  onRowClick,
 }: {
   worktree: Worktree
   projectId: string
   defaultBranch: string
+  sessionSummary?: string
+  isSelected?: boolean
+  onRowClick?: () => void
 }) {
   const isBase = isBaseSession(worktree)
   const { data: gitStatus } = useGitStatus(worktree.id)
@@ -165,37 +170,51 @@ function WorktreeSectionHeader({
 
   return (
     <>
-      <div className="mb-3 flex items-center gap-2">
-        <span className="font-medium">
+      <div
+        className={cn(
+          'mb-0.5 flex items-center gap-2 border border-transparent',
+          onRowClick && 'cursor-pointer rounded-md px-2 -mx-2 py-1 hover:bg-muted/50 transition-colors',
+          isSelected && onRowClick && 'bg-primary/5  border-primary/50'
+        )}
+        onClick={onRowClick}
+        role={onRowClick ? 'button' : undefined}
+      >
+        <span className="inline-flex items-center gap-1.5 font-medium">
           {isBase ? 'Base Session' : worktree.name}
           {(() => {
             const displayBranch = gitStatus?.current_branch ?? worktree.branch
             const displayName = isBase ? 'Base Session' : worktree.name
             return displayBranch && displayBranch !== displayName ? (
-              <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+              <span className="text-xs font-normal text-muted-foreground">
                 · {displayBranch}
               </span>
             ) : null
           })()}
+          {hasRunningTerminal && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+              </TooltipTrigger>
+              <TooltipContent>Run active</TooltipContent>
+            </Tooltip>
+          )}
+          <span className="font-normal" onClick={e => e.stopPropagation()}>
+            <GitStatusBadges
+              behindCount={behindCount}
+              unpushedCount={unpushedCount}
+              diffAdded={diffAdded}
+              diffRemoved={diffRemoved}
+              onPull={handlePull}
+              onPush={handlePush}
+              onDiffClick={handleDiffClick}
+            />
+          </span>
         </span>
-        {hasRunningTerminal && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-            </TooltipTrigger>
-            <TooltipContent>Run active</TooltipContent>
-          </Tooltip>
+        {sessionSummary && (
+          <span className="ml-auto text-xs text-muted-foreground/70">
+            {sessionSummary}
+          </span>
         )}
-        <WorktreeDropdownMenu worktree={worktree} projectId={projectId} />
-        <GitStatusBadges
-          behindCount={behindCount}
-          unpushedCount={unpushedCount}
-          diffAdded={diffAdded}
-          diffRemoved={diffRemoved}
-          onPull={handlePull}
-          onPush={handlePush}
-          onDiffClick={handleDiffClick}
-        />
       </div>
       <GitDiffModal
         diffRequest={diffRequest}
@@ -210,6 +229,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
   const { data: preferences } = usePreferences()
   const savePreferences = useSavePreferences()
   const canvasLayout = preferences?.canvas_layout ?? 'grid'
+  const isListLayout = canvasLayout === 'list'
 
   const [searchQuery, setSearchQuery] = useState('')
 
@@ -307,11 +327,11 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
       // Filter sessions based on search query
       const filteredSessions = searchQuery.trim()
         ? sessions.filter(
-            session =>
-              session.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-              worktree.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-              worktree.branch.toLowerCase().includes(searchQuery.toLowerCase())
-          )
+          session =>
+            session.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            worktree.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            worktree.branch.toLowerCase().includes(searchQuery.toLowerCase())
+        )
         : sessions
 
       // Compute card data for each session
@@ -345,13 +365,30 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     searchQuery,
   ])
 
+  // Compute session summary for worktree rows (list view)
+  const getSessionSummary = useCallback((cards: SessionCardData[]): string => {
+    const groups = groupCardsByStatus(cards)
+    return groups
+      .map(g => `${g.cards.length} ${g.title.toLowerCase()}`)
+      .join(' · ')
+  }, [])
+
   // Build flat array of all cards for keyboard navigation
   const flatCards: FlatCard[] = useMemo(() => {
     const result: FlatCard[] = []
     let globalIndex = 0
     for (const section of worktreeSections) {
-      if (section.isPending) {
-        // Add a single entry for the pending worktree's setup card
+      if (isListLayout) {
+        // List view: one entry per worktree
+        result.push({
+          worktreeId: section.worktree.id,
+          worktreePath: section.worktree.path,
+          card: section.cards[0] ?? null,
+          globalIndex,
+          isPending: section.isPending,
+        })
+        globalIndex++
+      } else if (section.isPending) {
         result.push({
           worktreeId: section.worktree.id,
           worktreePath: section.worktree.path,
@@ -373,12 +410,11 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
       }
     }
     return result
-  }, [worktreeSections])
+  }, [worktreeSections, isListLayout])
 
   // Selection state
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
-  const [selectedSession, setSelectedSession] = useState<{
-    sessionId: string
+  const [selectedWorktreeModal, setSelectedWorktreeModal] = useState<{
     worktreeId: string
     worktreePath: string
   } | null>(null)
@@ -419,10 +455,10 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     useUIStore
       .getState()
       .setSessionChatModalOpen(
-        !!selectedSession,
-        selectedSession?.worktreeId ?? null
+        !!selectedWorktreeModal,
+        selectedWorktreeModal?.worktreeId ?? null
       )
-  }, [selectedSession])
+  }, [selectedWorktreeModal])
 
   // Track highlighted card when selectedIndex changes (for surviving reorders)
   const handleSelectedIndexChange = useCallback(
@@ -440,19 +476,21 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
 
   // Re-sync selectedIndex when flatCards reorders (status changes, etc.)
   useEffect(() => {
-    const highlighted = selectedSession
-      ? { worktreeId: selectedSession.worktreeId, sessionId: selectedSession.sessionId }
+    const highlighted = selectedWorktreeModal
+      ? { worktreeId: selectedWorktreeModal.worktreeId }
       : highlightedCardRef.current
     if (!highlighted) return
-    const cardIndex = flatCards.findIndex(
-      fc =>
-        fc.worktreeId === highlighted.worktreeId &&
-        fc.card?.session.id === highlighted.sessionId
-    )
+    const cardIndex = isListLayout
+      ? flatCards.findIndex(fc => fc.worktreeId === highlighted.worktreeId)
+      : flatCards.findIndex(
+        fc =>
+          fc.worktreeId === highlighted.worktreeId &&
+          ('sessionId' in highlighted ? fc.card?.session.id === highlighted.sessionId : true)
+      )
     if (cardIndex !== -1 && cardIndex !== selectedIndex) {
       setSelectedIndex(cardIndex)
     }
-  }, [selectedSession, flatCards, selectedIndex])
+  }, [selectedWorktreeModal, flatCards, selectedIndex, isListLayout])
 
   // Auto-open session modal for newly created worktrees
   useEffect(() => {
@@ -485,8 +523,9 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
           }
         }
 
-        setSelectedSession({
-          sessionId: targetSession.id,
+        // Set active session so the modal opens on the right tab
+        useChatStore.getState().setActiveSession(worktreeId, targetSession.id)
+        setSelectedWorktreeModal({
           worktreeId,
           worktreePath: worktree.path,
         })
@@ -498,7 +537,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
   // Auto-select session when dashboard opens (visual selection only, no modal)
   // Prefers the persisted active session per worktree, falls back to first card
   useEffect(() => {
-    if (selectedIndex !== null || selectedSession) return
+    if (selectedIndex !== null || selectedWorktreeModal) return
     if (flatCards.length === 0) return
 
     // Try to find a card matching a persisted active session.
@@ -557,16 +596,19 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
         .getState()
         .registerWorktreePath(targetCard.worktreeId, targetCard.worktreePath)
     }
-  }, [flatCards, selectedIndex, selectedSession])
+  }, [flatCards, selectedIndex, selectedWorktreeModal])
 
   // Sync selection to store for cancel shortcut - updates when user navigates with arrow keys
   useEffect(() => {
-    if (selectedSession?.sessionId && selectedSession?.worktreeId) {
-      useChatStore
-        .getState()
-        .setCanvasSelectedSession(selectedSession.worktreeId, selectedSession.sessionId)
+    if (selectedWorktreeModal?.worktreeId) {
+      const activeSessionId = useChatStore.getState().activeSessionIds[selectedWorktreeModal.worktreeId]
+      if (activeSessionId) {
+        useChatStore
+          .getState()
+          .setCanvasSelectedSession(selectedWorktreeModal.worktreeId, activeSessionId)
+      }
     }
-  }, [selectedSession?.sessionId, selectedSession?.worktreeId])
+  }, [selectedWorktreeModal?.worktreeId])
 
   // Projects store actions
   const selectProject = useProjectsStore(state => state.selectProject)
@@ -580,10 +622,10 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
   // Actions via getState()
   const { setViewingCanvasTab } = useChatStore.getState()
 
-  // Handle clicking on a session card - open modal
-  const handleSessionClick = useCallback(
-    (worktreeId: string, worktreePath: string, sessionId: string) => {
-      setSelectedSession({ sessionId, worktreeId, worktreePath })
+  // Handle clicking on a worktree row - open modal
+  const handleWorktreeClick = useCallback(
+    (worktreeId: string, worktreePath: string) => {
+      setSelectedWorktreeModal({ worktreeId, worktreePath })
     },
     []
   )
@@ -592,16 +634,11 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
   const handleSelect = useCallback(
     (index: number) => {
       const item = flatCards[index]
-      // Skip opening session for pending worktrees (they have no sessions yet)
-      if (item && item.card) {
-        handleSessionClick(
-          item.worktreeId,
-          item.worktreePath,
-          item.card.session.id
-        )
+      if (item && !item.isPending) {
+        handleWorktreeClick(item.worktreeId, item.worktreePath)
       }
     },
-    [flatCards, handleSessionClick]
+    [flatCards, handleWorktreeClick]
   )
 
   // Handle selection change for tracking in store
@@ -677,7 +714,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     handleOpenLabelModal,
   } = useCanvasShortcutEvents({
     selectedCard,
-    enabled: !selectedSession && selectedIndex !== null,
+    enabled: !selectedWorktreeModal && selectedIndex !== null,
     worktreeId: selectedFlatCard?.worktreeId ?? '',
     worktreePath: selectedFlatCard?.worktreePath ?? '',
     onPlanApproval: (card, updatedPlan) =>
@@ -688,7 +725,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
 
   // Keyboard navigation - disable when any modal/dialog is open
   const isModalOpen =
-    !!selectedSession ||
+    !!selectedWorktreeModal ||
     !!planDialogPath ||
     !!planDialogContent ||
     isRecapDialogOpen ||
@@ -724,24 +761,28 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
 
   // Handle opening full view from modal
   const handleOpenFullView = useCallback(() => {
-    if (selectedSession) {
+    if (selectedWorktreeModal) {
       selectProject(projectId)
-      selectWorktree(selectedSession.worktreeId)
+      selectWorktree(selectedWorktreeModal.worktreeId)
       setActiveWorktree(
-        selectedSession.worktreeId,
-        selectedSession.worktreePath
+        selectedWorktreeModal.worktreeId,
+        selectedWorktreeModal.worktreePath
       )
-      setActiveSession(selectedSession.worktreeId, selectedSession.sessionId)
-      setViewingCanvasTab(selectedSession.worktreeId, false)
+      // Use the active session from store (set by the modal's tab bar)
+      const activeSessionId = useChatStore.getState().activeSessionIds[selectedWorktreeModal.worktreeId]
+      if (activeSessionId) {
+        setActiveSession(selectedWorktreeModal.worktreeId, activeSessionId)
+      }
+      setViewingCanvasTab(selectedWorktreeModal.worktreeId, false)
       // Auto-open review sidebar if session has review results
       const { reviewResults, setReviewSidebarVisible } = useChatStore.getState()
-      if (reviewResults[selectedSession.sessionId]) {
+      if (activeSessionId && reviewResults[activeSessionId]) {
         setReviewSidebarVisible(true)
       }
-      setSelectedSession(null)
+      setSelectedWorktreeModal(null)
     }
   }, [
-    selectedSession,
+    selectedWorktreeModal,
     projectId,
     selectProject,
     selectWorktree,
@@ -844,91 +885,20 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
   // Listen for close-session-or-worktree event to handle CMD+W
   useEffect(() => {
     const handleCloseSessionOrWorktree = (e: Event) => {
-      // If modal is open, remove the session, close modal, pre-select next on canvas
-      if (selectedSession) {
+      // If modal is open, close the active session tab (or the modal if last tab)
+      if (selectedWorktreeModal) {
         e.stopImmediatePropagation()
-        const closingWorktreeId = selectedSession.worktreeId
-        const closingSessionId = selectedSession.sessionId
+        const { worktreeId, worktreePath } = selectedWorktreeModal
+        const sessions = sessionsByWorktreeId.get(worktreeId)
+        const activeSessions = sessions?.sessions?.filter(s => !s.archived_at) ?? []
+        const activeSessionId = useChatStore.getState().activeSessionIds[worktreeId]
 
-        handleDeleteSessionForWorktree(
-          selectedSession.worktreeId,
-          selectedSession.worktreePath,
-          closingSessionId
-        )
-        setSelectedSession(null)
-
-        // Find remaining sessions in same worktree
-        const sameWorktreeSessions = flatCards.filter(
-          fc =>
-            fc.worktreeId === closingWorktreeId &&
-            fc.card &&
-            fc.card.session.id !== closingSessionId
-        )
-
-        if (sameWorktreeSessions.length === 0) {
-          // No sessions left in worktree - select nearest card from any worktree
-          const closingIndex = flatCards.findIndex(
-            fc => fc.card?.session.id === closingSessionId
-          )
-          if (closingIndex >= 0) {
-            let nearestIndex: number | null = null
-            let minDistance = Infinity
-            for (let i = 0; i < flatCards.length; i++) {
-              if (i === closingIndex) continue
-              const distance = Math.abs(i - closingIndex)
-              if (distance < minDistance) {
-                minDistance = distance
-                nearestIndex = i
-              }
-            }
-            if (nearestIndex !== null && nearestIndex > closingIndex) {
-              nearestIndex--
-            }
-            // Update highlightedCardRef so re-sync effect anchors to the correct card
-            if (nearestIndex !== null) {
-              const nearestCard = flatCards[nearestIndex > closingIndex ? nearestIndex + 1 : nearestIndex]
-              highlightedCardRef.current = nearestCard?.card
-                ? { worktreeId: nearestCard.worktreeId, sessionId: nearestCard.card.session.id }
-                : null
-            } else {
-              highlightedCardRef.current = null
-            }
-            setSelectedIndex(nearestIndex)
-          }
-        } else {
-          // Pick next session in same worktree and pre-select on canvas
-          const worktreeCards = flatCards.filter(
-            fc => fc.worktreeId === closingWorktreeId && fc.card
-          )
-          const indexInWorktree = worktreeCards.findIndex(
-            fc => fc.card?.session.id === closingSessionId
-          )
-          const nextCard =
-            indexInWorktree < sameWorktreeSessions.length
-              ? sameWorktreeSessions[indexInWorktree]
-              : sameWorktreeSessions[sameWorktreeSessions.length - 1]
-
-          if (nextCard?.card) {
-            const newGlobalIndex = flatCards.findIndex(
-              fc =>
-                fc.worktreeId === nextCard.worktreeId &&
-                // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                fc.card?.session.id === nextCard.card!.session.id
-            )
-            const closingGlobalIndex = flatCards.findIndex(
-              fc => fc.card?.session.id === closingSessionId
-            )
-            // Update highlightedCardRef so re-sync effect anchors to the correct card
-            highlightedCardRef.current = {
-              worktreeId: nextCard.worktreeId,
-              sessionId: nextCard.card.session.id,
-            }
-            setSelectedIndex(
-              newGlobalIndex > closingGlobalIndex
-                ? newGlobalIndex - 1
-                : newGlobalIndex
-            )
-          }
+        if (activeSessions.length <= 1) {
+          // Last tab — close the modal
+          setSelectedWorktreeModal(null)
+        } else if (activeSessionId) {
+          // Close the current session tab
+          handleDeleteSessionForWorktree(worktreeId, worktreePath, activeSessionId)
         }
         return
       }
@@ -1034,17 +1004,18 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
         { capture: true }
       )
   }, [
-    selectedSession,
+    selectedWorktreeModal,
     selectedIndex,
     flatCards,
     handleDeleteSessionForWorktree,
+    sessionsByWorktreeId,
   ])
 
   // Listen for create-new-session event to handle CMD+T
   useEffect(() => {
     const handleCreateNewSession = (e: Event) => {
       // Don't create if modal is already open
-      if (selectedSession) return
+      if (selectedWorktreeModal) return
 
       // Use selected card, or fallback to first card
       const item =
@@ -1062,8 +1033,8 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
               worktreeId: item.worktreeId,
               sessionId: session.id,
             }
-            setSelectedSession({
-              sessionId: session.id,
+            useChatStore.getState().setActiveSession(item.worktreeId, session.id)
+            setSelectedWorktreeModal({
               worktreeId: item.worktreeId,
               worktreePath: item.worktreePath,
             })
@@ -1079,15 +1050,15 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
       window.removeEventListener('create-new-session', handleCreateNewSession, {
         capture: true,
       })
-  }, [selectedSession, selectedIndex, flatCards, createSession])
+  }, [selectedWorktreeModal, selectedIndex, flatCards, createSession])
 
   // Listen for open-session-modal event (fired by ChatWindow when creating new session inside modal)
   useEffect(() => {
     const handleOpenSessionModal = (e: CustomEvent<{ sessionId: string }>) => {
-      setSelectedSession(prev => {
-        if (!prev) return prev
-        return { ...prev, sessionId: e.detail.sessionId }
-      })
+      // The modal manages session tabs internally, just set active session in store
+      if (selectedWorktreeModal) {
+        useChatStore.getState().setActiveSession(selectedWorktreeModal.worktreeId, e.detail.sessionId)
+      }
     }
 
     window.addEventListener(
@@ -1210,7 +1181,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
 
         {/* Canvas View */}
         <div
-          className={`flex-1 pb-16 ${worktreeSections.length === 0 && !searchQuery ? '' : 'pt-6 px-4'}`}
+          className={`flex-1 pb-16 ${worktreeSections.length === 0 && !searchQuery ? '' : isListLayout ? 'pt-5 px-4' : 'pt-6 px-4'}`}
         >
           {worktreeSections.length === 0 ? (
             searchQuery ? (
@@ -1220,112 +1191,132 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
             ) : (
               <EmptyDashboardTabs projectId={projectId} projectPath={project?.path ?? null} />
             )
-          ) : (
-            <div className="space-y-6">
+          ) : isListLayout ? (
+            /* List view: one compact row per worktree */
+            <div className="flex flex-col">
               {worktreeSections.map(section => {
+                const currentIndex = cardIndex++
                 return (
-                  <div key={section.worktree.id}>
-                    {/* Worktree header */}
+                  <div
+                    key={section.worktree.id}
+                    ref={el => {
+                      cardRefs.current[currentIndex] = el
+                    }}
+                  >
                     <WorktreeSectionHeader
                       worktree={section.worktree}
                       projectId={projectId}
                       defaultBranch={project.default_branch}
+                      sessionSummary={section.isPending ? undefined : getSessionSummary(section.cards)}
+                      isSelected={selectedIndex === currentIndex}
+                      onRowClick={
+                        section.isPending
+                          ? undefined
+                          : () => {
+                            setSelectedIndex(currentIndex)
+                            handleWorktreeClick(section.worktree.id, section.worktree.path)
+                          }
+                      }
                     />
-
-                    {/* Session cards grid */}
-                    {section.isPending ? (
-                      <div
-                        className={
-                          canvasLayout === 'list'
-                            ? 'flex flex-col'
-                            : 'flex flex-col sm:flex-row sm:flex-wrap gap-3'
-                        }
-                      >
-                        {(() => {
-                          const currentIndex = cardIndex++
-                          return (
-                            <WorktreeSetupCard
-                              key={section.worktree.id}
-                              ref={el => {
-                                cardRefs.current[currentIndex] = el
-                              }}
-                              worktree={section.worktree}
-                              layout={canvasLayout}
-                              isSelected={selectedIndex === currentIndex}
-                              onSelect={() => setSelectedIndex(currentIndex)}
-                            />
-                          )
-                        })()}
-                      </div>
-                    ) : (
-                      <div className="flex flex-col gap-4">
-                        {groupCardsByStatus(section.cards).map(group => (
-                          <div key={group.key}>
-                            <div className="mb-2 flex items-baseline gap-1.5">
-                              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                                {group.title}
-                              </span>
-                              <span className="text-[10px] text-muted-foreground/60">
-                                {group.cards.length}
-                              </span>
-                            </div>
-                            <div className={canvasLayout === 'list' ? 'flex flex-col' : 'flex flex-col sm:flex-row sm:flex-wrap gap-3'}>
-                              {group.cards.map(card => {
-                                const currentIndex = cardIndex++
-                                const CardComponent = canvasLayout === 'list' ? SessionListRow : SessionCard
-                                return (
-                                  <CardComponent
-                                    key={card.session.id}
-                                    ref={el => {
-                                      cardRefs.current[currentIndex] = el
-                                    }}
-                                    card={card}
-                                    isSelected={selectedIndex === currentIndex}
-                                    onSelect={() => {
-                                      setSelectedIndex(currentIndex)
-                                      handleSessionClick(
-                                        section.worktree.id,
-                                        section.worktree.path,
-                                        card.session.id
-                                      )
-                                    }}
-                                    onArchive={() =>
-                                      handleArchiveSessionForWorktree(
-                                        section.worktree.id,
-                                        section.worktree.path,
-                                        card.session.id
-                                      )
-                                    }
-                                    onDelete={() =>
-                                      handleDeleteSessionForWorktree(
-                                        section.worktree.id,
-                                        section.worktree.path,
-                                        card.session.id
-                                      )
-                                    }
-                                    onPlanView={() => handlePlanView(card)}
-                                    onRecapView={() => handleRecapView(card)}
-                                    onApprove={() => handlePlanApproval(card)}
-                                    onYolo={() => handlePlanApprovalYolo(card)}
-                                    onToggleLabel={() =>
-                                      handleOpenLabelModal(card)
-                                    }
-                                    onToggleReview={() => {
-                                      const { reviewingSessions, setSessionReviewing } = useChatStore.getState()
-                                      const isReviewing = reviewingSessions[card.session.id] || !!card.session.review_results
-                                      setSessionReviewing(card.session.id, !isReviewing)
-                                    }}
-                                  />
-                                )
-                              })}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 )
               })}
+            </div>
+          ) : (
+            /* Grid view: full card rendering */
+            <div className="space-y-6">
+              {worktreeSections.map(section => (
+                <div key={section.worktree.id}>
+                  <WorktreeSectionHeader
+                    worktree={section.worktree}
+                    projectId={projectId}
+                    defaultBranch={project.default_branch}
+                  />
+
+                  {section.isPending ? (
+                    <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3">
+                      {(() => {
+                        const currentIndex = cardIndex++
+                        return (
+                          <WorktreeSetupCard
+                            key={section.worktree.id}
+                            ref={el => {
+                              cardRefs.current[currentIndex] = el
+                            }}
+                            worktree={section.worktree}
+                            layout={canvasLayout}
+                            isSelected={selectedIndex === currentIndex}
+                            onSelect={() => setSelectedIndex(currentIndex)}
+                          />
+                        )
+                      })()}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-4">
+                      {groupCardsByStatus(section.cards).map(group => (
+                        <div key={group.key}>
+                          <div className="mb-2 flex items-baseline gap-1.5">
+                            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                              {group.title}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground/60">
+                              {group.cards.length}
+                            </span>
+                          </div>
+                          <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3">
+                            {group.cards.map(card => {
+                              const currentIndex = cardIndex++
+                              return (
+                                <SessionCard
+                                  key={card.session.id}
+                                  ref={el => {
+                                    cardRefs.current[currentIndex] = el
+                                  }}
+                                  card={card}
+                                  isSelected={selectedIndex === currentIndex}
+                                  onSelect={() => {
+                                    setSelectedIndex(currentIndex)
+                                    handleWorktreeClick(
+                                      section.worktree.id,
+                                      section.worktree.path
+                                    )
+                                  }}
+                                  onArchive={() =>
+                                    handleArchiveSessionForWorktree(
+                                      section.worktree.id,
+                                      section.worktree.path,
+                                      card.session.id
+                                    )
+                                  }
+                                  onDelete={() =>
+                                    handleDeleteSessionForWorktree(
+                                      section.worktree.id,
+                                      section.worktree.path,
+                                      card.session.id
+                                    )
+                                  }
+                                  onPlanView={() => handlePlanView(card)}
+                                  onRecapView={() => handleRecapView(card)}
+                                  onApprove={() => handlePlanApproval(card)}
+                                  onYolo={() => handlePlanApprovalYolo(card)}
+                                  onToggleLabel={() =>
+                                    handleOpenLabelModal(card)
+                                  }
+                                  onToggleReview={() => {
+                                    const { reviewingSessions, setSessionReviewing } = useChatStore.getState()
+                                    const isReviewing = reviewingSessions[card.session.id] || !!card.session.review_results
+                                    setSessionReviewing(card.session.id, !isReviewing)
+                                  }}
+                                />
+                              )
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -1374,11 +1365,10 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
 
       {/* Session Chat Modal */}
       <SessionChatModal
-        sessionId={selectedSession?.sessionId ?? null}
-        worktreeId={selectedSession?.worktreeId ?? ''}
-        worktreePath={selectedSession?.worktreePath ?? ''}
-        isOpen={!!selectedSession}
-        onClose={() => setSelectedSession(null)}
+        worktreeId={selectedWorktreeModal?.worktreeId ?? ''}
+        worktreePath={selectedWorktreeModal?.worktreePath ?? ''}
+        isOpen={!!selectedWorktreeModal}
+        onClose={() => setSelectedWorktreeModal(null)}
         onOpenFullView={handleOpenFullView}
       />
 

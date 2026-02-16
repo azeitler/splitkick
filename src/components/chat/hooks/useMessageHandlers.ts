@@ -69,7 +69,7 @@ interface UseMessageHandlersParams {
   sendMessage: SendMessageMutation
   queryClient: QueryClient
   // Callbacks
-  scrollToBottom: () => void
+  scrollToBottom: (instant?: boolean) => void
   inputRef: RefObject<HTMLTextAreaElement | null>
   // For pending plan approval callback
   pendingPlanMessage: ChatMessage | null | undefined
@@ -172,10 +172,10 @@ export function useMessageHandlers({
       })
 
       // Scroll to bottom after DOM updates from collapsing the question form
-      // Using rAF ensures React has processed state changes (clearToolCalls,
-      // clearStreamingContentBlocks, markQuestionAnswered) so scrollHeight is accurate
+      // rAF ensures React has processed state changes before we read scrollHeight.
+      // Using instant scroll so stale scrollHeight during animation isn't a concern.
       requestAnimationFrame(() => {
-        scrollToBottom()
+        scrollToBottom(true)
       })
 
       // Format answers as natural language
@@ -338,6 +338,11 @@ export function useMessageHandlers({
       setSessionReviewing(sessionId, false)
       setWaitingForInput(sessionId, false)
 
+      // Scroll to bottom after DOM updates from collapsing the plan approval UI
+      requestAnimationFrame(() => {
+        scrollToBottom(true)
+      })
+
       // Format approval message - include updated plan if provided
       const message = updatedPlan
         ? `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
@@ -384,6 +389,7 @@ export function useMessageHandlers({
       useAdaptiveThinkingRef,
       getMcpConfig,
       getCustomProfileName,
+      scrollToBottom,
       sendMessage,
       queryClient,
       inputRef,
@@ -446,6 +452,11 @@ export function useMessageHandlers({
       setSessionReviewing(sessionId, false)
       setWaitingForInput(sessionId, false)
 
+      // Scroll to bottom after DOM updates from collapsing the plan approval UI
+      requestAnimationFrame(() => {
+        scrollToBottom(true)
+      })
+
       // Format approval message - include updated plan if provided
       const message = updatedPlan
         ? `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
@@ -490,6 +501,7 @@ export function useMessageHandlers({
       useAdaptiveThinkingRef,
       getMcpConfig,
       getCustomProfileName,
+      scrollToBottom,
       sendMessage,
       queryClient,
       inputRef,
@@ -532,6 +544,11 @@ export function useMessageHandlers({
     clearStreamingContentBlocks(sessionId)
     setSessionReviewing(sessionId, false)
     setWaitingForInput(sessionId, false)
+
+    // Scroll to bottom after DOM updates from collapsing the plan approval UI
+    requestAnimationFrame(() => {
+      scrollToBottom(true)
+    })
 
     // Explicitly set to build mode (not toggle, to avoid switching back to plan if already in build)
     setMode(sessionId, 'build')
@@ -577,6 +594,7 @@ export function useMessageHandlers({
     useAdaptiveThinkingRef,
     getMcpConfig,
     getCustomProfileName,
+    scrollToBottom,
     sendMessage,
     inputRef,
   ])
@@ -610,6 +628,11 @@ export function useMessageHandlers({
     clearStreamingContentBlocks(sessionId)
     setSessionReviewing(sessionId, false)
     setWaitingForInput(sessionId, false)
+
+    // Scroll to bottom after DOM updates from collapsing the plan approval UI
+    requestAnimationFrame(() => {
+      scrollToBottom(true)
+    })
 
     // Set to yolo mode for auto-approval of all future tools
     setMode(sessionId, 'yolo')
@@ -653,6 +676,7 @@ export function useMessageHandlers({
     useAdaptiveThinkingRef,
     getMcpConfig,
     getCustomProfileName,
+    scrollToBottom,
     sendMessage,
     inputRef,
   ])
@@ -701,6 +725,11 @@ export function useMessageHandlers({
       clearPendingDenials(sessionId)
       clearDeniedMessageContext(sessionId)
       setWaitingForInput(sessionId, false)
+
+      // Scroll to bottom after DOM updates from collapsing the permission approval UI
+      requestAnimationFrame(() => {
+        scrollToBottom(true)
+      })
 
       // Build explicit continuation message that tells Claude exactly what to run
       // Extract commands from Bash(command) patterns for a more direct instruction
@@ -775,6 +804,7 @@ export function useMessageHandlers({
       useAdaptiveThinkingRef,
       getMcpConfig,
       getCustomProfileName,
+      scrollToBottom,
       sendMessage,
       inputRef,
     ]
@@ -821,6 +851,11 @@ export function useMessageHandlers({
       clearPendingDenials(sessionId)
       clearDeniedMessageContext(sessionId)
       setWaitingForInput(sessionId, false)
+
+      // Scroll to bottom after DOM updates from collapsing the permission approval UI
+      requestAnimationFrame(() => {
+        scrollToBottom(true)
+      })
 
       // Build explicit continuation message that tells Claude exactly what to run
       // Extract commands from Bash(command) patterns for a more direct instruction
@@ -895,6 +930,7 @@ export function useMessageHandlers({
       useAdaptiveThinkingRef,
       getMcpConfig,
       getCustomProfileName,
+      scrollToBottom,
       sendMessage,
       inputRef,
     ]

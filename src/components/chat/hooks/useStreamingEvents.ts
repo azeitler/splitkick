@@ -566,11 +566,6 @@ export default function useStreamingEvents({
       clearExecutingMode(session_id)
       setSessionReviewing(session_id, true)
 
-      // Show error toast with longer duration
-      toast.error('Request failed', {
-        description: error,
-        duration: 10000,
-      })
     })
 
     // Handle cancellation (user pressed Cmd+Option+Backspace / Ctrl+Alt+Backspace)

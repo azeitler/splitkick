@@ -80,6 +80,7 @@ export function useUIStatePersistence() {
       expandedFolderIds,
       selectedProjectId,
       projectAccessTimestamps,
+      dashboardWorktreeCollapseOverrides,
     } = useProjectsStore.getState()
     const { leftSidebarSize, leftSidebarVisible } = useUIStore.getState()
     const { modalTerminalOpen, modalTerminalWidth } =
@@ -104,6 +105,8 @@ export function useUIStatePersistence() {
       modal_terminal_width: modalTerminalWidth,
       // Project access timestamps for recency sorting
       project_access_timestamps: projectAccessTimestamps,
+      // Dashboard worktree collapse overrides
+      dashboard_worktree_collapse_overrides: dashboardWorktreeCollapseOverrides,
       version: 1, // Reset for first release
     }
   }, [])
@@ -289,6 +292,17 @@ export function useUIStatePersistence() {
         .setProjectAccessTimestamps(projectAccessTimestamps)
     }
 
+    // Restore dashboard worktree collapse overrides
+    const collapseOverrides = uiState.dashboard_worktree_collapse_overrides ?? {}
+    if (Object.keys(collapseOverrides).length > 0) {
+      logger.debug('Restoring dashboard worktree collapse overrides', {
+        count: Object.keys(collapseOverrides).length,
+      })
+      useProjectsStore.setState({
+        dashboardWorktreeCollapseOverrides: collapseOverrides,
+      })
+    }
+
     queueMicrotask(() => {
       setIsInitialized(true)
       useUIStore.getState().setUIStateInitialized(true)
@@ -307,6 +321,8 @@ export function useUIStatePersistence() {
     let prevSelectedProjectId = useProjectsStore.getState().selectedProjectId
     let prevProjectAccessTimestamps =
       useProjectsStore.getState().projectAccessTimestamps
+    let prevDashboardCollapseOverrides =
+      useProjectsStore.getState().dashboardWorktreeCollapseOverrides
     let prevLeftSidebarSize = useUIStore.getState().leftSidebarSize
     let prevLeftSidebarVisible = useUIStore.getState().leftSidebarVisible
     let prevWorktreeId = useChatStore.getState().activeWorktreeId
@@ -329,17 +345,21 @@ export function useUIStatePersistence() {
         state.selectedProjectId !== prevSelectedProjectId
       const accessTimestampsChanged =
         state.projectAccessTimestamps !== prevProjectAccessTimestamps
+      const collapseOverridesChanged =
+        state.dashboardWorktreeCollapseOverrides !== prevDashboardCollapseOverrides
 
       if (
         projectIdsChanged ||
         folderIdsChanged ||
         selectedProjectChanged ||
-        accessTimestampsChanged
+        accessTimestampsChanged ||
+        collapseOverridesChanged
       ) {
         prevExpandedProjectIds = state.expandedProjectIds
         prevExpandedFolderIds = state.expandedFolderIds
         prevSelectedProjectId = state.selectedProjectId
         prevProjectAccessTimestamps = state.projectAccessTimestamps
+        prevDashboardCollapseOverrides = state.dashboardWorktreeCollapseOverrides
         const currentState = getCurrentUIState()
         debouncedSaveRef.current?.(currentState)
       }

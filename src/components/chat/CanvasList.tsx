@@ -352,7 +352,6 @@ export function CanvasList({
 
       {/* Session Chat Modal */}
       <SessionChatModal
-        sessionId={selectedSessionId}
         worktreeId={worktreeId}
         worktreePath={worktreePath}
         isOpen={!!selectedSessionId}

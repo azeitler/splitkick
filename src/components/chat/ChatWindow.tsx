@@ -54,6 +54,7 @@ import {
   type ClaudeModel,
 } from '@/store/chat-store'
 import { usePreferences, useSavePreferences } from '@/services/preferences'
+import { getLabelTextColor } from '@/lib/label-colors'
 import {
   DEFAULT_INVESTIGATE_ISSUE_PROMPT,
   DEFAULT_INVESTIGATE_PR_PROMPT,
@@ -210,6 +211,11 @@ export function ChatWindow({
       ? (state.sendingSessionIds[activeSessionId] ?? false)
       : false
   )
+  // Session label for top-right badge
+  const sessionLabel = useChatStore(state =>
+    activeSessionId ? state.sessionLabels[activeSessionId] ?? null : null
+  )
+
   // Function selectors - these return stable function references
   const isQuestionAnswered = useChatStore(state => state.isQuestionAnswered)
   const getSubmittedAnswers = useChatStore(state => state.getSubmittedAnswers)
@@ -2556,6 +2562,20 @@ export function ChatWindow({
               <div className="flex h-full flex-col">
                 {/* Messages area */}
                 <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
+                  {/* Session label badge */}
+                  {sessionLabel && (
+                    <div className="absolute top-2 right-4 z-10">
+                      <span
+                        className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium"
+                        style={{
+                          backgroundColor: sessionLabel.color,
+                          color: getLabelTextColor(sessionLabel.color),
+                        }}
+                      >
+                        {sessionLabel.name}
+                      </span>
+                    </div>
+                  )}
                   {/* Session digest reminder (shows when opening a session that had activity while out of focus) */}
                   {activeSessionId && (
                     <SessionDigestReminder sessionId={activeSessionId} />

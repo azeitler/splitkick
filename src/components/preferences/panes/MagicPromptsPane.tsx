@@ -21,6 +21,7 @@ import {
   DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT,
   DEFAULT_RELEASE_NOTES_PROMPT,
   DEFAULT_SESSION_NAMING_PROMPT,
+  DEFAULT_SESSION_RECAP_PROMPT,
   DEFAULT_PARALLEL_EXECUTION_PROMPT,
   DEFAULT_GLOBAL_SYSTEM_PROMPT,
   DEFAULT_MAGIC_PROMPTS,
@@ -269,6 +270,22 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_SESSION_NAMING_PROMPT,
+        defaultModel: 'haiku',
+      },
+      {
+        key: 'session_recap',
+        modelKey: 'session_recap_model',
+        providerKey: 'session_recap_provider',
+        label: 'Session Recap',
+        description:
+          'Prompt for generating session recaps (digests) when returning to unfocused sessions.',
+        variables: [
+          {
+            name: '{conversation}',
+            description: 'Full conversation transcript',
+          },
+        ],
+        defaultValue: DEFAULT_SESSION_RECAP_PROMPT,
         defaultModel: 'haiku',
       },
     ],

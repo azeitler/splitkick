@@ -456,6 +456,8 @@ export const MessageItem = memo(function MessageItem({
                     disabled={isSending}
                   />
                 </>
+              ) : message.role === 'user' ? (
+                <div className="whitespace-pre-wrap break-words">{displayContent}</div>
               ) : (
                 <Markdown>{displayContent}</Markdown>
               )}

@@ -294,3 +294,14 @@ The helper is defined in `src-tauri/src/platform/process.rs` and exported via `p
 - `session-card-utils.tsx` - `computeSessionCardData()` function and `SessionCardData` type
 
 When user mentions "Canvas", consider both views and their shared infrastructure.
+
+#### Image Processing on Paste/Drop
+
+Images pasted or dropped into chat are processed before saving (`process_image()` in `src-tauri/src/chat/commands.rs`):
+
+- **Resize**: Max 1568px on longest side (Claude's internal limit — anything larger gets downscaled by Claude anyway, wasting bandwidth). Images below 200px on any edge may degrade Claude's vision performance.
+- **Compress**: Opaque PNGs → JPEG at 85% quality (typically 5-10x smaller). PNGs with transparency stay PNG.
+- **Skip**: GIFs (may be animated), images < 50KB, already-compressed formats (JPEG/WebP below 1568px).
+- **Performance**: Uses `Triangle` (bilinear) filter for resize, runs in `spawn_blocking` to avoid blocking async runtime.
+- **Token cost**: `(width × height) / 750` tokens per image. Max optimal size (~1568×1568) ≈ 3,280 tokens.
+- **Reference**: https://platform.claude.com/docs/en/build-with-claude/vision

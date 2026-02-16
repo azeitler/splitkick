@@ -12,6 +12,9 @@ interface ProjectsUIState {
   // Expansion state for worktrees (sidebar session list)
   expandedWorktreeIds: Set<string>
 
+  // Dashboard worktree collapse overrides (list view): true=collapsed, false=expanded
+  dashboardWorktreeCollapseOverrides: Record<string, boolean>
+
   // Expansion state for folders
   expandedFolderIds: Set<string>
 
@@ -49,6 +52,10 @@ interface ProjectsUIState {
   // Worktree expansion actions
   toggleWorktreeExpanded: (id: string) => void
 
+  // Dashboard collapse actions
+  toggleDashboardWorktreeCollapsed: (id: string, defaultCollapsed: boolean) => void
+  setDashboardWorktreeCollapseOverrides: (overrides: Record<string, boolean>) => void
+
   // Folder expansion actions
   toggleFolderExpanded: (id: string) => void
   expandFolder: (id: string) => void
@@ -76,6 +83,7 @@ export const useProjectsStore = create<ProjectsUIState>()(
       selectedWorktreeId: null,
       expandedProjectIds: new Set<string>(),
       expandedWorktreeIds: new Set<string>(),
+      dashboardWorktreeCollapseOverrides: {},
       expandedFolderIds: new Set<string>(),
       projectAccessTimestamps: {},
       addProjectDialogOpen: false,
@@ -173,6 +181,30 @@ export const useProjectsStore = create<ProjectsUIState>()(
           },
           undefined,
           'toggleWorktreeExpanded'
+        ),
+
+      // Dashboard collapse actions
+      toggleDashboardWorktreeCollapsed: (id, defaultCollapsed) =>
+        set(
+          state => {
+            const current = state.dashboardWorktreeCollapseOverrides[id]
+            const isCurrentlyCollapsed = current ?? defaultCollapsed
+            return {
+              dashboardWorktreeCollapseOverrides: {
+                ...state.dashboardWorktreeCollapseOverrides,
+                [id]: !isCurrentlyCollapsed,
+              },
+            }
+          },
+          undefined,
+          'toggleDashboardWorktreeCollapsed'
+        ),
+
+      setDashboardWorktreeCollapseOverrides: overrides =>
+        set(
+          { dashboardWorktreeCollapseOverrides: overrides },
+          undefined,
+          'setDashboardWorktreeCollapseOverrides'
         ),
 
       // Folder expansion actions

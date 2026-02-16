@@ -26,8 +26,8 @@ import { MAX_IMAGE_SIZE, ALLOWED_IMAGE_TYPES } from './image-constants'
 /** Maximum text file size in bytes (10MB) */
 const MAX_TEXT_SIZE = 10 * 1024 * 1024
 
-/** Threshold for saving pasted text as file (500 chars) */
-const TEXT_PASTE_THRESHOLD = 500
+/** Threshold for saving pasted text as file (2000 chars) */
+const TEXT_PASTE_THRESHOLD = 2000
 
 interface ChatInputProps {
   activeSessionId: string | undefined
@@ -555,8 +555,19 @@ export const ChatInput = memo(function ChatInput({
           const base64Data = dataUrl.split(',')[1]
           if (!base64Data) return
 
+          // Add loading placeholder immediately
+          const placeholderId = `loading-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+          const { addPendingImage, updatePendingImage, removePendingImage } =
+            useChatStore.getState()
+          addPendingImage(activeSessionId, {
+            id: placeholderId,
+            path: '',
+            filename: 'Processing...',
+            loading: true,
+          })
+
           try {
-            // Save to disk via Tauri command (saves to app data dir)
+            // Save to disk via Tauri command (resizes/compresses)
             const result = await invoke<SaveImageResponse>(
               'save_pasted_image',
               {
@@ -565,15 +576,16 @@ export const ChatInput = memo(function ChatInput({
               }
             )
 
-            // Add to pending images
-            const { addPendingImage } = useChatStore.getState()
-            addPendingImage(activeSessionId, {
+            // Replace loading placeholder with actual image
+            updatePendingImage(activeSessionId, placeholderId, {
               id: result.id,
               path: result.path,
               filename: result.filename,
+              loading: false,
             })
           } catch (error) {
             console.error('Failed to save image:', error)
+            removePendingImage(activeSessionId, placeholderId)
             toast.error('Failed to save image', {
               description: String(error),
             })

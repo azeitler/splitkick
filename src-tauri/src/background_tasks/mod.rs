@@ -472,9 +472,10 @@ impl BackgroundTaskManager {
                     MIN_LOCAL_POLL_DEBOUNCE
                 );
 
-                // Always trigger immediate local poll on focus regain
-                // Branch changes happen while the app is unfocused, so we need fresh data
+                // Always trigger immediate local and remote poll on focus regain
+                // Branch changes and PR status updates happen while the app is unfocused
                 self.immediate_poll.store(true, Ordering::Relaxed);
+                self.immediate_remote_poll.store(true, Ordering::Relaxed);
             } else {
                 log::trace!("App gained focus: no active worktree");
             }

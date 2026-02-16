@@ -30,6 +30,8 @@ export interface UIState {
   modal_terminal_width?: number
   /** Last-accessed timestamps per project for recency sorting: projectId → unix ms */
   project_access_timestamps?: Record<string, number>
+  /** Dashboard worktree collapse overrides: worktreeId → collapsed (true/false) */
+  dashboard_worktree_collapse_overrides?: Record<string, boolean>
   version: number
 }
 

@@ -57,6 +57,8 @@ export interface MagicPrompts {
   parallel_execution: string | null
   /** Global system prompt appended to every chat session (like ~/.claude/CLAUDE.md) */
   global_system_prompt: string | null
+  /** Prompt for generating session recaps (digests) when returning to unfocused sessions */
+  session_recap: string | null
 }
 
 /** Default prompt for investigating GitHub issues */
@@ -357,6 +359,18 @@ Instruct each sub-agent to briefly outline its approach before implementing, so 
 
 When specifying subagent_type for Task tool calls, always use the fully qualified name exactly as listed in the system prompt (e.g., "code-simplifier:code-simplifier", not just "code-simplifier"). If the agent type contains a colon, include the full namespace:name string.`
 
+/** Default prompt for session recap (digest) generation */
+export const DEFAULT_SESSION_RECAP_PROMPT = `You are a summarization assistant. Your ONLY job is to summarize the following conversation transcript. Do NOT continue the conversation or take any actions. Just summarize.
+
+CONVERSATION TRANSCRIPT:
+{conversation}
+
+END OF TRANSCRIPT.
+
+Now provide a brief summary with exactly two fields:
+- chat_summary: One sentence (max 100 chars) describing the overall goal and current status
+- last_action: One sentence (max 200 chars) describing what was just completed in the last exchange`
+
 /** Default values for all magic prompts (null = use current app default) */
 export const DEFAULT_MAGIC_PROMPTS: MagicPrompts = {
   investigate_issue: null,
@@ -371,6 +385,7 @@ export const DEFAULT_MAGIC_PROMPTS: MagicPrompts = {
   session_naming: null,
   parallel_execution: null,
   global_system_prompt: null,
+  session_recap: null,
 }
 
 /**
@@ -387,6 +402,7 @@ export interface MagicPromptModels {
   resolve_conflicts_model: ClaudeModel
   release_notes_model: ClaudeModel
   session_naming_model: ClaudeModel
+  session_recap_model: ClaudeModel
 }
 
 /** Default models for each magic prompt */
@@ -401,6 +417,7 @@ export const DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
   resolve_conflicts_model: 'opus',
   release_notes_model: 'haiku',
   session_naming_model: 'haiku',
+  session_recap_model: 'haiku',
 }
 
 /**
@@ -418,6 +435,7 @@ export interface MagicPromptProviders {
   resolve_conflicts_provider: string | null
   release_notes_provider: string | null
   session_naming_provider: string | null
+  session_recap_provider: string | null
 }
 
 /** Default providers for each magic prompt (null = use global default_provider) */
@@ -432,6 +450,7 @@ export const DEFAULT_MAGIC_PROMPT_PROVIDERS: MagicPromptProviders = {
   resolve_conflicts_provider: null,
   release_notes_provider: null,
   session_naming_provider: null,
+  session_recap_provider: null,
 }
 
 /**

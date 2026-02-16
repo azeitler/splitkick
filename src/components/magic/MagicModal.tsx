@@ -375,8 +375,8 @@ export function MagicModal() {
               description: 'Opening conflict resolution session...',
             })
 
-            const { setActiveWorktree, setActiveSession, setInputDraft, setViewingCanvasTab } =
-              useChatStore.getState()
+            const { setActiveWorktree, setActiveSession, setInputDraft, setViewingCanvasTab,
+              activeWorktreePath } = useChatStore.getState()
 
             const newSession = await invoke<Session>('create_session', {
               worktreeId: selectedWorktreeId,
@@ -384,10 +384,18 @@ export function MagicModal() {
               name: 'Resolve conflicts',
             })
 
-            // Navigate to worktree (mounts ChatWindow if on dashboard) and open session
-            setActiveWorktree(selectedWorktreeId, worktree.path)
-            setActiveSession(selectedWorktreeId, newSession.id)
-            setViewingCanvasTab(selectedWorktreeId, false)
+            // Navigate to session
+            useProjectsStore.getState().selectWorktree(selectedWorktreeId)
+
+            if (activeWorktreePath) {
+              // Already inside a worktree — switch to chat view
+              setActiveWorktree(selectedWorktreeId, worktree.path)
+              setActiveSession(selectedWorktreeId, newSession.id)
+              setViewingCanvasTab(selectedWorktreeId, false)
+            } else {
+              // On project canvas — stay on dashboard and auto-open session modal
+              useUIStore.getState().markWorktreeForAutoOpenSession(selectedWorktreeId, newSession.id)
+            }
 
             // Build conflict resolution prompt
             const conflictFiles = result.conflicts.join('\n- ')

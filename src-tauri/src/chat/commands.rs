@@ -1654,6 +1654,79 @@ const ALLOWED_MIME_TYPES: &[&str] = &["image/png", "image/jpeg", "image/gif", "i
 /// Maximum image size in bytes (10MB)
 const MAX_IMAGE_SIZE: usize = 10 * 1024 * 1024;
 
+/// Max dimension per Claude's vision docs: images >1568px get downscaled internally
+/// by Claude anyway, so pre-scaling saves bandwidth with zero quality loss.
+/// See: https://platform.claude.com/docs/en/build-with-claude/vision
+const MAX_IMAGE_DIMENSION: u32 = 1568;
+
+/// JPEG quality for compression (85 = good quality/size balance)
+const JPEG_QUALITY: u8 = 85;
+
+/// Minimum file size to bother processing (skip tiny images)
+const MIN_PROCESS_SIZE: usize = 50 * 1024; // 50KB
+
+/// Process image: resize to Claude's optimal limit (1568px) and convert opaque PNG→JPEG.
+/// Returns (processed_bytes, final_extension) — extension may change (e.g. png→jpg).
+fn process_image(image_data: &[u8], extension: &str) -> Result<(Vec<u8>, String), String> {
+    // Skip GIFs (may be animated) and small images
+    if extension == "gif" || image_data.len() < MIN_PROCESS_SIZE {
+        return Ok((image_data.to_vec(), extension.to_string()));
+    }
+
+    let img = image::load_from_memory(image_data)
+        .map_err(|e| format!("Failed to decode image: {e}"))?;
+
+    let (width, height) = (img.width(), img.height());
+    let max_dim = width.max(height);
+    let needs_resize = max_dim > MAX_IMAGE_DIMENSION;
+
+    // Determine target format: convert opaque PNGs to JPEG
+    let (target_ext, convert_to_jpeg) = if extension == "png" && !img.color().has_alpha() {
+        ("jpg", true)
+    } else {
+        (extension, false)
+    };
+
+    // Nothing to do — return original bytes
+    if !needs_resize && !convert_to_jpeg {
+        return Ok((image_data.to_vec(), extension.to_string()));
+    }
+
+    // Resize if needed (preserve aspect ratio)
+    let processed = if needs_resize {
+        let scale = MAX_IMAGE_DIMENSION as f32 / max_dim as f32;
+        let new_w = (width as f32 * scale) as u32;
+        let new_h = (height as f32 * scale) as u32;
+        img.resize(new_w, new_h, image::imageops::FilterType::Triangle)
+    } else {
+        img
+    };
+
+    // Encode to target format
+    let mut buf = std::io::Cursor::new(Vec::new());
+    if convert_to_jpeg || target_ext == "jpg" {
+        let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, JPEG_QUALITY);
+        processed
+            .write_with_encoder(encoder)
+            .map_err(|e| format!("Failed to encode JPEG: {e}"))?;
+    } else {
+        processed
+            .write_to(&mut buf, image::ImageFormat::Png)
+            .map_err(|e| format!("Failed to encode PNG: {e}"))?;
+    }
+
+    let result = buf.into_inner();
+    log::debug!(
+        "Image processed: {width}x{height} -> {}x{}, {extension}->{target_ext} ({} -> {} bytes)",
+        processed.width(),
+        processed.height(),
+        image_data.len(),
+        result.len()
+    );
+
+    Ok((result, target_ext.to_string()))
+}
+
 /// Save a pasted image to the app data directory
 ///
 /// The image data should be base64-encoded (without the data URL prefix).
@@ -1691,40 +1764,50 @@ pub async fn save_pasted_image(
     // Get the images directory (now in app data dir)
     let images_dir = get_images_dir(&app)?;
 
-    // Generate unique filename
-    let extension = match mime_type.as_str() {
+    // Determine original extension from MIME type
+    let original_ext = match mime_type.as_str() {
         "image/png" => "png",
         "image/jpeg" => "jpg",
         "image/gif" => "gif",
         "image/webp" => "webp",
         _ => "png", // fallback
-    };
+    }
+    .to_string();
 
-    let timestamp = now();
-    let short_uuid = &Uuid::new_v4().to_string()[..8];
-    let filename = format!("image-{timestamp}-{short_uuid}.{extension}");
-    let file_path = images_dir.join(&filename);
+    // Offload CPU-heavy image processing to a blocking thread
+    let result = tokio::task::spawn_blocking(move || -> Result<SaveImageResponse, String> {
+        let (processed_data, final_ext) = process_image(&image_data, &original_ext)?;
 
-    // Write file atomically (temp file + rename)
-    let temp_path = file_path.with_extension("tmp");
-    std::fs::write(&temp_path, &image_data)
-        .map_err(|e| format!("Failed to write image file: {e}"))?;
+        let timestamp = now();
+        let short_uuid = &Uuid::new_v4().to_string()[..8];
+        let filename = format!("image-{timestamp}-{short_uuid}.{final_ext}");
+        let file_path = images_dir.join(&filename);
 
-    std::fs::rename(&temp_path, &file_path)
-        .map_err(|e| format!("Failed to finalize image file: {e}"))?;
+        // Write file atomically (temp file + rename)
+        let temp_path = file_path.with_extension("tmp");
+        std::fs::write(&temp_path, &processed_data)
+            .map_err(|e| format!("Failed to write image file: {e}"))?;
 
-    let path_str = file_path
-        .to_str()
-        .ok_or_else(|| "Failed to convert path to string".to_string())?
-        .to_string();
+        std::fs::rename(&temp_path, &file_path)
+            .map_err(|e| format!("Failed to finalize image file: {e}"))?;
 
-    log::trace!("Image saved to: {path_str}");
+        let path_str = file_path
+            .to_str()
+            .ok_or_else(|| "Failed to convert path to string".to_string())?
+            .to_string();
 
-    Ok(SaveImageResponse {
-        id: Uuid::new_v4().to_string(),
-        filename,
-        path: path_str,
+        log::trace!("Image saved to: {path_str}");
+
+        Ok(SaveImageResponse {
+            id: Uuid::new_v4().to_string(),
+            filename,
+            path: path_str,
+        })
     })
+    .await
+    .map_err(|e| format!("Image processing task failed: {e}"))??;
+
+    Ok(result)
 }
 
 /// Save a dropped image file to the app data directory
@@ -1775,36 +1858,49 @@ pub async fn save_dropped_image(
     // Get the images directory
     let images_dir = get_images_dir(&app)?;
 
-    // Generate unique filename (normalize jpeg to jpg)
+    // Normalize jpeg to jpg
     let normalized_ext = if extension == "jpeg" {
-        "jpg"
+        "jpg".to_string()
     } else {
-        &extension
+        extension
     };
-    let timestamp = now();
-    let short_uuid = &Uuid::new_v4().to_string()[..8];
-    let filename = format!("image-{timestamp}-{short_uuid}.{normalized_ext}");
-    let dest_path = images_dir.join(&filename);
 
-    // Copy file atomically (copy to temp, then rename)
-    let temp_path = dest_path.with_extension("tmp");
-    std::fs::copy(&source, &temp_path).map_err(|e| format!("Failed to copy image file: {e}"))?;
+    // Offload CPU-heavy image processing to a blocking thread
+    let result = tokio::task::spawn_blocking(move || -> Result<SaveImageResponse, String> {
+        let source_data =
+            std::fs::read(&source).map_err(|e| format!("Failed to read source file: {e}"))?;
+        let (processed_data, final_ext) = process_image(&source_data, &normalized_ext)?;
 
-    std::fs::rename(&temp_path, &dest_path)
-        .map_err(|e| format!("Failed to finalize image file: {e}"))?;
+        let timestamp = now();
+        let short_uuid = &Uuid::new_v4().to_string()[..8];
+        let filename = format!("image-{timestamp}-{short_uuid}.{final_ext}");
+        let dest_path = images_dir.join(&filename);
 
-    let path_str = dest_path
-        .to_str()
-        .ok_or_else(|| "Failed to convert path to string".to_string())?
-        .to_string();
+        // Write processed file atomically (temp file + rename)
+        let temp_path = dest_path.with_extension("tmp");
+        std::fs::write(&temp_path, &processed_data)
+            .map_err(|e| format!("Failed to write image file: {e}"))?;
 
-    log::trace!("Dropped image saved to: {path_str}");
+        std::fs::rename(&temp_path, &dest_path)
+            .map_err(|e| format!("Failed to finalize image file: {e}"))?;
 
-    Ok(SaveImageResponse {
-        id: Uuid::new_v4().to_string(),
-        filename,
-        path: path_str,
+        let path_str = dest_path
+            .to_str()
+            .ok_or_else(|| "Failed to convert path to string".to_string())?
+            .to_string();
+
+        log::trace!("Dropped image saved to: {path_str}");
+
+        Ok(SaveImageResponse {
+            id: Uuid::new_v4().to_string(),
+            filename,
+            path: path_str,
+        })
     })
+    .await
+    .map_err(|e| format!("Image processing task failed: {e}"))??;
+
+    Ok(result)
 }
 
 /// Delete a pasted image
@@ -3133,6 +3229,7 @@ fn execute_digest_claude(
     app: &AppHandle,
     prompt: &str,
     model: &str,
+    custom_profile_name: Option<&str>,
 ) -> Result<SessionDigestResponse, String> {
     let cli_path = get_cli_binary_path(app)?;
 
@@ -3143,6 +3240,7 @@ fn execute_digest_claude(
     log::trace!("Executing one-shot Claude digest with JSON schema");
 
     let mut cmd = silent_command(&cli_path);
+    crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
     cmd.args([
         "--print",
         "--input-format",
@@ -3253,11 +3351,21 @@ pub async fn generate_session_digest(
     // Format messages into conversation history (reuse existing function)
     let conversation_history = format_messages_for_summary(&messages);
 
-    // Build digest prompt
-    let prompt = SESSION_DIGEST_PROMPT.replace("{conversation}", &conversation_history);
+    // Build digest prompt (use custom magic prompt if set, otherwise default)
+    let prompt_template = prefs
+        .magic_prompts
+        .session_recap
+        .as_deref()
+        .filter(|p| !p.trim().is_empty())
+        .unwrap_or(SESSION_DIGEST_PROMPT);
+    let prompt = prompt_template.replace("{conversation}", &conversation_history);
+
+    // Use magic prompt model/provider if available, fall back to legacy session_recap_model
+    let model = &prefs.magic_prompt_models.session_recap_model;
+    let provider = prefs.magic_prompt_providers.session_recap_provider.as_deref();
 
     // Call Claude CLI with JSON schema (non-streaming)
-    let response = execute_digest_claude(&app, &prompt, &prefs.session_recap_model)?;
+    let response = execute_digest_claude(&app, &prompt, model, provider)?;
 
     Ok(SessionDigest {
         chat_summary: response.chat_summary,

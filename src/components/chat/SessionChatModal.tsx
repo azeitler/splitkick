@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ArrowLeft, Eye, Maximize2, Terminal, Play, X } from 'lucide-react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { ArrowLeft, Eye, Maximize2, Terminal, Play, Plus, X } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import {
   Dialog,
   DialogContent,
@@ -12,10 +13,12 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from '@/components/ui/tooltip'
+import { StatusIndicator } from '@/components/ui/status-indicator'
 import { GitStatusBadges } from '@/components/ui/git-status-badges'
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { useChatStore } from '@/store/chat-store'
 import { useTerminalStore } from '@/store/terminal-store'
-import { useSession } from '@/services/chat'
+import { useSessions, useCreateSession } from '@/services/chat'
 import { usePreferences } from '@/services/preferences'
 import { useWorktree, useProjects, useRunScript } from '@/services/projects'
 import {
@@ -26,6 +29,7 @@ import {
   performGitPull,
 } from '@/services/git-status'
 import { isBaseSession } from '@/types/projects'
+import type { Session } from '@/types/chat'
 import { isNativeApp } from '@/lib/environment'
 import { notify } from '@/lib/notifications'
 import { toast } from 'sonner'
@@ -34,9 +38,11 @@ import type { DiffRequest } from '@/types/git-diff'
 import { ChatWindow } from './ChatWindow'
 import { ModalTerminalDrawer } from './ModalTerminalDrawer'
 import { OpenInButton } from '@/components/open-in/OpenInButton'
+import { statusConfig, type SessionStatus } from './session-card-utils'
+import { WorktreeDropdownMenu } from '@/components/projects/WorktreeDropdownMenu'
+import { LabelModal } from './LabelModal'
 
 interface SessionChatModalProps {
-  sessionId: string | null
   worktreeId: string
   worktreePath: string
   isOpen: boolean
@@ -44,18 +50,53 @@ interface SessionChatModalProps {
   onOpenFullView: () => void
 }
 
+function getSessionStatus(session: Session, storeState: {
+  sendingSessionIds: Record<string, boolean>
+  executionModes: Record<string, string>
+  reviewingSessions: Record<string, boolean>
+}): SessionStatus {
+  const isSending = storeState.sendingSessionIds[session.id]
+  const executionMode = storeState.executionModes[session.id]
+  const isReviewing = storeState.reviewingSessions[session.id] || !!session.review_results
+
+  if (isSending) {
+    if (executionMode === 'plan') return 'planning'
+    if (executionMode === 'yolo') return 'yoloing'
+    return 'vibing'
+  }
+
+  if (session.waiting_for_input) {
+    return 'waiting'
+  }
+
+  if (isReviewing) return 'review'
+  return 'idle'
+}
+
 export function SessionChatModal({
-  sessionId,
   worktreeId,
   worktreePath,
   isOpen,
   onClose,
   onOpenFullView,
 }: SessionChatModalProps) {
-  const { data: session } = useSession(sessionId, worktreeId, worktreePath)
+  const { data: sessionsData } = useSessions(worktreeId || null, worktreePath || null)
+  const sessions = sessionsData?.sessions ?? []
   const { data: preferences } = usePreferences()
   const { data: runScript } = useRunScript(worktreePath)
   const canvasOnlyMode = preferences?.canvas_only_mode ?? false
+  const createSession = useCreateSession()
+
+  // Active session from store
+  const activeSessionId = useChatStore(state => state.activeSessionIds[worktreeId])
+  const currentSessionId = activeSessionId ?? sessions[0]?.id ?? null
+  const currentSession = sessions.find(s => s.id === currentSessionId) ?? null
+
+  // Store state for tab status indicators
+  const sendingSessionIds = useChatStore(state => state.sendingSessionIds)
+  const executionModes = useChatStore(state => state.executionModes)
+  const reviewingSessions = useChatStore(state => state.reviewingSessions)
+  const storeState = { sendingSessionIds, executionModes, reviewingSessions }
 
   // Git status for header badges
   const { data: worktree } = useWorktree(worktreeId)
@@ -83,28 +124,36 @@ export function SessionChatModal({
 
   const hasSetActiveRef = useRef<string | null>(null)
 
-  // Set active session synchronously before paint (useLayoutEffect) to avoid
-  // ChatWindow inside the modal seeing a stale session on first render.
-  // NOTE: We don't set activeWorktree - we pass it as props to ChatWindow instead
-  // This prevents navigation away from WorktreeDashboard when opening modals
+  // Set active session synchronously before paint
   useLayoutEffect(() => {
-    if (isOpen && sessionId && hasSetActiveRef.current !== sessionId) {
+    if (isOpen && currentSessionId && hasSetActiveRef.current !== currentSessionId) {
       const { setActiveSession } = useChatStore.getState()
-      // Only set the session, not the worktree (worktree is passed as props)
-      setActiveSession(worktreeId, sessionId)
-      hasSetActiveRef.current = sessionId
+      setActiveSession(worktreeId, currentSessionId)
+      hasSetActiveRef.current = currentSessionId
     }
-  }, [isOpen, sessionId, worktreeId])
+  }, [isOpen, currentSessionId, worktreeId])
 
-  // Reset refs when modal closes (isOpen→false without handleClose, e.g. parent state reset)
+  // Reset refs when modal closes
   useEffect(() => {
     if (!isOpen) {
       hasSetActiveRef.current = null
     }
   }, [isOpen])
 
-  // Keep the modal's session as activeSessionIds[worktreeId] on close
-  // so the canvas highlights the last-viewed session.
+  // Label modal state
+  const [labelModalOpen, setLabelModalOpen] = useState(false)
+  const currentLabel = useChatStore(state =>
+    currentSessionId ? state.sessionLabels[currentSessionId] ?? null : null
+  )
+
+  // Listen for toggle-session-label event (CMD+S)
+  useEffect(() => {
+    if (!isOpen) return
+    const handler = () => setLabelModalOpen(true)
+    window.addEventListener('toggle-session-label', handler)
+    return () => window.removeEventListener('toggle-session-label', handler)
+  }, [isOpen])
+
   const handleClose = useCallback(() => {
     onClose()
   }, [onClose])
@@ -112,6 +161,63 @@ export function SessionChatModal({
   const handleOpenFullView = useCallback(() => {
     onOpenFullView()
   }, [onOpenFullView])
+
+  const handleTabClick = useCallback(
+    (sessionId: string) => {
+      const { setActiveSession } = useChatStore.getState()
+      setActiveSession(worktreeId, sessionId)
+    },
+    [worktreeId]
+  )
+
+  const handleCreateSession = useCallback(() => {
+    createSession.mutate(
+      { worktreeId, worktreePath },
+      {
+        onSuccess: (newSession) => {
+          const { setActiveSession } = useChatStore.getState()
+          setActiveSession(worktreeId, newSession.id)
+        },
+      }
+    )
+  }, [worktreeId, worktreePath, createSession])
+
+  // Sorted sessions for tab order (waiting → review → idle)
+  const sortedSessions = useMemo(() => {
+    const priority: Record<string, number> = { waiting: 0, permission: 0, review: 1 }
+    return [...sessions].sort((a, b) => {
+      const pa = priority[getSessionStatus(a, storeState)] ?? 2
+      const pb = priority[getSessionStatus(b, storeState)] ?? 2
+      return pa - pb
+    })
+  }, [sessions, storeState])
+
+  // CMD+LEFT/RIGHT to switch between session tabs
+  useEffect(() => {
+    if (!isOpen || sortedSessions.length <= 1) return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!e.metaKey || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return
+
+      e.preventDefault()
+      e.stopPropagation()
+
+      const currentIndex = sortedSessions.findIndex(s => s.id === currentSessionId)
+      if (currentIndex === -1) return
+
+      const newIndex = e.key === 'ArrowRight'
+        ? (currentIndex + 1) % sortedSessions.length
+        : (currentIndex - 1 + sortedSessions.length) % sortedSessions.length
+
+      const target = sortedSessions[newIndex]
+      if (!target) return
+      const { setActiveSession } = useChatStore.getState()
+      setActiveSession(worktreeId, target.id)
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, sortedSessions, currentSessionId, worktreeId])
 
   const handlePull = useCallback(
     async (e: React.MouseEvent) => {
@@ -139,7 +245,7 @@ export function SessionChatModal({
         toast.error(`Push failed: ${error}`, { id: toastId })
       }
     },
-    [worktreePath, worktree?.pr_number, project]
+    [worktree, worktreePath, project]
   )
 
   const handleUncommittedDiffClick = useCallback(() => {
@@ -148,7 +254,7 @@ export function SessionChatModal({
       worktreePath,
       baseBranch: defaultBranch,
     })
-  }, [worktreePath, defaultBranch])
+  }, [setDiffRequest, worktreePath, defaultBranch])
 
   const handleBranchDiffClick = useCallback(() => {
     setDiffRequest({
@@ -156,7 +262,7 @@ export function SessionChatModal({
       worktreePath,
       baseBranch: defaultBranch,
     })
-  }, [worktreePath, defaultBranch])
+  }, [setDiffRequest, worktreePath, defaultBranch])
 
   const handleRun = useCallback(() => {
     if (!runScript) {
@@ -169,18 +275,18 @@ export function SessionChatModal({
     useTerminalStore.getState().setModalTerminalOpen(worktreeId, true)
   }, [worktreeId, runScript])
 
-  if (!sessionId) return null
+  if (!isOpen || !worktreeId) return null
 
   return (
     <Dialog open={isOpen} onOpenChange={open => !open && handleClose()}>
       <DialogContent
-        key={sessionId}
+        key={worktreeId}
         className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none sm:!w-[calc(100vw-48px)] sm:!h-[calc(100vh-48px)] sm:!max-w-[calc(100vw-48px)] sm:!rounded-lg flex flex-col p-0 gap-0 overflow-hidden"
         showCloseButton={false}
       >
         <DialogHeader className="shrink-0 border-b px-4 py-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               <Button
                 variant="ghost"
                 size="sm"
@@ -189,9 +295,12 @@ export function SessionChatModal({
               >
                 <ArrowLeft className="h-4 w-4" />
               </Button>
-              <DialogTitle className="text-sm font-medium">
-                {session?.name ?? 'Session'}
+              <DialogTitle className="text-sm font-medium shrink-0">
+                {isBase ? 'Base Session' : worktree?.name ?? 'Worktree'}
               </DialogTitle>
+              {worktree && project && (
+                <WorktreeDropdownMenu worktree={worktree} projectId={project.id} />
+              )}
               <GitStatusBadges
                 behindCount={behindCount}
                 unpushedCount={unpushedCount}
@@ -205,7 +314,7 @@ export function SessionChatModal({
                 onBranchDiffClick={handleBranchDiffClick}
               />
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 shrink-0">
               {isNativeApp() && (
                 <>
                   <OpenInButton worktreePath={worktreePath} branch={worktree?.branch} />
@@ -217,17 +326,15 @@ export function SessionChatModal({
                         className="h-7 px-2 text-xs"
                         onClick={() => {
                           const { reviewResults, toggleReviewSidebar } = useChatStore.getState()
-                          // Check both Zustand store and session data for review results
-                          const hasReviewResults = sessionId && (reviewResults[sessionId] || session?.review_results)
+                          const hasReviewResults = currentSessionId && (reviewResults[currentSessionId] || currentSession?.review_results)
                           if (hasReviewResults) {
-                            // If results exist in Zustand, open sidebar; otherwise restore from session data first
-                            if (!reviewResults[sessionId] && session?.review_results) {
-                              useChatStore.getState().setReviewResults(sessionId, session.review_results)
+                            if (currentSessionId && !reviewResults[currentSessionId] && currentSession?.review_results) {
+                              useChatStore.getState().setReviewResults(currentSessionId, currentSession.review_results)
                             }
                             toggleReviewSidebar()
                           } else {
                             window.dispatchEvent(
-                              new CustomEvent('magic-command', { detail: { command: 'review', sessionId } })
+                              new CustomEvent('magic-command', { detail: { command: 'review', sessionId: currentSessionId } })
                             )
                           }
                         }}
@@ -294,15 +401,63 @@ export function SessionChatModal({
           </div>
         </DialogHeader>
 
+        {/* Session tabs */}
+        {sessions.length > 0 && (
+          <div className="shrink-0 border-b px-2 flex items-center gap-0.5 overflow-x-auto">
+            <ScrollArea className="flex-1">
+              <div className="flex items-center gap-0.5 py-1">
+                {sortedSessions.map(session => {
+                  const isActive = session.id === currentSessionId
+                  const status = getSessionStatus(session, storeState)
+                  const config = statusConfig[status]
+                  return (
+                    <button
+                      key={session.id}
+                      onClick={() => handleTabClick(session.id)}
+                      className={cn(
+                        'flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-colors whitespace-nowrap',
+                        isActive
+                          ? 'bg-muted text-foreground font-medium'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                      )}
+                    >
+                      <StatusIndicator
+                        status={config.indicatorStatus}
+                        variant={config.indicatorVariant}
+                        className="h-1.5 w-1.5"
+                      />
+                      {session.name}
+                    </button>
+                  )
+                })}
+              </div>
+              <ScrollBar orientation="horizontal" className="h-1" />
+            </ScrollArea>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0 shrink-0"
+                  onClick={handleCreateSession}
+                >
+                  <Plus className="h-3 w-3" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>New session</TooltipContent>
+            </Tooltip>
+          </div>
+        )}
+
         <div className="min-h-0 flex-1 overflow-hidden">
-          {/* Key forces ChatWindow remount when sessionId changes, ensuring fresh state */}
-          {/* Pass worktreeId/worktreePath as props to avoid setting global store state */}
-          <ChatWindow
-            key={sessionId}
-            isModal
-            worktreeId={worktreeId}
-            worktreePath={worktreePath}
-          />
+          {currentSessionId && (
+            <ChatWindow
+              key={currentSessionId}
+              isModal
+              worktreeId={worktreeId}
+              worktreePath={worktreePath}
+            />
+          )}
         </div>
 
         {/* Terminal side drawer */}
@@ -319,6 +474,12 @@ export function SessionChatModal({
           />
         )}
       </DialogContent>
+      <LabelModal
+        isOpen={labelModalOpen}
+        onClose={() => setLabelModalOpen(false)}
+        sessionId={currentSessionId}
+        currentLabel={currentLabel}
+      />
     </Dialog>
   )
 }

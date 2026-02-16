@@ -333,6 +333,7 @@ interface ChatUIState {
 
   // Actions - Pending images (session-based)
   addPendingImage: (sessionId: string, image: PendingImage) => void
+  updatePendingImage: (sessionId: string, imageId: string, updates: Partial<PendingImage>) => void
   removePendingImage: (sessionId: string, imageId: string) => void
   clearPendingImages: (sessionId: string) => void
   getPendingImages: (sessionId: string) => PendingImage[]
@@ -1329,6 +1330,20 @@ export const useChatStore = create<ChatUIState>()(
           }),
           undefined,
           'addPendingImage'
+        ),
+
+      updatePendingImage: (sessionId, imageId, updates) =>
+        set(
+          state => ({
+            pendingImages: {
+              ...state.pendingImages,
+              [sessionId]: (state.pendingImages[sessionId] ?? []).map(img =>
+                img.id === imageId ? { ...img, ...updates } : img
+              ),
+            },
+          }),
+          undefined,
+          'updatePendingImage'
         ),
 
       removePendingImage: (sessionId, imageId) =>

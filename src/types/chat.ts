@@ -493,6 +493,8 @@ export interface PendingImage {
   path: string
   /** Filename (e.g., "image-1704067200-abc123.png") */
   filename: string
+  /** Whether the image is still being processed (resized/compressed) */
+  loading?: boolean
 }
 
 /**

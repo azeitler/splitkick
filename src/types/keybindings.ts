@@ -14,8 +14,6 @@ export type KeybindingAction =
   | 'previous_session'
   | 'close_session_or_worktree'
   | 'new_worktree'
-  | 'next_worktree'
-  | 'previous_worktree'
   | 'cycle_execution_mode'
   | 'approve_plan'
   | 'approve_plan_yolo'
@@ -58,8 +56,6 @@ export const DEFAULT_KEYBINDINGS: KeybindingsMap = {
   previous_session: 'mod+alt+arrowleft',
   close_session_or_worktree: 'mod+w',
   new_worktree: 'mod+n',
-  next_worktree: 'mod+alt+arrowdown',
-  previous_worktree: 'mod+alt+arrowup',
   cycle_execution_mode: 'shift+tab',
   approve_plan: 'mod+enter',
   approve_plan_yolo: 'mod+y',
@@ -205,20 +201,6 @@ export const KEYBINDING_DEFINITIONS: KeybindingDefinition[] = [
     label: 'New worktree',
     description: 'Create a new worktree in the current project',
     default_shortcut: 'mod+n',
-    category: 'navigation',
-  },
-  {
-    action: 'next_worktree',
-    label: 'Next worktree',
-    description: 'Switch to the next worktree',
-    default_shortcut: 'mod+alt+arrowdown',
-    category: 'navigation',
-  },
-  {
-    action: 'previous_worktree',
-    label: 'Previous worktree',
-    description: 'Switch to the previous worktree',
-    default_shortcut: 'mod+alt+arrowup',
     category: 'navigation',
   },
   {

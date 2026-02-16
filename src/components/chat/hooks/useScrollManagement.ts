@@ -17,8 +17,8 @@ interface UseScrollManagementReturn {
   isAtBottom: boolean
   /** Whether findings are visible in viewport */
   areFindingsVisible: boolean
-  /** Scroll to bottom with auto-scroll flag */
-  scrollToBottom: () => void
+  /** Scroll to bottom with auto-scroll flag. Pass `true` for instant (no animation). */
+  scrollToBottom: (instant?: boolean) => void
   /** Scroll to findings element */
   scrollToFindings: () => void
   /** Handler for onScroll event */
@@ -88,7 +88,10 @@ export function useScrollManagement({
   }, [])
 
   // Scroll to bottom helper
-  const scrollToBottom = useCallback(() => {
+  // Pass instant=true for user-initiated actions (answering questions, approving plans)
+  // where DOM changes immediately and smooth scroll would target stale scrollHeight.
+  // Default smooth is for auto-scroll during streaming.
+  const scrollToBottom = useCallback((instant?: boolean) => {
     const viewport = scrollViewportRef.current
     if (!viewport) return
 
@@ -99,6 +102,13 @@ export function useScrollManagement({
 
     isAtBottomRef.current = true
     setIsAtBottom(true)
+
+    if (instant) {
+      // Instant scroll — no animation, no correction needed
+      viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'instant' })
+      return
+    }
+
     isAutoScrollingRef.current = true
 
     viewport.scrollTo({

@@ -414,6 +414,8 @@ pub struct MagicPrompts {
     pub parallel_execution: Option<String>,
     #[serde(default)]
     pub global_system_prompt: Option<String>,
+    #[serde(default)]
+    pub session_recap: Option<String>,
 }
 
 fn default_investigate_issue_prompt() -> String {
@@ -652,6 +654,8 @@ pub struct MagicPromptModels {
     pub release_notes_model: String,
     #[serde(default = "default_haiku_model")]
     pub session_naming_model: String,
+    #[serde(default = "default_haiku_model")]
+    pub session_recap_model: String,
 }
 
 fn default_haiku_model() -> String {
@@ -671,6 +675,7 @@ impl Default for MagicPromptModels {
             resolve_conflicts_model: default_model(),
             release_notes_model: default_haiku_model(),
             session_naming_model: default_haiku_model(),
+            session_recap_model: default_haiku_model(),
         }
     }
 }
@@ -698,6 +703,8 @@ pub struct MagicPromptProviders {
     pub release_notes_provider: Option<String>,
     #[serde(default)]
     pub session_naming_provider: Option<String>,
+    #[serde(default)]
+    pub session_recap_provider: Option<String>,
 }
 
 impl Default for MagicPrompts {
@@ -715,6 +722,7 @@ impl Default for MagicPrompts {
             session_naming: None,
             parallel_execution: None,
             global_system_prompt: None,
+            session_recap: None,
         }
     }
 }
@@ -881,6 +889,10 @@ pub struct UIState {
     #[serde(default)]
     pub project_access_timestamps: std::collections::HashMap<String, f64>,
 
+    /// Dashboard worktree collapse overrides: worktreeId → collapsed (true/false)
+    #[serde(default)]
+    pub dashboard_worktree_collapse_overrides: std::collections::HashMap<String, bool>,
+
     /// Version for future migration support
     #[serde(default = "default_ui_state_version")]
     pub version: u32,
@@ -907,6 +919,7 @@ impl Default for UIState {
             modal_terminal_open: std::collections::HashMap::new(),
             modal_terminal_width: None,
             project_access_timestamps: std::collections::HashMap::new(),
+            dashboard_worktree_collapse_overrides: std::collections::HashMap::new(),
             version: default_ui_state_version(),
         }
     }

@@ -393,7 +393,7 @@ export const useUIStore = create<UIState>()(
         return { shouldOpen: false }
       },
 
-      openSessionBoardModal: projectId =>
+      openSessionBoardModal: (projectId: string) =>
         set(
           { sessionBoardProjectId: projectId },
           undefined,
@@ -407,7 +407,7 @@ export const useUIStore = create<UIState>()(
           'closeSessionBoardModal'
         ),
 
-      setSessionChatModalOpen: (open, worktreeId) =>
+      setSessionChatModalOpen: (open: boolean, worktreeId?: string | null) =>
         set(
           {
             sessionChatModalOpen: open,
@@ -417,21 +417,21 @@ export const useUIStore = create<UIState>()(
           'setSessionChatModalOpen'
         ),
 
-      setPlanDialogOpen: open =>
+      setPlanDialogOpen: (open: boolean) =>
         set({ planDialogOpen: open }, undefined, 'setPlanDialogOpen'),
 
-      setFeatureTourOpen: open =>
+      setFeatureTourOpen: (open: boolean) =>
         set({ featureTourOpen: open }, undefined, 'setFeatureTourOpen'),
 
-      setUIStateInitialized: initialized =>
+      setUIStateInitialized: (initialized: boolean) =>
         set({ uiStateInitialized: initialized }, undefined, 'setUIStateInitialized'),
 
-      setPendingUpdateVersion: version =>
+      setPendingUpdateVersion: (version: string | null) =>
         set({ pendingUpdateVersion: version }, undefined, 'setPendingUpdateVersion'),
 
-      setUpdateModalVersion: version =>
+      setUpdateModalVersion: (version: string | null) =>
         set({ updateModalVersion: version }, undefined, 'setUpdateModalVersion'),
-      setPendingInvestigateType: type =>
+      setPendingInvestigateType: (type: 'issue' | 'pr' | null) =>
         set({ pendingInvestigateType: type }, undefined, 'setPendingInvestigateType'),
       consumePendingInvestigateType: () => {
         const current = get().pendingInvestigateType
