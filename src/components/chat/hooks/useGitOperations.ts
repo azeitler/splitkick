@@ -155,9 +155,11 @@ export function useGitOperations({
       // Trigger git status refresh
       triggerImmediateGitPoll()
 
-      toast.success(`Committed and pushed: ${result.message.split('\n')[0]}`, {
-        id: toastId,
-      })
+      if (result.commit_hash) {
+        toast.success(`Committed and pushed: ${result.message.split('\n')[0]}`, { id: toastId })
+      } else {
+        toast.success('Pushed to remote', { id: toastId })
+      }
     } catch (error) {
       toast.error(`Failed: ${error}`, { id: toastId })
     } finally {

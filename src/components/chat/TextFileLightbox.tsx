@@ -97,11 +97,11 @@ export function TextFileLightbox({ path, size }: TextFileLightboxProps) {
                 Failed to load file: {error}
               </div>
             ) : isMarkdownFile(filename) ? (
-              <div className="p-3">
+              <div className="p-3 select-text cursor-text">
                 <Markdown className="text-sm">{content ?? ''}</Markdown>
               </div>
             ) : (
-              <pre className="text-xs font-mono whitespace-pre-wrap break-words p-3 bg-muted rounded-md">
+              <pre className="text-xs font-mono whitespace-pre-wrap break-words p-3 bg-muted rounded-md select-text cursor-text">
                 {content}
               </pre>
             )}

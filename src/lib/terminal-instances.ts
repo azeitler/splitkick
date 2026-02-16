@@ -10,6 +10,8 @@
 
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { WebLinksAddon } from '@xterm/addon-web-links'
+import { openExternal } from '@/lib/platform'
 import { invoke } from '@/lib/transport'
 import { listen, type UnlistenFn } from '@/lib/transport'
 import { useTerminalStore } from '@/store/terminal-store'
@@ -74,6 +76,9 @@ export function getOrCreateTerminal(
 
   const fitAddon = new FitAddon()
   terminal.loadAddon(fitAddon)
+  terminal.loadAddon(new WebLinksAddon((_event, uri) => {
+    openExternal(uri)
+  }))
 
   // Handle user input - forward to PTY
   terminal.onData(data => {

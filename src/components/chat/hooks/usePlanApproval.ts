@@ -7,6 +7,7 @@ import {
   markPlanApproved,
   chatQueryKeys,
 } from '@/services/chat'
+import { invoke } from '@/lib/transport'
 import type { Session, WorktreeSessions } from '@/types/chat'
 import type { SessionCardData } from '../session-card-utils'
 
@@ -87,11 +88,6 @@ export function usePlanApproval({
           }
         )
 
-        // Invalidate sessions list so canvas cards update
-        queryClient.invalidateQueries({
-          queryKey: chatQueryKeys.sessions(worktreeId),
-        })
-
         // Optimistically clear waiting_for_input in sessions cache to prevent
         // stale "waiting" status during the refetch window
         queryClient.setQueryData<WorktreeSessions>(
@@ -113,6 +109,11 @@ export function usePlanApproval({
             }
           }
         )
+
+        // Invalidate sessions list so canvas cards update (after optimistic update)
+        queryClient.invalidateQueries({
+          queryKey: chatQueryKeys.sessions(worktreeId),
+        })
       }
 
       setExecutionMode(sessionId, 'build')
@@ -121,6 +122,17 @@ export function usePlanApproval({
       setSessionReviewing(sessionId, false)
       setWaitingForInput(sessionId, false)
       setPendingPlanMessageId(sessionId, null)
+
+      // Persist cleared waiting state to backend so refetch loads correct data
+      invoke('update_session_state', {
+        worktreeId,
+        worktreePath,
+        sessionId,
+        waitingForInput: false,
+        waitingForInputType: null,
+      }).catch(err => {
+        console.error('[usePlanApproval] Failed to clear waiting state:', err)
+      })
 
       const model = preferences?.selected_model ?? 'opus'
       const thinkingLevel = preferences?.thinking_level ?? 'off'
@@ -195,11 +207,6 @@ export function usePlanApproval({
           }
         )
 
-        // Invalidate sessions list so canvas cards update
-        queryClient.invalidateQueries({
-          queryKey: chatQueryKeys.sessions(worktreeId),
-        })
-
         // Optimistically clear waiting_for_input in sessions cache to prevent
         // stale "waiting" status during the refetch window
         queryClient.setQueryData<WorktreeSessions>(
@@ -221,6 +228,11 @@ export function usePlanApproval({
             }
           }
         )
+
+        // Invalidate sessions list so canvas cards update (after optimistic update)
+        queryClient.invalidateQueries({
+          queryKey: chatQueryKeys.sessions(worktreeId),
+        })
       }
 
       setExecutionMode(sessionId, 'yolo')
@@ -229,6 +241,17 @@ export function usePlanApproval({
       setSessionReviewing(sessionId, false)
       setWaitingForInput(sessionId, false)
       setPendingPlanMessageId(sessionId, null)
+
+      // Persist cleared waiting state to backend so refetch loads correct data
+      invoke('update_session_state', {
+        worktreeId,
+        worktreePath,
+        sessionId,
+        waitingForInput: false,
+        waitingForInputType: null,
+      }).catch(err => {
+        console.error('[usePlanApproval] Failed to clear waiting state:', err)
+      })
 
       const model = preferences?.selected_model ?? 'opus'
       const thinkingLevel = preferences?.thinking_level ?? 'off'

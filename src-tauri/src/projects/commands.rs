@@ -4652,6 +4652,16 @@ pub async fn create_commit_with_ai(
     // 1. Check for uncommitted changes
     let status = get_git_status(&worktree_path)?;
     if status.trim().is_empty() {
+        if push {
+            // No changes to commit, but user wants to push — push existing commits
+            push_to_remote(&worktree_path)?;
+            log::trace!("No changes to commit, pushed existing commits");
+            return Ok(CreateCommitResponse {
+                commit_hash: String::new(),
+                message: String::new(),
+                pushed: true,
+            });
+        }
         return Err("No changes to commit".to_string());
     }
 

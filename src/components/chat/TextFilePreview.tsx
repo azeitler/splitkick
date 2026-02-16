@@ -121,13 +121,13 @@ export function TextFilePreview({
           </DialogTitle>
           <ScrollArea className="h-[calc(85vh-6rem)] mt-2">
             {isMarkdownFile(openFile?.filename) ? (
-              <div className="p-3">
+              <div className="p-3 select-text cursor-text">
                 <Markdown className="text-sm">
                   {openFile?.content ?? ''}
                 </Markdown>
               </div>
             ) : (
-              <pre className="text-xs font-mono whitespace-pre-wrap break-words p-3 bg-muted rounded-md">
+              <pre className="text-xs font-mono whitespace-pre-wrap break-words p-3 bg-muted rounded-md select-text cursor-text">
                 {openFile?.content}
               </pre>
             )}

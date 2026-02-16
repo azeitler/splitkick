@@ -185,9 +185,11 @@ export function CanvasGrid({
       // If modal is open, SessionChatModal intercepts CMD+W and closes itself — skip here
       if (selectedSessionId) return
 
-      // No modal open — close the entire worktree (with confirmation)
-      e.stopImmediatePropagation()
-      onCloseWorktree()
+      // Close the selected session (not the whole worktree)
+      if (selectedIndex !== null && cards[selectedIndex]) {
+        e.stopImmediatePropagation()
+        onDeleteSession(cards[selectedIndex].session.id)
+      }
     }
 
     window.addEventListener(
@@ -205,7 +207,9 @@ export function CanvasGrid({
       )
   }, [
     selectedSessionId,
-    onCloseWorktree,
+    selectedIndex,
+    cards,
+    onDeleteSession,
   ])
 
   const groups = useMemo(() => groupCardsByStatus(cards), [cards])
