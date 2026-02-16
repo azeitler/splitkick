@@ -3,7 +3,7 @@
 //! Uses a single Claude CLI call to generate both session and branch names
 //! based on the first message in a session.
 
-use crate::claude_cli::get_cli_binary_path;
+use crate::claude_cli::resolve_cli_binary;
 use crate::platform::silent_command;
 use crate::projects::git;
 use crate::projects::storage::{load_projects_data, save_projects_data};
@@ -294,7 +294,7 @@ fn extract_text_from_stream_json(output: &str) -> Result<String, String> {
 
 /// Generate names using Claude CLI
 fn generate_names(app: &AppHandle, request: &NamingRequest) -> Result<NamingOutput, String> {
-    let cli_path = get_cli_binary_path(app)?;
+    let cli_path = resolve_cli_binary(app);
 
     if !cli_path.exists() {
         return Err("Claude CLI not installed".to_string());

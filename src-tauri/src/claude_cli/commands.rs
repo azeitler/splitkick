@@ -5,7 +5,7 @@ use sha2::{Digest, Sha256};
 use std::io::Write;
 use tauri::AppHandle;
 
-use super::config::{ensure_cli_dir, get_cli_binary_path};
+use super::config::{ensure_cli_dir, get_cli_binary_path, resolve_cli_binary};
 use crate::http_server::EmitExt;
 use crate::platform::silent_command;
 
@@ -74,7 +74,7 @@ pub struct InstallProgress {
 pub async fn check_claude_cli_installed(app: AppHandle) -> Result<ClaudeCliStatus, String> {
     log::trace!("Checking Claude CLI installation status");
 
-    let binary_path = get_cli_binary_path(&app)?;
+    let binary_path = resolve_cli_binary(&app);
 
     if !binary_path.exists() {
         log::trace!("Claude CLI not found at {:?}", binary_path);
@@ -450,7 +450,7 @@ pub struct ClaudeAuthStatus {
 pub async fn check_claude_cli_auth(app: AppHandle) -> Result<ClaudeAuthStatus, String> {
     log::trace!("Checking Claude CLI authentication status");
 
-    let binary_path = get_cli_binary_path(&app)?;
+    let binary_path = resolve_cli_binary(&app);
 
     if !binary_path.exists() {
         return Ok(ClaudeAuthStatus {
