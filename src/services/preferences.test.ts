@@ -133,6 +133,7 @@ describe('preferences service', () => {
         custom_cli_profiles: [],
         default_provider: null,
         canvas_layout: 'grid',
+        auto_pull_base_branch: true,
       }
       vi.mocked(invoke).mockResolvedValueOnce(mockPreferences)
 
@@ -233,6 +234,7 @@ describe('preferences service', () => {
         custom_cli_profiles: [],
         default_provider: null,
         canvas_layout: 'grid',
+        auto_pull_base_branch: true,
       }
       vi.mocked(invoke).mockResolvedValueOnce(prefsWithOldBinding)
 
@@ -310,6 +312,7 @@ describe('preferences service', () => {
         custom_cli_profiles: [],
         default_provider: null,
         canvas_layout: 'grid',
+        auto_pull_base_branch: true,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -385,6 +388,7 @@ describe('preferences service', () => {
         custom_cli_profiles: [],
         default_provider: null,
         canvas_layout: 'grid',
+        auto_pull_base_branch: true,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -460,6 +464,7 @@ describe('preferences service', () => {
         custom_cli_profiles: [],
         default_provider: null,
         canvas_layout: 'grid',
+        auto_pull_base_branch: true,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -533,6 +538,7 @@ describe('preferences service', () => {
         custom_cli_profiles: [],
         default_provider: null,
         canvas_layout: 'grid',
+        auto_pull_base_branch: true,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
