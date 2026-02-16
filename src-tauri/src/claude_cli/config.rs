@@ -42,6 +42,8 @@ fn resolve_cli_binary_with(
         return path_binary;
     }
 
+    // Bare command name — will fail .exists() checks at call sites,
+    // causing appropriate "not installed" errors
     PathBuf::from(CLI_BINARY_NAME)
 }
 

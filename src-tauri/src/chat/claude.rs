@@ -593,8 +593,10 @@ pub fn execute_claude_detached(
     let cli_path = resolve_cli_binary(app);
 
     if !cli_path.exists() {
-        let error_msg =
-            "Claude CLI not installed. Please complete setup in Settings > Advanced.".to_string();
+        let error_msg = format!(
+            "Claude CLI not found at {}. Please complete setup in Settings > Advanced.",
+            cli_path.display()
+        );
         log::error!("{error_msg}");
         let error_event = ErrorEvent {
             session_id: session_id.to_string(),
