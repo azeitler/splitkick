@@ -5,6 +5,7 @@ import { appearanceCommands } from './appearance-commands'
 import { notificationCommands } from './notification-commands'
 import { projectCommands } from './project-commands'
 import { githubCommands } from './github-commands'
+import { windowCommands } from './window-commands'
 import { registerCommands } from './registry'
 
 /**
@@ -16,7 +17,8 @@ export function initializeCommandSystem(): void {
   registerCommands(notificationCommands)
   registerCommands(projectCommands)
   registerCommands(githubCommands)
+  registerCommands(windowCommands)
 
 }
 
-export { appearanceCommands, notificationCommands, projectCommands, githubCommands }
+export { appearanceCommands, notificationCommands, projectCommands, githubCommands, windowCommands }
