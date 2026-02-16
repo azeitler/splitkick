@@ -48,7 +48,7 @@ export function CanvasGrid({
   onDeleteSession,
   onPlanApproval,
   onPlanApprovalYolo,
-  onCloseWorktree,
+  onCloseWorktree: _onCloseWorktree,
   searchInputRef,
 }: CanvasGridProps) {
   // Track session modal open state for magic command keybindings

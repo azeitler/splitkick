@@ -47,7 +47,7 @@ export function CanvasList({
   onDeleteSession,
   onPlanApproval,
   onPlanApprovalYolo,
-  onCloseWorktree,
+  onCloseWorktree: _onCloseWorktree,
   searchInputRef,
 }: CanvasListProps) {
   // Track session modal open state for magic command keybindings
