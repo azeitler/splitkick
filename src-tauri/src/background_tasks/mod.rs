@@ -572,6 +572,47 @@ impl BackgroundTaskManager {
         log::trace!("Triggering immediate remote poll");
         self.immediate_remote_poll.store(true, Ordering::Relaxed);
     }
+
+    // ========================================================================
+    // Diagnostics getters (read-only access to internal state)
+    // ========================================================================
+
+    pub fn is_focused(&self) -> bool {
+        self.is_focused.load(Ordering::Relaxed)
+    }
+
+    pub fn get_active_worktree_id(&self) -> Option<String> {
+        self.active_worktree
+            .lock()
+            .ok()
+            .and_then(|g| g.as_ref().map(|i| i.worktree_id.clone()))
+    }
+
+    pub fn get_last_local_poll_time(&self, worktree_id: &Option<String>) -> Option<u64> {
+        worktree_id.as_ref().and_then(|id| {
+            self.last_local_poll_times
+                .lock()
+                .ok()
+                .and_then(|times| times.get(id).copied())
+        })
+    }
+
+    pub fn get_last_remote_poll_time(&self, worktree_id: &Option<String>) -> Option<u64> {
+        worktree_id.as_ref().and_then(|id| {
+            self.last_remote_poll_times
+                .lock()
+                .ok()
+                .and_then(|times| times.get(id).copied())
+        })
+    }
+
+    pub fn get_pr_sweep_count(&self) -> usize {
+        self.pr_worktrees.lock().ok().map_or(0, |w| w.len())
+    }
+
+    pub fn get_git_sweep_count(&self) -> usize {
+        self.all_worktrees.lock().ok().map_or(0, |w| w.len())
+    }
 }
 
 /// Emit a git status event to the frontend

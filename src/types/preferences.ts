@@ -526,6 +526,7 @@ export interface AppPreferences {
   auto_archive_on_pr_merged: boolean // Auto-archive worktrees when their PR is merged
   show_keybinding_hints: boolean // Show keyboard shortcut hints at bottom of canvas views
   debug_mode_enabled: boolean // Show debug panel in chat sessions
+  diagnostics_enabled: boolean // Show system diagnostics in experimental pane
   default_enabled_mcp_servers: string[] // MCP server names enabled by default (empty = none)
   known_mcp_servers: string[] // All MCP server names ever seen (prevents re-enabling user-disabled servers)
   has_seen_feature_tour: boolean // Whether user has seen the feature tour onboarding
@@ -937,6 +938,7 @@ export const defaultPreferences: AppPreferences = {
   auto_archive_on_pr_merged: true, // Default: enabled
   show_keybinding_hints: true, // Default: enabled
   debug_mode_enabled: false, // Default: disabled
+  diagnostics_enabled: false, // Default: disabled
   default_enabled_mcp_servers: [], // Default: no MCP servers enabled
   known_mcp_servers: [], // Default: no known servers
   has_seen_feature_tour: false, // Default: not seen

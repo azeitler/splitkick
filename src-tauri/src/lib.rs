@@ -11,6 +11,7 @@ use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuild
 mod background_tasks;
 mod chat;
 mod claude_cli;
+mod diagnostics;
 mod gh_cli;
 pub mod http_server;
 mod platform;
@@ -163,6 +164,8 @@ pub struct AppPreferences {
     pub show_keybinding_hints: bool, // Show keyboard shortcut hints at bottom of canvas views
     #[serde(default)]
     pub debug_mode_enabled: bool, // Show debug panel in chat sessions (default: false)
+    #[serde(default)]
+    pub diagnostics_enabled: bool, // Show system diagnostics panel (default: false)
     #[serde(default)]
     pub default_enabled_mcp_servers: Vec<String>, // MCP server names enabled by default (empty = none)
     #[serde(default)]
@@ -821,6 +824,7 @@ impl Default for AppPreferences {
             auto_archive_on_pr_merged: default_auto_archive_on_pr_merged(),
             show_keybinding_hints: default_show_keybinding_hints(),
             debug_mode_enabled: false,
+            diagnostics_enabled: false,
             default_effort_level: default_effort_level(),
             default_enabled_mcp_servers: Vec::new(),
             known_mcp_servers: Vec::new(),
@@ -2135,6 +2139,8 @@ pub fn run() {
             background_tasks::commands::set_remote_poll_interval,
             background_tasks::commands::get_remote_poll_interval,
             background_tasks::commands::trigger_immediate_remote_poll,
+            // Diagnostics commands
+            diagnostics::commands::get_diagnostics_snapshot,
             // HTTP server commands
             start_http_server,
             stop_http_server,

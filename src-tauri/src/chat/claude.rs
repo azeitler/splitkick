@@ -10,6 +10,21 @@ use crate::projects::github_issues::{
 use crate::projects::storage::load_projects_data;
 
 // =============================================================================
+// Constants
+// =============================================================================
+
+/// Default global system prompt (must match DEFAULT_GLOBAL_SYSTEM_PROMPT in preferences.ts)
+const DEFAULT_GLOBAL_SYSTEM_PROMPT: &str = "\
+## Plan Mode\n\
+\n\
+- Make the plan extremely concise. Sacrifice grammar for the sake of concision.\n\
+- At the end of each plan, give me a list of unresolved questions to answer, if any.\n\
+\n\
+## Not Plan Mode\n\
+\n\
+- After each finished task, please write a few bullet points on how to test the changes.";
+
+// =============================================================================
 // Claude CLI execution
 // =============================================================================
 
@@ -361,15 +376,18 @@ fn build_claude_args(
     }
 
     // Global system prompt from preferences (like ~/.claude/CLAUDE.md)
+    // Falls back to DEFAULT_GLOBAL_SYSTEM_PROMPT when not set (null = use default)
     if let Ok(prefs_path) = crate::get_preferences_path(app) {
         if let Ok(contents) = std::fs::read_to_string(&prefs_path) {
             if let Ok(prefs) = serde_json::from_str::<crate::AppPreferences>(&contents) {
-                if let Some(prompt) = &prefs.magic_prompts.global_system_prompt {
-                    let prompt = prompt.trim();
-                    if !prompt.is_empty() {
-                        system_prompt_parts.push(prompt.to_string());
-                    }
-                }
+                let prompt = prefs
+                    .magic_prompts
+                    .global_system_prompt
+                    .as_deref()
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or(DEFAULT_GLOBAL_SYSTEM_PROMPT);
+                system_prompt_parts.push(prompt.to_string());
             }
         }
     }
@@ -751,12 +769,15 @@ pub fn execute_claude_detached(
 
     // Tail the output file for real-time updates
     // Use match to ensure unregister_process is always called, even on error
+    super::increment_tailer_count();
     let response = match tail_claude_output(app, session_id, worktree_id, output_file, pid) {
         Ok(resp) => {
+            super::decrement_tailer_count();
             super::registry::unregister_process(session_id);
             resp
         }
         Err(e) => {
+            super::decrement_tailer_count();
             super::registry::unregister_process(session_id);
             return Err(e);
         }

@@ -45,6 +45,16 @@ pub fn get_running_sessions() -> Vec<String> {
     PROCESS_REGISTRY.lock().unwrap().keys().cloned().collect()
 }
 
+/// Get snapshot of current process registry for diagnostics (session_id → PID pairs)
+pub fn get_process_registry_snapshot() -> Vec<(String, u32)> {
+    PROCESS_REGISTRY
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|(session_id, pid)| (session_id.clone(), *pid))
+        .collect()
+}
+
 /// Cancel a running Claude process for a session by sending SIGKILL to the process group
 /// Returns true if a process was found and signal sent, false otherwise
 ///

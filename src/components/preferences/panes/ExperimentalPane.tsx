@@ -11,6 +11,7 @@ import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { usePreferences, useSavePreferences } from '@/services/preferences'
 import { modelOptions, type ClaudeModel } from '@/types/preferences'
+import { DiagnosticsPanel } from '../DiagnosticsPanel'
 
 const SettingsSection: React.FC<{
   title: string
@@ -44,7 +45,6 @@ const InlineField: React.FC<{
 export const ExperimentalPane: React.FC = () => {
   const { data: preferences } = usePreferences()
   const savePreferences = useSavePreferences()
-
   return (
     <div className="space-y-6">
       <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 p-4">
@@ -137,7 +137,30 @@ export const ExperimentalPane: React.FC = () => {
             }}
           />
         </InlineField>
+
+        <InlineField
+          label="System diagnostics"
+          description="Show CPU/memory usage for Claude processes and background polling status"
+        >
+          <Switch
+            checked={preferences?.diagnostics_enabled ?? false}
+            onCheckedChange={checked => {
+              if (preferences) {
+                savePreferences.mutate({
+                  ...preferences,
+                  diagnostics_enabled: checked,
+                })
+              }
+            }}
+          />
+        </InlineField>
       </SettingsSection>
+
+      {preferences?.diagnostics_enabled && (
+        <SettingsSection title="System Diagnostics">
+          <DiagnosticsPanel />
+        </SettingsSection>
+      )}
     </div>
   )
 }
