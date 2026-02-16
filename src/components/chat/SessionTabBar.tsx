@@ -86,6 +86,10 @@ interface SortableTabProps {
   canCloseLastSession: boolean
   /** 1–9 shortcut number, or undefined if no shortcut */
   shortcutNumber?: number
+  /** Whether this session has a recap/digest */
+  hasDigest: boolean
+  /** Whether this session has a plan */
+  hasPlan: boolean
   editValue: string
   editInputRef: React.RefObject<HTMLInputElement | null>
   onTabClick: (sessionId: string) => void
@@ -106,6 +110,8 @@ function SortableTab({
   sessionsCount,
   canCloseLastSession,
   shortcutNumber,
+  hasDigest,
+  hasPlan,
   editValue,
   editInputRef,
   onTabClick,
@@ -197,6 +203,13 @@ function SortableTab({
               review
             </span>
           )}
+          {/* Recap/Plan indicators */}
+          {hasDigest && (
+            <Sparkles className="h-2.5 w-2.5 shrink-0 text-muted-foreground/60" />
+          )}
+          {hasPlan && (
+            <FileText className="h-2.5 w-2.5 shrink-0 text-muted-foreground/60" />
+          )}
         </>
       )}
 
@@ -233,6 +246,8 @@ interface DropdownSessionItemProps {
   sessionsCount: number
   /** Whether closing the last session is allowed (true for base sessions) */
   canCloseLastSession: boolean
+  hasDigest: boolean
+  hasPlan: boolean
   onTabClick: (sessionId: string) => void
   onCloseSession: (e: React.MouseEvent, sessionId: string) => void
 }
@@ -246,6 +261,8 @@ function DropdownSessionItem({
   sessionExecutionMode,
   sessionsCount,
   canCloseLastSession,
+  hasDigest,
+  hasPlan,
   onTabClick,
   onCloseSession,
 }: DropdownSessionItemProps) {
@@ -286,6 +303,13 @@ function DropdownSessionItem({
           review
         </span>
       )}
+      {/* Recap/Plan indicators */}
+      {hasDigest && (
+        <Sparkles className="h-2.5 w-2.5 shrink-0 text-muted-foreground/60" />
+      )}
+      {hasPlan && (
+        <FileText className="h-2.5 w-2.5 shrink-0 text-muted-foreground/60" />
+      )}
 
       {/* Close button */}
       {/* Show close button if: multiple sessions OR (last session AND canCloseLastSession) */}
@@ -325,6 +349,7 @@ interface SessionGroupDropdownProps {
   sessions: SessionState[]
   activeSessionId: string | undefined
   reviewingSessions: Record<string, boolean>
+  sessionDigests: Record<string, import('@/types/chat').SessionDigest>
   /** Whether closing the last session is allowed (true for base sessions) */
   canCloseLastSession: boolean
   onTabClick: (sessionId: string) => void
@@ -380,6 +405,7 @@ function SessionGroupDropdown({
   activeSessionId,
   reviewingSessions,
   canCloseLastSession,
+  sessionDigests,
   onTabClick,
   onCloseSession,
   groupType = 'active',
@@ -494,6 +520,8 @@ function SessionGroupDropdown({
                 sessionExecutionMode={state.executionMode}
                 sessionsCount={sessions.length}
                 canCloseLastSession={canCloseLastSession}
+                hasDigest={!!(sessionDigests[state.id] || state.session.digest)}
+                hasPlan={!!state.session.plan_file_path}
                 onTabClick={handleTabClickWithClose}
                 onCloseSession={onCloseSession}
               />
@@ -550,6 +578,7 @@ export function SessionTabBar({
     ? canvasOnlyMode || isViewingCanvasTabRaw
     : false
   const reviewingSessions = useChatStore(state => state.reviewingSessions)
+  const sessionDigests = useChatStore(state => state.sessionDigests)
   const uiStateInitialized = useUIStore(state => state.uiStateInitialized)
 
   // Actions via getState() - no subscription, stable references
@@ -1109,6 +1138,7 @@ export function SessionTabBar({
                 activeSessionId={activeSessionId}
 
                 reviewingSessions={reviewingSessions}
+                sessionDigests={sessionDigests}
                 canCloseLastSession={isBase}
                 onTabClick={handleTabClick}
                 onCloseSession={handleCloseSession}
@@ -1120,6 +1150,7 @@ export function SessionTabBar({
                 activeSessionId={activeSessionId}
 
                 reviewingSessions={reviewingSessions}
+                sessionDigests={sessionDigests}
                 canCloseLastSession={isBase}
                 onTabClick={handleTabClick}
                 onCloseSession={handleCloseSession}
@@ -1131,6 +1162,7 @@ export function SessionTabBar({
                 activeSessionId={activeSessionId}
 
                 reviewingSessions={reviewingSessions}
+                sessionDigests={sessionDigests}
                 canCloseLastSession={isBase}
                 onTabClick={handleTabClick}
                 onCloseSession={handleCloseSession}
@@ -1142,6 +1174,7 @@ export function SessionTabBar({
                 activeSessionId={activeSessionId}
 
                 reviewingSessions={reviewingSessions}
+                sessionDigests={sessionDigests}
                 canCloseLastSession={isBase}
                 onTabClick={handleTabClick}
                 onCloseSession={handleCloseSession}
@@ -1153,6 +1186,7 @@ export function SessionTabBar({
                 activeSessionId={activeSessionId}
 
                 reviewingSessions={reviewingSessions}
+                sessionDigests={sessionDigests}
                 canCloseLastSession={isBase}
                 onTabClick={handleTabClick}
                 onCloseSession={handleCloseSession}
@@ -1164,6 +1198,7 @@ export function SessionTabBar({
                 activeSessionId={activeSessionId}
 
                 reviewingSessions={reviewingSessions}
+                sessionDigests={sessionDigests}
                 canCloseLastSession={isBase}
                 onTabClick={handleTabClick}
                 onCloseSession={handleCloseSession}
@@ -1203,6 +1238,8 @@ export function SessionTabBar({
                       sessionsCount={sessionStates.length}
                       canCloseLastSession={isBase}
                       shortcutNumber={idx < 9 ? idx + 1 : undefined}
+                      hasDigest={!!(sessionDigests[state.id] || state.session.digest)}
+                      hasPlan={!!state.session.plan_file_path}
                       editValue={editValue}
                       editInputRef={editInputRef}
                       onTabClick={handleTabClick}

@@ -294,7 +294,8 @@ export function WorktreeItem({
   // Session status summary text (e.g. "1 waiting · 2 idle")
   const sessionSummary = useMemo(() => {
     if (allCards.length === 0) return null
-    const groups = groupCardsByStatus(allCards)
+    const groups = groupCardsByStatus(allCards).filter(g => g.key !== 'idle' && g.key !== 'waiting')
+    if (groups.length === 0) return null
     return groups.map(g => `${g.cards.length} ${g.title.toLowerCase()}`).join(' · ')
   }, [allCards])
 

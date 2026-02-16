@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Archive, ArrowLeft, Eye, EyeOff, Maximize2, Pencil, Tag, Terminal, Play, Plus, Trash2, X } from 'lucide-react'
+import { Archive, ArrowLeft, Eye, EyeOff, FileText, Maximize2, Pencil, Sparkles, Tag, Terminal, Play, Plus, Trash2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   Dialog,
@@ -602,6 +602,32 @@ export function SessionChatModal({
               </div>
               <ScrollBar orientation="horizontal" className="h-1" />
             </ScrollArea>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => window.dispatchEvent(new CustomEvent('open-recap'))}
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
+                  aria-label="Recap"
+                >
+                  <Sparkles className="h-3 w-3" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Recap (R)</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => window.dispatchEvent(new CustomEvent('open-plan'))}
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
+                  aria-label="Plan"
+                >
+                  <FileText className="h-3 w-3" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Plan (P)</TooltipContent>
+            </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button

@@ -13,6 +13,7 @@ import {
   FolderOpen,
   Bug,
   RefreshCw,
+  Sparkles,
 } from 'lucide-react'
 import {
   Dialog,
@@ -47,6 +48,7 @@ import { useQueryClient } from '@tanstack/react-query'
 type MagicOption =
   | 'save-context'
   | 'load-context'
+  | 'create-recap'
   | 'commit'
   | 'commit-and-push'
   | 'pull'
@@ -62,6 +64,7 @@ type MagicOption =
 
 /** Options that work on canvas without an open session (git-only operations) */
 const CANVAS_ALLOWED_OPTIONS = new Set<MagicOption>([
+  'create-recap',
   'commit',
   'commit-and-push',
   'pull',
@@ -113,6 +116,12 @@ function buildMagicColumns(hasOpenPr: boolean): MagicColumns {
           label: 'Load Context',
           icon: FolderOpen,
           key: 'L',
+        },
+        {
+          id: 'create-recap',
+          label: 'Create Recap',
+          icon: Sparkles,
+          key: 'T',
         },
       ],
     },
@@ -195,6 +204,7 @@ function buildMagicColumns(hasOpenPr: boolean): MagicColumns {
 const KEY_TO_OPTION: Record<string, MagicOption> = {
   s: 'save-context',
   l: 'load-context',
+  t: 'create-recap',
   c: 'commit',
   p: 'commit-and-push',
   d: 'pull',
@@ -545,6 +555,18 @@ ${resolveInstructions}`
         return
       }
 
+      // Create recap: dispatch open-recap event (handled by ChatWindow or canvas hooks)
+      if (option === 'create-recap') {
+        if (!activeSessionId) {
+          toast.info('No active session to create a recap for')
+          setMagicModalOpen(false)
+          return
+        }
+        setMagicModalOpen(false)
+        window.dispatchEvent(new CustomEvent('open-recap'))
+        return
+      }
+
       // Investigate options: guard against missing contexts
       if (option === 'investigate-issue' || option === 'investigate-pr') {
         const type = option === 'investigate-issue' ? 'issue' : 'pr'
@@ -679,6 +701,7 @@ ${resolveInstructions}`
                       const isSelected = selectedOption === option.id
                       const isDisabled =
                         (isOnCanvas && !CANVAS_ALLOWED_OPTIONS.has(option.id)) ||
+                        (option.id === 'create-recap' && !activeSessionId) ||
                         (option.id === 'investigate-issue' && !hasIssueContexts) ||
                         (option.id === 'investigate-pr' && !hasPrContexts) ||
                         (option.id === 'update-pr' && !hasOpenPr)

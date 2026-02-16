@@ -101,6 +101,7 @@ import { WorktreeCanvasView } from './WorktreeCanvasView'
 import { QueuedMessagesList } from './QueuedMessageItem'
 import { FloatingButtons } from './FloatingButtons'
 import { PlanDialog } from './PlanDialog'
+import { RecapDialog } from './RecapDialog'
 import { StreamingMessage } from './StreamingMessage'
 import { ChatErrorFallback } from './ChatErrorFallback'
 import { logger } from '@/lib/logger'
@@ -133,7 +134,7 @@ import { supportsAdaptiveThinking } from '@/lib/model-utils'
 import { useClaudeCliStatus } from '@/services/claude-cli'
 import { usePrStatus, usePrStatusEvents } from '@/services/pr-status'
 import type { PrDisplayStatus, CheckStatus } from '@/types/pr-status'
-import type { QueuedMessage, ExecutionMode, Session } from '@/types/chat'
+import type { QueuedMessage, ExecutionMode, Session, SessionDigest } from '@/types/chat'
 import type { DiffRequest } from '@/types/git-diff'
 import { GitDiffModal } from './GitDiffModal'
 import { FileDiffModal } from './FileDiffModal'
@@ -879,6 +880,11 @@ export function ChatWindow({
     null
   )
 
+  // State for recap dialog
+  const [isRecapDialogOpen, setIsRecapDialogOpen] = useState(false)
+  const [recapDialogDigest, setRecapDialogDigest] = useState<SessionDigest | null>(null)
+  const [isGeneratingRecap, setIsGeneratingRecap] = useState(false)
+
   // Manage dismissal state based on streaming and message ID changes
   useEffect(() => {
     // When streaming produces NEW todos, clear any previous dismissal
@@ -955,6 +961,75 @@ export function ChatWindow({
     window.addEventListener('open-plan', handleOpenPlan)
     return () => window.removeEventListener('open-plan', handleOpenPlan)
   }, [latestPlanContent, latestPlanFilePath, isViewingCanvasTab])
+
+  // Listen for global open-recap request from keybinding (R key) or tab bar button
+  // Skip when on canvas view - CanvasGrid handles it there
+  // Modal ChatWindow always listens (it always shows a session, never canvas)
+  useEffect(() => {
+    if (isViewingCanvasTab && !isModal) return
+
+    const handleOpenRecap = async () => {
+      if (!activeSessionId) return
+
+      // If recap dialog is already open, treat as regenerate
+      if (isRecapDialogOpen) {
+        const currentCount = session?.messages.length ?? 0
+        const digestCount = recapDialogDigest?.message_count ?? 0
+        if (currentCount <= digestCount) {
+          toast.info('No new messages since last recap')
+          return
+        }
+        // Fall through to regenerate
+      }
+
+      // Check for existing digest (Zustand cache → persisted)
+      const cachedDigest = useChatStore.getState().getSessionDigest(activeSessionId)
+      const existingDigest = cachedDigest ?? session?.digest ?? null
+
+      if (existingDigest && !isRecapDialogOpen) {
+        setRecapDialogDigest(existingDigest)
+        setIsRecapDialogOpen(true)
+        return
+      }
+
+      // Need at least 2 messages
+      const messageCount = session?.messages.length ?? 0
+      if (messageCount < 2) {
+        toast.info('Not enough messages to generate a recap')
+        return
+      }
+
+      // Generate on-demand
+      setRecapDialogDigest(null)
+      setIsRecapDialogOpen(true)
+      setIsGeneratingRecap(true)
+
+      try {
+        const digest = await invoke<SessionDigest>('generate_session_digest', {
+          sessionId: activeSessionId,
+        })
+
+        useChatStore.getState().markSessionNeedsDigest(activeSessionId)
+        useChatStore.getState().setSessionDigest(activeSessionId, digest)
+
+        // Persist to disk (fire and forget)
+        invoke('update_session_digest', { sessionId: activeSessionId, digest }).catch(err => {
+          console.error('[ChatWindow] Failed to persist digest:', err)
+        })
+
+        setRecapDialogDigest(digest)
+      } catch (error) {
+        setRecapDialogDigest(null)
+        setIsRecapDialogOpen(false)
+        toast.error(`Failed to generate recap: ${error}`)
+      } finally {
+        setIsGeneratingRecap(false)
+      }
+    }
+
+    window.addEventListener('open-recap', handleOpenRecap)
+    return () => window.removeEventListener('open-recap', handleOpenRecap)
+  }, [isViewingCanvasTab, isModal, activeSessionId, session, isRecapDialogOpen, recapDialogDigest])
 
   // Listen for global create-new-session event from keybinding (CMD+T)
   // This needs to be in ChatWindow (not SessionTabBar) because SessionTabBar
@@ -3319,6 +3394,18 @@ export function ChatWindow({
               }}
             />
           ) : null)}
+
+        {/* Recap dialog */}
+        <RecapDialog
+          digest={recapDialogDigest}
+          isOpen={isRecapDialogOpen}
+          onClose={() => {
+            setIsRecapDialogOpen(false)
+            setRecapDialogDigest(null)
+          }}
+          isGenerating={isGeneratingRecap}
+          onRegenerate={() => window.dispatchEvent(new CustomEvent('open-recap'))}
+        />
 
         {/* Merge options dialog */}
         <AlertDialog open={showMergeDialog} onOpenChange={setShowMergeDialog}>
