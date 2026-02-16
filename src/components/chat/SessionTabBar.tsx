@@ -206,8 +206,8 @@ function SortableTab({
             onClick={e => onCloseSession(e, session.id)}
             onPointerDown={e => e.stopPropagation()}
             className={cn(
-              'ml-auto shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100',
-              isActive && 'opacity-50'
+              'ml-auto shrink-0 rounded p-0.5 opacity-40 transition-opacity hover:bg-muted hover:opacity-100',
+              isActive && 'opacity-60'
             )}
             aria-label={`Close ${session.name}`}
           >
@@ -771,12 +771,21 @@ export function SessionTabBar({
   )
 
   // Convert vertical scroll to horizontal scroll on tab bar
-  const handleTabWheelScroll = useCallback((e: React.WheelEvent) => {
-    if (e.deltaY !== 0 && tabScrollRef.current) {
-      e.preventDefault()
-      tabScrollRef.current.scrollLeft += e.deltaY
+  // Must use native event listener with { passive: false } on the viewport itself
+  useEffect(() => {
+    const viewport = tabScrollRef.current
+    if (!viewport) return
+
+    const handleWheel = (e: WheelEvent) => {
+      if (e.deltaY !== 0) {
+        e.preventDefault()
+        viewport.scrollLeft += e.deltaY
+      }
     }
-  }, [])
+
+    viewport.addEventListener('wheel', handleWheel, { passive: false })
+    return () => viewport.removeEventListener('wheel', handleWheel)
+  }, [isLoading])
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
@@ -1060,7 +1069,6 @@ export function SessionTabBar({
   return (
     <div
       className="flex h-8 items-center border-b border-border/50"
-      onWheel={handleTabWheelScroll}
     >
       <ScrollArea
         className="h-full w-full [&_[data-slot=scroll-area-viewport]]:!overflow-y-hidden [&_[data-slot=scroll-area-viewport]]:!overflow-x-scroll [&_[data-slot=scroll-area-scrollbar]]:hidden"

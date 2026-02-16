@@ -44,6 +44,8 @@ import {
   useDeleteArchivedSession,
 } from '@/services/chat'
 import { useQueryClient } from '@tanstack/react-query'
+import { usePreferences } from '@/services/preferences'
+import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
 import { navigateToRestoredItem } from '@/lib/restore-navigation'
@@ -93,6 +95,8 @@ interface CleanupResult {
 
 export function ArchivedModal({ open, onOpenChange }: ArchivedModalProps) {
   const queryClient = useQueryClient()
+  const { data: preferences } = usePreferences()
+  const isDelete = (preferences?.removal_behavior ?? 'delete') === 'delete'
   const [searchQuery, setSearchQuery] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirmType | null>(
     null
@@ -499,10 +503,27 @@ export function ArchivedModal({ open, onOpenChange }: ArchivedModalProps) {
             <div className="text-center py-8 text-muted-foreground">
               No archived items.
               <br />
-              <span className="text-sm">
-                Archive worktrees and sessions to keep them for later without
-                cluttering your workspace.
-              </span>
+              {isDelete ? (
+                <span className="text-sm">
+                  Removal behavior is set to delete — closed items are
+                  permanently removed.{' '}
+                  <button
+                    type="button"
+                    className="underline hover:text-foreground transition-colors"
+                    onClick={() => {
+                      onOpenChange(false)
+                      useUIStore.getState().openPreferencesPane('general')
+                    }}
+                  >
+                    Change in Settings
+                  </button>
+                </span>
+              ) : (
+                <span className="text-sm">
+                  Archive worktrees and sessions to keep them for later without
+                  cluttering your workspace.
+                </span>
+              )}
             </div>
           ) : searchQuery ? (
             // Consolidated search results view

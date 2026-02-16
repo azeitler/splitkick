@@ -10,12 +10,12 @@ use super::naming::{spawn_naming_task, NamingRequest};
 use super::registry::cancel_process;
 use super::run_log;
 use super::storage::{
-    delete_session_data, get_data_dir, get_index_path, get_session_dir, load_metadata,
-    load_sessions, with_sessions_mut,
+    delete_session_data, get_base_index_path, get_data_dir, get_index_path, get_session_dir,
+    load_metadata, load_sessions, with_sessions_mut,
 };
 use super::types::{
     AllSessionsEntry, AllSessionsResponse, ChatMessage, ClaudeContext, EffortLevel, LabelData,
-    MessageRole, RunStatus, Session, SessionDigest, ThinkingLevel, WorktreeSessions,
+    MessageRole, RunStatus, Session, SessionDigest, ThinkingLevel, WorktreeIndex, WorktreeSessions,
 };
 use crate::claude_cli::get_cli_binary_path;
 use crate::http_server::EmitExt;
@@ -763,32 +763,25 @@ pub async fn restore_session_with_base(
     projects_data.add_worktree(new_worktree.clone());
     crate::projects::storage::save_projects_data(&app, &projects_data)?;
 
-    // Atomically migrate sessions to new worktree
-    let restored_session = with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
-        let session = sessions
-            .find_session_mut(&session_id)
-            .ok_or_else(|| format!("Session not found: {session_id}"))?;
+    // Restore preserved base sessions file (base-{project_id}.json -> {new_worktree_id}.json)
+    // This is needed because close_base_session_archive renamed the index file
+    let _restored_index =
+        crate::chat::storage::restore_base_sessions(&app, &project_id, &new_worktree.id)?;
 
-        if session.archived_at.is_none() {
-            return Err("Session is not archived".to_string());
-        }
+    // Atomically unarchive the target session within the restored sessions
+    let restored_session =
+        with_sessions_mut(&app, &worktree_path, &new_worktree.id, |sessions| {
+            let session = sessions
+                .find_session_mut(&session_id)
+                .ok_or_else(|| format!("Session not found: {session_id}"))?;
 
-        session.archived_at = None;
-        let restored = session.clone();
+            if session.archived_at.is_none() {
+                return Err("Session is not archived".to_string());
+            }
 
-        // Update the sessions file's worktree_id to the new one
-        sessions.worktree_id = new_worktree.id.clone();
-
-        Ok(restored)
-    })?;
-
-    // Delete the old sessions file (outside lock - it's already been saved with new worktree_id)
-    let old_sessions_path = get_index_path(&app, &worktree_id)?;
-    if old_sessions_path.exists() {
-        if let Err(e) = std::fs::remove_file(&old_sessions_path) {
-            log::warn!("Failed to remove old sessions file: {e}");
-        }
-    }
+            session.archived_at = None;
+            Ok(session.clone())
+        })?;
 
     log::trace!("Base session recreated and sessions migrated");
 
@@ -897,6 +890,47 @@ pub async fn list_all_archived_sessions(
                         worktree.id,
                         e
                     );
+                }
+            }
+        }
+
+        // Also check preserved base session files (base-{project_id}.json)
+        // These are created when a base session is closed with archiving
+        if let Ok(base_path) = get_base_index_path(&app, &project.id) {
+            if base_path.exists() {
+                if let Ok(contents) = std::fs::read_to_string(&base_path) {
+                    if let Ok(index) = serde_json::from_str::<WorktreeIndex>(&contents) {
+                        for entry in &index.sessions {
+                            if entry.archived_at.is_some() {
+                                // Load full session metadata
+                                let session =
+                                    if let Ok(Some(metadata)) = load_metadata(&app, &entry.id) {
+                                        let mut s = metadata.to_session();
+                                        // Ensure archived_at from index is preserved
+                                        if s.archived_at.is_none() {
+                                            s.archived_at = entry.archived_at;
+                                        }
+                                        s
+                                    } else {
+                                        // No metadata — build a minimal Session from index entry
+                                        let mut s = Session::new(entry.name.clone(), entry.order);
+                                        s.id = entry.id.clone();
+                                        s.message_count = Some(entry.message_count);
+                                        s.archived_at = entry.archived_at;
+                                        s
+                                    };
+
+                                entries.push(ArchivedSessionEntry {
+                                    session,
+                                    worktree_id: index.worktree_id.clone(),
+                                    worktree_name: format!("{} (base)", project.name),
+                                    worktree_path: project.path.clone(),
+                                    project_id: project.id.clone(),
+                                    project_name: project.name.clone(),
+                                });
+                            }
+                        }
+                    }
                 }
             }
         }

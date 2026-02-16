@@ -33,6 +33,20 @@ function executeKeybindingAction(
   commandContext: ReturnType<typeof useCommandContext>,
   queryClient: QueryClient
 ) {
+  // Canvas-only actions: blocked when the session chat modal is open
+  const CANVAS_ONLY_ACTIONS: Set<KeybindingAction> = new Set([
+    'new_worktree',
+    'approve_plan',
+    'approve_plan_yolo',
+    'open_plan',
+    'open_recap',
+    'restore_last_archived',
+    'focus_canvas_search',
+  ])
+  if (CANVAS_ONLY_ACTIONS.has(action) && useUIStore.getState().sessionChatModalOpen) {
+    return
+  }
+
   switch (action) {
     case 'focus_chat_input':
       logger.debug('Keybinding: focus_chat_input')
@@ -240,25 +254,14 @@ function executeKeybindingAction(
       window.dispatchEvent(new CustomEvent('approve-plan-yolo'))
       break
     }
-    case 'open_plan': {
+    case 'open_plan':
       logger.debug('Keybinding: open_plan')
-      const sessionModalOpen = useUIStore.getState().sessionChatModalOpen
-      if (sessionModalOpen) {
-        break
-      }
       window.dispatchEvent(new CustomEvent('open-plan'))
       break
-    }
-    case 'open_recap': {
+    case 'open_recap':
       logger.debug('Keybinding: open_recap')
-      const sessionModalOpenForRecap =
-        useUIStore.getState().sessionChatModalOpen
-      if (sessionModalOpenForRecap) {
-        break
-      }
       window.dispatchEvent(new CustomEvent('open-recap'))
       break
-    }
     case 'restore_last_archived':
       logger.debug('Keybinding: restore_last_archived')
       window.dispatchEvent(new CustomEvent('restore-last-archived'))
@@ -322,14 +325,16 @@ export function useMainWindowEventListeners() {
         }
       }
 
-      // Skip when a modal/dialog is open - let it handle its own shortcuts
+      // Skip when a blocking modal/dialog is open - let it handle its own shortcuts
       const uiState = useUIStore.getState()
       if (
         uiState.magicModalOpen ||
+        uiState.openInModalOpen ||
         uiState.newWorktreeModalOpen ||
         uiState.commandPaletteOpen ||
         uiState.preferencesOpen ||
-        uiState.releaseNotesModalOpen
+        uiState.releaseNotesModalOpen ||
+        uiState.updatePrModalOpen
       )
         return
       if (useProjectsStore.getState().projectSettingsDialogOpen) return

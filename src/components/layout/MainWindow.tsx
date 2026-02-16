@@ -18,11 +18,13 @@ import { OpenInModal } from '@/components/open-in/OpenInModal'
 import { WorkflowRunsModal } from '@/components/shared/WorkflowRunsModal'
 import { MagicModal } from '@/components/magic/MagicModal'
 import { ReleaseNotesDialog } from '@/components/magic/ReleaseNotesDialog'
+import { UpdatePrDialog } from '@/components/magic/UpdatePrDialog'
 import { NewWorktreeModal } from '@/components/worktree/NewWorktreeModal'
 import { SessionBoardModal } from '@/components/session-board'
 import { AddProjectDialog } from '@/components/projects/AddProjectDialog'
 import { GitInitModal } from '@/components/projects/GitInitModal'
 import { QuitConfirmationDialog } from './QuitConfirmationDialog'
+import { BranchConflictDialog } from '@/components/worktree/BranchConflictDialog'
 import { ArchivedModal } from '@/components/archive/ArchivedModal'
 import { Toaster } from '@/components/ui/sonner'
 import { useUIStore } from '@/store/ui-store'
@@ -281,12 +283,14 @@ export function MainWindow() {
       <WorkflowRunsModal />
       <MagicModal />
       <ReleaseNotesDialog />
+      <UpdatePrDialog />
       <NewWorktreeModal />
       <SessionBoardModal />
       <AddProjectDialog />
       <GitInitModal />
       <ArchivedModal open={archivedModalOpen} onOpenChange={setArchivedModalOpen} />
       <QuitConfirmationDialog />
+      <BranchConflictDialog />
       <Toaster
         position="bottom-right"
         offset="52px"

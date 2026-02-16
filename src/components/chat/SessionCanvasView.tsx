@@ -2,7 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 import { useSessions, useCreateSession } from '@/services/chat'
-import { useWorktree, useProjects } from '@/services/projects'
+import {
+  useWorktree,
+  useProjects,
+  useArchiveWorktree,
+  useDeleteWorktree,
+  useCloseBaseSessionClean,
+  useCloseBaseSessionArchive,
+} from '@/services/projects'
 import {
   useGitStatus,
   gitPush,
@@ -24,6 +31,7 @@ import { useCanvasStoreState } from './hooks/useCanvasStoreState'
 import { usePlanApproval } from './hooks/usePlanApproval'
 import { useSessionArchive } from './hooks/useSessionArchive'
 import { CanvasGrid } from './CanvasGrid'
+import { CloseWorktreeDialog } from './CloseWorktreeDialog'
 import { CanvasList } from './CanvasList'
 import { KeybindingHints } from '@/components/ui/keybinding-hints'
 import { usePreferences, useSavePreferences } from '@/services/preferences'
@@ -41,12 +49,6 @@ import { Input } from '@/components/ui/input'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { useProjectsStore } from '@/store/projects-store'
 import { OpenInButton } from '@/components/open-in/OpenInButton'
-import { useTerminalStore } from '@/store/terminal-store'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 
 interface SessionCanvasViewProps {
   worktreeId: string
@@ -68,11 +70,6 @@ export function SessionCanvasView({
   const isBase = worktree ? isBaseSession(worktree) : false
 
   // Running terminal indicator
-  const hasRunningTerminal = useTerminalStore(state => {
-    const terminals = state.terminals[worktreeId] ?? []
-    return terminals.some(t => state.runningTerminals.has(t.id))
-  })
-
   // Git status for header badges
   const { data: gitStatus } = useGitStatus(worktreeId)
   const behindCount =
@@ -162,6 +159,44 @@ export function SessionCanvasView({
     project,
     removalBehavior: preferences?.removal_behavior,
   })
+
+  // Worktree close (CMD+W on canvas)
+  const [closeWorktreeDialogOpen, setCloseWorktreeDialogOpen] = useState(false)
+  const archiveWorktree = useArchiveWorktree()
+  const deleteWorktree = useDeleteWorktree()
+  const closeBaseSessionClean = useCloseBaseSessionClean()
+  const closeBaseSessionArchive = useCloseBaseSessionArchive()
+
+  const handleCloseWorktree = useCallback(() => {
+    if (!worktree || !project) return
+    console.log('[CLOSE_WT] handleCloseWorktree called', { isBase, worktreeId, removalBehavior: preferences?.removal_behavior })
+    if (isBase) {
+      if (preferences?.removal_behavior === 'delete') {
+        console.log('[CLOSE_WT] -> closeBaseSessionClean')
+        closeBaseSessionClean.mutate({ worktreeId, projectId: project.id })
+      } else {
+        console.log('[CLOSE_WT] -> closeBaseSessionArchive')
+        closeBaseSessionArchive.mutate({ worktreeId, projectId: project.id })
+      }
+    } else if (preferences?.removal_behavior === 'delete') {
+      console.log('[CLOSE_WT] -> deleteWorktree')
+      deleteWorktree.mutate({ worktreeId, projectId: project.id })
+    } else {
+      console.log('[CLOSE_WT] -> archiveWorktree')
+      archiveWorktree.mutate({ worktreeId, projectId: project.id })
+    }
+    setCloseWorktreeDialogOpen(false)
+  }, [
+    worktree,
+    project,
+    isBase,
+    worktreeId,
+    preferences?.removal_behavior,
+    archiveWorktree,
+    deleteWorktree,
+    closeBaseSessionClean,
+    closeBaseSessionArchive,
+  ])
 
   // Session creation
   const createSession = useCreateSession()
@@ -352,14 +387,6 @@ export function SessionCanvasView({
                   ) : null
                 })()}
               </h2>
-              {hasRunningTerminal && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                  </TooltipTrigger>
-                  <TooltipContent>Run active</TooltipContent>
-                </Tooltip>
-              )}
               {worktree?.project_id && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -471,6 +498,7 @@ export function SessionCanvasView({
                 onDeleteSession={handleDeleteSession}
                 onPlanApproval={handlePlanApproval}
                 onPlanApprovalYolo={handlePlanApprovalYolo}
+                onCloseWorktree={() => setCloseWorktreeDialogOpen(true)}
                 searchInputRef={searchInputRef}
               />
             ) : (
@@ -487,6 +515,7 @@ export function SessionCanvasView({
                 onDeleteSession={handleDeleteSession}
                 onPlanApproval={handlePlanApproval}
                 onPlanApprovalYolo={handlePlanApprovalYolo}
+                onCloseWorktree={() => setCloseWorktreeDialogOpen(true)}
                 searchInputRef={searchInputRef}
               />
             )}
@@ -501,6 +530,10 @@ export function SessionCanvasView({
             { shortcut: 'P', label: 'plan' },
             { shortcut: 'R', label: 'recap' },
             {
+              shortcut: DEFAULT_KEYBINDINGS.open_in_modal as string,
+              label: 'open in...',
+            },
+            {
               shortcut: DEFAULT_KEYBINDINGS.new_worktree as string,
               label: 'new worktree',
             },
@@ -513,6 +546,10 @@ export function SessionCanvasView({
               label: 'label',
             },
             {
+              shortcut: DEFAULT_KEYBINDINGS.open_magic_modal as string,
+              label: 'magic',
+            },
+            {
               shortcut: DEFAULT_KEYBINDINGS.close_session_or_worktree as string,
               label: 'close',
             },
@@ -523,6 +560,13 @@ export function SessionCanvasView({
       <GitDiffModal
         diffRequest={diffRequest}
         onClose={() => setDiffRequest(null)}
+      />
+
+      <CloseWorktreeDialog
+        open={closeWorktreeDialogOpen}
+        onOpenChange={setCloseWorktreeDialogOpen}
+        onConfirm={handleCloseWorktree}
+        branchName={gitStatus?.current_branch ?? worktree?.branch}
       />
     </div>
   )

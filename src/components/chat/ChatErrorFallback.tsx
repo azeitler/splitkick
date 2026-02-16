@@ -1,7 +1,7 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { useChatStore } from '@/store/chat-store'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, Copy, Check } from 'lucide-react'
 
 interface ChatErrorFallbackProps {
   error: Error
@@ -56,11 +56,35 @@ export function ChatErrorFallback({
         <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
           Error details (for bug reports)
         </summary>
-        <pre className="mt-1 max-h-40 overflow-auto rounded border bg-muted p-2 text-xs font-mono text-muted-foreground whitespace-pre-wrap break-words">
-          {error.message}
-          {error.stack && `\n\n${error.stack}`}
-        </pre>
+        <div className="relative mt-1">
+          <CopyErrorButton error={error} />
+          <pre className="max-h-40 overflow-auto rounded border bg-muted p-2 pr-8 text-xs font-mono text-muted-foreground whitespace-pre-wrap break-words">
+            {error.message}
+            {error.stack && `\n\n${error.stack}`}
+          </pre>
+        </div>
       </details>
     </div>
+  )
+}
+
+function CopyErrorButton({ error }: { error: Error }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = useCallback(() => {
+    const text = error.message + (error.stack ? `\n\n${error.stack}` : '')
+    navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }, [error])
+
+  return (
+    <button
+      onClick={handleCopy}
+      className="absolute top-1.5 right-1.5 rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted-foreground/10 transition-colors"
+      title="Copy error details"
+    >
+      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+    </button>
   )
 }

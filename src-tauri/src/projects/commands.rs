@@ -458,39 +458,6 @@ pub async fn create_worktree(
 
     let data = load_projects_data(&app)?;
 
-    // Check if there's an archived worktree for this PR — restore it instead of creating a new one
-    // (similar logic to checkout_pr command)
-    if let Some(ref pr_ctx) = pr_context {
-        if let Some(archived_wt) = data.worktrees.iter().find(|w| {
-            w.project_id == project_id
-                && w.pr_number == Some(pr_ctx.number)
-                && w.archived_at.is_some()
-        }) {
-            let worktree_id = archived_wt.id.clone();
-            log::info!(
-                "[create_worktree] Found archived worktree {worktree_id} for PR #{}, restoring instead",
-                pr_ctx.number
-            );
-            return unarchive_worktree(app, worktree_id).await;
-        }
-    }
-
-    // Check if there's an archived worktree for this issue — restore it instead of creating a new one
-    if let Some(ref issue_ctx) = issue_context {
-        if let Some(archived_wt) = data.worktrees.iter().find(|w| {
-            w.project_id == project_id
-                && w.issue_number == Some(issue_ctx.number)
-                && w.archived_at.is_some()
-        }) {
-            let worktree_id = archived_wt.id.clone();
-            log::info!(
-                "[create_worktree] Found archived worktree {worktree_id} for issue #{}, restoring instead",
-                issue_ctx.number
-            );
-            return unarchive_worktree(app, worktree_id).await;
-        }
-    }
-
     let project = data
         .find_project(&project_id)
         .ok_or_else(|| format!("Project not found: {project_id}"))?
@@ -499,6 +466,16 @@ pub async fn create_worktree(
     // Use provided base branch or project's default branch, with validation
     let preferred_base = base_branch.unwrap_or_else(|| project.default_branch.clone());
     let base = git::get_valid_base_branch(&project.path, &preferred_base)?;
+
+    // Resolve auto-pull preference now (async), but defer the actual pull to background thread
+    let should_auto_pull = if pr_context.is_none() {
+        crate::load_preferences(app.clone())
+            .await
+            .map(|prefs| prefs.auto_pull_base_branch)
+            .unwrap_or(false)
+    } else {
+        false
+    };
 
     // Generate workspace name - use custom name, PR-based name, issue-based name, or random name
     let name = if let Some(custom) = custom_name {
@@ -615,6 +592,15 @@ pub async fn create_worktree(
 
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
         log::trace!("Background: Creating git worktree {name_clone} at {worktree_path_clone}");
+
+        // Auto-pull base branch if enabled (non-blocking on failure)
+        if should_auto_pull {
+            log::trace!("Auto-pulling base branch {base_clone} before worktree creation");
+            match git::git_pull(&project_path, &base_clone) {
+                Ok(_) => log::trace!("Successfully pulled base branch {base_clone}"),
+                Err(e) => log::warn!("Failed to auto-pull base branch {base_clone}: {e}"),
+            }
+        }
 
         // Check if path already exists
         let worktree_path = std::path::Path::new(&worktree_path_clone);
@@ -2091,6 +2077,22 @@ pub async fn create_base_session(app: AppHandle, project_id: String) -> Result<W
     match crate::chat::restore_base_sessions(&app, &project_id, &session.id) {
         Ok(Some(_)) => {
             log::trace!("Restored preserved sessions for base session");
+            // Unarchive all sessions — they were archived by close_base_session_archive
+            // but the user is reopening the base session, so they should be active again
+            let wt_path = session.path.clone();
+            let wt_id = session.id.clone();
+            if let Err(e) =
+                crate::chat::with_sessions_mut(&app, &wt_path, &wt_id, |sessions| {
+                    for s in &mut sessions.sessions {
+                        if s.archived_at.is_some() {
+                            s.archived_at = None;
+                        }
+                    }
+                    Ok(())
+                })
+            {
+                log::warn!("Failed to unarchive restored sessions: {e}");
+            }
         }
         Ok(None) => {
             log::trace!("No preserved sessions to restore");
@@ -2112,14 +2114,28 @@ pub async fn create_base_session(app: AppHandle, project_id: String) -> Result<W
 /// Preserves the sessions file so it can be restored when the base session is reopened
 #[tauri::command]
 pub async fn close_base_session(app: AppHandle, worktree_id: String) -> Result<(), String> {
-    close_base_session_internal(&app, &worktree_id, true).await
+    log::info!("[BASE_CLOSE] close_base_session (preserve, no archive) called for {worktree_id}");
+    close_base_session_internal(&app, &worktree_id, true, false).await
 }
 
 /// Close a base branch session without preserving sessions (clean close)
 /// Deletes the sessions file entirely so the base session starts fresh on reopen
 #[tauri::command]
 pub async fn close_base_session_clean(app: AppHandle, worktree_id: String) -> Result<(), String> {
-    close_base_session_internal(&app, &worktree_id, false).await
+    log::info!("[BASE_CLOSE] close_base_session_clean called for {worktree_id}");
+    close_base_session_internal(&app, &worktree_id, false, false).await
+}
+
+/// Close a base branch session, archiving all non-archived sessions first.
+/// Sets archived_at on each session and preserves the sessions file so they
+/// appear in the Archive modal.
+#[tauri::command]
+pub async fn close_base_session_archive(
+    app: AppHandle,
+    worktree_id: String,
+) -> Result<(), String> {
+    log::info!("[BASE_CLOSE] close_base_session_archive called for {worktree_id}");
+    close_base_session_internal(&app, &worktree_id, true, true).await
 }
 
 /// Internal implementation for closing a base session
@@ -2127,8 +2143,9 @@ async fn close_base_session_internal(
     app: &AppHandle,
     worktree_id: &str,
     preserve_sessions: bool,
+    archive_sessions: bool,
 ) -> Result<(), String> {
-    log::trace!("Closing base session: {worktree_id} (preserve_sessions: {preserve_sessions})");
+    log::info!("[BASE_CLOSE] Closing base session: {worktree_id} (preserve_sessions: {preserve_sessions}, archive_sessions: {archive_sessions})");
 
     let mut data = load_projects_data(app)?;
 
@@ -2142,9 +2159,41 @@ async fn close_base_session_internal(
         return Err("Not a base session. Use delete_worktree instead.".to_string());
     }
 
-    if preserve_sessions {
+    log::info!("[BASE_CLOSE] Found base session, session_type={:?}, path={}", worktree.session_type, worktree.path);
+
+    // Archive all non-archived sessions before closing
+    if archive_sessions {
+        let worktree_path = worktree.path.clone();
+        let wt_id = worktree_id.to_string();
+        log::info!("[BASE_CLOSE] Archiving sessions for worktree_id={wt_id}, path={worktree_path}");
+        let archive_result =
+            crate::chat::with_sessions_mut(app, &worktree_path, &wt_id, |sessions| {
+                let ts = now();
+                let mut archived_count = 0u32;
+                let total = sessions.sessions.len();
+                for session in &mut sessions.sessions {
+                    log::info!("[BASE_CLOSE] Session '{}' (id={}): archived_at={:?}", session.name, session.id, session.archived_at);
+                    if session.archived_at.is_none() {
+                        session.archived_at = Some(ts);
+                        archived_count += 1;
+                        log::info!("[BASE_CLOSE] -> Archived session '{}'", session.name);
+                    }
+                }
+                log::info!("[BASE_CLOSE] Archived {archived_count}/{total} sessions in base session {wt_id}");
+                Ok(archived_count)
+            });
+        match &archive_result {
+            Ok(count) => log::info!("[BASE_CLOSE] Archive result: Ok({count})"),
+            Err(e) => log::warn!("[BASE_CLOSE] Failed to archive sessions: {e}"),
+        }
+    } else {
+        log::info!("[BASE_CLOSE] Skipping session archival (archive_sessions=false)");
+    }
+
+    if preserve_sessions || archive_sessions {
         // Preserve the sessions file before removing the worktree
         // This renames {worktree_id}.json to base-{project_id}.json
+        log::info!("[BASE_CLOSE] Preserving sessions file for worktree_id={worktree_id}, project_id={}", worktree.project_id);
         crate::chat::preserve_base_sessions(app, worktree_id, &worktree.project_id)?;
     } else {
         // Delete the sessions file entirely for a clean close
@@ -4242,6 +4291,117 @@ pub async fn create_pr_with_ai_content(
         pr_url,
         title: pr_content.title,
     })
+}
+
+// =============================================================================
+// AI-Powered PR Update
+// =============================================================================
+
+/// Response from updating a PR with AI-generated content
+#[derive(Debug, Clone, Serialize)]
+pub struct UpdatePrResponse {
+    pub title: String,
+    pub body: String,
+}
+
+/// Generate AI content for updating a PR (does not apply changes)
+///
+/// Returns the generated title and body for the frontend to display/edit.
+#[tauri::command]
+pub async fn generate_pr_update_content(
+    app: AppHandle,
+    worktree_path: String,
+    session_id: Option<String>,
+    custom_prompt: Option<String>,
+    model: Option<String>,
+    custom_profile_name: Option<String>,
+) -> Result<UpdatePrResponse, String> {
+    log::trace!("Generating PR update content for: {worktree_path}");
+
+    let data = load_projects_data(&app)?;
+    let worktree = data
+        .worktrees
+        .iter()
+        .find(|w| w.path == worktree_path)
+        .ok_or_else(|| format!("Worktree not found: {worktree_path}"))?;
+
+    let project = data
+        .find_project(&worktree.project_id)
+        .ok_or_else(|| format!("Project not found: {}", worktree.project_id))?;
+
+    let target_branch = &project.default_branch;
+    let current_branch = git::get_current_branch(&worktree_path)?;
+
+    // Gather issue/PR context for this session
+    let effective_session_id = session_id.as_deref().unwrap_or("");
+    let context_content =
+        get_session_context_content(&app, effective_session_id, &project.path).unwrap_or_default();
+    let (issue_nums, pr_nums) =
+        get_session_context_numbers(&app, effective_session_id).unwrap_or_default();
+
+    // Generate PR content using Claude CLI
+    let mut pr_content = generate_pr_content(
+        &app,
+        &worktree_path,
+        &current_branch,
+        target_branch,
+        custom_prompt.as_deref(),
+        model.as_deref(),
+        &context_content,
+        custom_profile_name.as_deref(),
+    )?;
+
+    // Append unconditional issue/PR references to the body
+    let mut refs: Vec<String> = Vec::new();
+    for num in &issue_nums {
+        refs.push(format!("Closes #{num}"));
+    }
+    for num in &pr_nums {
+        refs.push(format!("Related to #{num}"));
+    }
+    if !refs.is_empty() {
+        pr_content.body = format!("{}\n\n---\n\n{}", pr_content.body, refs.join("\n"));
+    }
+
+    Ok(UpdatePrResponse {
+        title: pr_content.title,
+        body: pr_content.body,
+    })
+}
+
+/// Update a PR's title and body on GitHub
+#[tauri::command]
+pub async fn update_pr_description(
+    app: AppHandle,
+    worktree_path: String,
+    pr_number: u32,
+    title: String,
+    body: String,
+) -> Result<(), String> {
+    log::trace!("Updating PR #{pr_number} description");
+
+    let gh = resolve_gh_binary(&app);
+    let output = silent_command(&gh)
+        .args([
+            "pr",
+            "edit",
+            &pr_number.to_string(),
+            "--title",
+            &title,
+            "--body",
+            &body,
+        ])
+        .current_dir(&worktree_path)
+        .output()
+        .map_err(|e| format!("Failed to run gh pr edit: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to update PR: {stderr}"));
+    }
+
+    log::trace!("Successfully updated PR #{pr_number}");
+    Ok(())
 }
 
 // =============================================================================

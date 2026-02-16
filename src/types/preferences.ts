@@ -522,6 +522,7 @@ export interface AppPreferences {
   http_server_localhost_only: boolean // Bind to localhost only (more secure)
   http_server_token_required: boolean // Require token for web access (default true)
   removal_behavior: RemovalBehavior // What happens when closing sessions/worktrees: 'archive' or 'delete'
+  auto_pull_base_branch: boolean // Auto-pull base branch before creating a new worktree
   auto_archive_on_pr_merged: boolean // Auto-archive worktrees when their PR is merged
   show_keybinding_hints: boolean // Show keyboard shortcut hints at bottom of canvas views
   debug_mode_enabled: boolean // Show debug panel in chat sessions
@@ -906,7 +907,7 @@ export const defaultPreferences: AppPreferences = {
   git_poll_interval: 60,
   remote_poll_interval: 60,
   keybindings: DEFAULT_KEYBINDINGS,
-  archive_retention_days: 30,
+  archive_retention_days: 7,
   session_grouping_enabled: true,
   canvas_enabled: true,
   canvas_only_mode: true,
@@ -930,7 +931,8 @@ export const defaultPreferences: AppPreferences = {
   http_server_auto_start: false,
   http_server_localhost_only: true, // Default to localhost-only for security
   http_server_token_required: true, // Default: require token for security
-  removal_behavior: 'archive', // Default: archive (soft-delete)
+  removal_behavior: 'delete', // Default: delete (permanent)
+  auto_pull_base_branch: true, // Default: enabled
   auto_archive_on_pr_merged: true, // Default: enabled
   show_keybinding_hints: true, // Default: enabled
   debug_mode_enabled: false, // Default: disabled

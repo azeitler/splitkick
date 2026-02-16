@@ -372,6 +372,7 @@ export function useCreateWorktree() {
       issueContext,
       prContext,
       customName,
+      background: _background,
     }: {
       projectId: string
       baseBranch?: string
@@ -406,6 +407,8 @@ export function useCreateWorktree() {
       }
       /** Custom worktree name (used when retrying after path conflict) */
       customName?: string
+      /** When true, skip auto-navigation (CMD+Click from new session modal) */
+      background?: boolean
     }): Promise<Worktree> => {
       if (!isTauri()) {
         throw new Error('Not in Tauri context')
@@ -427,7 +430,7 @@ export function useCreateWorktree() {
       })
       return worktree
     },
-    onSuccess: (worktree, { projectId }) => {
+    onSuccess: (worktree, { projectId, background: isBackground }) => {
       // Check if this worktree was already resolved by an event handler
       // (e.g. unarchive_worktree emits worktree:unarchived which sets status: 'ready')
       const existing = queryClient.getQueryData<Worktree[]>(
@@ -441,7 +444,7 @@ export function useCreateWorktree() {
         })
         const { expandProject, selectWorktree } = useProjectsStore.getState()
         expandProject(projectId)
-        selectWorktree(worktree.id)
+        if (!isBackground) selectWorktree(worktree.id)
         return
       }
 
@@ -472,7 +475,10 @@ export function useCreateWorktree() {
       // Auto-expand the project and select the new worktree
       const { expandProject, selectWorktree } = useProjectsStore.getState()
       expandProject(projectId)
-      selectWorktree(pendingWorktree.id)
+      if (!isBackground) {
+        selectWorktree(pendingWorktree.id)
+        toast.loading('Setting up worktree...', { id: `worktree-creating-${pendingWorktree.id}` })
+      }
     },
     onError: error => {
       let message: string
@@ -512,9 +518,12 @@ export function useCreateWorktreeFromExistingBranch() {
       branchName,
       issueContext,
       prContext,
+      background: _background,
     }: {
       projectId: string
       branchName: string
+      /** When true, skip auto-navigation (CMD+Click from new session modal) */
+      background?: boolean
       issueContext?: {
         number: number
         title: string
@@ -563,7 +572,7 @@ export function useCreateWorktreeFromExistingBranch() {
       )
       return { ...worktree, status: 'pending' as const }
     },
-    onSuccess: (pendingWorktree, { projectId }) => {
+    onSuccess: (pendingWorktree, { projectId, background: isBackground }) => {
       logger.info('Worktree creation from existing branch started (pending)', {
         id: pendingWorktree.id,
         name: pendingWorktree.name,
@@ -587,7 +596,10 @@ export function useCreateWorktreeFromExistingBranch() {
       // Auto-expand the project and select the new worktree
       const { expandProject, selectWorktree } = useProjectsStore.getState()
       expandProject(projectId)
-      selectWorktree(pendingWorktree.id)
+      if (!isBackground) {
+        selectWorktree(pendingWorktree.id)
+        toast.loading('Setting up worktree...', { id: `worktree-creating-${pendingWorktree.id}` })
+      }
     },
     onError: error => {
       let message: string
@@ -649,22 +661,29 @@ function handleWorktreeReady(
     readyWorktree
   )
 
+  // Skip auto-navigation for background-created worktrees (CMD+Click)
+  const isBackground = useUIStore.getState().consumePendingBackgroundCreation()
+
   // Select in sidebar
   const { expandProject, selectWorktree } = useProjectsStore.getState()
   expandProject(worktree.project_id)
-  selectWorktree(worktree.id)
+  if (!isBackground) {
+    selectWorktree(worktree.id)
+  }
 
   // Register worktree path
   const { activeWorktreePath, setActiveWorktree, registerWorktreePath } =
     useChatStore.getState()
   registerWorktreePath(worktree.id, worktree.path)
 
-  // Mark for auto-open BEFORE navigation (critical ordering)
-  useUIStore.getState().markWorktreeForAutoOpenSession(worktree.id)
+  if (!isBackground) {
+    // Mark for auto-open BEFORE navigation (critical ordering)
+    useUIStore.getState().markWorktreeForAutoOpenSession(worktree.id)
 
-  // Only switch to worktree view if already viewing a worktree
-  if (activeWorktreePath) {
-    setActiveWorktree(worktree.id, worktree.path)
+    // Only switch to worktree view if already viewing a worktree
+    if (activeWorktreePath) {
+      setActiveWorktree(worktree.id, worktree.path)
+    }
   }
 
 }
@@ -771,6 +790,7 @@ export function useWorktreeEvents() {
         })
 
         clearPendingTimeout(worktree.id)
+        toast.success('Worktree ready', { id: `worktree-creating-${worktree.id}` })
         handleWorktreeReady(worktree, queryClient)
 
         // Add setup script output to chat store if present
@@ -795,6 +815,7 @@ export function useWorktreeEvents() {
 
         // Clear recovery timeout since we got the error event
         clearPendingTimeout(id)
+        toast.dismiss(`worktree-creating-${id}`)
 
         // Remove pending worktree from cache
         queryClient.setQueryData<Worktree[]>(
@@ -1004,14 +1025,16 @@ export function useWorktreeEvents() {
       })
     )
 
-    // Listen for branch exists conflicts — show error toast instead of auto-creating
+    // Listen for branch exists conflicts — dispatch DOM event for BranchConflictDialog
     unlistenPromises.push(
       listen<WorktreeBranchExistsEvent>('worktree:branch_exists', event => {
         const { branch } = event.payload
         logger.warn('Branch conflict', { branch })
-        toast.error(`Branch "${branch}" already exists`, {
-          description: 'Delete the branch or choose a different name.',
-        })
+        window.dispatchEvent(
+          new CustomEvent('branch-conflict-detected', {
+            detail: event.payload,
+          })
+        )
       })
     )
 
@@ -1499,6 +1522,56 @@ export function useCloseBaseSessionClean() {
             ? error
             : 'Unknown error occurred'
       logger.error('Failed to close session (clean)', { error })
+      toast.error('Failed to close session', { description: message })
+    },
+  })
+}
+
+export function useCloseBaseSessionArchive() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      worktreeId,
+    }: {
+      worktreeId: string
+      projectId: string
+    }): Promise<void> => {
+      if (!isTauri()) {
+        throw new Error('Not in Tauri context')
+      }
+
+      logger.debug('Closing base session (archive)', { worktreeId })
+      await invoke('close_base_session_archive', { worktreeId })
+      logger.info('Base session closed (archive)')
+    },
+    onSuccess: (_, { projectId, worktreeId }) => {
+      queryClient.invalidateQueries({
+        queryKey: projectsQueryKeys.worktrees(projectId),
+      })
+
+      // Invalidate archived sessions query so they show up immediately
+      queryClient.invalidateQueries({ queryKey: ['all-archived-sessions'] })
+
+      // Cleanup terminal instances for this worktree
+      disposeAllWorktreeTerminals(worktreeId)
+
+      // Clear chat if the closed session was active
+      const { activeWorktreeId, clearActiveWorktree } = useChatStore.getState()
+      if (activeWorktreeId === worktreeId) {
+        clearActiveWorktree()
+      }
+
+      toast.success('Session archived & closed')
+    },
+    onError: error => {
+      const message =
+        error instanceof Error
+          ? error.message
+          : typeof error === 'string'
+            ? error
+            : 'Unknown error occurred'
+      logger.error('Failed to close session (archive)', { error })
       toast.error('Failed to close session', { description: message })
     },
   })

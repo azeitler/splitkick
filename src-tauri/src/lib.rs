@@ -155,6 +155,8 @@ pub struct AppPreferences {
     pub http_server_token_required: bool, // Require token for web access (default true)
     #[serde(default = "default_removal_behavior")]
     pub removal_behavior: String, // What happens when closing sessions/worktrees: archive, delete
+    #[serde(default = "default_auto_pull_base_branch")]
+    pub auto_pull_base_branch: bool, // Auto-pull base branch before creating a new worktree
     #[serde(default = "default_auto_archive_on_pr_merged")]
     pub auto_archive_on_pr_merged: bool, // Auto-archive worktrees when their PR is merged
     #[serde(default = "default_show_keybinding_hints")]
@@ -306,7 +308,7 @@ fn default_keybindings() -> std::collections::HashMap<String, String> {
 }
 
 fn default_archive_retention_days() -> u32 {
-    30 // Keep archived items for 30 days by default
+    7 // Keep archived items for 7 days by default
 }
 
 fn default_syntax_theme_dark() -> String {
@@ -370,7 +372,11 @@ fn default_http_server_token_required() -> bool {
 }
 
 fn default_removal_behavior() -> String {
-    "archive".to_string()
+    "delete".to_string()
+}
+
+fn default_auto_pull_base_branch() -> bool {
+    true // Enabled by default
 }
 
 fn default_auto_archive_on_pr_merged() -> bool {
@@ -809,6 +815,7 @@ impl Default for AppPreferences {
             http_server_localhost_only: true, // Default to localhost-only for security
             http_server_token_required: default_http_server_token_required(),
             removal_behavior: default_removal_behavior(),
+            auto_pull_base_branch: default_auto_pull_base_branch(),
             auto_archive_on_pr_merged: default_auto_archive_on_pr_merged(),
             show_keybinding_hints: default_show_keybinding_hints(),
             debug_mode_enabled: false,
@@ -1949,6 +1956,7 @@ pub fn run() {
             projects::create_base_session,
             projects::close_base_session,
             projects::close_base_session_clean,
+            projects::close_base_session_archive,
             projects::archive_worktree,
             projects::unarchive_worktree,
             projects::list_archived_worktrees,
@@ -1963,6 +1971,8 @@ pub fn run() {
             projects::open_worktree_in_editor,
             projects::open_pull_request,
             projects::create_pr_with_ai_content,
+            projects::generate_pr_update_content,
+            projects::update_pr_description,
             projects::create_commit_with_ai,
             projects::run_review_with_ai,
             projects::list_github_releases,

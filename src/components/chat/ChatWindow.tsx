@@ -920,6 +920,7 @@ export function ChatWindow({
     isSending,
     isAtBottom,
     scrollToBottom,
+    currentQueuedMessages.length,
   ])
 
   // Listen for global focus request from keybinding (CMD+L by default)
@@ -2351,7 +2352,11 @@ export function ChatWindow({
 
   // Handle cancellation of running Claude process (triggered by Cmd+Option+Backspace / Ctrl+Alt+Backspace)
   const handleCancel = useCallback(async () => {
-    if (!activeSessionId || !activeWorktreeId || !isSending) return
+    if (!activeSessionId || !activeWorktreeId) return
+    // Read directly from store to avoid React re-render delay —
+    // allows canceling before the first response chunk arrives
+    const sending = useChatStore.getState().sendingSessionIds[activeSessionId] ?? false
+    if (!sending) return
 
     const cancelled = await cancelChatMessage(activeSessionId, activeWorktreeId)
     if (!cancelled) {
@@ -2359,7 +2364,7 @@ export function ChatWindow({
       toast.info('No active request to cancel')
     }
     // Note: The chat:cancelled event listener will handle UI cleanup
-  }, [activeSessionId, activeWorktreeId, isSending])
+  }, [activeSessionId, activeWorktreeId])
 
   // Handle removing a pending image
   const handleRemovePendingImage = useCallback(

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Eye, Maximize2, Terminal, Play, Plus, X } from 'lucide-react'
+import { Archive, ArrowLeft, Eye, EyeOff, Maximize2, Tag, Terminal, Play, Plus, Trash2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   Dialog,
@@ -39,8 +39,16 @@ import { ChatWindow } from './ChatWindow'
 import { ModalTerminalDrawer } from './ModalTerminalDrawer'
 import { OpenInButton } from '@/components/open-in/OpenInButton'
 import { statusConfig, type SessionStatus } from './session-card-utils'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu'
 import { WorktreeDropdownMenu } from '@/components/projects/WorktreeDropdownMenu'
 import { LabelModal } from './LabelModal'
+import { useSessionArchive } from './hooks/useSessionArchive'
 
 interface SessionChatModalProps {
   worktreeId: string
@@ -86,6 +94,23 @@ export function SessionChatModal({
   const { data: runScript } = useRunScript(worktreePath)
   const canvasOnlyMode = preferences?.canvas_only_mode ?? false
   const createSession = useCreateSession()
+
+  // Horizontal scroll on session tabs
+  const modalTabScrollRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const viewport = modalTabScrollRef.current
+    if (!viewport) return
+
+    const handleWheel = (e: WheelEvent) => {
+      if (e.deltaY !== 0) {
+        e.preventDefault()
+        viewport.scrollLeft += e.deltaY
+      }
+    }
+
+    viewport.addEventListener('wheel', handleWheel, { passive: false })
+    return () => viewport.removeEventListener('wheel', handleWheel)
+  }, [sessions.length])
 
   // Active session from store
   const activeSessionId = useChatStore(state => state.activeSessionIds[worktreeId])
@@ -142,14 +167,45 @@ export function SessionChatModal({
 
   // Label modal state
   const [labelModalOpen, setLabelModalOpen] = useState(false)
+  const [labelTargetSessionId, setLabelTargetSessionId] = useState<string | null>(null)
+  const labelSessionId = labelTargetSessionId ?? currentSessionId
   const currentLabel = useChatStore(state =>
-    currentSessionId ? state.sessionLabels[currentSessionId] ?? null : null
+    labelSessionId ? state.sessionLabels[labelSessionId] ?? null : null
   )
+
+  // Session archive/delete handlers
+  const { handleArchiveSession, handleDeleteSession } = useSessionArchive({
+    worktreeId,
+    worktreePath,
+    sessions,
+    worktree: worktree ?? null,
+    project: project ?? null,
+    removalBehavior: preferences?.removal_behavior,
+  })
+
+  // CMD+W: close the active session tab, or close modal if last tab
+  useEffect(() => {
+    if (!isOpen) return
+    const handler = (e: Event) => {
+      e.stopImmediatePropagation()
+      const activeSessions = sessions.filter(s => !s.archived_at)
+      if (activeSessions.length <= 1) {
+        onClose()
+      } else if (currentSessionId) {
+        handleArchiveSession(currentSessionId)
+      }
+    }
+    window.addEventListener('close-session-or-worktree', handler, { capture: true })
+    return () => window.removeEventListener('close-session-or-worktree', handler, { capture: true })
+  }, [isOpen, sessions, currentSessionId, onClose, handleArchiveSession])
 
   // Listen for toggle-session-label event (CMD+S)
   useEffect(() => {
     if (!isOpen) return
-    const handler = () => setLabelModalOpen(true)
+    const handler = () => {
+      setLabelTargetSessionId(null)
+      setLabelModalOpen(true)
+    }
     window.addEventListener('toggle-session-label', handler)
     return () => window.removeEventListener('toggle-session-label', handler)
   }, [isOpen])
@@ -192,20 +248,18 @@ export function SessionChatModal({
     })
   }, [sessions, storeState])
 
-  // CMD+LEFT/RIGHT to switch between session tabs
+  // Listen for switch-session events from the global keybinding system (OPT+CMD+LEFT/RIGHT)
   useEffect(() => {
     if (!isOpen || sortedSessions.length <= 1) return
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!e.metaKey || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return
-
-      e.preventDefault()
-      e.stopPropagation()
+    const handleSwitchSession = (e: Event) => {
+      const direction = (e as CustomEvent).detail?.direction as 'next' | 'previous'
+      if (!direction) return
 
       const currentIndex = sortedSessions.findIndex(s => s.id === currentSessionId)
       if (currentIndex === -1) return
 
-      const newIndex = e.key === 'ArrowRight'
+      const newIndex = direction === 'next'
         ? (currentIndex + 1) % sortedSessions.length
         : (currentIndex - 1 + sortedSessions.length) % sortedSessions.length
 
@@ -215,8 +269,8 @@ export function SessionChatModal({
       setActiveSession(worktreeId, target.id)
     }
 
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
+    window.addEventListener('switch-session', handleSwitchSession)
+    return () => window.removeEventListener('switch-session', handleSwitchSession)
   }, [isOpen, sortedSessions, currentSessionId, worktreeId])
 
   const handlePull = useCallback(
@@ -404,30 +458,81 @@ export function SessionChatModal({
         {/* Session tabs */}
         {sessions.length > 0 && (
           <div className="shrink-0 border-b px-2 flex items-center gap-0.5 overflow-x-auto">
-            <ScrollArea className="flex-1">
+            <ScrollArea className="flex-1" viewportRef={modalTabScrollRef}>
               <div className="flex items-center gap-0.5 py-1">
                 {sortedSessions.map(session => {
                   const isActive = session.id === currentSessionId
                   const status = getSessionStatus(session, storeState)
                   const config = statusConfig[status]
+                  const sessionLabel = useChatStore.getState().sessionLabels[session.id]
                   return (
-                    <button
-                      key={session.id}
-                      onClick={() => handleTabClick(session.id)}
-                      className={cn(
-                        'flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-colors whitespace-nowrap',
-                        isActive
-                          ? 'bg-muted text-foreground font-medium'
-                          : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                      )}
-                    >
-                      <StatusIndicator
-                        status={config.indicatorStatus}
-                        variant={config.indicatorVariant}
-                        className="h-1.5 w-1.5"
-                      />
-                      {session.name}
-                    </button>
+                    <ContextMenu key={session.id}>
+                      <ContextMenuTrigger asChild>
+                        <button
+                          onClick={() => handleTabClick(session.id)}
+                          className={cn(
+                            'flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-colors whitespace-nowrap',
+                            isActive
+                              ? 'bg-muted text-foreground font-medium'
+                              : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                          )}
+                        >
+                          <StatusIndicator
+                            status={config.indicatorStatus}
+                            variant={config.indicatorVariant}
+                            className="h-1.5 w-1.5"
+                          />
+                          {session.name}
+                          {sessions.length > 1 && status === 'idle' && (
+                            <span
+                              role="button"
+                              onClick={e => {
+                                e.stopPropagation()
+                                handleArchiveSession(session.id)
+                              }}
+                              className="ml-0.5 inline-flex items-center rounded opacity-40 transition-opacity hover:opacity-100 hover:bg-muted-foreground/20"
+                            >
+                              <X className="h-3 w-3" />
+                            </span>
+                          )}
+                        </button>
+                      </ContextMenuTrigger>
+                      <ContextMenuContent className="w-48">
+                        <ContextMenuItem onSelect={() => {
+                          setLabelTargetSessionId(session.id)
+                          setLabelModalOpen(true)
+                        }}>
+                          <Tag className="mr-2 h-4 w-4" />
+                          {sessionLabel ? 'Remove Label' : 'Add Label'}
+                        </ContextMenuItem>
+                        <ContextMenuItem onSelect={() => {
+                          const { reviewingSessions, setSessionReviewing } = useChatStore.getState()
+                          const isReviewing = reviewingSessions[session.id] || !!session.review_results
+                          setSessionReviewing(session.id, !isReviewing)
+                        }}>
+                          {status === 'review' ? (
+                            <>
+                              <EyeOff className="mr-2 h-4 w-4" />
+                              Mark as Idle
+                            </>
+                          ) : (
+                            <>
+                              <Eye className="mr-2 h-4 w-4" />
+                              Mark for Review
+                            </>
+                          )}
+                        </ContextMenuItem>
+                        <ContextMenuItem onSelect={() => handleArchiveSession(session.id)}>
+                          <Archive className="mr-2 h-4 w-4" />
+                          Archive Session
+                        </ContextMenuItem>
+                        <ContextMenuSeparator />
+                        <ContextMenuItem variant="destructive" onSelect={() => handleDeleteSession(session.id)}>
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Delete Session
+                        </ContextMenuItem>
+                      </ContextMenuContent>
+                    </ContextMenu>
                   )
                 })}
               </div>
@@ -476,8 +581,11 @@ export function SessionChatModal({
       </DialogContent>
       <LabelModal
         isOpen={labelModalOpen}
-        onClose={() => setLabelModalOpen(false)}
-        sessionId={currentSessionId}
+        onClose={() => {
+          setLabelModalOpen(false)
+          setLabelTargetSessionId(null)
+        }}
+        sessionId={labelSessionId}
         currentLabel={currentLabel}
       />
     </Dialog>

@@ -27,6 +27,7 @@ interface CanvasGridProps {
   onDeleteSession: (sessionId: string) => void
   onPlanApproval: (card: SessionCardData, updatedPlan?: string) => void
   onPlanApprovalYolo: (card: SessionCardData, updatedPlan?: string) => void
+  onCloseWorktree: () => void
   searchInputRef?: React.RefObject<HTMLInputElement | null>
 }
 
@@ -47,6 +48,7 @@ export function CanvasGrid({
   onDeleteSession,
   onPlanApproval,
   onPlanApprovalYolo,
+  onCloseWorktree,
   searchInputRef,
 }: CanvasGridProps) {
   // Track session modal open state for magic command keybindings
@@ -180,67 +182,12 @@ export function CanvasGrid({
   // Listen for close-session-or-worktree event to handle CMD+W
   useEffect(() => {
     const handleCloseSessionOrWorktree = (e: Event) => {
-      // If modal is open, remove the session and close modal with previous card pre-selected
-      if (selectedSessionId) {
-        e.stopImmediatePropagation()
-        onDeleteSession(selectedSessionId)
-        onSelectedSessionIdChange(null)
+      // If modal is open, SessionChatModal intercepts CMD+W and closes itself — skip here
+      if (selectedSessionId) return
 
-        const closingIndex = cards.findIndex(
-          c => c.session.id === selectedSessionId
-        )
-        const remaining = cards.filter(c => c.session.id !== selectedSessionId)
-
-        if (remaining.length === 0) {
-          onSelectedIndexChange(null)
-        } else {
-          // Prefer previous card; fall back to first if deleting the first item
-          const targetCard =
-            closingIndex > 0
-              ? remaining[closingIndex - 1]
-              : remaining[0]
-          if (targetCard) {
-            const newIndex = cards.findIndex(
-              c => c.session.id === targetCard.session.id
-            )
-            const adjustedIndex =
-              newIndex > closingIndex ? newIndex - 1 : newIndex
-            onSelectedIndexChange(adjustedIndex)
-            useChatStore
-              .getState()
-              .setCanvasSelectedSession(worktreeId, targetCard.session.id)
-          }
-        }
-        return
-      }
-
-      // If there's a keyboard-selected session, remove it (respects removal preference)
-      if (selectedIndex !== null && cards[selectedIndex]) {
-        e.stopImmediatePropagation()
-        const sessionId = cards[selectedIndex].session.id
-        onDeleteSession(sessionId)
-
-        const total = cards.length
-        if (total <= 1) {
-          onSelectedIndexChange(null)
-        } else if (selectedIndex > 0) {
-          const prevCard = cards[selectedIndex - 1]
-          onSelectedIndexChange(selectedIndex - 1)
-          if (prevCard) {
-            useChatStore
-              .getState()
-              .setCanvasSelectedSession(worktreeId, prevCard.session.id)
-          }
-        } else {
-          // Deleting first item: next card slides into index 0
-          const nextCard = cards[1]
-          if (nextCard) {
-            useChatStore
-              .getState()
-              .setCanvasSelectedSession(worktreeId, nextCard.session.id)
-          }
-        }
-      }
+      // No modal open — close the entire worktree (with confirmation)
+      e.stopImmediatePropagation()
+      onCloseWorktree()
     }
 
     window.addEventListener(
@@ -258,11 +205,7 @@ export function CanvasGrid({
       )
   }, [
     selectedSessionId,
-    selectedIndex,
-    cards,
-    onDeleteSession,
-    onSelectedIndexChange,
-    onSelectedSessionIdChange,
+    onCloseWorktree,
   ])
 
   const groups = useMemo(() => groupCardsByStatus(cards), [cards])

@@ -5,11 +5,14 @@ import {
   GitCommitHorizontal,
   GitMerge,
   GitPullRequest,
+  GitPullRequestArrow,
   Eye,
   FileText,
   Wand2,
   BookmarkPlus,
   FolderOpen,
+  Bug,
+  RefreshCw,
 } from 'lucide-react'
 import {
   Dialog,
@@ -21,6 +24,7 @@ import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
 import { useWorktree, useProjects } from '@/services/projects'
+import { useLoadedIssueContexts, useLoadedPRContexts } from '@/services/github'
 import { usePreferences } from '@/services/preferences'
 import { invoke } from '@/lib/transport'
 import { openExternal } from '@/lib/platform'
@@ -48,10 +52,13 @@ type MagicOption =
   | 'pull'
   | 'push'
   | 'open-pr'
+  | 'update-pr'
   | 'review'
   | 'merge'
   | 'resolve-conflicts'
   | 'release-notes'
+  | 'investigate-issue'
+  | 'investigate-pr'
 
 /** Options that work on canvas without an open session (git-only operations) */
 const CANVAS_ALLOWED_OPTIONS = new Set<MagicOption>([
@@ -60,6 +67,7 @@ const CANVAS_ALLOWED_OPTIONS = new Set<MagicOption>([
   'pull',
   'push',
   'open-pr',
+  'update-pr',
   'review',
   'release-notes',
   'merge',
@@ -140,6 +148,12 @@ function buildMagicColumns(hasOpenPr: boolean): MagicColumns {
           key: 'O',
         },
         { id: 'review', label: 'Review', icon: Eye, key: 'R' },
+        {
+          id: 'update-pr',
+          label: 'Generate PR Description',
+          icon: RefreshCw,
+          key: 'E',
+        },
       ],
     },
     {
@@ -151,6 +165,13 @@ function buildMagicColumns(hasOpenPr: boolean): MagicColumns {
           icon: FileText,
           key: 'G',
         },
+      ],
+    },
+    {
+      header: 'Investigate',
+      options: [
+        { id: 'investigate-issue', label: 'Issue', icon: Bug, key: 'I' },
+        { id: 'investigate-pr', label: 'PR', icon: GitPullRequestArrow, key: 'A' },
       ],
     },
     {
@@ -179,10 +200,13 @@ const KEY_TO_OPTION: Record<string, MagicOption> = {
   d: 'pull',
   u: 'push',
   o: 'open-pr',
+  e: 'update-pr',
   r: 'review',
   m: 'merge',
   f: 'resolve-conflicts',
   g: 'release-notes',
+  i: 'investigate-issue',
+  a: 'investigate-pr',
 }
 
 export function MagicModal() {
@@ -204,6 +228,16 @@ export function MagicModal() {
     useState<MagicOption>('save-context')
 
   const hasOpenPr = Boolean(worktree?.pr_url)
+
+  // Check if worktree has loaded issue/PR contexts (for enabling investigate options)
+  // Contexts may be registered under session ID (Load Context) or worktree ID (create_worktree)
+  const activeSessionId = useChatStore(state =>
+    selectedWorktreeId ? state.activeSessionIds[selectedWorktreeId] : undefined
+  )
+  const { data: issueContexts } = useLoadedIssueContexts(activeSessionId ?? selectedWorktreeId, selectedWorktreeId)
+  const { data: prContexts } = useLoadedPRContexts(activeSessionId ?? selectedWorktreeId, selectedWorktreeId)
+  const hasIssueContexts = (issueContexts?.length ?? 0) > 0
+  const hasPrContexts = (prContexts?.length ?? 0) > 0
 
   // Detect if we're on a canvas view (without a session modal open)
   const isViewingCanvasTab = useChatStore(state => {
@@ -511,6 +545,34 @@ ${resolveInstructions}`
         return
       }
 
+      // Investigate options: guard against missing contexts
+      if (option === 'investigate-issue' || option === 'investigate-pr') {
+        const type = option === 'investigate-issue' ? 'issue' : 'pr'
+        const hasContexts = type === 'issue' ? hasIssueContexts : hasPrContexts
+        if (!hasContexts) {
+          notify(`No ${type === 'issue' ? 'issue' : 'PR'} context loaded for this worktree`, undefined, { type: 'error' })
+          setMagicModalOpen(false)
+          return
+        }
+        window.dispatchEvent(
+          new CustomEvent('magic-command', { detail: { command: 'investigate', type } })
+        )
+        setMagicModalOpen(false)
+        return
+      }
+
+      // Update PR description: open the update dialog (requires open PR)
+      if (option === 'update-pr') {
+        if (!worktree?.pr_number) {
+          notify('No PR open for this worktree', undefined, { type: 'error' })
+          setMagicModalOpen(false)
+          return
+        }
+        useUIStore.getState().setUpdatePrModalOpen(true)
+        setMagicModalOpen(false)
+        return
+      }
+
       // If PR already exists, open it in the browser instead of creating a new one
       if (option === 'open-pr' && worktree?.pr_url) {
         await openExternal(worktree.pr_url)
@@ -552,7 +614,7 @@ ${resolveInstructions}`
 
       setMagicModalOpen(false)
     },
-    [selectedWorktreeId, selectedProjectId, setMagicModalOpen, worktree?.pr_url, isOnCanvas, executeGitDirectly]
+    [selectedWorktreeId, selectedProjectId, setMagicModalOpen, worktree?.pr_url, isOnCanvas, executeGitDirectly, hasIssueContexts, hasPrContexts]
   )
 
   // Handle keyboard navigation
@@ -616,7 +678,10 @@ ${resolveInstructions}`
                       const Icon = option.icon
                       const isSelected = selectedOption === option.id
                       const isDisabled =
-                        isOnCanvas && !CANVAS_ALLOWED_OPTIONS.has(option.id)
+                        (isOnCanvas && !CANVAS_ALLOWED_OPTIONS.has(option.id)) ||
+                        (option.id === 'investigate-issue' && !hasIssueContexts) ||
+                        (option.id === 'investigate-pr' && !hasPrContexts) ||
+                        (option.id === 'update-pr' && !hasOpenPr)
 
                       return (
                         <button

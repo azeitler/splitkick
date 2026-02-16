@@ -56,11 +56,13 @@ import {
   useArchiveWorktree,
   useDeleteWorktree,
   useCloseBaseSessionClean,
+  useCloseBaseSessionArchive,
 } from '@/services/projects'
 import { useArchiveSession, useCloseSession } from '@/services/chat'
 import { usePreferences, useSavePreferences } from '@/services/preferences'
 import { KeybindingHints } from '@/components/ui/keybinding-hints'
 import { DEFAULT_KEYBINDINGS, formatShortcutDisplay } from '@/types/keybindings'
+import { CloseWorktreeDialog } from '@/components/chat/CloseWorktreeDialog'
 import { GitDiffModal } from '@/components/chat/GitDiffModal'
 import type { DiffRequest } from '@/types/git-diff'
 import { toast } from 'sonner'
@@ -425,6 +427,12 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     sessionId: string
   } | null>(null)
 
+  // Worktree close confirmation (CMD+W on canvas)
+  const [closeWorktreeTarget, setCloseWorktreeTarget] = useState<{
+    worktreeId: string
+    branchName?: string
+  } | null>(null)
+
   // Get current selected card's worktree info for hooks
   const selectedFlatCard =
     selectedIndex !== null ? flatCards[selectedIndex] : null
@@ -441,6 +449,39 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
   const archiveWorktree = useArchiveWorktree()
   const deleteWorktree = useDeleteWorktree()
   const closeBaseSessionClean = useCloseBaseSessionClean()
+  const closeBaseSessionArchive = useCloseBaseSessionArchive()
+
+  const handleConfirmCloseWorktree = useCallback(() => {
+    if (!closeWorktreeTarget || !project) return
+    const wt = visibleWorktrees.find(w => w.id === closeWorktreeTarget.worktreeId)
+    if (!wt) return
+    console.log('[CLOSE_WT_DASH] handleConfirmCloseWorktree', { isBase: isBaseSession(wt), worktreeId: wt.id, removalBehavior: preferences?.removal_behavior })
+    if (isBaseSession(wt)) {
+      if (preferences?.removal_behavior === 'delete') {
+        console.log('[CLOSE_WT_DASH] -> closeBaseSessionClean')
+        closeBaseSessionClean.mutate({ worktreeId: wt.id, projectId: project.id })
+      } else {
+        console.log('[CLOSE_WT_DASH] -> closeBaseSessionArchive')
+        closeBaseSessionArchive.mutate({ worktreeId: wt.id, projectId: project.id })
+      }
+    } else if (preferences?.removal_behavior === 'delete') {
+      console.log('[CLOSE_WT_DASH] -> deleteWorktree')
+      deleteWorktree.mutate({ worktreeId: wt.id, projectId: project.id })
+    } else {
+      console.log('[CLOSE_WT_DASH] -> archiveWorktree')
+      archiveWorktree.mutate({ worktreeId: wt.id, projectId: project.id })
+    }
+    setCloseWorktreeTarget(null)
+  }, [
+    closeWorktreeTarget,
+    project,
+    visibleWorktrees,
+    preferences?.removal_behavior,
+    archiveWorktree,
+    deleteWorktree,
+    closeBaseSessionClean,
+    closeBaseSessionArchive,
+  ])
 
   // Listen for focus-canvas-search event
   useEffect(() => {
@@ -885,108 +926,22 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
   // Listen for close-session-or-worktree event to handle CMD+W
   useEffect(() => {
     const handleCloseSessionOrWorktree = (e: Event) => {
-      // If modal is open, close the active session tab (or the modal if last tab)
-      if (selectedWorktreeModal) {
-        e.stopImmediatePropagation()
-        const { worktreeId, worktreePath } = selectedWorktreeModal
-        const sessions = sessionsByWorktreeId.get(worktreeId)
-        const activeSessions = sessions?.sessions?.filter(s => !s.archived_at) ?? []
-        const activeSessionId = useChatStore.getState().activeSessionIds[worktreeId]
+      // If modal is open, SessionChatModal intercepts CMD+W — let it handle
+      if (selectedWorktreeModal) return
 
-        if (activeSessions.length <= 1) {
-          // Last tab — close the modal
-          setSelectedWorktreeModal(null)
-        } else if (activeSessionId) {
-          // Close the current session tab
-          handleDeleteSessionForWorktree(worktreeId, worktreePath, activeSessionId)
-        }
-        return
-      }
+      // Consume the event to prevent the legacy useCloseSessionOrWorktreeKeybinding fallback
+      e.stopImmediatePropagation()
 
-      // If there's a keyboard-selected session, remove it (respects removal behavior preference)
-      // (skip for pending worktrees which have no sessions)
+      // No modal open — close the worktree of the selected card (with confirmation)
       if (selectedIndex !== null && flatCards[selectedIndex]) {
         const item = flatCards[selectedIndex]
-        // Skip if this is a pending worktree setup card (no session to close)
-        if (!item.card) return
+        if (!item.card) return // pending worktree, skip
 
-        e.stopImmediatePropagation()
-        const closingWorktreeId = item.worktreeId
-
-        handleDeleteSessionForWorktree(
-          item.worktreeId,
-          item.worktreePath,
-          item.card.session.id
-        )
-
-        // Find remaining sessions in same worktree (excluding the one being closed)
-        const sameWorktreeSessions = flatCards.filter(
-          fc =>
-            fc.worktreeId === closingWorktreeId &&
-            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-            fc.card?.session.id !== item.card!.session.id
-        )
-
-        if (sameWorktreeSessions.length === 0) {
-          // No sessions left in worktree - find nearest from any worktree
-          const closingIndex = selectedIndex
-          let nearestIndex: number | null = null
-          let minDistance = Infinity
-          for (let i = 0; i < flatCards.length; i++) {
-            if (i === closingIndex) continue
-            const distance = Math.abs(i - closingIndex)
-            if (distance < minDistance) {
-              minDistance = distance
-              nearestIndex = i
-            }
-          }
-          // Adjust for removed card
-          if (nearestIndex !== null && nearestIndex > closingIndex) {
-            nearestIndex--
-          }
-          // Update highlightedCardRef so re-sync effect anchors to the correct card
-          if (nearestIndex !== null) {
-            const nearestCard = flatCards[nearestIndex > closingIndex ? nearestIndex + 1 : nearestIndex]
-            highlightedCardRef.current = nearestCard?.card
-              ? { worktreeId: nearestCard.worktreeId, sessionId: nearestCard.card.session.id }
-              : null
-          } else {
-            highlightedCardRef.current = null
-          }
-          setSelectedIndex(nearestIndex)
-        } else {
-          // Sessions remain in same worktree - pick next (or last if closing last)
-          const worktreeSessions = flatCards.filter(
-            fc => fc.worktreeId === closingWorktreeId && fc.card
-          )
-          const indexInWorktree = worktreeSessions.findIndex(
-            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-            fc => fc.card?.session.id === item.card!.session.id
-          )
-          const nextInWorktree =
-            indexInWorktree < sameWorktreeSessions.length
-              ? sameWorktreeSessions[indexInWorktree]
-              : sameWorktreeSessions[sameWorktreeSessions.length - 1]
-
-          if (!nextInWorktree || !nextInWorktree.card) return
-
-          // Update highlightedCardRef so re-sync effect anchors to the correct card
-          highlightedCardRef.current = {
-            worktreeId: nextInWorktree.worktreeId,
-            sessionId: nextInWorktree.card.session.id,
-          }
-
-          // Find global index and adjust for removal
-          const newGlobalIndex = flatCards.findIndex(
-            fc =>
-              fc.worktreeId === nextInWorktree.worktreeId &&
-              // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-              fc.card?.session.id === nextInWorktree.card!.session.id
-          )
-          setSelectedIndex(
-            newGlobalIndex > selectedIndex ? newGlobalIndex - 1 : newGlobalIndex
-          )
-        }
+        const wt = worktreeSections.find(s => s.worktree.id === item.worktreeId)?.worktree
+        setCloseWorktreeTarget({
+          worktreeId: item.worktreeId,
+          branchName: wt?.branch,
+        })
       }
     }
 
@@ -1007,8 +962,7 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
     selectedWorktreeModal,
     selectedIndex,
     flatCards,
-    handleDeleteSessionForWorktree,
-    sessionsByWorktreeId,
+    worktreeSections,
   ])
 
   // Listen for create-new-session event to handle CMD+T
@@ -1380,6 +1334,10 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
             { shortcut: 'P', label: 'plan' },
             { shortcut: 'R', label: 'recap' },
             {
+              shortcut: DEFAULT_KEYBINDINGS.open_in_modal as string,
+              label: 'open in...',
+            },
+            {
               shortcut: DEFAULT_KEYBINDINGS.new_worktree as string,
               label: 'new worktree',
             },
@@ -1392,12 +1350,23 @@ export function WorktreeDashboard({ projectId }: WorktreeDashboardProps) {
               label: 'label',
             },
             {
+              shortcut: DEFAULT_KEYBINDINGS.open_magic_modal as string,
+              label: 'magic',
+            },
+            {
               shortcut: DEFAULT_KEYBINDINGS.close_session_or_worktree as string,
               label: 'close',
             },
           ]}
         />
       )}
+
+      <CloseWorktreeDialog
+        open={!!closeWorktreeTarget}
+        onOpenChange={open => { if (!open) setCloseWorktreeTarget(null) }}
+        onConfirm={handleConfirmCloseWorktree}
+        branchName={closeWorktreeTarget?.branchName}
+      />
     </div>
   )
 }

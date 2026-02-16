@@ -905,6 +905,12 @@ pub async fn dispatch_command(
             emit_cache_invalidation(app, &["projects"]);
             Ok(Value::Null)
         }
+        "close_base_session_archive" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            crate::projects::close_base_session_archive(app.clone(), worktree_id).await?;
+            emit_cache_invalidation(app, &["projects"]);
+            Ok(Value::Null)
+        }
         "list_archived_worktrees" => {
             let result = crate::projects::list_archived_worktrees(app.clone()).await?;
             to_value(result)

@@ -7,6 +7,7 @@ import {
   MinusCircle,
   Loader2,
   Wand2,
+  RefreshCw,
 } from 'lucide-react'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import {
@@ -20,7 +21,7 @@ import { invoke } from '@/lib/transport'
 import { useUIStore } from '@/store/ui-store'
 import { useChatStore, DEFAULT_MODEL } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
-import { useWorkflowRuns } from '@/services/github'
+import { useWorkflowRuns, githubQueryKeys } from '@/services/github'
 import { projectsQueryKeys } from '@/services/projects'
 import { useCreateSession, useSendMessage, chatQueryKeys } from '@/services/chat'
 import type { WorktreeSessions } from '@/types/chat'
@@ -132,10 +133,18 @@ export function WorkflowRunsModal() {
     state => state.setWorkflowRunsModalOpen
   )
 
-  const { data: result, isLoading } = useWorkflowRuns(
+  const { data: result, isLoading, isFetching } = useWorkflowRuns(
     workflowRunsModalOpen ? workflowRunsModalProjectPath : null,
     workflowRunsModalBranch ?? undefined
   )
+
+  const handleRefresh = useCallback(() => {
+    if (workflowRunsModalProjectPath) {
+      queryClient.invalidateQueries({
+        queryKey: githubQueryKeys.workflowRuns(workflowRunsModalProjectPath, workflowRunsModalBranch ?? undefined),
+      })
+    }
+  }, [queryClient, workflowRunsModalProjectPath, workflowRunsModalBranch])
 
   const runs = result?.runs ?? []
   const [selectedWorkflow, setSelectedWorkflow] = useState<string | null>(null)
@@ -440,6 +449,11 @@ export function WorkflowRunsModal() {
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      if (e.key === 'r') {
+        e.preventDefault()
+        handleRefresh()
+        return
+      }
       if (focusedPane === 'sidebar') {
         switch (e.key) {
           case 'ArrowDown':
@@ -495,14 +509,28 @@ export function WorkflowRunsModal() {
         }
       }
     },
-    [focusedPane, sidebarItems, sidebarFocusedIndex, handleSidebarSelect, displayedRuns, focusedIndex, handleRunClick, handleInvestigate]
+    [focusedPane, sidebarItems, sidebarFocusedIndex, handleSidebarSelect, displayedRuns, focusedIndex, handleRunClick, handleInvestigate, handleRefresh]
   )
 
   return (
     <Dialog open={workflowRunsModalOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="h-[80vh] sm:max-w-5xl overflow-hidden flex flex-col" onOpenAutoFocus={e => e.preventDefault()}>
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
+          <div className="flex items-center gap-2">
+            <DialogTitle>{title}</DialogTitle>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={handleRefresh}
+                  disabled={isFetching}
+                  className="inline-flex items-center justify-center rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Refresh</TooltipContent>
+            </Tooltip>
+          </div>
         </DialogHeader>
 
         {isLoading ? (

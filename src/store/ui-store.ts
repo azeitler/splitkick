@@ -32,6 +32,7 @@ interface UIState {
   newWorktreeModalOpen: boolean
   newWorktreeModalDefaultTab: 'quick' | 'issues' | 'prs' | null
   releaseNotesModalOpen: boolean
+  updatePrModalOpen: boolean
   workflowRunsModalOpen: boolean
   workflowRunsModalProjectPath: string | null
   workflowRunsModalBranch: string | null
@@ -44,6 +45,8 @@ interface UIState {
   autoInvestigateWorktreeIds: Set<string>
   /** Worktree IDs that should auto-trigger investigate-pr when created */
   autoInvestigatePRWorktreeIds: Set<string>
+  /** Counter for background worktree creations (CMD+Click) — skip auto-navigation */
+  pendingBackgroundCreations: number
   /** Worktree IDs that should auto-open first session modal when canvas mounts */
   autoOpenSessionWorktreeIds: Set<string>
   /** Specific session ID to auto-open per worktree (overrides first-session default) */
@@ -87,6 +90,7 @@ interface UIState {
     tab: 'quick' | 'issues' | 'prs' | null
   ) => void
   setReleaseNotesModalOpen: (open: boolean) => void
+  setUpdatePrModalOpen: (open: boolean) => void
   setWorkflowRunsModalOpen: (
     open: boolean,
     projectPath?: string | null,
@@ -96,6 +100,8 @@ interface UIState {
   closeCliUpdateModal: () => void
   openCliLoginModal: (type: 'claude' | 'gh', command: string) => void
   closeCliLoginModal: () => void
+  incrementPendingBackgroundCreations: () => void
+  consumePendingBackgroundCreation: () => boolean
   markWorktreeForAutoInvestigate: (worktreeId: string) => void
   consumeAutoInvestigate: (worktreeId: string) => boolean
   markWorktreeForAutoInvestigatePR: (worktreeId: string) => void
@@ -131,6 +137,7 @@ export const useUIStore = create<UIState>()(
       newWorktreeModalOpen: false,
       newWorktreeModalDefaultTab: null,
       releaseNotesModalOpen: false,
+      updatePrModalOpen: false,
       workflowRunsModalOpen: false,
       workflowRunsModalProjectPath: null,
       workflowRunsModalBranch: null,
@@ -141,6 +148,7 @@ export const useUIStore = create<UIState>()(
       cliLoginModalCommand: null,
       autoInvestigateWorktreeIds: new Set(),
       autoInvestigatePRWorktreeIds: new Set(),
+      pendingBackgroundCreations: 0,
       autoOpenSessionWorktreeIds: new Set(),
       pendingAutoOpenSessionIds: {},
       sessionBoardProjectId: null,
@@ -254,6 +262,13 @@ export const useUIStore = create<UIState>()(
           'setReleaseNotesModalOpen'
         ),
 
+      setUpdatePrModalOpen: open =>
+        set(
+          { updatePrModalOpen: open },
+          undefined,
+          'setUpdatePrModalOpen'
+        ),
+
       setWorkflowRunsModalOpen: (open, projectPath, branch) =>
         set(
           {
@@ -300,6 +315,30 @@ export const useUIStore = create<UIState>()(
           undefined,
           'closeCliLoginModal'
         ),
+
+      incrementPendingBackgroundCreations: () =>
+        set(
+          state => ({
+            pendingBackgroundCreations: state.pendingBackgroundCreations + 1,
+          }),
+          undefined,
+          'incrementPendingBackgroundCreations'
+        ),
+
+      consumePendingBackgroundCreation: () => {
+        const state = useUIStore.getState()
+        if (state.pendingBackgroundCreations > 0) {
+          set(
+            state => ({
+              pendingBackgroundCreations: state.pendingBackgroundCreations - 1,
+            }),
+            undefined,
+            'consumePendingBackgroundCreation'
+          )
+          return true
+        }
+        return false
+      },
 
       markWorktreeForAutoInvestigate: worktreeId =>
         set(

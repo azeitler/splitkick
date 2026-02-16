@@ -779,6 +779,27 @@ export const GeneralPane: React.FC = () => {
         </div>
       </SettingsSection>
 
+      <SettingsSection title="Worktrees">
+        <div className="space-y-4">
+          <InlineField
+            label="Auto-pull base branch"
+            description="Pull the latest changes before creating a new worktree"
+          >
+            <Switch
+              checked={preferences?.auto_pull_base_branch ?? true}
+              onCheckedChange={checked => {
+                if (preferences) {
+                  savePreferences.mutate({
+                    ...preferences,
+                    auto_pull_base_branch: checked,
+                  })
+                }
+              }}
+            />
+          </InlineField>
+        </div>
+      </SettingsSection>
+
       <SettingsSection title="Archive">
         <div className="space-y-4">
           <InlineField
@@ -786,7 +807,7 @@ export const GeneralPane: React.FC = () => {
             description="What happens when closing sessions or worktrees"
           >
             <Select
-              value={preferences?.removal_behavior ?? 'archive'}
+              value={preferences?.removal_behavior ?? 'delete'}
               onValueChange={(value: RemovalBehavior) => {
                 if (preferences) {
                   savePreferences.mutate({

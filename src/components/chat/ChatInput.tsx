@@ -374,8 +374,7 @@ export const ChatInput = memo(function ChatInput({
       if (
         e.key === 'Backspace' &&
         (e.metaKey || e.ctrlKey) &&
-        e.altKey &&
-        isSending
+        e.altKey
       ) {
         e.preventDefault()
         onCancel()
@@ -406,7 +405,6 @@ export const ChatInput = memo(function ChatInput({
       activeSessionId,
       fileMentionOpen,
       slashPopoverOpen,
-      isSending,
       onCancel,
       onSubmit,
     ]

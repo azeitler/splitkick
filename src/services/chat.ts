@@ -826,6 +826,7 @@ export function useCloseSessionOrWorktreeKeybinding() {
 
   useEffect(() => {
     const handleCloseSessionOrWorktree = async () => {
+      console.log('[CLOSE_LEGACY] useCloseSessionOrWorktreeKeybinding fired!')
       const { activeWorktreeId, activeWorktreePath, getActiveSession } =
         useChatStore.getState()
 

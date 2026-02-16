@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 import {
   useArchiveWorktree,
   useCloseBaseSessionClean,
+  useCloseBaseSessionArchive,
   useDeleteWorktree,
 } from '@/services/projects'
 import { useArchiveSession, useCloseSession } from '@/services/chat'
@@ -40,6 +41,7 @@ export function useSessionArchive({
   const archiveWorktree = useArchiveWorktree()
   const deleteWorktree = useDeleteWorktree()
   const closeBaseSessionClean = useCloseBaseSessionClean()
+  const closeBaseSessionArchive = useCloseBaseSessionArchive()
 
   // Always archives — used by context menu "Archive Session"
   const handleArchiveSession = useCallback(
@@ -48,7 +50,7 @@ export function useSessionArchive({
 
       if (activeSessions.length <= 1 && worktree && project) {
         if (isBaseSession(worktree)) {
-          closeBaseSessionClean.mutate({
+          closeBaseSessionArchive.mutate({
             worktreeId,
             projectId: project.id,
           })
@@ -74,7 +76,7 @@ export function useSessionArchive({
       worktreePath,
       archiveSession,
       archiveWorktree,
-      closeBaseSessionClean,
+      closeBaseSessionArchive,
     ]
   )
 
@@ -85,10 +87,17 @@ export function useSessionArchive({
 
       if (activeSessions.length <= 1 && worktree && project) {
         if (isBaseSession(worktree)) {
-          closeBaseSessionClean.mutate({
-            worktreeId,
-            projectId: project.id,
-          })
+          if (removalBehavior === 'delete') {
+            closeBaseSessionClean.mutate({
+              worktreeId,
+              projectId: project.id,
+            })
+          } else {
+            closeBaseSessionArchive.mutate({
+              worktreeId,
+              projectId: project.id,
+            })
+          }
         } else if (removalBehavior === 'delete') {
           deleteWorktree.mutate({
             worktreeId,
@@ -126,6 +135,7 @@ export function useSessionArchive({
       archiveWorktree,
       deleteWorktree,
       closeBaseSessionClean,
+      closeBaseSessionArchive,
     ]
   )
 
