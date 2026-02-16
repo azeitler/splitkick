@@ -203,7 +203,7 @@ std::fs::rename(&temp_path, &final_path)?;
 Before any changes are committed:
 
 ```bash
-npm run check:all  # Runs all checks
+bun run check:all  # Runs all checks
 ```
 
 This includes:

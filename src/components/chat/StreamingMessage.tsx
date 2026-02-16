@@ -17,6 +17,8 @@ import { ExitPlanModeButton } from './ExitPlanModeButton'
 import { PlanDisplay } from './PlanFileDisplay'
 import { EditedFilesDisplay } from './EditedFilesDisplay'
 import { ThinkingBlock } from './ThinkingBlock'
+import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
+import { logger } from '@/lib/logger'
 
 interface StreamingMessageProps {
   /** Session ID for the streaming message */
@@ -87,17 +89,25 @@ export const StreamingMessage = memo(function StreamingMessage({
   onStreamingPlanApproval,
   onStreamingPlanApprovalYolo,
 }: StreamingMessageProps) {
-  // DEBUG: Log callback chain
-  console.log(
-    '[StreamingMessage] render, onStreamingPlanApproval:',
-    typeof onStreamingPlanApproval
-  )
   return (
     <div className="text-muted-foreground">
       {/* Render streaming content blocks inline if available */}
       {contentBlocks.length > 0 ? (
         (() => {
-          const timeline = buildTimeline(contentBlocks, toolCalls)
+          let timeline
+          try {
+            timeline = buildTimeline(contentBlocks, toolCalls)
+          } catch (e) {
+            logger.error('Failed to build streaming timeline', {
+              sessionId,
+              error: e,
+            })
+            return (
+              <div className="text-sm text-muted-foreground italic">
+                [Streaming content could not be rendered]
+              </div>
+            )
+          }
           // Find last incomplete item index for spinner (only show spinner on last one)
           const lastIncompleteIndex = timeline.reduce((lastIdx, item, idx) => {
             if (item.type === 'task' && !item.taskTool.output) return idx
@@ -116,124 +126,139 @@ export const StreamingMessage = memo(function StreamingMessage({
               <div className="space-y-4">
                 {timeline.map((item, index) => {
                   const isLastIncomplete = index === lastIncompleteIndex
-                  switch (item.type) {
-                    case 'thinking':
-                      return (
-                        <ThinkingBlock
-                          key={item.key}
-                          thinking={item.thinking}
-                          isStreaming={true}
-                        />
-                      )
-                    case 'text':
-                      return (
-                        <Markdown key={item.key} streaming>
-                          {item.text}
-                        </Markdown>
-                      )
-                    case 'task':
-                      return (
-                        <TaskCallInline
-                          key={item.key}
-                          taskToolCall={item.taskTool}
-                          subToolCalls={item.subTools}
-                          allToolCalls={toolCalls}
-                          onFileClick={onFileClick}
-                          isStreaming={true}
-                          isLastIncomplete={isLastIncomplete}
-                        />
-                      )
-                    case 'standalone':
-                      return (
-                        <ToolCallInline
-                          key={item.key}
-                          toolCall={item.tool}
-                          onFileClick={onFileClick}
-                          isStreaming={true}
-                          isLastIncomplete={isLastIncomplete}
-                        />
-                      )
-                    case 'stackedGroup':
-                      return (
-                        <StackedGroup
-                          key={item.key}
-                          items={item.items}
-                          onFileClick={onFileClick}
-                          isStreaming={true}
-                          isLastIncomplete={isLastIncomplete}
-                        />
-                      )
-                    case 'askUserQuestion': {
-                      // Render during streaming - Claude blocks waiting for user input
-                      const isAnswered = isQuestionAnswered(
-                        sessionId,
-                        item.tool.id
-                      )
-                      const input = item.tool.input as {
-                        questions: Question[]
+                  return (
+                    <ErrorBoundary
+                      key={item.key}
+                      fallback={
+                        <div className="text-xs text-muted-foreground italic border rounded px-2 py-1">
+                          [Failed to render content]
+                        </div>
                       }
-                      return (
-                        <AskUserQuestion
-                          key={item.key}
-                          toolCallId={item.tool.id}
-                          questions={input.questions}
-                          introText={item.introText}
-                          onSubmit={(toolCallId, answers) =>
-                            onQuestionAnswer(
-                              toolCallId,
-                              answers,
-                              input.questions
+                    >
+                      {(() => {
+                        switch (item.type) {
+                          case 'thinking':
+                            return (
+                              <ThinkingBlock
+                                thinking={item.thinking}
+                                isStreaming={true}
+                              />
+                            )
+                          case 'text':
+                            return <Markdown streaming>{item.text}</Markdown>
+                          case 'task':
+                            return (
+                              <TaskCallInline
+                                taskToolCall={item.taskTool}
+                                subToolCalls={item.subTools}
+                                allToolCalls={toolCalls}
+                                onFileClick={onFileClick}
+                                isStreaming={true}
+                                isLastIncomplete={isLastIncomplete}
+                              />
+                            )
+                          case 'standalone':
+                            return (
+                              <ToolCallInline
+                                toolCall={item.tool}
+                                onFileClick={onFileClick}
+                                isStreaming={true}
+                                isLastIncomplete={isLastIncomplete}
+                              />
+                            )
+                          case 'stackedGroup':
+                            return (
+                              <StackedGroup
+                                items={item.items}
+                                onFileClick={onFileClick}
+                                isStreaming={true}
+                                isLastIncomplete={isLastIncomplete}
+                              />
+                            )
+                          case 'askUserQuestion': {
+                            const isAnswered = isQuestionAnswered(
+                              sessionId,
+                              item.tool.id
+                            )
+                            const input = item.tool.input as {
+                              questions: Question[]
+                            }
+                            return (
+                              <AskUserQuestion
+                                toolCallId={item.tool.id}
+                                questions={input.questions}
+                                introText={item.introText}
+                                onSubmit={(toolCallId, answers) =>
+                                  onQuestionAnswer(
+                                    toolCallId,
+                                    answers,
+                                    input.questions
+                                  )
+                                }
+                                onSkip={onQuestionSkip}
+                                readOnly={isAnswered}
+                                submittedAnswers={
+                                  isAnswered
+                                    ? getSubmittedAnswers(
+                                        sessionId,
+                                        item.tool.id
+                                      )
+                                    : undefined
+                                }
+                              />
                             )
                           }
-                          onSkip={onQuestionSkip}
-                          readOnly={isAnswered}
-                          submittedAnswers={
-                            isAnswered
-                              ? getSubmittedAnswers(sessionId, item.tool.id)
-                              : undefined
-                          }
-                        />
-                      )
-                    }
-                    case 'exitPlanMode': {
-                      // Render plan content + approval button during streaming
-                      // Extract plan from this specific tool's input (not global search)
-                      const toolInput = item.tool.input as
-                        | { plan?: string }
-                        | undefined
-                      const inlinePlan = toolInput?.plan
-                      const planFilePath = !inlinePlan
-                        ? findPlanFilePath(toolCalls)
-                        : null
-                      const isApproved = isStreamingPlanApproved(sessionId)
+                          case 'exitPlanMode': {
+                            const toolInput = item.tool.input as
+                              | { plan?: string }
+                              | undefined
+                            const inlinePlan = toolInput?.plan
+                            const planFilePath = !inlinePlan
+                              ? findPlanFilePath(toolCalls)
+                              : null
+                            const isApproved =
+                              isStreamingPlanApproved(sessionId)
 
-                      return (
-                        <div key={item.key}>
-                          {inlinePlan ? (
-                            <PlanDisplay
-                              content={inlinePlan}
-                              defaultCollapsed={isApproved}
-                            />
-                          ) : planFilePath ? (
-                            <PlanDisplay
-                              filePath={planFilePath}
-                              defaultCollapsed={isApproved}
-                            />
-                          ) : null}
-                          <ExitPlanModeButton
-                            toolCalls={toolCalls}
-                            isApproved={isApproved}
-                            onPlanApproval={onStreamingPlanApproval}
-                            onPlanApprovalYolo={onStreamingPlanApprovalYolo}
-                            shortcut={approveShortcut}
-                            shortcutYolo={approveShortcutYolo}
-                          />
-                        </div>
-                      )
-                    }
-                    default:
-                      return null
-                  }
+                            return (
+                              <div>
+                                {inlinePlan ? (
+                                  <PlanDisplay
+                                    content={inlinePlan}
+                                    defaultCollapsed={isApproved}
+                                  />
+                                ) : planFilePath ? (
+                                  <PlanDisplay
+                                    filePath={planFilePath}
+                                    defaultCollapsed={isApproved}
+                                  />
+                                ) : null}
+                                <ExitPlanModeButton
+                                  toolCalls={toolCalls}
+                                  isApproved={isApproved}
+                                  onPlanApproval={onStreamingPlanApproval}
+                                  onPlanApprovalYolo={
+                                    onStreamingPlanApprovalYolo
+                                  }
+                                  shortcut={approveShortcut}
+                                  shortcutYolo={approveShortcutYolo}
+                                />
+                              </div>
+                            )
+                          }
+                          case 'unknown':
+                            return (
+                              <div className="text-xs text-muted-foreground border rounded px-2 py-1">
+                                Unsupported content type: &quot;{item.rawType}
+                                &quot; — if you see this, please report it as a
+                                bug
+                              </div>
+                            )
+                          default:
+                            return null
+                        }
+                      })()}
+                    </ErrorBoundary>
+                  )
                 })}
               </div>
             </>

@@ -17,6 +17,7 @@ import {
   type PermissionDenial,
   type ExecutionMode,
   type SessionDigest,
+  type LabelData,
   EXECUTION_MODE_CYCLE,
   isExitPlanMode,
 } from '@/types/chat'
@@ -35,20 +36,22 @@ interface ChatUIState {
   // Currently active worktree for chat
   activeWorktreeId: string | null
   activeWorktreePath: string | null
+  // Last active worktree (survives clearActiveWorktree, used by dashboard to restore selection)
+  lastActiveWorktreeId: string | null
 
   // Active session ID per worktree (for tab selection)
   activeSessionIds: Record<string, string>
 
-  // AI review results per worktree
+  // AI review results per session (sessionId → results)
   reviewResults: Record<string, ReviewResponse>
 
-  // Track if user is viewing review tab (instead of chat) per worktree
-  viewingReviewTab: Record<string, boolean>
+  // Whether the review sidebar is visible (global toggle)
+  reviewSidebarVisible: boolean
 
   // Track if user is viewing canvas tab (session overview grid) per worktree
   viewingCanvasTab: Record<string, boolean>
 
-  // Fixed AI review findings per worktree (keyed by finding identifier)
+  // Fixed AI review findings per session (sessionId → fixed finding keys)
   fixedReviewFindings: Record<string, Set<string>>
 
   // Mapping of worktree IDs to paths (for looking up paths by ID)
@@ -93,6 +96,9 @@ interface ChatUIState {
 
   // Selected model per session (for tracking what model was used)
   selectedModels: Record<string, string>
+
+  // Selected provider per session (null = default Anthropic, or custom profile name)
+  selectedProviders: Record<string, string | null>
 
   // Enabled MCP servers per session (server names that are active)
   enabledMcpServers: Record<string, string[]>
@@ -185,6 +191,9 @@ interface ChatUIState {
   // Worktree loading operations (commit, pr, review, merge, pull)
   worktreeLoadingOperations: Record<string, string | null>
 
+  // User-assigned labels per session (e.g. "Needs testing")
+  sessionLabels: Record<string, LabelData>
+
   // Canvas-selected session per worktree (for magic menu targeting)
   canvasSelectedSessionIds: Record<string, string | null>
 
@@ -192,24 +201,27 @@ interface ChatUIState {
   setActiveSession: (worktreeId: string, sessionId: string) => void
   getActiveSession: (worktreeId: string) => string | undefined
 
-  // Actions - AI Review results management
-  setReviewResults: (worktreeId: string, results: ReviewResponse) => void
-  clearReviewResults: (worktreeId: string) => void
-  setViewingReviewTab: (worktreeId: string, viewing: boolean) => void
-  isViewingReviewTab: (worktreeId: string) => boolean
+  // Actions - AI Review results management (session-scoped)
+  setReviewResults: (sessionId: string, results: ReviewResponse) => void
+  clearReviewResults: (sessionId: string) => void
+  setReviewSidebarVisible: (visible: boolean) => void
+  toggleReviewSidebar: () => void
 
   // Actions - Canvas tab management
   setViewingCanvasTab: (worktreeId: string, viewing: boolean) => void
   isViewingCanvasTab: (worktreeId: string) => boolean
 
-  // Actions - AI Review fixed findings (worktree-based)
-  markReviewFindingFixed: (worktreeId: string, findingKey: string) => void
-  isReviewFindingFixed: (worktreeId: string, findingKey: string) => boolean
-  clearFixedReviewFindings: (worktreeId: string) => void
+  // Actions - AI Review fixed findings (session-scoped)
+  markReviewFindingFixed: (sessionId: string, findingKey: string) => void
+  isReviewFindingFixed: (sessionId: string, findingKey: string) => boolean
+  clearFixedReviewFindings: (sessionId: string) => void
 
   // Actions - Reviewing status management (persisted)
   setSessionReviewing: (sessionId: string, reviewing: boolean) => void
   isSessionReviewing: (sessionId: string) => boolean
+
+  // Actions - Session label management (persisted)
+  setSessionLabel: (sessionId: string, label: LabelData | null) => void
 
   // Actions - Plan file path management (persisted)
   setPlanFilePath: (sessionId: string, path: string | null) => void
@@ -222,6 +234,7 @@ interface ChatUIState {
   // Actions - Worktree management
   setActiveWorktree: (id: string | null, path: string | null) => void
   clearActiveWorktree: () => void
+  setLastActiveWorktreeId: (id: string) => void
   registerWorktreePath: (worktreeId: string, path: string) => void
   getWorktreePath: (worktreeId: string) => string | undefined
 
@@ -236,6 +249,7 @@ interface ChatUIState {
 
   // Actions - Worktree-level state checks (checks all sessions in a worktree)
   isWorktreeRunning: (worktreeId: string) => boolean
+  isWorktreeRunningNonPlan: (worktreeId: string) => boolean
   isWorktreeWaiting: (worktreeId: string) => boolean
 
   // Actions - Streaming content (session-based)
@@ -285,6 +299,9 @@ interface ChatUIState {
   // Actions - Selected model (session-based)
   setSelectedModel: (sessionId: string, model: string) => void
 
+  // Actions - Selected provider (session-based)
+  setSelectedProvider: (sessionId: string, provider: string | null) => void
+
   // Actions - MCP servers (session-based)
   setEnabledMcpServers: (sessionId: string, servers: string[]) => void
   toggleMcpServer: (sessionId: string, serverName: string) => void
@@ -316,6 +333,7 @@ interface ChatUIState {
 
   // Actions - Pending images (session-based)
   addPendingImage: (sessionId: string, image: PendingImage) => void
+  updatePendingImage: (sessionId: string, imageId: string, updates: Partial<PendingImage>) => void
   removePendingImage: (sessionId: string, imageId: string) => void
   clearPendingImages: (sessionId: string) => void
   getPendingImages: (sessionId: string) => PendingImage[]
@@ -363,6 +381,7 @@ interface ChatUIState {
   clearQueue: (sessionId: string) => void
   getQueueLength: (sessionId: string) => number
   getQueuedMessages: (sessionId: string) => QueuedMessage[]
+  forceProcessQueue: (sessionId: string) => void
 
   // Actions - Executing mode (tracks mode prompt was sent with)
   setExecutingMode: (sessionId: string, mode: ExecutionMode) => void
@@ -446,9 +465,10 @@ export const useChatStore = create<ChatUIState>()(
       // Initial state
       activeWorktreeId: null,
       activeWorktreePath: null,
+      lastActiveWorktreeId: null,
       activeSessionIds: {},
       reviewResults: {},
-      viewingReviewTab: {},
+      reviewSidebarVisible: false,
       viewingCanvasTab: {},
       fixedReviewFindings: {},
       worktreePaths: {},
@@ -465,6 +485,7 @@ export const useChatStore = create<ChatUIState>()(
       manualThinkingOverrides: {},
       effortLevels: {},
       selectedModels: {},
+      selectedProviders: {},
       enabledMcpServers: {},
       answeredQuestions: {},
       submittedAnswers: {},
@@ -493,6 +514,7 @@ export const useChatStore = create<ChatUIState>()(
       pendingDigestSessionIds: {},
       sessionDigests: {},
       worktreeLoadingOperations: {},
+      sessionLabels: {},
       canvasSelectedSessionIds: {},
 
       // Session management
@@ -515,27 +537,25 @@ export const useChatStore = create<ChatUIState>()(
 
       getActiveSession: worktreeId => get().activeSessionIds[worktreeId],
 
-      // AI Review results management
-      setReviewResults: (worktreeId, results) =>
+      // AI Review results management (session-scoped)
+      setReviewResults: (sessionId, results) =>
         set(
           state => ({
-            reviewResults: { ...state.reviewResults, [worktreeId]: results },
-            viewingReviewTab: { ...state.viewingReviewTab, [worktreeId]: true },
+            reviewResults: { ...state.reviewResults, [sessionId]: results },
+            reviewSidebarVisible: true,
           }),
           undefined,
           'setReviewResults'
         ),
 
-      clearReviewResults: worktreeId =>
+      clearReviewResults: sessionId =>
         set(
           state => {
-            const { [worktreeId]: _, ...restResults } = state.reviewResults
-            const { [worktreeId]: __, ...restViewing } = state.viewingReviewTab
-            const { [worktreeId]: ___, ...restFixed } =
+            const { [sessionId]: _, ...restResults } = state.reviewResults
+            const { [sessionId]: __, ...restFixed } =
               state.fixedReviewFindings
             return {
               reviewResults: restResults,
-              viewingReviewTab: restViewing,
               fixedReviewFindings: restFixed,
             }
           },
@@ -543,20 +563,15 @@ export const useChatStore = create<ChatUIState>()(
           'clearReviewResults'
         ),
 
-      setViewingReviewTab: (worktreeId, viewing) =>
-        set(
-          state => ({
-            viewingReviewTab: {
-              ...state.viewingReviewTab,
-              [worktreeId]: viewing,
-            },
-          }),
-          undefined,
-          'setViewingReviewTab'
-        ),
+      setReviewSidebarVisible: visible =>
+        set({ reviewSidebarVisible: visible }, undefined, 'setReviewSidebarVisible'),
 
-      isViewingReviewTab: worktreeId =>
-        get().viewingReviewTab[worktreeId] ?? false,
+      toggleReviewSidebar: () =>
+        set(
+          state => ({ reviewSidebarVisible: !state.reviewSidebarVisible }),
+          undefined,
+          'toggleReviewSidebar'
+        ),
 
       // Canvas tab management
       setViewingCanvasTab: (worktreeId, viewing) =>
@@ -574,17 +589,17 @@ export const useChatStore = create<ChatUIState>()(
       isViewingCanvasTab: worktreeId =>
         get().viewingCanvasTab[worktreeId] ?? true, // Default to canvas view
 
-      // AI Review fixed findings (worktree-based)
-      markReviewFindingFixed: (worktreeId, findingKey) =>
+      // AI Review fixed findings (session-scoped)
+      markReviewFindingFixed: (sessionId, findingKey) =>
         set(
           state => {
-            const existing = state.fixedReviewFindings[worktreeId] ?? new Set()
+            const existing = state.fixedReviewFindings[sessionId] ?? new Set()
             const updated = new Set(existing)
             updated.add(findingKey)
             return {
               fixedReviewFindings: {
                 ...state.fixedReviewFindings,
-                [worktreeId]: updated,
+                [sessionId]: updated,
               },
             }
           },
@@ -592,13 +607,13 @@ export const useChatStore = create<ChatUIState>()(
           'markReviewFindingFixed'
         ),
 
-      isReviewFindingFixed: (worktreeId, findingKey) =>
-        get().fixedReviewFindings[worktreeId]?.has(findingKey) ?? false,
+      isReviewFindingFixed: (sessionId, findingKey) =>
+        get().fixedReviewFindings[sessionId]?.has(findingKey) ?? false,
 
-      clearFixedReviewFindings: worktreeId =>
+      clearFixedReviewFindings: sessionId =>
         set(
           state => {
-            const { [worktreeId]: _, ...rest } = state.fixedReviewFindings
+            const { [sessionId]: _, ...rest } = state.fixedReviewFindings
             return { fixedReviewFindings: rest }
           },
           undefined,
@@ -627,6 +642,26 @@ export const useChatStore = create<ChatUIState>()(
 
       isSessionReviewing: sessionId =>
         get().reviewingSessions[sessionId] ?? false,
+
+      // Session label management (persisted)
+      setSessionLabel: (sessionId, label) =>
+        set(
+          state => {
+            if (label) {
+              return {
+                sessionLabels: {
+                  ...state.sessionLabels,
+                  [sessionId]: label,
+                },
+              }
+            } else {
+              const { [sessionId]: _, ...rest } = state.sessionLabels
+              return { sessionLabels: rest }
+            }
+          },
+          undefined,
+          'setSessionLabel'
+        ),
 
       // Plan file path management
       setPlanFilePath: (sessionId, path) =>
@@ -679,6 +714,8 @@ export const useChatStore = create<ChatUIState>()(
           state => ({
             activeWorktreeId: id,
             activeWorktreePath: path,
+            // Remember last active worktree for dashboard restoration
+            lastActiveWorktreeId: id ?? state.lastActiveWorktreeId,
             // Also register the path mapping when setting active worktree
             worktreePaths:
               id && path
@@ -695,6 +732,9 @@ export const useChatStore = create<ChatUIState>()(
           undefined,
           'clearActiveWorktree'
         ),
+
+      setLastActiveWorktreeId: id =>
+        set({ lastActiveWorktreeId: id }, undefined, 'setLastActiveWorktreeId'),
 
       registerWorktreePath: (worktreeId, path) =>
         set(
@@ -764,6 +804,24 @@ export const useChatStore = create<ChatUIState>()(
         )) {
           if (isSending && state.sessionWorktreeMap[sessionId] === worktreeId) {
             return true
+          }
+        }
+        return false
+      },
+
+      isWorktreeRunningNonPlan: worktreeId => {
+        const state = get()
+        for (const [sessionId, isSending] of Object.entries(
+          state.sendingSessionIds
+        )) {
+          if (
+            isSending &&
+            state.sessionWorktreeMap[sessionId] === worktreeId
+          ) {
+            const mode = state.executingModes[sessionId]
+            if (mode === 'build' || mode === 'yolo') {
+              return true
+            }
           }
         }
         return false
@@ -1102,6 +1160,22 @@ export const useChatStore = create<ChatUIState>()(
           'setSelectedModel'
         ),
 
+      // Selected provider (session-based)
+      setSelectedProvider: (sessionId: string, provider: string | null) =>
+        set(
+          state => {
+            const updated = { ...state.selectedProviders }
+            if (provider === undefined) {
+              delete updated[sessionId]
+            } else {
+              updated[sessionId] = provider
+            }
+            return { selectedProviders: updated }
+          },
+          undefined,
+          'setSelectedProvider'
+        ),
+
       // MCP servers (session-based)
       setEnabledMcpServers: (sessionId, servers) =>
         set(
@@ -1256,6 +1330,20 @@ export const useChatStore = create<ChatUIState>()(
           }),
           undefined,
           'addPendingImage'
+        ),
+
+      updatePendingImage: (sessionId, imageId, updates) =>
+        set(
+          state => ({
+            pendingImages: {
+              ...state.pendingImages,
+              [sessionId]: (state.pendingImages[sessionId] ?? []).map(img =>
+                img.id === imageId ? { ...img, ...updates } : img
+              ),
+            },
+          }),
+          undefined,
+          'updatePendingImage'
         ),
 
       removePendingImage: (sessionId, imageId) =>
@@ -1553,6 +1641,22 @@ export const useChatStore = create<ChatUIState>()(
 
       getQueuedMessages: sessionId => get().messageQueues[sessionId] ?? [],
 
+      forceProcessQueue: sessionId =>
+        set(
+          state => {
+            // Clear stale sending/waiting flags so queue processor picks up the message
+            const { [sessionId]: _s, ...restSending } = state.sendingSessionIds
+            const { [sessionId]: _w, ...restWaiting } =
+              state.waitingForInputSessionIds
+            return {
+              sendingSessionIds: restSending,
+              waitingForInputSessionIds: restWaiting,
+            }
+          },
+          undefined,
+          'forceProcessQueue'
+        ),
+
       // Executing mode actions (tracks mode prompt was sent with)
       setExecutingMode: (sessionId, mode) =>
         set(
@@ -1681,6 +1785,7 @@ export const useChatStore = create<ChatUIState>()(
               state.manualThinkingOverrides
             const { [sessionId]: _effort, ...restEffort } = state.effortLevels
             const { [sessionId]: _mcp, ...restMcp } = state.enabledMcpServers
+            const { [sessionId]: _label, ...restLabels } = state.sessionLabels
 
             return {
               approvedTools: restApproved,
@@ -1694,6 +1799,7 @@ export const useChatStore = create<ChatUIState>()(
               manualThinkingOverrides: restManual,
               effortLevels: restEffort,
               enabledMcpServers: restMcp,
+              sessionLabels: restLabels,
             }
           },
           undefined,

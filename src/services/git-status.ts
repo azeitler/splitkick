@@ -147,6 +147,119 @@ export async function gitPull(
 }
 
 /**
+ * Stash all local changes including untracked files.
+ */
+export async function gitStash(worktreePath: string): Promise<string> {
+  if (!isTauri()) {
+    throw new Error('Git stash only available in Tauri')
+  }
+  return invoke<string>('git_stash', { worktreePath })
+}
+
+/**
+ * Pop the most recent stash.
+ */
+export async function gitStashPop(worktreePath: string): Promise<string> {
+  if (!isTauri()) {
+    throw new Error('Git stash pop only available in Tauri')
+  }
+  return invoke<string>('git_stash_pop', { worktreePath })
+}
+
+// ============================================================================
+// Consolidated Git Pull
+// ============================================================================
+
+export interface GitPullOptions {
+  worktreeId: string
+  worktreePath: string
+  baseBranch: string
+  branchLabel?: string
+  projectId?: string
+  onMergeConflict?: () => void
+}
+
+/**
+ * Consolidated git pull with auto-stash support.
+ *
+ * When pull fails because local changes would be overwritten:
+ * - If no build/yolo session is running on the worktree → auto-stash, pull, unstash
+ * - If a build/yolo session is running → show error, refuse to stash
+ *
+ * All 9 pull locations in the app should use this function.
+ */
+export async function performGitPull(opts: GitPullOptions): Promise<void> {
+  const { worktreeId, worktreePath, baseBranch, branchLabel, projectId, onMergeConflict } = opts
+  const { toast } = await import('sonner')
+  const { useChatStore } = await import('@/store/chat-store')
+
+  const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
+
+  if (worktreeId) {
+    setWorktreeLoading(worktreeId, 'commit')
+  }
+  const label = branchLabel || baseBranch
+  const toastId = toast.loading(`Pulling changes on ${label}...`)
+
+  try {
+    await gitPull(worktreePath, baseBranch)
+    await triggerImmediateGitPoll()
+    if (projectId) fetchWorktreesStatus(projectId)
+    toast.success('Changes pulled', { id: toastId })
+  } catch (error) {
+    const errorStr = String(error)
+
+    // Auto-stash path: local changes would be overwritten
+    if (
+      errorStr.includes('local changes') &&
+      (errorStr.includes('would be overwritten') || errorStr.includes('Please commit your changes or stash'))
+    ) {
+      // Safety: refuse if a build/yolo session is running on this worktree
+      if (worktreeId && useChatStore.getState().isWorktreeRunningNonPlan(worktreeId)) {
+        toast.error(
+          'Cannot auto-stash: a build/yolo session is running on this worktree. Stop it first.',
+          { id: toastId }
+        )
+        return
+      }
+
+      toast.loading('Auto-stashing local changes...', { id: toastId })
+      try {
+        await gitStash(worktreePath)
+        await gitPull(worktreePath, baseBranch)
+        toast.loading('Restoring stashed changes...', { id: toastId })
+        await gitStashPop(worktreePath)
+        await triggerImmediateGitPoll()
+        if (projectId) fetchWorktreesStatus(projectId)
+        toast.success('Pulled (auto-stashed and restored local changes)', { id: toastId })
+      } catch (stashError) {
+        const stashErrStr = String(stashError)
+        if (stashErrStr.includes('CONFLICT') || stashErrStr.includes('Merge conflict')) {
+          toast.warning('Stash pop caused conflicts. Resolve manually.', { id: toastId })
+          onMergeConflict?.()
+        } else {
+          toast.error(`Auto-stash failed: ${stashErrStr}`, { id: toastId })
+        }
+      }
+      return
+    }
+
+    // Merge conflict path
+    if (errorStr.includes('Merge conflicts in:')) {
+      toast.warning('Pull resulted in merge conflicts', { id: toastId })
+      onMergeConflict?.()
+      return
+    }
+
+    toast.error(`Pull failed: ${errorStr}`, { id: toastId })
+  } finally {
+    if (worktreeId) {
+      clearWorktreeLoading(worktreeId)
+    }
+  }
+}
+
+/**
  * Push current branch to remote. If prNumber is provided, uses PR-aware push
  * that handles fork remotes and uses --force-with-lease.
  *
@@ -201,6 +314,42 @@ export async function setRemotePollInterval(seconds: number): Promise<void> {
 export async function getRemotePollInterval(): Promise<number> {
   if (!isTauri()) return 60 // Default for non-Tauri
   return await invoke<number>('get_remote_poll_interval')
+}
+
+/**
+ * Set all worktrees with open PRs for background sweep polling.
+ *
+ * The sweep polls these worktrees round-robin at a slow interval (5 min)
+ * to detect PR merges even when the worktree isn't actively selected.
+ */
+/**
+ * Set all worktrees for background git status sweep polling.
+ *
+ * The sweep polls these worktrees round-robin at a slow interval (60s)
+ * to keep uncommitted diff stats up to date even when not actively selected.
+ */
+export async function setAllWorktreesForPolling(
+  worktrees: Array<{
+    worktreeId: string
+    worktreePath: string
+    baseBranch: string
+  }>
+): Promise<void> {
+  if (!isTauri()) return
+  await invoke('set_all_worktrees_for_polling', { worktrees })
+}
+
+export async function setPrWorktreesForPolling(
+  worktrees: Array<{
+    worktreeId: string
+    worktreePath: string
+    baseBranch: string
+    prNumber: number
+    prUrl: string
+  }>
+): Promise<void> {
+  if (!isTauri()) return
+  await invoke('set_pr_worktrees_for_polling', { worktrees })
 }
 
 /**
@@ -271,13 +420,6 @@ export function useGitStatusEvents(
     unlistenPromises.push(
       listen<GitStatusEvent>('git:status-update', event => {
         const status = event.payload
-        console.info(
-          '[git-status] Received status update for worktree:',
-          status.worktree_id,
-          'behind:',
-          status.behind_count
-        )
-
         // Update the query cache
         queryClient.setQueryData(
           gitStatusQueryKeys.worktree(status.worktree_id),
@@ -320,9 +462,7 @@ export function useGitStatusEvents(
           status.base_branch_behind_count,
           status.worktree_ahead_count,
           status.unpushed_count
-        ).catch(err =>
-          console.warn('[git-status] Failed to cache status:', err)
-        )
+        ).catch(console.error)
 
         // Call the optional callback
         onStatusUpdate?.(status)
@@ -358,22 +498,12 @@ export function useAppFocusTracking() {
 
     const handleFocus = () => {
       if (isMounted.current) {
-        console.debug(
-          '[git-status] App gained focus at',
-          new Date().toISOString(),
-          '- resuming polling'
-        )
         setAppFocusState(true)
       }
     }
 
     const handleBlur = () => {
       if (isMounted.current) {
-        console.debug(
-          '[git-status] App lost focus at',
-          new Date().toISOString(),
-          '- pausing polling'
-        )
         setAppFocusState(false)
       }
     }
@@ -433,7 +563,6 @@ export function useWorktreePolling(info: WorktreePollingInfo | null) {
       info?.prUrl !== prevInfo?.prUrl
 
     if (hasChanged) {
-      console.debug('[git-status] Worktree polling info changed:', info)
       setActiveWorktreeForPolling(info)
       prevInfoRef.current = info
     }

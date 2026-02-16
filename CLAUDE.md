@@ -27,7 +27,7 @@ This repository is a template with sensible defaults for building Tauri React ap
 4. **Batch Operations**: Use multiple tool calls in single responses
 5. **Match Code Style**: Follow existing formatting and patterns
 6. **Test Coverage**: Write comprehensive tests for business logic
-7. **Quality Gates**: Run `npm run check:all` after significant changes
+7. **Quality Gates**: Run `bun run check:all` after significant changes
 8. **No Dev Server**: Ask user to run and report back
 9. **No Unsolicited Commits**: Only when explicitly requested
 10. **Documentation**: Update relevant `docs/developer/` files for new patterns
@@ -294,3 +294,14 @@ The helper is defined in `src-tauri/src/platform/process.rs` and exported via `p
 - `session-card-utils.tsx` - `computeSessionCardData()` function and `SessionCardData` type
 
 When user mentions "Canvas", consider both views and their shared infrastructure.
+
+#### Image Processing on Paste/Drop
+
+Images pasted or dropped into chat are processed before saving (`process_image()` in `src-tauri/src/chat/commands.rs`):
+
+- **Resize**: Max 1568px on longest side (Claude's internal limit — anything larger gets downscaled by Claude anyway, wasting bandwidth). Images below 200px on any edge may degrade Claude's vision performance.
+- **Compress**: Opaque PNGs → JPEG at 85% quality (typically 5-10x smaller). PNGs with transparency stay PNG.
+- **Skip**: GIFs (may be animated), images < 50KB, already-compressed formats (JPEG/WebP below 1568px).
+- **Performance**: Uses `Triangle` (bilinear) filter for resize, runs in `spawn_blocking` to avoid blocking async runtime.
+- **Token cost**: `(width × height) / 750` tokens per image. Max optimal size (~1568×1568) ≈ 3,280 tokens.
+- **Reference**: https://platform.claude.com/docs/en/build-with-claude/vision

@@ -1,4 +1,4 @@
-mod claude;
+pub(crate) mod claude;
 mod commands;
 pub mod detached;
 mod naming;

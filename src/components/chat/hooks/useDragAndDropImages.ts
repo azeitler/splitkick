@@ -113,19 +113,31 @@ async function processDroppedImage(
   sourcePath: string,
   sessionId: string
 ): Promise<void> {
+  // Add loading placeholder immediately
+  const placeholderId = `loading-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+  const { addPendingImage, updatePendingImage, removePendingImage } =
+    useChatStore.getState()
+  addPendingImage(sessionId, {
+    id: placeholderId,
+    path: '',
+    filename: 'Processing...',
+    loading: true,
+  })
+
   try {
     const result = await invoke<SaveImageResponse>('save_dropped_image', {
       sourcePath,
     })
 
-    const { addPendingImage } = useChatStore.getState()
-    addPendingImage(sessionId, {
+    updatePendingImage(sessionId, placeholderId, {
       id: result.id,
       path: result.path,
       filename: result.filename,
+      loading: false,
     })
   } catch (error) {
     console.error('Failed to save dropped image:', error)
+    removePendingImage(sessionId, placeholderId)
 
     // Parse error message for user-friendly display
     const errorStr = String(error)

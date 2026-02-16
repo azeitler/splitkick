@@ -389,11 +389,13 @@ pub fn load_sessions(
                 claude_session_id: None,
                 selected_model: None,
                 selected_thinking_level: None,
+                selected_provider: None,
                 session_naming_completed: false,
                 archived_at: entry.archived_at,
                 answered_questions: vec![],
                 submitted_answers: std::collections::HashMap::new(),
                 fixed_findings: vec![],
+                review_results: None,
                 pending_permission_denials: vec![],
                 denied_message_context: None,
                 is_reviewing: false,
@@ -405,6 +407,7 @@ pub fn load_sessions(
                 digest: None,
                 last_run_status: None,
                 last_run_execution_mode: None,
+                label: None,
             }
         };
         sessions.push(session);

@@ -30,6 +30,7 @@ import {
   useSendMessage,
   useSetSessionModel,
   useSetSessionThinkingLevel,
+  useSetSessionProvider,
   useCreateSession,
   cancelChatMessage,
   chatQueryKeys,
@@ -53,9 +54,14 @@ import {
   type ClaudeModel,
 } from '@/store/chat-store'
 import { usePreferences, useSavePreferences } from '@/services/preferences'
+import { getLabelTextColor } from '@/lib/label-colors'
 import {
+  DEFAULT_INVESTIGATE_ISSUE_PROMPT,
+  DEFAULT_INVESTIGATE_PR_PROMPT,
   DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT,
   DEFAULT_PARALLEL_EXECUTION_PROMPT,
+  PREDEFINED_CLI_PROFILES,
+  resolveMagicPromptProvider,
 } from '@/types/preferences'
 import type { Project, Worktree } from '@/types/projects'
 import type {
@@ -96,6 +102,9 @@ import { QueuedMessagesList } from './QueuedMessageItem'
 import { FloatingButtons } from './FloatingButtons'
 import { PlanDialog } from './PlanDialog'
 import { StreamingMessage } from './StreamingMessage'
+import { ChatErrorFallback } from './ChatErrorFallback'
+import { logger } from '@/lib/logger'
+import { saveCrashState } from '@/lib/recovery'
 import { ErrorBanner } from './ErrorBanner'
 import { SessionDigestReminder } from './SessionDigestReminder'
 import {
@@ -202,6 +211,11 @@ export function ChatWindow({
       ? (state.sendingSessionIds[activeSessionId] ?? false)
       : false
   )
+  // Session label for top-right badge
+  const sessionLabel = useChatStore(state =>
+    activeSessionId ? state.sessionLabels[activeSessionId] ?? null : null
+  )
+
   // Function selectors - these return stable function references
   const isQuestionAnswered = useChatStore(state => state.isQuestionAnswered)
   const getSubmittedAnswers = useChatStore(state => state.getSubmittedAnswers)
@@ -214,11 +228,10 @@ export function ChatWindow({
   const answeredQuestions = useChatStore(state =>
     activeSessionId ? state.answeredQuestions[activeSessionId] : undefined
   )
-  // PERFORMANCE: Proper selector for isViewingReviewTab - subscribes to actual data
-  const isViewingReviewTab = useChatStore(state =>
-    state.activeWorktreeId
-      ? (state.viewingReviewTab[state.activeWorktreeId] ?? false)
-      : false
+  // Review sidebar state
+  const reviewSidebarVisible = useChatStore(state => state.reviewSidebarVisible)
+  const hasReviewResults = useChatStore(state =>
+    activeSessionId ? !!state.reviewResults[activeSessionId] : false
   )
   // PERFORMANCE: Proper selector for isViewingCanvasTab - subscribes to actual data
   // Default to true so Canvas is the initial view when opening a worktree
@@ -227,6 +240,8 @@ export function ChatWindow({
       ? (state.viewingCanvasTab[state.activeWorktreeId] ?? true)
       : false
   )
+
+
   const isStreamingPlanApproved = useChatStore(
     state => state.isStreamingPlanApproved
   )
@@ -266,6 +281,28 @@ export function ChatWindow({
   const handleTerminalExpand = useCallback(() => {
     setTerminalVisible(true)
   }, [setTerminalVisible])
+
+  // Sync review sidebar panel with reviewSidebarVisible state
+  useEffect(() => {
+    const panel = reviewPanelRef.current
+    if (!panel) return
+
+    if (reviewSidebarVisible) {
+      panel.expand()
+    } else {
+      panel.collapse()
+    }
+  }, [reviewSidebarVisible])
+
+  // Review sidebar collapse/expand handlers
+  const handleReviewSidebarCollapse = useCallback(() => {
+    useChatStore.getState().setReviewSidebarVisible(false)
+  }, [])
+
+  const handleReviewSidebarExpand = useCallback(() => {
+    useChatStore.getState().setReviewSidebarVisible(true)
+  }, [])
+
 
   // Actions - get via getState() for stable references (no subscriptions needed)
   const {
@@ -360,6 +397,7 @@ export function ChatWindow({
   const createSession = useCreateSession()
   const setSessionModel = useSetSessionModel()
   const setSessionThinkingLevel = useSetSessionThinkingLevel()
+  const setSessionProvider = useSetSessionProvider()
 
   // Fetch worktree data for PR link display
   const { data: worktree } = useWorktree(activeWorktreeId ?? null)
@@ -375,53 +413,15 @@ export function ChatWindow({
 
   // Loaded issue contexts for indicator
   const { data: loadedIssueContexts } = useLoadedIssueContexts(
-    activeSessionId ?? null
+    activeSessionId ?? null,
+    activeWorktreeId
   )
 
   // Loaded PR contexts for indicator and investigate PR functionality
   const { data: loadedPRContexts } = useLoadedPRContexts(
-    activeSessionId ?? null
+    activeSessionId ?? null,
+    activeWorktreeId
   )
-
-  // Emit readiness event for auto-investigate coordination
-  // When a worktree is marked for auto-investigate, projects.ts waits for this event
-  // before dispatching the magic-command, ensuring session and contexts are ready
-  useEffect(() => {
-    if (!activeWorktreeId || !activeSessionId) return
-
-    // Check if this worktree was marked for auto-investigate
-    const { autoInvestigateWorktreeIds, autoInvestigatePRWorktreeIds } =
-      useUIStore.getState()
-    const shouldInvestigateIssue =
-      autoInvestigateWorktreeIds.has(activeWorktreeId)
-    const shouldInvestigatePR =
-      autoInvestigatePRWorktreeIds.has(activeWorktreeId)
-
-    if (!shouldInvestigateIssue && !shouldInvestigatePR) return
-
-    // Wait for contexts to be loaded
-    const hasIssueContexts =
-      shouldInvestigateIssue &&
-      loadedIssueContexts &&
-      loadedIssueContexts.length > 0
-    const hasPRContexts =
-      shouldInvestigatePR && loadedPRContexts && loadedPRContexts.length > 0
-
-    if (hasIssueContexts) {
-      window.dispatchEvent(
-        new CustomEvent('chat-ready-for-investigate', {
-          detail: { worktreeId: activeWorktreeId, type: 'issue' },
-        })
-      )
-    }
-    if (hasPRContexts) {
-      window.dispatchEvent(
-        new CustomEvent('chat-ready-for-investigate', {
-          detail: { worktreeId: activeWorktreeId, type: 'pr' },
-        })
-      )
-    }
-  }, [activeWorktreeId, activeSessionId, loadedIssueContexts, loadedPRContexts])
 
   // Attached saved contexts for indicator
   const { data: attachedSavedContexts } = useAttachedSavedContexts(
@@ -453,9 +453,22 @@ export function ChatWindow({
   const { data: runScript } = useRunScript(activeWorktreePath ?? null)
 
   // Per-session model selection, falls back to preferences default
-  const defaultModel =
+  const defaultModel: ClaudeModel =
     (preferences?.selected_model as ClaudeModel) ?? DEFAULT_MODEL
-  const selectedModel = (session?.selected_model as ClaudeModel) ?? defaultModel
+  const selectedModel: ClaudeModel =
+    (session?.selected_model as ClaudeModel) ?? defaultModel
+
+  // Per-session provider selection: persisted session → zustand → project default → global default
+  const projectDefaultProvider = project?.default_provider ?? null
+  const globalDefaultProvider = preferences?.default_provider ?? null
+  const defaultProvider = projectDefaultProvider ?? globalDefaultProvider
+  const zustandProvider = useChatStore(state =>
+    deferredSessionId ? state.selectedProviders[deferredSessionId] : undefined
+  )
+  const sessionProvider = session?.selected_provider ?? zustandProvider
+  const selectedProvider = sessionProvider !== undefined ? sessionProvider : defaultProvider
+  // __anthropic__ is the sentinel for "use default Anthropic" — treat as non-custom for feature detection
+  const isCustomProvider = Boolean(selectedProvider && selectedProvider !== '__anthropic__')
 
   // Per-session thinking level, falls back to preferences default
   const defaultThinkingLevel =
@@ -520,10 +533,21 @@ export function ChatWindow({
 
   // CLI version for adaptive thinking feature detection
   const { data: cliStatus } = useClaudeCliStatus()
-  const useAdaptiveThinkingFlag = supportsAdaptiveThinking(
+  // Custom providers don't support Opus 4.6 adaptive thinking — use thinking levels instead
+  const useAdaptiveThinkingFlag = !isCustomProvider && supportsAdaptiveThinking(
     selectedModel,
     cliStatus?.version ?? null
   )
+
+  // Hide thinking level UI entirely for providers that don't support it
+  const customCliProfiles = preferences?.custom_cli_profiles ?? []
+  const activeProfile = isCustomProvider
+    ? customCliProfiles.find(p => p.name === selectedProvider)
+    : null
+  // Fall back to predefined template's supports_thinking for profiles saved before this field existed
+  const activeSupportsThinking = activeProfile?.supports_thinking
+    ?? PREDEFINED_CLI_PROFILES.find(p => p.name === selectedProvider)?.supports_thinking
+  const hideThinkingLevel = activeSupportsThinking === false
 
   const isSending = isSendingForSession
 
@@ -658,6 +682,7 @@ export function ChatWindow({
   const activeWorktreeIdRef = useRef(activeWorktreeId)
   const activeWorktreePathRef = useRef(activeWorktreePath)
   const selectedModelRef = useRef(selectedModel)
+  const selectedProviderRef = useRef(selectedProvider)
   const selectedThinkingLevelRef = useRef(selectedThinkingLevel)
   const selectedEffortLevelRef = useRef(selectedEffortLevel)
   const useAdaptiveThinkingRef = useRef(useAdaptiveThinkingFlag)
@@ -670,6 +695,7 @@ export function ChatWindow({
   activeWorktreeIdRef.current = activeWorktreeId
   activeWorktreePathRef.current = activeWorktreePath
   selectedModelRef.current = selectedModel
+  selectedProviderRef.current = selectedProvider
   selectedThinkingLevelRef.current = selectedThinkingLevel
   selectedEffortLevelRef.current = selectedEffortLevel
   useAdaptiveThinkingRef.current = useAdaptiveThinkingFlag
@@ -692,6 +718,8 @@ export function ChatWindow({
 
   // Terminal panel ref for imperative collapse/expand
   const terminalPanelRef = useRef<ImperativePanelHandle>(null)
+  // Review sidebar panel ref for imperative collapse/expand
+  const reviewPanelRef = useRef<ImperativePanelHandle>(null)
 
   // Scroll management hook - handles scroll state and callbacks
   const {
@@ -892,6 +920,7 @@ export function ChatWindow({
     isSending,
     isAtBottom,
     scrollToBottom,
+    currentQueuedMessages.length,
   ])
 
   // Listen for global focus request from keybinding (CMD+L by default)
@@ -997,24 +1026,56 @@ export function ChatWindow({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
-        e.key === 'Backspace' &&
-        (e.metaKey || e.ctrlKey) &&
-        e.altKey &&
-        isSending &&
-        activeSessionId &&
-        activeWorktreeId
-      ) {
-        e.preventDefault()
-        cancelChatMessage(activeSessionId, activeWorktreeId)
-      }
+        e.key !== 'Backspace' ||
+        !(e.metaKey || e.ctrlKey) ||
+        !e.altKey
+      ) return
+
+      // Read all state fresh via getState() to avoid stale closures
+      const state = useChatStore.getState()
+      const wtId = state.activeWorktreeId
+      if (!wtId) return
+
+      const isCanvas = state.viewingCanvasTab[wtId] ?? true
+      const canvasSession = state.canvasSelectedSessionIds[wtId] ?? null
+      const activeSession = state.activeSessionIds[wtId] ?? null
+
+      const sessionToCancel = isCanvas && canvasSession
+        ? canvasSession
+        : activeSession
+
+      if (!sessionToCancel) return
+
+      const isSendingTarget = state.sendingSessionIds[sessionToCancel] ?? false
+      if (!isSendingTarget) return
+
+      e.preventDefault()
+      cancelChatMessage(sessionToCancel, wtId)
     }
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [isSending, activeSessionId, activeWorktreeId])
+  }, [])
 
   // Note: Streaming event listeners are in App.tsx, not here
   // This ensures they stay active even when ChatWindow is unmounted (e.g., session board view)
+
+  // Helper to resolve custom CLI profile name for the active provider
+  const resolveCustomProfile = useCallback(
+    (model: string, provider: string | null) => {
+      if (!provider || provider === '__anthropic__')
+        return { model, customProfileName: undefined }
+      // Verify the provider exists in profiles
+      const profile = preferences?.custom_cli_profiles?.find(
+        p => p.name === provider
+      )
+      return {
+        model,
+        customProfileName: profile?.name,
+      }
+    },
+    [preferences?.custom_cli_profiles]
+  )
 
   // Helper to build full message with attachment references for backend
   const buildMessageWithRefs = useCallback(
@@ -1121,21 +1182,27 @@ export function ChatWindow({
       // Build full message with attachment refs for backend
       const fullMessage = buildMessageWithRefs(queuedMsg)
 
+      // Resolve custom CLI profile if provider is set
+      const resolved = resolveCustomProfile(queuedMsg.model, queuedMsg.provider)
+
       sendMessage.mutate(
         {
           sessionId: activeSessionId,
           worktreeId: activeWorktreeId,
           worktreePath: activeWorktreePath,
           message: fullMessage,
-          model: queuedMsg.model,
+          model: resolved.model,
           executionMode: queuedMsg.executionMode,
           thinkingLevel: queuedMsg.thinkingLevel,
           disableThinkingForMode: queuedMsg.disableThinkingForMode,
           effortLevel: queuedMsg.effortLevel,
           mcpConfig: queuedMsg.mcpConfig,
-          parallelExecutionPrompt: preferences?.parallel_execution_prompt_enabled
-            ? (preferences.magic_prompts?.parallel_execution ?? DEFAULT_PARALLEL_EXECUTION_PROMPT)
-            : undefined,
+          customProfileName: resolved.customProfileName,
+          parallelExecutionPrompt:
+            preferences?.parallel_execution_prompt_enabled
+              ? (preferences.magic_prompts?.parallel_execution ??
+                DEFAULT_PARALLEL_EXECUTION_PROMPT)
+              : undefined,
           chromeEnabled: preferences?.chrome_enabled ?? false,
           aiLanguage: preferences?.ai_language,
           allowedTools,
@@ -1209,13 +1276,15 @@ export function ChatWindow({
       const hasManualOverride = useChatStore
         .getState()
         .hasManualThinkingOverride(activeSessionId)
+      const diffResolved = resolveCustomProfile(model, selectedProviderRef.current)
       sendMessage.mutate(
         {
           sessionId: activeSessionId,
           worktreeId: activeWorktreeId,
           worktreePath: activeWorktreePath,
           message,
-          model,
+          model: diffResolved.model,
+          customProfileName: diffResolved.customProfileName,
           executionMode: 'build',
           thinkingLevel,
           disableThinkingForMode: thinkingLevel !== 'off' && !hasManualOverride,
@@ -1226,9 +1295,11 @@ export function ChatWindow({
             mcpServersDataRef.current,
             enabledMcpServersRef.current
           ),
-          parallelExecutionPrompt: preferences?.parallel_execution_prompt_enabled
-            ? (preferences.magic_prompts?.parallel_execution ?? DEFAULT_PARALLEL_EXECUTION_PROMPT)
-            : undefined,
+          parallelExecutionPrompt:
+            preferences?.parallel_execution_prompt_enabled
+              ? (preferences.magic_prompts?.parallel_execution ??
+                DEFAULT_PARALLEL_EXECUTION_PROMPT)
+              : undefined,
           chromeEnabled: preferences?.chrome_enabled ?? false,
           aiLanguage: preferences?.ai_language,
         },
@@ -1326,6 +1397,7 @@ export function ChatWindow({
         pendingSkills: skills,
         pendingTextFiles: textFiles,
         model: selectedModelRef.current,
+        provider: selectedProviderRef.current,
         executionMode: mode,
         thinkingLevel: thinkingLvl,
         disableThinkingForMode:
@@ -1426,7 +1498,7 @@ export function ChatWindow({
 
   // PERFORMANCE: Stable callbacks for ChatToolbar to prevent re-renders
   const handleToolbarModelChange = useCallback(
-    (model: ClaudeModel) => {
+    (model: string) => {
       if (activeSessionId && activeWorktreeId && activeWorktreePath) {
         setSessionModel.mutate({
           sessionId: activeSessionId,
@@ -1445,6 +1517,23 @@ export function ChatWindow({
       }
     },
     [activeSessionId, activeWorktreeId, activeWorktreePath, setSessionModel]
+  )
+
+  const handleToolbarProviderChange = useCallback(
+    (provider: string | null) => {
+      if (activeSessionId) {
+        useChatStore.getState().setSelectedProvider(activeSessionId, provider)
+        if (activeWorktreeId && activeWorktreePath) {
+          setSessionProvider.mutate({
+            sessionId: activeSessionId,
+            worktreeId: activeWorktreeId,
+            worktreePath: activeWorktreePath,
+            provider,
+          })
+        }
+      }
+    },
+    [activeSessionId, activeWorktreeId, activeWorktreePath, setSessionProvider]
   )
 
   // PERFORMANCE: Use refs to keep callback stable, get store actions via getState()
@@ -1540,17 +1629,150 @@ export function ChatWindow({
   )
 
   // Handle investigate workflow run - sends investigation prompt for a failed GitHub Actions run
-  const handleInvestigateWorkflowRun = useCallback(
-    async (detail: WorkflowRunDetail) => {
-      console.warn('[INVESTIGATE-WF] Handler called with detail:', {
-        workflowName: detail.workflowName,
-        branch: detail.branch,
-        projectPath: detail.projectPath,
-        runId: detail.runId,
+  const handleInvestigate = useCallback(
+    async (type: 'issue' | 'pr') => {
+      if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
+
+      const modelKey = type === 'issue' ? 'investigate_issue_model' : 'investigate_pr_model'
+      const providerKey = type === 'issue' ? 'investigate_issue_provider' : 'investigate_pr_provider'
+      const investigateModel =
+        preferences?.magic_prompt_models?.[modelKey] ??
+        selectedModelRef.current
+      const investigateProvider = resolveMagicPromptProvider(
+        preferences?.magic_prompt_providers,
+        providerKey,
+        preferences?.default_provider
+      )
+      const { customProfileName: resolvedInvestigateProfile } =
+        resolveCustomProfile(investigateModel, investigateProvider)
+
+      let prompt: string
+
+      if (type === 'issue') {
+        // Query by worktree ID — during auto-investigate, contexts are registered
+        // under worktree ID (not session ID) by the backend create_worktree command
+        const contexts = await queryClient.fetchQuery({
+          queryKey: ['investigate-contexts', 'issue', activeWorktreeId],
+          queryFn: () =>
+            invoke<{ number: number }[]>('list_loaded_issue_contexts', {
+              sessionId: activeWorktreeId,
+            }),
+          staleTime: 0,
+        })
+        const refs = (contexts ?? []).map(c => `#${c.number}`).join(', ')
+        const word = (contexts ?? []).length === 1 ? 'issue' : 'issues'
+        const customPrompt = preferences?.magic_prompts?.investigate_issue
+        const template =
+          customPrompt && customPrompt.trim()
+            ? customPrompt
+            : DEFAULT_INVESTIGATE_ISSUE_PROMPT
+        prompt = template
+          .replace(/\{issueWord\}/g, word)
+          .replace(/\{issueRefs\}/g, refs)
+      } else {
+        const contexts = await queryClient.fetchQuery({
+          queryKey: ['investigate-contexts', 'pr', activeWorktreeId],
+          queryFn: () =>
+            invoke<{ number: number }[]>('list_loaded_pr_contexts', {
+              sessionId: activeWorktreeId,
+            }),
+          staleTime: 0,
+        })
+        const refs = (contexts ?? []).map(c => `#${c.number}`).join(', ')
+        const word = (contexts ?? []).length === 1 ? 'PR' : 'PRs'
+        const customPrompt = preferences?.magic_prompts?.investigate_pr
+        const template =
+          customPrompt && customPrompt.trim()
+            ? customPrompt
+            : DEFAULT_INVESTIGATE_PR_PROMPT
+        prompt = template
+          .replace(/\{prWord\}/g, word)
+          .replace(/\{prRefs\}/g, refs)
+      }
+
+      const {
+        addSendingSession,
+        setLastSentMessage,
+        setError,
+        setSelectedModel,
+        setSelectedProvider,
+        setExecutingMode,
+      } = useChatStore.getState()
+
+      setLastSentMessage(activeSessionId, prompt)
+      setError(activeSessionId, null)
+      addSendingSession(activeSessionId)
+      setSelectedModel(activeSessionId, investigateModel)
+      setSelectedProvider(activeSessionId, investigateProvider)
+      setExecutingMode(activeSessionId, executionModeRef.current)
+
+      // Persist the provider to backend so subsequent messages use the same one
+      setSessionProvider.mutate({
+        sessionId: activeSessionId,
+        worktreeId: activeWorktreeId,
+        worktreePath: activeWorktreePath,
+        provider: investigateProvider,
       })
 
-      const customPrompt =
-        preferences?.magic_prompts?.investigate_workflow_run
+      // Compute adaptive thinking for the resolved provider (not the stale ref)
+      const investigateIsCustom = Boolean(investigateProvider && investigateProvider !== '__anthropic__')
+      const investigateUseAdaptive = !investigateIsCustom && supportsAdaptiveThinking(
+        investigateModel, cliStatus?.version ?? null
+      )
+
+      sendMessage.mutate(
+        {
+          sessionId: activeSessionId,
+          worktreeId: activeWorktreeId,
+          worktreePath: activeWorktreePath,
+          message: prompt,
+          model: investigateModel,
+          executionMode: executionModeRef.current,
+          thinkingLevel: selectedThinkingLevelRef.current,
+          effortLevel: investigateUseAdaptive
+            ? selectedEffortLevelRef.current
+            : undefined,
+          mcpConfig: buildMcpConfigJson(
+            mcpServersDataRef.current,
+            enabledMcpServersRef.current
+          ),
+          customProfileName: resolvedInvestigateProfile,
+          parallelExecutionPrompt:
+            preferences?.parallel_execution_prompt_enabled
+              ? (preferences.magic_prompts?.parallel_execution ??
+                DEFAULT_PARALLEL_EXECUTION_PROMPT)
+              : undefined,
+          chromeEnabled: preferences?.chrome_enabled ?? false,
+          aiLanguage: preferences?.ai_language,
+        },
+        { onSettled: () => inputRef.current?.focus() }
+      )
+    },
+    [
+      activeSessionId,
+      activeWorktreeId,
+      activeWorktreePath,
+      sendMessage,
+      queryClient,
+      preferences?.magic_prompts?.investigate_issue,
+      preferences?.magic_prompts?.investigate_pr,
+      preferences?.magic_prompt_models?.investigate_issue_model,
+      preferences?.magic_prompt_models?.investigate_pr_model,
+      preferences?.magic_prompt_providers?.investigate_issue_provider,
+      preferences?.magic_prompt_providers?.investigate_pr_provider,
+      preferences?.default_provider,
+      preferences?.parallel_execution_prompt_enabled,
+      preferences?.chrome_enabled,
+      preferences?.ai_language,
+      setSessionProvider,
+      resolveCustomProfile,
+      cliStatus?.version,
+    ]
+  )
+
+  const handleInvestigateWorkflowRun = useCallback(
+    async (detail: WorkflowRunDetail) => {
+      const customPrompt = preferences?.magic_prompts?.investigate_workflow_run
       const template =
         customPrompt && customPrompt.trim()
           ? customPrompt
@@ -1564,15 +1786,21 @@ export function ChatWindow({
         .replace(/\{displayTitle\}/g, detail.displayTitle)
 
       const investigateModel =
-        preferences?.magic_prompt_models?.investigate_model ??
+        preferences?.magic_prompt_models?.investigate_workflow_run_model ??
         selectedModelRef.current
+      const investigateProvider = resolveMagicPromptProvider(
+        preferences?.magic_prompt_providers,
+        'investigate_workflow_run_provider',
+        preferences?.default_provider
+      )
+      const { customProfileName: resolvedInvestigateProfile } =
+        resolveCustomProfile(investigateModel, investigateProvider)
 
       // Find the right worktree for this branch
       let targetWorktreeId: string | null = null
       let targetWorktreePath: string | null = null
 
       if (detail.projectPath) {
-        console.warn('[INVESTIGATE-WF] Fetching projects...')
         // Use fetchQuery to ensure data is loaded (not just cached)
         const projects = await queryClient.fetchQuery({
           queryKey: projectsQueryKeys.list(),
@@ -1580,18 +1808,10 @@ export function ChatWindow({
           staleTime: 1000 * 60,
         })
         const project = projects?.find(p => p.path === detail.projectPath)
-        console.warn('[INVESTIGATE-WF] Project lookup:', {
-          projectPath: detail.projectPath,
-          found: !!project,
-          projectId: project?.id,
-          projectName: project?.name,
-          allProjectPaths: projects?.map(p => p.path),
-        })
 
         if (project) {
           let worktrees: Worktree[] = []
           try {
-            console.warn('[INVESTIGATE-WF] Fetching worktrees for project:', project.id)
             worktrees = await queryClient.fetchQuery({
               queryKey: projectsQueryKeys.worktrees(project.id),
               queryFn: () =>
@@ -1600,84 +1820,57 @@ export function ChatWindow({
                 }),
               staleTime: 1000 * 60,
             })
-            console.warn('[INVESTIGATE-WF] Worktrees fetched:', worktrees.map(w => ({
-              id: w.id,
-              branch: w.branch,
-              status: w.status,
-              session_type: w.session_type,
-              path: w.path,
-            })))
           } catch (err) {
             console.error('[INVESTIGATE-WF] Failed to fetch worktrees:', err)
           }
 
           // status is optional — undefined or 'ready' both mean usable
-          const isUsable = (w: Worktree) =>
-            !w.status || w.status === 'ready'
+          const isUsable = (w: Worktree) => !w.status || w.status === 'ready'
 
           if (worktrees.length > 0) {
             // Find worktree matching the run's branch
             const matching = worktrees.find(
               w => w.branch === detail.branch && isUsable(w)
             )
-            console.warn('[INVESTIGATE-WF] Branch match:', {
-              targetBranch: detail.branch,
-              matchingWorktree: matching ? { id: matching.id, branch: matching.branch, status: matching.status } : null,
-            })
             if (matching) {
               targetWorktreeId = matching.id
               targetWorktreePath = matching.path
             } else {
               // Fall back to the base worktree (first usable one)
               const base = worktrees.find(w => isUsable(w))
-              console.warn('[INVESTIGATE-WF] No branch match, fallback to base:', {
-                baseWorktree: base ? { id: base.id, branch: base.branch, status: base.status } : null,
-              })
               if (base) {
                 targetWorktreeId = base.id
                 targetWorktreePath = base.path
               }
             }
-          } else {
-            console.warn('[INVESTIGATE-WF] No worktrees found (empty array)')
           }
 
           // No usable worktrees — create the base session first
           if (!targetWorktreeId) {
-            console.warn('[INVESTIGATE-WF] No usable worktree found, creating base session for project:', project.id)
             try {
               const baseSession = await invoke<Worktree>(
                 'create_base_session',
                 { projectId: project.id }
               )
-              console.warn('[INVESTIGATE-WF] Base session created:', {
-                id: baseSession.id,
-                path: baseSession.path,
-                branch: baseSession.branch,
-                status: baseSession.status,
-              })
               queryClient.invalidateQueries({
                 queryKey: projectsQueryKeys.worktrees(project.id),
               })
               targetWorktreeId = baseSession.id
               targetWorktreePath = baseSession.path
             } catch (error) {
-              console.error('[INVESTIGATE-WF] Failed to create base session:', error)
+              console.error(
+                '[INVESTIGATE-WF] Failed to create base session:',
+                error
+              )
               toast.error(`Failed to open base session: ${error}`)
               return
             }
           }
         }
-      } else {
-        console.warn('[INVESTIGATE-WF] No projectPath in detail, skipping project lookup')
       }
 
       // Final fallback: use active worktree
       if (!targetWorktreeId || !targetWorktreePath) {
-        console.warn('[INVESTIGATE-WF] Using active worktree as final fallback:', {
-          activeWorktreeId: activeWorktreeIdRef.current,
-          activeWorktreePath: activeWorktreePathRef.current,
-        })
         targetWorktreeId = activeWorktreeIdRef.current
         targetWorktreePath = activeWorktreePathRef.current
       }
@@ -1688,22 +1881,23 @@ export function ChatWindow({
         return
       }
 
-      console.warn('[INVESTIGATE-WF] Target worktree resolved:', {
-        worktreeId: targetWorktreeId,
-        worktreePath: targetWorktreePath,
-      })
-
       // Capture for closure stability
       const worktreeId = targetWorktreeId
       const worktreePath = targetWorktreePath
 
+      // Compute adaptive thinking for the resolved provider (not the stale ref)
+      const investigateIsCustom = Boolean(investigateProvider && investigateProvider !== '__anthropic__')
+      const investigateUseAdaptive = !investigateIsCustom && supportsAdaptiveThinking(
+        investigateModel, cliStatus?.version ?? null
+      )
+
       const sendInvestigateMessage = (targetSessionId: string) => {
-        console.warn('[INVESTIGATE-WF] Sending investigate message to session:', targetSessionId)
         const {
           addSendingSession,
           setLastSentMessage,
           setError,
           setSelectedModel,
+          setSelectedProvider,
           setExecutingMode,
         } = useChatStore.getState()
 
@@ -1711,7 +1905,16 @@ export function ChatWindow({
         setError(targetSessionId, null)
         addSendingSession(targetSessionId)
         setSelectedModel(targetSessionId, investigateModel)
+        setSelectedProvider(targetSessionId, investigateProvider)
         setExecutingMode(targetSessionId, executionModeRef.current)
+
+        // Persist the provider to backend so subsequent messages use the same one
+        setSessionProvider.mutate({
+          sessionId: targetSessionId,
+          worktreeId,
+          worktreePath,
+          provider: investigateProvider,
+        })
 
         sendMessage.mutate(
           {
@@ -1722,16 +1925,19 @@ export function ChatWindow({
             model: investigateModel,
             executionMode: executionModeRef.current,
             thinkingLevel: selectedThinkingLevelRef.current,
-            effortLevel: useAdaptiveThinkingRef.current
+            effortLevel: investigateUseAdaptive
               ? selectedEffortLevelRef.current
               : undefined,
             mcpConfig: buildMcpConfigJson(
               mcpServersDataRef.current,
               enabledMcpServersRef.current
             ),
-            parallelExecutionPrompt: preferences?.parallel_execution_prompt_enabled
-              ? (preferences.magic_prompts?.parallel_execution ?? DEFAULT_PARALLEL_EXECUTION_PROMPT)
-              : undefined,
+            customProfileName: resolvedInvestigateProfile,
+            parallelExecutionPrompt:
+              preferences?.parallel_execution_prompt_enabled
+                ? (preferences.magic_prompts?.parallel_execution ??
+                  DEFAULT_PARALLEL_EXECUTION_PROMPT)
+                : undefined,
             chromeEnabled: preferences?.chrome_enabled ?? false,
             aiLanguage: preferences?.ai_language,
           },
@@ -1742,7 +1948,6 @@ export function ChatWindow({
       // Switch to the target worktree, create a new session, then send the prompt
       const { setActiveWorktree, setActiveSession } = useChatStore.getState()
       const { selectWorktree, expandProject } = useProjectsStore.getState()
-      console.warn('[INVESTIGATE-WF] Switching to worktree:', worktreeId)
       setActiveWorktree(worktreeId, worktreePath)
       selectWorktree(worktreeId)
 
@@ -1753,12 +1958,10 @@ export function ChatWindow({
       const project = projects?.find(p => p.path === detail.projectPath)
       if (project) expandProject(project.id)
 
-      console.warn('[INVESTIGATE-WF] Creating new session in worktree:', worktreeId)
       createSession.mutate(
         { worktreeId, worktreePath },
         {
           onSuccess: session => {
-            console.warn('[INVESTIGATE-WF] New session created:', session.id)
             setActiveSession(worktreeId, session.id)
             sendInvestigateMessage(session.id)
           },
@@ -1774,10 +1977,15 @@ export function ChatWindow({
       createSession,
       queryClient,
       preferences?.magic_prompts?.investigate_workflow_run,
-      preferences?.magic_prompt_models?.investigate_model,
+      preferences?.magic_prompt_models?.investigate_workflow_run_model,
+      preferences?.magic_prompt_providers?.investigate_workflow_run_provider,
+      preferences?.default_provider,
       preferences?.parallel_execution_prompt_enabled,
       preferences?.chrome_enabled,
       preferences?.ai_language,
+      setSessionProvider,
+      resolveCustomProfile,
+      cliStatus?.version,
     ]
   )
 
@@ -1795,10 +2003,21 @@ export function ChatWindow({
     handleMerge,
     handleResolveConflicts,
     handleInvestigateWorkflowRun,
+    handleInvestigate,
     isModal,
     isViewingCanvasTab,
     sessionModalOpen,
   })
+
+  // Pick up pending investigate type from UI store (set by projects.ts when
+  // worktree is created/unarchived with auto-investigate flag)
+  useEffect(() => {
+    if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
+    const type = useUIStore.getState().consumePendingInvestigateType()
+    if (type) {
+      handleInvestigate(type)
+    }
+  }, [activeSessionId, activeWorktreeId, activeWorktreePath, handleInvestigate])
 
   // Listen for command palette context events
   useEffect(() => {
@@ -1881,6 +2100,9 @@ export function ChatWindow({
     activeWorktreeIdRef,
     activeWorktreePathRef,
     selectedModelRef,
+    getCustomProfileName: () => {
+      return selectedProviderRef.current ?? undefined
+    },
     executionModeRef,
     selectedThinkingLevelRef,
     selectedEffortLevelRef,
@@ -2005,85 +2227,97 @@ export function ChatWindow({
   ])
 
   // Listen for review-fix-message events from ReviewResultsPanel
-  // This allows the panel to trigger message sends without prop drilling
+  // Fix messages are sent in the same session (the review session)
   useEffect(() => {
     const handleReviewFixMessage = (e: CustomEvent) => {
-      const { worktreeId, worktreePath, message, createNewSession } = e.detail
-      if (!worktreeId || !worktreePath || !message) return
+      // Skip if this is the modal ChatWindow (the main window handles the event)
+      if (isModal) return
 
-      const sendFixMessage = (targetSessionId: string) => {
-        const {
-          addSendingSession,
-          setSelectedModel,
-          setViewingReviewTab,
-          setExecutingMode,
-          setLastSentMessage,
-          setError,
-        } = useChatStore.getState()
+      const { sessionId, worktreeId, worktreePath, message } = e.detail
+      if (!sessionId || !worktreeId || !worktreePath || !message) return
+      // Only handle events for this ChatWindow's worktree (avoids duplicate from modal)
+      if (worktreeId !== activeWorktreeIdRef.current) return
 
-        // Switch back to chat view to show the fix message
-        setViewingReviewTab(worktreeId, false)
+      const {
+        addSendingSession,
+        setSelectedModel,
+        setExecutingMode,
+        setLastSentMessage,
+        setError,
+        isSending,
+        enqueueMessage,
+      } = useChatStore.getState()
 
-        // Send the fix message
-        setLastSentMessage(targetSessionId, message)
-        setError(targetSessionId, null)
-        addSendingSession(targetSessionId)
-        setSelectedModel(targetSessionId, selectedModelRef.current)
-        setExecutingMode(targetSessionId, 'build') // Always use build mode for fixes
-        const thinkingLvl = selectedThinkingLevelRef.current
-        const hasManualOverride = useChatStore
-          .getState()
-          .hasManualThinkingOverride(targetSessionId)
-        sendMessage.mutate(
-          {
-            sessionId: targetSessionId,
-            worktreeId,
-            worktreePath,
-            message,
-            model: selectedModelRef.current,
-            executionMode: 'build', // Always use build mode for fixes
-            thinkingLevel: thinkingLvl,
-            // Build mode: disable thinking if preference enabled and no manual override
-            disableThinkingForMode: thinkingLvl !== 'off' && !hasManualOverride,
-            effortLevel: useAdaptiveThinkingRef.current
-              ? selectedEffortLevelRef.current
+      const thinkingLvl = selectedThinkingLevelRef.current
+      const hasManualOverride = useChatStore
+        .getState()
+        .hasManualThinkingOverride(sessionId)
+      const fixResolved = resolveCustomProfile(selectedModelRef.current, selectedProviderRef.current)
+
+      // If session is already busy, queue the fix message instead of sending immediately
+      if (isSending(sessionId)) {
+        enqueueMessage(sessionId, {
+          id: generateId(),
+          message,
+          pendingImages: [],
+          pendingFiles: [],
+          pendingSkills: [],
+          pendingTextFiles: [],
+          model: fixResolved.model,
+          provider: fixResolved.customProfileName ?? null,
+          executionMode: 'build',
+          thinkingLevel: thinkingLvl,
+          disableThinkingForMode: thinkingLvl !== 'off' && !hasManualOverride,
+          effortLevel: useAdaptiveThinkingRef.current
+            ? selectedEffortLevelRef.current
+            : undefined,
+          mcpConfig: buildMcpConfigJson(
+            mcpServersDataRef.current,
+            enabledMcpServersRef.current
+          ),
+          queuedAt: Date.now(),
+        })
+        toast.info('Fix queued — will start when current task completes')
+        return
+      }
+
+      setLastSentMessage(sessionId, message)
+      setError(sessionId, null)
+      addSendingSession(sessionId)
+      setSelectedModel(sessionId, selectedModelRef.current)
+      setExecutingMode(sessionId, 'build')
+      sendMessage.mutate(
+        {
+          sessionId,
+          worktreeId,
+          worktreePath,
+          message,
+          model: fixResolved.model,
+          customProfileName: fixResolved.customProfileName,
+          executionMode: 'build',
+          thinkingLevel: thinkingLvl,
+          disableThinkingForMode: thinkingLvl !== 'off' && !hasManualOverride,
+          effortLevel: useAdaptiveThinkingRef.current
+            ? selectedEffortLevelRef.current
+            : undefined,
+          mcpConfig: buildMcpConfigJson(
+            mcpServersDataRef.current,
+            enabledMcpServersRef.current
+          ),
+          parallelExecutionPrompt:
+            preferences?.parallel_execution_prompt_enabled
+              ? (preferences.magic_prompts?.parallel_execution ??
+                DEFAULT_PARALLEL_EXECUTION_PROMPT)
               : undefined,
-            mcpConfig: buildMcpConfigJson(
-              mcpServersDataRef.current,
-              enabledMcpServersRef.current
-            ),
-            parallelExecutionPrompt: preferences?.parallel_execution_prompt_enabled
-              ? (preferences.magic_prompts?.parallel_execution ?? DEFAULT_PARALLEL_EXECUTION_PROMPT)
-              : undefined,
-            chromeEnabled: preferences?.chrome_enabled ?? false,
-            aiLanguage: preferences?.ai_language,
+          chromeEnabled: preferences?.chrome_enabled ?? false,
+          aiLanguage: preferences?.ai_language,
+        },
+        {
+          onSettled: () => {
+            inputRef.current?.focus()
           },
-          {
-            onSettled: () => {
-              inputRef.current?.focus()
-            },
-          }
-        )
-      }
-
-      if (createNewSession) {
-        // Create a new session first, then send the message
-        createSession.mutate(
-          { worktreeId, worktreePath },
-          {
-            onSuccess: session => {
-              useChatStore.getState().setActiveSession(worktreeId, session.id)
-              sendFixMessage(session.id)
-            },
-          }
-        )
-      } else {
-        // Use existing session (legacy behavior, shouldn't happen with new code)
-        const { sessionId } = e.detail
-        if (sessionId) {
-          sendFixMessage(sessionId)
         }
-      }
+      )
     }
 
     window.addEventListener(
@@ -2097,10 +2331,10 @@ export function ChatWindow({
       )
   }, [
     sendMessage,
-    createSession,
     preferences?.parallel_execution_prompt_enabled,
     preferences?.chrome_enabled,
     preferences?.ai_language,
+    isModal,
   ])
 
   // Handle removing a queued message
@@ -2111,9 +2345,18 @@ export function ChatWindow({
     []
   )
 
+  // Handle force-sending a stuck queued message
+  const handleForceSendQueued = useCallback((sessionId: string) => {
+    useChatStore.getState().forceProcessQueue(sessionId)
+  }, [])
+
   // Handle cancellation of running Claude process (triggered by Cmd+Option+Backspace / Ctrl+Alt+Backspace)
   const handleCancel = useCallback(async () => {
-    if (!activeSessionId || !activeWorktreeId || !isSending) return
+    if (!activeSessionId || !activeWorktreeId) return
+    // Read directly from store to avoid React re-render delay —
+    // allows canceling before the first response chunk arrives
+    const sending = useChatStore.getState().sendingSessionIds[activeSessionId] ?? false
+    if (!sending) return
 
     const cancelled = await cancelChatMessage(activeSessionId, activeWorktreeId)
     if (!cancelled) {
@@ -2121,7 +2364,7 @@ export function ChatWindow({
       toast.info('No active request to cancel')
     }
     // Note: The chat:cancelled event listener will handle UI cleanup
-  }, [activeSessionId, activeWorktreeId, isSending])
+  }, [activeSessionId, activeWorktreeId])
 
   // Handle removing a pending image
   const handleRemovePendingImage = useCallback(
@@ -2168,6 +2411,7 @@ export function ChatWindow({
         pendingSkills: [],
         pendingTextFiles: [],
         model: selectedModelRef.current,
+        provider: selectedProviderRef.current,
         executionMode: executionModeRef.current,
         thinkingLevel: selectedThinkingLevelRef.current,
         disableThinkingForMode: false,
@@ -2271,18 +2515,29 @@ export function ChatWindow({
 
   return (
     <ErrorBoundary
-      fallback={
-        <div className="flex h-full flex-col items-center justify-center gap-4 text-muted-foreground">
-          <span>Something went wrong. Please refresh the page.</span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => window.location.reload()}
-          >
-            Refresh
-          </Button>
-        </div>
-      }
+      onError={(error, errorInfo) => {
+        logger.error('ChatWindow crashed', {
+          error: error.message,
+          stack: error.stack,
+        })
+        saveCrashState(
+          { activeWorktreeId, activeSessionId },
+          {
+            error: error.message,
+            stack: error.stack ?? '',
+            componentStack: errorInfo.componentStack ?? undefined,
+          }
+        ).catch(() => {
+          /* noop */
+        })
+      }}
+      fallbackRender={({ error, resetErrorBoundary }) => (
+        <ChatErrorFallback
+          error={error}
+          resetErrorBoundary={resetErrorBoundary}
+          activeWorktreeId={activeWorktreeId}
+        />
+      )}
     >
       <div className="flex h-full w-full min-w-0 flex-col overflow-hidden">
         {/* Session tab bar - hidden in modal mode and canvas-only mode */}
@@ -2296,16 +2551,15 @@ export function ChatWindow({
         )}
 
         {/* Canvas view (when canvas tab is active) */}
-        {/* Canvas and review views - not shown in modal mode */}
         {!isModal && isViewingCanvasTab ? (
           <SessionCanvasView
             worktreeId={activeWorktreeId}
             worktreePath={activeWorktreePath}
           />
-        ) : !isModal && isViewingReviewTab ? (
-          <ReviewResultsPanel worktreeId={activeWorktreeId} />
         ) : (
-          <ResizablePanelGroup direction="vertical" className="flex-1">
+          <ResizablePanelGroup direction="horizontal" className="flex-1">
+            <ResizablePanel defaultSize={hasReviewResults && reviewSidebarVisible ? 50 : 100} minSize={40}>
+          <ResizablePanelGroup direction="vertical" className="h-full">
             <ResizablePanel
               defaultSize={terminalVisible ? 70 : 100}
               minSize={30}
@@ -2313,6 +2567,20 @@ export function ChatWindow({
               <div className="flex h-full flex-col">
                 {/* Messages area */}
                 <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
+                  {/* Session label badge */}
+                  {sessionLabel && (
+                    <div className="absolute top-2 right-4 z-10">
+                      <span
+                        className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium"
+                        style={{
+                          backgroundColor: sessionLabel.color,
+                          color: getLabelTextColor(sessionLabel.color),
+                        }}
+                      >
+                        {sessionLabel.name}
+                      </span>
+                    </div>
+                  )}
                   {/* Session digest reminder (shows when opening a session that had activity while out of focus) */}
                   {activeSessionId && (
                     <SessionDigestReminder sessionId={activeSessionId} />
@@ -2334,6 +2602,8 @@ export function ChatWindow({
                                 worktreeId={activeWorktreeId}
                                 worktreePath={activeWorktreePath}
                                 sessionId={activeSessionId}
+                                selectedModel={selectedModel}
+                                selectedProvider={selectedProvider}
                                 onFileClick={setViewingFilePath}
                               />
                             </div>
@@ -2348,8 +2618,8 @@ export function ChatWindow({
                           />
                         )}
                         {isLoading ||
-                        isSessionsLoading ||
-                        isSessionSwitching ? (
+                          isSessionsLoading ||
+                          isSessionSwitching ? (
                           <div className="text-muted-foreground">
                             Loading...
                           </div>
@@ -2438,6 +2708,8 @@ export function ChatWindow({
                             messages={currentQueuedMessages}
                             sessionId={activeSessionId}
                             onRemove={handleRemoveQueuedMessage}
+                            onForceSend={handleForceSendQueued}
+                            isSessionIdle={!isSending}
                           />
                         )}
                       </div>
@@ -2485,28 +2757,25 @@ export function ChatWindow({
                       className={cn(
                         'relative overflow-hidden rounded-lg transition-all duration-150',
                         isDragging &&
-                          'ring-2 ring-primary ring-inset bg-primary/5'
+                        'ring-2 ring-primary ring-inset bg-primary/5'
                       )}
                     >
                       {/* Pending file preview (@ mentions) */}
                       <FilePreview
                         files={currentPendingFiles}
                         onRemove={handleRemovePendingFile}
-                        disabled={isSending}
                       />
 
                       {/* Pending image preview */}
                       <ImagePreview
                         images={currentPendingImages}
                         onRemove={handleRemovePendingImage}
-                        disabled={isSending}
                       />
 
                       {/* Pending text file preview */}
                       <TextFilePreview
                         textFiles={currentPendingTextFiles}
                         onRemove={handleRemovePendingTextFile}
-                        disabled={isSending}
                       />
 
                       {/* Pending skills preview */}
@@ -2516,7 +2785,9 @@ export function ChatWindow({
                             <SkillBadge
                               key={skill.id}
                               skill={skill}
-                              onRemove={() => handleRemovePendingSkill(skill.id)}
+                              onRemove={() =>
+                                handleRemovePendingSkill(skill.id)
+                              }
                             />
                           ))}
                         </div>
@@ -2527,7 +2798,8 @@ export function ChatWindow({
                       {activeTodos.length > 0 &&
                         (dismissedTodoMessageId === null ||
                           (todoSourceMessageId !== null &&
-                            todoSourceMessageId !== dismissedTodoMessageId)) && (
+                            todoSourceMessageId !==
+                            dismissedTodoMessageId)) && (
                           <div className="px-4 md:px-6 pt-2">
                             <TodoWidget
                               todos={normalizeTodosForDisplay(
@@ -2569,6 +2841,8 @@ export function ChatWindow({
                         hasInputValue={hasInputValue}
                         executionMode={executionMode}
                         selectedModel={selectedModel}
+                        selectedProvider={selectedProvider}
+                        providerLocked={(session?.messages?.length ?? 0) > 0}
                         selectedThinkingLevel={selectedThinkingLevel}
                         selectedEffortLevel={selectedEffortLevel}
                         thinkingOverrideActive={
@@ -2578,6 +2852,7 @@ export function ChatWindow({
                           !hasManualThinkingOverride
                         }
                         useAdaptiveThinking={useAdaptiveThinkingFlag}
+                        hideThinkingLevel={hideThinkingLevel}
                         baseBranch={gitStatus?.base_branch ?? 'main'}
                         uncommittedAdded={uncommittedAdded}
                         uncommittedRemoved={uncommittedRemoved}
@@ -2602,17 +2877,22 @@ export function ChatWindow({
                         onCommit={handleCommit}
                         onCommitAndPush={handleCommitAndPush}
                         onOpenPr={handleOpenPr}
-                        onReview={handleReview}
+                        onReview={() => handleReview(activeSessionId ?? undefined)}
                         onMerge={handleMerge}
                         onResolvePrConflicts={handleResolvePrConflicts}
                         onResolveConflicts={handleResolveConflicts}
                         hasOpenPr={Boolean(worktree?.pr_url)}
                         onSetDiffRequest={setDiffRequest}
                         onModelChange={handleToolbarModelChange}
+                        onProviderChange={handleToolbarProviderChange}
+                        customCliProfiles={
+                          preferences?.custom_cli_profiles ?? []
+                        }
                         onThinkingLevelChange={handleToolbarThinkingLevelChange}
                         onEffortLevelChange={handleToolbarEffortLevelChange}
                         onSetExecutionMode={handleToolbarSetExecutionMode}
                         onCancel={handleCancel}
+                        queuedMessageCount={currentQueuedMessages.length}
                         availableMcpServers={availableMcpServers}
                         enabledMcpServers={enabledMcpServers}
                         onToggleMcpServer={handleToggleMcpServer}
@@ -2647,6 +2927,28 @@ export function ChatWindow({
                   </ResizablePanel>
                 </>
               )}
+          </ResizablePanelGroup>
+            </ResizablePanel>
+
+            {/* Review sidebar - shown when active session has review results */}
+            {hasReviewResults && (
+              <>
+                <ResizableHandle withHandle />
+                <ResizablePanel
+                  ref={reviewPanelRef}
+                  defaultSize={reviewSidebarVisible ? 50 : 0}
+                  minSize={reviewSidebarVisible ? 20 : 0}
+                  collapsible
+                  collapsedSize={0}
+                  onCollapse={handleReviewSidebarCollapse}
+                  onExpand={handleReviewSidebarExpand}
+                >
+                  {activeSessionId && (
+                    <ReviewResultsPanel sessionId={activeSessionId} />
+                  )}
+                </ResizablePanel>
+              </>
+            )}
           </ResizablePanelGroup>
         )}
 
@@ -2695,11 +2997,11 @@ export function ChatWindow({
               approvalContext={
                 activeWorktreeId && activeWorktreePath && activeSessionId
                   ? {
-                      worktreeId: activeWorktreeId,
-                      worktreePath: activeWorktreePath,
-                      sessionId: activeSessionId,
-                      pendingPlanMessageId: pendingPlanMessage?.id ?? null,
-                    }
+                    worktreeId: activeWorktreeId,
+                    worktreePath: activeWorktreePath,
+                    sessionId: activeSessionId,
+                    pendingPlanMessageId: pendingPlanMessage?.id ?? null,
+                  }
                   : undefined
               }
               onApprove={updatedPlan => {
@@ -2757,9 +3059,12 @@ export function ChatWindow({
                   pendingSkills: [],
                   pendingTextFiles: [],
                   model: selectedModelRef.current,
+                  provider: selectedProviderRef.current,
                   executionMode: 'build',
                   thinkingLevel: selectedThinkingLevelRef.current,
-                  disableThinkingForMode: !useChatStore.getState().hasManualThinkingOverride(activeSessionId),
+                  disableThinkingForMode: !useChatStore
+                    .getState()
+                    .hasManualThinkingOverride(activeSessionId),
                   effortLevel: useAdaptiveThinkingRef.current
                     ? selectedEffortLevelRef.current
                     : undefined,
@@ -2827,9 +3132,12 @@ export function ChatWindow({
                   pendingSkills: [],
                   pendingTextFiles: [],
                   model: selectedModelRef.current,
+                  provider: selectedProviderRef.current,
                   executionMode: 'yolo',
                   thinkingLevel: selectedThinkingLevelRef.current,
-                  disableThinkingForMode: !useChatStore.getState().hasManualThinkingOverride(activeSessionId),
+                  disableThinkingForMode: !useChatStore
+                    .getState()
+                    .hasManualThinkingOverride(activeSessionId),
                   effortLevel: useAdaptiveThinkingRef.current
                     ? selectedEffortLevelRef.current
                     : undefined,
@@ -2852,11 +3160,11 @@ export function ChatWindow({
               approvalContext={
                 activeWorktreeId && activeWorktreePath && activeSessionId
                   ? {
-                      worktreeId: activeWorktreeId,
-                      worktreePath: activeWorktreePath,
-                      sessionId: activeSessionId,
-                      pendingPlanMessageId: pendingPlanMessage?.id ?? null,
-                    }
+                    worktreeId: activeWorktreeId,
+                    worktreePath: activeWorktreePath,
+                    sessionId: activeSessionId,
+                    pendingPlanMessageId: pendingPlanMessage?.id ?? null,
+                  }
                   : undefined
               }
               onApprove={updatedPlan => {
@@ -2914,9 +3222,12 @@ export function ChatWindow({
                   pendingSkills: [],
                   pendingTextFiles: [],
                   model: selectedModelRef.current,
+                  provider: selectedProviderRef.current,
                   executionMode: 'build',
                   thinkingLevel: selectedThinkingLevelRef.current,
-                  disableThinkingForMode: !useChatStore.getState().hasManualThinkingOverride(activeSessionId),
+                  disableThinkingForMode: !useChatStore
+                    .getState()
+                    .hasManualThinkingOverride(activeSessionId),
                   effortLevel: useAdaptiveThinkingRef.current
                     ? selectedEffortLevelRef.current
                     : undefined,
@@ -2984,9 +3295,12 @@ export function ChatWindow({
                   pendingSkills: [],
                   pendingTextFiles: [],
                   model: selectedModelRef.current,
+                  provider: selectedProviderRef.current,
                   executionMode: 'yolo',
                   thinkingLevel: selectedThinkingLevelRef.current,
-                  disableThinkingForMode: !useChatStore.getState().hasManualThinkingOverride(activeSessionId),
+                  disableThinkingForMode: !useChatStore
+                    .getState()
+                    .hasManualThinkingOverride(activeSessionId),
                   effortLevel: useAdaptiveThinkingRef.current
                     ? selectedEffortLevelRef.current
                     : undefined,

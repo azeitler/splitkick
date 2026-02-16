@@ -2,31 +2,41 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 import { useSessions, useCreateSession } from '@/services/chat'
-import { useWorktree, useProjects } from '@/services/projects'
+import {
+  useWorktree,
+  useProjects,
+  useArchiveWorktree,
+  useDeleteWorktree,
+  useCloseBaseSessionClean,
+  useCloseBaseSessionArchive,
+} from '@/services/projects'
 import {
   useGitStatus,
-  gitPull,
   gitPush,
   fetchWorktreesStatus,
   triggerImmediateGitPoll,
+  performGitPull,
 } from '@/services/git-status'
 import { isBaseSession } from '@/types/projects'
 import { GitStatusBadges } from '@/components/ui/git-status-badges'
-import { NewIssuesBadge } from '@/components/shared/NewIssuesBadge'
-import { OpenPRsBadge } from '@/components/shared/OpenPRsBadge'
-import { FailedRunsBadge } from '@/components/shared/FailedRunsBadge'
 import { GitDiffModal } from './GitDiffModal'
 import type { DiffRequest } from '@/types/git-diff'
 import { toast } from 'sonner'
-import { computeSessionCardData } from './session-card-utils'
+import {
+  computeSessionCardData,
+  groupCardsByStatus,
+  flattenGroups,
+} from './session-card-utils'
 import { useCanvasStoreState } from './hooks/useCanvasStoreState'
 import { usePlanApproval } from './hooks/usePlanApproval'
 import { useSessionArchive } from './hooks/useSessionArchive'
 import { CanvasGrid } from './CanvasGrid'
+import { CloseWorktreeDialog } from './CloseWorktreeDialog'
+import { CanvasList } from './CanvasList'
 import { KeybindingHints } from '@/components/ui/keybinding-hints'
-import { usePreferences } from '@/services/preferences'
+import { usePreferences, useSavePreferences } from '@/services/preferences'
 import { DEFAULT_KEYBINDINGS } from '@/types/keybindings'
-import { Search, Loader2, MoreHorizontal, Settings, Plus, GitBranch } from 'lucide-react'
+import { Search, Loader2, MoreHorizontal, Settings, Plus, LayoutGrid, List } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -36,7 +46,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { useProjectsStore } from '@/store/projects-store'
+import { OpenInButton } from '@/components/open-in/OpenInButton'
 
 interface SessionCanvasViewProps {
   worktreeId: string
@@ -55,10 +67,9 @@ export function SessionCanvasView({
   const project = worktree
     ? projects?.find(p => p.id === worktree.project_id)
     : null
-  const sessionLabel =
-    worktree && isBaseSession(worktree) ? 'base' : worktree?.name
   const isBase = worktree ? isBaseSession(worktree) : false
 
+  // Running terminal indicator
   // Git status for header badges
   const { data: gitStatus } = useGitStatus(worktreeId)
   const behindCount =
@@ -83,22 +94,14 @@ export function SessionCanvasView({
   const handlePull = useCallback(
     async (e: React.MouseEvent) => {
       e.stopPropagation()
-      const { setWorktreeLoading, clearWorktreeLoading } =
-        useChatStore.getState()
-      setWorktreeLoading(worktreeId, 'pull')
-      const toastId = toast.loading('Pulling changes...')
-      try {
-        await gitPull(worktreePath, defaultBranch)
-        triggerImmediateGitPoll()
-        if (project) fetchWorktreesStatus(project.id)
-        toast.success('Changes pulled', { id: toastId })
-      } catch (error) {
-        toast.error(`Pull failed: ${error}`, { id: toastId })
-      } finally {
-        clearWorktreeLoading(worktreeId)
-      }
+      await performGitPull({
+        worktreeId,
+        worktreePath,
+        baseBranch: defaultBranch,
+        projectId: project?.id,
+      })
     },
-    [worktreeId, worktreePath, defaultBranch, project]
+    [worktreeId, worktreePath, defaultBranch, project?.id]
   )
 
   const handlePush = useCallback(
@@ -125,8 +128,10 @@ export function SessionCanvasView({
     })
   }, [isBase, worktreePath, defaultBranch])
 
-  // Preferences for keybinding hints
+  // Preferences for keybinding hints and layout
   const { data: preferences } = usePreferences()
+  const savePreferences = useSavePreferences()
+  const canvasLayout = preferences?.canvas_layout ?? 'grid'
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('')
@@ -137,6 +142,8 @@ export function SessionCanvasView({
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
     null
   )
+  // Track highlighted session to survive card reordering
+  const highlightedSessionIdRef = useRef<string | null>(null)
 
   // Use shared hooks
   const storeState = useCanvasStoreState()
@@ -150,7 +157,46 @@ export function SessionCanvasView({
     sessions: sessionsData?.sessions,
     worktree,
     project,
+    removalBehavior: preferences?.removal_behavior,
   })
+
+  // Worktree close (CMD+W on canvas)
+  const [closeWorktreeDialogOpen, setCloseWorktreeDialogOpen] = useState(false)
+  const archiveWorktree = useArchiveWorktree()
+  const deleteWorktree = useDeleteWorktree()
+  const closeBaseSessionClean = useCloseBaseSessionClean()
+  const closeBaseSessionArchive = useCloseBaseSessionArchive()
+
+  const handleCloseWorktree = useCallback(() => {
+    if (!worktree || !project) return
+    console.log('[CLOSE_WT] handleCloseWorktree called', { isBase, worktreeId, removalBehavior: preferences?.removal_behavior })
+    if (isBase) {
+      if (preferences?.removal_behavior === 'delete') {
+        console.log('[CLOSE_WT] -> closeBaseSessionClean')
+        closeBaseSessionClean.mutate({ worktreeId, projectId: project.id })
+      } else {
+        console.log('[CLOSE_WT] -> closeBaseSessionArchive')
+        closeBaseSessionArchive.mutate({ worktreeId, projectId: project.id })
+      }
+    } else if (preferences?.removal_behavior === 'delete') {
+      console.log('[CLOSE_WT] -> deleteWorktree')
+      deleteWorktree.mutate({ worktreeId, projectId: project.id })
+    } else {
+      console.log('[CLOSE_WT] -> archiveWorktree')
+      archiveWorktree.mutate({ worktreeId, projectId: project.id })
+    }
+    setCloseWorktreeDialogOpen(false)
+  }, [
+    worktree,
+    project,
+    isBase,
+    worktreeId,
+    preferences?.removal_behavior,
+    archiveWorktree,
+    deleteWorktree,
+    closeBaseSessionClean,
+    closeBaseSessionArchive,
+  ])
 
   // Session creation
   const createSession = useCreateSession()
@@ -179,22 +225,22 @@ export function SessionCanvasView({
   useEffect(() => {
     if (!sessionsData?.sessions?.length) return
 
-    const shouldAutoOpen = useUIStore
+    const autoOpen = useUIStore
       .getState()
       .consumeAutoOpenSession(worktreeId)
-    if (!shouldAutoOpen) return
+    if (!autoOpen.shouldOpen) return
 
-    const firstSession = sessionsData.sessions[0]
-    if (firstSession) {
-      setSelectedSessionId(firstSession.id)
+    const targetSession = autoOpen.sessionId
+      ? sessionsData.sessions.find(s => s.id === autoOpen.sessionId)
+      : sessionsData.sessions[0]
+    if (targetSession) {
+      setSelectedSessionId(targetSession.id)
     }
   }, [worktreeId, sessionsData?.sessions])
 
   // Listen for create-new-session event to handle Cmd+T
   useEffect(() => {
     const handleCreateNewSession = () => {
-      console.log('[SessionCanvasView] handleCreateNewSession called')
-      console.log('[SessionCanvasView] selectedSessionId:', selectedSessionId)
       // Don't create if modal is already open
       if (selectedSessionId) return
 
@@ -202,12 +248,9 @@ export function SessionCanvasView({
         { worktreeId, worktreePath },
         {
           onSuccess: session => {
-            console.log(
-              '[SessionCanvasView] onSuccess - session.id:',
-              session.id
-            )
+            // Update highlighted ref so canvas stays on new session after modal close
+            highlightedSessionIdRef.current = session.id
             setSelectedSessionId(session.id)
-            // selectedIndex will be synced reactively by the effect below
           },
         }
       )
@@ -221,35 +264,47 @@ export function SessionCanvasView({
   // Compute session card data (must be before effects that depend on it)
   const sessionCards = useMemo(() => {
     const sessions = sessionsData?.sessions ?? []
-    console.log(
-      '[SessionCanvasView] sessionCards useMemo - sessions count:',
-      sessions.length
-    )
-    console.log(
-      '[SessionCanvasView] sessionCards useMemo - first session id:',
-      sessions[0]?.id
-    )
     const cards = sessions.map(session =>
       computeSessionCardData(session, storeState)
     )
 
     // Filter by search query
-    if (!searchQuery.trim()) return cards
-    const q = searchQuery.toLowerCase()
-    return cards.filter(card => card.session.name?.toLowerCase().includes(q))
+    const filtered = searchQuery.trim()
+      ? cards.filter(card =>
+          card.session.name?.toLowerCase().includes(searchQuery.toLowerCase())
+        )
+      : cards
+
+    // Sort: labeled first, grouped by label name, then unlabeled
+    const sorted = [...filtered].sort((a, b) => {
+      if (a.label && !b.label) return -1
+      if (!a.label && b.label) return 1
+      if (a.label && b.label) return a.label.name.localeCompare(b.label.name)
+      return 0
+    })
+
+    // Re-order by status group so flat array matches visual group order
+    return flattenGroups(groupCardsByStatus(sorted))
   }, [sessionsData?.sessions, storeState, searchQuery])
 
-  // Sync selectedIndex when selectedSessionId changes and sessionCards updates
+  // Track highlighted session when selectedIndex changes (for surviving reorders)
+  const handleSelectedIndexChange = useCallback(
+    (index: number | null) => {
+      setSelectedIndex(index)
+      if (index !== null && sessionCards[index]) {
+        highlightedSessionIdRef.current = sessionCards[index].session.id
+      }
+    },
+    [sessionCards]
+  )
+
+  // Re-sync selectedIndex when sessionCards reorders (status changes, etc.)
   useEffect(() => {
-    if (!selectedSessionId) return
+    const highlightedId =
+      selectedSessionId ?? highlightedSessionIdRef.current
+    if (!highlightedId) return
     const cardIndex = sessionCards.findIndex(
-      card => card.session.id === selectedSessionId
-    )
-    console.log(
-      '[SessionCanvasView] sync selectedIndex - cardIndex:',
-      cardIndex,
-      'for session:',
-      selectedSessionId
+      card => card.session.id === highlightedId
     )
     if (cardIndex !== -1 && cardIndex !== selectedIndex) {
       setSelectedIndex(cardIndex)
@@ -281,11 +336,35 @@ export function SessionCanvasView({
     }
   }, [sessionCards, selectedIndex, selectedSessionId, worktreeId, worktreePath])
 
+  // Keep selectedIndex stable when sessionCards reorders (e.g. status changes during streaming)
+  useEffect(() => {
+    if (selectedIndex === null) return
+    const currentSessionId = useChatStore.getState().canvasSelectedSessionIds[worktreeId]
+    if (!currentSessionId) return
+    const newIndex = sessionCards.findIndex(c => c.session.id === currentSessionId)
+    if (newIndex !== -1 && newIndex !== selectedIndex) {
+      setSelectedIndex(newIndex)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionCards, worktreeId]) // intentionally omit selectedIndex to avoid loops
+
+  // Sync selection to store for cancel shortcut - updates when user navigates with arrow keys
+  useEffect(() => {
+    if (selectedSessionId) {
+      useChatStore.getState().setCanvasSelectedSession(worktreeId, selectedSessionId)
+    }
+  }, [selectedSessionId, worktreeId])
+
   // Handle opening full view from modal
   const handleOpenFullView = useCallback(() => {
     if (selectedSessionId) {
       setViewingCanvasTab(worktreeId, false)
       setActiveSession(worktreeId, selectedSessionId)
+      // Auto-open review sidebar if the session has review results
+      const { reviewResults, setReviewSidebarVisible } = useChatStore.getState()
+      if (reviewResults[selectedSessionId]) {
+        setReviewSidebarVisible(true)
+      }
       setSelectedSessionId(null)
     }
   }, [worktreeId, selectedSessionId, setViewingCanvasTab, setActiveSession])
@@ -299,48 +378,15 @@ export function SessionCanvasView({
             <div className="flex items-center gap-1">
               <h2 className="text-lg font-semibold">
                 {project?.name}
-                {sessionLabel && (
-                  <span className="ml-2 text-sm font-normal text-muted-foreground">
-                    ({sessionLabel})
-                  </span>
-                )}
+                {(() => {
+                  const displayBranch = gitStatus?.current_branch ?? worktree?.branch
+                  return displayBranch ? (
+                    <span className="ml-1.5 text-sm font-normal text-muted-foreground">
+                      · {displayBranch}
+                    </span>
+                  ) : null
+                })()}
               </h2>
-              {(() => {
-                const displayBranch = gitStatus?.current_branch ?? worktree?.branch
-                return displayBranch && displayBranch !== sessionLabel ? (
-                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                    <GitBranch className="h-3 w-3" />
-                    <span className="max-w-[150px] truncate">{displayBranch}</span>
-                  </span>
-                ) : null
-              })()}
-              {project && worktree && (
-                <NewIssuesBadge
-                  projectPath={project.path}
-                  projectId={worktree.project_id}
-                />
-              )}
-              {project && worktree && (
-                <OpenPRsBadge
-                  projectPath={project.path}
-                  projectId={worktree.project_id}
-                />
-              )}
-              {project && worktree && (
-                <FailedRunsBadge
-                  projectPath={project.path}
-                  branch={worktree.branch}
-                />
-              )}
-              <GitStatusBadges
-                behindCount={behindCount}
-                unpushedCount={unpushedCount}
-                diffAdded={diffAdded}
-                diffRemoved={diffRemoved}
-                onPull={handlePull}
-                onPush={handlePush}
-                onDiffClick={handleDiffClick}
-              />
               {worktree?.project_id && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -377,18 +423,51 @@ export function SessionCanvasView({
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
+              <GitStatusBadges
+                behindCount={behindCount}
+                unpushedCount={unpushedCount}
+                diffAdded={diffAdded}
+                diffRemoved={diffRemoved}
+                onPull={handlePull}
+                onPush={handlePush}
+                onDiffClick={handleDiffClick}
+              />
             </div>
           </div>
 
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              ref={searchInputRef}
-              placeholder="Search sessions..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="pl-9 bg-transparent border-border/30"
-            />
+          <div className="flex-1 flex justify-center max-w-md mx-auto">
+            <div className="relative w-full">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                ref={searchInputRef}
+                placeholder="Search sessions..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="pl-9 bg-transparent border-border/30"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <OpenInButton worktreePath={worktreePath} branch={gitStatus?.current_branch ?? worktree?.branch} />
+            <ToggleGroup
+              type="single"
+              size="sm"
+              variant="outline"
+              value={canvasLayout}
+              onValueChange={value => {
+                if (value && preferences) {
+                  savePreferences.mutate({ ...preferences, canvas_layout: value as 'grid' | 'list' })
+                }
+              }}
+            >
+              <ToggleGroupItem value="grid" aria-label="Grid view">
+                <LayoutGrid className="h-3.5 w-3.5" />
+              </ToggleGroupItem>
+              <ToggleGroupItem value="list" aria-label="List view">
+                <List className="h-3.5 w-3.5" />
+              </ToggleGroupItem>
+            </ToggleGroup>
           </div>
         </div>
 
@@ -405,23 +484,41 @@ export function SessionCanvasView({
                 ? 'No sessions match your search'
                 : 'No sessions yet'}
             </div>
-          ) : (
-            <CanvasGrid
-              cards={sessionCards}
-              worktreeId={worktreeId}
-              worktreePath={worktreePath}
-              selectedIndex={selectedIndex}
-              onSelectedIndexChange={setSelectedIndex}
-              selectedSessionId={selectedSessionId}
-              onSelectedSessionIdChange={setSelectedSessionId}
-              onOpenFullView={handleOpenFullView}
-              onArchiveSession={handleArchiveSession}
-              onDeleteSession={handleDeleteSession}
-              onPlanApproval={handlePlanApproval}
-              onPlanApprovalYolo={handlePlanApprovalYolo}
-              searchInputRef={searchInputRef}
-            />
-          )}
+          ) : canvasLayout === 'list' ? (
+              <CanvasList
+                cards={sessionCards}
+                worktreeId={worktreeId}
+                worktreePath={worktreePath}
+                selectedIndex={selectedIndex}
+                onSelectedIndexChange={handleSelectedIndexChange}
+                selectedSessionId={selectedSessionId}
+                onSelectedSessionIdChange={setSelectedSessionId}
+                onOpenFullView={handleOpenFullView}
+                onArchiveSession={handleArchiveSession}
+                onDeleteSession={handleDeleteSession}
+                onPlanApproval={handlePlanApproval}
+                onPlanApprovalYolo={handlePlanApprovalYolo}
+                onCloseWorktree={() => setCloseWorktreeDialogOpen(true)}
+                searchInputRef={searchInputRef}
+              />
+            ) : (
+              <CanvasGrid
+                cards={sessionCards}
+                worktreeId={worktreeId}
+                worktreePath={worktreePath}
+                selectedIndex={selectedIndex}
+                onSelectedIndexChange={handleSelectedIndexChange}
+                selectedSessionId={selectedSessionId}
+                onSelectedSessionIdChange={setSelectedSessionId}
+                onOpenFullView={handleOpenFullView}
+                onArchiveSession={handleArchiveSession}
+                onDeleteSession={handleDeleteSession}
+                onPlanApproval={handlePlanApproval}
+                onPlanApprovalYolo={handlePlanApprovalYolo}
+                onCloseWorktree={() => setCloseWorktreeDialogOpen(true)}
+                searchInputRef={searchInputRef}
+              />
+            )}
         </div>
       </div>
 
@@ -433,12 +530,24 @@ export function SessionCanvasView({
             { shortcut: 'P', label: 'plan' },
             { shortcut: 'R', label: 'recap' },
             {
+              shortcut: DEFAULT_KEYBINDINGS.open_in_modal as string,
+              label: 'open in...',
+            },
+            {
               shortcut: DEFAULT_KEYBINDINGS.new_worktree as string,
               label: 'new worktree',
             },
             {
               shortcut: DEFAULT_KEYBINDINGS.new_session as string,
               label: 'new session',
+            },
+            {
+              shortcut: DEFAULT_KEYBINDINGS.toggle_session_label as string,
+              label: 'label',
+            },
+            {
+              shortcut: DEFAULT_KEYBINDINGS.open_magic_modal as string,
+              label: 'magic',
             },
             {
               shortcut: DEFAULT_KEYBINDINGS.close_session_or_worktree as string,
@@ -451,6 +560,13 @@ export function SessionCanvasView({
       <GitDiffModal
         diffRequest={diffRequest}
         onClose={() => setDiffRequest(null)}
+      />
+
+      <CloseWorktreeDialog
+        open={closeWorktreeDialogOpen}
+        onOpenChange={setCloseWorktreeDialogOpen}
+        onConfirm={handleCloseWorktree}
+        branchName={gitStatus?.current_branch ?? worktree?.branch}
       />
     </div>
   )

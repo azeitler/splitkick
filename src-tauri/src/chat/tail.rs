@@ -99,6 +99,11 @@ impl NdjsonTailer {
     pub fn has_incomplete_data(&self) -> bool {
         !self.buffer.is_empty()
     }
+
+    /// Drain and return any buffered incomplete data.
+    pub fn drain_buffer(&mut self) -> String {
+        std::mem::take(&mut self.buffer)
+    }
 }
 
 #[cfg(test)]

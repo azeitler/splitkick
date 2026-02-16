@@ -138,6 +138,22 @@ struct CompactedEvent {
 // Detached Claude CLI execution
 // =============================================================================
 
+/// Apply custom CLI profile settings to a Command (adds --settings flag if profile exists).
+/// Reusable for both main chat sessions and one-shot magic prompt operations.
+pub fn apply_custom_profile_settings(cmd: &mut std::process::Command, profile_name: Option<&str>) {
+    if let Some(name) = profile_name {
+        if !name.is_empty() {
+            if let Ok(path) = crate::get_cli_profile_path(name) {
+                if path.exists() {
+                    cmd.arg("--settings").arg(&path);
+                } else {
+                    log::warn!("CLI profile file not found for '{name}': {}", path.display());
+                }
+            }
+        }
+    }
+}
+
 /// Build CLI arguments for Claude CLI.
 ///
 /// Returns a tuple of (args, env_vars) where env_vars are (key, value) pairs.
@@ -157,6 +173,7 @@ fn build_claude_args(
     ai_language: Option<&str>,
     mcp_config: Option<&str>,
     chrome_enabled: bool,
+    custom_profile_name: Option<&str>,
 ) -> (Vec<String>, Vec<(String, String)>) {
     let mut args = Vec::new();
     let mut env_vars = Vec::new();
@@ -226,6 +243,23 @@ fn build_claude_args(
         mode == "build" || mode == "yolo"
     };
 
+    // Custom profile settings: resolve name → file path, pass to --settings (secrets stay in file, not in ps)
+    if let Some(name) = custom_profile_name {
+        if !name.is_empty() {
+            if let Ok(path) = crate::get_cli_profile_path(name) {
+                if path.exists() {
+                    args.push("--settings".to_string());
+                    args.push(path.to_string_lossy().to_string());
+                } else {
+                    log::warn!("CLI profile file not found for '{name}': {}", path.display());
+                }
+            }
+        }
+    }
+
+    // Thinking/effort settings: passed as separate --settings JSON (no secrets here)
+    let mut settings_json: Option<serde_json::Value> = None;
+
     if let Some(effort) = effort_level {
         // Opus 4.6 adaptive thinking: use effort parameter via --settings JSON
         let effective_effort = if is_non_plan_override {
@@ -235,11 +269,15 @@ fn build_claude_args(
         };
 
         if let Some(effort_value) = effective_effort.effort_value() {
-            let settings = format!(r#"{{"effortLevel": "{effort_value}"}}"#);
-            args.push("--settings".to_string());
-            args.push(settings);
+            let obj = settings_json.get_or_insert_with(|| serde_json::json!({}));
+            if let Some(map) = obj.as_object_mut() {
+                map.insert(
+                    "effortLevel".to_string(),
+                    serde_json::Value::String(effort_value.to_string()),
+                );
+            }
         }
-        // If Off, don't send any thinking/effort settings
+        // If Off, don't send any thinking/effort settings (but still send custom profile if present)
     } else {
         // Traditional thinking levels (Opus 4.5, Sonnet, Haiku)
         let effective_thinking_level = if is_non_plan_override {
@@ -249,18 +287,24 @@ fn build_claude_args(
         };
 
         if let Some(level) = effective_thinking_level {
-            let settings = if level.is_enabled() {
-                r#"{"alwaysThinkingEnabled": true}"#
-            } else {
-                r#"{"alwaysThinkingEnabled": false}"#
-            };
-            args.push("--settings".to_string());
-            args.push(settings.to_string());
+            let obj = settings_json.get_or_insert_with(|| serde_json::json!({}));
+            if let Some(map) = obj.as_object_mut() {
+                map.insert(
+                    "alwaysThinkingEnabled".to_string(),
+                    serde_json::Value::Bool(level.is_enabled()),
+                );
+            }
 
             if let Some(tokens) = level.thinking_tokens() {
                 env_vars.push(("MAX_THINKING_TOKENS".to_string(), tokens.to_string()));
             }
         }
+    }
+
+    // Emit --settings if we have any settings to pass
+    if let Some(settings) = &settings_json {
+        args.push("--settings".to_string());
+        args.push(settings.to_string());
     }
 
     // Allowed tools
@@ -316,6 +360,20 @@ fn build_claude_args(
         }
     }
 
+    // Global system prompt from preferences (like ~/.claude/CLAUDE.md)
+    if let Ok(prefs_path) = crate::get_preferences_path(app) {
+        if let Ok(contents) = std::fs::read_to_string(&prefs_path) {
+            if let Ok(prefs) = serde_json::from_str::<crate::AppPreferences>(&contents) {
+                if let Some(prompt) = &prefs.magic_prompts.global_system_prompt {
+                    let prompt = prompt.trim();
+                    if !prompt.is_empty() {
+                        system_prompt_parts.push(prompt.to_string());
+                    }
+                }
+            }
+        }
+    }
+
     // Parallel execution prompt - encourages sub-agent parallelization
     if let Some(prompt) = parallel_execution_prompt {
         let prompt = prompt.trim();
@@ -363,7 +421,17 @@ fn build_claude_args(
     let mut all_context_paths: Vec<std::path::PathBuf> = Vec::new();
 
     // Check for issue context files (shared storage)
-    if let Ok(issue_keys) = get_session_issue_refs(app, session_id) {
+    // Merge session_id refs + worktree_id refs (worktree refs cover PR/issue-based worktrees
+    // where the background thread may not have copied refs to the session yet)
+    let mut issue_keys = get_session_issue_refs(app, session_id).unwrap_or_default();
+    if let Ok(wt_keys) = get_session_issue_refs(app, worktree_id) {
+        for key in wt_keys {
+            if !issue_keys.contains(&key) {
+                issue_keys.push(key);
+            }
+        }
+    }
+    if !issue_keys.is_empty() {
         if let Ok(contexts_dir) = get_github_contexts_dir(app) {
             log::debug!(
                 "Checking for issue context files in {:?} for session {}",
@@ -387,7 +455,15 @@ fn build_claude_args(
     }
 
     // Check for PR context files (shared storage)
-    if let Ok(pr_keys) = get_session_pr_refs(app, session_id) {
+    let mut pr_keys = get_session_pr_refs(app, session_id).unwrap_or_default();
+    if let Ok(wt_keys) = get_session_pr_refs(app, worktree_id) {
+        for key in wt_keys {
+            if !pr_keys.contains(&key) {
+                pr_keys.push(key);
+            }
+        }
+    }
+    if !pr_keys.is_empty() {
         if let Ok(contexts_dir) = get_github_contexts_dir(app) {
             for key in pr_keys {
                 let parts: Vec<&str> = key.rsplitn(2, '-').collect();
@@ -580,6 +656,7 @@ pub fn execute_claude_detached(
     ai_language: Option<&str>,
     mcp_config: Option<&str>,
     chrome_enabled: bool,
+    custom_profile_name: Option<&str>,
 ) -> Result<(u32, ClaudeResponse), String> {
     use super::detached::spawn_detached_claude;
     use crate::claude_cli::resolve_cli_binary;
@@ -623,6 +700,7 @@ pub fn execute_claude_detached(
         ai_language,
         mcp_config,
         chrome_enabled,
+        custom_profile_name,
     );
 
     // Log the full Claude CLI command for debugging
@@ -631,6 +709,11 @@ pub fn execute_claude_detached(
         cli_path.display(),
         args.join(" ")
     );
+    if !env_vars.is_empty() {
+        // Log env var keys only (not values, which may contain secrets)
+        let env_keys: Vec<&str> = env_vars.iter().map(|(k, _)| k.as_str()).collect();
+        log::debug!("Claude CLI env vars: {}", env_keys.join(", "));
+    }
 
     // Convert env_vars to &str references for spawn_detached_claude
     let env_refs: Vec<(&str, &str)> = env_vars
@@ -719,6 +802,7 @@ pub fn tail_claude_output(
     let mut completed = false;
     let mut cancelled = false;
     let mut usage: Option<UsageData> = None;
+    let mut error_lines: Vec<String> = Vec::new();
 
     // Timeout configuration:
     // - Startup timeout: Wait up to 120 seconds for first Claude output (API connection time)
@@ -759,7 +843,11 @@ pub fn tail_claude_output(
             let msg: serde_json::Value = match serde_json::from_str(&line) {
                 Ok(m) => m,
                 Err(e) => {
-                    log::trace!("Failed to parse line: {e}");
+                    log::trace!("Failed to parse line as JSON: {e}");
+                    let trimmed = line.trim().to_string();
+                    if !trimmed.is_empty() {
+                        error_lines.push(trimmed);
+                    }
                     continue;
                 }
             };
@@ -1152,6 +1240,16 @@ pub fn tail_claude_output(
             // During startup, wait longer but check for complete failure
             let elapsed = started_at.elapsed();
 
+            // Early exit if process died during startup (5s grace for slow spawning)
+            if !process_alive && elapsed > Duration::from_secs(5) {
+                log::warn!(
+                    "Process {pid} died during startup after {:.1}s with no Claude output",
+                    elapsed.as_secs_f64()
+                );
+                cancelled = true;
+                break;
+            }
+
             if elapsed > startup_timeout {
                 log::warn!(
                     "Startup timeout ({:?}) exceeded waiting for Claude output, process_alive: {process_alive}",
@@ -1173,6 +1271,39 @@ pub fn tail_claude_output(
 
         // Sleep before next poll
         std::thread::sleep(POLL_INTERVAL);
+    }
+
+    // Surface CLI errors when process failed with no meaningful output
+    if cancelled || (full_content.is_empty() && !received_claude_output) {
+        // Drain any remaining buffered content from the output file
+        if let Ok(remaining) = tailer.poll() {
+            for line in remaining {
+                let trimmed = line.trim();
+                if !trimmed.is_empty()
+                    && !trimmed.contains("\"_run_meta\"")
+                    && serde_json::from_str::<serde_json::Value>(trimmed).is_err()
+                {
+                    error_lines.push(trimmed.to_string());
+                }
+            }
+        }
+        let drained = tailer.drain_buffer();
+        if !drained.trim().is_empty() {
+            error_lines.push(drained.trim().to_string());
+        }
+    }
+
+    if !error_lines.is_empty() && full_content.is_empty() {
+        let error_text = error_lines.join("\n");
+        log::warn!("CLI error output for session {session_id}: {error_text}");
+        let _ = app.emit_all(
+            "chat:error",
+            &ErrorEvent {
+                session_id: session_id.to_string(),
+                worktree_id: worktree_id.to_string(),
+                error: format!("Claude CLI failed: {error_text}"),
+            },
+        );
     }
 
     // Emit done event only if not cancelled

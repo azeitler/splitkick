@@ -20,6 +20,7 @@ import type {
 import type { ReviewFinding } from '@/types/chat'
 import { formatAnswersAsNaturalLanguage } from '@/services/chat'
 import { parseReviewFindings, getFindingKey } from '../review-finding-utils'
+import { generateId } from '@/lib/uuid'
 
 /** Git commands to auto-approve for magic prompts (no permission prompts needed) */
 export const GIT_ALLOWED_TOOLS = [
@@ -42,6 +43,7 @@ interface SendMessageMutation {
       allowedTools?: string[]
       disableThinkingForMode?: boolean
       mcpConfig?: string
+      customProfileName?: string
     },
     options?: {
       onSettled?: () => void
@@ -56,6 +58,7 @@ interface UseMessageHandlersParams {
   activeWorktreePathRef: RefObject<string | null | undefined>
   // Refs for settings (stable across re-renders)
   selectedModelRef: RefObject<string>
+  getCustomProfileName: () => string | undefined
   executionModeRef: RefObject<ExecutionMode>
   selectedThinkingLevelRef: RefObject<ThinkingLevel>
   selectedEffortLevelRef: RefObject<EffortLevel>
@@ -66,7 +69,7 @@ interface UseMessageHandlersParams {
   sendMessage: SendMessageMutation
   queryClient: QueryClient
   // Callbacks
-  scrollToBottom: () => void
+  scrollToBottom: (instant?: boolean) => void
   inputRef: RefObject<HTMLTextAreaElement | null>
   // For pending plan approval callback
   pendingPlanMessage: ChatMessage | null | undefined
@@ -112,6 +115,7 @@ export function useMessageHandlers({
   activeWorktreeIdRef,
   activeWorktreePathRef,
   selectedModelRef,
+  getCustomProfileName,
   executionModeRef,
   selectedThinkingLevelRef,
   selectedEffortLevelRef,
@@ -167,8 +171,12 @@ export function useMessageHandlers({
         )
       })
 
-      // Scroll to bottom to compensate for the question form collapsing
-      scrollToBottom()
+      // Scroll to bottom after DOM updates from collapsing the question form
+      // rAF ensures React has processed state changes before we read scrollHeight.
+      // Using instant scroll so stale scrollHeight during animation isn't a concern.
+      requestAnimationFrame(() => {
+        scrollToBottom(true)
+      })
 
       // Format answers as natural language
       const message = formatAnswersAsNaturalLanguage(questions, answers)
@@ -192,6 +200,7 @@ export function useMessageHandlers({
             ? selectedEffortLevelRef.current
             : undefined,
           mcpConfig: getMcpConfig(),
+        customProfileName: getCustomProfileName(),
         },
         {
           onSettled: () => {
@@ -210,6 +219,7 @@ export function useMessageHandlers({
       selectedEffortLevelRef,
       useAdaptiveThinkingRef,
       getMcpConfig,
+      getCustomProfileName,
       sendMessage,
       scrollToBottom,
       inputRef,
@@ -328,15 +338,15 @@ export function useMessageHandlers({
       setSessionReviewing(sessionId, false)
       setWaitingForInput(sessionId, false)
 
+      // Scroll to bottom after DOM updates from collapsing the plan approval UI
+      requestAnimationFrame(() => {
+        scrollToBottom(true)
+      })
+
       // Format approval message - include updated plan if provided
       const message = updatedPlan
         ? `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
         : 'Approved'
-      console.log(
-        '[useMessageHandlers] handlePlanApproval - message:',
-        message.substring(0, 100)
-      )
-
       // Send approval message to Claude so it continues with execution
       // NOTE: setLastSentMessage is critical for permission denial flow - without it,
       // the denied message context won't be set and approval UI won't work
@@ -360,6 +370,7 @@ export function useMessageHandlers({
             : undefined,
           disableThinkingForMode: true, // Always disable thinking when executing approved plan
           mcpConfig: getMcpConfig(),
+        customProfileName: getCustomProfileName(),
         },
         {
           onSettled: () => {
@@ -377,6 +388,8 @@ export function useMessageHandlers({
       selectedEffortLevelRef,
       useAdaptiveThinkingRef,
       getMcpConfig,
+      getCustomProfileName,
+      scrollToBottom,
       sendMessage,
       queryClient,
       inputRef,
@@ -439,15 +452,15 @@ export function useMessageHandlers({
       setSessionReviewing(sessionId, false)
       setWaitingForInput(sessionId, false)
 
+      // Scroll to bottom after DOM updates from collapsing the plan approval UI
+      requestAnimationFrame(() => {
+        scrollToBottom(true)
+      })
+
       // Format approval message - include updated plan if provided
       const message = updatedPlan
         ? `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
         : 'Approved - yolo'
-      console.log(
-        '[useMessageHandlers] handlePlanApprovalYolo - message:',
-        message.substring(0, 100)
-      )
-
       // Send approval message to Claude so it continues with execution
       setLastSentMessage(sessionId, message)
       setError(sessionId, null)
@@ -469,6 +482,7 @@ export function useMessageHandlers({
             : undefined,
           disableThinkingForMode: true, // Always disable thinking when executing approved plan
           mcpConfig: getMcpConfig(),
+        customProfileName: getCustomProfileName(),
         },
         {
           onSettled: () => {
@@ -486,6 +500,8 @@ export function useMessageHandlers({
       selectedEffortLevelRef,
       useAdaptiveThinkingRef,
       getMcpConfig,
+      getCustomProfileName,
+      scrollToBottom,
       sendMessage,
       queryClient,
       inputRef,
@@ -529,6 +545,11 @@ export function useMessageHandlers({
     setSessionReviewing(sessionId, false)
     setWaitingForInput(sessionId, false)
 
+    // Scroll to bottom after DOM updates from collapsing the plan approval UI
+    requestAnimationFrame(() => {
+      scrollToBottom(true)
+    })
+
     // Explicitly set to build mode (not toggle, to avoid switching back to plan if already in build)
     setMode(sessionId, 'build')
     setSelectedModel(sessionId, selectedModelRef.current)
@@ -555,6 +576,7 @@ export function useMessageHandlers({
           : undefined,
         disableThinkingForMode: true, // Always disable thinking when executing approved plan
         mcpConfig: getMcpConfig(),
+        customProfileName: getCustomProfileName(),
       },
       {
         onSettled: () => {
@@ -571,6 +593,8 @@ export function useMessageHandlers({
     selectedEffortLevelRef,
     useAdaptiveThinkingRef,
     getMcpConfig,
+    getCustomProfileName,
+    scrollToBottom,
     sendMessage,
     inputRef,
   ])
@@ -605,6 +629,11 @@ export function useMessageHandlers({
     setSessionReviewing(sessionId, false)
     setWaitingForInput(sessionId, false)
 
+    // Scroll to bottom after DOM updates from collapsing the plan approval UI
+    requestAnimationFrame(() => {
+      scrollToBottom(true)
+    })
+
     // Set to yolo mode for auto-approval of all future tools
     setMode(sessionId, 'yolo')
     setSelectedModel(sessionId, selectedModelRef.current)
@@ -629,6 +658,7 @@ export function useMessageHandlers({
           : undefined,
         disableThinkingForMode: true, // Always disable thinking when executing approved plan
         mcpConfig: getMcpConfig(),
+        customProfileName: getCustomProfileName(),
       },
       {
         onSettled: () => {
@@ -645,6 +675,8 @@ export function useMessageHandlers({
     selectedEffortLevelRef,
     useAdaptiveThinkingRef,
     getMcpConfig,
+    getCustomProfileName,
+    scrollToBottom,
     sendMessage,
     inputRef,
   ])
@@ -693,6 +725,11 @@ export function useMessageHandlers({
       clearPendingDenials(sessionId)
       clearDeniedMessageContext(sessionId)
       setWaitingForInput(sessionId, false)
+
+      // Scroll to bottom after DOM updates from collapsing the permission approval UI
+      requestAnimationFrame(() => {
+        scrollToBottom(true)
+      })
 
       // Build explicit continuation message that tells Claude exactly what to run
       // Extract commands from Bash(command) patterns for a more direct instruction
@@ -748,6 +785,7 @@ export function useMessageHandlers({
             : undefined,
           allowedTools: [...GIT_ALLOWED_TOOLS, ...allApprovedTools],
           mcpConfig: getMcpConfig(),
+        customProfileName: getCustomProfileName(),
         },
         {
           onSettled: () => {
@@ -765,6 +803,8 @@ export function useMessageHandlers({
       selectedEffortLevelRef,
       useAdaptiveThinkingRef,
       getMcpConfig,
+      getCustomProfileName,
+      scrollToBottom,
       sendMessage,
       inputRef,
     ]
@@ -811,6 +851,11 @@ export function useMessageHandlers({
       clearPendingDenials(sessionId)
       clearDeniedMessageContext(sessionId)
       setWaitingForInput(sessionId, false)
+
+      // Scroll to bottom after DOM updates from collapsing the permission approval UI
+      requestAnimationFrame(() => {
+        scrollToBottom(true)
+      })
 
       // Build explicit continuation message that tells Claude exactly what to run
       // Extract commands from Bash(command) patterns for a more direct instruction
@@ -867,6 +912,7 @@ export function useMessageHandlers({
             ? selectedEffortLevelRef.current
             : undefined,
           mcpConfig: getMcpConfig(),
+        customProfileName: getCustomProfileName(),
         },
         {
           onSettled: () => {
@@ -883,6 +929,8 @@ export function useMessageHandlers({
       selectedEffortLevelRef,
       useAdaptiveThinkingRef,
       getMcpConfig,
+      getCustomProfileName,
+      scrollToBottom,
       sendMessage,
       inputRef,
     ]
@@ -941,12 +989,9 @@ Please apply this fix to the file.`
         setSelectedModel,
         setExecutingMode,
         markFindingFixed,
+        isSending,
+        enqueueMessage,
       } = useChatStore.getState()
-      setLastSentMessage(sessionId, message)
-      setError(sessionId, null)
-      addSendingSession(sessionId)
-      setSelectedModel(sessionId, selectedModelRef.current)
-      setExecutingMode(sessionId, 'build') // Fixes are always in build mode
 
       // Mark this finding as fixed (we don't have the index here, so we generate a key based on file+line)
       // The finding key format is: file:line:index - we'll match on file:line prefix
@@ -971,6 +1016,36 @@ Please apply this fix to the file.`
         markFindingFixed(sessionId, getFindingKey(finding, findingIndex))
       }
 
+      // If session is already busy, queue the fix message
+      if (isSending(sessionId)) {
+        enqueueMessage(sessionId, {
+          id: generateId(),
+          message,
+          pendingImages: [],
+          pendingFiles: [],
+          pendingSkills: [],
+          pendingTextFiles: [],
+          model: selectedModelRef.current,
+          provider: getCustomProfileName() ?? null,
+          executionMode: 'build',
+          thinkingLevel: selectedThinkingLevelRef.current,
+          disableThinkingForMode: false,
+          effortLevel: useAdaptiveThinkingRef.current
+            ? selectedEffortLevelRef.current
+            : undefined,
+          mcpConfig: getMcpConfig(),
+          queuedAt: Date.now(),
+        })
+        toast.info('Fix queued — will start when current task completes')
+        return
+      }
+
+      setLastSentMessage(sessionId, message)
+      setError(sessionId, null)
+      addSendingSession(sessionId)
+      setSelectedModel(sessionId, selectedModelRef.current)
+      setExecutingMode(sessionId, 'build') // Fixes are always in build mode
+
       sendMessage.mutate(
         {
           sessionId,
@@ -984,6 +1059,7 @@ Please apply this fix to the file.`
             ? selectedEffortLevelRef.current
             : undefined,
           mcpConfig: getMcpConfig(),
+        customProfileName: getCustomProfileName(),
         },
         {
           onSettled: () => {
@@ -1001,6 +1077,7 @@ Please apply this fix to the file.`
       selectedEffortLevelRef,
       useAdaptiveThinkingRef,
       getMcpConfig,
+      getCustomProfileName,
       sendMessage,
       queryClient,
       inputRef,
@@ -1049,12 +1126,9 @@ Please apply all these fixes to the respective files.`
         setSelectedModel,
         setExecutingMode,
         markFindingFixed,
+        isSending,
+        enqueueMessage,
       } = useChatStore.getState()
-      setLastSentMessage(sessionId, message)
-      setError(sessionId, null)
-      addSendingSession(sessionId)
-      setSelectedModel(sessionId, selectedModelRef.current)
-      setExecutingMode(sessionId, 'build') // Fixes are always in build mode
 
       // Mark all findings as fixed
       // Get sessions data from query cache instead of closure for stable callback
@@ -1081,6 +1155,36 @@ Please apply all these fixes to the respective files.`
         }
       }
 
+      // If session is already busy, queue the fix message
+      if (isSending(sessionId)) {
+        enqueueMessage(sessionId, {
+          id: generateId(),
+          message,
+          pendingImages: [],
+          pendingFiles: [],
+          pendingSkills: [],
+          pendingTextFiles: [],
+          model: selectedModelRef.current,
+          provider: getCustomProfileName() ?? null,
+          executionMode: 'build',
+          thinkingLevel: selectedThinkingLevelRef.current,
+          disableThinkingForMode: false,
+          effortLevel: useAdaptiveThinkingRef.current
+            ? selectedEffortLevelRef.current
+            : undefined,
+          mcpConfig: getMcpConfig(),
+          queuedAt: Date.now(),
+        })
+        toast.info('Fix queued — will start when current task completes')
+        return
+      }
+
+      setLastSentMessage(sessionId, message)
+      setError(sessionId, null)
+      addSendingSession(sessionId)
+      setSelectedModel(sessionId, selectedModelRef.current)
+      setExecutingMode(sessionId, 'build') // Fixes are always in build mode
+
       sendMessage.mutate(
         {
           sessionId,
@@ -1094,6 +1198,7 @@ Please apply all these fixes to the respective files.`
             ? selectedEffortLevelRef.current
             : undefined,
           mcpConfig: getMcpConfig(),
+        customProfileName: getCustomProfileName(),
         },
         {
           onSettled: () => {
@@ -1111,6 +1216,7 @@ Please apply all these fixes to the respective files.`
       selectedEffortLevelRef,
       useAdaptiveThinkingRef,
       getMcpConfig,
+      getCustomProfileName,
       sendMessage,
       queryClient,
       inputRef,

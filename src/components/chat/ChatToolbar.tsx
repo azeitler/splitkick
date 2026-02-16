@@ -2,13 +2,14 @@ import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { getModifierSymbol, isMacOS } from '@/lib/platform'
 import { toast } from 'sonner'
 import {
-  gitPull,
   gitPush,
   triggerImmediateGitPoll,
   fetchWorktreesStatus,
+  performGitPull,
 } from '@/services/git-status'
 import { useChatStore } from '@/store/chat-store'
 import {
+  Activity,
   ArrowDownToLine,
   ArrowUpToLine,
   BookmarkPlus,
@@ -74,6 +75,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Markdown } from '@/components/ui/markdown'
 import { cn } from '@/lib/utils'
 import type { ClaudeModel } from '@/store/chat-store'
+import type { CustomCliProfile } from '@/types/preferences'
 import { useMcpHealthCheck } from '@/services/mcp'
 import type { McpServerInfo, McpHealthStatus } from '@/types/chat'
 import type { ThinkingLevel, EffortLevel, ExecutionMode } from '@/types/chat'
@@ -83,6 +85,7 @@ import type {
   MergeableStatus,
 } from '@/types/pr-status'
 import type { DiffRequest } from '@/types/git-diff'
+import { useUIStore } from '@/store/ui-store'
 import type {
   LoadedIssueContext,
   LoadedPullRequestContext,
@@ -148,35 +151,67 @@ function getPrStatusDisplay(status: PrDisplayStatus): {
   }
 }
 
-/** Check status icon component */
-function CheckStatusIcon({ status }: { status: CheckStatus | null }) {
+/** Check status button — opens workflow runs modal on click */
+function CheckStatusButton({
+  status,
+  projectPath,
+}: {
+  status: CheckStatus | null
+  projectPath: string | undefined
+}) {
+  const handleClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      if (!projectPath) return
+      const { setWorkflowRunsModalOpen } = useUIStore.getState()
+      setWorkflowRunsModalOpen(true, projectPath)
+    },
+    [projectPath]
+  )
+
   if (!status) return null
 
+  let className: string
+  let tooltip: string
   switch (status) {
     case 'success':
-      return null
+      className =
+        'bg-muted-foreground/10 text-muted-foreground/50 hover:bg-muted-foreground/20 hover:text-muted-foreground'
+      tooltip = 'Checks passing'
+      break
     case 'failure':
     case 'error':
-      return (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="ml-1 h-2 w-2 rounded-full bg-red-500" />
-          </TooltipTrigger>
-          <TooltipContent>Checks failing</TooltipContent>
-        </Tooltip>
-      )
+      className =
+        'bg-red-500/10 text-red-600 hover:bg-red-500/20 dark:text-red-400'
+      tooltip = 'Checks failing'
+      break
     case 'pending':
-      return (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="ml-1 h-2 w-2 rounded-full bg-yellow-500 animate-pulse" />
-          </TooltipTrigger>
-          <TooltipContent>Checks pending</TooltipContent>
-        </Tooltip>
-      )
+      className =
+        'bg-yellow-500/10 text-yellow-600 animate-pulse hover:bg-yellow-500/20 dark:text-yellow-400'
+      tooltip = 'Checks pending'
+      break
     default:
       return null
   }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={handleClick}
+          className={cn(
+            'ml-1 shrink-0 rounded px-1.5 py-1 transition-colors',
+            className
+          )}
+        >
+          <Activity className="h-3 w-3" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>{tooltip}</TooltipContent>
+    </Tooltip>
+  )
 }
 
 interface ChatToolbarProps {
@@ -187,10 +222,13 @@ interface ChatToolbarProps {
   hasInputValue: boolean
   executionMode: ExecutionMode
   selectedModel: ClaudeModel
+  selectedProvider: string | null // null = default (Anthropic), or profile name
   selectedThinkingLevel: ThinkingLevel
   selectedEffortLevel: EffortLevel
   thinkingOverrideActive: boolean // True when thinking is disabled in build/yolo due to preference
   useAdaptiveThinking: boolean // True when model supports effort (Opus on CLI >= 2.1.32)
+  hideThinkingLevel?: boolean // True when selected provider doesn't support thinking
+  providerLocked?: boolean // True after first message — provider can't change mid-session
 
   // Git state
   baseBranch: string
@@ -234,10 +272,13 @@ interface ChatToolbarProps {
   hasOpenPr: boolean
   onSetDiffRequest: (request: DiffRequest) => void
   onModelChange: (model: ClaudeModel) => void
+  onProviderChange: (provider: string | null) => void
+  customCliProfiles: CustomCliProfile[]
   onThinkingLevelChange: (level: ThinkingLevel) => void
   onEffortLevelChange: (level: EffortLevel) => void
   onSetExecutionMode: (mode: ExecutionMode) => void
   onCancel: () => void
+  queuedMessageCount?: number
 
   // MCP servers
   availableMcpServers: McpServerInfo[]
@@ -248,7 +289,9 @@ interface ChatToolbarProps {
 
 /** Compact health status dot for the toolbar MCP dropdown */
 /** Hover hint for MCP server health status in the toolbar dropdown */
-function mcpStatusHint(status: McpHealthStatus | undefined): string | undefined {
+function mcpStatusHint(
+  status: McpHealthStatus | undefined
+): string | undefined {
   switch (status) {
     case 'needsAuthentication':
       return "Needs authentication — run 'claude /mcp' to authenticate"
@@ -285,7 +328,9 @@ function McpStatusDot({ status }: { status: McpHealthStatus | undefined }) {
               <ShieldAlert className="size-3 text-amber-600 dark:text-amber-400" />
             </span>
           </TooltipTrigger>
-          <TooltipContent>{"Needs authentication — run 'claude /mcp' to authenticate"}</TooltipContent>
+          <TooltipContent>
+            {"Needs authentication — run 'claude /mcp' to authenticate"}
+          </TooltipContent>
         </Tooltip>
       )
     case 'couldNotConnect':
@@ -315,10 +360,13 @@ export const ChatToolbar = memo(function ChatToolbar({
   hasInputValue,
   executionMode,
   selectedModel,
+  selectedProvider,
   selectedThinkingLevel,
   selectedEffortLevel,
   thinkingOverrideActive,
   useAdaptiveThinking,
+  hideThinkingLevel,
+  providerLocked,
   baseBranch,
   uncommittedAdded,
   uncommittedRemoved,
@@ -350,10 +398,13 @@ export const ChatToolbar = memo(function ChatToolbar({
   hasOpenPr,
   onSetDiffRequest,
   onModelChange,
+  onProviderChange,
+  customCliProfiles,
   onThinkingLevelChange,
   onEffortLevelChange,
   onSetExecutionMode,
   onCancel,
+  queuedMessageCount,
   availableMcpServers,
   enabledMcpServers,
   onToggleMcpServer,
@@ -382,12 +433,53 @@ export const ChatToolbar = memo(function ChatToolbar({
     return enabledMcpServers.filter(name => availableNames.has(name)).length
   }, [availableMcpServers, enabledMcpServers])
 
+  // For custom providers: show generic tier names (Opus/Sonnet/Haiku) without version numbers,
+  // and drop Opus 4.5 (providers only have one opus-tier model).
+  // Parse actual model names from the provider's settings JSON when available.
+  const filteredModelOptions = useMemo(() => {
+    if (!selectedProvider || selectedProvider === '__anthropic__') return MODEL_OPTIONS
+    // Try to extract model names from the active profile's settings_json
+    const profile = customCliProfiles.find(p => p.name === selectedProvider)
+    let opusModel: string | undefined
+    let sonnetModel: string | undefined
+    let haikuModel: string | undefined
+    if (profile?.settings_json) {
+      try {
+        const settings = JSON.parse(profile.settings_json)
+        const env = settings?.env
+        if (env) {
+          opusModel = env.ANTHROPIC_DEFAULT_OPUS_MODEL || env.ANTHROPIC_MODEL
+          sonnetModel = env.ANTHROPIC_DEFAULT_SONNET_MODEL || env.ANTHROPIC_MODEL
+          haikuModel = env.ANTHROPIC_DEFAULT_HAIKU_MODEL || env.ANTHROPIC_MODEL
+        }
+      } catch { /* ignore parse errors */ }
+    }
+    const suffix = (model?: string) => model ? ` (${model})` : ''
+    return [
+      { value: 'opus' as ClaudeModel, label: `Opus${suffix(opusModel)}` },
+      { value: 'sonnet' as ClaudeModel, label: `Sonnet${suffix(sonnetModel)}` },
+      { value: 'haiku' as ClaudeModel, label: `Haiku${suffix(haikuModel)}` },
+    ]
+  }, [selectedProvider, customCliProfiles])
+
   // Memoize callbacks to prevent Select re-renders
   const handleModelChange = useCallback(
     (value: string) => {
       onModelChange(value as ClaudeModel)
     },
     [onModelChange]
+  )
+
+  const handleProviderChange = useCallback(
+    (value: string) => {
+      const provider = value === 'default' ? null : value
+      onProviderChange(provider)
+      // Auto-switch from Opus 4.6 when selecting a custom provider (it's Anthropic-only)
+      if (provider && provider !== '__anthropic__' && selectedModel === 'opus-4.5') {
+        onModelChange('opus' as ClaudeModel)
+      }
+    },
+    [onProviderChange, onModelChange, selectedModel]
   )
 
   const handleThinkingLevelChange = useCallback(
@@ -406,28 +498,13 @@ export const ChatToolbar = memo(function ChatToolbar({
 
   const handlePullClick = useCallback(async () => {
     if (!activeWorktreePath || !worktreeId) return
-    const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
-    setWorktreeLoading(worktreeId, 'pull')
-    const toastId = toast.loading('Pulling changes...')
-    try {
-      await gitPull(activeWorktreePath, baseBranch)
-      triggerImmediateGitPoll()
-      if (projectId) fetchWorktreesStatus(projectId)
-      toast.success('Changes pulled', { id: toastId })
-    } catch (error) {
-      const errorStr = String(error)
-      if (errorStr.includes('Merge conflicts in:')) {
-        toast.warning('Pull resulted in conflicts', {
-          id: toastId,
-          description: 'Opening conflict resolution...',
-        })
-        onResolveConflicts()
-      } else {
-        toast.error(`Pull failed: ${errorStr}`, { id: toastId })
-      }
-    } finally {
-      clearWorktreeLoading(worktreeId)
-    }
+    await performGitPull({
+      worktreeId,
+      worktreePath: activeWorktreePath,
+      baseBranch,
+      projectId,
+      onMergeConflict: onResolveConflicts,
+    })
   }, [
     activeWorktreePath,
     baseBranch,
@@ -722,12 +799,51 @@ export const ChatToolbar = memo(function ChatToolbar({
                       : 'Open'}{' '}
                     #{prNumber}
                   </span>
-                  <CheckStatusIcon status={checkStatus ?? null} />
+                  <CheckStatusButton status={checkStatus ?? null} projectPath={activeWorktreePath} />
                 </a>
               </DropdownMenuItem>
             )}
 
             <DropdownMenuSeparator />
+
+            {/* Provider selector as submenu */}
+            {customCliProfiles.length > 0 && (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger disabled={providerLocked}>
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  <span>Provider</span>
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {!selectedProvider || selectedProvider === '__anthropic__' ? 'Anthropic' : selectedProvider}
+                  </span>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuRadioGroup
+                    value={selectedProvider ?? '__anthropic__'}
+                    onValueChange={handleProviderChange}
+                  >
+                    <DropdownMenuRadioItem value="__anthropic__">
+                      Anthropic
+                    </DropdownMenuRadioItem>
+                    {customCliProfiles.length > 0 && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuLabel className="text-xs text-muted-foreground">
+                          Custom Providers
+                        </DropdownMenuLabel>
+                        {customCliProfiles.map(profile => (
+                          <DropdownMenuRadioItem
+                            key={profile.name}
+                            value={profile.name}
+                          >
+                            {profile.name}
+                          </DropdownMenuRadioItem>
+                        ))}
+                      </>
+                    )}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            )}
 
             {/* Model selector as submenu */}
             <DropdownMenuSub>
@@ -735,7 +851,7 @@ export const ChatToolbar = memo(function ChatToolbar({
                 <Sparkles className="mr-2 h-4 w-4" />
                 <span>Model</span>
                 <span className="ml-auto text-xs text-muted-foreground">
-                  {MODEL_OPTIONS.find(o => o.value === selectedModel)?.label}
+                  {filteredModelOptions.find(o => o.value === selectedModel)?.label}
                 </span>
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
@@ -743,7 +859,7 @@ export const ChatToolbar = memo(function ChatToolbar({
                   value={selectedModel}
                   onValueChange={handleModelChange}
                 >
-                  {MODEL_OPTIONS.map(option => (
+                  {filteredModelOptions.map(option => (
                     <DropdownMenuRadioItem
                       key={option.value}
                       value={option.value}
@@ -756,7 +872,7 @@ export const ChatToolbar = memo(function ChatToolbar({
             </DropdownMenuSub>
 
             {/* Thinking/Effort level as submenu */}
-            {useAdaptiveThinking ? (
+            {hideThinkingLevel ? null : useAdaptiveThinking ? (
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger>
                   <Brain className="mr-2 h-4 w-4" />
@@ -1032,7 +1148,7 @@ export const ChatToolbar = memo(function ChatToolbar({
                       : 'Open'}{' '}
                     #{prNumber}
                   </span>
-                  <CheckStatusIcon status={checkStatus ?? null} />
+                  <CheckStatusButton status={checkStatus ?? null} projectPath={activeWorktreePath} />
                 </a>
               </TooltipTrigger>
               <TooltipContent>{`Open PR #${prNumber} on GitHub`}</TooltipContent>
@@ -1055,95 +1171,63 @@ export const ChatToolbar = memo(function ChatToolbar({
                   <span>Conflicts</span>
                 </button>
               </TooltipTrigger>
-              <TooltipContent>PR has merge conflicts — click to resolve</TooltipContent>
+              <TooltipContent>
+                PR has merge conflicts — click to resolve
+              </TooltipContent>
             </Tooltip>
           </>
         )}
 
-        {/* MCP servers button - desktop only */}
-        <div className="hidden @md:block h-4 w-px bg-border/50" />
-        <DropdownMenu open={mcpDropdownOpen} onOpenChange={setMcpDropdownOpen}>
-          <Tooltip>
-            <TooltipTrigger asChild>
+        {/* Provider selector - desktop only, shown when profiles exist */}
+        {customCliProfiles.length > 0 && (
+          <>
+            <div className="hidden @md:block h-4 w-px bg-border/50" />
+            <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  disabled={hasPendingQuestions}
+                  disabled={hasPendingQuestions || providerLocked}
                   className={cn(
-                    'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
-                    activeMcpCount > 0 &&
-                      'border border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:border-emerald-400/40 dark:bg-emerald-500/10 dark:text-emerald-400'
+                    'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
+                    selectedProvider && selectedProvider !== '__anthropic__'
+                      ? 'border border-blue-500/50 bg-blue-500/10 text-blue-700 dark:border-blue-400/40 dark:bg-blue-500/10 dark:text-blue-400'
+                      : 'text-muted-foreground'
                   )}
                 >
-                  <Plug className="h-3.5 w-3.5" />
-                  {activeMcpCount > 0 && (
-                    <span>{activeMcpCount}</span>
-                  )}
+                  <span>{!selectedProvider || selectedProvider === '__anthropic__' ? 'Anthropic' : selectedProvider}</span>
                   <ChevronDown className="h-3 w-3 opacity-50" />
                 </button>
               </DropdownMenuTrigger>
-            </TooltipTrigger>
-            <TooltipContent>
-              {activeMcpCount > 0
-                ? `${activeMcpCount} MCP server(s) enabled`
-                : 'No MCP servers enabled'}
-            </TooltipContent>
-          </Tooltip>
-          <DropdownMenuContent align="start">
-            <DropdownMenuLabel className="flex items-center gap-2">
-              MCP Servers
-              {isHealthChecking && (
-                <Loader2 className="size-3 animate-spin text-muted-foreground" />
-              )}
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {availableMcpServers.length > 0 ? (
-              availableMcpServers.map(server => {
-                const status = healthResult?.statuses[server.name]
-                return (
-                  <Tooltip key={server.name}>
-                    <TooltipTrigger asChild>
-                      <DropdownMenuCheckboxItem
-                        checked={
-                          !server.disabled &&
-                          enabledMcpServers.includes(server.name)
-                        }
-                        onCheckedChange={() => onToggleMcpServer(server.name)}
-                        disabled={server.disabled}
-                        className={server.disabled ? 'opacity-50' : undefined}
-                      >
-                    <span className="flex items-center gap-1.5">
-                      <McpStatusDot status={status} />
-                      {server.name}
-                    </span>
-                    <span className="ml-auto pl-4 text-xs text-muted-foreground">
-                      {server.disabled ? 'disabled' : server.scope}
-                    </span>
-                      </DropdownMenuCheckboxItem>
-                    </TooltipTrigger>
-                    <TooltipContent side="left">{mcpStatusHint(status)}</TooltipContent>
-                  </Tooltip>
-                )
-              })
-            ) : (
-              <DropdownMenuItem disabled>
-                <span className="text-xs text-muted-foreground">
-                  No MCP servers configured
-                </span>
-              </DropdownMenuItem>
-            )}
-            {onOpenProjectSettings && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={onOpenProjectSettings}>
-                  <span className="text-xs text-muted-foreground">
-                    Set defaults in project settings
-                  </span>
-                </DropdownMenuItem>
-              </>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+              <DropdownMenuContent align="start" className="min-w-40">
+                <DropdownMenuRadioGroup
+                  value={selectedProvider ?? '__anthropic__'}
+                  onValueChange={handleProviderChange}
+                >
+                  <DropdownMenuRadioItem value="__anthropic__">
+                    Anthropic
+                  </DropdownMenuRadioItem>
+                  {customCliProfiles.length > 0 && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuLabel className="text-xs text-muted-foreground flex items-center gap-1.5">
+                        Custom Providers
+                        <span className="rounded bg-muted px-1 py-0.5 text-[10px] font-medium leading-none">cc</span>
+                      </DropdownMenuLabel>
+                      {customCliProfiles.map(profile => (
+                        <DropdownMenuRadioItem
+                          key={profile.name}
+                          value={profile.name}
+                        >
+                          {profile.name}
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </>
+                  )}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        )}
 
         {/* Divider - desktop only */}
         <div className="hidden @md:block h-4 w-px bg-border/50" />
@@ -1154,12 +1238,12 @@ export const ChatToolbar = memo(function ChatToolbar({
           onValueChange={handleModelChange}
           disabled={hasPendingQuestions}
         >
-          <SelectTrigger className="hidden @md:flex h-8 w-auto gap-1.5 rounded-none border-0 bg-transparent px-3 text-sm text-muted-foreground shadow-none hover:bg-muted/80 hover:text-foreground dark:bg-transparent dark:hover:bg-muted/80">
+          <SelectTrigger className="hidden @md:flex h-8 w-auto gap-1.5 rounded-none border-0 bg-transparent px-3 text-sm text-muted-foreground shadow-none hover:bg-muted/80 hover:text-foreground dark:bg-transparent dark:hover:bg-muted/80 [&>svg:last-child]:size-3">
             <Sparkles className="h-3.5 w-3.5" />
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {MODEL_OPTIONS.map(option => (
+            {filteredModelOptions.map(option => (
               <SelectItem key={option.value} value={option.value}>
                 {option.label}
               </SelectItem>
@@ -1168,10 +1252,10 @@ export const ChatToolbar = memo(function ChatToolbar({
         </Select>
 
         {/* Divider - desktop only */}
-        <div className="hidden @md:block h-4 w-px bg-border/50" />
+        {!hideThinkingLevel && <div className="hidden @md:block h-4 w-px bg-border/50" />}
 
         {/* Thinking/Effort level dropdown - desktop only */}
-        {useAdaptiveThinking ? (
+        {hideThinkingLevel ? null : useAdaptiveThinking ? (
           <DropdownMenu>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -1300,7 +1384,9 @@ export const ChatToolbar = memo(function ChatToolbar({
                   {executionMode === 'plan' && (
                     <ClipboardList className="h-3.5 w-3.5" />
                   )}
-                  {executionMode === 'build' && <Hammer className="h-3.5 w-3.5" />}
+                  {executionMode === 'build' && (
+                    <Hammer className="h-3.5 w-3.5" />
+                  )}
                   {executionMode === 'yolo' && <Zap className="h-3.5 w-3.5" />}
                   <span className="capitalize">{executionMode}</span>
                   <ChevronDown className="h-3 w-3 opacity-50" />
@@ -1344,6 +1430,90 @@ export const ChatToolbar = memo(function ChatToolbar({
         {/* Divider */}
         <div className="h-4 w-px bg-border/50" />
 
+        {/* MCP servers button - desktop only */}
+        <DropdownMenu open={mcpDropdownOpen} onOpenChange={setMcpDropdownOpen}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  disabled={hasPendingQuestions}
+                  className={cn(
+                    'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
+                    activeMcpCount > 0 &&
+                      'border border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:border-emerald-400/40 dark:bg-emerald-500/10 dark:text-emerald-400'
+                  )}
+                >
+                  <Plug className="h-3.5 w-3.5" />
+                  {activeMcpCount > 0 && <span>{activeMcpCount}</span>}
+                  <ChevronDown className="h-3 w-3 opacity-50" />
+                </button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent>
+              {activeMcpCount > 0
+                ? `${activeMcpCount} MCP server(s) enabled`
+                : 'No MCP servers enabled'}
+            </TooltipContent>
+          </Tooltip>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel className="flex items-center gap-2">
+              MCP Servers
+              {isHealthChecking && (
+                <Loader2 className="size-3 animate-spin text-muted-foreground" />
+              )}
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {availableMcpServers.length > 0 ? (
+              availableMcpServers.map(server => {
+                const status = healthResult?.statuses[server.name]
+                return (
+                  <Tooltip key={server.name}>
+                    <TooltipTrigger asChild>
+                      <DropdownMenuCheckboxItem
+                        checked={
+                          !server.disabled &&
+                          enabledMcpServers.includes(server.name)
+                        }
+                        onCheckedChange={() => onToggleMcpServer(server.name)}
+                        disabled={server.disabled}
+                        className={server.disabled ? 'opacity-50' : undefined}
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <McpStatusDot status={status} />
+                          {server.name}
+                        </span>
+                        <span className="ml-auto pl-4 text-xs text-muted-foreground">
+                          {server.disabled ? 'disabled' : server.scope}
+                        </span>
+                      </DropdownMenuCheckboxItem>
+                    </TooltipTrigger>
+                    <TooltipContent side="left">
+                      {mcpStatusHint(status)}
+                    </TooltipContent>
+                  </Tooltip>
+                )
+              })
+            ) : (
+              <DropdownMenuItem disabled>
+                <span className="text-xs text-muted-foreground">
+                  No MCP servers configured
+                </span>
+              </DropdownMenuItem>
+            )}
+            {onOpenProjectSettings && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={onOpenProjectSettings}>
+                  <span className="text-xs text-muted-foreground">
+                    Set defaults in project settings
+                  </span>
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
         {/* Send/Cancel button */}
         {isSending ? (
           <Tooltip>
@@ -1353,13 +1523,17 @@ export const ChatToolbar = memo(function ChatToolbar({
                 onClick={onCancel}
                 className="flex h-8 items-center justify-center gap-1.5 rounded-r-lg px-3 text-sm transition-colors bg-primary text-primary-foreground hover:bg-primary/90"
               >
-                <span>Cancel</span>
+                <span>{queuedMessageCount ? 'Skip to Next' : 'Cancel'}</span>
                 <Kbd className="ml-0.5 h-4 text-[10px] bg-primary-foreground/20 text-primary-foreground">
                   {isMacOS ? `${getModifierSymbol()}⌥⌫` : 'Ctrl+Alt+⌫'}
                 </Kbd>
               </button>
             </TooltipTrigger>
-            <TooltipContent>{`Cancel (${isMacOS ? `${getModifierSymbol()}+Option+Backspace` : 'Ctrl+Alt+Backspace'})`}</TooltipContent>
+            <TooltipContent>
+              {queuedMessageCount
+                ? `Skip to next queued message (${isMacOS ? `${getModifierSymbol()}+Option+Backspace` : 'Ctrl+Alt+Backspace'})`
+                : `Cancel (${isMacOS ? `${getModifierSymbol()}+Option+Backspace` : 'Ctrl+Alt+Backspace'})`}
+            </TooltipContent>
           </Tooltip>
         ) : (
           <Tooltip>

@@ -44,8 +44,11 @@ import {
   useDeleteArchivedSession,
 } from '@/services/chat'
 import { useQueryClient } from '@tanstack/react-query'
+import { usePreferences } from '@/services/preferences'
+import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
+import { navigateToRestoredItem } from '@/lib/restore-navigation'
 import type { Worktree, Project } from '@/types/projects'
 import type { ArchivedSessionEntry } from '@/types/chat'
 
@@ -92,6 +95,8 @@ interface CleanupResult {
 
 export function ArchivedModal({ open, onOpenChange }: ArchivedModalProps) {
   const queryClient = useQueryClient()
+  const { data: preferences } = usePreferences()
+  const isDelete = (preferences?.removal_behavior ?? 'delete') === 'delete'
   const [searchQuery, setSearchQuery] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirmType | null>(
     null
@@ -305,15 +310,7 @@ export function ArchivedModal({ open, onOpenChange }: ArchivedModalProps) {
   const handleRestoreWorktree = (worktree: Worktree) => {
     unarchiveWorktree.mutate(worktree.id, {
       onSuccess: () => {
-        // Select the worktree in the sidebar
-        const { selectWorktree } = useProjectsStore.getState()
-        selectWorktree(worktree.id)
-
-        // Set the restored worktree as active
-        const { setActiveWorktree } = useChatStore.getState()
-        setActiveWorktree(worktree.id, worktree.path)
-
-        // Close the modal
+        navigateToRestoredItem(worktree.id, worktree.path)
         onOpenChange(false)
       },
     })
@@ -343,17 +340,11 @@ export function ArchivedModal({ open, onOpenChange }: ArchivedModalProps) {
               queryKey: ['all-archived-sessions'],
             })
 
-            // Select the worktree in the sidebar
-            const { selectWorktree } = useProjectsStore.getState()
-            selectWorktree(response.worktree.id)
-
-            // Set the worktree as active and the restored session as active
-            const { setActiveWorktree, setActiveSession } =
-              useChatStore.getState()
-            setActiveWorktree(response.worktree.id, response.worktree.path)
-            setActiveSession(response.worktree.id, entry.session.id)
-
-            // Close the modal
+            navigateToRestoredItem(
+              response.worktree.id,
+              response.worktree.path,
+              entry.session.id
+            )
             onOpenChange(false)
           },
         }
@@ -512,10 +503,27 @@ export function ArchivedModal({ open, onOpenChange }: ArchivedModalProps) {
             <div className="text-center py-8 text-muted-foreground">
               No archived items.
               <br />
-              <span className="text-sm">
-                Archive worktrees and sessions to keep them for later without
-                cluttering your workspace.
-              </span>
+              {isDelete ? (
+                <span className="text-sm">
+                  Removal behavior is set to delete — closed items are
+                  permanently removed.{' '}
+                  <button
+                    type="button"
+                    className="underline hover:text-foreground transition-colors"
+                    onClick={() => {
+                      onOpenChange(false)
+                      useUIStore.getState().openPreferencesPane('general')
+                    }}
+                  >
+                    Change in Settings
+                  </button>
+                </span>
+              ) : (
+                <span className="text-sm">
+                  Archive worktrees and sessions to keep them for later without
+                  cluttering your workspace.
+                </span>
+              )}
             </div>
           ) : searchQuery ? (
             // Consolidated search results view
@@ -561,7 +569,7 @@ export function ArchivedModal({ open, onOpenChange }: ArchivedModalProps) {
                         subtitle={
                           <>
                             <span>
-                              {result.entry.session.messages.length} messages
+                              {result.entry.session.message_count ?? result.entry.session.messages.length} messages
                             </span>
                             <span className="text-border mx-1">•</span>
                             <span>
@@ -904,7 +912,7 @@ function SessionWorktreeGroup({
                   </div>
                   <div className="text-sm text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-0.5">
                     <span className="text-xs">
-                      {entry.session.messages.length} messages
+                      {entry.session.message_count ?? entry.session.messages.length} messages
                     </span>
                     {entry.session.archived_at && (
                       <>

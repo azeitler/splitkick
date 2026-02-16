@@ -41,6 +41,8 @@ export interface Project {
   enabled_mcp_servers?: string[]
   /** Custom system prompt appended to every session execution */
   custom_system_prompt?: string
+  /** Default provider profile name for sessions in this project (undefined = use global default) */
+  default_provider?: string | null
 }
 
 /**
@@ -78,6 +80,8 @@ export interface Worktree {
   pr_number?: number
   /** GitHub PR URL (if a PR has been created) */
   pr_url?: string
+  /** GitHub issue number (if created from an issue) */
+  issue_number?: number
   /** Cached PR display status (draft, open, review, merged, closed) */
   cached_pr_status?: string
   /** Cached CI check status (success, failure, pending, error) */
@@ -121,6 +125,8 @@ export interface WorktreeCreatingEvent {
   name: string
   path: string
   branch: string
+  pr_number?: number
+  issue_number?: number
 }
 
 /** Event payload when worktree creation completes */

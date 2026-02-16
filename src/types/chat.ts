@@ -1,3 +1,5 @@
+import type { ReviewResponse } from '@/types/projects'
+
 /**
  * Role of a chat message sender
  */
@@ -131,6 +133,8 @@ export interface Session {
   selected_model?: string
   /** Selected thinking level for this session */
   selected_thinking_level?: ThinkingLevel
+  /** Selected provider (custom CLI profile name) for this session */
+  selected_provider?: string
   /** Whether session naming has been attempted for this session */
   session_naming_completed?: boolean
   /** Unix timestamp when session was archived (undefined = not archived) */
@@ -150,6 +154,8 @@ export interface Session {
   pending_permission_denials?: PermissionDenial[]
   /** Original message context for re-send after permission approval */
   denied_message_context?: DeniedMessageContext
+  /** AI code review results for this session */
+  review_results?: ReviewResponse
   /** Whether this session is marked for review in session board */
   is_reviewing?: boolean
   /** Whether this session is waiting for user input (AskUserQuestion, ExitPlanMode) */
@@ -168,6 +174,8 @@ export interface Session {
   last_run_status?: RunStatus
   /** Execution mode of the last run (plan/build/yolo) */
   last_run_execution_mode?: ExecutionMode
+  /** User-assigned label with color (e.g. "Needs testing") */
+  label?: LabelData
 }
 
 /**
@@ -485,6 +493,8 @@ export interface PendingImage {
   path: string
   /** Filename (e.g., "image-1704067200-abc123.png") */
   filename: string
+  /** Whether the image is still being processed (resized/compressed) */
+  loading?: boolean
 }
 
 /**
@@ -695,6 +705,8 @@ export interface QueuedMessage {
   pendingTextFiles: PendingTextFile[]
   /** Model to use for this message (snapshot at queue time) */
   model: string
+  /** Provider profile name to use (snapshot at queue time, null = default) */
+  provider: string | null
   /** Execution mode setting (snapshot at queue time) */
   executionMode: ExecutionMode
   /** Thinking level setting (snapshot at queue time) */
@@ -879,4 +891,12 @@ export interface SessionDigest {
   created_at?: number
   /** Number of messages when this digest was generated */
   message_count?: number
+}
+
+/** User-assigned label with color for session cards */
+export interface LabelData {
+  /** Label name (e.g. "Needs testing") */
+  name: string
+  /** Background color hex value (e.g. "#eab308") */
+  color: string
 }

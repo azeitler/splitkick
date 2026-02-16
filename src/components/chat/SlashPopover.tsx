@@ -146,32 +146,14 @@ export function SlashPopover({
 
   // Expose navigation methods via ref for parent to call
   useImperativeHandle(handleRef, () => {
-    console.log(
-      '[SlashPopover] useImperativeHandle creating handle, filteredItems.length:',
-      filteredItems.length
-    )
     return {
       moveUp: () => {
-        console.log(
-          '[SlashPopover] moveUp called, current selectedIndex:',
-          selectedIndex
-        )
         setSelectedIndex(i => Math.max(i - 1, 0))
       },
       moveDown: () => {
-        console.log(
-          '[SlashPopover] moveDown called, current selectedIndex:',
-          selectedIndex,
-          'max:',
-          filteredItems.length - 1
-        )
         setSelectedIndex(i => Math.min(i + 1, filteredItems.length - 1))
       },
       selectCurrent: () => {
-        console.log(
-          '[SlashPopover] selectCurrent called, clampedSelectedIndex:',
-          clampedSelectedIndex
-        )
         selectHighlighted()
       },
     }

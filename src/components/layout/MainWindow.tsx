@@ -10,6 +10,7 @@ import { ProjectSettingsDialog } from '@/components/projects/ProjectSettingsDial
 import { CommitModal } from '@/components/commit/CommitModal'
 import { OnboardingDialog } from '@/components/onboarding/OnboardingDialog'
 import { FeatureTourDialog } from '@/components/onboarding/FeatureTourDialog'
+import { JeanConfigWizard } from '@/components/onboarding/JeanConfigWizard'
 import { CliUpdateModal } from '@/components/layout/CliUpdateModal'
 import { UpdateAvailableModal } from '@/components/layout/UpdateAvailableModal'
 import { CliLoginModal } from '@/components/preferences/CliLoginModal'
@@ -17,13 +18,13 @@ import { OpenInModal } from '@/components/open-in/OpenInModal'
 import { WorkflowRunsModal } from '@/components/shared/WorkflowRunsModal'
 import { MagicModal } from '@/components/magic/MagicModal'
 import { ReleaseNotesDialog } from '@/components/magic/ReleaseNotesDialog'
+import { UpdatePrDialog } from '@/components/magic/UpdatePrDialog'
 import { NewWorktreeModal } from '@/components/worktree/NewWorktreeModal'
-import { PathConflictModal } from '@/components/worktree/PathConflictModal'
-import { BranchConflictModal } from '@/components/worktree/BranchConflictModal'
 import { SessionBoardModal } from '@/components/session-board'
 import { AddProjectDialog } from '@/components/projects/AddProjectDialog'
 import { GitInitModal } from '@/components/projects/GitInitModal'
 import { QuitConfirmationDialog } from './QuitConfirmationDialog'
+import { BranchConflictDialog } from '@/components/worktree/BranchConflictDialog'
 import { ArchivedModal } from '@/components/archive/ArchivedModal'
 import { Toaster } from '@/components/ui/sonner'
 import { useUIStore } from '@/store/ui-store'
@@ -35,6 +36,7 @@ import { useSessionStatePersistence } from '@/hooks/useSessionStatePersistence'
 import { useSessionPrefetch } from '@/hooks/useSessionPrefetch'
 import { useRestoreLastArchived } from '@/hooks/useRestoreLastArchived'
 import { useArchiveCleanup } from '@/hooks/useArchiveCleanup'
+import { usePrWorktreeSweep } from '@/hooks/usePrWorktreeSweep'
 import {
   useAppFocusTracking,
   useGitStatusEvents,
@@ -145,13 +147,6 @@ export function MainWindow() {
   // Ref for the sidebar element to update width directly during drag
   const sidebarRef = useRef<HTMLDivElement>(null)
 
-  // Debug: log sidebar state on each render
-  console.log('[MainWindow] render', {
-    isInitialized,
-    leftSidebarSize,
-    leftSidebarVisible,
-  })
-
   // Set up global event listeners (keyboard shortcuts, etc.)
   useMainWindowEventListeners()
 
@@ -171,6 +166,9 @@ export function MainWindow() {
 
   // Auto-cleanup old archived items on startup
   useArchiveCleanup()
+
+  // Sync all worktrees with open PRs to backend for sweep polling
+  usePrWorktreeSweep(projects)
 
   // Track app focus state for background task manager
   useAppFocusTracking()
@@ -277,6 +275,7 @@ export function MainWindow() {
       <CommitModal />
       <OnboardingDialog />
       <FeatureTourDialog />
+      <JeanConfigWizard />
       <CliUpdateModal />
       <UpdateAvailableModal />
       <CliLoginModal />
@@ -284,14 +283,14 @@ export function MainWindow() {
       <WorkflowRunsModal />
       <MagicModal />
       <ReleaseNotesDialog />
+      <UpdatePrDialog />
       <NewWorktreeModal />
-      <PathConflictModal />
-      <BranchConflictModal />
       <SessionBoardModal />
       <AddProjectDialog />
       <GitInitModal />
       <ArchivedModal open={archivedModalOpen} onOpenChange={setArchivedModalOpen} />
       <QuitConfirmationDialog />
+      <BranchConflictDialog />
       <Toaster
         position="bottom-right"
         offset="52px"

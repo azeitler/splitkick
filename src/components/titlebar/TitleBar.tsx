@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/tooltip'
 import { useUIStore } from '@/store/ui-store'
 import { useCommandContext } from '@/lib/commands'
-import { ArrowUpCircle, Heart, PanelLeft, PanelLeftClose, Plus, Settings } from 'lucide-react'
+import { ArrowUpCircle, Github, Heart, PanelLeft, PanelLeftClose, Plus, Settings } from 'lucide-react'
 import { usePreferences } from '@/services/preferences'
 import { formatShortcutDisplay, DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 import { isNativeApp } from '@/lib/environment'
@@ -56,7 +56,7 @@ export function TitleBar({
       {...(native ? { 'data-tauri-drag-region': true } : {})}
       className={cn(
         'relative flex h-8 w-full shrink-0 items-center justify-between bg-sidebar',
-        native && !isMacOS && 'z-[60]',
+        native && 'z-[60]',
         className
       )}
     >
@@ -120,15 +120,17 @@ export function TitleBar({
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
-                onClick={() => setAddProjectDialogOpen(true)}
+                onClick={() =>
+                  openExternal('https://github.com/coollabsio/jean')
+                }
                 variant="ghost"
                 size="icon"
                 className="h-6 w-6 text-foreground/70 hover:text-foreground"
               >
-                <Plus className="h-3 w-3" />
+                <Github className="h-3 w-3" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Add Project</TooltipContent>
+            <TooltipContent>GitHub</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -145,6 +147,19 @@ export function TitleBar({
             </TooltipTrigger>
             <TooltipContent>Sponsor</TooltipContent>
           </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                onClick={() => setAddProjectDialogOpen(true)}
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-foreground/70 hover:text-foreground"
+              >
+                <Plus className="h-3 w-3" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Add Project</TooltipContent>
+          </Tooltip>
         </div>
       </div>
 
@@ -158,12 +173,22 @@ export function TitleBar({
       )}
 
       {/* Right side - Version + Windows/Linux window controls */}
-      <div className="flex items-center">
+      <div
+        className="flex items-center"
+        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+      >
+        {appVersion && <UpdateIndicator />}
         {appVersion && (
-          <span className="flex items-center gap-1 pr-2 text-[0.625rem] text-foreground/40">
+          <button
+            onClick={() =>
+              openExternal(
+                `https://github.com/coollabsio/jean/releases/tag/v${appVersion}`
+              )
+            }
+            className="pr-2 text-[0.625rem] text-foreground/40 hover:text-foreground/60 transition-colors cursor-pointer"
+          >
             v{appVersion}
-            <UpdateIndicator />
-          </span>
+          </button>
         )}
         {native && !isMacOS && <WindowsWindowControls />}
       </div>

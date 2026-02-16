@@ -267,6 +267,22 @@ export function useSessionStatePersistence() {
       [activeSessionId]: session.is_reviewing ?? false,
     }
 
+    // Load review results from session data into Zustand store
+    if (session.review_results) {
+      updates.reviewResults = {
+        ...currentState.reviewResults,
+        [activeSessionId]: session.review_results,
+      }
+    }
+
+    // Load fixed review findings from session data
+    if (session.fixed_findings && session.fixed_findings.length > 0) {
+      updates.fixedReviewFindings = {
+        ...currentState.fixedReviewFindings,
+        [activeSessionId]: new Set(session.fixed_findings),
+      }
+    }
+
     // Load waiting for input status
     updates.waitingForInputSessionIds = {
       ...currentState.waitingForInputSessionIds,

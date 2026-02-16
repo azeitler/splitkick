@@ -9,8 +9,8 @@ import { useChatStore } from '@/store/chat-store'
 import { useTerminalStore } from '@/store/terminal-store'
 import { projectsQueryKeys } from '@/services/projects'
 import { chatQueryKeys } from '@/services/chat'
-import { setActiveWorktreeForPolling } from '@/services/git-status'
 import { disposeTerminal } from '@/lib/terminal-instances'
+import { toast } from 'sonner'
 import { useCommandContext } from './use-command-context'
 import { usePreferences } from '@/services/preferences'
 import { logger } from '@/lib/logger'
@@ -20,149 +20,6 @@ import {
   type KeybindingAction,
   type KeybindingsMap,
 } from '@/types/keybindings'
-import { isBaseSession, type Project, type Worktree } from '@/types/projects'
-
-// Throttle tracking for worktree switching
-let lastWorktreeSwitchTime = 0
-const WORKTREE_SWITCH_THROTTLE_MS = 100
-
-// Helper to switch worktrees using query cache (includes Session Board as navigation target)
-function switchWorktree(
-  direction: 'next' | 'previous',
-  queryClient: QueryClient
-) {
-  // Throttle rapid switches
-  const now = Date.now()
-  if (now - lastWorktreeSwitchTime < WORKTREE_SWITCH_THROTTLE_MS) return
-  lastWorktreeSwitchTime = now
-
-  const {
-    selectedWorktreeId,
-    selectedProjectId,
-    selectWorktree,
-    selectProject,
-  } = useProjectsStore.getState()
-  const { activeWorktreePath, clearActiveWorktree, setActiveWorktree } =
-    useChatStore.getState()
-
-  const isOnSessionBoard = !activeWorktreePath
-
-  // Determine project ID (from session board selection or current worktree)
-  let projectId: string | null = null
-  if (isOnSessionBoard) {
-    projectId = selectedProjectId
-  } else if (selectedWorktreeId) {
-    const worktreeData = queryClient.getQueryData<Worktree>([
-      ...projectsQueryKeys.all,
-      'worktree',
-      selectedWorktreeId,
-    ])
-    projectId = worktreeData?.project_id ?? null
-  }
-
-  if (!projectId) {
-    logger.debug('No project context for worktree switching')
-    return
-  }
-
-  // Get worktrees for that project from cache
-  const projectWorktrees = queryClient.getQueryData<Worktree[]>(
-    projectsQueryKeys.worktrees(projectId)
-  )
-  if (!projectWorktrees || projectWorktrees.length === 0) {
-    logger.debug('No project worktrees found in cache for switching')
-    return
-  }
-
-  // Sort worktrees same as WorktreeList: base sessions first, then by order field, then by created_at
-  const sortedWorktrees = [...projectWorktrees]
-    .filter(w => w.status !== 'pending' && w.status !== 'deleting')
-    .sort((a, b) => {
-      const aIsBase = isBaseSession(a)
-      const bIsBase = isBaseSession(b)
-      if (aIsBase && !bIsBase) return -1
-      if (!aIsBase && bIsBase) return 1
-      // Sort by order field (lower = higher in list), fall back to created_at (newest first)
-      if (a.order !== b.order) {
-        return a.order - b.order
-      }
-      return b.created_at - a.created_at
-    })
-
-  if (sortedWorktrees.length === 0) {
-    logger.debug('No valid worktrees after filtering')
-    return
-  }
-
-  // Get project for git polling context
-  const projects = queryClient.getQueryData<Project[]>(projectsQueryKeys.list())
-  const project = projects?.find(p => p.id === projectId)
-
-  // Handle navigation FROM Session Board
-  if (isOnSessionBoard) {
-    const targetIndex = direction === 'next' ? 0 : sortedWorktrees.length - 1
-    const newWorktree = sortedWorktrees[targetIndex]
-    if (!newWorktree) return
-    logger.debug('Switching from Session Board to worktree', {
-      to: newWorktree.id,
-      direction,
-    })
-    selectWorktree(newWorktree.id)
-    setActiveWorktree(newWorktree.id, newWorktree.path)
-    setActiveWorktreeForPolling({
-      worktreeId: newWorktree.id,
-      worktreePath: newWorktree.path,
-      baseBranch: project?.default_branch ?? 'main',
-      prNumber: newWorktree.pr_number,
-      prUrl: newWorktree.pr_url,
-    })
-    return
-  }
-
-  // Handle navigation between worktrees (with Session Board boundaries)
-  const currentIndex = sortedWorktrees.findIndex(
-    w => w.id === selectedWorktreeId
-  )
-  if (currentIndex === -1) return
-
-  // Check if navigating TO Session Board
-  if (direction === 'previous' && currentIndex === 0) {
-    // At first worktree, going up → switch to Session Board
-    logger.debug('Switching to Session Board view (up from first worktree)')
-    selectProject(projectId)
-    clearActiveWorktree()
-    selectWorktree(null)
-    return
-  }
-  if (direction === 'next' && currentIndex === sortedWorktrees.length - 1) {
-    // At last worktree, going down → switch to Session Board
-    logger.debug('Switching to Session Board view (down from last worktree)')
-    selectProject(projectId)
-    clearActiveWorktree()
-    selectWorktree(null)
-    return
-  }
-
-  // Normal worktree-to-worktree navigation
-  const newIndex = direction === 'next' ? currentIndex + 1 : currentIndex - 1
-  const newWorktree = sortedWorktrees[newIndex]
-  if (newWorktree) {
-    logger.debug('Switching worktree', {
-      from: selectedWorktreeId,
-      to: newWorktree.id,
-      direction,
-    })
-    selectWorktree(newWorktree.id)
-    setActiveWorktree(newWorktree.id, newWorktree.path)
-    setActiveWorktreeForPolling({
-      worktreeId: newWorktree.id,
-      worktreePath: newWorktree.path,
-      baseBranch: project?.default_branch ?? 'main',
-      prNumber: newWorktree.pr_number,
-      prUrl: newWorktree.pr_url,
-    })
-  }
-}
 
 /**
  * Main window event listeners - handles global keyboard shortcuts and other app-level events
@@ -176,6 +33,18 @@ function executeKeybindingAction(
   commandContext: ReturnType<typeof useCommandContext>,
   queryClient: QueryClient
 ) {
+  // Canvas-only actions: blocked when the session chat modal is open
+  const CANVAS_ONLY_ACTIONS: Set<KeybindingAction> = new Set([
+    'new_worktree',
+    'open_plan',
+    'open_recap',
+    'restore_last_archived',
+    'focus_canvas_search',
+  ])
+  if (CANVAS_ONLY_ACTIONS.has(action) && useUIStore.getState().sessionChatModalOpen) {
+    return
+  }
+
   switch (action) {
     case 'focus_chat_input':
       logger.debug('Keybinding: focus_chat_input')
@@ -210,40 +79,62 @@ function executeKeybindingAction(
 
       const chatStore = useChatStore.getState()
       const uiStore = useUIStore.getState()
-      const { activeWorktreeId, activeWorktreePath } = chatStore
       const sessionModalOpen = uiStore.sessionChatModalOpen
 
-      // Project canvas (no worktree selected) → error
-      if (!activeWorktreePath) {
+      // Resolve target worktree: modal > active worktree > selected worktree (dashboard)
+      const targetWorktreeId = sessionModalOpen && uiStore.sessionChatModalWorktreeId
+        ? uiStore.sessionChatModalWorktreeId
+        : chatStore.activeWorktreeId ?? useProjectsStore.getState().selectedWorktreeId
+
+      const targetWorktreePath = targetWorktreeId
+        ? chatStore.activeWorktreePath ?? chatStore.worktreePaths[targetWorktreeId]
+        : null
+
+      if (!targetWorktreeId || !targetWorktreePath) {
         notify('Open a worktree to run', undefined, { type: 'error' })
         break
       }
 
-      if (!activeWorktreeId) {
-        notify('No active worktree', undefined, { type: 'error' })
-        break
-      }
+      // Fetch run script - use fetchQuery to handle uncached dashboard worktrees
+      ;(async () => {
+        let runScript = queryClient.getQueryData<string | null>([
+          'run-script',
+          targetWorktreePath,
+        ])
 
-      // Fetch run script from query cache
-      const runScript = queryClient.getQueryData<string | null>([
-        'run-script',
-        activeWorktreePath,
-      ])
+        if (runScript === undefined) {
+          try {
+            runScript = await queryClient.fetchQuery<string | null>({
+              queryKey: ['run-script', targetWorktreePath],
+              queryFn: () => invoke<string | null>('get_run_script', { worktreePath: targetWorktreePath }),
+            })
+          } catch {
+            runScript = null
+          }
+        }
 
-      if (!runScript) {
-        notify('No run script configured in jean.json', undefined, {
-          type: 'error',
-        })
-        break
-      }
+        if (!runScript) {
+          const projectId = useProjectsStore.getState().selectedProjectId
+          toast.error('No run script configured in jean.json', {
+            action: projectId
+              ? {
+                  label: 'Configure',
+                  onClick: () =>
+                    useProjectsStore.getState().openProjectSettings(projectId, 'jean-json'),
+                }
+              : undefined,
+          })
+          return
+        }
 
-      // Start run (works on canvas, modal, or main view)
-      useTerminalStore.getState().startRun(activeWorktreeId, runScript)
+        // Start run (works on canvas, modal, or main view)
+        useTerminalStore.getState().startRun(targetWorktreeId, runScript)
 
-      // If modal is open, also open the terminal drawer
-      if (sessionModalOpen) {
-        useTerminalStore.getState().setModalTerminalOpen(activeWorktreeId, true)
-      }
+        // If modal is open, also open the terminal drawer
+        if (sessionModalOpen) {
+          useTerminalStore.getState().setModalTerminalOpen(targetWorktreeId, true)
+        }
+      })()
       break
     }
     case 'open_in_modal':
@@ -332,14 +223,6 @@ function executeKeybindingAction(
       logger.debug('Keybinding: new_worktree')
       window.dispatchEvent(new CustomEvent('create-new-worktree'))
       break
-    case 'next_worktree':
-      logger.debug('Keybinding: next_worktree')
-      switchWorktree('next', queryClient)
-      break
-    case 'previous_worktree':
-      logger.debug('Keybinding: previous_worktree')
-      switchWorktree('previous', queryClient)
-      break
     case 'cycle_execution_mode': {
       // Only cycle execution mode when inside a session (modal open or not in canvas view)
       const chatStore = useChatStore.getState()
@@ -369,25 +252,14 @@ function executeKeybindingAction(
       window.dispatchEvent(new CustomEvent('approve-plan-yolo'))
       break
     }
-    case 'open_plan': {
+    case 'open_plan':
       logger.debug('Keybinding: open_plan')
-      const sessionModalOpen = useUIStore.getState().sessionChatModalOpen
-      if (sessionModalOpen) {
-        break
-      }
       window.dispatchEvent(new CustomEvent('open-plan'))
       break
-    }
-    case 'open_recap': {
+    case 'open_recap':
       logger.debug('Keybinding: open_recap')
-      const sessionModalOpenForRecap =
-        useUIStore.getState().sessionChatModalOpen
-      if (sessionModalOpenForRecap) {
-        break
-      }
       window.dispatchEvent(new CustomEvent('open-recap'))
       break
-    }
     case 'restore_last_archived':
       logger.debug('Keybinding: restore_last_archived')
       window.dispatchEvent(new CustomEvent('restore-last-archived'))
@@ -405,6 +277,15 @@ function executeKeybindingAction(
       if (activeWorktreeId) {
         useTerminalStore.getState().toggleModalTerminal(activeWorktreeId)
       }
+      break
+    }
+    case 'toggle_session_label': {
+      logger.debug('Keybinding: toggle_session_label')
+      // Only works when a session is active (modal open or in session view, not on dashboard canvas)
+      const uiStoreForLabel = useUIStore.getState()
+      const chatStoreForLabel = useChatStore.getState()
+      if (!uiStoreForLabel.sessionChatModalOpen && !chatStoreForLabel.activeWorktreePath) break
+      window.dispatchEvent(new CustomEvent('toggle-session-label'))
       break
     }
   }
@@ -442,14 +323,16 @@ export function useMainWindowEventListeners() {
         }
       }
 
-      // Skip when a modal/dialog is open - let it handle its own shortcuts
+      // Skip when a blocking modal/dialog is open - let it handle its own shortcuts
       const uiState = useUIStore.getState()
       if (
         uiState.magicModalOpen ||
+        uiState.openInModalOpen ||
         uiState.newWorktreeModalOpen ||
         uiState.commandPaletteOpen ||
         uiState.preferencesOpen ||
-        uiState.releaseNotesModalOpen
+        uiState.releaseNotesModalOpen ||
+        uiState.updatePrModalOpen
       )
         return
       if (useProjectsStore.getState().projectSettingsDialogOpen) return
@@ -530,11 +413,6 @@ export function useMainWindowEventListeners() {
               useUIStore.getState()
             setRightSidebarVisible(!rightSidebarVisible)
           }
-        }),
-
-        listen('menu-open-pull-request', () => {
-          logger.debug('Open pull request menu event received')
-          commandContext.openPullRequest()
         }),
 
         // Branch naming events (automatic branch renaming based on first message)
@@ -647,9 +525,15 @@ export function useMainWindowEventListeners() {
     // Use capture phase to handle keybindings before dialogs/modals can intercept
     document.addEventListener('keydown', handleKeyDown, { capture: true })
 
+    let cleaned = false
     let menuUnlisteners: (() => void)[] = []
     setupMenuListeners()
       .then(unlisteners => {
+        if (cleaned) {
+          // Effect was already cleaned up while awaiting — tear down immediately
+          unlisteners.forEach(fn => fn())
+          return
+        }
         menuUnlisteners = unlisteners
         logger.debug('Menu listeners initialized successfully')
       })
@@ -658,6 +542,7 @@ export function useMainWindowEventListeners() {
       })
 
     return () => {
+      cleaned = true
       document.removeEventListener('keydown', handleKeyDown, { capture: true })
       menuUnlisteners.forEach(unlisten => {
         if (unlisten && typeof unlisten === 'function') {

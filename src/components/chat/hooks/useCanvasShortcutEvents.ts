@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { SessionCardData } from '../session-card-utils'
-import type { SessionDigest } from '@/types/chat'
+import type { LabelData, SessionDigest } from '@/types/chat'
 import type { ApprovalContext } from '../PlanDialog'
 import { useChatStore } from '@/store/chat-store'
 import { invoke } from '@/lib/transport'
@@ -46,6 +46,16 @@ interface UseCanvasShortcutEventsResult {
   handlePlanView: (card: SessionCardData) => void
   /** Handle recap view button click */
   handleRecapView: (card: SessionCardData) => void
+  /** Whether the label modal is open */
+  isLabelModalOpen: boolean
+  /** Session ID for the label modal */
+  labelModalSessionId: string | null
+  /** Current label for the label modal session */
+  labelModalCurrentLabel: LabelData | null
+  /** Close label modal */
+  closeLabelModal: () => void
+  /** Open label modal for a card */
+  handleOpenLabelModal: (card: SessionCardData) => void
 }
 
 /**
@@ -70,6 +80,14 @@ export function useCanvasShortcutEvents({
   const [planDialogCard, setPlanDialogCard] = useState<SessionCardData | null>(
     null
   )
+
+  // Label modal state
+  const [labelModalSessionId, setLabelModalSessionId] = useState<string | null>(
+    null
+  )
+  const [labelModalCurrentLabel, setLabelModalCurrentLabel] = useState<
+    LabelData | null
+  >(null)
 
   // Recap dialog state
   const [recapDialogDigest, setRecapDialogDigest] =
@@ -162,6 +180,16 @@ export function useCanvasShortcutEvents({
     setPlanDialogContent(null)
     setPlanApprovalContext(null)
     setPlanDialogCard(null)
+  }, [])
+
+  const closeLabelModal = useCallback(() => {
+    setLabelModalSessionId(null)
+    setLabelModalCurrentLabel(null)
+  }, [])
+
+  const handleOpenLabelModal = useCallback((card: SessionCardData) => {
+    setLabelModalSessionId(card.session.id)
+    setLabelModalCurrentLabel(card.label)
   }, [])
 
   // Regenerate recap for the currently open session
@@ -286,10 +314,16 @@ export function useCanvasShortcutEvents({
       handleRecapView(selectedCard)
     }
 
+    const handleToggleLabelEvent = () => {
+      setLabelModalSessionId(selectedCard.session.id)
+      setLabelModalCurrentLabel(selectedCard.label)
+    }
+
     window.addEventListener('approve-plan', handleApprovePlanEvent)
     window.addEventListener('approve-plan-yolo', handleApprovePlanYoloEvent)
     window.addEventListener('open-plan', handleOpenPlanEvent)
     window.addEventListener('open-recap', handleOpenRecapEvent)
+    window.addEventListener('toggle-session-label', handleToggleLabelEvent)
 
     return () => {
       window.removeEventListener('approve-plan', handleApprovePlanEvent)
@@ -299,6 +333,7 @@ export function useCanvasShortcutEvents({
       )
       window.removeEventListener('open-plan', handleOpenPlanEvent)
       window.removeEventListener('open-recap', handleOpenRecapEvent)
+      window.removeEventListener('toggle-session-label', handleToggleLabelEvent)
     }
   }, [
     enabled,
@@ -322,5 +357,10 @@ export function useCanvasShortcutEvents({
     closeRecapDialog,
     handlePlanView,
     handleRecapView,
+    isLabelModalOpen: !!labelModalSessionId,
+    labelModalSessionId,
+    labelModalCurrentLabel,
+    closeLabelModal,
+    handleOpenLabelModal,
   }
 }

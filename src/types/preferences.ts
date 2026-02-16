@@ -51,8 +51,14 @@ export interface MagicPrompts {
   investigate_workflow_run: string | null
   /** Prompt for generating release notes */
   release_notes: string | null
+  /** Prompt for generating session names from the first message */
+  session_naming: string | null
   /** System prompt for parallel execution (appended to every chat session when enabled) */
   parallel_execution: string | null
+  /** Global system prompt appended to every chat session (like ~/.claude/CLAUDE.md) */
+  global_system_prompt: string | null
+  /** Prompt for generating session recaps (digests) when returning to unfocused sessions */
+  session_recap: string | null
 }
 
 /** Default prompt for investigating GitHub issues */
@@ -314,11 +320,56 @@ export const DEFAULT_RELEASE_NOTES_PROMPT = `Generate release notes for changes 
 - Write in past tense ("Added", "Fixed", "Improved")
 - Keep it concise and user-facing (skip internal implementation details)`
 
+/** Default prompt for generating session names */
+export const DEFAULT_SESSION_NAMING_PROMPT = `<task>Generate a short, human-friendly name for this chat session based on the user's request.</task>
+
+<rules>
+- Maximum 4-5 words total
+- Use sentence case (only capitalize first word)
+- Be descriptive but concise
+- Focus on the main topic or goal
+- No special characters or punctuation
+- No generic names like "Chat session" or "New task"
+- Do NOT use commit-style prefixes like "Add", "Fix", "Update", "Refactor"
+</rules>
+
+<user_request>
+{message}
+</user_request>
+
+<output_format>
+Respond with ONLY the raw JSON object, no markdown, no code fences, no explanation:
+{"session_name": "Your session name here"}
+</output_format>`
+
+export const DEFAULT_GLOBAL_SYSTEM_PROMPT = `## Plan Mode
+
+- Make the plan extremely concise. Sacrifice grammar for the sake of concision.
+- At the end of each plan, give me a list of unresolved questions to answer, if any.
+
+## Not Plan Mode
+
+- After each finished task, please write a few bullet points on how to test the changes.`
+
 export const DEFAULT_PARALLEL_EXECUTION_PROMPT = `In plan mode, structure plans so sub-agents can work simultaneously. In build/execute mode, use sub-agents in parallel for faster implementation.
 
 When launching multiple Task sub-agents, prefer sending them in a single message rather than sequentially. Group independent work items (e.g., editing separate files, researching unrelated questions) into parallel Task calls. Only sequence Tasks when one depends on another's output.
 
-Instruct each sub-agent to briefly outline its approach before implementing, so it can course-correct early without formal plan mode overhead.`
+Instruct each sub-agent to briefly outline its approach before implementing, so it can course-correct early without formal plan mode overhead.
+
+When specifying subagent_type for Task tool calls, always use the fully qualified name exactly as listed in the system prompt (e.g., "code-simplifier:code-simplifier", not just "code-simplifier"). If the agent type contains a colon, include the full namespace:name string.`
+
+/** Default prompt for session recap (digest) generation */
+export const DEFAULT_SESSION_RECAP_PROMPT = `You are a summarization assistant. Your ONLY job is to summarize the following conversation transcript. Do NOT continue the conversation or take any actions. Just summarize.
+
+CONVERSATION TRANSCRIPT:
+{conversation}
+
+END OF TRANSCRIPT.
+
+Now provide a brief summary with exactly two fields:
+- chat_summary: One sentence (max 100 chars) describing the overall goal and current status
+- last_action: One sentence (max 200 chars) describing what was just completed in the last exchange`
 
 /** Default values for all magic prompts (null = use current app default) */
 export const DEFAULT_MAGIC_PROMPTS: MagicPrompts = {
@@ -331,31 +382,97 @@ export const DEFAULT_MAGIC_PROMPTS: MagicPrompts = {
   resolve_conflicts: null,
   investigate_workflow_run: null,
   release_notes: null,
+  session_naming: null,
   parallel_execution: null,
+  global_system_prompt: null,
+  session_recap: null,
 }
 
 /**
  * Per-prompt model overrides. Field names use snake_case to match Rust struct exactly.
  */
 export interface MagicPromptModels {
-  investigate_model: ClaudeModel
+  investigate_issue_model: ClaudeModel
+  investigate_pr_model: ClaudeModel
+  investigate_workflow_run_model: ClaudeModel
   pr_content_model: ClaudeModel
   commit_message_model: ClaudeModel
   code_review_model: ClaudeModel
   context_summary_model: ClaudeModel
   resolve_conflicts_model: ClaudeModel
   release_notes_model: ClaudeModel
+  session_naming_model: ClaudeModel
+  session_recap_model: ClaudeModel
 }
 
 /** Default models for each magic prompt */
 export const DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
-  investigate_model: 'opus',
+  investigate_issue_model: 'opus',
+  investigate_pr_model: 'opus',
+  investigate_workflow_run_model: 'opus',
   pr_content_model: 'haiku',
   commit_message_model: 'haiku',
   code_review_model: 'haiku',
   context_summary_model: 'opus',
   resolve_conflicts_model: 'opus',
   release_notes_model: 'haiku',
+  session_naming_model: 'haiku',
+  session_recap_model: 'haiku',
+}
+
+/**
+ * Per-prompt provider overrides. null = use global default_provider.
+ * Field names use snake_case to match Rust struct exactly.
+ */
+export interface MagicPromptProviders {
+  investigate_issue_provider: string | null
+  investigate_pr_provider: string | null
+  investigate_workflow_run_provider: string | null
+  pr_content_provider: string | null
+  commit_message_provider: string | null
+  code_review_provider: string | null
+  context_summary_provider: string | null
+  resolve_conflicts_provider: string | null
+  release_notes_provider: string | null
+  session_naming_provider: string | null
+  session_recap_provider: string | null
+}
+
+/** Default providers for each magic prompt (null = use global default_provider) */
+export const DEFAULT_MAGIC_PROMPT_PROVIDERS: MagicPromptProviders = {
+  investigate_issue_provider: null,
+  investigate_pr_provider: null,
+  investigate_workflow_run_provider: null,
+  pr_content_provider: null,
+  commit_message_provider: null,
+  code_review_provider: null,
+  context_summary_provider: null,
+  resolve_conflicts_provider: null,
+  release_notes_provider: null,
+  session_naming_provider: null,
+  session_recap_provider: null,
+}
+
+/**
+ * Resolve a magic prompt provider for a given key.
+ * The settings UI stores null = "Anthropic" (explicit choice).
+ * When the key is missing from saved prefs (undefined), we fall back to
+ * DEFAULT_MAGIC_PROMPT_PROVIDERS (which defaults to null = Anthropic),
+ * NOT to the global default_provider.
+ *
+ * Only uses global default_provider when DEFAULT_MAGIC_PROMPT_PROVIDERS
+ * also doesn't have a value (which shouldn't happen for known keys).
+ */
+export function resolveMagicPromptProvider(
+  providers: MagicPromptProviders | undefined,
+  key: keyof MagicPromptProviders,
+  globalDefaultProvider: string | null | undefined
+): string | null {
+  const merged = { ...DEFAULT_MAGIC_PROMPT_PROVIDERS, ...providers }
+  const value = merged[key]
+  // null = explicitly Anthropic, string = custom provider
+  // Only fall back to global default if the merged value is somehow undefined
+  return value !== undefined ? value : (globalDefaultProvider ?? null)
 }
 
 // Types that match the Rust AppPreferences struct
@@ -368,6 +485,7 @@ export interface AppPreferences {
   default_effort_level: EffortLevel // Effort level for Opus 4.6 adaptive thinking: 'low' | 'medium' | 'high' | 'max'
   terminal: TerminalApp // Terminal app: 'terminal' | 'warp' | 'ghostty'
   editor: EditorApp // Editor app: 'vscode' | 'cursor' | 'xcode'
+  open_in: OpenInDefault // Default Open In action: 'editor' | 'terminal' | 'finder' | 'github'
   auto_branch_naming: boolean // Automatically generate branch names from first message
   branch_naming_model: ClaudeModel // Model for generating branch names
   auto_session_naming: boolean // Automatically generate session names from first message
@@ -391,6 +509,7 @@ export interface AppPreferences {
   parallel_execution_prompt_enabled: boolean // Add system prompt to encourage parallel sub-agent execution
   magic_prompts: MagicPrompts // Customizable prompts for AI-powered features
   magic_prompt_models: MagicPromptModels // Per-prompt model overrides
+  magic_prompt_providers: MagicPromptProviders // Per-prompt provider overrides (null = use default_provider)
   file_edit_mode: FileEditMode // How to edit files: inline (CodeMirror) or external (VS Code, etc.)
   ai_language: string // Preferred language for AI responses (empty = default)
   allow_web_tools_in_plan_mode: boolean // Allow WebFetch/WebSearch in plan mode without prompts
@@ -402,14 +521,103 @@ export interface AppPreferences {
   http_server_auto_start: boolean // Auto-start HTTP server on launch
   http_server_localhost_only: boolean // Bind to localhost only (more secure)
   http_server_token_required: boolean // Require token for web access (default true)
+  removal_behavior: RemovalBehavior // What happens when closing sessions/worktrees: 'archive' or 'delete'
+  auto_pull_base_branch: boolean // Auto-pull base branch before creating a new worktree
   auto_archive_on_pr_merged: boolean // Auto-archive worktrees when their PR is merged
   show_keybinding_hints: boolean // Show keyboard shortcut hints at bottom of canvas views
   debug_mode_enabled: boolean // Show debug panel in chat sessions
   default_enabled_mcp_servers: string[] // MCP server names enabled by default (empty = none)
   has_seen_feature_tour: boolean // Whether user has seen the feature tour onboarding
+  has_seen_jean_config_wizard: boolean // Whether user has seen the jean.json setup wizard
   chrome_enabled: boolean // Enable browser automation via Chrome extension
   zoom_level: number // Zoom level percentage (50-200, default 100)
+  custom_cli_profiles: CustomCliProfile[] // Custom CLI settings profiles (e.g., OpenRouter, MiniMax)
+  default_provider: string | null // Default provider profile name (null = Anthropic direct)
+  canvas_layout: CanvasLayout // Canvas display mode: grid (cards) or list (compact rows)
 }
+
+export type CanvasLayout = 'grid' | 'list'
+
+export interface CustomCliProfile {
+  name: string // Display name, e.g. "OpenRouter"
+  settings_json: string // JSON string matching Claude CLI settings format (with env block)
+  file_path?: string // Path to settings file on disk (e.g. ~/.claude/settings.jean.openrouter.json)
+  supports_thinking?: boolean // Whether this provider supports thinking/effort levels (default: true)
+}
+
+export const PREDEFINED_CLI_PROFILES: CustomCliProfile[] = [
+  {
+    name: 'OpenRouter',
+    settings_json: JSON.stringify(
+      {
+        env: {
+          ANTHROPIC_BASE_URL: 'https://openrouter.ai/api',
+          ANTHROPIC_API_KEY: '',
+          ANTHROPIC_AUTH_TOKEN: '<your_api_key>',
+        },
+      },
+      null,
+      2
+    ),
+  },
+  {
+    name: 'MiniMax',
+    supports_thinking: false,
+    settings_json: JSON.stringify(
+      {
+        env: {
+          ANTHROPIC_BASE_URL: 'https://api.minimax.io/anthropic',
+          ANTHROPIC_AUTH_TOKEN: '<your-minimax-api-key>',
+          API_TIMEOUT_MS: '3000000',
+          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+          ANTHROPIC_MODEL: 'MiniMax-M2.5',
+          ANTHROPIC_SMALL_FAST_MODEL: 'MiniMax-M2.5',
+          ANTHROPIC_DEFAULT_SONNET_MODEL: 'MiniMax-M2.5',
+          ANTHROPIC_DEFAULT_OPUS_MODEL: 'MiniMax-M2.5',
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: 'MiniMax-M2.5',
+        },
+      },
+      null,
+      2
+    ),
+  },
+  {
+    name: 'Z.ai',
+    supports_thinking: false,
+    settings_json: JSON.stringify(
+      {
+        env: {
+          ANTHROPIC_BASE_URL: 'https://api.z.ai/api/anthropic',
+          ANTHROPIC_AUTH_TOKEN: '<your-zai-api-key>',
+          API_TIMEOUT_MS: '3000000',
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: 'glm-4.5-air',
+          ANTHROPIC_DEFAULT_SONNET_MODEL: 'glm-4.7',
+          ANTHROPIC_DEFAULT_OPUS_MODEL: 'glm-4.7',
+        },
+      },
+      null,
+      2
+    ),
+  },
+  {
+    name: 'Moonshot',
+    supports_thinking: false,
+    settings_json: JSON.stringify(
+      {
+        env: {
+          ANTHROPIC_BASE_URL: 'https://api.moonshot.ai/anthropic',
+          ANTHROPIC_AUTH_TOKEN: '<your-moonshot-api-key>',
+          ANTHROPIC_MODEL: 'kimi-k2.5',
+          ANTHROPIC_DEFAULT_OPUS_MODEL: 'kimi-k2.5',
+          ANTHROPIC_DEFAULT_SONNET_MODEL: 'kimi-k2.5',
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: 'kimi-k2.5',
+        },
+      },
+      null,
+      2
+    ),
+  },
+]
 
 export type FileEditMode = 'inline' | 'external'
 
@@ -473,6 +681,34 @@ export const editorOptions: { value: EditorApp; label: string }[] = [
   { value: 'cursor', label: 'Cursor' },
   { value: 'xcode', label: 'Xcode' },
 ]
+
+export type OpenInDefault = 'editor' | 'terminal' | 'finder' | 'github'
+
+export const openInDefaultOptions: { value: OpenInDefault; label: string }[] = [
+  { value: 'editor', label: 'Editor' },
+  { value: 'terminal', label: 'Terminal' },
+  { value: 'finder', label: 'Finder' },
+  { value: 'github', label: 'GitHub' },
+]
+
+export function getOpenInDefaultLabel(
+  openIn: OpenInDefault | undefined,
+  editor: EditorApp | undefined,
+  terminal: TerminalApp | undefined
+): string {
+  switch (openIn) {
+    case 'editor':
+      return getEditorLabel(editor)
+    case 'terminal':
+      return getTerminalLabel(terminal)
+    case 'finder':
+      return 'Finder'
+    case 'github':
+      return 'GitHub'
+    default:
+      return getEditorLabel(editor)
+  }
+}
 
 // Font size is now a pixel value
 export type FontSize = number
@@ -561,6 +797,26 @@ export const remotePollIntervalOptions: { value: number; label: string }[] = [
   { value: 600, label: '10 minutes' },
 ]
 
+// Removal behavior options - what happens when closing sessions/worktrees
+export type RemovalBehavior = 'archive' | 'delete'
+
+export const removalBehaviorOptions: {
+  value: RemovalBehavior
+  label: string
+  description: string
+}[] = [
+  {
+    value: 'archive',
+    label: 'Archive',
+    description: 'Soft-delete; can be restored later',
+  },
+  {
+    value: 'delete',
+    label: 'Delete',
+    description: 'Permanently delete; cannot be undone',
+  },
+]
+
 // Archive retention options (days) - how long to keep archived items
 export const archiveRetentionOptions: { value: number; label: string }[] = [
   { value: 0, label: 'Never (keep forever)' },
@@ -639,6 +895,7 @@ export const defaultPreferences: AppPreferences = {
   default_effort_level: 'high',
   terminal: 'terminal',
   editor: 'vscode',
+  open_in: 'editor',
   auto_branch_naming: true,
   branch_naming_model: 'haiku',
   auto_session_naming: true,
@@ -650,7 +907,7 @@ export const defaultPreferences: AppPreferences = {
   git_poll_interval: 60,
   remote_poll_interval: 60,
   keybindings: DEFAULT_KEYBINDINGS,
-  archive_retention_days: 30,
+  archive_retention_days: 7,
   session_grouping_enabled: true,
   canvas_enabled: true,
   canvas_only_mode: true,
@@ -662,6 +919,7 @@ export const defaultPreferences: AppPreferences = {
   parallel_execution_prompt_enabled: false, // Default: disabled (experimental)
   magic_prompts: DEFAULT_MAGIC_PROMPTS,
   magic_prompt_models: DEFAULT_MAGIC_PROMPT_MODELS,
+  magic_prompt_providers: DEFAULT_MAGIC_PROMPT_PROVIDERS,
   file_edit_mode: 'external',
   ai_language: '', // Default: empty (Claude's default behavior)
   allow_web_tools_in_plan_mode: true, // Default: enabled
@@ -673,11 +931,17 @@ export const defaultPreferences: AppPreferences = {
   http_server_auto_start: false,
   http_server_localhost_only: true, // Default to localhost-only for security
   http_server_token_required: true, // Default: require token for security
+  removal_behavior: 'delete', // Default: delete (permanent)
+  auto_pull_base_branch: true, // Default: enabled
   auto_archive_on_pr_merged: true, // Default: enabled
   show_keybinding_hints: true, // Default: enabled
   debug_mode_enabled: false, // Default: disabled
   default_enabled_mcp_servers: [], // Default: no MCP servers enabled
   has_seen_feature_tour: false, // Default: not seen
+  has_seen_jean_config_wizard: false, // Default: not seen
   chrome_enabled: true, // Default: enabled
   zoom_level: ZOOM_LEVEL_DEFAULT,
+  custom_cli_profiles: [],
+  default_provider: null,
+  canvas_layout: 'grid',
 }

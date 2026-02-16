@@ -24,14 +24,9 @@ import {
 } from 'lucide-react'
 import type { ReviewFinding, ReviewResponse } from '@/types/projects'
 import { cn } from '@/lib/utils'
-import {
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-} from '@/components/ui/tooltip'
 
 interface ReviewResultsPanelProps {
-  worktreeId: string
+  sessionId: string
 }
 
 /** Generate a unique key for a review finding */
@@ -200,16 +195,18 @@ const FindingCard = memo(function FindingCard({
                 Fixed
               </Badge>
             )}
-            <span className="text-xs text-muted-foreground shrink-0 font-mono">
-              {finding.file}
-              {finding.line ? `:${finding.line}` : ''}
-            </span>
           </div>
         </CollapsibleTrigger>
 
         {/* Content */}
         <CollapsibleContent>
           <div className="px-4 pb-4 pt-3 space-y-3 border-t border-border/50">
+            {/* File location */}
+            <p className="text-xs font-mono">
+              <span className="text-muted-foreground">Affected code: </span>
+              <span className="text-foreground">{finding.file}{finding.line ? `:${finding.line}` : ''}</span>
+            </p>
+
             {/* Description */}
             <p className="text-sm text-muted-foreground">
               {finding.description}
@@ -282,19 +279,16 @@ function EmptyState() {
   )
 }
 
-export function ReviewResultsPanel({ worktreeId }: ReviewResultsPanelProps) {
+export function ReviewResultsPanel({ sessionId }: ReviewResultsPanelProps) {
   const [fixingIndices, setFixingIndices] = useState<Set<number>>(new Set())
   const [isFixingAll, setIsFixingAll] = useState(false)
 
   const reviewResults = useChatStore(
-    state => state.reviewResults[worktreeId]
+    state => state.reviewResults[sessionId]
   ) as ReviewResponse | undefined
   const fixedReviewFindings = useChatStore(
-    state => state.fixedReviewFindings[worktreeId]
+    state => state.fixedReviewFindings[sessionId]
   )
-  const activeWorktreePath = useChatStore(state => state.activeWorktreePath)
-
-  const clearReviewResults = useChatStore(state => state.clearReviewResults)
 
   // Check if a finding is fixed
   const isFindingFixed = useCallback(
@@ -305,14 +299,15 @@ export function ReviewResultsPanel({ worktreeId }: ReviewResultsPanelProps) {
     [fixedReviewFindings]
   )
 
-  // Handle fixing a single finding
+  // Handle fixing a single finding - auto-sends fix message in same session
   const handleFixFinding = useCallback(
     async (
       finding: ReviewFinding,
       index: number,
       customSuggestion?: string
     ) => {
-      if (!activeWorktreePath) return
+      const { activeWorktreeId, activeWorktreePath, markReviewFindingFixed } = useChatStore.getState()
+      if (!activeWorktreePath || !activeWorktreeId) return
 
       setFixingIndices(prev => new Set(prev).add(index))
 
@@ -332,20 +327,18 @@ ${suggestionToApply || '(Please determine the best fix)'}
 
 Please apply this fix to the file.`
 
-        const { markReviewFindingFixed } = useChatStore.getState()
-
         // Mark as fixed
         const findingKey = getReviewFindingKey(finding, index)
-        markReviewFindingFixed(worktreeId, findingKey)
+        markReviewFindingFixed(sessionId, findingKey)
 
-        // Dispatch event to trigger new session creation and message send from ChatWindow
+        // Dispatch event to send fix message in same session
         window.dispatchEvent(
           new CustomEvent('review-fix-message', {
             detail: {
-              worktreeId,
+              sessionId,
+              worktreeId: activeWorktreeId,
               worktreePath: activeWorktreePath,
               message,
-              createNewSession: true,
             },
           })
         )
@@ -357,12 +350,13 @@ Please apply this fix to the file.`
         })
       }
     },
-    [activeWorktreePath, worktreeId]
+    [sessionId]
   )
 
-  // Handle fixing all unfixed findings
+  // Handle fixing all unfixed findings - auto-sends fix message in same session
   const handleFixAll = useCallback(async () => {
-    if (!reviewResults || !activeWorktreePath) return
+    const { activeWorktreeId, activeWorktreePath } = useChatStore.getState()
+    if (!reviewResults || !activeWorktreePath || !activeWorktreeId) return
 
     setIsFixingAll(true)
 
@@ -401,24 +395,24 @@ Please apply all these fixes to the codebase.`
       // Mark all as fixed
       for (const { finding, index } of unfixedFindings) {
         const findingKey = getReviewFindingKey(finding, index)
-        markReviewFindingFixed(worktreeId, findingKey)
+        markReviewFindingFixed(sessionId, findingKey)
       }
 
-      // Dispatch event to trigger new session creation and send from ChatWindow
+      // Dispatch event to send fix message in same session
       window.dispatchEvent(
         new CustomEvent('review-fix-message', {
           detail: {
-            worktreeId,
+            sessionId,
+            worktreeId: activeWorktreeId,
             worktreePath: activeWorktreePath,
             message,
-            createNewSession: true,
           },
         })
       )
     } finally {
       setIsFixingAll(false)
     }
-  }, [reviewResults, activeWorktreePath, worktreeId, isFindingFixed])
+  }, [reviewResults, sessionId, isFindingFixed])
 
   if (!reviewResults) {
     return <EmptyState />
@@ -446,10 +440,22 @@ Please apply all these fixes to the codebase.`
   ).length
 
   return (
-    <div className="relative flex h-full flex-col bg-background">
+    <div className="relative flex h-full flex-col bg-background border-l">
+      {/* Sidebar title bar */}
+      <div className="flex items-center justify-between border-b px-3 py-2">
+        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Review</span>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6"
+          onClick={() => useChatStore.getState().setReviewSidebarVisible(false)}
+        >
+          <X className="h-3.5 w-3.5" />
+        </Button>
+      </div>
       {/* Header with summary */}
-      <div className="border-b p-4">
-        <div className="flex items-start justify-between gap-4">
+      <div className="border-b p-3">
+        <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 mb-2">
               <div
@@ -482,7 +488,7 @@ Please apply all these fixes to the codebase.`
             {unfixedCount > 0 && (
               <Button
                 onClick={handleFixAll}
-                disabled={isFixingAll || !activeWorktreePath}
+                disabled={isFixingAll}
                 size="sm"
               >
                 {isFixingAll ? (
@@ -498,19 +504,6 @@ Please apply all these fixes to the codebase.`
                 )}
               </Button>
             )}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 flex-shrink-0"
-                  onClick={() => clearReviewResults(worktreeId)}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Clear review results</TooltipContent>
-            </Tooltip>
           </div>
         </div>
 

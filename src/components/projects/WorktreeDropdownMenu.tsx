@@ -90,12 +90,10 @@ export function WorktreeDropdownMenu({
             </DropdownMenuItem>
           )}
 
-          {isNativeApp() && (
-            <DropdownMenuItem onClick={handleOpenJeanConfig}>
-              <FileJson className="mr-2 h-4 w-4" />
-              Edit jean.json
-            </DropdownMenuItem>
-          )}
+          <DropdownMenuItem onClick={handleOpenJeanConfig}>
+            <FileJson className="mr-2 h-4 w-4" />
+            Edit jean.json
+          </DropdownMenuItem>
 
           {hasMessages && (
             <DropdownMenuItem onClick={handleGenerateRecap}>

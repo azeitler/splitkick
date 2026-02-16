@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useTerminal } from '@/hooks/useTerminal'
-import { disposeTerminal } from '@/lib/terminal-instances'
+import { disposeTerminal, setOnStopped } from '@/lib/terminal-instances'
 
 export interface SetupStateProps {
   cliName: string
@@ -260,6 +260,17 @@ export function AuthLoginState({
     },
     [initTerminal, fit]
   )
+
+  // Auto-advance when the auth process exits successfully
+  useEffect(() => {
+    setOnStopped(terminalId, exitCode => {
+      if (exitCode === 0) {
+        // Brief delay so user can see the success output
+        setTimeout(() => onComplete(), 1500)
+      }
+    })
+    return () => setOnStopped(terminalId, undefined)
+  }, [terminalId, onComplete])
 
   // Cleanup observer and terminal on unmount
   useEffect(() => {

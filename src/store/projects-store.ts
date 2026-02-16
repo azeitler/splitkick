@@ -9,6 +9,12 @@ interface ProjectsUIState {
   // Expansion state for tree view (projects)
   expandedProjectIds: Set<string>
 
+  // Expansion state for worktrees (sidebar session list)
+  expandedWorktreeIds: Set<string>
+
+  // Dashboard worktree collapse overrides (list view): true=collapsed, false=expanded
+  dashboardWorktreeCollapseOverrides: Record<string, boolean>
+
   // Expansion state for folders
   expandedFolderIds: Set<string>
 
@@ -22,10 +28,15 @@ interface ProjectsUIState {
   // Project settings dialog state
   projectSettingsDialogOpen: boolean
   projectSettingsProjectId: string | null
+  projectSettingsInitialPane: string | null
 
   // Git init modal state
   gitInitModalOpen: boolean
   gitInitModalPath: string | null
+
+  // Jean.json config wizard state
+  jeanConfigWizardOpen: boolean
+  jeanConfigWizardProjectId: string | null
 
   // Folder editing state (for auto-rename on create)
   editingFolderId: string | null
@@ -38,6 +49,13 @@ interface ProjectsUIState {
   expandProject: (id: string) => void
   collapseProject: (id: string) => void
 
+  // Worktree expansion actions
+  toggleWorktreeExpanded: (id: string) => void
+
+  // Dashboard collapse actions
+  toggleDashboardWorktreeCollapsed: (id: string, defaultCollapsed: boolean) => void
+  setDashboardWorktreeCollapseOverrides: (overrides: Record<string, boolean>) => void
+
   // Folder expansion actions
   toggleFolderExpanded: (id: string) => void
   expandFolder: (id: string) => void
@@ -47,10 +65,12 @@ interface ProjectsUIState {
     open: boolean,
     parentFolderId?: string | null
   ) => void
-  openProjectSettings: (projectId: string) => void
+  openProjectSettings: (projectId: string, pane?: string) => void
   closeProjectSettings: () => void
   openGitInitModal: (path: string) => void
   closeGitInitModal: () => void
+  openJeanConfigWizard: (projectId: string) => void
+  closeJeanConfigWizard: () => void
   setEditingFolderId: (id: string | null) => void
   setProjectAccessTimestamps: (timestamps: Record<string, number>) => void
 }
@@ -62,14 +82,19 @@ export const useProjectsStore = create<ProjectsUIState>()(
       selectedProjectId: null,
       selectedWorktreeId: null,
       expandedProjectIds: new Set<string>(),
+      expandedWorktreeIds: new Set<string>(),
+      dashboardWorktreeCollapseOverrides: {},
       expandedFolderIds: new Set<string>(),
       projectAccessTimestamps: {},
       addProjectDialogOpen: false,
       addProjectParentFolderId: null,
       projectSettingsDialogOpen: false,
       projectSettingsProjectId: null,
+      projectSettingsInitialPane: null,
       gitInitModalOpen: false,
       gitInitModalPath: null,
+      jeanConfigWizardOpen: false,
+      jeanConfigWizardProjectId: null,
       editingFolderId: null,
 
       // Selection actions
@@ -142,6 +167,46 @@ export const useProjectsStore = create<ProjectsUIState>()(
           'collapseProject'
         ),
 
+      // Worktree expansion actions
+      toggleWorktreeExpanded: id =>
+        set(
+          state => {
+            const newSet = new Set(state.expandedWorktreeIds)
+            if (newSet.has(id)) {
+              newSet.delete(id)
+            } else {
+              newSet.add(id)
+            }
+            return { expandedWorktreeIds: newSet }
+          },
+          undefined,
+          'toggleWorktreeExpanded'
+        ),
+
+      // Dashboard collapse actions
+      toggleDashboardWorktreeCollapsed: (id, defaultCollapsed) =>
+        set(
+          state => {
+            const current = state.dashboardWorktreeCollapseOverrides[id]
+            const isCurrentlyCollapsed = current ?? defaultCollapsed
+            return {
+              dashboardWorktreeCollapseOverrides: {
+                ...state.dashboardWorktreeCollapseOverrides,
+                [id]: !isCurrentlyCollapsed,
+              },
+            }
+          },
+          undefined,
+          'toggleDashboardWorktreeCollapsed'
+        ),
+
+      setDashboardWorktreeCollapseOverrides: overrides =>
+        set(
+          { dashboardWorktreeCollapseOverrides: overrides },
+          undefined,
+          'setDashboardWorktreeCollapseOverrides'
+        ),
+
       // Folder expansion actions
       toggleFolderExpanded: id =>
         set(
@@ -191,11 +256,12 @@ export const useProjectsStore = create<ProjectsUIState>()(
           'setAddProjectDialogOpen'
         ),
 
-      openProjectSettings: projectId =>
+      openProjectSettings: (projectId, pane) =>
         set(
           {
             projectSettingsDialogOpen: true,
             projectSettingsProjectId: projectId,
+            projectSettingsInitialPane: pane ?? null,
           },
           undefined,
           'openProjectSettings'
@@ -203,7 +269,11 @@ export const useProjectsStore = create<ProjectsUIState>()(
 
       closeProjectSettings: () =>
         set(
-          { projectSettingsDialogOpen: false, projectSettingsProjectId: null },
+          {
+            projectSettingsDialogOpen: false,
+            projectSettingsProjectId: null,
+            projectSettingsInitialPane: null,
+          },
           undefined,
           'closeProjectSettings'
         ),
@@ -220,6 +290,20 @@ export const useProjectsStore = create<ProjectsUIState>()(
           { gitInitModalOpen: false, gitInitModalPath: null },
           undefined,
           'closeGitInitModal'
+        ),
+
+      openJeanConfigWizard: projectId =>
+        set(
+          { jeanConfigWizardOpen: true, jeanConfigWizardProjectId: projectId },
+          undefined,
+          'openJeanConfigWizard'
+        ),
+
+      closeJeanConfigWizard: () =>
+        set(
+          { jeanConfigWizardOpen: false, jeanConfigWizardProjectId: null },
+          undefined,
+          'closeJeanConfigWizard'
         ),
 
       setEditingFolderId: id =>

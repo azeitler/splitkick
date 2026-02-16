@@ -13,6 +13,7 @@ import {
   AlertCircle,
   Wand2,
   Zap,
+  Settings,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
@@ -55,6 +56,7 @@ import {
   useCreateBaseSession,
   useProjectBranches,
   useCreateWorktreeFromExistingBranch,
+  useJeanConfig,
   projectsQueryKeys,
 } from '@/services/projects'
 import { isBaseSession } from '@/types/projects'
@@ -315,25 +317,29 @@ export function NewWorktreeModal() {
   ])
 
   const handleSelectBranch = useCallback(
-    (branchName: string) => {
+    (branchName: string, background = false) => {
       if (!selectedProjectId) {
         toast.error('No project selected')
         return
       }
       setCreatingFromBranch(branchName)
+      if (background) useUIStore.getState().incrementPendingBackgroundCreations()
       createWorktreeFromBranch.mutate(
-        { projectId: selectedProjectId, branchName },
+        { projectId: selectedProjectId, branchName, background },
         {
           onError: () => setCreatingFromBranch(null),
+          onSuccess: () => {
+            if (background) setCreatingFromBranch(null)
+          },
         }
       )
-      handleOpenChange(false)
+      if (!background) handleOpenChange(false)
     },
     [selectedProjectId, createWorktreeFromBranch, handleOpenChange]
   )
 
   const handleSelectIssue = useCallback(
-    async (issue: GitHubIssue) => {
+    async (issue: GitHubIssue, background = false) => {
       const projectPath = selectedProject?.path
       if (!selectedProjectId || !projectPath) {
         toast.error('No project selected')
@@ -373,12 +379,18 @@ export function NewWorktreeModal() {
         }
 
         // Create worktree with issue context
+        if (background) useUIStore.getState().incrementPendingBackgroundCreations()
         createWorktree.mutate({
           projectId: selectedProjectId,
           issueContext,
+          background,
         })
 
-        handleOpenChange(false)
+        if (background) {
+          setCreatingFromNumber(null)
+        } else {
+          handleOpenChange(false)
+        }
       } catch (error) {
         toast.error(`Failed to fetch issue details: ${error}`)
         setCreatingFromNumber(null)
@@ -389,7 +401,7 @@ export function NewWorktreeModal() {
 
   // Handle selecting an issue AND triggering auto-investigate after worktree creation
   const handleSelectIssueAndInvestigate = useCallback(
-    async (issue: GitHubIssue) => {
+    async (issue: GitHubIssue, background = false) => {
       const projectPath = selectedProject?.path
       if (!selectedProjectId || !projectPath) {
         toast.error('No project selected')
@@ -427,17 +439,22 @@ export function NewWorktreeModal() {
             })),
         }
 
-        // Create worktree and mark for auto-investigate
-        const pendingWorktree = await createWorktree.mutateAsync({
+        // Set investigate flag BEFORE mutateAsync so it's available
+        // when worktree:created or worktree:unarchived fires
+        useUIStore.getState().setPendingInvestigateType('issue')
+        if (background) useUIStore.getState().incrementPendingBackgroundCreations()
+
+        await createWorktree.mutateAsync({
           projectId: selectedProjectId,
           issueContext,
+          background,
         })
 
-        // Mark this worktree to trigger investigate-issue when it's ready
-        const { markWorktreeForAutoInvestigate } = useUIStore.getState()
-        markWorktreeForAutoInvestigate(pendingWorktree.id)
-
-        handleOpenChange(false)
+        if (background) {
+          setCreatingFromNumber(null)
+        } else {
+          handleOpenChange(false)
+        }
       } catch (error) {
         toast.error(`Failed to fetch issue details: ${error}`)
         setCreatingFromNumber(null)
@@ -447,7 +464,7 @@ export function NewWorktreeModal() {
   )
 
   const handleSelectPR = useCallback(
-    async (pr: GitHubPullRequest) => {
+    async (pr: GitHubPullRequest, background = false) => {
       const projectPath = selectedProject?.path
       if (!selectedProjectId || !projectPath) {
         toast.error('No project selected')
@@ -502,12 +519,18 @@ export function NewWorktreeModal() {
         }
 
         // Create worktree with PR context
+        if (background) useUIStore.getState().incrementPendingBackgroundCreations()
         createWorktree.mutate({
           projectId: selectedProjectId,
           prContext,
+          background,
         })
 
-        handleOpenChange(false)
+        if (background) {
+          setCreatingFromNumber(null)
+        } else {
+          handleOpenChange(false)
+        }
       } catch (error) {
         toast.error(`Failed to fetch PR details: ${error}`)
         setCreatingFromNumber(null)
@@ -518,7 +541,7 @@ export function NewWorktreeModal() {
 
   // Handle selecting a PR AND triggering auto-investigate after worktree creation
   const handleSelectPRAndInvestigate = useCallback(
-    async (pr: GitHubPullRequest) => {
+    async (pr: GitHubPullRequest, background = false) => {
       const projectPath = selectedProject?.path
       if (!selectedProjectId || !projectPath) {
         toast.error('No project selected')
@@ -572,17 +595,22 @@ export function NewWorktreeModal() {
             })),
         }
 
-        // Create worktree and mark for auto-investigate
-        const pendingWorktree = await createWorktree.mutateAsync({
+        // Set investigate flag BEFORE mutateAsync so it's available
+        // when worktree:created or worktree:unarchived fires
+        useUIStore.getState().setPendingInvestigateType('pr')
+        if (background) useUIStore.getState().incrementPendingBackgroundCreations()
+
+        await createWorktree.mutateAsync({
           projectId: selectedProjectId,
           prContext,
+          background,
         })
 
-        // Mark this worktree to trigger investigate-pr when it's ready
-        const { markWorktreeForAutoInvestigatePR } = useUIStore.getState()
-        markWorktreeForAutoInvestigatePR(pendingWorktree.id)
-
-        handleOpenChange(false)
+        if (background) {
+          setCreatingFromNumber(null)
+        } else {
+          handleOpenChange(false)
+        }
       } catch (error) {
         toast.error(`Failed to fetch PR details: ${error}`)
         setCreatingFromNumber(null)
@@ -655,12 +683,12 @@ export function NewWorktreeModal() {
         }
         if (key === 'enter' && filteredIssues[selectedItemIndex]) {
           e.preventDefault()
-          handleSelectIssue(filteredIssues[selectedItemIndex])
+          handleSelectIssue(filteredIssues[selectedItemIndex], e.metaKey)
           return
         }
         if (key === 'm' && filteredIssues[selectedItemIndex]) {
           e.preventDefault()
-          handleSelectIssueAndInvestigate(filteredIssues[selectedItemIndex])
+          handleSelectIssueAndInvestigate(filteredIssues[selectedItemIndex], e.metaKey)
           return
         }
       }
@@ -681,12 +709,12 @@ export function NewWorktreeModal() {
         }
         if (key === 'enter' && filteredPRs[selectedItemIndex]) {
           e.preventDefault()
-          handleSelectPR(filteredPRs[selectedItemIndex])
+          handleSelectPR(filteredPRs[selectedItemIndex], e.metaKey)
           return
         }
         if (key === 'm' && filteredPRs[selectedItemIndex]) {
           e.preventDefault()
-          handleSelectPRAndInvestigate(filteredPRs[selectedItemIndex])
+          handleSelectPRAndInvestigate(filteredPRs[selectedItemIndex], e.metaKey)
           return
         }
       }
@@ -707,7 +735,7 @@ export function NewWorktreeModal() {
         }
         if (key === 'enter' && filteredBranches[selectedItemIndex]) {
           e.preventDefault()
-          handleSelectBranch(filteredBranches[selectedItemIndex])
+          handleSelectBranch(filteredBranches[selectedItemIndex], e.metaKey)
           return
         }
       }
@@ -761,6 +789,8 @@ export function NewWorktreeModal() {
               isCreating={
                 createWorktree.isPending || createBaseSession.isPending
               }
+              projectId={selectedProjectId}
+              projectPath={selectedProject?.path ?? null}
             />
           )}
 
@@ -827,6 +857,15 @@ export function NewWorktreeModal() {
             />
           )}
         </div>
+
+        {/* Background open hint */}
+        {activeTab !== 'quick' && (
+          <div className="shrink-0 border-t border-border px-3 py-1.5">
+            <span className="text-xs text-muted-foreground">
+              Hold <kbd className="mx-0.5 rounded bg-muted px-1 py-0.5 text-[10px]">{getModifierSymbol()}</kbd> to open in background
+            </span>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   )
@@ -872,6 +911,8 @@ export interface QuickActionsTabProps {
   onCreateWorktree: () => void
   onBaseSession: () => void
   isCreating: boolean
+  projectId: string | null
+  projectPath: string | null
 }
 
 export function QuickActionsTab({
@@ -879,9 +920,25 @@ export function QuickActionsTab({
   onCreateWorktree,
   onBaseSession,
   isCreating,
+  projectId,
+  projectPath,
 }: QuickActionsTabProps) {
+  const { data: jeanConfig } = useJeanConfig(projectPath)
+  const setupScript = jeanConfig?.scripts.setup
+  const runScript = jeanConfig?.scripts.run
+  const { setNewWorktreeModalOpen } = useUIStore.getState()
+
+  const handleRunClick = () => {
+    if (!projectId) return
+    if (!runScript) {
+      // No run script — open project settings to jean.json pane
+      setNewWorktreeModalOpen(false)
+      useProjectsStore.getState().openProjectSettings(projectId, 'jean-json')
+    }
+  }
+
   return (
-    <div className="flex items-center justify-center flex-1 p-4 sm:p-10">
+    <div className="flex flex-col items-center justify-center flex-1 p-4 sm:p-10">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 w-full max-w-xl">
         {/* Base Session button */}
         <button
@@ -927,12 +984,36 @@ export function QuickActionsTab({
             <span className="text-xs text-muted-foreground text-center">
               Create an isolated branch for your task
             </span>
+            {setupScript && (
+              <span className="text-xs text-muted-foreground/70 font-mono truncate max-w-[200px]">
+                Setup: {setupScript}
+              </span>
+            )}
           </div>
           <kbd className="hidden sm:block absolute top-3 right-3 text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
             N
           </kbd>
         </button>
       </div>
+
+      {/* Configure jean.json - only show when not configured */}
+      {!runScript && projectId && (
+        <div className="flex items-center gap-1 mt-6">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={handleRunClick}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs text-muted-foreground/40 hover:text-foreground hover:bg-accent cursor-pointer transition-colors"
+              >
+                <Settings className="h-4 w-4" />
+                <span>Configure jean.json</span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Configure jean.json</TooltipContent>
+          </Tooltip>
+        </div>
+      )}
     </div>
   )
 }
@@ -950,8 +1031,8 @@ export interface GitHubIssuesTabProps {
   onRefresh: () => void
   selectedIndex: number
   setSelectedIndex: (index: number) => void
-  onSelectIssue: (issue: GitHubIssue) => void
-  onInvestigateIssue: (issue: GitHubIssue) => void
+  onSelectIssue: (issue: GitHubIssue, background?: boolean) => void
+  onInvestigateIssue: (issue: GitHubIssue, background?: boolean) => void
   creatingFromNumber: number | null
   searchInputRef: React.RefObject<HTMLInputElement | null>
   onGhLogin: () => void
@@ -1084,8 +1165,8 @@ export function GitHubIssuesTab({
                 isSelected={index === selectedIndex}
                 isCreating={creatingFromNumber === issue.number}
                 onMouseEnter={() => setSelectedIndex(index)}
-                onClick={() => onSelectIssue(issue)}
-                onInvestigate={() => onInvestigateIssue(issue)}
+                onClick={(bg) => onSelectIssue(issue, bg)}
+                onInvestigate={(bg) => onInvestigateIssue(issue, bg)}
               />
             ))}
             {isSearching && (
@@ -1116,8 +1197,8 @@ export interface GitHubPRsTabProps {
   onRefresh: () => void
   selectedIndex: number
   setSelectedIndex: (index: number) => void
-  onSelectPR: (pr: GitHubPullRequest) => void
-  onInvestigatePR: (pr: GitHubPullRequest) => void
+  onSelectPR: (pr: GitHubPullRequest, background?: boolean) => void
+  onInvestigatePR: (pr: GitHubPullRequest, background?: boolean) => void
   creatingFromNumber: number | null
   searchInputRef: React.RefObject<HTMLInputElement | null>
   onGhLogin: () => void
@@ -1250,8 +1331,8 @@ export function GitHubPRsTab({
                 isSelected={index === selectedIndex}
                 isCreating={creatingFromNumber === pr.number}
                 onMouseEnter={() => setSelectedIndex(index)}
-                onClick={() => onSelectPR(pr)}
-                onInvestigate={() => onInvestigatePR(pr)}
+                onClick={(bg) => onSelectPR(pr, bg)}
+                onInvestigate={(bg) => onInvestigatePR(pr, bg)}
               />
             ))}
             {isSearching && (
@@ -1275,8 +1356,8 @@ interface IssueItemProps {
   isSelected: boolean
   isCreating: boolean
   onMouseEnter: () => void
-  onClick: () => void
-  onInvestigate: () => void
+  onClick: (background: boolean) => void
+  onInvestigate: (background: boolean) => void
 }
 
 function IssueItem({
@@ -1310,7 +1391,7 @@ function IssueItem({
         />
       )}
       <button
-        onClick={onClick}
+        onClick={e => onClick(e.metaKey)}
         disabled={isCreating}
         className="flex-1 min-w-0 text-left focus:outline-none disabled:cursor-not-allowed"
       >
@@ -1352,7 +1433,7 @@ function IssueItem({
           <button
             onClick={e => {
               e.stopPropagation()
-              onInvestigate()
+              onInvestigate(e.metaKey)
             }}
             disabled={isCreating}
             className="shrink-0 inline-flex items-center gap-0.5 rounded bg-black px-1 py-0.5 text-[10px] text-white transition-colors hover:bg-black/80 dark:bg-yellow-500/20 dark:text-yellow-400 dark:hover:bg-yellow-500/30 dark:hover:text-yellow-300 disabled:opacity-30 disabled:cursor-not-allowed"
@@ -1373,8 +1454,8 @@ interface PRItemProps {
   isSelected: boolean
   isCreating: boolean
   onMouseEnter: () => void
-  onClick: () => void
-  onInvestigate: () => void
+  onClick: (background: boolean) => void
+  onInvestigate: (background: boolean) => void
 }
 
 function PRItem({
@@ -1412,7 +1493,7 @@ function PRItem({
         />
       )}
       <button
-        onClick={onClick}
+        onClick={e => onClick(e.metaKey)}
         disabled={isCreating}
         className="flex-1 min-w-0 text-left focus:outline-none disabled:cursor-not-allowed"
       >
@@ -1459,7 +1540,7 @@ function PRItem({
           <button
             onClick={e => {
               e.stopPropagation()
-              onInvestigate()
+              onInvestigate(e.metaKey)
             }}
             disabled={isCreating}
             className="shrink-0 inline-flex items-center gap-0.5 rounded bg-black px-1 py-0.5 text-[10px] text-white transition-colors hover:bg-black/80 dark:bg-yellow-500/20 dark:text-yellow-400 dark:hover:bg-yellow-500/30 dark:hover:text-yellow-300 disabled:opacity-30 disabled:cursor-not-allowed"
@@ -1484,7 +1565,7 @@ export interface BranchesTabProps {
   onRefresh: () => void
   selectedIndex: number
   setSelectedIndex: (index: number) => void
-  onSelectBranch: (branchName: string) => void
+  onSelectBranch: (branchName: string, background?: boolean) => void
   creatingFromBranch: string | null
   searchInputRef: React.RefObject<HTMLInputElement | null>
 }
@@ -1584,7 +1665,7 @@ export function BranchesTab({
                 isSelected={index === selectedIndex}
                 isCreating={creatingFromBranch === branch}
                 onMouseEnter={() => setSelectedIndex(index)}
-                onClick={() => onSelectBranch(branch)}
+                onClick={(bg) => onSelectBranch(branch, bg)}
               />
             ))}
           </div>
@@ -1600,7 +1681,7 @@ interface BranchItemProps {
   isSelected: boolean
   isCreating: boolean
   onMouseEnter: () => void
-  onClick: () => void
+  onClick: (background: boolean) => void
 }
 
 function BranchItem({
@@ -1615,7 +1696,7 @@ function BranchItem({
     <button
       data-item-index={index}
       onMouseEnter={onMouseEnter}
-      onClick={onClick}
+      onClick={e => onClick(e.metaKey)}
       disabled={isCreating}
       className={cn(
         'w-full flex items-center gap-3 px-3 py-2.5 sm:py-2 text-left transition-colors',

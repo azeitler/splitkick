@@ -10,16 +10,19 @@ use super::naming::{spawn_naming_task, NamingRequest};
 use super::registry::cancel_process;
 use super::run_log;
 use super::storage::{
-    delete_session_data, get_data_dir, get_index_path, get_session_dir, load_metadata,
-    load_sessions, with_sessions_mut,
+    delete_session_data, get_base_index_path, get_data_dir, get_index_path, get_session_dir,
+    load_metadata, load_sessions, with_sessions_mut,
 };
 use super::types::{
-    AllSessionsEntry, AllSessionsResponse, ChatMessage, ClaudeContext, EffortLevel, MessageRole,
-    RunStatus, Session, SessionDigest, ThinkingLevel, WorktreeSessions,
+    AllSessionsEntry, AllSessionsResponse, ChatMessage, ClaudeContext, EffortLevel, LabelData,
+    MessageRole, RunStatus, Session, SessionDigest, ThinkingLevel, WorktreeIndex, WorktreeSessions,
 };
 use crate::claude_cli::resolve_cli_binary;
 use crate::http_server::EmitExt;
 use crate::platform::silent_command;
+use crate::projects::github_issues::{
+    add_issue_reference, add_pr_reference, get_session_issue_refs, get_session_pr_refs,
+};
 use crate::projects::storage::load_projects_data;
 use crate::projects::types::SessionType;
 
@@ -86,6 +89,39 @@ pub async fn get_sessions(
             session.last_run_status,
             session.last_run_execution_mode
         );
+    }
+
+    // Propagate issue/PR references from worktree_id to session IDs
+    // (create_worktree stores refs under worktree_id, but toolbar queries by session_id)
+    let worktree_issue_keys = get_session_issue_refs(&app, &worktree_id).unwrap_or_default();
+    let worktree_pr_keys = get_session_pr_refs(&app, &worktree_id).unwrap_or_default();
+
+    if !worktree_issue_keys.is_empty() || !worktree_pr_keys.is_empty() {
+        for session in &sessions.sessions {
+            let session_issues = get_session_issue_refs(&app, &session.id).unwrap_or_default();
+            let session_prs = get_session_pr_refs(&app, &session.id).unwrap_or_default();
+
+            if session_issues.is_empty() && !worktree_issue_keys.is_empty() {
+                for key in &worktree_issue_keys {
+                    if let Some(number_str) = key.rsplit('-').next() {
+                        if let Ok(number) = number_str.parse::<u32>() {
+                            let repo_key = &key[..key.len() - number_str.len() - 1];
+                            let _ = add_issue_reference(&app, repo_key, number, &session.id);
+                        }
+                    }
+                }
+            }
+            if session_prs.is_empty() && !worktree_pr_keys.is_empty() {
+                for key in &worktree_pr_keys {
+                    if let Some(number_str) = key.rsplit('-').next() {
+                        if let Ok(number) = number_str.parse::<u32>() {
+                            let repo_key = &key[..key.len() - number_str.len() - 1];
+                            let _ = add_pr_reference(&app, repo_key, number, &session.id);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     Ok(sessions)
@@ -176,7 +212,7 @@ pub async fn create_session(
 ) -> Result<Session, String> {
     log::trace!("Creating new session for worktree: {worktree_id}");
 
-    with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
+    let session = with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
         // Generate name if not provided
         let session_number = sessions.next_session_number();
         let session_name = name.unwrap_or_else(|| format!("Session {session_number}"));
@@ -189,7 +225,32 @@ pub async fn create_session(
 
         log::trace!("Created session: {}", session.id);
         Ok(session)
-    })
+    })?;
+
+    // Copy issue/PR context references from worktree_id to new session_id
+    // (worktree creation stores refs under worktree_id, but toolbar queries by session_id)
+    if let Ok(issue_keys) = get_session_issue_refs(&app, &worktree_id) {
+        for key in &issue_keys {
+            if let Some(number_str) = key.rsplit('-').next() {
+                if let Ok(number) = number_str.parse::<u32>() {
+                    let repo_key = &key[..key.len() - number_str.len() - 1];
+                    let _ = add_issue_reference(&app, repo_key, number, &session.id);
+                }
+            }
+        }
+    }
+    if let Ok(pr_keys) = get_session_pr_refs(&app, &worktree_id) {
+        for key in &pr_keys {
+            if let Some(number_str) = key.rsplit('-').next() {
+                if let Ok(number) = number_str.parse::<u32>() {
+                    let repo_key = &key[..key.len() - number_str.len() - 1];
+                    let _ = add_pr_reference(&app, repo_key, number, &session.id);
+                }
+            }
+        }
+    }
+
+    Ok(session)
 }
 
 /// Rename a session tab
@@ -213,6 +274,48 @@ pub async fn rename_session(
     })
 }
 
+/// Regenerate session name using AI based on the first user message
+#[tauri::command]
+pub async fn regenerate_session_name(
+    app: AppHandle,
+    worktree_id: String,
+    worktree_path: String,
+    session_id: String,
+    custom_prompt: Option<String>,
+    model: Option<String>,
+    custom_profile_name: Option<String>,
+) -> Result<(), String> {
+    log::trace!("Regenerating session name for {session_id}");
+
+    // Load messages from NDJSON (load_sessions returns empty messages)
+    let messages = run_log::load_session_messages(&app, &session_id)?;
+
+    // Find the first user message to use for naming
+    let first_message = messages
+        .iter()
+        .find(|m| m.role == MessageRole::User)
+        .map(|m| m.content.clone())
+        .ok_or_else(|| "No user messages in session to generate name from".to_string())?;
+
+    let naming_model = model.unwrap_or_else(|| "haiku".to_string());
+
+    let request = NamingRequest {
+        session_id,
+        worktree_id,
+        worktree_path: std::path::PathBuf::from(&worktree_path),
+        first_message,
+        model: naming_model,
+        existing_branch_names: Vec::new(),
+        generate_session_name: true,
+        generate_branch_name: false,
+        custom_session_prompt: custom_prompt,
+        custom_profile_name,
+    };
+
+    spawn_naming_task(app, request);
+    Ok(())
+}
+
 /// Update session-specific UI state (answered questions, fixed findings, etc.)
 /// All fields are optional - only provided fields are updated
 #[tauri::command]
@@ -232,6 +335,9 @@ pub async fn update_session_state(
     waiting_for_input_type: Option<Option<String>>,
     plan_file_path: Option<Option<String>>,
     pending_plan_message_id: Option<Option<String>>,
+    label: Option<Option<LabelData>>,
+    clear_label: Option<bool>,
+    review_results: Option<Option<serde_json::Value>>,
 ) -> Result<(), String> {
     log::trace!("Updating session state for: {session_id}");
 
@@ -266,6 +372,17 @@ pub async fn update_session_state(
             }
             if let Some(v) = pending_plan_message_id {
                 session.pending_plan_message_id = v;
+            }
+            if let Some(v) = label {
+                session.label = v;
+            }
+            if let Some(clear) = clear_label {
+                if clear {
+                    session.label = None;
+                }
+            }
+            if let Some(v) = review_results {
+                session.review_results = v;
             }
             Ok(())
         } else {
@@ -625,6 +742,7 @@ pub async fn restore_session_with_base(
         session_type: SessionType::Base,
         pr_number: None,
         pr_url: None,
+        issue_number: None,
         cached_pr_status: None,
         cached_check_status: None,
         cached_behind_count: None,
@@ -645,32 +763,25 @@ pub async fn restore_session_with_base(
     projects_data.add_worktree(new_worktree.clone());
     crate::projects::storage::save_projects_data(&app, &projects_data)?;
 
-    // Atomically migrate sessions to new worktree
-    let restored_session = with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
-        let session = sessions
-            .find_session_mut(&session_id)
-            .ok_or_else(|| format!("Session not found: {session_id}"))?;
+    // Restore preserved base sessions file (base-{project_id}.json -> {new_worktree_id}.json)
+    // This is needed because close_base_session_archive renamed the index file
+    let _restored_index =
+        crate::chat::storage::restore_base_sessions(&app, &project_id, &new_worktree.id)?;
 
-        if session.archived_at.is_none() {
-            return Err("Session is not archived".to_string());
-        }
+    // Atomically unarchive the target session within the restored sessions
+    let restored_session =
+        with_sessions_mut(&app, &worktree_path, &new_worktree.id, |sessions| {
+            let session = sessions
+                .find_session_mut(&session_id)
+                .ok_or_else(|| format!("Session not found: {session_id}"))?;
 
-        session.archived_at = None;
-        let restored = session.clone();
+            if session.archived_at.is_none() {
+                return Err("Session is not archived".to_string());
+            }
 
-        // Update the sessions file's worktree_id to the new one
-        sessions.worktree_id = new_worktree.id.clone();
-
-        Ok(restored)
-    })?;
-
-    // Delete the old sessions file (outside lock - it's already been saved with new worktree_id)
-    let old_sessions_path = get_index_path(&app, &worktree_id)?;
-    if old_sessions_path.exists() {
-        if let Err(e) = std::fs::remove_file(&old_sessions_path) {
-            log::warn!("Failed to remove old sessions file: {e}");
-        }
-    }
+            session.archived_at = None;
+            Ok(session.clone())
+        })?;
 
     log::trace!("Base session recreated and sessions migrated");
 
@@ -782,6 +893,47 @@ pub async fn list_all_archived_sessions(
                 }
             }
         }
+
+        // Also check preserved base session files (base-{project_id}.json)
+        // These are created when a base session is closed with archiving
+        if let Ok(base_path) = get_base_index_path(&app, &project.id) {
+            if base_path.exists() {
+                if let Ok(contents) = std::fs::read_to_string(&base_path) {
+                    if let Ok(index) = serde_json::from_str::<WorktreeIndex>(&contents) {
+                        for entry in &index.sessions {
+                            if entry.archived_at.is_some() {
+                                // Load full session metadata
+                                let session =
+                                    if let Ok(Some(metadata)) = load_metadata(&app, &entry.id) {
+                                        let mut s = metadata.to_session();
+                                        // Ensure archived_at from index is preserved
+                                        if s.archived_at.is_none() {
+                                            s.archived_at = entry.archived_at;
+                                        }
+                                        s
+                                    } else {
+                                        // No metadata — build a minimal Session from index entry
+                                        let mut s = Session::new(entry.name.clone(), entry.order);
+                                        s.id = entry.id.clone();
+                                        s.message_count = Some(entry.message_count);
+                                        s.archived_at = entry.archived_at;
+                                        s
+                                    };
+
+                                entries.push(ArchivedSessionEntry {
+                                    session,
+                                    worktree_id: index.worktree_id.clone(),
+                                    worktree_name: format!("{} (base)", project.name),
+                                    worktree_path: project.path.clone(),
+                                    project_id: project.id.clone(),
+                                    project_name: project.name.clone(),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     log::trace!("Found {} archived sessions total", entries.len());
@@ -858,6 +1010,7 @@ pub async fn send_chat_message(
     allowed_tools: Option<Vec<String>>,
     mcp_config: Option<String>,
     chrome_enabled: Option<bool>,
+    custom_profile_name: Option<String>,
 ) -> Result<ChatMessage, String> {
     log::trace!("Sending chat message for session: {session_id}, worktree: {worktree_id}, model: {model:?}, execution_mode: {execution_mode:?}, thinking: {thinking_level:?}, effort: {effort_level:?}, disable_thinking_for_mode: {disable_thinking_for_mode:?}, allowed_tools: {allowed_tools:?}");
 
@@ -936,15 +1089,23 @@ pub async fn send_chat_message(
                     Vec::new()
                 };
 
+                let custom_session_prompt = if generate_session {
+                    prefs.magic_prompts.session_naming.clone()
+                } else {
+                    None
+                };
+
                 let request = NamingRequest {
                     session_id: session_id.clone(),
                     worktree_id: worktree_id.clone(),
                     worktree_path: PathBuf::from(&worktree_path),
                     first_message: message.clone(),
-                    model: prefs.session_naming_model.clone(), // Use session naming model
+                    model: prefs.magic_prompt_models.session_naming_model.clone(),
                     existing_branch_names: existing_names,
                     generate_session_name: generate_session,
                     generate_branch_name: generate_branch,
+                    custom_session_prompt,
+                    custom_profile_name: prefs.magic_prompt_providers.session_naming_provider.clone().or_else(|| prefs.default_provider.clone()),
                 };
 
                 // Spawn in background - does not block chat
@@ -1078,66 +1239,134 @@ pub async fn send_chat_message(
         Some(final_allowed_tools)
     };
 
-    // Execute Claude CLI in detached mode
-    // If resume fails with "session not found", retry without the session ID
-    let mut claude_session_id_for_call = claude_session_id.clone();
-    let (pid, claude_response) = loop {
-        log::trace!("About to call execute_claude_detached...");
+    // Execute Claude CLI in detached mode on a dedicated OS thread.
+    // This prevents tokio thread pool starvation when many sessions run concurrently,
+    // since execute_claude_detached blocks (it tails the output file with thread::sleep).
+    // If resume fails with "session not found", retry without the session ID.
+    let thread_app = app.clone();
+    let thread_session_id = session_id.clone();
+    let thread_worktree_id = worktree_id.clone();
+    let thread_worktree_path = worktree_path.clone();
+    let thread_input_file = input_file.clone();
+    let thread_output_file = output_file.clone();
+    let thread_working_dir = context.worktree_path.clone();
+    let thread_claude_session_id = claude_session_id.clone();
+    let thread_model = model.clone();
+    let thread_execution_mode = execution_mode.clone();
+    let thread_thinking_level = thinking_level.clone();
+    let thread_effort_level = effort_level.clone();
+    let thread_allowed_tools = allowed_tools_for_cli.clone();
+    let thread_parallel_prompt = parallel_execution_prompt.clone();
+    let thread_ai_language = ai_language.clone();
+    let thread_mcp_config = mcp_config.clone();
+    let thread_custom_profile = custom_profile_name.clone();
 
-        match super::claude::execute_claude_detached(
-            &app,
-            &session_id,
-            &worktree_id,
-            &input_file,
-            &output_file,
-            context.worktree_path.as_ref(),
-            claude_session_id_for_call.as_deref(),
-            model.as_deref(),
-            execution_mode.as_deref(),
-            thinking_level.as_ref(),
-            effort_level.as_ref(),
-            allowed_tools_for_cli.as_deref(),
-            disable_thinking_in_non_plan_modes,
-            parallel_execution_prompt.as_deref(),
-            ai_language.as_deref(),
-            mcp_config.as_deref(),
-            chrome,
-        ) {
-            Ok((pid, response)) => {
-                log::trace!("execute_claude_detached succeeded (PID: {pid})");
-                break (pid, response);
-            }
-            Err(e) => {
-                // Check if this is a session not found error and we were trying to resume
-                let is_session_not_found = e.to_lowercase().contains("session")
-                    && (e.to_lowercase().contains("not found")
-                        || e.to_lowercase().contains("invalid")
-                        || e.to_lowercase().contains("expired"));
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    std::thread::spawn(move || {
+        let mut claude_session_id_for_call = thread_claude_session_id;
+        let result = loop {
+            log::trace!("About to call execute_claude_detached...");
 
-                if is_session_not_found && claude_session_id_for_call.is_some() {
-                    log::warn!(
-                        "Session not found, clearing stored session ID and retrying: {}",
-                        claude_session_id_for_call.as_deref().unwrap_or("")
-                    );
+            match super::claude::execute_claude_detached(
+                &thread_app,
+                &thread_session_id,
+                &thread_worktree_id,
+                &thread_input_file,
+                &thread_output_file,
+                std::path::Path::new(&thread_working_dir),
+                claude_session_id_for_call.as_deref(),
+                thread_model.as_deref(),
+                thread_execution_mode.as_deref(),
+                thread_thinking_level.as_ref(),
+                thread_effort_level.as_ref(),
+                thread_allowed_tools.as_deref(),
+                disable_thinking_in_non_plan_modes,
+                thread_parallel_prompt.as_deref(),
+                thread_ai_language.as_deref(),
+                thread_mcp_config.as_deref(),
+                chrome,
+                thread_custom_profile.as_deref(),
+            ) {
+                Ok((pid, response)) => {
+                    log::trace!("execute_claude_detached succeeded (PID: {pid})");
 
-                    // Clear the invalid session ID from storage (atomic update)
-                    with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
-                        if let Some(session) = sessions.find_session_mut(&session_id) {
-                            session.claude_session_id = None;
-                        }
-                        Ok(())
-                    })?;
+                    // Detect silent resume failure: CLI started but produced no content
+                    // (e.g., "session not found" error written to stderr, process exited)
+                    // Clear the stale session ID so the next message starts fresh
+                    if response.content.is_empty()
+                        && response.usage.is_none()
+                        && claude_session_id_for_call.is_some()
+                    {
+                        log::warn!(
+                            "Empty response while resuming session {}, clearing stale session ID for next attempt",
+                            claude_session_id_for_call.as_deref().unwrap_or("")
+                        );
 
-                    // Retry without session ID
-                    claude_session_id_for_call = None;
-                    continue;
+                        let _ = with_sessions_mut(
+                            &thread_app,
+                            &thread_worktree_path,
+                            &thread_worktree_id,
+                            |sessions| {
+                                if let Some(session) = sessions.find_session_mut(&thread_session_id) {
+                                    session.claude_session_id = None;
+                                }
+                                Ok(())
+                            },
+                        );
+                    }
+
+                    break Ok((pid, response));
                 }
+                Err(e) => {
+                    let is_session_not_found = e.to_lowercase().contains("session")
+                        && (e.to_lowercase().contains("not found")
+                            || e.to_lowercase().contains("invalid")
+                            || e.to_lowercase().contains("expired"));
 
-                log::error!("execute_claude_detached FAILED: {e}");
-                return Err(e);
+                    if is_session_not_found && claude_session_id_for_call.is_some() {
+                        log::warn!(
+                            "Session not found, clearing stored session ID and retrying: {}",
+                            claude_session_id_for_call.as_deref().unwrap_or("")
+                        );
+
+                        match with_sessions_mut(
+                            &thread_app,
+                            &thread_worktree_path,
+                            &thread_worktree_id,
+                            |sessions| {
+                                if let Some(session) = sessions.find_session_mut(&thread_session_id) {
+                                    session.claude_session_id = None;
+                                }
+                                Ok(())
+                            },
+                        ) {
+                            Ok(_) => {
+                                claude_session_id_for_call = None;
+                                continue;
+                            }
+                            Err(e) => {
+                                log::error!(
+                                    "Failed to clear invalid session ID from storage, \
+                                     aborting retry to avoid persistent stale state: {e}"
+                                );
+                                break Err(format!(
+                                    "Session expired and failed to clear stale session state: {e}"
+                                ));
+                            }
+                        }
+                    }
+
+                    log::error!("execute_claude_detached FAILED: {e}");
+                    break Err(e);
+                }
             }
-        }
-    };
+        };
+        let _ = tx.send(result);
+    });
+
+    let (pid, claude_response) = rx
+        .await
+        .map_err(|_| "Claude execution thread closed unexpectedly (possible crash or panic)".to_string())??;
 
     // Store the PID in the run log for recovery
     run_log_writer.set_pid(pid)?;
@@ -1160,12 +1389,11 @@ pub async fn send_chat_message(
             log::warn!("Failed to cancel run log: {e}");
         }
 
-        // Atomically update session (store claude_session_id, remove last user message if present)
+        // Atomically update session (remove last user message for undo send)
+        // NOTE: Do NOT persist claude_session_id here — a cancelled run with no content
+        // means the CLI session is invalid/incomplete and would break future --resume
         with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
             if let Some(session) = sessions.find_session_mut(&session_id) {
-                if !claude_session_id_for_log.is_empty() {
-                    session.claude_session_id = Some(claude_session_id_for_log.clone());
-                }
                 // Remove user message (undo send) - allows frontend to restore to input field
                 if session
                     .messages
@@ -1201,6 +1429,7 @@ pub async fn send_chat_message(
     }
 
     // Create assistant message with tool calls and content blocks
+    let has_content = !claude_response.content.is_empty();
     let assistant_msg_id = Uuid::new_v4().to_string();
     let assistant_msg = ChatMessage {
         id: assistant_msg_id.clone(),
@@ -1242,9 +1471,11 @@ pub async fn send_chat_message(
 
     // Atomically save session metadata (claude_session_id for resumption)
     // Note: Messages are NOT saved here - they're in NDJSON only
+    // Only persist session ID if the run produced meaningful content —
+    // a "completed" run with empty content means CLI failed silently and the session ID is stale
     with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
         if let Some(session) = sessions.find_session_mut(&session_id) {
-            if !claude_session_id_for_log.is_empty() {
+            if !claude_session_id_for_log.is_empty() && has_content {
                 session.claude_session_id = Some(claude_session_id_for_log.clone());
             }
         }
@@ -1280,11 +1511,13 @@ pub async fn clear_session_history(
         if let Some(session) = sessions.find_session_mut(&session_id) {
             let selected_model = session.selected_model.clone();
             let selected_thinking_level = session.selected_thinking_level.clone();
+            let selected_provider = session.selected_provider.clone();
 
             session.messages.clear();
             session.claude_session_id = None;
             session.selected_model = selected_model;
             session.selected_thinking_level = selected_thinking_level;
+            session.selected_provider = selected_provider;
 
             log::trace!("Session history cleared");
             Ok(())
@@ -1331,6 +1564,28 @@ pub async fn set_session_thinking_level(
         if let Some(session) = sessions.find_session_mut(&session_id) {
             session.selected_thinking_level = Some(thinking_level);
             log::trace!("Thinking level selection saved");
+            Ok(())
+        } else {
+            Err(format!("Session not found: {session_id}"))
+        }
+    })
+}
+
+/// Set the selected provider (custom CLI profile) for a session
+#[tauri::command]
+pub async fn set_session_provider(
+    app: AppHandle,
+    worktree_id: String,
+    worktree_path: String,
+    session_id: String,
+    provider: Option<String>,
+) -> Result<(), String> {
+    log::trace!("Setting provider for session {session_id}: {provider:?}");
+
+    with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
+        if let Some(session) = sessions.find_session_mut(&session_id) {
+            session.selected_provider = provider;
+            log::trace!("Provider selection saved");
             Ok(())
         } else {
             Err(format!("Session not found: {session_id}"))
@@ -1433,6 +1688,79 @@ const ALLOWED_MIME_TYPES: &[&str] = &["image/png", "image/jpeg", "image/gif", "i
 /// Maximum image size in bytes (10MB)
 const MAX_IMAGE_SIZE: usize = 10 * 1024 * 1024;
 
+/// Max dimension per Claude's vision docs: images >1568px get downscaled internally
+/// by Claude anyway, so pre-scaling saves bandwidth with zero quality loss.
+/// See: https://platform.claude.com/docs/en/build-with-claude/vision
+const MAX_IMAGE_DIMENSION: u32 = 1568;
+
+/// JPEG quality for compression (85 = good quality/size balance)
+const JPEG_QUALITY: u8 = 85;
+
+/// Minimum file size to bother processing (skip tiny images)
+const MIN_PROCESS_SIZE: usize = 50 * 1024; // 50KB
+
+/// Process image: resize to Claude's optimal limit (1568px) and convert opaque PNG→JPEG.
+/// Returns (processed_bytes, final_extension) — extension may change (e.g. png→jpg).
+fn process_image(image_data: &[u8], extension: &str) -> Result<(Vec<u8>, String), String> {
+    // Skip GIFs (may be animated) and small images
+    if extension == "gif" || image_data.len() < MIN_PROCESS_SIZE {
+        return Ok((image_data.to_vec(), extension.to_string()));
+    }
+
+    let img = image::load_from_memory(image_data)
+        .map_err(|e| format!("Failed to decode image: {e}"))?;
+
+    let (width, height) = (img.width(), img.height());
+    let max_dim = width.max(height);
+    let needs_resize = max_dim > MAX_IMAGE_DIMENSION;
+
+    // Determine target format: convert opaque PNGs to JPEG
+    let (target_ext, convert_to_jpeg) = if extension == "png" && !img.color().has_alpha() {
+        ("jpg", true)
+    } else {
+        (extension, false)
+    };
+
+    // Nothing to do — return original bytes
+    if !needs_resize && !convert_to_jpeg {
+        return Ok((image_data.to_vec(), extension.to_string()));
+    }
+
+    // Resize if needed (preserve aspect ratio)
+    let processed = if needs_resize {
+        let scale = MAX_IMAGE_DIMENSION as f32 / max_dim as f32;
+        let new_w = (width as f32 * scale) as u32;
+        let new_h = (height as f32 * scale) as u32;
+        img.resize(new_w, new_h, image::imageops::FilterType::Triangle)
+    } else {
+        img
+    };
+
+    // Encode to target format
+    let mut buf = std::io::Cursor::new(Vec::new());
+    if convert_to_jpeg || target_ext == "jpg" {
+        let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, JPEG_QUALITY);
+        processed
+            .write_with_encoder(encoder)
+            .map_err(|e| format!("Failed to encode JPEG: {e}"))?;
+    } else {
+        processed
+            .write_to(&mut buf, image::ImageFormat::Png)
+            .map_err(|e| format!("Failed to encode PNG: {e}"))?;
+    }
+
+    let result = buf.into_inner();
+    log::debug!(
+        "Image processed: {width}x{height} -> {}x{}, {extension}->{target_ext} ({} -> {} bytes)",
+        processed.width(),
+        processed.height(),
+        image_data.len(),
+        result.len()
+    );
+
+    Ok((result, target_ext.to_string()))
+}
+
 /// Save a pasted image to the app data directory
 ///
 /// The image data should be base64-encoded (without the data URL prefix).
@@ -1470,40 +1798,50 @@ pub async fn save_pasted_image(
     // Get the images directory (now in app data dir)
     let images_dir = get_images_dir(&app)?;
 
-    // Generate unique filename
-    let extension = match mime_type.as_str() {
+    // Determine original extension from MIME type
+    let original_ext = match mime_type.as_str() {
         "image/png" => "png",
         "image/jpeg" => "jpg",
         "image/gif" => "gif",
         "image/webp" => "webp",
         _ => "png", // fallback
-    };
+    }
+    .to_string();
 
-    let timestamp = now();
-    let short_uuid = &Uuid::new_v4().to_string()[..8];
-    let filename = format!("image-{timestamp}-{short_uuid}.{extension}");
-    let file_path = images_dir.join(&filename);
+    // Offload CPU-heavy image processing to a blocking thread
+    let result = tokio::task::spawn_blocking(move || -> Result<SaveImageResponse, String> {
+        let (processed_data, final_ext) = process_image(&image_data, &original_ext)?;
 
-    // Write file atomically (temp file + rename)
-    let temp_path = file_path.with_extension("tmp");
-    std::fs::write(&temp_path, &image_data)
-        .map_err(|e| format!("Failed to write image file: {e}"))?;
+        let timestamp = now();
+        let short_uuid = &Uuid::new_v4().to_string()[..8];
+        let filename = format!("image-{timestamp}-{short_uuid}.{final_ext}");
+        let file_path = images_dir.join(&filename);
 
-    std::fs::rename(&temp_path, &file_path)
-        .map_err(|e| format!("Failed to finalize image file: {e}"))?;
+        // Write file atomically (temp file + rename)
+        let temp_path = file_path.with_extension("tmp");
+        std::fs::write(&temp_path, &processed_data)
+            .map_err(|e| format!("Failed to write image file: {e}"))?;
 
-    let path_str = file_path
-        .to_str()
-        .ok_or_else(|| "Failed to convert path to string".to_string())?
-        .to_string();
+        std::fs::rename(&temp_path, &file_path)
+            .map_err(|e| format!("Failed to finalize image file: {e}"))?;
 
-    log::trace!("Image saved to: {path_str}");
+        let path_str = file_path
+            .to_str()
+            .ok_or_else(|| "Failed to convert path to string".to_string())?
+            .to_string();
 
-    Ok(SaveImageResponse {
-        id: Uuid::new_v4().to_string(),
-        filename,
-        path: path_str,
+        log::trace!("Image saved to: {path_str}");
+
+        Ok(SaveImageResponse {
+            id: Uuid::new_v4().to_string(),
+            filename,
+            path: path_str,
+        })
     })
+    .await
+    .map_err(|e| format!("Image processing task failed: {e}"))??;
+
+    Ok(result)
 }
 
 /// Save a dropped image file to the app data directory
@@ -1554,36 +1892,49 @@ pub async fn save_dropped_image(
     // Get the images directory
     let images_dir = get_images_dir(&app)?;
 
-    // Generate unique filename (normalize jpeg to jpg)
+    // Normalize jpeg to jpg
     let normalized_ext = if extension == "jpeg" {
-        "jpg"
+        "jpg".to_string()
     } else {
-        &extension
+        extension
     };
-    let timestamp = now();
-    let short_uuid = &Uuid::new_v4().to_string()[..8];
-    let filename = format!("image-{timestamp}-{short_uuid}.{normalized_ext}");
-    let dest_path = images_dir.join(&filename);
 
-    // Copy file atomically (copy to temp, then rename)
-    let temp_path = dest_path.with_extension("tmp");
-    std::fs::copy(&source, &temp_path).map_err(|e| format!("Failed to copy image file: {e}"))?;
+    // Offload CPU-heavy image processing to a blocking thread
+    let result = tokio::task::spawn_blocking(move || -> Result<SaveImageResponse, String> {
+        let source_data =
+            std::fs::read(&source).map_err(|e| format!("Failed to read source file: {e}"))?;
+        let (processed_data, final_ext) = process_image(&source_data, &normalized_ext)?;
 
-    std::fs::rename(&temp_path, &dest_path)
-        .map_err(|e| format!("Failed to finalize image file: {e}"))?;
+        let timestamp = now();
+        let short_uuid = &Uuid::new_v4().to_string()[..8];
+        let filename = format!("image-{timestamp}-{short_uuid}.{final_ext}");
+        let dest_path = images_dir.join(&filename);
 
-    let path_str = dest_path
-        .to_str()
-        .ok_or_else(|| "Failed to convert path to string".to_string())?
-        .to_string();
+        // Write processed file atomically (temp file + rename)
+        let temp_path = dest_path.with_extension("tmp");
+        std::fs::write(&temp_path, &processed_data)
+            .map_err(|e| format!("Failed to write image file: {e}"))?;
 
-    log::trace!("Dropped image saved to: {path_str}");
+        std::fs::rename(&temp_path, &dest_path)
+            .map_err(|e| format!("Failed to finalize image file: {e}"))?;
 
-    Ok(SaveImageResponse {
-        id: Uuid::new_v4().to_string(),
-        filename,
-        path: path_str,
+        let path_str = dest_path
+            .to_str()
+            .ok_or_else(|| "Failed to convert path to string".to_string())?
+            .to_string();
+
+        log::trace!("Dropped image saved to: {path_str}");
+
+        Ok(SaveImageResponse {
+            id: Uuid::new_v4().to_string(),
+            filename,
+            path: path_str,
+        })
     })
+    .await
+    .map_err(|e| format!("Image processing task failed: {e}"))??;
+
+    Ok(result)
 }
 
 /// Delete a pasted image
@@ -2204,28 +2555,30 @@ pub async fn rename_saved_context(
 // ============================================================================
 
 /// Prompt template for context summarization (JSON schema output)
-const CONTEXT_SUMMARY_PROMPT: &str = r#"Summarize the following conversation for future context loading.
+const CONTEXT_SUMMARY_PROMPT: &str = r#"<task>Summarize the following conversation for future context loading</task>
 
+<output_format>
 Your summary should include:
-1. **Main Goal**: What was the primary objective?
-2. **Key Decisions & Rationale**: Important decisions made and WHY they were chosen over alternatives
-3. **Trade-offs Considered**: What approaches were weighed? What was rejected and why?
-4. **Problems Solved**: Errors, blockers, or gotchas encountered and how they were resolved
-5. **Current State**: What has been implemented or discussed so far?
-6. **Unresolved Questions**: Open questions, blockers, or things that need user input
-7. **Key Files & Patterns**: Critical file paths, function names, or code patterns established
-8. **Next Steps**: What remains to be done?
+1. Main Goal - What was the primary objective?
+2. Key Decisions & Rationale - Important decisions and WHY they were chosen
+3. Trade-offs Considered - What approaches were weighed and rejected?
+4. Problems Solved - Errors, blockers, or gotchas and how resolved
+5. Current State - What has been implemented so far?
+6. Unresolved Questions - Open questions or blockers
+7. Key Files & Patterns - Critical file paths and code patterns
+8. Next Steps - What remains to be done?
 
-Format the summary as clean markdown. Be concise but capture the reasoning behind decisions.
+Format as clean markdown. Be concise but capture reasoning.
+</output_format>
 
----
-**Project:** {project_name}
-**Date:** {date}
----
+<context>
+<project>{project_name}</project>
+<date>{date}</date>
+</context>
 
-## Conversation History
-
-{conversation}"#;
+<conversation>
+{conversation}
+</conversation>"#;
 
 /// JSON schema for structured context summarization output
 const CONTEXT_SUMMARY_SCHEMA: &str = r#"{"type":"object","properties":{"summary":{"type":"string","description":"The markdown context summary including main goal, key decisions with rationale, trade-offs considered, problems solved, current state, unresolved questions, key files/patterns, and next steps"},"slug":{"type":"string","description":"A 2-4 word lowercase hyphenated slug describing the main topic (e.g. implement-magic-commands, fix-auth-bug)"}},"required":["summary","slug"]}"#;
@@ -2378,6 +2731,7 @@ fn execute_summarization_claude(
     app: &AppHandle,
     prompt: &str,
     model: Option<&str>,
+    custom_profile_name: Option<&str>,
 ) -> Result<ContextSummaryResponse, String> {
     let cli_path = resolve_cli_binary(app);
 
@@ -2389,6 +2743,7 @@ fn execute_summarization_claude(
 
     let model_str = model.unwrap_or("opus");
     let mut cmd = silent_command(&cli_path);
+    crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
     cmd.args([
         "--print",
         "--input-format",
@@ -2475,6 +2830,7 @@ fn execute_summarization_claude(
 /// This command loads a session's messages, sends them to Claude for summarization,
 /// and saves the result as a context file. It does NOT show anything in the current chat.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn generate_context_from_session(
     app: AppHandle,
     worktree_path: String,
@@ -2483,6 +2839,7 @@ pub async fn generate_context_from_session(
     project_name: String,
     custom_prompt: Option<String>,
     model: Option<String>,
+    custom_profile_name: Option<String>,
 ) -> Result<SaveContextResponse, String> {
     log::trace!(
         "Generating context from session {} for project {}",
@@ -2521,7 +2878,7 @@ pub async fn generate_context_from_session(
 
     // 4. Call Claude CLI with JSON schema (non-streaming)
     // If JSON parsing fails, use fallback slug from project + session name
-    let (summary, slug) = match execute_summarization_claude(&app, &prompt, model.as_deref()) {
+    let (summary, slug) = match execute_summarization_claude(&app, &prompt, model.as_deref(), custom_profile_name.as_deref()) {
         Ok(response) => {
             // Validate slug is not empty
             let slug = if response.slug.trim().is_empty() {
@@ -2906,6 +3263,7 @@ fn execute_digest_claude(
     app: &AppHandle,
     prompt: &str,
     model: &str,
+    custom_profile_name: Option<&str>,
 ) -> Result<SessionDigestResponse, String> {
     let cli_path = resolve_cli_binary(app);
 
@@ -2916,6 +3274,7 @@ fn execute_digest_claude(
     log::trace!("Executing one-shot Claude digest with JSON schema");
 
     let mut cmd = silent_command(&cli_path);
+    crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
     cmd.args([
         "--print",
         "--input-format",
@@ -3026,11 +3385,21 @@ pub async fn generate_session_digest(
     // Format messages into conversation history (reuse existing function)
     let conversation_history = format_messages_for_summary(&messages);
 
-    // Build digest prompt
-    let prompt = SESSION_DIGEST_PROMPT.replace("{conversation}", &conversation_history);
+    // Build digest prompt (use custom magic prompt if set, otherwise default)
+    let prompt_template = prefs
+        .magic_prompts
+        .session_recap
+        .as_deref()
+        .filter(|p| !p.trim().is_empty())
+        .unwrap_or(SESSION_DIGEST_PROMPT);
+    let prompt = prompt_template.replace("{conversation}", &conversation_history);
+
+    // Use magic prompt model/provider if available, fall back to legacy session_recap_model
+    let model = &prefs.magic_prompt_models.session_recap_model;
+    let provider = prefs.magic_prompt_providers.session_recap_provider.as_deref();
 
     // Call Claude CLI with JSON schema (non-streaming)
-    let response = execute_digest_claude(&app, &prompt, &prefs.session_recap_model)?;
+    let response = execute_digest_claude(&app, &prompt, model, provider)?;
 
     Ok(SessionDigest {
         chat_summary: response.chat_summary,

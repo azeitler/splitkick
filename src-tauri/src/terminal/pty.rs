@@ -46,23 +46,18 @@ pub fn spawn_terminal(
 
     // Build command - either run a specific command or start interactive shell
     let mut cmd = if let Some(ref run_command) = command {
-        // Run the command in shell, then keep shell open for inspection
+        // Run the command in shell; process exits naturally when done
         let mut c = CommandBuilder::new(&shell);
         #[cfg(windows)]
         {
             c.arg("-Command");
-            c.arg(format!(
-                "{run_command}; Write-Host ''; Write-Host '[Command finished. Press Ctrl+D to close]'; Read-Host"
-            ));
+            c.arg(run_command.to_string());
         }
         #[cfg(not(windows))]
         {
             c.arg("-c");
-            // Run the command; if it exits, show message and wait for user
             // Note: Caller is responsible for properly quoting paths with spaces
-            c.arg(format!(
-                "{run_command}; echo ''; echo '[Command finished. Press Ctrl+D to close]'; cat"
-            ));
+            c.arg(run_command.to_string());
         }
         c
     } else {

@@ -5,11 +5,14 @@ import {
   GitCommitHorizontal,
   GitMerge,
   GitPullRequest,
+  GitPullRequestArrow,
   Eye,
   FileText,
   Wand2,
   BookmarkPlus,
   FolderOpen,
+  Bug,
+  RefreshCw,
 } from 'lucide-react'
 import {
   Dialog,
@@ -21,6 +24,7 @@ import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
 import { useWorktree, useProjects } from '@/services/projects'
+import { useLoadedIssueContexts, useLoadedPRContexts } from '@/services/github'
 import { usePreferences } from '@/services/preferences'
 import { invoke } from '@/lib/transport'
 import { openExternal } from '@/lib/platform'
@@ -28,12 +32,15 @@ import { notify } from '@/lib/notifications'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import {
-  gitPull,
   gitPush,
   triggerImmediateGitPoll,
   fetchWorktreesStatus,
+  performGitPull,
 } from '@/services/git-status'
-import type { CreateCommitResponse, CreatePrResponse } from '@/types/projects'
+import type { CreateCommitResponse, CreatePrResponse, MergeConflictsResponse, ReviewResponse } from '@/types/projects'
+import type { Session } from '@/types/chat'
+import { DEFAULT_RESOLVE_CONFLICTS_PROMPT, resolveMagicPromptProvider } from '@/types/preferences'
+import { chatQueryKeys } from '@/services/chat'
 import { saveWorktreePr, projectsQueryKeys } from '@/services/projects'
 import { useQueryClient } from '@tanstack/react-query'
 
@@ -45,10 +52,13 @@ type MagicOption =
   | 'pull'
   | 'push'
   | 'open-pr'
+  | 'update-pr'
   | 'review'
   | 'merge'
   | 'resolve-conflicts'
   | 'release-notes'
+  | 'investigate-issue'
+  | 'investigate-pr'
 
 /** Options that work on canvas without an open session (git-only operations) */
 const CANVAS_ALLOWED_OPTIONS = new Set<MagicOption>([
@@ -57,15 +67,16 @@ const CANVAS_ALLOWED_OPTIONS = new Set<MagicOption>([
   'pull',
   'push',
   'open-pr',
+  'update-pr',
+  'review',
   'release-notes',
   'merge',
   'resolve-conflicts',
 ])
 
-/** Canvas options that need ChatWindow — switch off canvas first, then dispatch event */
-const CANVAS_SESSION_TRANSITION_OPTIONS = new Set<MagicOption>([
+/** Canvas options that navigate to worktree chat and dispatch a magic-command event */
+const CANVAS_NAVIGATE_AND_DISPATCH_OPTIONS = new Set<MagicOption>([
   'merge',
-  'resolve-conflicts',
 ])
 
 interface MagicOptionItem {
@@ -137,6 +148,12 @@ function buildMagicColumns(hasOpenPr: boolean): MagicColumns {
           key: 'O',
         },
         { id: 'review', label: 'Review', icon: Eye, key: 'R' },
+        {
+          id: 'update-pr',
+          label: 'Generate PR Description',
+          icon: RefreshCw,
+          key: 'E',
+        },
       ],
     },
     {
@@ -148,6 +165,13 @@ function buildMagicColumns(hasOpenPr: boolean): MagicColumns {
           icon: FileText,
           key: 'G',
         },
+      ],
+    },
+    {
+      header: 'Investigate',
+      options: [
+        { id: 'investigate-issue', label: 'Issue', icon: Bug, key: 'I' },
+        { id: 'investigate-pr', label: 'PR', icon: GitPullRequestArrow, key: 'A' },
       ],
     },
     {
@@ -176,10 +200,13 @@ const KEY_TO_OPTION: Record<string, MagicOption> = {
   d: 'pull',
   u: 'push',
   o: 'open-pr',
+  e: 'update-pr',
   r: 'review',
   m: 'merge',
   f: 'resolve-conflicts',
   g: 'release-notes',
+  i: 'investigate-issue',
+  a: 'investigate-pr',
 }
 
 export function MagicModal() {
@@ -201,6 +228,16 @@ export function MagicModal() {
     useState<MagicOption>('save-context')
 
   const hasOpenPr = Boolean(worktree?.pr_url)
+
+  // Check if worktree has loaded issue/PR contexts (for enabling investigate options)
+  // Contexts may be registered under session ID (Load Context) or worktree ID (create_worktree)
+  const activeSessionId = useChatStore(state =>
+    selectedWorktreeId ? state.activeSessionIds[selectedWorktreeId] : undefined
+  )
+  const { data: issueContexts } = useLoadedIssueContexts(activeSessionId ?? selectedWorktreeId, selectedWorktreeId)
+  const { data: prContexts } = useLoadedPRContexts(activeSessionId ?? selectedWorktreeId, selectedWorktreeId)
+  const hasIssueContexts = (issueContexts?.length ?? 0) > 0
+  const hasPrContexts = (prContexts?.length ?? 0) > 0
 
   // Detect if we're on a canvas view (without a session modal open)
   const isViewingCanvasTab = useChatStore(state => {
@@ -275,6 +312,7 @@ export function MagicModal() {
                 customPrompt: preferences?.magic_prompts?.commit_message,
                 push: isPush,
                 model: preferences?.magic_prompt_models?.commit_message_model,
+                customProfileName: resolveMagicPromptProvider(preferences?.magic_prompt_providers, 'commit_message_provider', preferences?.default_provider),
               }
             )
             triggerImmediateGitPoll()
@@ -291,19 +329,13 @@ export function MagicModal() {
           break
         }
         case 'pull': {
-          setWorktreeLoading(selectedWorktreeId, 'pull')
-          const toastId = toast.loading(`Pulling changes on ${worktree.branch}...`)
-          try {
-            const baseBranch = project?.default_branch ?? 'main'
-            await gitPull(worktree.path, baseBranch)
-            triggerImmediateGitPoll()
-            if (worktree.project_id) fetchWorktreesStatus(worktree.project_id)
-            toast.success('Changes pulled', { id: toastId })
-          } catch (error) {
-            toast.error(`Pull failed: ${error}`, { id: toastId })
-          } finally {
-            clearWorktreeLoading(selectedWorktreeId)
-          }
+          await performGitPull({
+            worktreeId: selectedWorktreeId,
+            worktreePath: worktree.path,
+            baseBranch: project?.default_branch ?? 'main',
+            branchLabel: worktree.branch,
+            projectId: worktree.project_id ?? undefined,
+          })
           break
         }
         case 'push': {
@@ -333,6 +365,7 @@ export function MagicModal() {
                 worktreePath: worktree.path,
                 customPrompt: preferences?.magic_prompts?.pr_content,
                 model: preferences?.magic_prompt_models?.pr_content_model,
+                customProfileName: resolveMagicPromptProvider(preferences?.magic_prompt_providers, 'pr_content_provider', preferences?.default_provider),
               }
             )
             await saveWorktreePr(selectedWorktreeId, result.pr_number, result.pr_url)
@@ -353,6 +386,130 @@ export function MagicModal() {
             })
           } catch (error) {
             toast.error(`Failed to create PR: ${error}`, { id: toastId })
+          } finally {
+            clearWorktreeLoading(selectedWorktreeId)
+          }
+          break
+        }
+        case 'resolve-conflicts': {
+          const toastId = toast.loading('Checking for merge conflicts...')
+          try {
+            const result = await invoke<MergeConflictsResponse>(
+              'get_merge_conflicts',
+              { worktreeId: selectedWorktreeId }
+            )
+
+            if (!result.has_conflicts) {
+              toast.info('No merge conflicts detected', { id: toastId })
+              return
+            }
+
+            toast.warning(`Found conflicts in ${result.conflicts.length} file(s)`, {
+              id: toastId,
+              description: 'Opening conflict resolution session...',
+            })
+
+            const { setActiveWorktree, setActiveSession, setInputDraft, setViewingCanvasTab,
+              activeWorktreePath } = useChatStore.getState()
+
+            const newSession = await invoke<Session>('create_session', {
+              worktreeId: selectedWorktreeId,
+              worktreePath: worktree.path,
+              name: 'Resolve conflicts',
+            })
+
+            // Navigate to session
+            useProjectsStore.getState().selectWorktree(selectedWorktreeId)
+
+            if (activeWorktreePath) {
+              // Already inside a worktree — switch to chat view
+              setActiveWorktree(selectedWorktreeId, worktree.path)
+              setActiveSession(selectedWorktreeId, newSession.id)
+              setViewingCanvasTab(selectedWorktreeId, false)
+            } else {
+              // On project canvas — stay on dashboard and auto-open session modal
+              useUIStore.getState().markWorktreeForAutoOpenSession(selectedWorktreeId, newSession.id)
+            }
+
+            // Build conflict resolution prompt
+            const conflictFiles = result.conflicts.join('\n- ')
+            const diffSection = result.conflict_diff
+              ? `\n\nHere is the diff showing the conflict details:\n\n\`\`\`diff\n${result.conflict_diff}\n\`\`\``
+              : ''
+            const resolveInstructions =
+              preferences?.magic_prompts?.resolve_conflicts ??
+              DEFAULT_RESOLVE_CONFLICTS_PROMPT
+
+            const conflictPrompt = `I have merge conflicts that need to be resolved.
+
+Conflicts in these files:
+- ${conflictFiles}${diffSection}
+
+${resolveInstructions}`
+
+            setInputDraft(newSession.id, conflictPrompt)
+
+            queryClient.invalidateQueries({
+              queryKey: chatQueryKeys.sessions(selectedWorktreeId),
+            })
+          } catch (error) {
+            toast.error(`Failed to check conflicts: ${error}`, { id: toastId })
+          }
+          break
+        }
+        case 'review': {
+          setWorktreeLoading(selectedWorktreeId, 'review')
+          const toastId = toast.loading(`Reviewing ${worktree.branch ?? ''}...`)
+          try {
+            const result = await invoke<ReviewResponse>('run_review_with_ai', {
+              worktreePath: worktree.path,
+              customPrompt: preferences?.magic_prompts?.code_review,
+              model: preferences?.magic_prompt_models?.code_review_model,
+              customProfileName: resolveMagicPromptProvider(preferences?.magic_prompt_providers, 'code_review_provider', preferences?.default_provider),
+            })
+
+            const newSession = await invoke<Session>('create_session', {
+              worktreeId: selectedWorktreeId,
+              worktreePath: worktree.path,
+              name: 'Code Review',
+            })
+
+            const { setReviewResults, setActiveSession, setActiveWorktree, setViewingCanvasTab,
+              activeWorktreePath } = useChatStore.getState()
+            setReviewResults(newSession.id, result)
+
+            // Navigate to worktree view (needed for WorktreeDashboard → worktree transition)
+            useProjectsStore.getState().selectWorktree(selectedWorktreeId)
+            setActiveWorktree(selectedWorktreeId, worktree.path)
+            setActiveSession(selectedWorktreeId, newSession.id)
+
+            if (activeWorktreePath) {
+              // Already inside a worktree (worktree canvas or chat view) — switch to chat view
+              setViewingCanvasTab(selectedWorktreeId, false)
+            } else {
+              // On project canvas — stay on dashboard and auto-open session modal
+              useUIStore.getState().markWorktreeForAutoOpenSession(selectedWorktreeId, newSession.id)
+            }
+
+            // Persist review results to session file
+            invoke('update_session_state', {
+              worktreeId: selectedWorktreeId,
+              worktreePath: worktree.path,
+              sessionId: newSession.id,
+              reviewResults: result,
+            }).catch(() => {})
+
+            queryClient.invalidateQueries({
+              queryKey: chatQueryKeys.sessions(selectedWorktreeId),
+            })
+
+            const findingCount = result.findings.length
+            const statusEmoji =
+              result.approval_status === 'approved' ? 'Approved' :
+              result.approval_status === 'changes_requested' ? 'Changes requested' : 'Reviewed'
+            toast.success(`${statusEmoji} (${findingCount} findings)`, { id: toastId })
+          } catch (error) {
+            toast.error(`Review failed: ${error}`, { id: toastId })
           } finally {
             clearWorktreeLoading(selectedWorktreeId)
           }
@@ -388,6 +545,34 @@ export function MagicModal() {
         return
       }
 
+      // Investigate options: guard against missing contexts
+      if (option === 'investigate-issue' || option === 'investigate-pr') {
+        const type = option === 'investigate-issue' ? 'issue' : 'pr'
+        const hasContexts = type === 'issue' ? hasIssueContexts : hasPrContexts
+        if (!hasContexts) {
+          notify(`No ${type === 'issue' ? 'issue' : 'PR'} context loaded for this worktree`, undefined, { type: 'error' })
+          setMagicModalOpen(false)
+          return
+        }
+        window.dispatchEvent(
+          new CustomEvent('magic-command', { detail: { command: 'investigate', type } })
+        )
+        setMagicModalOpen(false)
+        return
+      }
+
+      // Update PR description: open the update dialog (requires open PR)
+      if (option === 'update-pr') {
+        if (!worktree?.pr_number) {
+          notify('No PR open for this worktree', undefined, { type: 'error' })
+          setMagicModalOpen(false)
+          return
+        }
+        useUIStore.getState().setUpdatePrModalOpen(true)
+        setMagicModalOpen(false)
+        return
+      }
+
       // If PR already exists, open it in the browser instead of creating a new one
       if (option === 'open-pr' && worktree?.pr_url) {
         await openExternal(worktree.pr_url)
@@ -395,10 +580,14 @@ export function MagicModal() {
         return
       }
 
-      // Commands that need ChatWindow: switch off canvas first, then dispatch after mount
-      if (isOnCanvas && CANVAS_SESSION_TRANSITION_OPTIONS.has(option)) {
+      // Commands that need ChatWindow: navigate to worktree first, then dispatch after mount
+      if (isOnCanvas && CANVAS_NAVIGATE_AND_DISPATCH_OPTIONS.has(option) && worktree?.path) {
         setMagicModalOpen(false)
-        useChatStore.getState().setViewingCanvasTab(selectedWorktreeId, false)
+        const { setActiveWorktree, setViewingCanvasTab } = useChatStore.getState()
+        // Navigate to worktree view (needed for WorktreeDashboard → worktree transition)
+        useProjectsStore.getState().selectWorktree(selectedWorktreeId)
+        setActiveWorktree(selectedWorktreeId, worktree.path)
+        setViewingCanvasTab(selectedWorktreeId, false)
         // Delay dispatch to allow ChatWindow to mount and register event listener
         setTimeout(() => {
           window.dispatchEvent(
@@ -425,7 +614,7 @@ export function MagicModal() {
 
       setMagicModalOpen(false)
     },
-    [selectedWorktreeId, selectedProjectId, setMagicModalOpen, worktree?.pr_url, isOnCanvas, executeGitDirectly]
+    [selectedWorktreeId, selectedProjectId, setMagicModalOpen, worktree?.pr_url, isOnCanvas, executeGitDirectly, hasIssueContexts, hasPrContexts]
   )
 
   // Handle keyboard navigation
@@ -489,7 +678,10 @@ export function MagicModal() {
                       const Icon = option.icon
                       const isSelected = selectedOption === option.id
                       const isDisabled =
-                        isOnCanvas && !CANVAS_ALLOWED_OPTIONS.has(option.id)
+                        (isOnCanvas && !CANVAS_ALLOWED_OPTIONS.has(option.id)) ||
+                        (option.id === 'investigate-issue' && !hasIssueContexts) ||
+                        (option.id === 'investigate-pr' && !hasPrContexts) ||
+                        (option.id === 'update-pr' && !hasOpenPr)
 
                       return (
                         <button

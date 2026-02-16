@@ -12,9 +12,11 @@
 export const isNativeApp = (): boolean =>
   typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 
-/** A backend is available (either Tauri IPC or WebSocket connection). */
+/** A backend is available (either Tauri IPC, WebSocket connection, or E2E mock). */
 export const hasBackend = (): boolean => {
   if (isNativeApp()) return true
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if (typeof window !== 'undefined' && (window as any).__JEAN_E2E_MOCK__) return true
   // In browser mode, check if we have WS connection info
   // (set when the transport connects)
   return _wsConnected

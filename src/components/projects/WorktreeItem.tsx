@@ -4,7 +4,7 @@ import type {
   IndicatorStatus,
   IndicatorVariant,
 } from '@/components/ui/status-indicator'
-import { ArrowDown, ArrowUp, GitBranch } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronDown, GitBranch } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { isBaseSession, type Worktree } from '@/types/projects'
@@ -15,12 +15,18 @@ import { useRenameWorktree } from '@/services/projects'
 import { useSessions } from '@/services/chat'
 import { isAskUserQuestion, isExitPlanMode } from '@/types/chat'
 import {
+  computeSessionCardData,
+  groupCardsByStatus,
+  statusConfig,
+} from '@/components/chat/session-card-utils'
+import { useCanvasStoreState } from '@/components/chat/hooks/useCanvasStoreState'
+import {
   setActiveWorktreeForPolling,
   useGitStatus,
-  gitPull,
   gitPush,
   fetchWorktreesStatus,
   triggerImmediateGitPoll,
+  performGitPull,
 } from '@/services/git-status'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { useSidebarWidth } from '@/components/layout/SidebarWidthContext'
@@ -38,7 +44,7 @@ export function WorktreeItem({
   projectPath,
   defaultBranch,
 }: WorktreeItemProps) {
-  const { selectedWorktreeId, selectWorktree, selectProject } =
+  const { selectedWorktreeId, selectWorktree, selectProject, expandedWorktreeIds, toggleWorktreeExpanded } =
     useProjectsStore()
   // Check if any session in this worktree is running (chat)
   const isChatRunning = useChatStore(state =>
@@ -260,6 +266,62 @@ export function WorktreeItem({
     isReviewing,
   ])
 
+  // Worktree expansion state for sidebar session list
+  const isExpanded = expandedWorktreeIds.has(worktree.id)
+  const storeState = useCanvasStoreState()
+
+  const sessionGroups = useMemo(() => {
+    if (!isExpanded) return []
+    const sessions = sessionsData?.sessions ?? []
+    const cards = sessions.map(s => computeSessionCardData(s, storeState))
+    return groupCardsByStatus(cards)
+  }, [isExpanded, sessionsData?.sessions, storeState])
+
+  const handleChevronClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation()
+      toggleWorktreeExpanded(worktree.id)
+    },
+    [worktree.id, toggleWorktreeExpanded]
+  )
+
+  const handleSessionSelect = useCallback(
+    (sessionId: string) => {
+      selectProject(projectId)
+      selectWorktree(worktree.id)
+      const { setActiveWorktree, setActiveSession, setViewingCanvasTab } =
+        useChatStore.getState()
+      setActiveWorktree(worktree.id, worktree.path)
+      setActiveSession(worktree.id, sessionId)
+      setViewingCanvasTab(worktree.id, true)
+      setActiveWorktreeForPolling({
+        worktreeId: worktree.id,
+        worktreePath: worktree.path,
+        baseBranch: defaultBranch,
+        prNumber: worktree.pr_number,
+        prUrl: worktree.pr_url,
+      })
+      // Open session modal in the canvas view
+      setTimeout(() => {
+        window.dispatchEvent(
+          new CustomEvent('open-session-modal', {
+            detail: { sessionId },
+          })
+        )
+      }, 50)
+    },
+    [
+      projectId,
+      worktree.id,
+      worktree.path,
+      defaultBranch,
+      worktree.pr_number,
+      worktree.pr_url,
+      selectProject,
+      selectWorktree,
+    ]
+  )
+
   // Responsive padding based on sidebar width
   const sidebarWidth = useSidebarWidth()
   const isNarrowSidebar = sidebarWidth < 200
@@ -380,25 +442,13 @@ export function WorktreeItem({
   const handlePull = useCallback(
     async (e: React.MouseEvent) => {
       e.stopPropagation()
-      const { setWorktreeLoading, clearWorktreeLoading } =
-        useChatStore.getState()
-      setWorktreeLoading(worktree.id, 'pull')
-      const toastId = toast.loading('Pulling changes...')
-      try {
-        await gitPull(worktree.path, defaultBranch)
-        triggerImmediateGitPoll()
-        fetchWorktreesStatus(projectId)
-        toast.success('Changes pulled', { id: toastId })
-      } catch (error) {
-        const errorStr = String(error)
-        if (errorStr.includes('Merge conflicts in:')) {
-          toast.warning('Pull resulted in conflicts', {
-            id: toastId,
-            description: 'Opening conflict resolution...',
-          })
-          // Select this worktree and trigger resolve-conflicts via magic command
+      await performGitPull({
+        worktreeId: worktree.id,
+        worktreePath: worktree.path,
+        baseBranch: defaultBranch,
+        projectId,
+        onMergeConflict: () => {
           selectWorktree(worktree.id)
-          // Small delay to ensure worktree is selected before dispatching
           setTimeout(() => {
             window.dispatchEvent(
               new CustomEvent('magic-command', {
@@ -406,12 +456,8 @@ export function WorktreeItem({
               })
             )
           }, 100)
-        } else {
-          toast.error(`Pull failed: ${error}`, { id: toastId })
-        }
-      } finally {
-        clearWorktreeLoading(worktree.id)
-      }
+        },
+      })
     },
     [worktree.id, worktree.path, defaultBranch, projectId, selectWorktree]
   )
@@ -433,22 +479,23 @@ export function WorktreeItem({
   )
 
   return (
-    <WorktreeContextMenu
-      worktree={worktree}
-      projectId={projectId}
-      projectPath={projectPath}
-    >
-      <div
-        className={cn(
-          'group relative flex cursor-pointer items-center gap-1.5 py-1.5 pr-2 transition-colors duration-150',
-          isNarrowSidebar ? 'pl-4' : 'pl-7',
-          isSelected
-            ? 'bg-primary/10 text-foreground before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:bg-primary'
-            : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
-        )}
-        onClick={handleClick}
-        onDoubleClick={handleDoubleClick}
+    <div>
+      <WorktreeContextMenu
+        worktree={worktree}
+        projectId={projectId}
+        projectPath={projectPath}
       >
+        <div
+          className={cn(
+            'group relative flex cursor-pointer items-center gap-1.5 py-1.5 pr-2 transition-colors duration-150',
+            isNarrowSidebar ? 'pl-4' : 'pl-7',
+            isSelected
+              ? 'bg-primary/10 text-foreground before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:bg-primary'
+              : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+          )}
+          onClick={handleClick}
+          onDoubleClick={handleDoubleClick}
+        >
         {/* Status indicator */}
         <StatusIndicator
           status={indicatorStatus}
@@ -470,14 +517,28 @@ export function WorktreeItem({
           />
         ) : (
           <span
-            className={cn('flex-1 truncate text-sm', isBase && 'font-medium')}
+            className={cn('flex flex-1 items-center gap-0.5 truncate text-sm', isBase && 'font-medium')}
           >
-            {worktree.name}
+            <span className="truncate">
+              {worktree.name}
+            </span>
+            {/* Chevron for expand/collapse sessions */}
+            <button
+              className="flex size-4 shrink-0 items-center justify-center rounded opacity-0 transition-opacity group-hover:opacity-50 hover:!opacity-100 hover:bg-accent-foreground/10"
+              onClick={handleChevronClick}
+            >
+              <ChevronDown
+                className={cn(
+                  'size-3 transition-transform',
+                  isExpanded && 'rotate-180'
+                )}
+              />
+            </button>
             {/* Show branch name only when different from displayed name */}
             {(() => {
               const displayBranch = gitStatus?.current_branch ?? worktree.branch
               return displayBranch !== worktree.name ? (
-                <span className="ml-1 inline-flex items-center gap-0.5 text-xs text-muted-foreground">
+                <span className="ml-0.5 inline-flex items-center gap-0.5 text-xs text-muted-foreground">
                   <GitBranch className="h-2.5 w-2.5" />
                   {displayBranch}
                 </span>
@@ -537,5 +598,44 @@ export function WorktreeItem({
         )}
       </div>
     </WorktreeContextMenu>
+
+      {/* Expandable session list grouped by status */}
+      {isExpanded && sessionGroups.length > 0 && (
+        <div className={cn('border-l border-border/40 py-0.5', isNarrowSidebar ? 'ml-6' : 'ml-9')}>
+          {sessionGroups.map(group => (
+            <div key={group.key}>
+              <div className="pl-3 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                {group.title}{' '}
+                <span className="text-muted-foreground/60">
+                  {group.cards.length}
+                </span>
+              </div>
+              {group.cards.map(card => {
+                const config = statusConfig[card.status]
+                return (
+                  <div
+                    key={card.session.id}
+                    className="flex items-center gap-1.5 pl-5 py-1 cursor-pointer text-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 truncate"
+                    onClick={e => {
+                      e.stopPropagation()
+                      handleSessionSelect(card.session.id)
+                    }}
+                  >
+                    <StatusIndicator
+                      status={config.indicatorStatus}
+                      variant={config.indicatorVariant}
+                      className="h-1.5 w-1.5 shrink-0"
+                    />
+                    <span className="truncate text-xs">
+                      {card.session.name || 'Untitled'}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }

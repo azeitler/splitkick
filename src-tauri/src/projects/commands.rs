@@ -22,10 +22,11 @@ use super::github_issues::{
 use super::names::generate_unique_workspace_name;
 use super::storage::{get_project_worktrees_dir, load_projects_data, save_projects_data};
 use super::types::{
-    MergeType, Project, SessionType, Worktree, WorktreeArchivedEvent, WorktreeBranchExistsEvent,
-    WorktreeCreateErrorEvent, WorktreeCreatedEvent, WorktreeCreatingEvent,
-    WorktreeDeleteErrorEvent, WorktreeDeletedEvent, WorktreeDeletingEvent, WorktreePathExistsEvent,
-    WorktreePermanentlyDeletedEvent, WorktreeUnarchivedEvent,
+    JeanConfig, MergeType, Project, SessionType, Worktree, WorktreeArchivedEvent,
+    WorktreeBranchExistsEvent, WorktreeCreateErrorEvent, WorktreeCreatedEvent,
+    WorktreeCreatingEvent, WorktreeDeleteErrorEvent, WorktreeDeletedEvent,
+    WorktreeDeletingEvent, WorktreePathExistsEvent, WorktreePermanentlyDeletedEvent,
+    WorktreeUnarchivedEvent,
 };
 use crate::claude_cli::resolve_cli_binary;
 use crate::gh_cli::config::resolve_gh_binary;
@@ -71,6 +72,7 @@ fn now() -> u64 {
 pub async fn check_git_identity() -> Result<GitIdentity, String> {
     let name = silent_command("git")
         .args(["config", "--global", "user.name"])
+        .current_dir(std::env::temp_dir())
         .output()
         .ok()
         .filter(|o| o.status.success())
@@ -79,6 +81,7 @@ pub async fn check_git_identity() -> Result<GitIdentity, String> {
 
     let email = silent_command("git")
         .args(["config", "--global", "user.email"])
+        .current_dir(std::env::temp_dir())
         .output()
         .ok()
         .filter(|o| o.status.success())
@@ -93,6 +96,7 @@ pub async fn check_git_identity() -> Result<GitIdentity, String> {
 pub async fn set_git_identity(name: String, email: String) -> Result<(), String> {
     let name_output = silent_command("git")
         .args(["config", "--global", "user.name", &name])
+        .current_dir(std::env::temp_dir())
         .output()
         .map_err(|e| format!("Failed to set git user.name: {e}"))?;
 
@@ -103,6 +107,7 @@ pub async fn set_git_identity(name: String, email: String) -> Result<(), String>
 
     let email_output = silent_command("git")
         .args(["config", "--global", "user.email", &email])
+        .current_dir(std::env::temp_dir())
         .output()
         .map_err(|e| format!("Failed to set git user.email: {e}"))?;
 
@@ -171,6 +176,7 @@ pub async fn add_project(
         avatar_path: None,
         enabled_mcp_servers: Vec::new(),
         custom_system_prompt: None,
+        default_provider: None,
     };
 
     data.add_project(project.clone());
@@ -323,6 +329,7 @@ pub async fn init_project(
         avatar_path: None,
         enabled_mcp_servers: Vec::new(),
         custom_system_prompt: None,
+        default_provider: None,
     };
 
     data.add_project(project.clone());
@@ -460,6 +467,16 @@ pub async fn create_worktree(
     let preferred_base = base_branch.unwrap_or_else(|| project.default_branch.clone());
     let base = git::get_valid_base_branch(&project.path, &preferred_base)?;
 
+    // Resolve auto-pull preference now (async), but defer the actual pull to background thread
+    let should_auto_pull = if pr_context.is_none() {
+        crate::load_preferences(app.clone())
+            .await
+            .map(|prefs| prefs.auto_pull_base_branch)
+            .unwrap_or(false)
+    } else {
+        false
+    };
+
     // Generate workspace name - use custom name, PR-based name, issue-based name, or random name
     let name = if let Some(custom) = custom_name {
         // Use the provided custom name directly (already validated as unique by caller)
@@ -517,6 +534,8 @@ pub async fn create_worktree(
         name: name.clone(),
         path: worktree_path_str.clone(),
         branch: name.clone(),
+        pr_number: pr_context.as_ref().map(|ctx| ctx.number as u64),
+        issue_number: issue_context.as_ref().map(|ctx| ctx.number as u64),
     };
     if let Err(e) = app.emit_all("worktree:creating", &creating_event) {
         log::error!("Failed to emit worktree:creating event: {e}");
@@ -533,8 +552,9 @@ pub async fn create_worktree(
         setup_output: None,
         setup_script: None,
         session_type: SessionType::Worktree,
-        pr_number: None,
+        pr_number: pr_context.as_ref().map(|ctx| ctx.number),
         pr_url: None,
+        issue_number: issue_context.as_ref().map(|ctx| ctx.number),
         cached_pr_status: None,
         cached_check_status: None,
         cached_behind_count: None,
@@ -565,7 +585,22 @@ pub async fn create_worktree(
 
     // Spawn background thread for git operations
     thread::spawn(move || {
+        // Clone IDs for panic handler (before they're moved into the inner closure)
+        let panic_wt_id = worktree_id_clone.clone();
+        let panic_proj_id = project_id_clone.clone();
+        let panic_app = app_clone.clone();
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
         log::trace!("Background: Creating git worktree {name_clone} at {worktree_path_clone}");
+
+        // Auto-pull base branch if enabled (non-blocking on failure)
+        if should_auto_pull {
+            log::trace!("Auto-pulling base branch {base_clone} before worktree creation");
+            match git::git_pull(&project_path, &base_clone) {
+                Ok(_) => log::trace!("Successfully pulled base branch {base_clone}"),
+                Err(e) => log::warn!("Failed to auto-pull base branch {base_clone}: {e}"),
+            }
+        }
 
         // Check if path already exists
         let worktree_path = std::path::Path::new(&worktree_path_clone);
@@ -584,7 +619,12 @@ pub async fn create_worktree(
             // Must check both storage AND git branches (branch may exist from previously deleted worktree)
             let suggested_name = {
                 let data = load_projects_data(&app_clone).ok();
-                generate_unique_suffix_name(&name_clone, &project_path, &project_id_clone, data.as_ref())
+                generate_unique_suffix_name(
+                    &name_clone,
+                    &project_path,
+                    &project_id_clone,
+                    data.as_ref(),
+                )
             };
 
             // Emit path_exists event with archived worktree info if available
@@ -640,7 +680,12 @@ pub async fn create_worktree(
                     // Generate a suggested alternative name with random suffix
                     let suggested_name = {
                         let data = load_projects_data(&app_clone).ok();
-                        generate_unique_suffix_name(&name_clone, &project_path, &project_id_clone, data.as_ref())
+                        generate_unique_suffix_name(
+                            &name_clone,
+                            &project_path,
+                            &project_id_clone,
+                            data.as_ref(),
+                        )
                     };
 
                     // Emit branch_exists event
@@ -705,21 +750,31 @@ pub async fn create_worktree(
             let branch_collision = git::branch_exists(&project_path, &ctx.head_ref_name);
             let local_branch_name = if branch_collision {
                 let alt = format!("pr-{}-{}", ctx.number, ctx.head_ref_name);
-                log::trace!("Branch '{}' already exists, using '{alt}' instead", ctx.head_ref_name);
+                log::trace!(
+                    "Branch '{}' already exists, using '{alt}' instead",
+                    ctx.head_ref_name
+                );
                 alt
             } else {
                 ctx.head_ref_name.clone()
             };
 
+            // Clean up stale branch from a previous checkout of this PR
+            git::cleanup_stale_branch(&project_path, &local_branch_name);
+
             let checkout_result = if branch_collision {
                 // Bypass gh pr checkout which internally fetches into the conflicting ref.
                 // Manually fetch the PR into the alt branch name and switch to it.
-                log::trace!("Background: Branch collision, manual fetch PR #{} into {local_branch_name}", ctx.number);
-                git::fetch_pr_to_branch(&project_path, ctx.number, &local_branch_name)
-                    .and_then(|_| {
+                log::trace!(
+                    "Background: Branch collision, manual fetch PR #{} into {local_branch_name}",
+                    ctx.number
+                );
+                git::fetch_pr_to_branch(&project_path, ctx.number, &local_branch_name).and_then(
+                    |_| {
                         git::checkout_branch(&worktree_path_clone, &local_branch_name)?;
                         Ok(local_branch_name)
-                    })
+                    },
+                )
             } else {
                 git::gh_pr_checkout(
                     &worktree_path_clone,
@@ -921,6 +976,7 @@ pub async fn create_worktree(
                 session_type: SessionType::Worktree,
                 pr_number: pr_context_clone.as_ref().map(|ctx| ctx.number),
                 pr_url: None,
+                issue_number: issue_context_clone.as_ref().map(|ctx| ctx.number),
                 cached_pr_status: None,
                 cached_check_status: None,
                 cached_behind_count: None,
@@ -971,6 +1027,17 @@ pub async fn create_worktree(
             if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
                 log::error!("Failed to emit worktree:error event: {emit_err}");
             }
+        }
+        })); // end catch_unwind
+
+        if let Err(panic_info) = result {
+            log::error!("Background thread panicked during worktree creation: {panic_info:?}");
+            let error_event = WorktreeCreateErrorEvent {
+                id: panic_wt_id,
+                project_id: panic_proj_id,
+                error: "Internal error: worktree creation failed unexpectedly".to_string(),
+            };
+            let _ = panic_app.emit_all("worktree:error", &error_event);
         }
     });
 
@@ -1023,6 +1090,8 @@ pub async fn create_worktree_from_existing_branch(
         name: name.clone(),
         path: worktree_path_str.clone(),
         branch: name.clone(),
+        pr_number: pr_context.as_ref().map(|ctx| ctx.number as u64),
+        issue_number: issue_context.as_ref().map(|ctx| ctx.number as u64),
     };
     if let Err(e) = app.emit_all("worktree:creating", &creating_event) {
         log::error!("Failed to emit worktree:creating event: {e}");
@@ -1039,8 +1108,9 @@ pub async fn create_worktree_from_existing_branch(
         setup_output: None,
         setup_script: None,
         session_type: SessionType::Worktree,
-        pr_number: None,
+        pr_number: pr_context.as_ref().map(|ctx| ctx.number),
         pr_url: None,
+        issue_number: issue_context.as_ref().map(|ctx| ctx.number),
         cached_pr_status: None,
         cached_check_status: None,
         cached_behind_count: None,
@@ -1071,6 +1141,12 @@ pub async fn create_worktree_from_existing_branch(
 
     // Spawn background thread for git operations
     thread::spawn(move || {
+        // Clone IDs for panic handler (before they're moved into the inner closure)
+        let panic_wt_id = worktree_id_clone.clone();
+        let panic_proj_id = project_id_clone.clone();
+        let panic_app = app_clone.clone();
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
         log::trace!("Background: Creating git worktree {name_clone} at {worktree_path_clone} using existing branch {branch_name_clone}");
 
         // Check if path already exists
@@ -1256,6 +1332,7 @@ pub async fn create_worktree_from_existing_branch(
                 session_type: SessionType::Worktree,
                 pr_number: None,
                 pr_url: None,
+                issue_number: issue_context_clone.as_ref().map(|ctx| ctx.number),
                 cached_pr_status: None,
                 cached_check_status: None,
                 cached_behind_count: None,
@@ -1307,6 +1384,17 @@ pub async fn create_worktree_from_existing_branch(
                 log::error!("Failed to emit worktree:error event: {emit_err}");
             }
         }
+        })); // end catch_unwind
+
+        if let Err(panic_info) = result {
+            log::error!("Background thread panicked during worktree creation from existing branch: {panic_info:?}");
+            let error_event = WorktreeCreateErrorEvent {
+                id: panic_wt_id,
+                project_id: panic_proj_id,
+                error: "Internal error: worktree creation failed unexpectedly".to_string(),
+            };
+            let _ = panic_app.emit_all("worktree:error", &error_event);
+        }
     });
 
     log::trace!("Returning pending worktree: {}", pending_worktree.name);
@@ -1333,7 +1421,7 @@ pub async fn checkout_pr(
 ) -> Result<Worktree, String> {
     log::trace!("Checking out PR #{pr_number} for project: {project_id}");
 
-    let data = load_projects_data(&app)?;
+    let mut data = load_projects_data(&app)?;
 
     let project = data
         .find_project(&project_id)
@@ -1345,9 +1433,10 @@ pub async fn checkout_pr(
         w.project_id == project_id && w.pr_number == Some(pr_number) && w.archived_at.is_some()
     }) {
         let worktree_id = archived_wt.id.clone();
-        log::trace!("Found archived worktree {worktree_id} for PR #{pr_number}, restoring instead of creating new");
+        log::info!("[checkout_pr] Found archived worktree {worktree_id} for PR #{pr_number}, attempting unarchive");
         return unarchive_worktree(app, worktree_id).await;
     }
+    log::info!("[checkout_pr] No archived worktree found for PR #{pr_number}, creating new");
 
     // Fetch PR details from GitHub (for context and worktree naming)
     let pr_detail = get_github_pr(app.clone(), project.path.clone(), pr_number).await?;
@@ -1357,18 +1446,50 @@ pub async fn checkout_pr(
 
     // Generate worktree name from PR (for the directory/worktree name, not the branch)
     let worktree_name = generate_branch_name_from_pr(pr_number, &pr_detail.title);
+    log::info!("[checkout_pr] Generated base worktree name: '{worktree_name}'");
 
-    // Check if worktree name already exists, add suffix if needed
-    let final_worktree_name = if data.worktree_name_exists(&project_id, &worktree_name) {
+    // Remove any archived worktree records for this PR from data so they don't
+    // interfere with name dedup. The background thread will clean up leftover
+    // git worktrees/branches/directories.
+    let project_worktrees_dir = get_project_worktrees_dir(&project.name)?;
+    let had_archived = data
+        .worktrees
+        .iter()
+        .any(|w| w.project_id == project_id && w.pr_number == Some(pr_number) && w.archived_at.is_some());
+    if had_archived {
+        log::info!("[checkout_pr] Removing archived worktree records for PR #{pr_number} from data");
+        data.worktrees.retain(|w| {
+            !(w.project_id == project_id && w.pr_number == Some(pr_number) && w.archived_at.is_some())
+        });
+        save_projects_data(&app, &data)?;
+    }
+
+    // Log all worktrees for this project to understand name collision state
+    let existing_names: Vec<String> = data
+        .worktrees
+        .iter()
+        .filter(|w| w.project_id == project_id)
+        .map(|w| format!("'{}' (archived={})", w.name, w.archived_at.is_some()))
+        .collect();
+    log::info!("[checkout_pr] Existing worktrees for project: [{existing_names:?}]");
+    let dir_exists = project_worktrees_dir.join(&worktree_name).exists();
+    let name_in_data = data.worktree_name_exists(&project_id, &worktree_name);
+    log::info!("[checkout_pr] Name '{worktree_name}' — in_data={name_in_data}, dir_exists={dir_exists}");
+
+    // Check if worktree name already exists among active worktrees, add suffix if needed.
+    // Don't check filesystem here — the background thread will clean up leftover dirs.
+    let final_worktree_name = if name_in_data {
         let mut counter = 2;
         loop {
             let candidate = format!("{worktree_name}-{counter}");
             if !data.worktree_name_exists(&project_id, &candidate) {
+                log::info!("[checkout_pr] Name collision, using '{candidate}'");
                 break candidate;
             }
             counter += 1;
         }
     } else {
+        log::info!("[checkout_pr] Using base name '{worktree_name}'");
         worktree_name
     };
 
@@ -1384,7 +1505,6 @@ pub async fn checkout_pr(
     );
 
     // Build worktree path: ~/jean/<project-name>/<workspace-name>
-    let project_worktrees_dir = get_project_worktrees_dir(&project.name)?;
     let worktree_path = project_worktrees_dir.join(&final_worktree_name);
     let worktree_path_str = worktree_path
         .to_str()
@@ -1402,6 +1522,8 @@ pub async fn checkout_pr(
         name: final_worktree_name.clone(),
         path: worktree_path_str.clone(),
         branch: pr_detail.head_ref_name.clone(), // Use PR's actual branch name
+        pr_number: Some(pr_number as u64),
+        issue_number: None,
     };
     if let Err(e) = app.emit_all("worktree:creating", &creating_event) {
         log::error!("Failed to emit worktree:creating event: {e}");
@@ -1421,6 +1543,7 @@ pub async fn checkout_pr(
         session_type: SessionType::Worktree,
         pr_number: Some(pr_number),
         pr_url: None,
+        issue_number: None,
         cached_pr_status: None,
         cached_check_status: None,
         cached_behind_count: None,
@@ -1456,7 +1579,28 @@ pub async fn checkout_pr(
 
     // Do the heavy lifting in a background thread
     thread::spawn(move || {
+        // Clone IDs for panic handler (before they're moved into the inner closure)
+        let panic_wt_id = worktree_id_clone.clone();
+        let panic_proj_id = project_id_clone.clone();
+        let panic_app = app_clone.clone();
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
         log::trace!("Background: Creating worktree for PR #{pr_number}");
+
+        // Clean up leftover directory from a previous checkout of this PR
+        // (e.g. permanently_delete_worktree's background cleanup hasn't finished yet)
+        let dir_exists_before = std::path::Path::new(&worktree_path_clone).exists();
+        log::info!("[checkout_pr bg] worktree_path={worktree_path_clone}, dir_exists={dir_exists_before}");
+        if dir_exists_before {
+            log::info!("[checkout_pr bg] Removing leftover directory at {worktree_path_clone}");
+            let remove_result = git::remove_worktree(&project_path, &worktree_path_clone);
+            log::info!("[checkout_pr bg] remove_worktree result: {remove_result:?}");
+            if std::path::Path::new(&worktree_path_clone).exists() {
+                log::info!("[checkout_pr bg] Dir still exists after remove_worktree, force removing");
+                let _ = std::fs::remove_dir_all(&worktree_path_clone);
+            }
+            log::info!("[checkout_pr bg] Dir exists after cleanup: {}", std::path::Path::new(&worktree_path_clone).exists());
+        }
 
         // Step 1: Create worktree with a temporary branch based on base branch
         // This gives us a working directory where we can run gh pr checkout
@@ -1492,18 +1636,23 @@ pub async fn checkout_pr(
             pr_head_ref.clone()
         };
 
+        // Clean up stale branch from a previous checkout of this PR
+        // Handles: archived worktree still has branch checked out, or
+        // permanently-deleted worktree whose background cleanup didn't finish
+        git::cleanup_stale_branch(&project_path, &local_branch_name);
+
         // Step 2: Checkout the PR branch into the worktree
         // If branch name collides (e.g. PR head is "main" and "main" is checked out),
         // bypass `gh pr checkout` which internally fetches into the conflicting ref.
         // Instead, manually fetch the PR into the alt branch name and switch to it.
         let actual_branch = if branch_collision {
             log::trace!("Background: Branch collision detected, using manual fetch for PR #{pr_number} into {local_branch_name}");
-            match git::fetch_pr_to_branch(&project_path, pr_number, &local_branch_name)
-                .and_then(|_| {
+            match git::fetch_pr_to_branch(&project_path, pr_number, &local_branch_name).and_then(
+                |_| {
                     git::checkout_branch(&worktree_path_clone, &local_branch_name)?;
                     Ok(local_branch_name.clone())
-                })
-            {
+                },
+            ) {
                 Ok(branch) => {
                     log::trace!("Background: Manual PR fetch+checkout succeeded, branch: {branch}");
                     branch
@@ -1679,6 +1828,7 @@ pub async fn checkout_pr(
                 session_type: SessionType::Worktree,
                 pr_number: Some(pr_number),
                 pr_url: None,
+                issue_number: None,
                 cached_pr_status: None,
                 cached_check_status: None,
                 cached_behind_count: None,
@@ -1730,6 +1880,17 @@ pub async fn checkout_pr(
             if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
                 log::error!("Failed to emit worktree:error event: {emit_err}");
             }
+        }
+        })); // end catch_unwind
+
+        if let Err(panic_info) = result {
+            log::error!("Background thread panicked during PR checkout: {panic_info:?}");
+            let error_event = WorktreeCreateErrorEvent {
+                id: panic_wt_id,
+                project_id: panic_proj_id,
+                error: "Internal error: PR checkout failed unexpectedly".to_string(),
+            };
+            let _ = panic_app.emit_all("worktree:error", &error_event);
         }
     });
 
@@ -1890,6 +2051,7 @@ pub async fn create_base_session(app: AppHandle, project_id: String) -> Result<W
         session_type: SessionType::Base,
         pr_number: None,
         pr_url: None,
+        issue_number: None,
         cached_pr_status: None,
         cached_check_status: None,
         cached_behind_count: None,
@@ -1915,6 +2077,22 @@ pub async fn create_base_session(app: AppHandle, project_id: String) -> Result<W
     match crate::chat::restore_base_sessions(&app, &project_id, &session.id) {
         Ok(Some(_)) => {
             log::trace!("Restored preserved sessions for base session");
+            // Unarchive all sessions — they were archived by close_base_session_archive
+            // but the user is reopening the base session, so they should be active again
+            let wt_path = session.path.clone();
+            let wt_id = session.id.clone();
+            if let Err(e) =
+                crate::chat::with_sessions_mut(&app, &wt_path, &wt_id, |sessions| {
+                    for s in &mut sessions.sessions {
+                        if s.archived_at.is_some() {
+                            s.archived_at = None;
+                        }
+                    }
+                    Ok(())
+                })
+            {
+                log::warn!("Failed to unarchive restored sessions: {e}");
+            }
         }
         Ok(None) => {
             log::trace!("No preserved sessions to restore");
@@ -1936,14 +2114,28 @@ pub async fn create_base_session(app: AppHandle, project_id: String) -> Result<W
 /// Preserves the sessions file so it can be restored when the base session is reopened
 #[tauri::command]
 pub async fn close_base_session(app: AppHandle, worktree_id: String) -> Result<(), String> {
-    close_base_session_internal(&app, &worktree_id, true).await
+    log::info!("[BASE_CLOSE] close_base_session (preserve, no archive) called for {worktree_id}");
+    close_base_session_internal(&app, &worktree_id, true, false).await
 }
 
 /// Close a base branch session without preserving sessions (clean close)
 /// Deletes the sessions file entirely so the base session starts fresh on reopen
 #[tauri::command]
 pub async fn close_base_session_clean(app: AppHandle, worktree_id: String) -> Result<(), String> {
-    close_base_session_internal(&app, &worktree_id, false).await
+    log::info!("[BASE_CLOSE] close_base_session_clean called for {worktree_id}");
+    close_base_session_internal(&app, &worktree_id, false, false).await
+}
+
+/// Close a base branch session, archiving all non-archived sessions first.
+/// Sets archived_at on each session and preserves the sessions file so they
+/// appear in the Archive modal.
+#[tauri::command]
+pub async fn close_base_session_archive(
+    app: AppHandle,
+    worktree_id: String,
+) -> Result<(), String> {
+    log::info!("[BASE_CLOSE] close_base_session_archive called for {worktree_id}");
+    close_base_session_internal(&app, &worktree_id, true, true).await
 }
 
 /// Internal implementation for closing a base session
@@ -1951,8 +2143,9 @@ async fn close_base_session_internal(
     app: &AppHandle,
     worktree_id: &str,
     preserve_sessions: bool,
+    archive_sessions: bool,
 ) -> Result<(), String> {
-    log::trace!("Closing base session: {worktree_id} (preserve_sessions: {preserve_sessions})");
+    log::info!("[BASE_CLOSE] Closing base session: {worktree_id} (preserve_sessions: {preserve_sessions}, archive_sessions: {archive_sessions})");
 
     let mut data = load_projects_data(app)?;
 
@@ -1966,9 +2159,41 @@ async fn close_base_session_internal(
         return Err("Not a base session. Use delete_worktree instead.".to_string());
     }
 
-    if preserve_sessions {
+    log::info!("[BASE_CLOSE] Found base session, session_type={:?}, path={}", worktree.session_type, worktree.path);
+
+    // Archive all non-archived sessions before closing
+    if archive_sessions {
+        let worktree_path = worktree.path.clone();
+        let wt_id = worktree_id.to_string();
+        log::info!("[BASE_CLOSE] Archiving sessions for worktree_id={wt_id}, path={worktree_path}");
+        let archive_result =
+            crate::chat::with_sessions_mut(app, &worktree_path, &wt_id, |sessions| {
+                let ts = now();
+                let mut archived_count = 0u32;
+                let total = sessions.sessions.len();
+                for session in &mut sessions.sessions {
+                    log::info!("[BASE_CLOSE] Session '{}' (id={}): archived_at={:?}", session.name, session.id, session.archived_at);
+                    if session.archived_at.is_none() {
+                        session.archived_at = Some(ts);
+                        archived_count += 1;
+                        log::info!("[BASE_CLOSE] -> Archived session '{}'", session.name);
+                    }
+                }
+                log::info!("[BASE_CLOSE] Archived {archived_count}/{total} sessions in base session {wt_id}");
+                Ok(archived_count)
+            });
+        match &archive_result {
+            Ok(count) => log::info!("[BASE_CLOSE] Archive result: Ok({count})"),
+            Err(e) => log::warn!("[BASE_CLOSE] Failed to archive sessions: {e}"),
+        }
+    } else {
+        log::info!("[BASE_CLOSE] Skipping session archival (archive_sessions=false)");
+    }
+
+    if preserve_sessions || archive_sessions {
         // Preserve the sessions file before removing the worktree
         // This renames {worktree_id}.json to base-{project_id}.json
+        log::info!("[BASE_CLOSE] Preserving sessions file for worktree_id={worktree_id}, project_id={}", worktree.project_id);
         crate::chat::preserve_base_sessions(app, worktree_id, &worktree.project_id)?;
     } else {
         // Delete the sessions file entirely for a clean close
@@ -2201,6 +2426,7 @@ pub async fn import_worktree(
         session_type: SessionType::Worktree,
         pr_number: None,
         pr_url: None,
+        issue_number: None,
         cached_pr_status: None,
         cached_check_status: None,
         cached_behind_count: None,
@@ -2991,6 +3217,7 @@ pub async fn update_project_settings(
     default_branch: Option<String>,
     enabled_mcp_servers: Option<Vec<String>>,
     custom_system_prompt: Option<String>,
+    default_provider: Option<Option<String>>,
 ) -> Result<Project, String> {
     log::trace!("Updating settings for project: {project_id}");
 
@@ -3022,6 +3249,11 @@ pub async fn update_project_settings(
         } else {
             Some(prompt)
         };
+    }
+
+    if let Some(provider) = default_provider {
+        log::trace!("Updating default provider: {provider:?}");
+        project.default_provider = provider.filter(|p| p != "__none__");
     }
 
     let updated_project = project.clone();
@@ -3642,24 +3874,25 @@ const PR_CONTENT_SCHEMA: &str = r#"{"type":"object","properties":{"title":{"type
 
 /// Prompt template for PR content generation
 /// Focuses on context - format requirements are in the JSON schema
-const PR_CONTENT_PROMPT: &str = r#"Generate a pull request title and description for the following changes.
+const PR_CONTENT_PROMPT: &str = r#"<task>Generate a pull request title and description</task>
 
-Branch: {current_branch} → {target_branch}
-Commits: {commit_count}
+<context>
+<source_branch>{current_branch}</source_branch>
+<target_branch>{target_branch}</target_branch>
+<commit_count>{commit_count}</commit_count>
+</context>
 
-## Related Context
-
+<related_context>
 {context}
+</related_context>
 
-## Commit Messages
-
+<commits>
 {commits}
+</commits>
 
-## Diff
-
-```diff
+<diff>
 {diff}
-```"#;
+</diff>"#;
 
 /// Structured response from PR content generation
 #[derive(Debug, Deserialize, Serialize)]
@@ -3777,6 +4010,7 @@ fn count_branch_commits(repo_path: &str, target_branch: &str) -> Result<u32, Str
 }
 
 /// Generate PR content using Claude CLI with JSON schema
+#[allow(clippy::too_many_arguments)]
 fn generate_pr_content(
     app: &AppHandle,
     repo_path: &str,
@@ -3785,6 +4019,7 @@ fn generate_pr_content(
     custom_prompt: Option<&str>,
     model: Option<&str>,
     context: &str,
+    custom_profile_name: Option<&str>,
 ) -> Result<PrContentResponse, String> {
     let cli_path = resolve_cli_binary(app);
 
@@ -3817,6 +4052,7 @@ fn generate_pr_content(
     log::trace!("Generating PR content with Claude CLI (JSON schema)");
 
     let mut cmd = silent_command(&cli_path);
+    crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
     cmd.args([
         "--print",
         "--verbose",
@@ -3911,6 +4147,7 @@ pub async fn create_pr_with_ai_content(
     session_id: Option<String>,
     custom_prompt: Option<String>,
     model: Option<String>,
+    custom_profile_name: Option<String>,
 ) -> Result<CreatePrResponse, String> {
     log::trace!("Creating PR for: {worktree_path}");
 
@@ -4001,6 +4238,7 @@ pub async fn create_pr_with_ai_content(
         custom_prompt.as_deref(),
         model.as_deref(),
         &context_content,
+        custom_profile_name.as_deref(),
     )?;
 
     // Append unconditional issue/PR references to the body
@@ -4056,6 +4294,117 @@ pub async fn create_pr_with_ai_content(
 }
 
 // =============================================================================
+// AI-Powered PR Update
+// =============================================================================
+
+/// Response from updating a PR with AI-generated content
+#[derive(Debug, Clone, Serialize)]
+pub struct UpdatePrResponse {
+    pub title: String,
+    pub body: String,
+}
+
+/// Generate AI content for updating a PR (does not apply changes)
+///
+/// Returns the generated title and body for the frontend to display/edit.
+#[tauri::command]
+pub async fn generate_pr_update_content(
+    app: AppHandle,
+    worktree_path: String,
+    session_id: Option<String>,
+    custom_prompt: Option<String>,
+    model: Option<String>,
+    custom_profile_name: Option<String>,
+) -> Result<UpdatePrResponse, String> {
+    log::trace!("Generating PR update content for: {worktree_path}");
+
+    let data = load_projects_data(&app)?;
+    let worktree = data
+        .worktrees
+        .iter()
+        .find(|w| w.path == worktree_path)
+        .ok_or_else(|| format!("Worktree not found: {worktree_path}"))?;
+
+    let project = data
+        .find_project(&worktree.project_id)
+        .ok_or_else(|| format!("Project not found: {}", worktree.project_id))?;
+
+    let target_branch = &project.default_branch;
+    let current_branch = git::get_current_branch(&worktree_path)?;
+
+    // Gather issue/PR context for this session
+    let effective_session_id = session_id.as_deref().unwrap_or("");
+    let context_content =
+        get_session_context_content(&app, effective_session_id, &project.path).unwrap_or_default();
+    let (issue_nums, pr_nums) =
+        get_session_context_numbers(&app, effective_session_id).unwrap_or_default();
+
+    // Generate PR content using Claude CLI
+    let mut pr_content = generate_pr_content(
+        &app,
+        &worktree_path,
+        &current_branch,
+        target_branch,
+        custom_prompt.as_deref(),
+        model.as_deref(),
+        &context_content,
+        custom_profile_name.as_deref(),
+    )?;
+
+    // Append unconditional issue/PR references to the body
+    let mut refs: Vec<String> = Vec::new();
+    for num in &issue_nums {
+        refs.push(format!("Closes #{num}"));
+    }
+    for num in &pr_nums {
+        refs.push(format!("Related to #{num}"));
+    }
+    if !refs.is_empty() {
+        pr_content.body = format!("{}\n\n---\n\n{}", pr_content.body, refs.join("\n"));
+    }
+
+    Ok(UpdatePrResponse {
+        title: pr_content.title,
+        body: pr_content.body,
+    })
+}
+
+/// Update a PR's title and body on GitHub
+#[tauri::command]
+pub async fn update_pr_description(
+    app: AppHandle,
+    worktree_path: String,
+    pr_number: u32,
+    title: String,
+    body: String,
+) -> Result<(), String> {
+    log::trace!("Updating PR #{pr_number} description");
+
+    let gh = resolve_gh_binary(&app);
+    let output = silent_command(&gh)
+        .args([
+            "pr",
+            "edit",
+            &pr_number.to_string(),
+            "--title",
+            &title,
+            "--body",
+            &body,
+        ])
+        .current_dir(&worktree_path)
+        .output()
+        .map_err(|e| format!("Failed to run gh pr edit: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to update PR: {stderr}"));
+    }
+
+    log::trace!("Successfully updated PR #{pr_number}");
+    Ok(())
+}
+
+// =============================================================================
 // AI-Powered Commit Creation
 // =============================================================================
 
@@ -4063,21 +4412,23 @@ pub async fn create_pr_with_ai_content(
 const COMMIT_MESSAGE_SCHEMA: &str = r#"{"type":"object","properties":{"message":{"type":"string","description":"Commit message using Conventional Commits format. First line: type(scope): description (max 72 chars). Types: feat, fix, docs, style, refactor, perf, test, chore. Followed by blank line and optional body explaining what and why."}},"required":["message"]}"#;
 
 /// Prompt template for commit message generation
-const COMMIT_MESSAGE_PROMPT: &str = r#"Generate a commit message for the following changes.
+const COMMIT_MESSAGE_PROMPT: &str = r#"<task>Generate a commit message for the following changes</task>
 
-## Git Status
+<git_status>
 {status}
+</git_status>
 
-## Staged Changes (Diff)
-```diff
+<staged_diff>
 {diff}
-```
+</staged_diff>
 
-## Recent Commits (for style reference)
+<recent_commits>
 {recent_commits}
+</recent_commits>
 
-## Remote Info
-{remote_info}"#;
+<remote_info>
+{remote_info}
+</remote_info>"#;
 
 /// Structured response from commit message generation
 #[derive(Debug, Deserialize)]
@@ -4210,6 +4561,7 @@ fn generate_commit_message(
     app: &AppHandle,
     prompt: &str,
     model: Option<&str>,
+    custom_profile_name: Option<&str>,
 ) -> Result<CommitMessageResponse, String> {
     let cli_path = resolve_cli_binary(app);
 
@@ -4221,6 +4573,7 @@ fn generate_commit_message(
 
     let model_str = model.unwrap_or("haiku");
     let mut cmd = silent_command(&cli_path);
+    crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
     cmd.args([
         "--print",
         "--verbose",
@@ -4292,12 +4645,23 @@ pub async fn create_commit_with_ai(
     custom_prompt: Option<String>,
     push: bool,
     model: Option<String>,
+    custom_profile_name: Option<String>,
 ) -> Result<CreateCommitResponse, String> {
     log::trace!("Creating commit for: {worktree_path}");
 
     // 1. Check for uncommitted changes
     let status = get_git_status(&worktree_path)?;
     if status.trim().is_empty() {
+        if push {
+            // No changes to commit, but user wants to push — push existing commits
+            push_to_remote(&worktree_path)?;
+            log::trace!("No changes to commit, pushed existing commits");
+            return Ok(CreateCommitResponse {
+                commit_hash: String::new(),
+                message: String::new(),
+                pushed: true,
+            });
+        }
         return Err("No changes to commit".to_string());
     }
 
@@ -4328,7 +4692,7 @@ pub async fn create_commit_with_ai(
         .replace("{remote_info}", &remote_info);
 
     // 6. Generate commit message with Claude CLI
-    let response = generate_commit_message(&app, &prompt, model.as_deref())?;
+    let response = generate_commit_message(&app, &prompt, model.as_deref(), custom_profile_name.as_deref())?;
 
     log::trace!(
         "Generated commit message: {}",
@@ -4364,21 +4728,21 @@ pub async fn create_commit_with_ai(
 const REVIEW_SCHEMA: &str = r#"{"type":"object","properties":{"summary":{"type":"string","description":"Brief 1-2 sentence summary of the overall changes"},"findings":{"type":"array","items":{"type":"object","properties":{"severity":{"type":"string","enum":["critical","warning","suggestion","praise"],"description":"Severity level of the finding"},"file":{"type":"string","description":"File path where the finding applies"},"line":{"type":"integer","description":"Line number if applicable, 0 if not specific"},"title":{"type":"string","description":"Short title for the finding (max 80 chars)"},"description":{"type":"string","description":"Detailed explanation of the finding"},"suggestion":{"type":"string","description":"Optional code suggestion or fix"}},"required":["severity","file","title","description"]},"description":"List of review findings"},"approval_status":{"type":"string","enum":["approved","changes_requested","needs_discussion"],"description":"Overall review verdict"}},"required":["summary","findings","approval_status"]}"#;
 
 /// Prompt template for code review
-const REVIEW_PROMPT: &str = r#"Review the following code changes and provide structured feedback.
+const REVIEW_PROMPT: &str = r#"<task>Review the following code changes and provide structured feedback</task>
 
-## Branch Info
-{branch_info}
+<branch_info>{branch_info}</branch_info>
 
-## Commit History
+<commits>
 {commits}
+</commits>
 
-## Changes (Diff)
-```diff
+<diff>
 {diff}
-```
+</diff>
 
 {uncommitted_section}
 
+<instructions>
 Focus on:
 - Security & supply-chain risks:
   - Malicious or obfuscated code (eval, encoded strings, hidden network calls, data exfiltration)
@@ -4389,12 +4753,15 @@ Focus on:
   - Weakened auth/permissions (removed checks, broadened access, disabled validation)
   - Suspicious file system or environment variable access
 - Performance issues
-- Code quality and maintainability
+- Code quality and maintainability (use /check skill if available to run linters/tests)
 - Potential bugs
 - Best practices violations
 
+If there are uncommitted changes, review those as well.
+
 Be constructive and specific. Include praise for good patterns.
-Provide actionable suggestions when possible."#;
+Provide actionable suggestions when possible.
+</instructions>"#;
 
 /// A single finding from the AI code review
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -4420,6 +4787,7 @@ fn generate_review(
     app: &AppHandle,
     prompt: &str,
     model: Option<&str>,
+    custom_profile_name: Option<&str>,
 ) -> Result<ReviewResponse, String> {
     let cli_path = resolve_cli_binary(app);
 
@@ -4431,6 +4799,7 @@ fn generate_review(
 
     let model_str = model.unwrap_or("haiku");
     let mut cmd = silent_command(&cli_path);
+    crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
     cmd.args([
         "--print",
         "--verbose",
@@ -4501,6 +4870,7 @@ pub async fn run_review_with_ai(
     worktree_path: String,
     custom_prompt: Option<String>,
     model: Option<String>,
+    custom_profile_name: Option<String>,
 ) -> Result<ReviewResponse, String> {
     log::trace!("Running AI code review for: {worktree_path}");
 
@@ -4522,13 +4892,13 @@ pub async fn run_review_with_ai(
     let target_branch = &project.default_branch;
     let current_branch = git::get_current_branch(&worktree_path)?;
 
-    // Get branch diff
-    let diff = get_branch_diff(&worktree_path, target_branch)?;
+    // Get branch diff (non-fatal — may fail if origin ref doesn't exist)
+    let diff = get_branch_diff(&worktree_path, target_branch).unwrap_or_default();
 
-    // Get commit history
-    let commits = get_branch_commits(&worktree_path, target_branch)?;
+    // Get commit history (non-fatal — same reason)
+    let commits = get_branch_commits(&worktree_path, target_branch).unwrap_or_default();
 
-    // Get uncommitted changes
+    // Get uncommitted changes (staged + unstaged for tracked files)
     let uncommitted_output = silent_command("git")
         .args(["diff", "HEAD"])
         .current_dir(&worktree_path)
@@ -4541,17 +4911,67 @@ pub async fn run_review_with_ai(
         String::new()
     };
 
+    // Get untracked files
+    let untracked_output = silent_command("git")
+        .args(["ls-files", "--others", "--exclude-standard"])
+        .current_dir(&worktree_path)
+        .output()
+        .map_err(|e| format!("Failed to list untracked files: {e}"))?;
+
+    let untracked_files: Vec<String> = if untracked_output.status.success() {
+        String::from_utf8_lossy(&untracked_output.stdout)
+            .lines()
+            .map(|s| s.to_string())
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    // Read content of untracked files (skip binary and large files)
+    let mut untracked_content = String::new();
+    for file in &untracked_files {
+        let file_path = std::path::Path::new(&worktree_path).join(file);
+        if let Ok(metadata) = std::fs::metadata(&file_path) {
+            if metadata.len() > 100_000 {
+                untracked_content
+                    .push_str(&format!("\n--- New file: {file} (skipped: file too large)\n"));
+                continue;
+            }
+        }
+        if let Ok(content) = std::fs::read_to_string(&file_path) {
+            untracked_content.push_str(&format!("\n--- New file: {file}\n"));
+            untracked_content.push_str(&content);
+            untracked_content.push('\n');
+        } else {
+            untracked_content
+                .push_str(&format!("\n--- New file: {file} (binary or unreadable)\n"));
+        }
+    }
+
     // Check if there's anything to review
-    if diff.trim().is_empty() && commits.trim().is_empty() && uncommitted_diff.trim().is_empty() {
+    if diff.trim().is_empty()
+        && commits.trim().is_empty()
+        && uncommitted_diff.trim().is_empty()
+        && untracked_content.trim().is_empty()
+    {
         return Err("No changes to review".to_string());
     }
 
     // Build uncommitted section if there are uncommitted changes
-    let uncommitted_section = if !uncommitted_diff.trim().is_empty() {
-        format!(
-            "## Uncommitted Changes\n\n```diff\n{}\n```",
-            uncommitted_diff.trim()
-        )
+    let has_uncommitted =
+        !uncommitted_diff.trim().is_empty() || !untracked_content.trim().is_empty();
+    let uncommitted_section = if has_uncommitted {
+        let mut section = String::from("## Uncommitted Changes\n\n");
+        if !uncommitted_diff.trim().is_empty() {
+            section.push_str(&format!("```diff\n{}\n```\n", uncommitted_diff.trim()));
+        }
+        if !untracked_content.trim().is_empty() {
+            section.push_str(&format!(
+                "### New Untracked Files\n\n{}\n",
+                untracked_content.trim()
+            ));
+        }
+        section
     } else {
         String::new()
     };
@@ -4571,7 +4991,7 @@ pub async fn run_review_with_ai(
         .replace("{uncommitted_section}", &uncommitted_section);
 
     // Run review with Claude CLI
-    let response = generate_review(&app, &prompt, model.as_deref())?;
+    let response = generate_review(&app, &prompt, model.as_deref(), custom_profile_name.as_deref())?;
 
     log::trace!(
         "Review complete: {} findings, status: {}",
@@ -4587,6 +5007,20 @@ pub async fn run_review_with_ai(
 pub async fn git_pull(worktree_path: String, base_branch: String) -> Result<String, String> {
     log::trace!("Pulling changes for worktree: {worktree_path}, base branch: {base_branch}");
     git::git_pull(&worktree_path, &base_branch)
+}
+
+/// Stash all local changes including untracked files
+#[tauri::command]
+pub async fn git_stash(worktree_path: String) -> Result<String, String> {
+    log::trace!("Stashing changes for worktree: {worktree_path}");
+    git::git_stash(&worktree_path)
+}
+
+/// Pop the most recent stash
+#[tauri::command]
+pub async fn git_stash_pop(worktree_path: String) -> Result<String, String> {
+    log::trace!("Popping stash for worktree: {worktree_path}");
+    git::git_stash_pop(&worktree_path)
 }
 
 /// Push current branch to remote. If pr_number is provided, uses PR-aware push
@@ -4698,6 +5132,7 @@ fn generate_release_notes_content(
     release_name: &str,
     custom_prompt: Option<&str>,
     model: Option<&str>,
+    custom_profile_name: Option<&str>,
 ) -> Result<ReleaseNotesResponse, String> {
     let cli_path = resolve_cli_binary(app);
 
@@ -4764,6 +5199,7 @@ fn generate_release_notes_content(
     log::trace!("Generating release notes with Claude CLI (JSON schema)");
 
     let mut cmd = silent_command(&cli_path);
+    crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
     cmd.args([
         "--print",
         "--verbose",
@@ -4836,6 +5272,7 @@ pub async fn generate_release_notes(
     release_name: String,
     custom_prompt: Option<String>,
     model: Option<String>,
+    custom_profile_name: Option<String>,
 ) -> Result<ReleaseNotesResponse, String> {
     log::trace!("Generating release notes for {project_path} since {tag}");
 
@@ -4846,6 +5283,7 @@ pub async fn generate_release_notes(
         &release_name,
         custom_prompt.as_deref(),
         model.as_deref(),
+        custom_profile_name.as_deref(),
     )
 }
 
@@ -4933,7 +5371,7 @@ pub async fn merge_worktree_to_base(
             .replace("{recent_commits}", &recent_commits)
             .replace("{remote_info}", &remote_info);
 
-        match generate_commit_message(&app, &prompt, None) {
+        match generate_commit_message(&app, &prompt, None, None) {
             Ok(response) => {
                 // Create the commit with AI-generated message
                 match create_git_commit(&worktree.path, &response.message) {
@@ -5535,6 +5973,7 @@ pub async fn create_folder(
         avatar_path: None,
         enabled_mcp_servers: Vec::new(),
         custom_system_prompt: None,
+        default_provider: None,
     };
 
     data.add_project(folder.clone());
@@ -6153,6 +6592,24 @@ pub async fn get_app_data_dir(app: AppHandle) -> Result<String, String> {
         .map_err(|e| format!("Failed to get app data dir: {e}"))?;
 
     Ok(app_data_dir.to_string_lossy().to_string())
+}
+
+/// Get full jean.json config for a project
+#[tauri::command]
+pub async fn get_jean_config(project_path: String) -> Option<JeanConfig> {
+    git::read_jean_config(&project_path)
+}
+
+/// Save jean.json config to disk
+#[tauri::command]
+pub async fn save_jean_config(project_path: String, config: JeanConfig) -> Result<(), String> {
+    let config_path = Path::new(&project_path).join("jean.json");
+    let json = serde_json::to_string_pretty(&config)
+        .map_err(|e| format!("Failed to serialize config: {e}"))?;
+    std::fs::write(&config_path, format!("{json}\n"))
+        .map_err(|e| format!("Failed to write jean.json: {e}"))?;
+    log::trace!("Saved jean.json to {}", config_path.display());
+    Ok(())
 }
 
 #[cfg(test)]

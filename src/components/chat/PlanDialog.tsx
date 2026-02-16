@@ -118,18 +118,6 @@ export function PlanDialog({
     return () => clearTimeout(timer)
   }, [filePath, editedContent, hasChanges, isOpen, editable, queryClient])
 
-  // Debug logging
-  console.log(
-    '[PlanDialog] render - canApprove:',
-    canApprove,
-    'onApprove:',
-    !!onApprove,
-    'onApproveYolo:',
-    !!onApproveYolo,
-    'editable:',
-    editable
-  )
-
   const handleReset = useCallback(() => {
     setEditedContent(originalContent)
   }, [originalContent])
@@ -199,7 +187,7 @@ export function PlanDialog({
           />
         ) : (
           // View mode: rendered markdown
-          <ScrollArea className="flex-1 min-h-0 -mx-6 px-6">
+          <ScrollArea className="flex-1 min-h-0 -mx-6 px-6 select-text">
             {!inlineContent && isLoading ? (
               <div className="text-sm text-muted-foreground">
                 Loading plan...

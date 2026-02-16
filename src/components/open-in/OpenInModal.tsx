@@ -43,9 +43,14 @@ type ModalOption = {
 }
 
 export function OpenInModal() {
-  const { openInModalOpen, setOpenInModalOpen, openPreferencesPane } =
+  const { openInModalOpen, setOpenInModalOpen, openPreferencesPane, sessionChatModalWorktreeId } =
     useUIStore()
-  const selectedWorktreeId = useProjectsStore(state => state.selectedWorktreeId)
+  const selectedWorktreeIdFromProjects = useProjectsStore(state => state.selectedWorktreeId)
+  const activeWorktreeId = useChatStore(state => state.activeWorktreeId)
+  const selectedWorktreeId =
+    selectedWorktreeIdFromProjects ??
+    activeWorktreeId ??
+    sessionChatModalWorktreeId
   const selectedProjectId = useProjectsStore(state => state.selectedProjectId)
   const { data: projects } = useProjects()
   const hasInitializedRef = useRef(false)
@@ -92,12 +97,22 @@ export function OpenInModal() {
         icon: Github,
         key: 'G',
       },
+      ...(worktree?.pr_url
+        ? [
+            {
+              id: 'open-pr',
+              label: `PR #${worktree.pr_number}`,
+              icon: GitPullRequest,
+              key: 'P',
+            },
+          ]
+        : []),
     ]
 
     return isNative
       ? allOptions
-      : allOptions.filter(opt => opt.id === 'github')
-  }, [preferences?.editor, preferences?.terminal, isNative])
+      : allOptions.filter(opt => opt.id === 'github' || opt.id === 'open-pr')
+  }, [preferences?.editor, preferences?.terminal, isNative, worktree?.pr_url, worktree?.pr_number])
 
   // Context options (loaded PRs + issues, numbered 1-9)
   const contextOptions = useMemo(() => {
@@ -202,6 +217,11 @@ export function OpenInModal() {
         case 'finder':
           openInFinder.mutate(targetPath)
           break
+        case 'open-pr':
+          if (worktree?.pr_url) {
+            openExternal(worktree.pr_url)
+          }
+          break
         case 'github': {
           const branch = worktree?.branch
           if (!branch) {
@@ -244,9 +264,12 @@ export function OpenInModal() {
       )
       if (matchedOption) {
         e.preventDefault()
+        e.stopPropagation()
+        e.nativeEvent.stopImmediatePropagation()
         executeAction(matchedOption.id)
       } else if (key === 'enter') {
         e.preventDefault()
+        e.stopPropagation()
         executeAction(selectedOption)
       } else if (key === 'arrowdown' || key === 'arrowup') {
         e.preventDefault()

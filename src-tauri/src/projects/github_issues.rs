@@ -819,11 +819,23 @@ pub async fn load_issue_context(
 pub async fn list_loaded_issue_contexts(
     app: tauri::AppHandle,
     session_id: String,
+    worktree_id: Option<String>,
 ) -> Result<Vec<LoadedIssueContext>, String> {
     log::trace!("Listing loaded issue contexts for session {session_id}");
 
     // Get issue refs for this session from reference tracking
-    let issue_keys = get_session_issue_refs(&app, &session_id)?;
+    let mut issue_keys = get_session_issue_refs(&app, &session_id)?;
+
+    // Also check worktree_id refs (create_worktree stores refs under worktree_id)
+    if let Some(ref wt_id) = worktree_id {
+        if let Ok(wt_keys) = get_session_issue_refs(&app, wt_id) {
+            for key in wt_keys {
+                if !issue_keys.contains(&key) {
+                    issue_keys.push(key);
+                }
+            }
+        }
+    }
 
     if issue_keys.is_empty() {
         return Ok(vec![]);
@@ -1351,11 +1363,23 @@ pub async fn load_pr_context(
 pub async fn list_loaded_pr_contexts(
     app: tauri::AppHandle,
     session_id: String,
+    worktree_id: Option<String>,
 ) -> Result<Vec<LoadedPullRequestContext>, String> {
     log::trace!("Listing loaded PR contexts for session {session_id}");
 
     // Get PR refs for this session from reference tracking
-    let pr_keys = get_session_pr_refs(&app, &session_id)?;
+    let mut pr_keys = get_session_pr_refs(&app, &session_id)?;
+
+    // Also check worktree_id refs (create_worktree stores refs under worktree_id)
+    if let Some(ref wt_id) = worktree_id {
+        if let Ok(wt_keys) = get_session_pr_refs(&app, wt_id) {
+            for key in wt_keys {
+                if !pr_keys.contains(&key) {
+                    pr_keys.push(key);
+                }
+            }
+        }
+    }
 
     if pr_keys.is_empty() {
         return Ok(vec![]);
@@ -1419,18 +1443,6 @@ pub async fn list_loaded_pr_contexts(
     Ok(contexts)
 }
 
-/// Delete all PR context files for a session
-///
-/// This is a no-op since cleanup is handled by cleanup_issue_contexts_for_session
-/// which calls remove_all_session_references for both issues and PRs.
-pub fn cleanup_pr_contexts_for_session(
-    _app: &tauri::AppHandle,
-    _session_id: &str,
-) -> Result<(), String> {
-    // Cleanup is handled by cleanup_issue_contexts_for_session
-    // which calls remove_all_session_references for both issues and PRs
-    Ok(())
-}
 
 /// Remove a loaded PR context for a session
 #[tauri::command]

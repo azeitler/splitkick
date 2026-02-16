@@ -1,6 +1,7 @@
 import { memo, useState, useCallback, type ReactNode } from 'react'
 import type { Components } from 'react-markdown'
 import ReactMarkdown from 'react-markdown'
+import rehypeRaw from 'rehype-raw'
 import remarkGfm from 'remark-gfm'
 import remend from 'remend'
 import { Copy, Check } from 'lucide-react'
@@ -114,6 +115,15 @@ const components: Components = {
   // Code blocks
   pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
 
+  // Images
+  img: ({ src, alt }) => (
+    <img
+      src={src}
+      alt={alt || ''}
+      className="max-w-full h-auto rounded-md my-4"
+    />
+  ),
+
   // Links
   a: ({ href, children }) => (
     <a
@@ -178,7 +188,7 @@ const Markdown = memo(function Markdown({
 
   return (
     <div className={cn('markdown leading-relaxed break-words', className)}>
-      <ReactMarkdown components={components} remarkPlugins={[remarkGfm]}>
+      <ReactMarkdown components={components} remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
         {content}
       </ReactMarkdown>
     </div>

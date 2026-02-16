@@ -1,14 +1,18 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
 import { SessionCard } from './SessionCard'
+import { LabelModal } from './LabelModal'
 import { SessionChatModal } from './SessionChatModal'
 import { PlanDialog } from './PlanDialog'
 import { RecapDialog } from './RecapDialog'
 import { useCanvasKeyboardNav } from './hooks/useCanvasKeyboardNav'
 import { useCanvasShortcutEvents } from './hooks/useCanvasShortcutEvents'
-import type { SessionCardData } from './session-card-utils'
+import {
+  type SessionCardData,
+  groupCardsByStatus,
+} from './session-card-utils'
 
 interface CanvasGridProps {
   cards: SessionCardData[]
@@ -23,6 +27,7 @@ interface CanvasGridProps {
   onDeleteSession: (sessionId: string) => void
   onPlanApproval: (card: SessionCardData, updatedPlan?: string) => void
   onPlanApprovalYolo: (card: SessionCardData, updatedPlan?: string) => void
+  onCloseWorktree: () => void
   searchInputRef?: React.RefObject<HTMLInputElement | null>
 }
 
@@ -43,6 +48,7 @@ export function CanvasGrid({
   onDeleteSession,
   onPlanApproval,
   onPlanApprovalYolo,
+  onCloseWorktree: _onCloseWorktree,
   searchInputRef,
 }: CanvasGridProps) {
   // Track session modal open state for magic command keybindings
@@ -59,6 +65,10 @@ export function CanvasGrid({
   const setCanvasSelectedSession =
     useChatStore.getState().setCanvasSelectedSession
 
+  // Use ref for cards to avoid stale closures in keyboard nav callbacks
+  const cardsRef = useRef(cards)
+  cardsRef.current = cards
+
   // Handle clicking on a session card - open modal
   const handleSessionClick = useCallback(
     (sessionId: string) => {
@@ -71,18 +81,18 @@ export function CanvasGrid({
   // Handle selection from keyboard nav
   const handleSelect = useCallback(
     (index: number) => {
-      const card = cards[index]
+      const card = cardsRef.current[index]
       if (card) {
         handleSessionClick(card.session.id)
       }
     },
-    [cards, handleSessionClick]
+    [handleSessionClick]
   )
 
   // Handle selection change for tracking in store
   const handleSelectionChange = useCallback(
     (index: number) => {
-      const card = cards[index]
+      const card = cardsRef.current[index]
       if (card) {
         setCanvasSelectedSession(worktreeId, card.session.id)
         // Sync projects store so CMD+O uses the correct worktree
@@ -91,7 +101,7 @@ export function CanvasGrid({
         useChatStore.getState().registerWorktreePath(worktreeId, worktreePath)
       }
     },
-    [cards, worktreeId, worktreePath, setCanvasSelectedSession]
+    [worktreeId, worktreePath, setCanvasSelectedSession]
   )
 
   // Get selected card for shortcut events
@@ -112,6 +122,11 @@ export function CanvasGrid({
     closeRecapDialog,
     handlePlanView,
     handleRecapView,
+    isLabelModalOpen,
+    labelModalSessionId,
+    labelModalCurrentLabel,
+    closeLabelModal,
+    handleOpenLabelModal,
   } = useCanvasShortcutEvents({
     selectedCard,
     enabled: !selectedSessionId && selectedIndex !== null,
@@ -126,19 +141,8 @@ export function CanvasGrid({
     !!selectedSessionId ||
     !!planDialogPath ||
     !!planDialogContent ||
-    isRecapDialogOpen
-  console.log(
-    '[CanvasGrid] isModalOpen:',
-    isModalOpen,
-    'selectedSessionId:',
-    selectedSessionId,
-    'planDialogPath:',
-    planDialogPath,
-    'planDialogContent:',
-    !!planDialogContent,
-    'isRecapDialogOpen:',
-    isRecapDialogOpen
-  )
+    isRecapDialogOpen ||
+    isLabelModalOpen
   const { cardRefs } = useCanvasKeyboardNav({
     cards,
     selectedIndex,
@@ -151,17 +155,8 @@ export function CanvasGrid({
   // Handle approve from dialog (with updated plan content)
   const handleDialogApprove = useCallback(
     (updatedPlan: string) => {
-      console.log(
-        '[CanvasGrid] handleDialogApprove called, updatedPlan length:',
-        updatedPlan?.length
-      )
-      console.log('[CanvasGrid] planDialogCard:', planDialogCard?.session?.id)
       if (planDialogCard) {
         onPlanApproval(planDialogCard, updatedPlan)
-      } else {
-        console.log(
-          '[CanvasGrid] handleDialogApprove - planDialogCard is null!'
-        )
       }
     },
     [planDialogCard, onPlanApproval]
@@ -169,17 +164,8 @@ export function CanvasGrid({
 
   const handleDialogApproveYolo = useCallback(
     (updatedPlan: string) => {
-      console.log(
-        '[CanvasGrid] handleDialogApproveYolo called, updatedPlan length:',
-        updatedPlan?.length
-      )
-      console.log('[CanvasGrid] planDialogCard:', planDialogCard?.session?.id)
       if (planDialogCard) {
         onPlanApprovalYolo(planDialogCard, updatedPlan)
-      } else {
-        console.log(
-          '[CanvasGrid] handleDialogApproveYolo - planDialogCard is null!'
-        )
       }
     },
     [planDialogCard, onPlanApprovalYolo]
@@ -196,49 +182,13 @@ export function CanvasGrid({
   // Listen for close-session-or-worktree event to handle CMD+W
   useEffect(() => {
     const handleCloseSessionOrWorktree = (e: Event) => {
-      // If modal is open, archive the session and close modal with next card pre-selected
-      if (selectedSessionId) {
-        e.stopImmediatePropagation()
-        onArchiveSession(selectedSessionId)
-        onSelectedSessionIdChange(null)
+      // If modal is open, SessionChatModal intercepts CMD+W and closes itself — skip here
+      if (selectedSessionId) return
 
-        const closingIndex = cards.findIndex(
-          c => c.session.id === selectedSessionId
-        )
-        const remaining = cards.filter(c => c.session.id !== selectedSessionId)
-
-        if (remaining.length === 0) {
-          onSelectedIndexChange(null)
-        } else {
-          const nextCard =
-            closingIndex < remaining.length
-              ? remaining[closingIndex]
-              : remaining[remaining.length - 1]
-          if (nextCard) {
-            const newIndex = cards.findIndex(
-              c => c.session.id === nextCard.session.id
-            )
-            onSelectedIndexChange(
-              newIndex > closingIndex ? newIndex - 1 : newIndex
-            )
-          }
-        }
-        return
-      }
-
-      // If there's a keyboard-selected session, archive it
+      // Close the selected session (not the whole worktree)
       if (selectedIndex !== null && cards[selectedIndex]) {
         e.stopImmediatePropagation()
-        const sessionId = cards[selectedIndex].session.id
-        onArchiveSession(sessionId)
-
-        // Move selection to previous card, or clear if none left
-        const total = cards.length
-        if (total <= 1) {
-          onSelectedIndexChange(null)
-        } else if (selectedIndex >= total - 1) {
-          onSelectedIndexChange(selectedIndex - 1)
-        }
+        onDeleteSession(cards[selectedIndex].session.id)
       }
     }
 
@@ -259,47 +209,64 @@ export function CanvasGrid({
     selectedSessionId,
     selectedIndex,
     cards,
-    onArchiveSession,
-    onSelectedIndexChange,
-    onSelectedSessionIdChange,
+    onDeleteSession,
   ])
 
-  console.log(
-    '[CanvasGrid] render - selectedIndex:',
-    selectedIndex,
-    'cards.length:',
-    cards.length
-  )
-  if (cards.length > 0 && cards[0]) {
-    console.log(
-      '[CanvasGrid] render - cards[0].session.id:',
-      cards[0].session.id
-    )
-  }
+  const groups = useMemo(() => groupCardsByStatus(cards), [cards])
+
+  // Track cumulative index offset per group for correct keyboard nav indices
+  let indexOffset = 0
 
   return (
     <>
-      <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3">
-        {cards.map((card, index) => (
-          <SessionCard
-            key={card.session.id}
-            ref={el => {
-              cardRefs.current[index] = el
-            }}
-            card={card}
-            isSelected={selectedIndex === index}
-            onSelect={() => {
-              onSelectedIndexChange(index)
-              handleSessionClick(card.session.id)
-            }}
-            onArchive={() => onArchiveSession(card.session.id)}
-            onDelete={() => onDeleteSession(card.session.id)}
-            onPlanView={() => handlePlanView(card)}
-            onRecapView={() => handleRecapView(card)}
-            onApprove={() => onPlanApproval(card)}
-            onYolo={() => onPlanApprovalYolo(card)}
-          />
-        ))}
+      <div className="flex flex-col gap-4">
+        {groups.map(group => {
+          const groupStartIndex = indexOffset
+          indexOffset += group.cards.length
+          return (
+            <div key={group.key}>
+              <div className="mb-2 flex items-baseline gap-1.5">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  {group.title}
+                </span>
+                <span className="text-[10px] text-muted-foreground/60">
+                  {group.cards.length}
+                </span>
+              </div>
+              <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3">
+                {group.cards.map((card, i) => {
+                  const globalIndex = groupStartIndex + i
+                  return (
+                    <SessionCard
+                      key={card.session.id}
+                      ref={el => {
+                        cardRefs.current[globalIndex] = el
+                      }}
+                      card={card}
+                      isSelected={selectedIndex === globalIndex}
+                      onSelect={() => {
+                        onSelectedIndexChange(globalIndex)
+                        handleSessionClick(card.session.id)
+                      }}
+                      onArchive={() => onArchiveSession(card.session.id)}
+                      onDelete={() => onDeleteSession(card.session.id)}
+                      onPlanView={() => handlePlanView(card)}
+                      onRecapView={() => handleRecapView(card)}
+                      onApprove={() => onPlanApproval(card)}
+                      onYolo={() => onPlanApprovalYolo(card)}
+                      onToggleLabel={() => handleOpenLabelModal(card)}
+                      onToggleReview={() => {
+                        const { reviewingSessions, setSessionReviewing } = useChatStore.getState()
+                        const isReviewing = reviewingSessions[card.session.id] || !!card.session.review_results
+                        setSessionReviewing(card.session.id, !isReviewing)
+                      }}
+                    />
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })}
       </div>
 
       {/* Plan Dialog */}
@@ -336,9 +303,17 @@ export function CanvasGrid({
         onRegenerate={regenerateRecap}
       />
 
+      {/* Label Modal */}
+      <LabelModal
+        key={labelModalSessionId}
+        isOpen={isLabelModalOpen}
+        onClose={closeLabelModal}
+        sessionId={labelModalSessionId}
+        currentLabel={labelModalCurrentLabel}
+      />
+
       {/* Session Chat Modal */}
       <SessionChatModal
-        sessionId={selectedSessionId}
         worktreeId={worktreeId}
         worktreePath={worktreePath}
         isOpen={!!selectedSessionId}

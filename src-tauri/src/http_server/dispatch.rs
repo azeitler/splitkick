@@ -107,6 +107,7 @@ pub async fn dispatch_command(
                 default_branch,
                 None,
                 None,
+                None,
             )
             .await?;
             to_value(result)
@@ -199,12 +200,14 @@ pub async fn dispatch_command(
             let session_id: Option<String> = field_opt(&args, "sessionId", "session_id")?;
             let magic_prompt: Option<String> = field_opt(&args, "magicPrompt", "magic_prompt")?;
             let model: Option<String> = from_field_opt(&args, "model")?;
+            let custom_profile_name: Option<String> = field_opt(&args, "customProfileName", "custom_profile_name")?;
             let result = crate::projects::create_pr_with_ai_content(
                 app.clone(),
                 worktree_path,
                 session_id,
                 magic_prompt,
                 model,
+                custom_profile_name,
             )
             .await?;
             to_value(result)
@@ -214,12 +217,14 @@ pub async fn dispatch_command(
             let custom_prompt: Option<String> = field_opt(&args, "magicPrompt", "magic_prompt")?;
             let push: bool = from_field_opt(&args, "push")?.unwrap_or(false);
             let model: Option<String> = from_field_opt(&args, "model")?;
+            let custom_profile_name: Option<String> = field_opt(&args, "customProfileName", "custom_profile_name")?;
             let result = crate::projects::create_commit_with_ai(
                 app.clone(),
                 worktree_path,
                 custom_prompt,
                 push,
                 model,
+                custom_profile_name,
             )
             .await?;
             to_value(result)
@@ -228,11 +233,13 @@ pub async fn dispatch_command(
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
             let magic_prompt: Option<String> = field_opt(&args, "magicPrompt", "magic_prompt")?;
             let model: Option<String> = from_field_opt(&args, "model")?;
+            let custom_profile_name: Option<String> = field_opt(&args, "customProfileName", "custom_profile_name")?;
             let result = crate::projects::run_review_with_ai(
                 app.clone(),
                 worktree_path,
                 magic_prompt,
                 model,
+                custom_profile_name,
             )
             .await?;
             to_value(result)
@@ -332,8 +339,10 @@ pub async fn dispatch_command(
         }
         "list_loaded_issue_contexts" => {
             let session_id: String = field(&args, "sessionId", "session_id")?;
+            let worktree_id: Option<String> = field_opt(&args, "worktreeId", "worktree_id")?;
             let result =
-                crate::projects::list_loaded_issue_contexts(app.clone(), session_id).await?;
+                crate::projects::list_loaded_issue_contexts(app.clone(), session_id, worktree_id)
+                    .await?;
             to_value(result)
         }
         "remove_issue_context" => {
@@ -361,7 +370,10 @@ pub async fn dispatch_command(
         }
         "list_loaded_pr_contexts" => {
             let session_id: String = field(&args, "sessionId", "session_id")?;
-            let result = crate::projects::list_loaded_pr_contexts(app.clone(), session_id).await?;
+            let worktree_id: Option<String> = field_opt(&args, "worktreeId", "worktree_id")?;
+            let result =
+                crate::projects::list_loaded_pr_contexts(app.clone(), session_id, worktree_id)
+                    .await?;
             to_value(result)
         }
         "remove_pr_context" => {
@@ -549,6 +561,8 @@ pub async fn dispatch_command(
                 field_opt(&args, "effortLevel", "effort_level")?;
             let mcp_config: Option<String> = field_opt(&args, "mcpConfig", "mcp_config")?;
             let chrome_enabled: Option<bool> = field_opt(&args, "chromeEnabled", "chrome_enabled")?;
+            let custom_profile_name: Option<String> =
+                field_opt(&args, "customProfileName", "custom_profile_name")?;
             let result = crate::chat::send_chat_message(
                 app.clone(),
                 session_id,
@@ -565,6 +579,7 @@ pub async fn dispatch_command(
                 allowed_tools,
                 mcp_config,
                 chrome_enabled,
+                custom_profile_name,
             )
             .await?;
             to_value(result)
@@ -690,6 +705,7 @@ pub async fn dispatch_command(
             let project_name: String = field(&args, "projectName", "project_name")?;
             let custom_prompt: Option<String> = field_opt(&args, "magicPrompt", "magic_prompt")?;
             let model: Option<String> = from_field_opt(&args, "model")?;
+            let custom_profile_name: Option<String> = field_opt(&args, "customProfileName", "custom_profile_name")?;
             let result = crate::chat::generate_context_from_session(
                 app.clone(),
                 worktree_path,
@@ -698,6 +714,7 @@ pub async fn dispatch_command(
                 project_name,
                 custom_prompt,
                 model,
+                custom_profile_name,
             )
             .await?;
             to_value(result)
@@ -885,6 +902,12 @@ pub async fn dispatch_command(
         "close_base_session_clean" => {
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
             crate::projects::close_base_session_clean(app.clone(), worktree_id).await?;
+            emit_cache_invalidation(app, &["projects"]);
+            Ok(Value::Null)
+        }
+        "close_base_session_archive" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            crate::projects::close_base_session_archive(app.clone(), worktree_id).await?;
             emit_cache_invalidation(app, &["projects"]);
             Ok(Value::Null)
         }
@@ -1135,6 +1158,22 @@ pub async fn dispatch_command(
                 field_opt(&args, "planFilePath", "plan_file_path")?;
             let pending_plan_message_id: Option<Option<String>> =
                 field_opt(&args, "pendingPlanMessageId", "pending_plan_message_id")?;
+            // Special handling for label: distinguish between missing field (None) and null value (Some(None))
+            let label: Option<Option<crate::chat::types::LabelData>> = match args.get("label") {
+                None => None, // field not provided -> None
+                Some(Value::Null) => Some(None), // explicitly null -> Some(None) to clear
+                Some(v) => {
+                    let parsed: Result<crate::chat::types::LabelData, _> = serde_json::from_value(v.clone());
+                    match parsed {
+                        Ok(label_data) => Some(Some(label_data)),
+                        Err(e) => return Err(format!("Invalid label: {}", e)),
+                    }
+                }
+            };
+            let clear_label: Option<bool> =
+                field_opt(&args, "clearLabel", "clear_label")?;
+            let review_results: Option<Option<serde_json::Value>> =
+                field_opt(&args, "reviewResults", "review_results")?;
             crate::chat::update_session_state(
                 app.clone(),
                 worktree_id,
@@ -1150,6 +1189,9 @@ pub async fn dispatch_command(
                 waiting_for_input_type,
                 plan_file_path,
                 pending_plan_message_id,
+                label,
+                clear_label,
+                review_results,
             )
             .await?;
             emit_cache_invalidation(app, &["sessions"]);

@@ -7,6 +7,7 @@ import {
   MinusCircle,
   Loader2,
   Wand2,
+  RefreshCw,
 } from 'lucide-react'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import {
@@ -20,7 +21,7 @@ import { invoke } from '@/lib/transport'
 import { useUIStore } from '@/store/ui-store'
 import { useChatStore, DEFAULT_MODEL } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
-import { useWorkflowRuns } from '@/services/github'
+import { useWorkflowRuns, githubQueryKeys } from '@/services/github'
 import { projectsQueryKeys } from '@/services/projects'
 import { useCreateSession, useSendMessage, chatQueryKeys } from '@/services/chat'
 import type { WorktreeSessions } from '@/types/chat'
@@ -132,10 +133,18 @@ export function WorkflowRunsModal() {
     state => state.setWorkflowRunsModalOpen
   )
 
-  const { data: result, isLoading } = useWorkflowRuns(
+  const { data: result, isLoading, isFetching } = useWorkflowRuns(
     workflowRunsModalOpen ? workflowRunsModalProjectPath : null,
     workflowRunsModalBranch ?? undefined
   )
+
+  const handleRefresh = useCallback(() => {
+    if (workflowRunsModalProjectPath) {
+      queryClient.invalidateQueries({
+        queryKey: githubQueryKeys.workflowRuns(workflowRunsModalProjectPath, workflowRunsModalBranch ?? undefined),
+      })
+    }
+  }, [queryClient, workflowRunsModalProjectPath, workflowRunsModalBranch])
 
   const runs = result?.runs ?? []
   const [selectedWorkflow, setSelectedWorkflow] = useState<string | null>(null)
@@ -229,12 +238,6 @@ export function WorkflowRunsModal() {
     async (run: WorkflowRun) => {
       const projectPath = workflowRunsModalProjectPath
 
-      console.warn('[WF-MODAL] Investigate clicked:', {
-        workflowName: run.workflowName,
-        branch: run.headBranch,
-        projectPath,
-      })
-
       // Close modal immediately
       setWorkflowRunsModalOpen(false)
 
@@ -255,7 +258,7 @@ export function WorkflowRunsModal() {
         .replace(/\{displayTitle\}/g, run.displayTitle)
 
       const investigateModel =
-        preferences?.magic_prompt_models?.investigate_model ?? DEFAULT_MODEL
+        preferences?.magic_prompt_models?.investigate_workflow_run_model ?? DEFAULT_MODEL
 
       // --- Find/create the target worktree ---
       let targetWorktreeId: string | null = null
@@ -268,10 +271,6 @@ export function WorkflowRunsModal() {
           staleTime: 1000 * 60,
         })
         const project = projects?.find(p => p.path === projectPath)
-        console.warn('[WF-MODAL] Project lookup:', {
-          found: !!project,
-          projectId: project?.id,
-        })
 
         if (project) {
           let worktrees: Worktree[] = []
@@ -284,11 +283,6 @@ export function WorkflowRunsModal() {
                 }),
               staleTime: 1000 * 60,
             })
-            console.warn('[WF-MODAL] Worktrees:', worktrees.map(w => ({
-              id: w.id,
-              branch: w.branch,
-              status: w.status,
-            })))
           } catch (err) {
             console.error('[WF-MODAL] Failed to fetch worktrees:', err)
           }
@@ -314,13 +308,11 @@ export function WorkflowRunsModal() {
 
           // No usable worktrees — create the base session
           if (!targetWorktreeId) {
-            console.warn('[WF-MODAL] Creating base session for project:', project.id)
             try {
               const baseSession = await invoke<Worktree>(
                 'create_base_session',
                 { projectId: project.id }
               )
-              console.warn('[WF-MODAL] Base session created:', baseSession.id)
               queryClient.invalidateQueries({
                 queryKey: projectsQueryKeys.worktrees(project.id),
               })
@@ -352,8 +344,6 @@ export function WorkflowRunsModal() {
       const worktreeId = targetWorktreeId
       const worktreePath = targetWorktreePath
 
-      console.warn('[WF-MODAL] Target worktree:', { worktreeId, worktreePath })
-
       // Switch to the target worktree
       const { setActiveWorktree, setActiveSession } = useChatStore.getState()
       const { selectWorktree } = useProjectsStore.getState()
@@ -361,7 +351,6 @@ export function WorkflowRunsModal() {
       selectWorktree(worktreeId)
 
       const sendInvestigateToSession = (sessionId: string) => {
-        console.warn('[WF-MODAL] Sending investigate to session:', sessionId)
         setActiveSession(worktreeId, sessionId)
 
         const {
@@ -422,15 +411,12 @@ export function WorkflowRunsModal() {
       )
 
       if (emptySession) {
-        console.warn('[WF-MODAL] Reusing empty session:', emptySession.id)
         sendInvestigateToSession(emptySession.id)
       } else {
-        console.warn('[WF-MODAL] Creating new session in worktree:', worktreeId)
         createSession.mutate(
           { worktreeId, worktreePath },
           {
             onSuccess: session => {
-              console.warn('[WF-MODAL] New session created:', session.id)
               sendInvestigateToSession(session.id)
             },
             onError: error => {
@@ -463,6 +449,11 @@ export function WorkflowRunsModal() {
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      if (e.key === 'r') {
+        e.preventDefault()
+        handleRefresh()
+        return
+      }
       if (focusedPane === 'sidebar') {
         switch (e.key) {
           case 'ArrowDown':
@@ -518,14 +509,28 @@ export function WorkflowRunsModal() {
         }
       }
     },
-    [focusedPane, sidebarItems, sidebarFocusedIndex, handleSidebarSelect, displayedRuns, focusedIndex, handleRunClick, handleInvestigate]
+    [focusedPane, sidebarItems, sidebarFocusedIndex, handleSidebarSelect, displayedRuns, focusedIndex, handleRunClick, handleInvestigate, handleRefresh]
   )
 
   return (
     <Dialog open={workflowRunsModalOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="h-[80vh] sm:max-w-5xl overflow-hidden flex flex-col" onOpenAutoFocus={e => e.preventDefault()}>
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
+          <div className="flex items-center gap-2">
+            <DialogTitle>{title}</DialogTitle>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={handleRefresh}
+                  disabled={isFetching}
+                  className="inline-flex items-center justify-center rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Refresh</TooltipContent>
+            </Tooltip>
+          </div>
         </DialogHeader>
 
         {isLoading ? (

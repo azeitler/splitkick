@@ -14,8 +14,6 @@ export type KeybindingAction =
   | 'previous_session'
   | 'close_session_or_worktree'
   | 'new_worktree'
-  | 'next_worktree'
-  | 'previous_worktree'
   | 'cycle_execution_mode'
   | 'approve_plan'
   | 'approve_plan_yolo'
@@ -24,6 +22,7 @@ export type KeybindingAction =
   | 'restore_last_archived'
   | 'focus_canvas_search'
   | 'toggle_modal_terminal'
+  | 'toggle_session_label'
 
 // Shortcut string format: "mod+key" where mod is cmd/ctrl
 // Examples: "mod+l", "mod+shift+p", "mod+1"
@@ -57,8 +56,6 @@ export const DEFAULT_KEYBINDINGS: KeybindingsMap = {
   previous_session: 'mod+alt+arrowleft',
   close_session_or_worktree: 'mod+w',
   new_worktree: 'mod+n',
-  next_worktree: 'mod+alt+arrowdown',
-  previous_worktree: 'mod+alt+arrowup',
   cycle_execution_mode: 'shift+tab',
   approve_plan: 'mod+enter',
   approve_plan_yolo: 'mod+y',
@@ -67,6 +64,7 @@ export const DEFAULT_KEYBINDINGS: KeybindingsMap = {
   restore_last_archived: 'mod+shift+t',
   focus_canvas_search: 'slash',
   toggle_modal_terminal: 'mod+backquote',
+  toggle_session_label: 'mod+s',
 }
 
 // UI definitions for the settings pane
@@ -206,20 +204,6 @@ export const KEYBINDING_DEFINITIONS: KeybindingDefinition[] = [
     category: 'navigation',
   },
   {
-    action: 'next_worktree',
-    label: 'Next worktree',
-    description: 'Switch to the next worktree',
-    default_shortcut: 'mod+alt+arrowdown',
-    category: 'navigation',
-  },
-  {
-    action: 'previous_worktree',
-    label: 'Previous worktree',
-    description: 'Switch to the previous worktree',
-    default_shortcut: 'mod+alt+arrowup',
-    category: 'navigation',
-  },
-  {
     action: 'restore_last_archived',
     label: 'Restore archived',
     description: 'Restore the most recently archived worktree or session',
@@ -238,6 +222,13 @@ export const KEYBINDING_DEFINITIONS: KeybindingDefinition[] = [
     label: 'Toggle modal terminal',
     description: 'Show or hide terminal drawer in session modal',
     default_shortcut: 'mod+backquote',
+    category: 'chat',
+  },
+  {
+    action: 'toggle_session_label',
+    label: 'Toggle label',
+    description: 'Mark/unmark session with "Needs testing" label',
+    default_shortcut: 'mod+s',
     category: 'chat',
   },
 ]

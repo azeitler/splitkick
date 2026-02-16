@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, type FC } from 'react'
 import { invoke } from '@/lib/transport'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -34,8 +34,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
-import { usePreferences, useSavePreferences } from '@/services/preferences'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip'
+import {
+  usePreferences,
+  useSavePreferences,
+} from '@/services/preferences'
+import type { AppPreferences } from '@/types/preferences'
 import {
   modelOptions,
   thinkingLevelOptions,
@@ -45,11 +53,15 @@ import {
   gitPollIntervalOptions,
   remotePollIntervalOptions,
   archiveRetentionOptions,
+  removalBehaviorOptions,
   notificationSoundOptions,
+  type RemovalBehavior,
   type ClaudeModel,
   type TerminalApp,
   type EditorApp,
   type NotificationSound,
+  openInDefaultOptions,
+  type OpenInDefault,
 } from '@/types/preferences'
 import { playNotificationSound } from '@/lib/sounds'
 import type { ThinkingLevel, EffortLevel } from '@/types/chat'
@@ -90,7 +102,7 @@ const InlineField: React.FC<{
     <div className="space-y-0.5 sm:w-96 sm:shrink-0">
       <Label className="text-sm text-foreground">{label}</Label>
       {description && (
-        <div className="text-xs text-muted-foreground truncate">
+        <div className="text-xs text-muted-foreground break-all">
           {description}
         </div>
       )}
@@ -191,6 +203,12 @@ export const GeneralPane: React.FC = () => {
   const handleEditorChange = (value: EditorApp) => {
     if (preferences) {
       savePreferences.mutate({ ...preferences, editor: value })
+    }
+  }
+
+  const handleOpenInChange = (value: OpenInDefault) => {
+    if (preferences) {
+      savePreferences.mutate({ ...preferences, open_in: value })
     }
   }
 
@@ -543,24 +561,10 @@ export const GeneralPane: React.FC = () => {
             />
           </InlineField>
 
-          <InlineField
-            label="AI Language"
-            description="Language for AI responses (e.g. French, 日本語)"
-          >
-            <Input
-              className="w-40"
-              placeholder="Default"
-              value={preferences?.ai_language ?? ''}
-              onChange={e => {
-                if (preferences) {
-                  savePreferences.mutate({
-                    ...preferences,
-                    ai_language: e.target.value,
-                  })
-                }
-              }}
-            />
-          </InlineField>
+          <AiLanguageField
+            preferences={preferences}
+            savePreferences={savePreferences}
+          />
 
           <InlineField
             label="Allow web tools in plan mode"
@@ -630,6 +634,29 @@ export const GeneralPane: React.FC = () => {
                 </SelectTrigger>
                 <SelectContent>
                   {terminalOptions.map(option => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </InlineField>
+          )}
+
+          {isNativeApp() && (
+            <InlineField
+              label="Open In"
+              description="Default app for Open button"
+            >
+              <Select
+                value={preferences?.open_in ?? 'editor'}
+                onValueChange={handleOpenInChange}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {openInDefaultOptions.map(option => (
                     <SelectItem key={option.value} value={option.value}>
                       {option.label}
                     </SelectItem>
@@ -752,8 +779,57 @@ export const GeneralPane: React.FC = () => {
         </div>
       </SettingsSection>
 
+      <SettingsSection title="Worktrees">
+        <div className="space-y-4">
+          <InlineField
+            label="Auto-pull base branch"
+            description="Pull the latest changes before creating a new worktree"
+          >
+            <Switch
+              checked={preferences?.auto_pull_base_branch ?? true}
+              onCheckedChange={checked => {
+                if (preferences) {
+                  savePreferences.mutate({
+                    ...preferences,
+                    auto_pull_base_branch: checked,
+                  })
+                }
+              }}
+            />
+          </InlineField>
+        </div>
+      </SettingsSection>
+
       <SettingsSection title="Archive">
         <div className="space-y-4">
+          <InlineField
+            label="Removal behavior"
+            description="What happens when closing sessions or worktrees"
+          >
+            <Select
+              value={preferences?.removal_behavior ?? 'delete'}
+              onValueChange={(value: RemovalBehavior) => {
+                if (preferences) {
+                  savePreferences.mutate({
+                    ...preferences,
+                    removal_behavior: value,
+                  })
+                }
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {removalBehaviorOptions.map(option => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </InlineField>
+
           <InlineField
             label="Auto-archive on PR merge"
             description="Archive worktrees when their PR is merged"
@@ -834,5 +910,49 @@ export const GeneralPane: React.FC = () => {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  )
+}
+
+const AiLanguageField: FC<{
+  preferences: AppPreferences | undefined
+  savePreferences: ReturnType<typeof useSavePreferences>
+}> = ({ preferences, savePreferences }) => {
+  const [localValue, setLocalValue] = useState(preferences?.ai_language ?? '')
+
+  const hasChanges =
+    localValue !== (preferences?.ai_language ?? '')
+
+  const handleSave = useCallback(() => {
+    if (!preferences) return
+    savePreferences.mutate({
+      ...preferences,
+      ai_language: localValue,
+    })
+  }, [preferences, savePreferences, localValue])
+
+  return (
+    <InlineField
+      label="AI Language"
+      description="Language for AI responses (e.g. French, 日本語)"
+    >
+      <div className="flex items-center gap-2">
+        <Input
+          className="w-40"
+          placeholder="Default"
+          value={localValue}
+          onChange={e => setLocalValue(e.target.value)}
+        />
+        <Button
+          size="sm"
+          onClick={handleSave}
+          disabled={!hasChanges || savePreferences.isPending}
+        >
+          {savePreferences.isPending && (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          )}
+          Save
+        </Button>
+      </div>
+    </InlineField>
   )
 }

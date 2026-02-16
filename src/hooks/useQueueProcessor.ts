@@ -184,6 +184,7 @@ export function useQueueProcessor(): void {
           disableThinkingForMode: queuedMsg.disableThinkingForMode,
           effortLevel: queuedMsg.effortLevel,
           mcpConfig: queuedMsg.mcpConfig,
+          customProfileName: queuedMsg.provider ?? undefined,
           parallelExecutionPrompt: preferences?.parallel_execution_prompt_enabled
             ? (preferences.magic_prompts?.parallel_execution ?? DEFAULT_PARALLEL_EXECUTION_PROMPT)
             : undefined,

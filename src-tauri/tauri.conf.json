@@ -1,13 +1,13 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Jean",
-  "version": "0.1.5",
+  "version": "0.1.11",
   "identifier": "com.jean.desktop",
   "build": {
     "removeUnusedCommands": true,
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "bun run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -77,6 +77,11 @@
       "providerShortName": "8D3F6CQFS8",
       "entitlements": null,
       "exceptionDomain": ""
+    },
+    "linux": {
+      "appimage": {
+        "bundleMediaFramework": false
+      }
     }
   },
   "plugins": {

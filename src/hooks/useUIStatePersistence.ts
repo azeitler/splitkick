@@ -70,10 +70,9 @@ export function useUIStatePersistence() {
     const {
       activeWorktreeId,
       activeWorktreePath,
+      lastActiveWorktreeId,
       activeSessionIds,
-      reviewResults,
-      viewingReviewTab,
-      fixedReviewFindings,
+      reviewSidebarVisible,
       pendingDigestSessionIds,
     } = useChatStore.getState()
     const {
@@ -81,6 +80,7 @@ export function useUIStatePersistence() {
       expandedFolderIds,
       selectedProjectId,
       projectAccessTimestamps,
+      dashboardWorktreeCollapseOverrides,
     } = useProjectsStore.getState()
     const { leftSidebarSize, leftSidebarVisible } = useUIStore.getState()
     const { modalTerminalOpen, modalTerminalWidth } =
@@ -89,19 +89,15 @@ export function useUIStatePersistence() {
     return {
       active_worktree_id: activeWorktreeId,
       active_worktree_path: activeWorktreePath,
+      last_active_worktree_id: lastActiveWorktreeId,
       active_project_id: selectedProjectId,
       expanded_project_ids: Array.from(expandedProjectIds),
       expanded_folder_ids: Array.from(expandedFolderIds),
       left_sidebar_size: leftSidebarSize,
       left_sidebar_visible: leftSidebarVisible,
       active_session_ids: activeSessionIds,
-      // Worktree-scoped state (kept in ui-state.json)
-      review_results: reviewResults,
-      viewing_review_tab: viewingReviewTab,
-      // Convert Sets to arrays for JSON serialization
-      fixed_review_findings: Object.fromEntries(
-        Object.entries(fixedReviewFindings).map(([k, v]) => [k, Array.from(v)])
-      ),
+      // Review sidebar visibility
+      review_sidebar_visible: reviewSidebarVisible,
       // Convert pendingDigestSessionIds record to array of session IDs
       pending_digest_session_ids: Object.keys(pendingDigestSessionIds),
       // Modal terminal drawer state
@@ -109,6 +105,8 @@ export function useUIStatePersistence() {
       modal_terminal_width: modalTerminalWidth,
       // Project access timestamps for recency sorting
       project_access_timestamps: projectAccessTimestamps,
+      // Dashboard worktree collapse overrides
+      dashboard_worktree_collapse_overrides: dashboardWorktreeCollapseOverrides,
       version: 1, // Reset for first release
     }
   }, [])
@@ -227,6 +225,13 @@ export function useUIStatePersistence() {
       // 3. The worktree list from the backend is the source of truth
     }
 
+    // Restore last active worktree ID (for dashboard session selection)
+    // This must happen AFTER setActiveWorktree which also sets it,
+    // but covers the case where the user was on the dashboard (no active worktree)
+    if (uiState.last_active_worktree_id) {
+      useChatStore.getState().setLastActiveWorktreeId(uiState.last_active_worktree_id)
+    }
+
     // Restore active sessions per worktree
     // Defensive: ensure active_session_ids is an object (might be null/undefined from backend)
     const activeSessionIds = uiState.active_session_ids ?? {}
@@ -242,34 +247,9 @@ export function useUIStatePersistence() {
     // pending_permission_denials, denied_message_context, reviewing_sessions) is now
     // loaded from Session files by useSessionStatePersistence hook.
 
-    // Restore AI review results per worktree
-    const reviewResults = uiState.review_results ?? {}
-    if (Object.keys(reviewResults).length > 0) {
-      logger.debug('Restoring review results', {
-        worktreeCount: Object.keys(reviewResults).length,
-      })
-      useChatStore.setState({ reviewResults })
-    }
-
-    // Restore viewing review tab state
-    const viewingReviewTab = uiState.viewing_review_tab ?? {}
-    if (Object.keys(viewingReviewTab).length > 0) {
-      logger.debug('Restoring viewing review tab state', {
-        count: Object.keys(viewingReviewTab).length,
-      })
-      useChatStore.setState({ viewingReviewTab })
-    }
-
-    // Restore fixed review findings (convert arrays back to Sets)
-    const fixedReviewFindings = uiState.fixed_review_findings ?? {}
-    if (Object.keys(fixedReviewFindings).length > 0) {
-      logger.debug('Restoring fixed review findings', {
-        worktreeCount: Object.keys(fixedReviewFindings).length,
-      })
-      const converted = Object.fromEntries(
-        Object.entries(fixedReviewFindings).map(([k, v]) => [k, new Set(v)])
-      )
-      useChatStore.setState({ fixedReviewFindings: converted })
+    // Restore review sidebar visibility
+    if (uiState.review_sidebar_visible != null) {
+      useChatStore.setState({ reviewSidebarVisible: uiState.review_sidebar_visible })
     }
 
     // Restore pending digest session IDs (convert array to record with true values)
@@ -312,6 +292,17 @@ export function useUIStatePersistence() {
         .setProjectAccessTimestamps(projectAccessTimestamps)
     }
 
+    // Restore dashboard worktree collapse overrides
+    const collapseOverrides = uiState.dashboard_worktree_collapse_overrides ?? {}
+    if (Object.keys(collapseOverrides).length > 0) {
+      logger.debug('Restoring dashboard worktree collapse overrides', {
+        count: Object.keys(collapseOverrides).length,
+      })
+      useProjectsStore.setState({
+        dashboardWorktreeCollapseOverrides: collapseOverrides,
+      })
+    }
+
     queueMicrotask(() => {
       setIsInitialized(true)
       useUIStore.getState().setUIStateInitialized(true)
@@ -330,15 +321,15 @@ export function useUIStatePersistence() {
     let prevSelectedProjectId = useProjectsStore.getState().selectedProjectId
     let prevProjectAccessTimestamps =
       useProjectsStore.getState().projectAccessTimestamps
+    let prevDashboardCollapseOverrides =
+      useProjectsStore.getState().dashboardWorktreeCollapseOverrides
     let prevLeftSidebarSize = useUIStore.getState().leftSidebarSize
     let prevLeftSidebarVisible = useUIStore.getState().leftSidebarVisible
     let prevWorktreeId = useChatStore.getState().activeWorktreeId
     let prevWorktreePath = useChatStore.getState().activeWorktreePath
+    let prevLastActiveWorktreeId = useChatStore.getState().lastActiveWorktreeId
     let prevActiveSessionIds = useChatStore.getState().activeSessionIds
-    // Worktree-scoped state (NOT session-specific - those are handled by useSessionStatePersistence)
-    let prevReviewResults = useChatStore.getState().reviewResults
-    let prevViewingReviewTab = useChatStore.getState().viewingReviewTab
-    let prevFixedReviewFindings = useChatStore.getState().fixedReviewFindings
+    let prevReviewSidebarVisible = useChatStore.getState().reviewSidebarVisible
     let prevPendingDigestSessionIds =
       useChatStore.getState().pendingDigestSessionIds
     let prevModalTerminalOpen = useTerminalStore.getState().modalTerminalOpen
@@ -354,17 +345,21 @@ export function useUIStatePersistence() {
         state.selectedProjectId !== prevSelectedProjectId
       const accessTimestampsChanged =
         state.projectAccessTimestamps !== prevProjectAccessTimestamps
+      const collapseOverridesChanged =
+        state.dashboardWorktreeCollapseOverrides !== prevDashboardCollapseOverrides
 
       if (
         projectIdsChanged ||
         folderIdsChanged ||
         selectedProjectChanged ||
-        accessTimestampsChanged
+        accessTimestampsChanged ||
+        collapseOverridesChanged
       ) {
         prevExpandedProjectIds = state.expandedProjectIds
         prevExpandedFolderIds = state.expandedFolderIds
         prevSelectedProjectId = state.selectedProjectId
         prevProjectAccessTimestamps = state.projectAccessTimestamps
+        prevDashboardCollapseOverrides = state.dashboardWorktreeCollapseOverrides
         const currentState = getCurrentUIState()
         debouncedSaveRef.current?.(currentState)
       }
@@ -390,30 +385,25 @@ export function useUIStatePersistence() {
       // Check if active worktree or active sessions changed
       const worktreeChanged =
         state.activeWorktreeId !== prevWorktreeId ||
-        state.activeWorktreePath !== prevWorktreePath
+        state.activeWorktreePath !== prevWorktreePath ||
+        state.lastActiveWorktreeId !== prevLastActiveWorktreeId
       const sessionsChanged = state.activeSessionIds !== prevActiveSessionIds
-      // Worktree-scoped state (NOT session-specific)
-      const reviewResultsChanged =
-        state.reviewResults !== prevReviewResults ||
-        state.viewingReviewTab !== prevViewingReviewTab
-      const reviewFindingsChanged =
-        state.fixedReviewFindings !== prevFixedReviewFindings
+      const reviewSidebarChanged =
+        state.reviewSidebarVisible !== prevReviewSidebarVisible
       const pendingDigestChanged =
         state.pendingDigestSessionIds !== prevPendingDigestSessionIds
 
       if (
         worktreeChanged ||
         sessionsChanged ||
-        reviewResultsChanged ||
-        reviewFindingsChanged ||
+        reviewSidebarChanged ||
         pendingDigestChanged
       ) {
         prevWorktreeId = state.activeWorktreeId
         prevWorktreePath = state.activeWorktreePath
+        prevLastActiveWorktreeId = state.lastActiveWorktreeId
         prevActiveSessionIds = state.activeSessionIds
-        prevReviewResults = state.reviewResults
-        prevViewingReviewTab = state.viewingReviewTab
-        prevFixedReviewFindings = state.fixedReviewFindings
+        prevReviewSidebarVisible = state.reviewSidebarVisible
         prevPendingDigestSessionIds = state.pendingDigestSessionIds
         const currentState = getCurrentUIState()
         debouncedSaveRef.current?.(currentState)

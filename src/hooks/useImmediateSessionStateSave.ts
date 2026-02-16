@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useChatStore } from '@/store/chat-store'
 import { invoke } from '@/lib/transport'
 import { logger } from '@/lib/logger'
+import type { LabelData } from '@/types/chat'
 
 /**
  * Saves reviewing/waiting state immediately when it changes.
@@ -12,17 +13,20 @@ export function useImmediateSessionStateSave() {
   // Track previous values to detect changes
   const prevReviewingRef = useRef<Record<string, boolean>>({})
   const prevWaitingRef = useRef<Record<string, boolean>>({})
+  const prevLabelsRef = useRef<Record<string, LabelData>>({})
 
   useEffect(() => {
     // Initialize with current state
     const initialState = useChatStore.getState()
     prevReviewingRef.current = { ...initialState.reviewingSessions }
     prevWaitingRef.current = { ...initialState.waitingForInputSessionIds }
+    prevLabelsRef.current = { ...initialState.sessionLabels }
 
     const unsubscribe = useChatStore.subscribe(state => {
       const {
         reviewingSessions,
         waitingForInputSessionIds,
+        sessionLabels,
         sessionWorktreeMap,
         worktreePaths,
       } = state
@@ -65,8 +69,26 @@ export function useImmediateSessionStateSave() {
         }
       }
 
+      // Check for label changes
+      for (const [sessionId, label] of Object.entries(sessionLabels)) {
+        if (JSON.stringify(prevLabelsRef.current[sessionId]) !== JSON.stringify(label)) {
+          saveSessionStatus(sessionId, sessionWorktreeMap, worktreePaths, {
+            label,
+          })
+        }
+      }
+      // Check for removed labels
+      for (const sessionId of Object.keys(prevLabelsRef.current)) {
+        if (!(sessionId in sessionLabels)) {
+          saveSessionStatus(sessionId, sessionWorktreeMap, worktreePaths, {
+            label: null,
+          })
+        }
+      }
+
       prevReviewingRef.current = { ...reviewingSessions }
       prevWaitingRef.current = { ...waitingForInputSessionIds }
+      prevLabelsRef.current = { ...sessionLabels }
     })
 
     return unsubscribe
@@ -77,7 +99,11 @@ async function saveSessionStatus(
   sessionId: string,
   sessionWorktreeMap: Record<string, string>,
   worktreePaths: Record<string, string>,
-  updates: { isReviewing?: boolean; waitingForInput?: boolean }
+  updates: {
+    isReviewing?: boolean
+    waitingForInput?: boolean
+    label?: LabelData | null
+  }
 ) {
   const worktreeId = sessionWorktreeMap[sessionId]
   const worktreePath = worktreeId ? worktreePaths[worktreeId] : null
@@ -90,14 +116,19 @@ async function saveSessionStatus(
   }
 
   try {
+    // Send explicit null to remove, or the label object to set
+    // Use undefined for label when we want to set/clear to avoid Tauri treating null as missing
+    const labelValue = updates.label ?? undefined
+    const clearLabel = 'label' in updates && updates.label === null
     await invoke('update_session_state', {
       worktreeId,
       worktreePath,
       sessionId,
       isReviewing: updates.isReviewing,
       waitingForInput: updates.waitingForInput,
+      label: labelValue,
+      clearLabel,
     })
-    logger.debug('Saved session status immediately', { sessionId, ...updates })
   } catch (error) {
     logger.error('Failed to save session status', { sessionId, error })
   }

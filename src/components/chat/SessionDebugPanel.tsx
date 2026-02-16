@@ -17,6 +17,8 @@ interface SessionDebugPanelProps {
   worktreeId: string
   worktreePath: string
   sessionId: string
+  selectedModel?: string
+  selectedProvider?: string | null
   onFileClick?: (path: string) => void
 }
 
@@ -70,6 +72,8 @@ export function SessionDebugPanel({
   worktreeId,
   worktreePath,
   sessionId,
+  selectedModel,
+  selectedProvider,
   onFileClick,
 }: SessionDebugPanelProps) {
   const { data: debugInfo } = useQuery({
@@ -141,6 +145,11 @@ export function SessionDebugPanel({
       {/* Simple path rows */}
       <div className="text-muted-foreground">
         session: <span className="text-foreground">{sessionId}</span>
+      </div>
+      <div className="text-muted-foreground">
+        model: <span className="text-foreground">{selectedModel ?? 'unknown'}</span>
+        {' / '}
+        provider: <span className="text-foreground">{!selectedProvider || selectedProvider === '__anthropic__' ? 'Anthropic' : selectedProvider}</span>
       </div>
       <Tooltip>
         <TooltipTrigger asChild>

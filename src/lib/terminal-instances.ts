@@ -10,6 +10,8 @@
 
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { WebLinksAddon } from '@xterm/addon-web-links'
+import { openExternal } from '@/lib/platform'
 import { invoke } from '@/lib/transport'
 import { listen, type UnlistenFn } from '@/lib/transport'
 import { useTerminalStore } from '@/store/terminal-store'
@@ -27,6 +29,7 @@ interface PersistentTerminal {
   worktreePath: string
   command: string | null
   initialized: boolean // PTY has been started
+  onStopped?: (exitCode: number | null) => void
 }
 
 // Module-level Map - persists across React mount/unmount cycles
@@ -73,6 +76,9 @@ export function getOrCreateTerminal(
 
   const fitAddon = new FitAddon()
   terminal.loadAddon(fitAddon)
+  terminal.loadAddon(new WebLinksAddon((_event, uri) => {
+    openExternal(uri)
+  }))
 
   // Handle user input - forward to PTY
   terminal.onData(data => {
@@ -102,6 +108,29 @@ export function getOrCreateTerminal(
       terminal.writeln(
         `\r\n\x1b[90m[Process exited with code ${exitCode ?? 'unknown'}]\x1b[0m`
       )
+      const inst = instances.get(terminalId)
+      inst?.onStopped?.(exitCode)
+
+      // Auto-close terminal tab after process exits (deferred to avoid
+      // disposing inside the listener that's currently executing)
+      if (inst) {
+        const wId = inst.worktreeId
+        setTimeout(() => {
+          if (!instances.has(terminalId)) return // Already disposed
+          invoke('stop_terminal', { terminalId }).catch(() => {})
+          disposeTerminal(terminalId)
+          const { removeTerminal, setTerminalPanelOpen } =
+            useTerminalStore.getState()
+          removeTerminal(wId, terminalId)
+          const remaining =
+            useTerminalStore.getState().terminals[wId] ?? []
+          if (remaining.length === 0) {
+            setTerminalPanelOpen(wId, false)
+            useTerminalStore.getState().setTerminalVisible(false)
+            useTerminalStore.getState().setModalTerminalOpen(wId, false)
+          }
+        }, 0)
+      }
     }
   }).then(unlisten => listeners.push(unlisten))
 
@@ -113,6 +142,13 @@ export function getOrCreateTerminal(
     worktreePath,
     command,
     initialized: false,
+  }
+
+  // Apply any pending onStopped callback registered before creation
+  const pendingCb = pendingOnStopped.get(terminalId)
+  if (pendingCb) {
+    instance.onStopped = pendingCb
+    pendingOnStopped.delete(terminalId)
   }
 
   instances.set(terminalId, instance)
@@ -283,4 +319,29 @@ export function disposeAllWorktreeTerminals(worktreeId: string): void {
  */
 export function hasInstance(terminalId: string): boolean {
   return instances.has(terminalId)
+}
+
+// Pending onStopped callbacks for terminals not yet created
+const pendingOnStopped = new Map<
+  string,
+  (exitCode: number | null) => void
+>()
+
+/**
+ * Register a callback for when a terminal's process exits.
+ * Can be called before or after terminal creation.
+ */
+export function setOnStopped(
+  terminalId: string,
+  cb: ((exitCode: number | null) => void) | undefined
+): void {
+  const instance = instances.get(terminalId)
+  if (instance) {
+    instance.onStopped = cb
+  }
+  if (cb) {
+    pendingOnStopped.set(terminalId, cb)
+  } else {
+    pendingOnStopped.delete(terminalId)
+  }
 }

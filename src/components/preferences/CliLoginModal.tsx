@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/dialog'
 import { useUIStore } from '@/store/ui-store'
 import { useTerminal } from '@/hooks/useTerminal'
-import { disposeTerminal } from '@/lib/terminal-instances'
+import { disposeTerminal, setOnStopped } from '@/lib/terminal-instances'
 
 export function CliLoginModal() {
   const isOpen = useUIStore(state => state.cliLoginModalOpen)
@@ -60,16 +60,8 @@ function CliLoginModalContent({
   const terminalId = useMemo(() => {
     // eslint-disable-next-line react-hooks/purity
     const id = `cli-login-${Date.now()}`
-    console.log('[CliLoginModal] Generated terminalId:', id)
     return id
   }, [])
-
-  console.log(
-    '[CliLoginModal] Render - terminalId:',
-    terminalId,
-    'command:',
-    command
-  )
 
   // Use a synthetic worktreeId for CLI login (not associated with any real worktree)
   const { initTerminal, fit } = useTerminal({
@@ -82,13 +74,6 @@ function CliLoginModalContent({
   // Use callback ref to detect when container is mounted (Dialog uses portal)
   const containerCallbackRef = useCallback(
     (container: HTMLDivElement | null) => {
-      console.log(
-        '[CliLoginModal] containerCallbackRef called, container:',
-        !!container,
-        'initialized:',
-        initialized.current
-      )
-
       // Cleanup previous observer if any
       if (observerRef.current) {
         observerRef.current.disconnect()
@@ -99,24 +84,15 @@ function CliLoginModalContent({
 
       const observer = new ResizeObserver(entries => {
         const entry = entries[0]
-        console.log(
-          '[CliLoginModal] ResizeObserver fired, width:',
-          entry?.contentRect.width,
-          'initialized:',
-          initialized.current
-        )
 
         if (!entry || entry.contentRect.width === 0) {
-          console.log('[CliLoginModal] No entry or width=0, skipping')
           return
         }
 
         // Initialize on first valid size
         if (!initialized.current) {
-          console.log('[CliLoginModal] Initializing terminal...')
           initialized.current = true
           initTerminal(container)
-          console.log('[CliLoginModal] initTerminal called')
           return
         }
 
@@ -126,7 +102,6 @@ function CliLoginModalContent({
 
       observer.observe(container)
       observerRef.current = observer
-      console.log('[CliLoginModal] ResizeObserver attached via callback ref')
     },
     [initTerminal, fit]
   )
@@ -134,7 +109,6 @@ function CliLoginModalContent({
   // Cleanup observer on unmount
   useEffect(() => {
     return () => {
-      console.log('[CliLoginModal] Cleanup - disconnecting observer')
       if (observerRef.current) {
         observerRef.current.disconnect()
       }
@@ -165,6 +139,16 @@ function CliLoginModalContent({
     },
     [terminalId, onClose, cliType, queryClient]
   )
+
+  // Auto-close modal when auth process exits successfully
+  useEffect(() => {
+    setOnStopped(terminalId, exitCode => {
+      if (exitCode === 0) {
+        setTimeout(() => handleOpenChange(false), 1500)
+      }
+    })
+    return () => setOnStopped(terminalId, undefined)
+  }, [terminalId, handleOpenChange])
 
   return (
     <Dialog open={true} onOpenChange={handleOpenChange}>
