@@ -650,7 +650,7 @@ pub struct MagicPromptModels {
     pub pr_content_model: String,
     #[serde(default = "default_haiku_model")]
     pub commit_message_model: String,
-    #[serde(default = "default_haiku_model")]
+    #[serde(default = "default_model")]
     pub code_review_model: String,
     #[serde(default = "default_model")]
     pub context_summary_model: String,
@@ -676,7 +676,7 @@ impl Default for MagicPromptModels {
             investigate_workflow_run_model: default_model(),
             pr_content_model: default_haiku_model(),
             commit_message_model: default_haiku_model(),
-            code_review_model: default_haiku_model(),
+            code_review_model: default_model(),
             context_summary_model: default_model(),
             resolve_conflicts_model: default_model(),
             release_notes_model: default_haiku_model(),

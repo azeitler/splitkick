@@ -437,7 +437,7 @@ export const ChatToolbar = memo(function ChatToolbar({
   // and drop Opus 4.5 (providers only have one opus-tier model).
   // Parse actual model names from the provider's settings JSON when available.
   const filteredModelOptions = useMemo(() => {
-    if (!selectedProvider) return MODEL_OPTIONS
+    if (!selectedProvider || selectedProvider === '__anthropic__') return MODEL_OPTIONS
     // Try to extract model names from the active profile's settings_json
     const profile = customCliProfiles.find(p => p.name === selectedProvider)
     let opusModel: string | undefined
