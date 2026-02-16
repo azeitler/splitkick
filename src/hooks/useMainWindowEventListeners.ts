@@ -525,9 +525,15 @@ export function useMainWindowEventListeners() {
     // Use capture phase to handle keybindings before dialogs/modals can intercept
     document.addEventListener('keydown', handleKeyDown, { capture: true })
 
+    let cleaned = false
     let menuUnlisteners: (() => void)[] = []
     setupMenuListeners()
       .then(unlisteners => {
+        if (cleaned) {
+          // Effect was already cleaned up while awaiting — tear down immediately
+          unlisteners.forEach(fn => fn())
+          return
+        }
         menuUnlisteners = unlisteners
         logger.debug('Menu listeners initialized successfully')
       })
@@ -536,6 +542,7 @@ export function useMainWindowEventListeners() {
       })
 
     return () => {
+      cleaned = true
       document.removeEventListener('keydown', handleKeyDown, { capture: true })
       menuUnlisteners.forEach(unlisten => {
         if (unlisten && typeof unlisten === 'function') {
