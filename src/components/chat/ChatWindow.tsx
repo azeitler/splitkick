@@ -507,19 +507,18 @@ export function ChatWindow({
     deferredSessionId ? state.enabledMcpServers[deferredSessionId] : undefined
   )
   // Resolve enabled servers from session → project → global defaults,
-  // then auto-include any newly discovered (non-disabled) servers
-  const baseEnabledMcpServers = useMemo(
-    () =>
-      sessionEnabledMcpServers ??
-      project?.enabled_mcp_servers ??
-      preferences?.default_enabled_mcp_servers ??
-      [],
-    [
-      sessionEnabledMcpServers,
-      project?.enabled_mcp_servers,
-      preferences?.default_enabled_mcp_servers,
-    ]
-  )
+  // then auto-include any newly discovered (non-disabled) servers.
+  // project.enabled_mcp_servers is null/undefined when unconfigured (inherit global),
+  // or an array (possibly empty) when explicitly set by the user.
+  const baseEnabledMcpServers = useMemo(() => {
+    if (sessionEnabledMcpServers !== undefined) return sessionEnabledMcpServers
+    if (project?.enabled_mcp_servers != null) return project.enabled_mcp_servers
+    return preferences?.default_enabled_mcp_servers ?? []
+  }, [
+    sessionEnabledMcpServers,
+    project?.enabled_mcp_servers,
+    preferences?.default_enabled_mcp_servers,
+  ])
   const knownMcpServers = useMemo(
     () => project?.known_mcp_servers ?? preferences?.known_mcp_servers ?? [],
     [project?.known_mcp_servers, preferences?.known_mcp_servers]
@@ -738,6 +737,7 @@ export function ChatWindow({
   } = useScrollManagement({
     messages: session?.messages,
     virtualizedListRef,
+    activeWorktreeId,
   })
 
   // Drag and drop images into chat input
@@ -915,7 +915,7 @@ export function ChatWindow({
 
   // Scroll to bottom when switching worktrees (sidebar click doesn't change session, so auto-scroll doesn't trigger)
   useEffect(() => {
-    scrollToBottom()
+    scrollToBottom(true)
   }, [activeWorktreeId, scrollToBottom])
 
   // Auto-scroll to bottom when new messages arrive, streaming content updates, or sending starts
@@ -2827,14 +2827,15 @@ export function ChatWindow({
                 )}
 
                 {/* Input container - full width, centered content */}
-                <div className="bg-sidebar">
+                <div>
                   <div className="mx-auto max-w-7xl">
+                    <div className="relative mx-auto mb-3 max-w-3xl">
                     {/* Input area - unified container with textarea and toolbar */}
                     <form
                       ref={formRef}
                       onSubmit={handleSubmit}
                       className={cn(
-                        'relative overflow-hidden rounded-lg transition-all duration-150',
+                        'relative overflow-hidden rounded-lg border border-border bg-sidebar transition-all duration-150',
                         isDragging &&
                         'ring-2 ring-primary ring-inset bg-primary/5'
                       )}
@@ -2872,14 +2873,13 @@ export function ChatWindow({
                         </div>
                       )}
 
-                      {/* Task widget - shows current session's active todos */}
-                      {/* Show if: has todos AND (no dismissal OR source differs from dismissed message) */}
+                      {/* Task widget - inline fallback for narrow screens */}
                       {activeTodos.length > 0 &&
                         (dismissedTodoMessageId === null ||
                           (todoSourceMessageId !== null &&
                             todoSourceMessageId !==
                             dismissedTodoMessageId)) && (
-                          <div className="px-4 md:px-6 pt-2">
+                          <div className="px-4 md:px-6 pt-2 xl:hidden">
                             <TodoWidget
                               todos={normalizeTodosForDisplay(
                                 activeTodos,
@@ -2978,6 +2978,29 @@ export function ChatWindow({
                         onOpenProjectSettings={handleOpenProjectSettings}
                       />
                     </form>
+
+                    {/* Task widget - side panel for wide screens */}
+                    {activeTodos.length > 0 &&
+                      (dismissedTodoMessageId === null ||
+                        (todoSourceMessageId !== null &&
+                          todoSourceMessageId !==
+                          dismissedTodoMessageId)) && (
+                        <div className="hidden xl:block absolute left-full bottom-0 ml-3 w-64">
+                          <TodoWidget
+                            todos={normalizeTodosForDisplay(
+                              activeTodos,
+                              isFromStreaming
+                            )}
+                            isStreaming={isSending}
+                            onClose={() =>
+                              setDismissedTodoMessageId(
+                                todoSourceMessageId ?? '__streaming__'
+                              )
+                            }
+                          />
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

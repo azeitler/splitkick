@@ -803,6 +803,23 @@ export const GeneralPane: React.FC = () => {
       <SettingsSection title="Archive">
         <div className="space-y-4">
           <InlineField
+            label="Confirm before closing"
+            description="Show confirmation dialog when closing sessions or worktrees"
+          >
+            <Switch
+              checked={preferences?.confirm_session_close ?? true}
+              onCheckedChange={checked => {
+                if (preferences) {
+                  savePreferences.mutate({
+                    ...preferences,
+                    confirm_session_close: checked,
+                  })
+                }
+              }}
+            />
+          </InlineField>
+
+          <InlineField
             label="Removal behavior"
             description="What happens when closing sessions or worktrees"
           >

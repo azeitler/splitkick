@@ -198,6 +198,14 @@ export function WorktreeCanvasView({
     closeBaseSessionArchive,
   ])
 
+  const handleCloseWorktreeOrConfirm = useCallback(() => {
+    if (preferences?.confirm_session_close === false) {
+      handleCloseWorktree()
+    } else {
+      setCloseWorktreeDialogOpen(true)
+    }
+  }, [preferences?.confirm_session_close, handleCloseWorktree])
+
   // Session creation
   const createSession = useCreateSession()
 
@@ -498,7 +506,7 @@ export function WorktreeCanvasView({
                 onDeleteSession={handleDeleteSession}
                 onPlanApproval={handlePlanApproval}
                 onPlanApprovalYolo={handlePlanApprovalYolo}
-                onCloseWorktree={() => setCloseWorktreeDialogOpen(true)}
+                onCloseWorktree={handleCloseWorktreeOrConfirm}
                 searchInputRef={searchInputRef}
               />
             ) : (
@@ -515,7 +523,7 @@ export function WorktreeCanvasView({
                 onDeleteSession={handleDeleteSession}
                 onPlanApproval={handlePlanApproval}
                 onPlanApprovalYolo={handlePlanApprovalYolo}
-                onCloseWorktree={() => setCloseWorktreeDialogOpen(true)}
+                onCloseWorktree={handleCloseWorktreeOrConfirm}
                 searchInputRef={searchInputRef}
               />
             )}

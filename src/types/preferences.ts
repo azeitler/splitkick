@@ -536,6 +536,7 @@ export interface AppPreferences {
   custom_cli_profiles: CustomCliProfile[] // Custom CLI settings profiles (e.g., OpenRouter, MiniMax)
   default_provider: string | null // Default provider profile name (null = Anthropic direct)
   canvas_layout: CanvasLayout // Canvas display mode: grid (cards) or list (compact rows)
+  confirm_session_close: boolean // Show confirmation dialog before closing sessions/worktrees
 }
 
 export type CanvasLayout = 'grid' | 'list'
@@ -948,4 +949,5 @@ export const defaultPreferences: AppPreferences = {
   custom_cli_profiles: [],
   default_provider: null,
   canvas_layout: 'grid',
+  confirm_session_close: true, // Default: enabled (show confirmation)
 }

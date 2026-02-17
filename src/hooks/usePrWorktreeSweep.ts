@@ -83,19 +83,6 @@ export function usePrWorktreeSweep(projects: Project[] | undefined) {
       }
     }
 
-    // Initial sync
     sync()
-
-    // Re-sync when worktree queries change
-    const unsubscribe = queryClient.getQueryCache().subscribe(event => {
-      if (
-        event.type === 'updated' &&
-        event.query.queryKey[0] === 'projects'
-      ) {
-        sync()
-      }
-    })
-
-    return unsubscribe
   }, [projects, queryClient])
 }

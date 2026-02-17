@@ -402,6 +402,9 @@ pub struct Session {
     /// Message ID of the pending plan awaiting approval (for Canvas view)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pending_plan_message_id: Option<String>,
+    /// Per-session MCP server override (None = inherit from project/global)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled_mcp_servers: Option<Vec<String>>,
     /// Persisted session digest (recap summary)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub digest: Option<SessionDigest>,
@@ -452,6 +455,7 @@ impl Session {
             approved_plan_message_ids: vec![],
             plan_file_path: None,
             pending_plan_message_id: None,
+            enabled_mcp_servers: None,
             digest: None,
             last_run_status: None,
             last_run_execution_mode: None,
@@ -600,6 +604,7 @@ impl SessionMetadata {
             approved_plan_message_ids: self.approved_plan_message_ids.clone(),
             plan_file_path: self.plan_file_path.clone(),
             pending_plan_message_id: self.pending_plan_message_id.clone(),
+            enabled_mcp_servers: self.enabled_mcp_servers.clone(),
             digest: self.digest.clone(),
             // Populate from last run for status recovery on app restart
             last_run_status: last_run.map(|r| r.status.clone()),
@@ -630,6 +635,7 @@ impl SessionMetadata {
         self.approved_plan_message_ids = session.approved_plan_message_ids.clone();
         self.plan_file_path = session.plan_file_path.clone();
         self.pending_plan_message_id = session.pending_plan_message_id.clone();
+        self.enabled_mcp_servers = session.enabled_mcp_servers.clone();
         self.label = session.label.clone();
     }
 }
@@ -906,6 +912,9 @@ pub struct SessionMetadata {
     /// Message ID of the pending plan awaiting approval (for Canvas view)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pending_plan_message_id: Option<String>,
+    /// Per-session MCP server override (None = inherit from project/global)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled_mcp_servers: Option<Vec<String>>,
     /// Persisted session digest (recap summary)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub digest: Option<SessionDigest>,
@@ -998,6 +1007,7 @@ impl SessionMetadata {
             approved_plan_message_ids: vec![],
             plan_file_path: None,
             pending_plan_message_id: None,
+            enabled_mcp_servers: None,
             digest: None,
             label: None,
             runs: vec![],

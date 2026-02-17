@@ -134,7 +134,7 @@ export function FileMentionPopover({
         className="w-96 p-0"
         align="start"
         side="top"
-        sideOffset={4}
+        sideOffset={12}
         onOpenAutoFocus={e => e.preventDefault()}
         onCloseAutoFocus={e => e.preventDefault()}
       >

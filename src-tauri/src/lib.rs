@@ -184,6 +184,8 @@ pub struct AppPreferences {
     pub default_provider: Option<String>, // Default provider profile name (None = Anthropic direct)
     #[serde(default = "default_canvas_layout")]
     pub canvas_layout: String, // Canvas display mode: grid or list
+    #[serde(default = "default_confirm_session_close")]
+    pub confirm_session_close: bool, // Show confirmation dialog before closing sessions/worktrees
 }
 
 fn default_true() -> Option<bool> {
@@ -350,6 +352,10 @@ fn default_chrome_enabled() -> bool {
 
 fn default_canvas_layout() -> String {
     "grid".to_string()
+}
+
+fn default_confirm_session_close() -> bool {
+    true // Enabled by default
 }
 
 fn default_zoom_level() -> u32 {
@@ -835,6 +841,7 @@ impl Default for AppPreferences {
             custom_cli_profiles: Vec::new(),
             default_provider: None,
             canvas_layout: default_canvas_layout(),
+            confirm_session_close: default_confirm_session_close(),
         }
     }
 }
@@ -1737,7 +1744,7 @@ pub fn run() {
                 // Silence noisy external crates
                 .level_for("globset", log::LevelFilter::Warn)
                 .level_for("ignore", log::LevelFilter::Warn)
-                .level_for("tauri_plugin_updater", log::LevelFilter::Trace)
+                .level_for("tauri_plugin_updater", log::LevelFilter::Warn)
                 .level_for("reqwest", log::LevelFilter::Debug)
                 .targets(log_targets)
                 .build(),

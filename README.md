@@ -44,6 +44,13 @@ For more information, take a look at [jean.build](https://jean.build).
 
 Download the latest version from the [GitHub Releases](https://github.com/coollabsio/jean/releases) page or visit [jean.build](https://jean.build).
 
+### Homebrew (macOS)
+
+```bash
+brew tap coollabsio/jean
+brew install --cask jean
+```
+
 ### Building from Source
 
 Prerequisites:

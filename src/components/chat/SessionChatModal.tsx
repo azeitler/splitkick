@@ -16,6 +16,7 @@ import {
 import { StatusIndicator } from '@/components/ui/status-indicator'
 import { GitStatusBadges } from '@/components/ui/git-status-badges'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
+import { CloseWorktreeDialog } from './CloseWorktreeDialog'
 import { useChatStore } from '@/store/chat-store'
 import { useTerminalStore } from '@/store/terminal-store'
 import { useSessions, useCreateSession, useRenameSession } from '@/services/chat'
@@ -219,20 +220,37 @@ export function SessionChatModal({
   })
 
   // CMD+W: close the active session tab, or close modal if last tab
+  const [closeConfirmOpen, setCloseConfirmOpen] = useState(false)
+  const pendingCloseAction = useRef<(() => void) | null>(null)
+
+  const executeCloseAction = useCallback(() => {
+    pendingCloseAction.current?.()
+    pendingCloseAction.current = null
+    setCloseConfirmOpen(false)
+  }, [])
+
   useEffect(() => {
     if (!isOpen) return
     const handler = (e: Event) => {
       e.stopImmediatePropagation()
       const activeSessions = sessions.filter(s => !s.archived_at)
-      if (activeSessions.length <= 1) {
-        onClose()
-      } else if (currentSessionId) {
-        handleArchiveSession(currentSessionId)
+      const action = () => {
+        if (activeSessions.length <= 1) {
+          onClose()
+        } else if (currentSessionId) {
+          handleArchiveSession(currentSessionId)
+        }
+      }
+      if (preferences?.confirm_session_close !== false) {
+        pendingCloseAction.current = action
+        setCloseConfirmOpen(true)
+      } else {
+        action()
       }
     }
     window.addEventListener('close-session-or-worktree', handler, { capture: true })
     return () => window.removeEventListener('close-session-or-worktree', handler, { capture: true })
-  }, [isOpen, sessions, currentSessionId, onClose, handleArchiveSession])
+  }, [isOpen, sessions, currentSessionId, onClose, handleArchiveSession, preferences?.confirm_session_close])
 
   // Listen for toggle-session-label event (CMD+S)
   useEffect(() => {
@@ -374,6 +392,7 @@ export function SessionChatModal({
   if (!isOpen || !worktreeId) return null
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={open => !open && handleClose()}>
       <DialogContent
         key={worktreeId}
@@ -679,5 +698,12 @@ export function SessionChatModal({
         currentLabel={currentLabel}
       />
     </Dialog>
+    <CloseWorktreeDialog
+      open={closeConfirmOpen}
+      onOpenChange={setCloseConfirmOpen}
+      onConfirm={executeCloseAction}
+      branchName={worktree?.branch}
+    />
+    </>
   )
 }

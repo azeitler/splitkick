@@ -227,18 +227,8 @@ export const ChatInput = memo(function ChatInput({
           setFileMentionQuery('')
           setFileMentionOpen(true)
 
-          // Calculate anchor position relative to form
-          const textarea = e.target
-          const form = formRef.current
-          if (form) {
-            const formRect = form.getBoundingClientRect()
-            const textareaRect = textarea.getBoundingClientRect()
-            // Position above the textarea, at the left edge
-            setFileMentionAnchor({
-              top: textareaRect.top - formRect.top - 8,
-              left: textareaRect.left - formRect.left + 16,
-            })
-          }
+          // Anchor at the top-left of the form so popover appears above the input
+          setFileMentionAnchor({ top: 0, left: 16 })
         }
       } else if (atTriggerIndex !== null && fileMentionOpen) {
         // Continuing to type after @, update query
@@ -255,6 +245,25 @@ export const ChatInput = memo(function ChatInput({
           setFileMentionQuery('')
         } else {
           setFileMentionQuery(query)
+        }
+      } else if (!fileMentionOpen) {
+        // Re-detect @mention: scan backward from cursor for @ preceded by whitespace/start
+        // This handles editing an already-completed mention (e.g. backspacing into @filename)
+        let scanPos = cursorPos - 1
+        while (scanPos >= 0 && value[scanPos] !== ' ' && value[scanPos] !== '\n') {
+          if (value[scanPos] === '@') {
+            const charBefore = value[scanPos - 1]
+            if (scanPos === 0 || charBefore === ' ' || charBefore === '\n') {
+              const query = value.slice(scanPos + 1, cursorPos)
+              setAtTriggerIndex(scanPos)
+              setFileMentionQuery(query)
+              setFileMentionOpen(true)
+              // Anchor at the top-left of the form so popover appears above the input
+              setFileMentionAnchor({ top: 0, left: 16 })
+            }
+            break
+          }
+          scanPos--
         }
       }
 
@@ -772,8 +781,8 @@ export const ChatInput = memo(function ChatInput({
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
         disabled={false}
-        className="field-sizing-fixed min-h-[80px] max-h-[200px] w-full resize-none border-0 bg-transparent dark:bg-transparent p-0 font-mono text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
-        rows={2}
+        className="field-sizing-fixed min-h-[40px] max-h-[200px] w-full resize-none border-0 bg-transparent dark:bg-transparent p-0 font-mono text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+        rows={1}
         autoFocus
       />
       {showHint && (

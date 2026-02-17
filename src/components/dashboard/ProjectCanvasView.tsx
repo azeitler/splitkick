@@ -471,29 +471,23 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   const closeBaseSessionClean = useCloseBaseSessionClean()
   const closeBaseSessionArchive = useCloseBaseSessionArchive()
 
-  const handleConfirmCloseWorktree = useCallback(() => {
-    if (!closeWorktreeTarget || !project) return
-    const wt = visibleWorktrees.find(w => w.id === closeWorktreeTarget.worktreeId)
+  const closeWorktreeDirectly = useCallback((worktreeId: string) => {
+    if (!project) return
+    const wt = visibleWorktrees.find(w => w.id === worktreeId)
     if (!wt) return
-    console.log('[CLOSE_WT_DASH] handleConfirmCloseWorktree', { isBase: isBaseSession(wt), worktreeId: wt.id, removalBehavior: preferences?.removal_behavior })
+    console.log('[CLOSE_WT_DASH] closeWorktreeDirectly', { isBase: isBaseSession(wt), worktreeId: wt.id, removalBehavior: preferences?.removal_behavior })
     if (isBaseSession(wt)) {
       if (preferences?.removal_behavior === 'delete') {
-        console.log('[CLOSE_WT_DASH] -> closeBaseSessionClean')
         closeBaseSessionClean.mutate({ worktreeId: wt.id, projectId: project.id })
       } else {
-        console.log('[CLOSE_WT_DASH] -> closeBaseSessionArchive')
         closeBaseSessionArchive.mutate({ worktreeId: wt.id, projectId: project.id })
       }
     } else if (preferences?.removal_behavior === 'delete') {
-      console.log('[CLOSE_WT_DASH] -> deleteWorktree')
       deleteWorktree.mutate({ worktreeId: wt.id, projectId: project.id })
     } else {
-      console.log('[CLOSE_WT_DASH] -> archiveWorktree')
       archiveWorktree.mutate({ worktreeId: wt.id, projectId: project.id })
     }
-    setCloseWorktreeTarget(null)
   }, [
-    closeWorktreeTarget,
     project,
     visibleWorktrees,
     preferences?.removal_behavior,
@@ -502,6 +496,12 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     closeBaseSessionClean,
     closeBaseSessionArchive,
   ])
+
+  const handleConfirmCloseWorktree = useCallback(() => {
+    if (!closeWorktreeTarget) return
+    closeWorktreeDirectly(closeWorktreeTarget.worktreeId)
+    setCloseWorktreeTarget(null)
+  }, [closeWorktreeTarget, closeWorktreeDirectly])
 
   // Listen for focus-canvas-search event
   useEffect(() => {
@@ -952,16 +952,20 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       // Consume the event to prevent the legacy useCloseSessionOrWorktreeKeybinding fallback
       e.stopImmediatePropagation()
 
-      // No modal open — close the worktree of the selected card (with confirmation)
+      // No modal open — close the worktree of the selected card
       if (selectedIndex !== null && flatCards[selectedIndex]) {
         const item = flatCards[selectedIndex]
         if (!item.card) return // pending worktree, skip
 
-        const wt = worktreeSections.find(s => s.worktree.id === item.worktreeId)?.worktree
-        setCloseWorktreeTarget({
-          worktreeId: item.worktreeId,
-          branchName: wt?.branch,
-        })
+        if (preferences?.confirm_session_close === false) {
+          closeWorktreeDirectly(item.worktreeId)
+        } else {
+          const wt = worktreeSections.find(s => s.worktree.id === item.worktreeId)?.worktree
+          setCloseWorktreeTarget({
+            worktreeId: item.worktreeId,
+            branchName: wt?.branch,
+          })
+        }
       }
     }
 
@@ -983,6 +987,8 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     selectedIndex,
     flatCards,
     worktreeSections,
+    preferences?.confirm_session_close,
+    closeWorktreeDirectly,
   ])
 
   // Listen for create-new-session event to handle CMD+T

@@ -7,6 +7,7 @@ import {
   useState,
   useCallback,
 } from 'react'
+import { flushSync } from 'react-dom'
 import type {
   ChatMessage,
   Question,
@@ -16,11 +17,11 @@ import type {
 import { MessageItem } from './MessageItem'
 
 /** Number of messages to render initially (from the end) */
-const INITIAL_VISIBLE_COUNT = 50
+const INITIAL_VISIBLE_COUNT = 10
 /** Number of messages to load when scrolling up */
-const LOAD_MORE_COUNT = 50
+const LOAD_MORE_COUNT = 20
 /** Scroll threshold in pixels to trigger loading more */
-const SCROLL_THRESHOLD = 200
+const SCROLL_THRESHOLD = 300
 
 export interface VirtualizedMessageListHandle {
   /** Scroll to a specific message by index */
@@ -137,6 +138,7 @@ export const VirtualizedMessageList = memo(
       ref
     ) {
       const messageRefs = useRef<Map<number, HTMLDivElement>>(new Map())
+      const isLoadingMoreRef = useRef(false)
 
       // Track how many messages to render (from the end)
       const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT)
@@ -157,22 +159,24 @@ export const VirtualizedMessageList = memo(
       }, [sessionId])
 
       // Load more messages when scrolling near the top
+      // Uses flushSync to make state update + DOM commit + scroll correction
+      // happen synchronously in a single task — no paint in between, zero flicker
       const loadMore = useCallback(() => {
         const container = scrollContainerRef.current
-        if (!container || !hasMoreMessages) return
+        if (!container || !hasMoreMessages || isLoadingMoreRef.current) return
 
-        // Preserve scroll position when prepending
+        isLoadingMoreRef.current = true
         const scrollHeightBefore = container.scrollHeight
 
-        setVisibleCount(prev =>
-          Math.min(prev + LOAD_MORE_COUNT, messages.length)
-        )
-
-        // After render, adjust scroll to maintain position
-        requestAnimationFrame(() => {
-          const scrollHeightAfter = container.scrollHeight
-          container.scrollTop += scrollHeightAfter - scrollHeightBefore
+        flushSync(() => {
+          setVisibleCount(prev =>
+            Math.min(prev + LOAD_MORE_COUNT, messages.length)
+          )
         })
+
+        // DOM is now updated synchronously — correct scroll before browser paints
+        container.scrollTop += container.scrollHeight - scrollHeightBefore
+        isLoadingMoreRef.current = false
       }, [scrollContainerRef, hasMoreMessages, messages.length])
 
       // Detect scroll to top

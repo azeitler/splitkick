@@ -89,6 +89,9 @@ pub async fn get_sessions(
             session.last_run_status,
             session.last_run_execution_mode
         );
+        if session.enabled_mcp_servers.is_some() {
+            log::debug!("get_sessions: session={}, enabled_mcp_servers={:?}", session.id, session.enabled_mcp_servers);
+        }
     }
 
     // Propagate issue/PR references from worktree_id to session IDs
@@ -338,6 +341,7 @@ pub async fn update_session_state(
     label: Option<Option<LabelData>>,
     clear_label: Option<bool>,
     review_results: Option<Option<serde_json::Value>>,
+    enabled_mcp_servers: Option<Option<Vec<String>>>,
 ) -> Result<(), String> {
     log::trace!("Updating session state for: {session_id}");
 
@@ -383,6 +387,10 @@ pub async fn update_session_state(
             }
             if let Some(v) = review_results {
                 session.review_results = v;
+            }
+            if let Some(v) = enabled_mcp_servers {
+                log::debug!("Saving session MCP servers: {v:?} for session {session_id}");
+                session.enabled_mcp_servers = v;
             }
             Ok(())
         } else {
@@ -480,28 +488,13 @@ pub async fn close_session(
 
     // Now atomically modify the sessions file
     with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
-        // Find the index of the session being closed before removing it
-        let closed_index = sessions.sessions.iter().position(|s| s.id == session_id);
-
         // Remove the session
         sessions.sessions.retain(|s| s.id != session_id);
 
-        // Determine new active session
-        let new_active = if sessions.active_session_id.as_deref() == Some(&session_id) {
-            // The closed session was active, pick the previous one (or next if first)
-            if let Some(idx) = closed_index {
-                if idx > 0 {
-                    sessions.sessions.get(idx - 1).map(|s| s.id.clone())
-                } else {
-                    sessions.sessions.first().map(|s| s.id.clone())
-                }
-            } else {
-                sessions.sessions.first().map(|s| s.id.clone())
-            }
-        } else {
-            sessions.active_session_id.clone()
-        };
-        sessions.active_session_id = new_active;
+        // Clear active if the closed session was active (frontend will set the new active)
+        if sessions.active_session_id.as_deref() == Some(&session_id) {
+            sessions.active_session_id = None;
+        }
 
         // Ensure at least one session exists
         if sessions.sessions.is_empty() {

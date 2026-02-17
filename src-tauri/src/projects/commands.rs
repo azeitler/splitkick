@@ -174,7 +174,7 @@ pub async fn add_project(
         parent_id,
         is_folder: false,
         avatar_path: None,
-        enabled_mcp_servers: Vec::new(),
+        enabled_mcp_servers: None,
         known_mcp_servers: Vec::new(),
         custom_system_prompt: None,
         default_provider: None,
@@ -328,7 +328,7 @@ pub async fn init_project(
         parent_id,
         is_folder: false,
         avatar_path: None,
-        enabled_mcp_servers: Vec::new(),
+        enabled_mcp_servers: None,
         known_mcp_servers: Vec::new(),
         custom_system_prompt: None,
         default_provider: None,
@@ -3241,7 +3241,7 @@ pub async fn update_project_settings(
 
     if let Some(servers) = enabled_mcp_servers {
         log::trace!("Updating enabled MCP servers: {servers:?}");
-        project.enabled_mcp_servers = servers;
+        project.enabled_mcp_servers = Some(servers);
     }
 
     if let Some(servers) = known_mcp_servers {
@@ -6040,7 +6040,7 @@ pub async fn create_folder(
         parent_id,
         is_folder: true,
         avatar_path: None,
-        enabled_mcp_servers: Vec::new(),
+        enabled_mcp_servers: None,
         known_mcp_servers: Vec::new(),
         custom_system_prompt: None,
         default_provider: None,

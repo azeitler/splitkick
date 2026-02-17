@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
@@ -7,6 +7,8 @@ import { LabelModal } from './LabelModal'
 import { SessionChatModal } from './SessionChatModal'
 import { PlanDialog } from './PlanDialog'
 import { RecapDialog } from './RecapDialog'
+import { CloseWorktreeDialog } from './CloseWorktreeDialog'
+import { usePreferences } from '@/services/preferences'
 import { useCanvasKeyboardNav } from './hooks/useCanvasKeyboardNav'
 import { useCanvasShortcutEvents } from './hooks/useCanvasShortcutEvents'
 import {
@@ -170,6 +172,18 @@ export function CanvasList({
   }, [searchInputRef])
 
   // CMD+W handler (same as CanvasGrid)
+  const { data: preferences } = usePreferences()
+  const [closeConfirmOpen, setCloseConfirmOpen] = useState(false)
+  const pendingDeleteSessionId = useRef<string | null>(null)
+
+  const executeCloseAction = useCallback(() => {
+    if (pendingDeleteSessionId.current) {
+      onDeleteSession(pendingDeleteSessionId.current)
+      pendingDeleteSessionId.current = null
+    }
+    setCloseConfirmOpen(false)
+  }, [onDeleteSession])
+
   useEffect(() => {
     const handleCloseSessionOrWorktree = (e: Event) => {
       // If modal is open, SessionChatModal intercepts CMD+W and closes itself — skip here
@@ -178,7 +192,13 @@ export function CanvasList({
       // Close the selected session (not the whole worktree)
       if (selectedIndex !== null && cards[selectedIndex]) {
         e.stopImmediatePropagation()
-        onDeleteSession(cards[selectedIndex].session.id)
+        const sessionId = cards[selectedIndex].session.id
+        if (preferences?.confirm_session_close !== false) {
+          pendingDeleteSessionId.current = sessionId
+          setCloseConfirmOpen(true)
+        } else {
+          onDeleteSession(sessionId)
+        }
       }
     }
 
@@ -198,6 +218,7 @@ export function CanvasList({
     selectedIndex,
     cards,
     onDeleteSession,
+    preferences?.confirm_session_close,
   ])
 
   const groups = useMemo(() => groupCardsByStatus(cards), [cards])
@@ -306,6 +327,11 @@ export function CanvasList({
         isOpen={!!selectedSessionId}
         onClose={() => onSelectedSessionIdChange(null)}
         onOpenFullView={onOpenFullView}
+      />
+      <CloseWorktreeDialog
+        open={closeConfirmOpen}
+        onOpenChange={setCloseConfirmOpen}
+        onConfirm={executeCloseAction}
       />
     </>
   )

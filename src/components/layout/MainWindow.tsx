@@ -24,6 +24,7 @@ import { SessionBoardModal } from '@/components/session-board'
 import { AddProjectDialog } from '@/components/projects/AddProjectDialog'
 import { GitInitModal } from '@/components/projects/GitInitModal'
 import { QuitConfirmationDialog } from './QuitConfirmationDialog'
+import { CloseWorktreeDialog } from '@/components/chat/CloseWorktreeDialog'
 import { BranchConflictDialog } from '@/components/worktree/BranchConflictDialog'
 import { ArchivedModal } from '@/components/archive/ArchivedModal'
 import { Toaster } from '@/components/ui/sonner'
@@ -150,8 +151,14 @@ export function MainWindow() {
   // Set up global event listeners (keyboard shortcuts, etc.)
   useMainWindowEventListeners()
 
-  // Handle CMD+W keybinding to close session or worktree
-  useCloseSessionOrWorktreeKeybinding()
+  // Handle CMD+W keybinding to close session or worktree (with optional confirmation)
+  const [closeConfirmBranch, setCloseConfirmBranch] = useState<string | undefined>()
+  const [closeConfirmOpen, setCloseConfirmOpen] = useState(false)
+  const handleConfirmRequired = useCallback((branchName?: string) => {
+    setCloseConfirmBranch(branchName)
+    setCloseConfirmOpen(true)
+  }, [])
+  const { executeClose } = useCloseSessionOrWorktreeKeybinding(handleConfirmRequired)
 
   // Handle CMD+SHIFT+T to restore last archived item
   useRestoreLastArchived()
@@ -289,6 +296,12 @@ export function MainWindow() {
       <AddProjectDialog />
       <GitInitModal />
       <ArchivedModal open={archivedModalOpen} onOpenChange={setArchivedModalOpen} />
+      <CloseWorktreeDialog
+        open={closeConfirmOpen}
+        onOpenChange={setCloseConfirmOpen}
+        onConfirm={executeClose}
+        branchName={closeConfirmBranch}
+      />
       <QuitConfirmationDialog />
       <BranchConflictDialog />
       <Toaster

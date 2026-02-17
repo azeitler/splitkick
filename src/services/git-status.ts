@@ -420,29 +420,35 @@ export function useGitStatusEvents(
     unlistenPromises.push(
       listen<GitStatusEvent>('git:status-update', event => {
         const status = event.payload
+
+        // PERFORMANCE: Check existing cache before updating to detect branch changes
+        const existingStatus = queryClient.getQueryData<GitStatusEvent>(
+          gitStatusQueryKeys.worktree(status.worktree_id)
+        )
+
         // Update the query cache
         queryClient.setQueryData(
           gitStatusQueryKeys.worktree(status.worktree_id),
           status
         )
-
-        // Update worktree.branch in query cache for immediate UI update
-        const worktreesQueries = queryClient.getQueriesData<Worktree[]>({
-          queryKey: projectsQueryKeys.all,
-        })
-        for (const [key, worktrees] of worktreesQueries) {
-          if (!worktrees || !Array.isArray(worktrees)) continue
-          const idx = worktrees.findIndex(w => w.id === status.worktree_id)
-          const match = idx !== -1 ? worktrees[idx] : undefined
-          if (match && match.branch !== status.current_branch) {
-            const updated = [...worktrees]
-            const patch: Partial<Worktree> = { branch: status.current_branch }
-            // For base sessions, also update the display name to match the branch
-            if (match.session_type === 'base') {
-              patch.name = status.current_branch
+        if (!existingStatus || existingStatus.current_branch !== status.current_branch) {
+          const worktreesQueries = queryClient.getQueriesData<Worktree[]>({
+            queryKey: projectsQueryKeys.all,
+          })
+          for (const [key, worktrees] of worktreesQueries) {
+            if (!worktrees || !Array.isArray(worktrees)) continue
+            const idx = worktrees.findIndex(w => w.id === status.worktree_id)
+            const match = idx !== -1 ? worktrees[idx] : undefined
+            if (match && match.branch !== status.current_branch) {
+              const updated = [...worktrees]
+              const patch: Partial<Worktree> = { branch: status.current_branch }
+              // For base sessions, also update the display name to match the branch
+              if (match.session_type === 'base') {
+                patch.name = status.current_branch
+              }
+              updated[idx] = { ...match, ...patch }
+              queryClient.setQueryData(key, updated)
             }
-            updated[idx] = { ...match, ...patch }
-            queryClient.setQueryData(key, updated)
           }
         }
 

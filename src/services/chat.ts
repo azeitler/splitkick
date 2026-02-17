@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useCallback, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
@@ -344,10 +344,10 @@ export function useCreateSession() {
       return session
     },
     onSuccess: (newSession, { worktreeId }) => {
-      // Optimistically update cache with new session at front
+      // Optimistically update cache with new session at end (matches backend order)
       queryClient.setQueryData<WorktreeSessions>(
         chatQueryKeys.sessions(worktreeId),
-        old => (old ? { ...old, sessions: [newSession, ...old.sessions] } : old)
+        old => (old ? { ...old, sessions: [...old.sessions, newSession] } : old)
       )
       // Then invalidate for consistency
       queryClient.invalidateQueries({
@@ -438,6 +438,7 @@ export function useUpdateSessionState() {
       waitingForInputType,
       planFilePath,
       pendingPlanMessageId,
+      enabledMcpServers,
     }: {
       worktreeId: string
       worktreePath: string
@@ -460,12 +461,12 @@ export function useUpdateSessionState() {
       waitingForInputType?: 'question' | 'plan' | null
       planFilePath?: string | null
       pendingPlanMessageId?: string | null
+      enabledMcpServers?: string[] | null
     }): Promise<void> => {
       if (!isTauri()) {
         throw new Error('Not in Tauri context')
       }
 
-      logger.debug('Updating session state', { sessionId })
       await invoke('update_session_state', {
         worktreeId,
         worktreePath,
@@ -480,6 +481,7 @@ export function useUpdateSessionState() {
         waitingForInputType,
         planFilePath,
         pendingPlanMessageId,
+        enabledMcpServers,
       })
       logger.debug('Session state updated')
     },
@@ -816,7 +818,7 @@ export function useAllArchivedSessions() {
  * - Closes the base session cleanly (if it's a base session with last session)
  * - Removes the worktree (archive or delete based on removal_behavior preference)
  */
-export function useCloseSessionOrWorktreeKeybinding() {
+export function useCloseSessionOrWorktreeKeybinding(onConfirmRequired?: (branchName?: string) => void) {
   const archiveSession = useArchiveSession()
   const closeSession = useCloseSession()
   const archiveWorktree = useArchiveWorktree()
@@ -824,176 +826,212 @@ export function useCloseSessionOrWorktreeKeybinding() {
   const closeBaseSessionClean = useCloseBaseSessionClean()
   const queryClient = useQueryClient()
 
-  useEffect(() => {
-    const handleCloseSessionOrWorktree = async () => {
-      console.log('[CLOSE_LEGACY] useCloseSessionOrWorktreeKeybinding fired!')
-      const { activeWorktreeId, activeWorktreePath, getActiveSession } =
-        useChatStore.getState()
+  const executeClose = useCallback(() => {
+    const { activeWorktreeId, activeWorktreePath, getActiveSession } =
+      useChatStore.getState()
 
-      if (!activeWorktreeId || !activeWorktreePath) {
-        logger.warn('Cannot archive session: no active worktree')
+    if (!activeWorktreeId || !activeWorktreePath) {
+      logger.warn('Cannot archive session: no active worktree')
+      return
+    }
+
+    const activeSessionId = getActiveSession(activeWorktreeId)
+
+    if (!activeSessionId) {
+      logger.warn('Cannot archive session: no active session')
+      return
+    }
+
+    // Get sessions for this worktree from cache
+    const sessionsData = queryClient.getQueryData<WorktreeSessions>(
+      chatQueryKeys.sessions(activeWorktreeId)
+    )
+
+    if (!sessionsData) {
+      logger.warn('Cannot archive session: no sessions data in cache')
+      return
+    }
+
+    // Filter to non-archived sessions
+    const activeSessions = sessionsData.sessions.filter(s => !s.archived_at)
+    const sessionCount = activeSessions.length
+
+    // Read removal behavior preference from cache
+    const preferences = queryClient.getQueryData<AppPreferences>(
+      preferencesQueryKeys.preferences()
+    )
+    const shouldDelete = preferences?.removal_behavior === 'delete'
+
+    if (sessionCount > 1) {
+      // Multiple sessions: remove the current one
+      if (shouldDelete) {
+        logger.debug('Deleting session (multiple sessions exist)', {
+          sessionId: activeSessionId,
+          sessionCount,
+        })
+        closeSession.mutate({
+          worktreeId: activeWorktreeId,
+          worktreePath: activeWorktreePath,
+          sessionId: activeSessionId,
+        })
+      } else {
+        logger.debug('Archiving session (multiple sessions exist)', {
+          sessionId: activeSessionId,
+          sessionCount,
+        })
+        archiveSession.mutate({
+          worktreeId: activeWorktreeId,
+          worktreePath: activeWorktreePath,
+          sessionId: activeSessionId,
+        })
+      }
+    } else {
+      // Last session: archive the worktree (which archives sessions automatically)
+      // First, find the worktree to get project info
+      const worktreeQueries = queryClient
+        .getQueryCache()
+        .findAll({ queryKey: [...projectsQueryKeys.all, 'worktrees'] })
+
+      let worktree: Worktree | undefined
+      let projectId: string | undefined
+
+      for (const query of worktreeQueries) {
+        const worktrees = query.state.data as Worktree[] | undefined
+        if (worktrees) {
+          const found = worktrees.find(w => w.id === activeWorktreeId)
+          if (found) {
+            worktree = found
+            projectId = found.project_id
+            break
+          }
+        }
+      }
+
+      if (!worktree || !projectId) {
+        logger.warn('Cannot archive worktree: worktree not found in cache')
         return
       }
 
-      const activeSessionId = getActiveSession(activeWorktreeId)
-
-      if (!activeSessionId) {
-        logger.warn('Cannot archive session: no active session')
-        return
-      }
-
-      // Get sessions for this worktree from cache
-      const sessionsData = queryClient.getQueryData<WorktreeSessions>(
-        chatQueryKeys.sessions(activeWorktreeId)
+      // For both base sessions and regular worktrees, archive the worktree
+      // First, find the previous worktree to select after archiving
+      const projectWorktrees = queryClient.getQueryData<Worktree[]>(
+        projectsQueryKeys.worktrees(projectId)
       )
 
-      if (!sessionsData) {
-        logger.warn('Cannot archive session: no sessions data in cache')
-        return
+      if (projectWorktrees && projectWorktrees.length > 1) {
+        // Sort worktrees same as WorktreeList: base sessions first, then by created_at (newest first)
+        const sortedWorktrees = [...projectWorktrees]
+          .filter(w => w.status !== 'pending' && w.status !== 'deleting')
+          .sort((a, b) => {
+            const aIsBase = isBaseSession(a)
+            const bIsBase = isBaseSession(b)
+            if (aIsBase && !bIsBase) return -1
+            if (!aIsBase && bIsBase) return 1
+            return b.created_at - a.created_at
+          })
+
+        const currentIndex = sortedWorktrees.findIndex(
+          w => w.id === activeWorktreeId
+        )
+
+        if (currentIndex !== -1) {
+          // Select the previous worktree, or the next one if we're at the beginning
+          const newIndex =
+            currentIndex > 0 ? currentIndex - 1 : currentIndex + 1
+          const newWorktree = sortedWorktrees[newIndex]
+
+          if (newWorktree) {
+            logger.debug('Pre-selecting worktree before archiving', {
+              newWorktreeId: newWorktree.id,
+            })
+            const { selectWorktree } = useProjectsStore.getState()
+            selectWorktree(newWorktree.id)
+            const { setActiveWorktree } = useChatStore.getState()
+            setActiveWorktree(newWorktree.id, newWorktree.path)
+          }
+        }
+      } else {
+        // No other worktrees, select the project
+        logger.debug(
+          'Pre-selecting project before archiving (no other worktrees)',
+          {
+            projectId,
+          }
+        )
+        const { selectProject } = useProjectsStore.getState()
+        selectProject(projectId)
+        const { clearActiveWorktree } = useChatStore.getState()
+        clearActiveWorktree()
       }
 
-      // Filter to non-archived sessions
-      const activeSessions = sessionsData.sessions.filter(s => !s.archived_at)
-      const sessionCount = activeSessions.length
+      // For base sessions, close cleanly (no session preservation)
+      if (isBaseSession(worktree)) {
+        logger.debug('Closing base session cleanly (last session)', {
+          worktreeId: activeWorktreeId,
+          projectId,
+        })
+        closeBaseSessionClean.mutate({
+          worktreeId: activeWorktreeId,
+          projectId,
+        })
+      } else if (shouldDelete) {
+        logger.debug('Deleting worktree (last session)', {
+          worktreeId: activeWorktreeId,
+          projectId,
+        })
+        deleteWorktree.mutate({
+          worktreeId: activeWorktreeId,
+          projectId,
+        })
+      } else {
+        logger.debug('Archiving worktree (last session)', {
+          worktreeId: activeWorktreeId,
+          projectId,
+        })
+        archiveWorktree.mutate({
+          worktreeId: activeWorktreeId,
+          projectId,
+        })
+      }
+    }
+  }, [
+    archiveSession,
+    closeSession,
+    archiveWorktree,
+    deleteWorktree,
+    closeBaseSessionClean,
+    queryClient,
+  ])
 
-      // Read removal behavior preference from cache
+  useEffect(() => {
+    const handleCloseSessionOrWorktree = () => {
+      console.log('[CLOSE_LEGACY] useCloseSessionOrWorktreeKeybinding fired!')
+
+      // Check if confirmation is required
       const preferences = queryClient.getQueryData<AppPreferences>(
         preferencesQueryKeys.preferences()
       )
-      const shouldDelete = preferences?.removal_behavior === 'delete'
-
-      if (sessionCount > 1) {
-        // Multiple sessions: remove the current one
-        if (shouldDelete) {
-          logger.debug('Deleting session (multiple sessions exist)', {
-            sessionId: activeSessionId,
-            sessionCount,
-          })
-          closeSession.mutate({
-            worktreeId: activeWorktreeId,
-            worktreePath: activeWorktreePath,
-            sessionId: activeSessionId,
-          })
-        } else {
-          logger.debug('Archiving session (multiple sessions exist)', {
-            sessionId: activeSessionId,
-            sessionCount,
-          })
-          archiveSession.mutate({
-            worktreeId: activeWorktreeId,
-            worktreePath: activeWorktreePath,
-            sessionId: activeSessionId,
-          })
-        }
-      } else {
-        // Last session: archive the worktree (which archives sessions automatically)
-        // First, find the worktree to get project info
-        const worktreeQueries = queryClient
-          .getQueryCache()
-          .findAll({ queryKey: [...projectsQueryKeys.all, 'worktrees'] })
-
-        let worktree: Worktree | undefined
-        let projectId: string | undefined
-
-        for (const query of worktreeQueries) {
-          const worktrees = query.state.data as Worktree[] | undefined
-          if (worktrees) {
-            const found = worktrees.find(w => w.id === activeWorktreeId)
+      if (preferences?.confirm_session_close !== false && onConfirmRequired) {
+        // Find branch name for the dialog
+        const { activeWorktreeId } = useChatStore.getState()
+        if (activeWorktreeId) {
+          const worktreeQueries = queryClient
+            .getQueryCache()
+            .findAll({ queryKey: [...projectsQueryKeys.all, 'worktrees'] })
+          for (const query of worktreeQueries) {
+            const worktrees = query.state.data as Worktree[] | undefined
+            const found = worktrees?.find(w => w.id === activeWorktreeId)
             if (found) {
-              worktree = found
-              projectId = found.project_id
-              break
+              onConfirmRequired(found.branch)
+              return
             }
           }
         }
-
-        if (!worktree || !projectId) {
-          logger.warn('Cannot archive worktree: worktree not found in cache')
-          return
-        }
-
-        // For both base sessions and regular worktrees, archive the worktree
-        // First, find the previous worktree to select after archiving
-        const projectWorktrees = queryClient.getQueryData<Worktree[]>(
-          projectsQueryKeys.worktrees(projectId)
-        )
-
-        if (projectWorktrees && projectWorktrees.length > 1) {
-          // Sort worktrees same as WorktreeList: base sessions first, then by created_at (newest first)
-          const sortedWorktrees = [...projectWorktrees]
-            .filter(w => w.status !== 'pending' && w.status !== 'deleting')
-            .sort((a, b) => {
-              const aIsBase = isBaseSession(a)
-              const bIsBase = isBaseSession(b)
-              if (aIsBase && !bIsBase) return -1
-              if (!aIsBase && bIsBase) return 1
-              return b.created_at - a.created_at
-            })
-
-          const currentIndex = sortedWorktrees.findIndex(
-            w => w.id === activeWorktreeId
-          )
-
-          if (currentIndex !== -1) {
-            // Select the previous worktree, or the next one if we're at the beginning
-            const newIndex =
-              currentIndex > 0 ? currentIndex - 1 : currentIndex + 1
-            const newWorktree = sortedWorktrees[newIndex]
-
-            if (newWorktree) {
-              logger.debug('Pre-selecting worktree before archiving', {
-                newWorktreeId: newWorktree.id,
-              })
-              const { selectWorktree } = useProjectsStore.getState()
-              selectWorktree(newWorktree.id)
-              const { setActiveWorktree } = useChatStore.getState()
-              setActiveWorktree(newWorktree.id, newWorktree.path)
-            }
-          }
-        } else {
-          // No other worktrees, select the project
-          logger.debug(
-            'Pre-selecting project before archiving (no other worktrees)',
-            {
-              projectId,
-            }
-          )
-          const { selectProject } = useProjectsStore.getState()
-          selectProject(projectId)
-          const { clearActiveWorktree } = useChatStore.getState()
-          clearActiveWorktree()
-        }
-
-        // For base sessions, close cleanly (no session preservation)
-        if (isBaseSession(worktree)) {
-          logger.debug('Closing base session cleanly (last session)', {
-            worktreeId: activeWorktreeId,
-            projectId,
-          })
-          closeBaseSessionClean.mutate({
-            worktreeId: activeWorktreeId,
-            projectId,
-          })
-        } else if (shouldDelete) {
-          logger.debug('Deleting worktree (last session)', {
-            worktreeId: activeWorktreeId,
-            projectId,
-          })
-          deleteWorktree.mutate({
-            worktreeId: activeWorktreeId,
-            projectId,
-          })
-        } else {
-          logger.debug('Archiving worktree (last session)', {
-            worktreeId: activeWorktreeId,
-            projectId,
-          })
-          archiveWorktree.mutate({
-            worktreeId: activeWorktreeId,
-            projectId,
-          })
-        }
+        onConfirmRequired()
+        return
       }
+
+      executeClose()
     }
 
     window.addEventListener(
@@ -1005,14 +1043,9 @@ export function useCloseSessionOrWorktreeKeybinding() {
         'close-session-or-worktree',
         handleCloseSessionOrWorktree
       )
-  }, [
-    archiveSession,
-    closeSession,
-    archiveWorktree,
-    deleteWorktree,
-    closeBaseSessionClean,
-    queryClient,
-  ])
+  }, [queryClient, onConfirmRequired, executeClose])
+
+  return { executeClose }
 }
 
 /**

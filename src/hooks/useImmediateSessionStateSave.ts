@@ -10,17 +10,18 @@ import type { LabelData } from '@/types/chat'
  * Fixes the issue where debounced saves don't complete before app close.
  */
 export function useImmediateSessionStateSave() {
-  // Track previous values to detect changes
+  // PERFORMANCE: Track previous references (not spreads) to short-circuit early.
+  // Zustand creates new object references on mutation, so referential equality
+  // tells us if the specific record changed — no need to iterate entries.
   const prevReviewingRef = useRef<Record<string, boolean>>({})
   const prevWaitingRef = useRef<Record<string, boolean>>({})
   const prevLabelsRef = useRef<Record<string, LabelData>>({})
 
   useEffect(() => {
-    // Initialize with current state
     const initialState = useChatStore.getState()
-    prevReviewingRef.current = { ...initialState.reviewingSessions }
-    prevWaitingRef.current = { ...initialState.waitingForInputSessionIds }
-    prevLabelsRef.current = { ...initialState.sessionLabels }
+    prevReviewingRef.current = initialState.reviewingSessions
+    prevWaitingRef.current = initialState.waitingForInputSessionIds
+    prevLabelsRef.current = initialState.sessionLabels
 
     const unsubscribe = useChatStore.subscribe(state => {
       const {
@@ -31,64 +32,66 @@ export function useImmediateSessionStateSave() {
         worktreePaths,
       } = state
 
-      // Check for reviewing changes
-      for (const [sessionId, isReviewing] of Object.entries(
-        reviewingSessions
-      )) {
-        if (prevReviewingRef.current[sessionId] !== isReviewing) {
-          saveSessionStatus(sessionId, sessionWorktreeMap, worktreePaths, {
-            isReviewing,
-          })
+      // Short-circuit: skip all iteration if no relevant record changed
+      const reviewingChanged = reviewingSessions !== prevReviewingRef.current
+      const waitingChanged = waitingForInputSessionIds !== prevWaitingRef.current
+      const labelsChanged = sessionLabels !== prevLabelsRef.current
+
+      if (!reviewingChanged && !waitingChanged && !labelsChanged) return
+
+      if (reviewingChanged) {
+        for (const [sessionId, isReviewing] of Object.entries(reviewingSessions)) {
+          if (prevReviewingRef.current[sessionId] !== isReviewing) {
+            saveSessionStatus(sessionId, sessionWorktreeMap, worktreePaths, {
+              isReviewing,
+            })
+          }
         }
-      }
-      // Check for removed entries (session marked as not reviewing)
-      for (const sessionId of Object.keys(prevReviewingRef.current)) {
-        if (!(sessionId in reviewingSessions)) {
-          saveSessionStatus(sessionId, sessionWorktreeMap, worktreePaths, {
-            isReviewing: false,
-          })
+        for (const sessionId of Object.keys(prevReviewingRef.current)) {
+          if (!(sessionId in reviewingSessions)) {
+            saveSessionStatus(sessionId, sessionWorktreeMap, worktreePaths, {
+              isReviewing: false,
+            })
+          }
         }
+        prevReviewingRef.current = reviewingSessions
       }
 
-      // Check for waiting changes
-      for (const [sessionId, isWaiting] of Object.entries(
-        waitingForInputSessionIds
-      )) {
-        if (prevWaitingRef.current[sessionId] !== isWaiting) {
-          saveSessionStatus(sessionId, sessionWorktreeMap, worktreePaths, {
-            waitingForInput: isWaiting,
-          })
+      if (waitingChanged) {
+        for (const [sessionId, isWaiting] of Object.entries(waitingForInputSessionIds)) {
+          if (prevWaitingRef.current[sessionId] !== isWaiting) {
+            saveSessionStatus(sessionId, sessionWorktreeMap, worktreePaths, {
+              waitingForInput: isWaiting,
+            })
+          }
         }
-      }
-      // Check for removed entries (session no longer waiting)
-      for (const sessionId of Object.keys(prevWaitingRef.current)) {
-        if (!(sessionId in waitingForInputSessionIds)) {
-          saveSessionStatus(sessionId, sessionWorktreeMap, worktreePaths, {
-            waitingForInput: false,
-          })
+        for (const sessionId of Object.keys(prevWaitingRef.current)) {
+          if (!(sessionId in waitingForInputSessionIds)) {
+            saveSessionStatus(sessionId, sessionWorktreeMap, worktreePaths, {
+              waitingForInput: false,
+            })
+          }
         }
-      }
-
-      // Check for label changes
-      for (const [sessionId, label] of Object.entries(sessionLabels)) {
-        if (JSON.stringify(prevLabelsRef.current[sessionId]) !== JSON.stringify(label)) {
-          saveSessionStatus(sessionId, sessionWorktreeMap, worktreePaths, {
-            label,
-          })
-        }
-      }
-      // Check for removed labels
-      for (const sessionId of Object.keys(prevLabelsRef.current)) {
-        if (!(sessionId in sessionLabels)) {
-          saveSessionStatus(sessionId, sessionWorktreeMap, worktreePaths, {
-            label: null,
-          })
-        }
+        prevWaitingRef.current = waitingForInputSessionIds
       }
 
-      prevReviewingRef.current = { ...reviewingSessions }
-      prevWaitingRef.current = { ...waitingForInputSessionIds }
-      prevLabelsRef.current = { ...sessionLabels }
+      if (labelsChanged) {
+        for (const [sessionId, label] of Object.entries(sessionLabels)) {
+          if (JSON.stringify(prevLabelsRef.current[sessionId]) !== JSON.stringify(label)) {
+            saveSessionStatus(sessionId, sessionWorktreeMap, worktreePaths, {
+              label,
+            })
+          }
+        }
+        for (const sessionId of Object.keys(prevLabelsRef.current)) {
+          if (!(sessionId in sessionLabels)) {
+            saveSessionStatus(sessionId, sessionWorktreeMap, worktreePaths, {
+              label: null,
+            })
+          }
+        }
+        prevLabelsRef.current = sessionLabels
+      }
     })
 
     return unsubscribe

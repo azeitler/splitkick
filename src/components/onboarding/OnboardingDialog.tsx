@@ -511,13 +511,13 @@ function OnboardingDialogContent() {
 
   return (
     <Dialog open={onboardingOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[calc(100vw-4rem)] h-[calc(100vh-4rem)] flex flex-col">
         <DialogHeader>
           <DialogTitle className="text-xl">{dialogContent.title}</DialogTitle>
           <DialogDescription>{dialogContent.description}</DialogDescription>
         </DialogHeader>
 
-        <div className="py-4">
+        <div className="flex-1 overflow-y-auto py-4">
           {renderStepIndicator()}
 
           {step === 'complete' ? (

@@ -168,6 +168,8 @@ export interface Session {
   plan_file_path?: string
   /** Message ID of the pending plan awaiting approval (for Canvas view) */
   pending_plan_message_id?: string
+  /** Per-session MCP server override (undefined = inherit from project/global) */
+  enabled_mcp_servers?: string[]
   /** Persisted session digest (recap summary) */
   digest?: SessionDigest
   /** Status of the last run (for immediate status on app restart) */

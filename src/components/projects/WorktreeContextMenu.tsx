@@ -139,6 +139,7 @@ export function WorktreeContextMenu({
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault()
+              e.stopPropagation()
               handleDelete()
               setShowDeleteConfirm(false)
             }
@@ -159,6 +160,7 @@ export function WorktreeContextMenu({
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Delete
+              <kbd className="ml-1.5 text-xs opacity-70">↵</kbd>
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

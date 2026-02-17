@@ -136,6 +136,7 @@ describe('preferences service', () => {
         default_provider: null,
         canvas_layout: 'grid',
         auto_pull_base_branch: true,
+        confirm_session_close: true,
       }
       vi.mocked(invoke).mockResolvedValueOnce(mockPreferences)
 
@@ -239,6 +240,7 @@ describe('preferences service', () => {
         default_provider: null,
         canvas_layout: 'grid',
         auto_pull_base_branch: true,
+        confirm_session_close: true,
       }
       vi.mocked(invoke).mockResolvedValueOnce(prefsWithOldBinding)
 
@@ -319,6 +321,7 @@ describe('preferences service', () => {
         default_provider: null,
         canvas_layout: 'grid',
         auto_pull_base_branch: true,
+        confirm_session_close: true,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -397,6 +400,7 @@ describe('preferences service', () => {
         default_provider: null,
         canvas_layout: 'grid',
         auto_pull_base_branch: true,
+        confirm_session_close: true,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -475,6 +479,7 @@ describe('preferences service', () => {
         default_provider: null,
         canvas_layout: 'grid',
         auto_pull_base_branch: true,
+        confirm_session_close: true,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -551,6 +556,7 @@ describe('preferences service', () => {
         default_provider: null,
         canvas_layout: 'grid',
         auto_pull_base_branch: true,
+        confirm_session_close: true,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {

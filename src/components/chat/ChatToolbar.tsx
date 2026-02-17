@@ -624,7 +624,7 @@ export const ChatToolbar = memo(function ChatToolbar({
   const canSend = hasInputValue || hasPendingAttachments
 
   return (
-    <div className="@container px-4 py-2 md:px-6">
+    <div className="@container flex justify-center px-4 py-2 md:px-6">
       {/* Controls - segmented button group */}
       <div className="inline-flex items-center rounded-lg bg-muted/50">
         {/* Mobile overflow menu - only visible on small screens */}
@@ -1185,13 +1185,11 @@ export const ChatToolbar = memo(function ChatToolbar({
                 <button
                   type="button"
                   disabled={hasPendingQuestions || providerLocked}
-                  className={cn(
-                    'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
-                    selectedProvider && selectedProvider !== '__anthropic__'
-                      ? 'border border-blue-500/50 bg-blue-500/10 text-blue-700 dark:border-blue-400/40 dark:bg-blue-500/10 dark:text-blue-400'
-                      : 'text-muted-foreground'
-                  )}
+                  className="hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
                 >
+                  {selectedProvider && selectedProvider !== '__anthropic__' && (
+                    <span className="h-2 w-2 rounded-full bg-blue-500 dark:bg-blue-400" />
+                  )}
                   <span>{!selectedProvider || selectedProvider === '__anthropic__' ? 'Anthropic' : selectedProvider}</span>
                   <ChevronDown className="h-3 w-3 opacity-50" />
                 </button>
@@ -1261,13 +1259,9 @@ export const ChatToolbar = memo(function ChatToolbar({
                   <button
                     type="button"
                     disabled={hasPendingQuestions}
-                    className={cn(
-                      'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
-                      !thinkingOverrideActive &&
-                        'border border-purple-500/50 bg-purple-500/10 text-purple-700 dark:border-purple-400/40 dark:bg-purple-500/10 dark:text-purple-400'
-                    )}
+                    className="hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
                   >
-                    <Brain className="h-3.5 w-3.5" />
+                    <Brain className={cn('h-3.5 w-3.5', !thinkingOverrideActive && 'text-purple-600 dark:text-purple-400')} />
                     <span>
                       {thinkingOverrideActive
                         ? 'Off'
@@ -1313,14 +1307,9 @@ export const ChatToolbar = memo(function ChatToolbar({
                   <button
                     type="button"
                     disabled={hasPendingQuestions}
-                    className={cn(
-                      'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
-                      selectedThinkingLevel !== 'off' &&
-                        !thinkingOverrideActive &&
-                        'border border-purple-500/50 bg-purple-500/10 text-purple-700 dark:border-purple-400/40 dark:bg-purple-500/10 dark:text-purple-400'
-                    )}
+                    className="hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
                   >
-                    <Brain className="h-3.5 w-3.5" />
+                    <Brain className={cn('h-3.5 w-3.5', selectedThinkingLevel !== 'off' && !thinkingOverrideActive && 'text-purple-600 dark:text-purple-400')} />
                     <span>
                       {thinkingOverrideActive
                         ? 'Off'
@@ -1371,21 +1360,15 @@ export const ChatToolbar = memo(function ChatToolbar({
                 <button
                   type="button"
                   disabled={hasPendingQuestions}
-                  className={cn(
-                    'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
-                    executionMode === 'plan' &&
-                      'border border-yellow-600/50 bg-yellow-500/10 text-yellow-700 dark:border-yellow-500/40 dark:bg-yellow-500/10 dark:text-yellow-400',
-                    executionMode === 'yolo' &&
-                      'border border-red-500/50 bg-red-500/10 text-red-600 dark:border-red-400/40 dark:text-red-400'
-                  )}
+                  className="hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
                 >
                   {executionMode === 'plan' && (
-                    <ClipboardList className="h-3.5 w-3.5" />
+                    <ClipboardList className="h-3.5 w-3.5 text-yellow-600 dark:text-yellow-400" />
                   )}
                   {executionMode === 'build' && (
                     <Hammer className="h-3.5 w-3.5" />
                   )}
-                  {executionMode === 'yolo' && <Zap className="h-3.5 w-3.5" />}
+                  {executionMode === 'yolo' && <Zap className="h-3.5 w-3.5 text-red-500 dark:text-red-400" />}
                   <span className="capitalize">{executionMode}</span>
                   <ChevronDown className="h-3 w-3 opacity-50" />
                 </button>
@@ -1436,13 +1419,9 @@ export const ChatToolbar = memo(function ChatToolbar({
                 <button
                   type="button"
                   disabled={hasPendingQuestions}
-                  className={cn(
-                    'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
-                    activeMcpCount > 0 &&
-                      'border border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:border-emerald-400/40 dark:bg-emerald-500/10 dark:text-emerald-400'
-                  )}
+                  className="hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
                 >
-                  <Plug className="h-3.5 w-3.5" />
+                  <Plug className={cn('h-3.5 w-3.5', activeMcpCount > 0 && 'text-emerald-600 dark:text-emerald-400')} />
                   {activeMcpCount > 0 && <span>{activeMcpCount}</span>}
                   <ChevronDown className="h-3 w-3 opacity-50" />
                 </button>

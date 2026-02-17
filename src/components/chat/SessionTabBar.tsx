@@ -213,10 +213,9 @@ function SortableTab({
         </>
       )}
 
-      {/* Close button (hidden while sending) */}
+      {/* Close button */}
       {/* Show close button if: multiple sessions OR (last session AND canCloseLastSession) */}
       {(sessionsCount > 1 || canCloseLastSession) &&
-        !isSessionSending &&
         !isEditing && (
           <button
             type="button"
@@ -313,7 +312,7 @@ function DropdownSessionItem({
 
       {/* Close button */}
       {/* Show close button if: multiple sessions OR (last session AND canCloseLastSession) */}
-      {(sessionsCount > 1 || canCloseLastSession) && !isSessionSending && (
+      {(sessionsCount > 1 || canCloseLastSession) && (
         <button
           type="button"
           onClick={e => onCloseSession(e, session.id)}
@@ -350,6 +349,8 @@ interface SessionGroupDropdownProps {
   activeSessionId: string | undefined
   reviewingSessions: Record<string, boolean>
   sessionDigests: Record<string, import('@/types/chat').SessionDigest>
+  /** Total number of sessions across all groups */
+  totalSessionsCount: number
   /** Whether closing the last session is allowed (true for base sessions) */
   canCloseLastSession: boolean
   onTabClick: (sessionId: string) => void
@@ -404,6 +405,7 @@ function SessionGroupDropdown({
   sessions,
   activeSessionId,
   reviewingSessions,
+  totalSessionsCount,
   canCloseLastSession,
   sessionDigests,
   onTabClick,
@@ -518,7 +520,7 @@ function SessionGroupDropdown({
                 isSessionWaiting={state.isWaiting}
                 isSessionReviewing={isSessionReviewing}
                 sessionExecutionMode={state.executionMode}
-                sessionsCount={sessions.length}
+                sessionsCount={totalSessionsCount}
                 canCloseLastSession={canCloseLastSession}
                 hasDigest={!!(sessionDigests[state.id] || state.session.digest)}
                 hasPlan={!!state.session.plan_file_path}
@@ -586,7 +588,6 @@ export function SessionTabBar({
     setActiveSession,
     setViewingCanvasTab,
     getActiveSession,
-    isSending,
   } = useChatStore.getState()
 
   // Editing state for renaming
@@ -696,11 +697,6 @@ export function SessionTabBar({
     (e: React.MouseEvent, sessionId: string) => {
       e.stopPropagation()
 
-      // Don't close if this session is sending
-      if (isSending(sessionId)) {
-        return
-      }
-
       // Check if this is the last session (for base session clean close)
       const nonArchivedSessions =
         sessionsData?.sessions.filter(s => !s.archived_at) ?? []
@@ -754,7 +750,6 @@ export function SessionTabBar({
       closeSession,
       closeBaseSessionClean,
       setActiveSession,
-      isSending,
     ]
   )
 
@@ -1139,6 +1134,7 @@ export function SessionTabBar({
 
                 reviewingSessions={reviewingSessions}
                 sessionDigests={sessionDigests}
+                totalSessionsCount={sessionStates.length}
                 canCloseLastSession={isBase}
                 onTabClick={handleTabClick}
                 onCloseSession={handleCloseSession}
@@ -1151,6 +1147,7 @@ export function SessionTabBar({
 
                 reviewingSessions={reviewingSessions}
                 sessionDigests={sessionDigests}
+                totalSessionsCount={sessionStates.length}
                 canCloseLastSession={isBase}
                 onTabClick={handleTabClick}
                 onCloseSession={handleCloseSession}
@@ -1163,6 +1160,7 @@ export function SessionTabBar({
 
                 reviewingSessions={reviewingSessions}
                 sessionDigests={sessionDigests}
+                totalSessionsCount={sessionStates.length}
                 canCloseLastSession={isBase}
                 onTabClick={handleTabClick}
                 onCloseSession={handleCloseSession}
@@ -1175,6 +1173,7 @@ export function SessionTabBar({
 
                 reviewingSessions={reviewingSessions}
                 sessionDigests={sessionDigests}
+                totalSessionsCount={sessionStates.length}
                 canCloseLastSession={isBase}
                 onTabClick={handleTabClick}
                 onCloseSession={handleCloseSession}
@@ -1187,6 +1186,7 @@ export function SessionTabBar({
 
                 reviewingSessions={reviewingSessions}
                 sessionDigests={sessionDigests}
+                totalSessionsCount={sessionStates.length}
                 canCloseLastSession={isBase}
                 onTabClick={handleTabClick}
                 onCloseSession={handleCloseSession}
@@ -1199,6 +1199,7 @@ export function SessionTabBar({
 
                 reviewingSessions={reviewingSessions}
                 sessionDigests={sessionDigests}
+                totalSessionsCount={sessionStates.length}
                 canCloseLastSession={isBase}
                 onTabClick={handleTabClick}
                 onCloseSession={handleCloseSession}

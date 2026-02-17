@@ -1175,6 +1175,8 @@ pub async fn dispatch_command(
                 field_opt(&args, "clearLabel", "clear_label")?;
             let review_results: Option<Option<serde_json::Value>> =
                 field_opt(&args, "reviewResults", "review_results")?;
+            let enabled_mcp_servers: Option<Option<Vec<String>>> =
+                field_opt(&args, "enabledMcpServers", "enabled_mcp_servers")?;
             crate::chat::update_session_state(
                 app.clone(),
                 worktree_id,
@@ -1193,6 +1195,7 @@ pub async fn dispatch_command(
                 label,
                 clear_label,
                 review_results,
+                enabled_mcp_servers,
             )
             .await?;
             emit_cache_invalidation(app, &["sessions"]);
