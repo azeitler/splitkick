@@ -24,7 +24,7 @@ import {
 import type { ReviewResponse } from '@/types/projects'
 
 /** Available Claude models */
-export type ClaudeModel = 'opus' | 'opus-4.5' | 'sonnet' | 'haiku'
+export type ClaudeModel = 'opus' | 'opus-4.5' | 'sonnet' | 'sonnet-4.5' | 'haiku'
 
 /** Default model to use when none is selected (fallback only - preferences take priority) */
 export const DEFAULT_MODEL: ClaudeModel = 'opus'

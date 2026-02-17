@@ -480,7 +480,7 @@ export function resolveMagicPromptProvider(
 // Note: Field names use snake_case to match Rust struct exactly
 export interface AppPreferences {
   theme: string
-  selected_model: ClaudeModel // Claude model: 'opus' | 'sonnet' | 'haiku'
+  selected_model: ClaudeModel // Claude model ID passed to --model flag
   thinking_level: ThinkingLevel // Thinking level: 'off' | 'think' | 'megathink' | 'ultrathink'
   default_effort_level: EffortLevel // Effort level for Opus 4.6 adaptive thinking: 'low' | 'medium' | 'high' | 'max'
   terminal: TerminalApp // Terminal app: 'terminal' | 'warp' | 'ghostty'
@@ -626,12 +626,13 @@ export const fileEditModeOptions: { value: FileEditMode; label: string }[] = [
   { value: 'external', label: 'External editor' },
 ]
 
-export type ClaudeModel = 'opus' | 'opus-4.5' | 'sonnet' | 'haiku'
+export type ClaudeModel = 'opus' | 'opus-4.5' | 'sonnet' | 'sonnet-4.5' | 'haiku'
 
 export const modelOptions: { value: ClaudeModel; label: string }[] = [
   { value: 'opus', label: 'Claude Opus 4.6' },
   { value: 'opus-4.5', label: 'Claude Opus 4.5' },
-  { value: 'sonnet', label: 'Claude Sonnet' },
+  { value: 'sonnet', label: 'Claude Sonnet 4.6' },
+  { value: 'sonnet-4.5', label: 'Claude Sonnet 4.5' },
   { value: 'haiku', label: 'Claude Haiku' },
 ]
 

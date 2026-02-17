@@ -305,3 +305,13 @@ Images pasted or dropped into chat are processed before saving (`process_image()
 - **Performance**: Uses `Triangle` (bilinear) filter for resize, runs in `spawn_blocking` to avoid blocking async runtime.
 - **Token cost**: `(width × height) / 750` tokens per image. Max optimal size (~1568×1568) ≈ 3,280 tokens.
 - **Reference**: https://platform.claude.com/docs/en/build-with-claude/vision
+
+#### Adding a New Claude Model
+
+Three files need updating when adding a new model option:
+
+1. **`src/types/preferences.ts`** — Add to `ClaudeModel` type union and `modelOptions` array (full labels like "Claude Sonnet 4.6"). Model IDs use short names: `opus`, `opus-4.5`, `sonnet`, `sonnet-4.5`, `haiku`
+2. **`src/store/chat-store.ts`** — Add to duplicated `ClaudeModel` type union (line ~27)
+3. **`src/components/chat/ChatToolbar.tsx`** — Add to `MODEL_OPTIONS` array (short labels like "Sonnet 4.6")
+
+No Rust changes needed — model is stored as `String` in `AppPreferences` and passed directly to `--model` CLI flag.

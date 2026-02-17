@@ -94,7 +94,8 @@ import {
 export const MODEL_OPTIONS: { value: ClaudeModel; label: string }[] = [
   { value: 'opus', label: 'Opus 4.6' },
   { value: 'opus-4.5', label: 'Opus 4.5' },
-  { value: 'sonnet', label: 'Sonnet' },
+  { value: 'sonnet', label: 'Sonnet 4.6' },
+  { value: 'sonnet-4.5', label: 'Sonnet 4.5' },
   { value: 'haiku', label: 'Haiku' },
 ]
 
