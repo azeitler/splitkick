@@ -45,13 +45,6 @@ import {
   TooltipContent,
 } from '@/components/ui/tooltip'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -624,15 +617,15 @@ export const ChatToolbar = memo(function ChatToolbar({
   const canSend = hasInputValue || hasPendingAttachments
 
   return (
-    <div className="@container flex justify-center px-4 py-2 md:px-6">
+    <div className="@container flex justify-start px-4 py-2 md:px-6">
       {/* Controls - segmented button group */}
-      <div className="inline-flex items-center rounded-lg bg-muted/50">
+      <div className="inline-flex max-w-full flex-nowrap items-center overflow-hidden whitespace-nowrap rounded-lg bg-muted/50">
         {/* Mobile overflow menu - only visible on small screens */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="flex @md:hidden h-8 items-center gap-1 rounded-l-lg px-2 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+              className="flex @xl:hidden h-8 items-center gap-1 rounded-l-lg px-2 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
               disabled={isDisabled}
             >
               <MoreHorizontal className="h-4 w-4" />
@@ -804,10 +797,10 @@ export const ChatToolbar = memo(function ChatToolbar({
 
             <DropdownMenuSeparator />
 
-            {/* Provider selector as submenu */}
-            {customCliProfiles.length > 0 && (
+            {/* Provider selector as submenu - only when NOT locked */}
+            {customCliProfiles.length > 0 && !providerLocked && (
               <DropdownMenuSub>
-                <DropdownMenuSubTrigger disabled={providerLocked}>
+                <DropdownMenuSubTrigger>
                   <Sparkles className="mr-2 h-4 w-4" />
                   <span>Provider</span>
                   <span className="ml-auto text-xs text-muted-foreground">
@@ -843,7 +836,7 @@ export const ChatToolbar = memo(function ChatToolbar({
               </DropdownMenuSub>
             )}
 
-            {/* Model selector as submenu */}
+            {/* Model selector as submenu (includes provider info when locked) */}
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
                 <Sparkles className="mr-2 h-4 w-4" />
@@ -853,6 +846,14 @@ export const ChatToolbar = memo(function ChatToolbar({
                 </span>
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
+                {providerLocked && customCliProfiles.length > 0 && (
+                  <>
+                    <DropdownMenuLabel className="text-xs text-muted-foreground">
+                      Provider: {!selectedProvider || selectedProvider === '__anthropic__' ? 'Anthropic' : selectedProvider}
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                  </>
+                )}
                 <DropdownMenuRadioGroup
                   value={selectedModel}
                   onValueChange={handleModelChange}
@@ -978,19 +979,16 @@ export const ChatToolbar = memo(function ChatToolbar({
         </DropdownMenu>
 
         {/* Divider after overflow menu - mobile only */}
-        <div className="block @md:hidden h-4 w-px bg-border/50" />
+        <div className="block @xl:hidden h-4 w-px bg-border/50" />
 
         {/* Magic modal button - desktop only */}
         <button
           type="button"
-          className="hidden @md:flex h-8 items-center gap-1 rounded-l-lg px-2 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+          className="hidden @xl:flex h-8 items-center gap-1 rounded-l-lg px-2 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
           disabled={isDisabled}
           onClick={onOpenMagicModal}
         >
           <Wand2 className="h-3.5 w-3.5" />
-          <Kbd className="ml-0.5 h-4 text-[10px] opacity-50">
-            {magicModalShortcut}
-          </Kbd>
         </button>
 
         {/* Issue/PR/Context dropdown - desktop only */}
@@ -998,12 +996,12 @@ export const ChatToolbar = memo(function ChatToolbar({
           loadedPRCount > 0 ||
           loadedContextCount > 0) && (
           <>
-            <div className="hidden @md:block h-4 w-px bg-border/50" />
+            <div className="hidden @xl:block h-4 w-px bg-border/50" />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  className="hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
+                  className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
                 >
                   <CircleDot className="h-3.5 w-3.5" />
                   <span>
@@ -1121,7 +1119,7 @@ export const ChatToolbar = memo(function ChatToolbar({
         {/* PR link indicator - desktop only */}
         {prUrl && prNumber && (
           <>
-            <div className="hidden @md:block h-4 w-px bg-border/50" />
+            <div className="hidden @xl:block h-4 w-px bg-border/50" />
             <Tooltip>
               <TooltipTrigger asChild>
                 <a
@@ -1129,7 +1127,7 @@ export const ChatToolbar = memo(function ChatToolbar({
                   target="_blank"
                   rel="noopener noreferrer"
                   className={cn(
-                    'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm transition-colors select-none hover:bg-muted/80 hover:text-foreground',
+                    'hidden @xl:flex h-8 items-center gap-1.5 px-3 text-sm transition-colors select-none hover:bg-muted/80 hover:text-foreground',
                     displayStatus
                       ? getPrStatusDisplay(displayStatus).className
                       : 'text-muted-foreground'
@@ -1157,12 +1155,12 @@ export const ChatToolbar = memo(function ChatToolbar({
         {/* PR conflicts indicator - desktop only */}
         {mergeableStatus === 'conflicting' && (
           <>
-            <div className="hidden @md:block h-4 w-px bg-border/50" />
+            <div className="hidden @xl:block h-4 w-px bg-border/50" />
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  className="hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-amber-600 dark:text-amber-400 transition-colors cursor-pointer hover:bg-muted/80"
+                  className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-sm text-amber-600 dark:text-amber-400 transition-colors cursor-pointer hover:bg-muted/80"
                   onClick={onResolvePrConflicts}
                 >
                   <GitMerge className="h-3 w-3" />
@@ -1176,20 +1174,17 @@ export const ChatToolbar = memo(function ChatToolbar({
           </>
         )}
 
-        {/* Provider selector - desktop only, shown when profiles exist */}
-        {customCliProfiles.length > 0 && (
+        {/* Provider selector - desktop only, shown when profiles exist and NOT locked */}
+        {customCliProfiles.length > 0 && !providerLocked && (
           <>
-            <div className="hidden @md:block h-4 w-px bg-border/50" />
+            <div className="hidden @xl:block h-4 w-px bg-border/50" />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  disabled={hasPendingQuestions || providerLocked}
-                  className="hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+                  disabled={hasPendingQuestions}
+                  className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
                 >
-                  {selectedProvider && selectedProvider !== '__anthropic__' && (
-                    <span className="h-2 w-2 rounded-full bg-blue-500 dark:bg-blue-400" />
-                  )}
                   <span>{!selectedProvider || selectedProvider === '__anthropic__' ? 'Anthropic' : selectedProvider}</span>
                   <ChevronDown className="h-3 w-3 opacity-50" />
                 </button>
@@ -1226,29 +1221,47 @@ export const ChatToolbar = memo(function ChatToolbar({
         )}
 
         {/* Divider - desktop only */}
-        <div className="hidden @md:block h-4 w-px bg-border/50" />
+        <div className="hidden @xl:block h-4 w-px bg-border/50" />
 
-        {/* Model selector - desktop only */}
-        <Select
-          value={selectedModel}
-          onValueChange={handleModelChange}
-          disabled={hasPendingQuestions}
-        >
-          <SelectTrigger className="hidden @md:flex h-8 w-auto gap-1.5 rounded-none border-0 bg-transparent px-3 text-sm text-muted-foreground shadow-none hover:bg-muted/80 hover:text-foreground dark:bg-transparent dark:hover:bg-muted/80 [&>svg:last-child]:size-3">
-            <Sparkles className="h-3.5 w-3.5" />
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {filteredModelOptions.map(option => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {/* Model selector - desktop only (includes provider info when locked) */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              disabled={hasPendingQuestions}
+              className="hidden @xl:flex h-8 items-center gap-1.5 rounded-none bg-transparent px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              <span>
+                {filteredModelOptions.find(o => o.value === selectedModel)?.label ?? selectedModel}
+              </span>
+              <ChevronDown className="h-3 w-3 opacity-50" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="min-w-40">
+            {providerLocked && customCliProfiles.length > 0 && (
+              <>
+                <DropdownMenuLabel className="text-xs text-muted-foreground">
+                  Provider: {!selectedProvider || selectedProvider === '__anthropic__' ? 'Anthropic' : selectedProvider}
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+              </>
+            )}
+            <DropdownMenuRadioGroup
+              value={selectedModel}
+              onValueChange={handleModelChange}
+            >
+              {filteredModelOptions.map(option => (
+                <DropdownMenuRadioItem key={option.value} value={option.value}>
+                  {option.label}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         {/* Divider - desktop only */}
-        {!hideThinkingLevel && <div className="hidden @md:block h-4 w-px bg-border/50" />}
+        {!hideThinkingLevel && <div className="hidden @xl:block h-4 w-px bg-border/50" />}
 
         {/* Thinking/Effort level dropdown - desktop only */}
         {hideThinkingLevel ? null : useAdaptiveThinking ? (
@@ -1259,7 +1272,7 @@ export const ChatToolbar = memo(function ChatToolbar({
                   <button
                     type="button"
                     disabled={hasPendingQuestions}
-                    className="hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+                    className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
                   >
                     <Brain className={cn('h-3.5 w-3.5', !thinkingOverrideActive && 'text-purple-600 dark:text-purple-400')} />
                     <span>
@@ -1307,7 +1320,7 @@ export const ChatToolbar = memo(function ChatToolbar({
                   <button
                     type="button"
                     disabled={hasPendingQuestions}
-                    className="hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+                    className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
                   >
                     <Brain className={cn('h-3.5 w-3.5', selectedThinkingLevel !== 'off' && !thinkingOverrideActive && 'text-purple-600 dark:text-purple-400')} />
                     <span>
@@ -1350,7 +1363,7 @@ export const ChatToolbar = memo(function ChatToolbar({
         )}
 
         {/* Divider - desktop only */}
-        <div className="hidden @md:block h-4 w-px bg-border/50" />
+        <div className="hidden @xl:block h-4 w-px bg-border/50" />
 
         {/* Execution mode dropdown - desktop only */}
         <DropdownMenu>
@@ -1360,7 +1373,7 @@ export const ChatToolbar = memo(function ChatToolbar({
                 <button
                   type="button"
                   disabled={hasPendingQuestions}
-                  className="hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+                  className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
                 >
                   {executionMode === 'plan' && (
                     <ClipboardList className="h-3.5 w-3.5 text-yellow-600 dark:text-yellow-400" />
@@ -1369,7 +1382,6 @@ export const ChatToolbar = memo(function ChatToolbar({
                     <Hammer className="h-3.5 w-3.5" />
                   )}
                   {executionMode === 'yolo' && <Zap className="h-3.5 w-3.5 text-red-500 dark:text-red-400" />}
-                  <span className="capitalize">{executionMode}</span>
                   <ChevronDown className="h-3 w-3 opacity-50" />
                 </button>
               </DropdownMenuTrigger>
@@ -1419,7 +1431,7 @@ export const ChatToolbar = memo(function ChatToolbar({
                 <button
                   type="button"
                   disabled={hasPendingQuestions}
-                  className="hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+                  className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
                 >
                   <Plug className={cn('h-3.5 w-3.5', activeMcpCount > 0 && 'text-emerald-600 dark:text-emerald-400')} />
                   {activeMcpCount > 0 && <span>{activeMcpCount}</span>}
@@ -1528,16 +1540,6 @@ export const ChatToolbar = memo(function ChatToolbar({
                 )}
               >
                 <Send className="h-3.5 w-3.5" />
-                <Kbd
-                  className={cn(
-                    'ml-0.5 h-4 text-[10px]',
-                    canSend
-                      ? 'bg-primary-foreground/20 text-primary-foreground'
-                      : 'opacity-50'
-                  )}
-                >
-                  Enter
-                </Kbd>
               </button>
             </TooltipTrigger>
             <TooltipContent>Send message (Enter)</TooltipContent>

@@ -14,7 +14,6 @@ import {
   AlertTriangle,
   Lightbulb,
   ThumbsUp,
-  X,
   CheckCircle2,
   MessageSquare,
   FileCode,
@@ -22,6 +21,7 @@ import {
   Loader2,
   Wrench,
 } from 'lucide-react'
+import { ModalCloseButton } from '@/components/ui/modal-close-button'
 import type { ReviewFinding, ReviewResponse } from '@/types/projects'
 import { cn } from '@/lib/utils'
 
@@ -444,14 +444,7 @@ Please apply all these fixes to the codebase.`
       {/* Sidebar title bar */}
       <div className="flex items-center justify-between border-b px-3 py-2">
         <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Review</span>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6"
-          onClick={() => useChatStore.getState().setReviewSidebarVisible(false)}
-        >
-          <X className="h-3.5 w-3.5" />
-        </Button>
+        <ModalCloseButton size="sm" onClick={() => useChatStore.getState().setReviewSidebarVisible(false)} />
       </div>
       {/* Header with summary */}
       <div className="border-b p-3">

@@ -14,10 +14,12 @@ import {
   RefreshCw,
   Columns2,
   Rows3,
+  GitBranch,
   MessageSquarePlus,
   Play,
   Pencil,
   X,
+  Search,
 } from 'lucide-react'
 import { FileDiff } from '@pierre/diffs/react'
 import {
@@ -27,6 +29,8 @@ import {
   type FileDiffMetadata,
 } from '@pierre/diffs'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
+import { ModalCloseButton } from '@/components/ui/modal-close-button'
 import { cn } from '@/lib/utils'
 import { generateId } from '@/lib/uuid'
 import { getFilename } from '@/lib/path-utils'
@@ -180,7 +184,7 @@ export const MemoizedFileDiff = memo(
         </div>
         {/* Diff content */}
         {fileDiff.hunks.length === 0 ||
-        fileDiff.hunks.every(h => h.hunkContent.length === 0) ? (
+          fileDiff.hunks.every(h => h.hunkContent.length === 0) ? (
           <div className="px-4 py-8 text-center text-muted-foreground text-sm">
             {fileDiff.type === 'deleted'
               ? 'This file was deleted'
@@ -334,6 +338,11 @@ const CommentInputBar = memo(function CommentInputBar({
   )
 })
 
+interface DiffStats {
+  added: number
+  removed: number
+}
+
 interface GitDiffModalProps {
   /** Diff request parameters, or null to close the modal */
   diffRequest: DiffRequest | null
@@ -343,6 +352,10 @@ interface GitDiffModalProps {
   onAddToPrompt?: (reference: string) => void
   /** Callback when user wants to execute comments immediately */
   onExecutePrompt?: (reference: string) => void
+  /** Uncommitted change stats (for switcher) */
+  uncommittedStats?: DiffStats
+  /** Branch diff stats (for switcher) */
+  branchStats?: DiffStats
 }
 
 type DiffStyle = 'split' | 'unified'
@@ -355,11 +368,16 @@ export function GitDiffModal({
   onClose,
   onAddToPrompt,
   onExecutePrompt,
+  uncommittedStats,
+  branchStats,
 }: GitDiffModalProps) {
   const [diff, setDiff] = useState<GitDiff | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [diffStyle, setDiffStyle] = useState<DiffStyle>('split')
+  const [activeDiffType, setActiveDiffType] = useState<'uncommitted' | 'branch'>(
+    diffRequest?.type ?? 'uncommitted'
+  )
   const dialogContentRef = useRef<HTMLDivElement>(null)
   const { theme } = useTheme()
   const { data: preferences } = usePreferences()
@@ -375,6 +393,7 @@ export function GitDiffModal({
 
   // Sidebar file selection state
   const [selectedFileIndex, setSelectedFileIndex] = useState<number>(0)
+  const [fileFilter, setFileFilter] = useState('')
   const fileListRef = useRef<HTMLDivElement>(null)
 
   // Use transition for file switching to keep UI responsive during heavy diff rendering
@@ -423,6 +442,7 @@ export function GitDiffModal({
 
   useEffect(() => {
     if (diffRequest) {
+      setActiveDiffType(diffRequest.type)
       loadDiff(diffRequest)
       // Reset to first file when opening/reloading
       setSelectedFileIndex(0)
@@ -437,6 +457,7 @@ export function GitDiffModal({
       setActiveFileName(null)
       setShowCommentInput(false)
       setSelectedFileIndex(0)
+      setFileFilter('')
       setIsSwitching(false)
       if (switchTimeoutRef.current) {
         clearTimeout(switchTimeoutRef.current)
@@ -620,10 +641,17 @@ export function GitDiffModal({
     return fromPatch
   }, [parsedFiles, diff?.files])
 
+  // Filter files by search pattern
+  const filteredFiles = useMemo(() => {
+    if (!fileFilter) return flattenedFiles
+    const lower = fileFilter.toLowerCase()
+    return flattenedFiles.filter(f => f.fileName.toLowerCase().includes(lower))
+  }, [flattenedFiles, fileFilter])
+
   // Get currently selected file
   const selectedFile =
-    flattenedFiles.length > 0 && selectedFileIndex < flattenedFiles.length
-      ? flattenedFiles[selectedFileIndex]
+    filteredFiles.length > 0 && selectedFileIndex < filteredFiles.length
+      ? filteredFiles[selectedFileIndex]
       : null
 
   // Check if there are any files to display
@@ -653,7 +681,7 @@ export function GitDiffModal({
 
   // Keyboard navigation for file list
   useEffect(() => {
-    if (!diffRequest || flattenedFiles.length === 0) return
+    if (!diffRequest || filteredFiles.length === 0) return
 
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't handle if user is typing in an input
@@ -673,7 +701,7 @@ export function GitDiffModal({
         setShowCommentInput(false)
         setIsSwitching(true)
         startTransition(() => {
-          setSelectedFileIndex(i => Math.min(i + 1, flattenedFiles.length - 1))
+          setSelectedFileIndex(i => Math.min(i + 1, filteredFiles.length - 1))
         })
         switchTimeoutRef.current = setTimeout(() => setIsSwitching(false), 150)
       } else if (e.key === 'ArrowUp' || e.key === 'k') {
@@ -691,7 +719,7 @@ export function GitDiffModal({
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [diffRequest, flattenedFiles.length])
+  }, [diffRequest, filteredFiles.length])
 
   // Scroll selected file into view in sidebar
   useEffect(() => {
@@ -713,8 +741,27 @@ export function GitDiffModal({
     }
   }, [])
 
+  // Determine if both diff types are available for the switcher
+  const hasUncommitted = (uncommittedStats?.added ?? 0) > 0 || (uncommittedStats?.removed ?? 0) > 0
+  const hasBranchDiff = (branchStats?.added ?? 0) > 0 || (branchStats?.removed ?? 0) > 0
+  const showSwitcher = hasUncommitted && hasBranchDiff
+
+  // Handle switching between diff types
+  const handleSwitchDiffType = useCallback(
+    (type: 'uncommitted' | 'branch') => {
+      if (!diffRequest || type === activeDiffType) return
+      setActiveDiffType(type)
+      setSelectedFileIndex(0)
+      setFileFilter('')
+      setSelectedRange(null)
+      setShowCommentInput(false)
+      loadDiff({ ...diffRequest, type }, false)
+    },
+    [diffRequest, activeDiffType, loadDiff]
+  )
+
   const title =
-    diffRequest?.type === 'uncommitted'
+    activeDiffType === 'uncommitted'
       ? 'Uncommitted Changes'
       : `Changes vs ${diffRequest?.baseBranch ?? 'main'}`
 
@@ -722,6 +769,7 @@ export function GitDiffModal({
     <Dialog open={!!diffRequest} onOpenChange={open => !open && onClose()}>
       <DialogContent
         ref={dialogContentRef}
+        showCloseButton={false}
         className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none p-0 sm:!w-[calc(100vw-4rem)] sm:!max-w-[calc(100vw-4rem)] sm:!h-[85vh] sm:!rounded-lg sm:p-4 bg-background/95 backdrop-blur-sm overflow-hidden flex flex-col"
         style={{ fontSize: 'var(--ui-font-size)' }}
         onOpenAutoFocus={(e) => {
@@ -741,40 +789,46 @@ export function GitDiffModal({
         }}
       >
         <DialogTitle className="flex items-center gap-2 shrink-0">
-          <FileText className="h-4 w-4" />
-          {title}
-          <Tooltip>
-            <TooltipTrigger asChild>
+          {showSwitcher ? (
+            <div className="flex items-center bg-muted rounded-lg p-1">
               <button
                 type="button"
-                onClick={() => diffRequest && loadDiff(diffRequest, true)}
-                disabled={isLoading}
-                className="p-1 text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors disabled:opacity-50"
+                onClick={() => handleSwitchDiffType('uncommitted')}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors',
+                  activeDiffType === 'uncommitted'
+                    ? 'bg-background shadow-sm text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
               >
-                <RefreshCw
-                  className={cn('h-3.5 w-3.5', isLoading && 'animate-spin')}
-                />
+                <Pencil className="h-3.5 w-3.5" />
+                Uncommitted
+                <span className="text-green-500">+{uncommittedStats!.added}</span>
+                <span className="text-red-500">-{uncommittedStats!.removed}</span>
               </button>
-            </TooltipTrigger>
-            <TooltipContent>Refresh diff</TooltipContent>
-          </Tooltip>
+              <button
+                type="button"
+                onClick={() => handleSwitchDiffType('branch')}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors',
+                  activeDiffType === 'branch'
+                    ? 'bg-background shadow-sm text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                <GitBranch className="h-3.5 w-3.5" />
+                Branch
+                <span className="text-green-500">+{branchStats!.added}</span>
+                <span className="text-red-500">-{branchStats!.removed}</span>
+              </button>
+            </div>
+          ) : (
+            <>
+              <FileText className="h-4 w-4" />
+              {title}
+            </>
+          )}
           <div className="flex items-center gap-3">
-            {diff && (
-              <span className="text-muted-foreground font-normal text-xs">
-                {diff.files.length} file{diff.files.length !== 1 ? 's' : ''}{' '}
-                changed
-                {diff.total_additions > 0 && (
-                  <span className="text-green-500 ml-2">
-                    +{diff.total_additions}
-                  </span>
-                )}
-                {diff.total_deletions > 0 && (
-                  <span className="text-red-500 ml-1">
-                    -{diff.total_deletions}
-                  </span>
-                )}
-              </span>
-            )}
             {/* View mode toggle */}
             <div className="flex items-center bg-muted rounded-lg p-1">
               <Tooltip>
@@ -840,6 +894,25 @@ export function GitDiffModal({
               </div>
             )}
           </div>
+          <div className="ml-auto flex items-center gap-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0 p-0"
+                  onClick={() => diffRequest && loadDiff({ ...diffRequest, type: activeDiffType }, true)}
+                  disabled={isLoading}
+                >
+                  <RefreshCw
+                    className={cn('h-4 w-4', isLoading && 'animate-spin')}
+                  />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Refresh diff</TooltipContent>
+            </Tooltip>
+            <ModalCloseButton onClick={onClose} />
+          </div>
         </DialogTitle>
 
         {/* Comment bar - above sidebar and main content */}
@@ -902,8 +975,25 @@ export function GitDiffModal({
                 (isSwitching || isLoading) && 'opacity-60'
               )}
             >
+              {flattenedFiles.length > 1 && (
+                <div className="sticky top-0 z-10 bg-background border-b border-border pb-2">
+                  <div className="relative">
+                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-[1em] w-[1em] text-muted-foreground pointer-events-none" />
+                    <input
+                      type="text"
+                      value={fileFilter}
+                      onChange={e => {
+                        setFileFilter(e.target.value)
+                        setSelectedFileIndex(0)
+                      }}
+                      placeholder="Filter files..."
+                      className="w-full bg-muted text-sm outline-none border border-border pl-7 pr-2 py-2.5 placeholder:text-muted-foreground focus:border-ring"
+                    />
+                  </div>
+                </div>
+              )}
               <div>
-                {flattenedFiles.map((file, index) => {
+                {filteredFiles.map((file, index) => {
                   const isSelected = index === selectedFileIndex
                   const displayName = getFilename(file.fileName)
 

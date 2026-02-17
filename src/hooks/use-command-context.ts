@@ -177,7 +177,7 @@ export function useCommandContext(
     }
   }, [queryClient])
 
-  // Sessions - Rename session (triggers edit mode in SessionTabBar)
+  // Sessions - Rename session
   const renameSession = useCallback(() => {
     const { activeWorktreeId, getActiveSession } = useChatStore.getState()
     if (!activeWorktreeId) {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Archive, ArrowLeft, Eye, EyeOff, FileText, Maximize2, Pencil, Sparkles, Tag, Terminal, Play, Plus, Trash2, X } from 'lucide-react'
+import { Archive, ArrowLeft, Code, Eye, EyeOff, FileText, FolderOpen, Github, MoreHorizontal, Pencil, Sparkles, Tag, Terminal, Play, Plus, Trash2 } from 'lucide-react'
+import { ModalCloseButton } from '@/components/ui/modal-close-button'
 import { cn } from '@/lib/utils'
 import {
   Dialog,
@@ -13,6 +14,7 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from '@/components/ui/tooltip'
+import { DismissButton } from '@/components/ui/dismiss-button'
 import { StatusIndicator } from '@/components/ui/status-indicator'
 import { GitStatusBadges } from '@/components/ui/git-status-badges'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
@@ -39,6 +41,20 @@ import type { DiffRequest } from '@/types/git-diff'
 import { ChatWindow } from './ChatWindow'
 import { ModalTerminalDrawer } from './ModalTerminalDrawer'
 import { OpenInButton } from '@/components/open-in/OpenInButton'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  useOpenWorktreeInEditor,
+  useOpenWorktreeInTerminal,
+  useOpenWorktreeInFinder,
+  useOpenBranchOnGitHub,
+} from '@/services/projects'
+import { getOpenInDefaultLabel } from '@/types/preferences'
 import { statusConfig, type SessionStatus } from './session-card-utils'
 import {
   ContextMenu,
@@ -56,7 +72,6 @@ interface SessionChatModalProps {
   worktreePath: string
   isOpen: boolean
   onClose: () => void
-  onOpenFullView: () => void
 }
 
 function getSessionStatus(session: Session, storeState: {
@@ -87,13 +102,11 @@ export function SessionChatModal({
   worktreePath,
   isOpen,
   onClose,
-  onOpenFullView,
 }: SessionChatModalProps) {
   const { data: sessionsData } = useSessions(worktreeId || null, worktreePath || null)
   const sessions = sessionsData?.sessions ?? []
   const { data: preferences } = usePreferences()
   const { data: runScript } = useRunScript(worktreePath)
-  const canvasOnlyMode = preferences?.canvas_only_mode ?? false
   const createSession = useCreateSession()
 
   // Horizontal scroll on session tabs
@@ -145,6 +158,12 @@ export function SessionChatModal({
   const branchDiffRemoved =
     gitStatus?.branch_diff_removed ?? worktree?.cached_branch_diff_removed ?? 0
   const defaultBranch = project?.default_branch ?? 'main'
+
+  // Open-in actions for mobile overflow menu
+  const openInEditor = useOpenWorktreeInEditor()
+  const openInTerminal = useOpenWorktreeInTerminal()
+  const openInFinder = useOpenWorktreeInFinder()
+  const openOnGitHub = useOpenBranchOnGitHub()
 
   const [diffRequest, setDiffRequest] = useState<DiffRequest | null>(null)
 
@@ -236,6 +255,9 @@ export function SessionChatModal({
       const activeSessions = sessions.filter(s => !s.archived_at)
       const action = () => {
         if (activeSessions.length <= 1) {
+          if (currentSessionId) {
+            handleDeleteSession(currentSessionId)
+          }
           onClose()
         } else if (currentSessionId) {
           handleArchiveSession(currentSessionId)
@@ -250,7 +272,7 @@ export function SessionChatModal({
     }
     window.addEventListener('close-session-or-worktree', handler, { capture: true })
     return () => window.removeEventListener('close-session-or-worktree', handler, { capture: true })
-  }, [isOpen, sessions, currentSessionId, onClose, handleArchiveSession, preferences?.confirm_session_close])
+  }, [isOpen, sessions, currentSessionId, onClose, handleArchiveSession, handleDeleteSession, preferences?.confirm_session_close])
 
   // Listen for toggle-session-label event (CMD+S)
   useEffect(() => {
@@ -266,10 +288,6 @@ export function SessionChatModal({
   const handleClose = useCallback(() => {
     onClose()
   }, [onClose])
-
-  const handleOpenFullView = useCallback(() => {
-    onOpenFullView()
-  }, [onOpenFullView])
 
   const handleTabClick = useCallback(
     (sessionId: string) => {
@@ -393,317 +411,363 @@ export function SessionChatModal({
 
   return (
     <>
-    <Dialog open={isOpen} onOpenChange={open => !open && handleClose()}>
-      <DialogContent
-        key={worktreeId}
-        className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none sm:!w-[calc(100vw-48px)] sm:!h-[calc(100vh-48px)] sm:!max-w-[calc(100vw-48px)] sm:!rounded-lg flex flex-col p-0 gap-0 overflow-hidden"
-        showCloseButton={false}
-      >
-        <DialogHeader className="shrink-0 border-b px-4 py-2">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 w-7 p-0 sm:hidden"
-                onClick={handleClose}
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-              <DialogTitle className="text-sm font-medium shrink-0">
-                {isBase ? 'Base Session' : worktree?.name ?? 'Worktree'}
-              </DialogTitle>
-              {worktree && project && (
-                <WorktreeDropdownMenu worktree={worktree} projectId={project.id} />
-              )}
-              <GitStatusBadges
-                behindCount={behindCount}
-                unpushedCount={unpushedCount}
-                diffAdded={uncommittedAdded}
-                diffRemoved={uncommittedRemoved}
-                branchDiffAdded={isBase ? 0 : branchDiffAdded}
-                branchDiffRemoved={isBase ? 0 : branchDiffRemoved}
-                onPull={handlePull}
-                onPush={handlePush}
-                onDiffClick={handleUncommittedDiffClick}
-                onBranchDiffClick={handleBranchDiffClick}
-              />
-            </div>
-            <div className="flex items-center gap-1 shrink-0">
-              {isNativeApp() && (
-                <>
-                  <OpenInButton worktreePath={worktreePath} branch={worktree?.branch} />
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2 text-xs"
-                        onClick={() => {
-                          const { reviewResults, toggleReviewSidebar } = useChatStore.getState()
-                          const hasReviewResults = currentSessionId && (reviewResults[currentSessionId] || currentSession?.review_results)
-                          if (hasReviewResults) {
-                            if (currentSessionId && !reviewResults[currentSessionId] && currentSession?.review_results) {
-                              useChatStore.getState().setReviewResults(currentSessionId, currentSession.review_results)
-                            }
-                            toggleReviewSidebar()
-                          } else {
-                            window.dispatchEvent(
-                              new CustomEvent('magic-command', { detail: { command: 'review', sessionId: currentSessionId } })
-                            )
-                          }
-                        }}
-                      >
-                        <Eye className="h-3 w-3" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Review</TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2 text-xs"
-                        onClick={() => {
-                          useTerminalStore
-                            .getState()
-                            .toggleModalTerminal(worktreeId)
-                        }}
-                      >
-                        <Terminal className="h-3 w-3" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Terminal</TooltipContent>
-                  </Tooltip>
-                  {runScript && (
+      <Dialog open={isOpen} onOpenChange={open => !open && handleClose()}>
+        <DialogContent
+          key={worktreeId}
+          className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none sm:!w-[calc(100vw-48px)] sm:!h-[calc(100vh-48px)] sm:!max-w-[calc(100vw-48px)] sm:!rounded-lg flex flex-col p-0 gap-0 overflow-hidden"
+          showCloseButton={false}
+        >
+          <DialogHeader className="shrink-0 border-b px-4 py-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0 sm:hidden"
+                  onClick={handleClose}
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </Button>
+                <DialogTitle className="text-sm font-medium shrink-0">
+                  {isBase ? 'Base Session' : worktree?.name ?? 'Worktree'}
+                </DialogTitle>
+                {worktree && project && (
+                  <WorktreeDropdownMenu worktree={worktree} projectId={project.id} />
+                )}
+                <GitStatusBadges
+                  behindCount={behindCount}
+                  unpushedCount={unpushedCount}
+                  diffAdded={uncommittedAdded}
+                  diffRemoved={uncommittedRemoved}
+                  branchDiffAdded={isBase ? 0 : branchDiffAdded}
+                  branchDiffRemoved={isBase ? 0 : branchDiffRemoved}
+                  onPull={handlePull}
+                  onPush={handlePush}
+                  onDiffClick={handleUncommittedDiffClick}
+                  onBranchDiffClick={handleBranchDiffClick}
+                />
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                {/* Desktop: inline action buttons */}
+                {isNativeApp() && (
+                  <div className="hidden sm:flex items-center gap-1">
+                    <OpenInButton worktreePath={worktreePath} branch={worktree?.branch} />
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
                           variant="ghost"
                           size="sm"
                           className="h-7 px-2 text-xs"
-                          onClick={handleRun}
+                          onClick={() => {
+                            const { reviewResults, toggleReviewSidebar } = useChatStore.getState()
+                            const hasReviewResults = currentSessionId && (reviewResults[currentSessionId] || currentSession?.review_results)
+                            if (hasReviewResults) {
+                              if (currentSessionId && !reviewResults[currentSessionId] && currentSession?.review_results) {
+                                useChatStore.getState().setReviewResults(currentSessionId, currentSession.review_results)
+                              }
+                              toggleReviewSidebar()
+                            } else {
+                              window.dispatchEvent(
+                                new CustomEvent('magic-command', { detail: { command: 'review', sessionId: currentSessionId } })
+                              )
+                            }
+                          }}
                         >
-                          <Play className="h-3 w-3" />
+                          <Eye className="h-3 w-3" />
                         </Button>
                       </TooltipTrigger>
-                      <TooltipContent>Run</TooltipContent>
+                      <TooltipContent>Review</TooltipContent>
                     </Tooltip>
-                  )}
-                </>
-              )}
-              {!canvasOnlyMode && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2 text-xs"
-                  onClick={handleOpenFullView}
-                >
-                  <Maximize2 className="mr-1 h-3 w-3" />
-                  Open Full View
-                </Button>
-              )}
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 w-7 p-0"
-                onClick={handleClose}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        </DialogHeader>
-
-        {/* Session tabs */}
-        {sessions.length > 0 && (
-          <div className="shrink-0 border-b px-2 flex items-center gap-0.5 overflow-x-auto">
-            <ScrollArea className="flex-1" viewportRef={modalTabScrollRef}>
-              <div className="flex items-center gap-0.5 py-1">
-                {sortedSessions.map((session, idx) => {
-                  const isActive = session.id === currentSessionId
-                  const status = getSessionStatus(session, storeState)
-                  const config = statusConfig[status]
-                  const sessionLabel = useChatStore.getState().sessionLabels[session.id]
-                  return (
-                    <ContextMenu key={session.id}>
-                      <ContextMenuTrigger asChild>
-                        <button
-                          onClick={() => handleTabClick(session.id)}
-                          className={cn(
-                            'flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-colors whitespace-nowrap',
-                            isActive
-                              ? 'bg-muted text-foreground font-medium'
-                              : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                          )}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs"
+                          onClick={() => {
+                            useTerminalStore
+                              .getState()
+                              .toggleModalTerminal(worktreeId)
+                          }}
                         >
-                          <StatusIndicator
-                            status={config.indicatorStatus}
-                            variant={config.indicatorVariant}
-                            className="h-1.5 w-1.5"
-                          />
-                          {idx < 9 && (
-                            <kbd className="shrink-0 rounded border border-border/50 px-1 py-px text-[9px] font-medium leading-none text-muted-foreground/70">
-                              ⌘{idx + 1}
-                            </kbd>
-                          )}
-                          {renamingSessionId === session.id ? (
-                            <input
-                              ref={renameInputRef}
-                              type="text"
-                              value={renameValue}
-                              onChange={e => setRenameValue(e.target.value)}
-                              onBlur={() => handleRenameSubmit(session.id)}
-                              onKeyDown={e => handleRenameKeyDown(e, session.id)}
-                              onClick={e => e.stopPropagation()}
-                              className="w-full min-w-0 bg-transparent text-xs outline-none"
-                            />
-                          ) : (
-                            session.name
-                          )}
-                          {sessions.length > 1 && status === 'idle' && renamingSessionId !== session.id && (
-                            <span
-                              role="button"
-                              onClick={e => {
-                                e.stopPropagation()
-                                handleArchiveSession(session.id)
-                              }}
-                              className="ml-0.5 inline-flex items-center rounded opacity-40 transition-opacity hover:opacity-100 hover:bg-muted-foreground/20"
-                            >
-                              <X className="h-3 w-3" />
-                            </span>
-                          )}
-                        </button>
-                      </ContextMenuTrigger>
-                      <ContextMenuContent className="w-48">
-                        <ContextMenuItem onSelect={() => handleStartRename(session.id, session.name)}>
-                          <Pencil className="mr-2 h-4 w-4" />
-                          Rename
-                        </ContextMenuItem>
-                        <ContextMenuItem onSelect={() => {
-                          setLabelTargetSessionId(session.id)
-                          setLabelModalOpen(true)
-                        }}>
-                          <Tag className="mr-2 h-4 w-4" />
-                          {sessionLabel ? 'Remove Label' : 'Add Label'}
-                        </ContextMenuItem>
-                        <ContextMenuItem onSelect={() => {
-                          const { reviewingSessions, setSessionReviewing } = useChatStore.getState()
-                          const isReviewing = reviewingSessions[session.id] || !!session.review_results
-                          setSessionReviewing(session.id, !isReviewing)
-                        }}>
-                          {status === 'review' ? (
-                            <>
-                              <EyeOff className="mr-2 h-4 w-4" />
-                              Mark as Idle
-                            </>
-                          ) : (
-                            <>
-                              <Eye className="mr-2 h-4 w-4" />
-                              Mark for Review
-                            </>
-                          )}
-                        </ContextMenuItem>
-                        <ContextMenuItem onSelect={() => handleArchiveSession(session.id)}>
-                          <Archive className="mr-2 h-4 w-4" />
-                          Archive Session
-                        </ContextMenuItem>
-                        <ContextMenuSeparator />
-                        <ContextMenuItem variant="destructive" onSelect={() => handleDeleteSession(session.id)}>
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Delete Session
-                        </ContextMenuItem>
-                      </ContextMenuContent>
-                    </ContextMenu>
-                  )
-                })}
+                          <Terminal className="h-3 w-3" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Terminal</TooltipContent>
+                    </Tooltip>
+                    {runScript && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-xs"
+                            onClick={handleRun}
+                          >
+                            <Play className="h-3 w-3" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Run</TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
+                )}
+                {/* Mobile: overflow menu */}
+                {isNativeApp() && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0 flex sm:hidden"
+                      >
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onSelect={() => openInEditor.mutate({ worktreePath, editor: preferences?.editor })}>
+                        <Code className="h-4 w-4" />
+                        {getOpenInDefaultLabel('editor', preferences?.editor, preferences?.terminal)}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => openInTerminal.mutate({ worktreePath, terminal: preferences?.terminal })}>
+                        <Terminal className="h-4 w-4" />
+                        {getOpenInDefaultLabel('terminal', preferences?.editor, preferences?.terminal)}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => openInFinder.mutate(worktreePath)}>
+                        <FolderOpen className="h-4 w-4" />
+                        Finder
+                      </DropdownMenuItem>
+                      {worktree?.branch && (
+                        <DropdownMenuItem onSelect={() => openOnGitHub.mutate({ repoPath: worktreePath, branch: worktree.branch })}>
+                          <Github className="h-4 w-4" />
+                          GitHub
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onSelect={() => {
+                        const { reviewResults, toggleReviewSidebar } = useChatStore.getState()
+                        const hasReviewResults = currentSessionId && (reviewResults[currentSessionId] || currentSession?.review_results)
+                        if (hasReviewResults) {
+                          if (currentSessionId && !reviewResults[currentSessionId] && currentSession?.review_results) {
+                            useChatStore.getState().setReviewResults(currentSessionId, currentSession.review_results)
+                          }
+                          toggleReviewSidebar()
+                        } else {
+                          window.dispatchEvent(
+                            new CustomEvent('magic-command', { detail: { command: 'review', sessionId: currentSessionId } })
+                          )
+                        }
+                      }}>
+                        <Eye className="h-4 w-4" />
+                        Review
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => useTerminalStore.getState().toggleModalTerminal(worktreeId)}>
+                        <Terminal className="h-4 w-4" />
+                        Terminal
+                      </DropdownMenuItem>
+                      {runScript && (
+                        <DropdownMenuItem onSelect={handleRun}>
+                          <Play className="h-4 w-4" />
+                          Run
+                        </DropdownMenuItem>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+                <ModalCloseButton onClick={handleClose} />
               </div>
-              <ScrollBar orientation="horizontal" className="h-1" />
-            </ScrollArea>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={() => window.dispatchEvent(new CustomEvent('open-recap'))}
-                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
-                  aria-label="Recap"
-                >
-                  <Sparkles className="h-3 w-3" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>Recap (R)</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={() => window.dispatchEvent(new CustomEvent('open-plan'))}
-                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
-                  aria-label="Plan"
-                >
-                  <FileText className="h-3 w-3" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>Plan (P)</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 p-0 shrink-0"
-                  onClick={handleCreateSession}
-                >
-                  <Plus className="h-3 w-3" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>New session</TooltipContent>
-            </Tooltip>
-          </div>
-        )}
+            </div>
+          </DialogHeader>
 
-        <div className="min-h-0 flex-1 overflow-hidden">
-          {currentSessionId && (
-            <ChatWindow
-              key={currentSessionId}
-              isModal
+          {/* Session tabs */}
+          {sessions.length > 0 && (
+            <div className="shrink-0 border-b px-2 flex items-center gap-0.5 overflow-x-auto">
+              <ScrollArea className="flex-1" viewportRef={modalTabScrollRef}>
+                <div className="flex items-center gap-0.5 py-1">
+                  {sortedSessions.map((session, idx) => {
+                    const isActive = session.id === currentSessionId
+                    const status = getSessionStatus(session, storeState)
+                    const config = statusConfig[status]
+                    const sessionLabel = useChatStore.getState().sessionLabels[session.id]
+                    return (
+                      <ContextMenu key={session.id}>
+                        <ContextMenuTrigger asChild>
+                          <button
+                            onClick={() => handleTabClick(session.id)}
+                            className={cn(
+                              'group/tab flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-colors whitespace-nowrap',
+                              isActive
+                                ? 'bg-muted text-foreground'
+                                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                            )}
+                          >
+                            <StatusIndicator
+                              status={config.indicatorStatus}
+                              variant={config.indicatorVariant}
+                              className="h-1.5 w-1.5"
+                            />
+                            {idx < 9 && (
+                              <kbd className="shrink-0 rounded border border-border/50 px-1 py-px text-[9px] font-medium leading-none text-muted-foreground/70">
+                                ⌘{idx + 1}
+                              </kbd>
+                            )}
+                            {renamingSessionId === session.id ? (
+                              <input
+                                ref={renameInputRef}
+                                type="text"
+                                value={renameValue}
+                                onChange={e => setRenameValue(e.target.value)}
+                                onBlur={() => handleRenameSubmit(session.id)}
+                                onKeyDown={e => handleRenameKeyDown(e, session.id)}
+                                onClick={e => e.stopPropagation()}
+                                className="w-full min-w-0 bg-transparent text-xs outline-none"
+                              />
+                            ) : (
+                              session.name
+                            )}
+                            {sessions.length > 1 && renamingSessionId !== session.id && (
+                              <DismissButton
+                                tooltip="Remove session"
+                                onClick={e => {
+                                  e.stopPropagation()
+                                  handleArchiveSession(session.id)
+                                }}
+                                className="ml-0.5 opacity-0 group-hover/tab:opacity-60 hover:!opacity-100"
+                                size="xs"
+                              />
+                            )}
+                          </button>
+                        </ContextMenuTrigger>
+                        <ContextMenuContent className="w-48">
+                          <ContextMenuItem onSelect={() => handleStartRename(session.id, session.name)}>
+                            <Pencil className="mr-2 h-4 w-4" />
+                            Rename
+                          </ContextMenuItem>
+                          <ContextMenuItem onSelect={() => {
+                            setLabelTargetSessionId(session.id)
+                            setLabelModalOpen(true)
+                          }}>
+                            <Tag className="mr-2 h-4 w-4" />
+                            {sessionLabel ? 'Remove Label' : 'Add Label'}
+                          </ContextMenuItem>
+                          <ContextMenuItem onSelect={() => {
+                            const { reviewingSessions, setSessionReviewing } = useChatStore.getState()
+                            const isReviewing = reviewingSessions[session.id] || !!session.review_results
+                            setSessionReviewing(session.id, !isReviewing)
+                          }}>
+                            {status === 'review' ? (
+                              <>
+                                <EyeOff className="mr-2 h-4 w-4" />
+                                Mark as Idle
+                              </>
+                            ) : (
+                              <>
+                                <Eye className="mr-2 h-4 w-4" />
+                                Mark for Review
+                              </>
+                            )}
+                          </ContextMenuItem>
+                          <ContextMenuItem onSelect={() => handleArchiveSession(session.id)}>
+                            <Archive className="mr-2 h-4 w-4" />
+                            Archive Session
+                          </ContextMenuItem>
+                          <ContextMenuSeparator />
+                          <ContextMenuItem variant="destructive" onSelect={() => handleDeleteSession(session.id)}>
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete Session
+                          </ContextMenuItem>
+                        </ContextMenuContent>
+                      </ContextMenu>
+                    )
+                  })}
+                </div>
+                <ScrollBar orientation="horizontal" className="h-1" />
+              </ScrollArea>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => window.dispatchEvent(new CustomEvent('open-recap'))}
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
+                    aria-label="Recap"
+                  >
+                    <Sparkles className="h-3 w-3" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Recap (R)</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => window.dispatchEvent(new CustomEvent('open-plan'))}
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
+                    aria-label="Plan"
+                  >
+                    <FileText className="h-3 w-3" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Plan (P)</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0 shrink-0"
+                    onClick={handleCreateSession}
+                  >
+                    <Plus className="h-3 w-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>New session</TooltipContent>
+              </Tooltip>
+            </div>
+          )}
+
+          <div className="min-h-0 flex-1 overflow-hidden">
+            {currentSessionId && (
+              <ChatWindow
+                key={currentSessionId}
+                isModal
+                worktreeId={worktreeId}
+                worktreePath={worktreePath}
+              />
+            )}
+          </div>
+
+          {/* Terminal side drawer */}
+          {isNativeApp() && (
+            <ModalTerminalDrawer
               worktreeId={worktreeId}
               worktreePath={worktreePath}
             />
           )}
-        </div>
-
-        {/* Terminal side drawer */}
-        {isNativeApp() && (
-          <ModalTerminalDrawer
-            worktreeId={worktreeId}
-            worktreePath={worktreePath}
-          />
-        )}
-        {diffRequest && (
-          <GitDiffModal
-            diffRequest={diffRequest}
-            onClose={() => setDiffRequest(null)}
-          />
-        )}
-      </DialogContent>
-      <LabelModal
-        isOpen={labelModalOpen}
-        onClose={() => {
-          setLabelModalOpen(false)
-          setLabelTargetSessionId(null)
-        }}
-        sessionId={labelSessionId}
-        currentLabel={currentLabel}
+          {diffRequest && (
+            <GitDiffModal
+              diffRequest={diffRequest}
+              onClose={() => setDiffRequest(null)}
+              uncommittedStats={{ added: uncommittedAdded, removed: uncommittedRemoved }}
+              branchStats={{ added: branchDiffAdded, removed: branchDiffRemoved }}
+            />
+          )}
+        </DialogContent>
+        <LabelModal
+          isOpen={labelModalOpen}
+          onClose={() => {
+            setLabelModalOpen(false)
+            setLabelTargetSessionId(null)
+          }}
+          sessionId={labelSessionId}
+          currentLabel={currentLabel}
+        />
+      </Dialog>
+      <CloseWorktreeDialog
+        open={closeConfirmOpen}
+        onOpenChange={setCloseConfirmOpen}
+        onConfirm={executeCloseAction}
+        branchName={worktree?.branch}
       />
-    </Dialog>
-    <CloseWorktreeDialog
-      open={closeConfirmOpen}
-      onOpenChange={setCloseConfirmOpen}
-      onConfirm={executeCloseAction}
-      branchName={worktree?.branch}
-    />
     </>
   )
 }

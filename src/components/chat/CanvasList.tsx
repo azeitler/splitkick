@@ -24,7 +24,6 @@ interface CanvasListProps {
   onSelectedIndexChange: (index: number | null) => void
   selectedSessionId: string | null
   onSelectedSessionIdChange: (id: string | null) => void
-  onOpenFullView: () => void
   onArchiveSession: (sessionId: string) => void
   onDeleteSession: (sessionId: string) => void
   onPlanApproval: (card: SessionCardData, updatedPlan?: string) => void
@@ -44,7 +43,6 @@ export function CanvasList({
   onSelectedIndexChange,
   selectedSessionId,
   onSelectedSessionIdChange,
-  onOpenFullView,
   onArchiveSession,
   onDeleteSession,
   onPlanApproval,
@@ -326,7 +324,6 @@ export function CanvasList({
         worktreePath={worktreePath}
         isOpen={!!selectedSessionId}
         onClose={() => onSelectedSessionIdChange(null)}
-        onOpenFullView={onOpenFullView}
       />
       <CloseWorktreeDialog
         open={closeConfirmOpen}

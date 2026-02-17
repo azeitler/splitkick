@@ -76,16 +76,12 @@ export function WorktreeCanvasView({
     gitStatus?.behind_count ?? worktree?.cached_behind_count ?? 0
   const unpushedCount =
     gitStatus?.unpushed_count ?? worktree?.cached_unpushed_count ?? 0
-  const diffAdded = isBase
-    ? (gitStatus?.uncommitted_added ?? worktree?.cached_uncommitted_added ?? 0)
-    : (gitStatus?.branch_diff_added ?? worktree?.cached_branch_diff_added ?? 0)
-  const diffRemoved = isBase
-    ? (gitStatus?.uncommitted_removed ??
-      worktree?.cached_uncommitted_removed ??
-      0)
-    : (gitStatus?.branch_diff_removed ??
-      worktree?.cached_branch_diff_removed ??
-      0)
+  const uncommittedAdded = gitStatus?.uncommitted_added ?? worktree?.cached_uncommitted_added ?? 0
+  const uncommittedRemoved = gitStatus?.uncommitted_removed ?? worktree?.cached_uncommitted_removed ?? 0
+  const branchDiffAdded = gitStatus?.branch_diff_added ?? worktree?.cached_branch_diff_added ?? 0
+  const branchDiffRemoved = gitStatus?.branch_diff_removed ?? worktree?.cached_branch_diff_removed ?? 0
+  const diffAdded = isBase ? uncommittedAdded : branchDiffAdded
+  const diffRemoved = isBase ? uncommittedRemoved : branchDiffRemoved
 
   // Git badge interaction state
   const [diffRequest, setDiffRequest] = useState<DiffRequest | null>(null)
@@ -208,9 +204,6 @@ export function WorktreeCanvasView({
 
   // Session creation
   const createSession = useCreateSession()
-
-  // Actions via getState()
-  const { setActiveSession, setViewingCanvasTab } = useChatStore.getState()
 
   // Listen for open-session-modal event (used when creating new session in canvas-only mode)
   useEffect(() => {
@@ -363,20 +356,6 @@ export function WorktreeCanvasView({
     }
   }, [selectedSessionId, worktreeId])
 
-  // Handle opening full view from modal
-  const handleOpenFullView = useCallback(() => {
-    if (selectedSessionId) {
-      setViewingCanvasTab(worktreeId, false)
-      setActiveSession(worktreeId, selectedSessionId)
-      // Auto-open review sidebar if the session has review results
-      const { reviewResults, setReviewSidebarVisible } = useChatStore.getState()
-      if (reviewResults[selectedSessionId]) {
-        setReviewSidebarVisible(true)
-      }
-      setSelectedSessionId(null)
-    }
-  }, [worktreeId, selectedSessionId, setViewingCanvasTab, setActiveSession])
-
   return (
     <div className="relative flex h-full flex-col">
       <div className="flex-1 flex flex-col overflow-auto">
@@ -501,7 +480,6 @@ export function WorktreeCanvasView({
                 onSelectedIndexChange={handleSelectedIndexChange}
                 selectedSessionId={selectedSessionId}
                 onSelectedSessionIdChange={setSelectedSessionId}
-                onOpenFullView={handleOpenFullView}
                 onArchiveSession={handleArchiveSession}
                 onDeleteSession={handleDeleteSession}
                 onPlanApproval={handlePlanApproval}
@@ -518,7 +496,6 @@ export function WorktreeCanvasView({
                 onSelectedIndexChange={handleSelectedIndexChange}
                 selectedSessionId={selectedSessionId}
                 onSelectedSessionIdChange={setSelectedSessionId}
-                onOpenFullView={handleOpenFullView}
                 onArchiveSession={handleArchiveSession}
                 onDeleteSession={handleDeleteSession}
                 onPlanApproval={handlePlanApproval}
@@ -568,6 +545,8 @@ export function WorktreeCanvasView({
       <GitDiffModal
         diffRequest={diffRequest}
         onClose={() => setDiffRequest(null)}
+        uncommittedStats={{ added: uncommittedAdded, removed: uncommittedRemoved }}
+        branchStats={{ added: branchDiffAdded, removed: branchDiffRemoved }}
       />
 
       <CloseWorktreeDialog

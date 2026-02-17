@@ -1,5 +1,6 @@
 import { useCallback } from 'react'
-import { FileIcon, X } from 'lucide-react'
+import { FileIcon } from 'lucide-react'
+import { DismissButton } from '@/components/ui/dismiss-button'
 import type { PendingFile } from '@/types/chat'
 import { cn } from '@/lib/utils'
 import { getExtensionColor } from '@/lib/file-colors'
@@ -53,18 +54,11 @@ export function FilePreview({ files, onRemove, disabled }: FilePreviewProps) {
             {getFilename(file.relativePath)}
           </span>
           {!disabled && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={e => handleRemove(e, file)}
-                  className="ml-1 p-0.5 rounded-full hover:bg-destructive/20 transition-colors"
-                >
-                  <X className="h-3 w-3 text-muted-foreground hover:text-destructive" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>Remove file</TooltipContent>
-            </Tooltip>
+            <DismissButton
+              tooltip="Remove file"
+              onClick={e => handleRemove(e, file)}
+              className="ml-1"
+            />
           )}
         </div>
           </TooltipTrigger>

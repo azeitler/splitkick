@@ -498,9 +498,6 @@ export interface AppPreferences {
   remote_poll_interval: number // Remote API polling interval in seconds (30-600)
   keybindings: KeybindingsMap // User-configurable keyboard shortcuts
   archive_retention_days: number // Days to keep archived items (0 = never delete)
-  session_grouping_enabled: boolean // Group session tabs by status when >3 sessions
-  canvas_enabled: boolean // Show the canvas tab for session overview
-  canvas_only_mode: boolean // Always show canvas view, hide session tabs
   syntax_theme_dark: SyntaxTheme // Syntax highlighting theme for dark mode
   syntax_theme_light: SyntaxTheme // Syntax highlighting theme for light mode
   disable_thinking_in_non_plan_modes: boolean // Disable thinking in build/yolo modes (only plan uses thinking)
@@ -717,7 +714,7 @@ export function getOpenInDefaultLabel(
 export type FontSize = number
 
 export const FONT_SIZE_DEFAULT = 16
-export const ZOOM_LEVEL_DEFAULT = 100
+export const ZOOM_LEVEL_DEFAULT = 90
 
 export const uiFontScaleTicks = [
   { value: 12, label: '12px' },
@@ -911,9 +908,6 @@ export const defaultPreferences: AppPreferences = {
   remote_poll_interval: 60,
   keybindings: DEFAULT_KEYBINDINGS,
   archive_retention_days: 7,
-  session_grouping_enabled: true,
-  canvas_enabled: true,
-  canvas_only_mode: true,
   syntax_theme_dark: 'vitesse-black',
   syntax_theme_light: 'github-light',
   disable_thinking_in_non_plan_modes: true, // Default: only plan mode uses thinking

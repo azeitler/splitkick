@@ -16,6 +16,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
+import { ModalCloseButton } from '@/components/ui/modal-close-button'
 import { toast } from 'sonner'
 import { invoke } from '@/lib/transport'
 import { useUIStore } from '@/store/ui-store'
@@ -514,22 +516,27 @@ export function WorkflowRunsModal() {
 
   return (
     <Dialog open={workflowRunsModalOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="h-[80vh] sm:max-w-5xl overflow-hidden flex flex-col" onOpenAutoFocus={e => e.preventDefault()}>
+      <DialogContent showCloseButton={false} className="h-[80vh] sm:max-w-5xl overflow-hidden flex flex-col" onOpenAutoFocus={e => e.preventDefault()}>
         <DialogHeader>
           <div className="flex items-center gap-2">
             <DialogTitle>{title}</DialogTitle>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={handleRefresh}
-                  disabled={isFetching}
-                  className="inline-flex items-center justify-center rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none"
-                >
-                  <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>Refresh</TooltipContent>
-            </Tooltip>
+            <div className="ml-auto flex items-center gap-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 shrink-0 p-0"
+                    onClick={handleRefresh}
+                    disabled={isFetching}
+                  >
+                    <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Refresh</TooltipContent>
+              </Tooltip>
+              <ModalCloseButton onClick={() => handleOpenChange(false)} />
+            </div>
           </div>
         </DialogHeader>
 

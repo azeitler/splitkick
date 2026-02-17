@@ -241,6 +241,8 @@ function WorktreeSectionHeader({
       <GitDiffModal
         diffRequest={diffRequest}
         onClose={() => setDiffRequest(null)}
+        uncommittedStats={{ added: uncommittedAdded, removed: uncommittedRemoved }}
+        branchStats={{ added: branchDiffAdded, removed: branchDiffRemoved }}
       />
     </>
   )
@@ -671,17 +673,8 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     }
   }, [selectedWorktreeModal?.worktreeId])
 
-  // Projects store actions
-  const selectProject = useProjectsStore(state => state.selectProject)
-  const selectWorktree = useProjectsStore(state => state.selectWorktree)
-  const setActiveWorktree = useChatStore(state => state.setActiveWorktree)
-  const setActiveSession = useChatStore(state => state.setActiveSession)
-
   // Mutations
   const createSession = useCreateSession()
-
-  // Actions via getState()
-  const { setViewingCanvasTab } = useChatStore.getState()
 
   // Handle clicking on a worktree row - open modal
   const handleWorktreeClick = useCallback(
@@ -819,38 +812,6 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     },
     [planDialogCard, handlePlanApprovalYolo]
   )
-
-  // Handle opening full view from modal
-  const handleOpenFullView = useCallback(() => {
-    if (selectedWorktreeModal) {
-      selectProject(projectId)
-      selectWorktree(selectedWorktreeModal.worktreeId)
-      setActiveWorktree(
-        selectedWorktreeModal.worktreeId,
-        selectedWorktreeModal.worktreePath
-      )
-      // Use the active session from store (set by the modal's tab bar)
-      const activeSessionId = useChatStore.getState().activeSessionIds[selectedWorktreeModal.worktreeId]
-      if (activeSessionId) {
-        setActiveSession(selectedWorktreeModal.worktreeId, activeSessionId)
-      }
-      setViewingCanvasTab(selectedWorktreeModal.worktreeId, false)
-      // Auto-open review sidebar if session has review results
-      const { reviewResults, setReviewSidebarVisible } = useChatStore.getState()
-      if (activeSessionId && reviewResults[activeSessionId]) {
-        setReviewSidebarVisible(true)
-      }
-      setSelectedWorktreeModal(null)
-    }
-  }, [
-    selectedWorktreeModal,
-    projectId,
-    selectProject,
-    selectWorktree,
-    setActiveWorktree,
-    setActiveSession,
-    setViewingCanvasTab,
-  ])
 
   // Handle archive session for a specific worktree
   const handleArchiveSessionForWorktree = useCallback(
@@ -1358,7 +1319,6 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
         worktreePath={selectedWorktreeModal?.worktreePath ?? ''}
         isOpen={!!selectedWorktreeModal}
         onClose={() => setSelectedWorktreeModal(null)}
-        onOpenFullView={handleOpenFullView}
       />
 
       {/* Keybinding hints */}

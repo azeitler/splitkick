@@ -50,8 +50,6 @@ import {
   useCreateWorktreeKeybinding,
   useWorktreeEvents,
 } from '@/services/projects'
-import { usePreferences } from '@/services/preferences'
-import { useSessions } from '@/services/chat'
 import { useChatStore } from '@/store/chat-store'
 import { isNativeApp } from '@/lib/environment'
 
@@ -72,27 +70,11 @@ export function MainWindow() {
     ? projects?.find(p => p.id === worktree.project_id)
     : null
 
-  // Fetch preferences and session data for title
-  const { data: preferences } = usePreferences()
-  const { data: sessionsData } = useSessions(
-    selectedWorktreeId ?? null,
-    worktree?.path ?? null
-  )
-  const activeSessionId = useChatStore(state =>
-    selectedWorktreeId ? state.activeSessionIds[selectedWorktreeId] : undefined
-  )
   const isViewingCanvasTabRaw = useChatStore(state =>
     selectedWorktreeId
       ? (state.viewingCanvasTab[selectedWorktreeId] ?? true)
       : false
   )
-
-  // Find active session name
-  // eslint-disable-next-line react-hooks/preserve-manual-memoization
-  const activeSessionName = useMemo(() => {
-    if (!sessionsData?.sessions || !activeSessionId) return undefined
-    return sessionsData.sessions.find(s => s.id === activeSessionId)?.name
-  }, [sessionsData?.sessions, activeSessionId])
 
   // Compute window title based on selected project/worktree
   const windowTitle = useMemo(() => {
@@ -100,25 +82,11 @@ export function MainWindow() {
     const branchSuffix =
       worktree.branch !== worktree.name ? ` (${worktree.branch})` : ''
 
-    // Add session name when grouping enabled
-    if (preferences?.session_grouping_enabled && activeSessionName) {
-      return `${project.name} › ${worktree.name} › ${activeSessionName}`
-    }
-
     return `${project.name} › ${worktree.name}${branchSuffix}`
-  }, [
-    project,
-    worktree,
-    preferences?.session_grouping_enabled,
-    activeSessionName,
-  ])
+  }, [project, worktree])
 
   // Determine if canvas view is active (for hiding title bar)
-  const canvasEnabled = preferences?.canvas_enabled ?? true
-  const canvasOnlyMode = preferences?.canvas_only_mode ?? false
-  const isViewingCanvasTab = canvasEnabled
-    ? canvasOnlyMode || isViewingCanvasTabRaw
-    : false
+  const isViewingCanvasTab = isViewingCanvasTabRaw
 
   // Compute polling info - null if no worktree or data not loaded
   const pollingInfo: WorktreePollingInfo | null = useMemo(() => {

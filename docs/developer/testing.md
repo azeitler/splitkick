@@ -202,19 +202,6 @@ await mockPage.keyboard.press('Enter')
 
 ### Key Mock Data Settings
 
-In `e2e/fixtures/mock-data.ts`, these preferences are critical:
-
-```typescript
-export const mockPreferences = {
-  canvas_enabled: false,              // Show chat view, not canvas grid
-  session_grouping_enabled: false,    // Show flat session tabs, not grouped by status
-  // ...
-}
-```
-
-- **`canvas_enabled: false`** — Without this, activating a worktree shows the WorktreeCanvasView (card grid) instead of the chat view with tabs/textarea
-- **`session_grouping_enabled: false`** — Without this, session tabs are grouped by status (Idle, Planning, etc.) instead of showing individual `[data-session-id]` tabs
-
 ## TypeScript Testing
 
 ### Test Framework: Vitest + Testing Library

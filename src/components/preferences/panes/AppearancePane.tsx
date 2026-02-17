@@ -126,43 +126,6 @@ export const AppearancePane: React.FC = () => {
     [savePreferences, preferences]
   )
 
-  const handleSessionGroupingChange = useCallback(
-    (checked: boolean) => {
-      if (preferences) {
-        savePreferences.mutate({
-          ...preferences,
-          session_grouping_enabled: checked,
-        })
-      }
-    },
-    [savePreferences, preferences]
-  )
-
-  const handleCanvasEnabledChange = useCallback(
-    (checked: boolean) => {
-      if (preferences) {
-        savePreferences.mutate({
-          ...preferences,
-          canvas_enabled: checked,
-          canvas_only_mode: checked ? preferences.canvas_only_mode : false,
-        })
-      }
-    },
-    [savePreferences, preferences]
-  )
-
-  const handleCanvasOnlyChange = useCallback(
-    (checked: boolean) => {
-      if (preferences) {
-        savePreferences.mutate({
-          ...preferences,
-          canvas_only_mode: checked,
-        })
-      }
-    },
-    [savePreferences, preferences]
-  )
-
   const handleKeybindingHintsChange = useCallback(
     (checked: boolean) => {
       if (preferences) {
@@ -370,41 +333,6 @@ export const AppearancePane: React.FC = () => {
 
       <SettingsSection title="Layout">
         <div className="space-y-4">
-          <InlineField
-            label="Group sessions by status"
-            description="Group session tabs into dropdowns when you have many sessions"
-          >
-            <Switch
-              checked={preferences?.session_grouping_enabled ?? true}
-              onCheckedChange={handleSessionGroupingChange}
-              disabled={savePreferences.isPending}
-            />
-          </InlineField>
-
-          <InlineField
-            label="Canvas view"
-            description="Show the canvas tab for session overview"
-          >
-            <Switch
-              checked={preferences?.canvas_enabled ?? true}
-              onCheckedChange={handleCanvasEnabledChange}
-              disabled={savePreferences.isPending}
-            />
-          </InlineField>
-
-          <InlineField
-            label="Canvas only mode"
-            description="Always show canvas view, hide session tabs"
-          >
-            <Switch
-              checked={preferences?.canvas_only_mode ?? false}
-              onCheckedChange={handleCanvasOnlyChange}
-              disabled={
-                savePreferences.isPending || !preferences?.canvas_enabled
-              }
-            />
-          </InlineField>
-
           <InlineField
             label="Keybinding hints"
             description="Show keyboard shortcuts at the bottom of canvas views"

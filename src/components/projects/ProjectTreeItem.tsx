@@ -148,7 +148,7 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
         {/* Project Row */}
         <div
           className={cn(
-            'group relative flex cursor-pointer items-center gap-1.5 px-2 py-1.5 transition-colors duration-150',
+            'group relative flex cursor-pointer items-center gap-1.5 px-2 py-1.5 overflow-hidden transition-colors duration-150',
             isSelected
               ? 'bg-primary/10 text-foreground before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:bg-primary'
               : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'

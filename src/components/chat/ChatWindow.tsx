@@ -81,7 +81,6 @@ import { getFilename, normalizePath } from '@/lib/path-utils'
 import { cn } from '@/lib/utils'
 import { PermissionApproval } from './PermissionApproval'
 import { SetupScriptOutput } from './SetupScriptOutput'
-import { SessionTabBar } from './SessionTabBar'
 import { TodoWidget } from './TodoWidget'
 import {
   normalizeTodosForDisplay,
@@ -175,7 +174,7 @@ const EMPTY_QUEUED_MESSAGES: QueuedMessage[] = []
 const EMPTY_PERMISSION_DENIALS: PermissionDenial[] = []
 
 interface ChatWindowProps {
-  /** When true, hides SessionTabBar, terminal panel, and other elements not needed in modal */
+  /** When true, hides terminal panel and other elements not needed in modal */
   isModal?: boolean
   /** Override worktree ID (used in modal mode to avoid setting global state) */
   worktreeId?: string
@@ -371,12 +370,7 @@ export function ChatWindow({
 
   const { data: preferences } = usePreferences()
   const savePreferences = useSavePreferences()
-  // Apply canvas preferences: if canvas disabled, never show; if canvas-only, always show
-  const canvasEnabled = preferences?.canvas_enabled ?? true
-  const canvasOnlyMode = preferences?.canvas_only_mode ?? false
-  const isViewingCanvasTab = canvasEnabled
-    ? canvasOnlyMode || isViewingCanvasTabRaw
-    : false
+  const isViewingCanvasTab = isViewingCanvasTabRaw
   const sessionModalOpen = useUIStore(state => state.sessionChatModalOpen)
   const focusChatShortcut = formatShortcutDisplay(
     (preferences?.keybindings?.focus_chat_input ??
@@ -1032,8 +1026,6 @@ export function ChatWindow({
   }, [isViewingCanvasTab, isModal, activeSessionId, session, isRecapDialogOpen, recapDialogDigest])
 
   // Listen for global create-new-session event from keybinding (CMD+T)
-  // This needs to be in ChatWindow (not SessionTabBar) because SessionTabBar
-  // may be hidden in canvas-only mode
   useEffect(() => {
     const handleCreateNewSession = () => {
       if (!activeWorktreeId || !activeWorktreePath) return
@@ -1044,14 +1036,12 @@ export function ChatWindow({
             useChatStore
               .getState()
               .setActiveSession(activeWorktreeId, session.id)
-            // When in a modal or canvas-only mode, notify parent to update modal session
-            if (isModal || canvasOnlyMode) {
-              window.dispatchEvent(
-                new CustomEvent('open-session-modal', {
-                  detail: { sessionId: session.id },
-                })
-              )
-            }
+            // Always open new session in modal (canvas is always the base view)
+            window.dispatchEvent(
+              new CustomEvent('open-session-modal', {
+                detail: { sessionId: session.id },
+              })
+            )
           },
         }
       )
@@ -1064,8 +1054,6 @@ export function ChatWindow({
     activeWorktreeId,
     activeWorktreePath,
     createSession,
-    isModal,
-    canvasOnlyMode,
   ])
 
   // Listen for cycle-execution-mode event from keybinding (SHIFT+TAB)
@@ -1085,14 +1073,25 @@ export function ChatWindow({
   }, [activeSessionId])
 
   // Listen for global git diff request from keybinding (CMD+G by default)
+  // If modal is closed, open with 'uncommitted'. If already open, toggle between types.
   useEffect(() => {
     const handleOpenGitDiff = () => {
       if (!activeWorktreePath) return
+      const baseBranch = gitStatus?.base_branch ?? 'main'
 
-      setDiffRequest({
-        type: 'uncommitted',
-        worktreePath: activeWorktreePath,
-        baseBranch: gitStatus?.base_branch ?? 'main',
+      setDiffRequest(prev => {
+        if (prev) {
+          // Already open — toggle type
+          return {
+            ...prev,
+            type: prev.type === 'uncommitted' ? 'branch' : 'uncommitted',
+          }
+        }
+        return {
+          type: 'uncommitted',
+          worktreePath: activeWorktreePath,
+          baseBranch,
+        }
       })
     }
 
@@ -2619,16 +2618,6 @@ export function ChatWindow({
       )}
     >
       <div className="flex h-full w-full min-w-0 flex-col overflow-hidden">
-        {/* Session tab bar - hidden in modal mode and canvas-only mode */}
-        {!isModal && !canvasOnlyMode && (
-          <SessionTabBar
-            worktreeId={activeWorktreeId}
-            worktreePath={activeWorktreePath}
-            projectId={worktree?.project_id}
-            isBase={worktree?.session_type === 'base'}
-          />
-        )}
-
         {/* Canvas view (when canvas tab is active) */}
         {!isModal && isViewingCanvasTab ? (
           <WorktreeCanvasView
@@ -2644,22 +2633,22 @@ export function ChatWindow({
               minSize={30}
             >
               <div className="flex h-full flex-col">
+                {/* Session label badge - outside scroll area to avoid overlapping messages */}
+                {sessionLabel && (
+                  <div className="flex justify-end px-4 pt-1">
+                    <span
+                      className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium"
+                      style={{
+                        backgroundColor: sessionLabel.color,
+                        color: getLabelTextColor(sessionLabel.color),
+                      }}
+                    >
+                      {sessionLabel.name}
+                    </span>
+                  </div>
+                )}
                 {/* Messages area */}
                 <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
-                  {/* Session label badge */}
-                  {sessionLabel && (
-                    <div className="absolute top-2 right-4 z-10">
-                      <span
-                        className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium"
-                        style={{
-                          backgroundColor: sessionLabel.color,
-                          color: getLabelTextColor(sessionLabel.color),
-                        }}
-                      >
-                        {sessionLabel.name}
-                      </span>
-                    </div>
-                  )}
                   {/* Session digest reminder (shows when opening a session that had activity while out of focus) */}
                   {activeSessionId && (
                     <SessionDigestReminder sessionId={activeSessionId} />
@@ -2829,13 +2818,13 @@ export function ChatWindow({
                 {/* Input container - full width, centered content */}
                 <div>
                   <div className="mx-auto max-w-7xl">
-                    <div className="relative mx-auto mb-3 max-w-3xl">
+                    <div className="relative sm:mx-auto sm:mb-3 sm:max-w-3xl">
                     {/* Input area - unified container with textarea and toolbar */}
                     <form
                       ref={formRef}
                       onSubmit={handleSubmit}
                       className={cn(
-                        'relative overflow-hidden rounded-lg border border-border bg-sidebar transition-all duration-150',
+                        'relative overflow-hidden border-t border-border bg-sidebar transition-all duration-150 sm:rounded-lg sm:border',
                         isDragging &&
                         'ring-2 ring-primary ring-inset bg-primary/5'
                       )}
@@ -3066,6 +3055,8 @@ export function ChatWindow({
           onClose={() => setDiffRequest(null)}
           onAddToPrompt={handleGitDiffAddToPrompt}
           onExecutePrompt={handleGitDiffExecutePrompt}
+          uncommittedStats={{ added: uncommittedAdded, removed: uncommittedRemoved }}
+          branchStats={{ added: branchDiffAdded, removed: branchDiffRemoved }}
         />
 
         {/* Single file diff modal for viewing edited file changes */}

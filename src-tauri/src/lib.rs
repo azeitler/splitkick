@@ -110,12 +110,6 @@ pub struct AppPreferences {
     pub keybindings: std::collections::HashMap<String, String>, // User-configurable keyboard shortcuts
     #[serde(default = "default_archive_retention_days")]
     pub archive_retention_days: u32, // Days to keep archived items before auto-cleanup (0 = disabled)
-    #[serde(default = "default_session_grouping_enabled")]
-    pub session_grouping_enabled: bool, // Group session tabs by status when >3 sessions
-    #[serde(default = "default_canvas_enabled")]
-    pub canvas_enabled: bool, // Show the canvas tab for session overview
-    #[serde(default = "default_canvas_only_mode")]
-    pub canvas_only_mode: bool, // Always show canvas view, hide session tabs
     #[serde(default = "default_syntax_theme_dark")]
     pub syntax_theme_dark: String, // Syntax highlighting theme for dark mode
     #[serde(default = "default_syntax_theme_light")]
@@ -235,18 +229,6 @@ fn default_auto_session_naming() -> bool {
     true // Enabled by default
 }
 
-fn default_session_grouping_enabled() -> bool {
-    true // Enabled by default
-}
-
-fn default_canvas_enabled() -> bool {
-    true // Enabled by default
-}
-
-fn default_canvas_only_mode() -> bool {
-    true // Canvas-only by default for new installations
-}
-
 fn default_session_naming_model() -> String {
     "haiku".to_string() // Use Haiku by default for fast, cheap session name generation
 }
@@ -359,7 +341,7 @@ fn default_confirm_session_close() -> bool {
 }
 
 fn default_zoom_level() -> u32 {
-    100 // 100% = no zoom
+    90 // 90% = slightly smaller default
 }
 
 fn default_allow_web_tools_in_plan_mode() -> bool {
@@ -803,9 +785,6 @@ impl Default for AppPreferences {
             remote_poll_interval: default_remote_poll_interval(),
             keybindings: default_keybindings(),
             archive_retention_days: default_archive_retention_days(),
-            session_grouping_enabled: default_session_grouping_enabled(),
-            canvas_enabled: default_canvas_enabled(),
-            canvas_only_mode: default_canvas_only_mode(),
             syntax_theme_dark: default_syntax_theme_dark(),
             syntax_theme_light: default_syntax_theme_light(),
             disable_thinking_in_non_plan_modes: default_disable_thinking_in_non_plan_modes(),

@@ -44,7 +44,7 @@ export function SessionCard({
   }
 
   // Determine badge to show based on state
-  // Uses same colors as SessionTabBar for consistency
+  // Determine badge to show based on column state
   const getBadge = () => {
     if (column === 'waiting') {
       return (

@@ -76,7 +76,7 @@ export function ProjectsSidebar() {
   return (
     <div className="flex h-full flex-col">
       {/* Content */}
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
         {isLoading ? (
           <div className="flex items-center justify-center p-4">
             <span className="text-sm text-muted-foreground">Loading...</span>

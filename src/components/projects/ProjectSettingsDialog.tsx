@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
-import { Settings, Plug, FileJson, X } from 'lucide-react'
+import { Settings, Plug, FileJson } from 'lucide-react'
+import { ModalCloseButton } from '@/components/ui/modal-close-button'
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -14,7 +15,6 @@ import {
   DialogDescription,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
 import {
   Select,
   SelectContent,
@@ -106,7 +106,7 @@ function ProjectSettingsDialogContent({
 
   return (
     <Dialog open onOpenChange={handleOpenChange}>
-      <DialogContent className="overflow-hidden p-0 !w-screen !h-dvh !max-w-screen !max-h-none !rounded-none sm:!w-[calc(100vw-4rem)] sm:!max-w-[calc(100vw-4rem)] sm:!h-[85vh] sm:!rounded-xl font-sans [&_[data-slot=dialog-close]]:hidden sm:[&_[data-slot=dialog-close]]:block">
+      <DialogContent showCloseButton={false} className="overflow-hidden p-0 !w-screen !h-dvh !max-w-screen !max-h-none !rounded-none sm:!w-[calc(100vw-4rem)] sm:!max-w-[calc(100vw-4rem)] sm:!h-[85vh] sm:!rounded-xl font-sans">
         <DialogTitle className="sr-only">
           Project Settings — {project?.name ?? 'Project'}
         </DialogTitle>
@@ -144,7 +144,7 @@ function ProjectSettingsDialogContent({
 
           <main className="flex flex-1 flex-col overflow-hidden">
             <header className="flex h-16 shrink-0 items-center gap-2">
-              <div className="flex flex-1 items-center gap-2 px-4 sm:pr-10">
+              <div className="flex flex-1 items-center gap-2 px-4">
                 {/* Mobile pane selector */}
                 <Select
                   value={activePane}
@@ -163,14 +163,7 @@ function ProjectSettingsDialogContent({
                     ))}
                   </SelectContent>
                 </Select>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="sm:hidden h-9 w-9 shrink-0"
-                  onClick={() => handleOpenChange(false)}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
+                <ModalCloseButton size="lg" className="md:hidden" onClick={() => handleOpenChange(false)} />
                 <Breadcrumb className="hidden md:block">
                   <BreadcrumbList>
                     <BreadcrumbItem>
@@ -186,6 +179,7 @@ function ProjectSettingsDialogContent({
                     </BreadcrumbItem>
                   </BreadcrumbList>
                 </Breadcrumb>
+                <ModalCloseButton className="hidden md:inline-flex ml-auto" onClick={() => handleOpenChange(false)} />
               </div>
             </header>
 

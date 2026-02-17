@@ -509,7 +509,7 @@ export function WorktreeItem({
       >
         <div
           className={cn(
-            'group relative flex cursor-pointer items-center gap-1.5 py-1.5 pr-2 transition-colors duration-150',
+            'group relative flex cursor-pointer items-center gap-1.5 py-1.5 pr-2 overflow-hidden transition-colors duration-150',
             isNarrowSidebar ? 'pl-4' : 'pl-7',
             isSelected
               ? 'bg-primary/10 text-foreground before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:bg-primary'
@@ -560,7 +560,7 @@ export function WorktreeItem({
               {(() => {
                 const displayBranch = gitStatus?.current_branch ?? worktree.branch
                 return displayBranch !== worktree.name ? (
-                  <span className="ml-0.5 inline-flex items-center gap-0.5 text-xs text-muted-foreground">
+                  <span className="ml-0.5 inline-flex max-w-[80px] items-center gap-0.5 truncate text-xs text-muted-foreground">
                     <GitBranch className="h-2.5 w-2.5" />
                     {displayBranch}
                   </span>

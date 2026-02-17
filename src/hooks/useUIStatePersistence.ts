@@ -191,10 +191,8 @@ export function useUIStatePersistence() {
         logger.debug('Restoring active project', {
           id: uiState.active_project_id,
         })
-        const { selectProject, expandProject } = useProjectsStore.getState()
+        const { selectProject } = useProjectsStore.getState()
         selectProject(uiState.active_project_id)
-        // Ensure the project is expanded so the worktree is visible
-        expandProject(uiState.active_project_id)
       } else {
         logger.debug('Active project no longer exists', {
           id: uiState.active_project_id,
