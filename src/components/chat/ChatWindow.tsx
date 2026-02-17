@@ -376,10 +376,6 @@ export function ChatWindow({
     (preferences?.keybindings?.focus_chat_input ??
       DEFAULT_KEYBINDINGS.focus_chat_input) as string
   )
-  const magicModalShortcut = formatShortcutDisplay(
-    (preferences?.keybindings?.open_magic_modal ??
-      DEFAULT_KEYBINDINGS.open_magic_modal) as string
-  )
   const approveShortcut = formatShortcutDisplay(
     (preferences?.keybindings?.approve_plan ??
       DEFAULT_KEYBINDINGS.approve_plan) as string
@@ -2931,7 +2927,6 @@ export function ChatWindow({
                         displayStatus={displayStatus}
                         checkStatus={checkStatus}
                         mergeableStatus={mergeableStatus}
-                        magicModalShortcut={magicModalShortcut}
                         activeWorktreePath={activeWorktreePath}
                         worktreeId={activeWorktreeId ?? null}
                         activeSessionId={activeSessionId}
