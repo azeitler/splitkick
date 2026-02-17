@@ -1,5 +1,5 @@
 import { memo, useCallback } from 'react'
-import { AlertCircle, ArrowDown, Check, FileText } from 'lucide-react'
+import { AlertCircle, ArrowDown, Check } from 'lucide-react'
 import { Kbd } from '@/components/ui/kbd'
 
 interface FloatingButtonsProps {
@@ -13,8 +13,6 @@ interface FloatingButtonsProps {
   isAtBottom: boolean
   /** Keyboard shortcut for approve */
   approveShortcut: string
-  /** Whether a plan is available (content or file) */
-  hasPlan: boolean
   /** Callback for streaming plan approval */
   onStreamingPlanApproval: () => void
   /** Callback for pending plan approval (needs message ID) */
@@ -23,8 +21,6 @@ interface FloatingButtonsProps {
   onScrollToFindings: () => void
   /** Callback to scroll to bottom */
   onScrollToBottom: () => void
-  /** Callback to open plan dialog */
-  onOpenPlan: () => void
 }
 
 /**
@@ -37,12 +33,10 @@ export const FloatingButtons = memo(function FloatingButtons({
   showFindingsButton,
   isAtBottom,
   approveShortcut,
-  hasPlan,
   onStreamingPlanApproval,
   onPendingPlanApproval,
   onScrollToFindings,
   onScrollToBottom,
-  onOpenPlan,
 }: FloatingButtonsProps) {
   // Show floating approve button when user scrolls up (same as "Go to bottom" button)
   const showApproveButton = (hasPendingPlan || hasStreamingPlan) && !isAtBottom
@@ -64,20 +58,6 @@ export const FloatingButtons = memo(function FloatingButtons({
 
   return (
     <>
-      {/* Left side - Plan button */}
-      {hasPlan && (
-        <div className="absolute bottom-4 left-4">
-          <button
-            type="button"
-            onClick={onOpenPlan}
-            className="flex h-8 items-center gap-1.5 rounded-lg bg-muted/90 px-3 text-sm text-muted-foreground shadow-md backdrop-blur-sm transition-all hover:bg-muted hover:text-foreground"
-          >
-            <FileText className="h-3.5 w-3.5" />
-            <span>Plan</span>
-          </button>
-        </div>
-      )}
-
       {/* Right side - Approve, Findings, Bottom buttons */}
       <div className="absolute bottom-4 right-4 flex gap-2">
         {/* Floating Approve button - shown when main approve button is not visible */}
@@ -120,3 +100,4 @@ export const FloatingButtons = memo(function FloatingButtons({
     </>
   )
 })
+

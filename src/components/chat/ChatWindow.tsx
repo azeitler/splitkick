@@ -222,11 +222,10 @@ export function ChatWindow({
   const areQuestionsSkipped = useChatStore(state => state.areQuestionsSkipped)
   const isFindingFixed = useChatStore(state => state.isFindingFixed)
   // DATA subscription for answered questions - triggers re-render when persisted state is restored
-  // Without this, the function selectors above are stable refs that don't cause re-renders
-  // when answeredQuestions is updated by useUIStatePersistence (submittedAnswers updates together)
-  // PERFORMANCE: Focus on current session only to avoid re-renders from other sessions
-  const answeredQuestions = useChatStore(state =>
-    activeSessionId ? state.answeredQuestions[activeSessionId] : undefined
+  // Subscribe to the size of answered questions (a stable primitive) to trigger re-renders
+  // when questions are answered, without creating new Set references on every store update
+  const answeredQuestionsSize = useChatStore(state =>
+    activeSessionId ? state.answeredQuestions[activeSessionId]?.size ?? 0 : 0
   )
   // Review sidebar state
   const reviewSidebarVisible = useChatStore(state => state.reviewSidebarVisible)
@@ -655,16 +654,18 @@ export function ChatWindow({
   // Check if there are pending (unanswered) questions
   // Look at the last assistant message's tool_calls since streaming tool calls
   // are cleared when the response completes (chat:done calls clearToolCalls)
-  // Note: Uses answeredQuestions data directly (not the getter function) to ensure
-  // re-render when persisted state is restored by useUIStatePersistence
+  // Note: Uses answeredQuestionsSize as dependency to trigger re-render when questions
+  // are answered, then reads the actual Set from getState() for the .has() check
   const hasPendingQuestions = useMemo(() => {
     if (!activeSessionId || isSending) return false
     if (!lastAssistantMessage?.tool_calls) return false
 
+    const answered = useChatStore.getState().answeredQuestions[activeSessionId]
     return lastAssistantMessage.tool_calls.some(
-      tc => isAskUserQuestion(tc) && !answeredQuestions?.has(tc.id)
+      tc => isAskUserQuestion(tc) && !answered?.has(tc.id)
     )
-  }, [activeSessionId, lastAssistantMessage, isSending, answeredQuestions])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSessionId, lastAssistantMessage, isSending, answeredQuestionsSize])
 
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const formRef = useRef<HTMLFormElement>(null)
@@ -862,7 +863,6 @@ export function ChatWindow({
   }, [session?.messages])
 
   // Whether a plan is available (content preferred over file)
-  const hasPlan = !!latestPlanContent || !!latestPlanFilePath
 
   // State for plan dialog
   const [isPlanDialogOpen, setIsPlanDialogOpen] = useState(false)
@@ -945,6 +945,8 @@ export function ChatWindow({
         setIsPlanDialogOpen(true)
       } else if (latestPlanFilePath) {
         setIsPlanDialogOpen(true)
+      } else {
+        toast.info('No plan available for this session')
       }
     }
 
@@ -1439,6 +1441,23 @@ export function ChatWindow({
       // Build message with image, file, and text file references
       // Store just the user's text - attachment refs are added when sending to backend
       const message = textMessage
+
+      // Snapshot attachments for restoration on cancellation
+      if (
+        images.length > 0 ||
+        files.length > 0 ||
+        textFiles.length > 0 ||
+        skills.length > 0
+      ) {
+        useChatStore
+          .getState()
+          .setLastSentAttachments(activeSessionId, {
+            images,
+            files,
+            textFiles,
+            skills,
+          })
+      }
 
       // Clear input and pending attachments immediately
       clearInputDraft(activeSessionId)
@@ -2629,11 +2648,12 @@ export function ChatWindow({
               minSize={30}
             >
               <div className="flex h-full flex-col">
-                {/* Session label badge - outside scroll area to avoid overlapping messages */}
-                {sessionLabel && (
-                  <div className="flex justify-end px-4 pt-1">
+                {/* Messages area */}
+                <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
+                  {/* Session label badge - absolute positioned to avoid covering content */}
+                  {sessionLabel && (
                     <span
-                      className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium"
+                      className="absolute top-2 right-4 z-20 inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium"
                       style={{
                         backgroundColor: sessionLabel.color,
                         color: getLabelTextColor(sessionLabel.color),
@@ -2641,10 +2661,9 @@ export function ChatWindow({
                     >
                       {sessionLabel.name}
                     </span>
-                  </div>
-                )}
-                {/* Messages area */}
-                <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
+                  )}
+                  {/* Bottom fade gradient so messages don't hard-cut at the input area */}
+                  <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-10 h-8 bg-gradient-to-b from-transparent to-background" />
                   {/* Session digest reminder (shows when opening a session that had activity while out of focus) */}
                   {activeSessionId && (
                     <SessionDigestReminder sessionId={activeSessionId} />
@@ -2787,17 +2806,10 @@ export function ChatWindow({
                     showFindingsButton={!areFindingsVisible}
                     isAtBottom={isAtBottom}
                     approveShortcut={approveShortcut}
-                    hasPlan={hasPlan}
                     onStreamingPlanApproval={handleStreamingPlanApproval}
                     onPendingPlanApproval={handlePendingPlanApprovalCallback}
                     onScrollToFindings={scrollToFindings}
                     onScrollToBottom={scrollToBottom}
-                    onOpenPlan={() => {
-                      if (latestPlanContent) {
-                        setPlanDialogContent(latestPlanContent)
-                      }
-                      setIsPlanDialogOpen(true)
-                    }}
                   />
                 </div>
 
@@ -3490,3 +3502,4 @@ export function ChatWindow({
     </ErrorBoundary>
   )
 }
+

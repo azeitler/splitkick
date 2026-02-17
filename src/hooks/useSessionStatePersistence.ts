@@ -274,9 +274,13 @@ export function useSessionStatePersistence() {
     }
 
     // Load reviewing status (handle both true and false to fix asymmetry bug)
-    updates.reviewingSessions = {
-      ...currentState.reviewingSessions,
-      [activeSessionId]: session.is_reviewing ?? false,
+    const isReviewing = session.is_reviewing ?? false
+    const currentReviewing = currentState.reviewingSessions[activeSessionId] ?? false
+    if (currentReviewing !== isReviewing) {
+      updates.reviewingSessions = {
+        ...currentState.reviewingSessions,
+        [activeSessionId]: isReviewing,
+      }
     }
 
     // Load review results from session data into Zustand store
@@ -296,9 +300,13 @@ export function useSessionStatePersistence() {
     }
 
     // Load waiting for input status
-    updates.waitingForInputSessionIds = {
-      ...currentState.waitingForInputSessionIds,
-      [activeSessionId]: session.waiting_for_input ?? false,
+    const waitingForInput = session.waiting_for_input ?? false
+    const currentWaiting = currentState.waitingForInputSessionIds[activeSessionId] ?? false
+    if (currentWaiting !== waitingForInput) {
+      updates.waitingForInputSessionIds = {
+        ...currentState.waitingForInputSessionIds,
+        [activeSessionId]: waitingForInput,
+      }
     }
 
     // Load plan file path

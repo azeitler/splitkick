@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { Archive, ArrowLeft, Code, Eye, EyeOff, FileText, FolderOpen, Github, MoreHorizontal, Pencil, Sparkles, Tag, Terminal, Play, Plus, Trash2 } from 'lucide-react'
 import { ModalCloseButton } from '@/components/ui/modal-close-button'
 import { cn } from '@/lib/utils'
@@ -67,6 +67,56 @@ import { WorktreeDropdownMenu } from '@/components/projects/WorktreeDropdownMenu
 import { LabelModal } from './LabelModal'
 import { useSessionArchive } from './hooks/useSessionArchive'
 
+/** Track whether any waiting tabs are off-screen to the left or right */
+function useOffScreenWaiting(
+  sortedSessions: Session[],
+  storeState: { sendingSessionIds: Record<string, boolean>; executionModes: Record<string, string>; reviewingSessions: Record<string, boolean> },
+  viewportRef: RefObject<HTMLDivElement | null>,
+) {
+  const [hasLeft, setHasLeft] = useState(false)
+  const [hasRight, setHasRight] = useState(false)
+
+  useEffect(() => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+
+    const waitingIds = sortedSessions
+      .filter(s => getSessionStatus(s, storeState) === 'waiting')
+      .map(s => s.id)
+
+    if (waitingIds.length === 0) {
+      setHasLeft(false)
+      setHasRight(false)
+      return
+    }
+
+    const check = () => {
+      const { scrollLeft, clientWidth } = viewport
+      let left = false
+      let right = false
+      for (const id of waitingIds) {
+        const el = viewport.querySelector(`[data-session-id="${id}"]`) as HTMLElement | null
+        if (!el) continue
+        if (el.offsetLeft + el.offsetWidth <= scrollLeft) left = true
+        else if (el.offsetLeft >= scrollLeft + clientWidth) right = true
+      }
+      setHasLeft(left)
+      setHasRight(right)
+    }
+
+    check()
+    viewport.addEventListener('scroll', check, { passive: true })
+    const ro = new ResizeObserver(check)
+    ro.observe(viewport)
+    return () => {
+      viewport.removeEventListener('scroll', check)
+      ro.disconnect()
+    }
+  }, [sortedSessions, storeState, viewportRef])
+
+  return { hasLeft, hasRight }
+}
+
 interface SessionChatModalProps {
   worktreeId: string
   worktreePath: string
@@ -131,11 +181,30 @@ export function SessionChatModal({
   const currentSessionId = activeSessionId ?? sessions[0]?.id ?? null
   const currentSession = sessions.find(s => s.id === currentSessionId) ?? null
 
+  // Auto-scroll active tab into view
+  useEffect(() => {
+    if (!currentSessionId) return
+    const viewport = modalTabScrollRef.current
+    if (!viewport) return
+    const activeTab = viewport.querySelector(`[data-session-id="${currentSessionId}"]`)
+    if (activeTab) {
+      activeTab.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
+    }
+  }, [currentSessionId, sessions.length])
+
   // Store state for tab status indicators
   const sendingSessionIds = useChatStore(state => state.sendingSessionIds)
   const executionModes = useChatStore(state => state.executionModes)
   const reviewingSessions = useChatStore(state => state.reviewingSessions)
   const storeState = { sendingSessionIds, executionModes, reviewingSessions }
+
+  // Plan/recap indicators for tab bar buttons
+  const hasPlan = useChatStore(state =>
+    currentSessionId ? !!(state.planFilePaths[currentSessionId]) : false
+  ) || !!currentSession?.plan_file_path
+  const hasRecap = useChatStore(state =>
+    currentSessionId ? !!(state.sessionDigests[currentSessionId]) : false
+  ) || !!currentSession?.digest
 
   // Git status for header badges
   const { data: worktree } = useWorktree(worktreeId)
@@ -318,6 +387,31 @@ export function SessionChatModal({
       return pa - pb
     })
   }, [sessions, storeState])
+
+  // Off-screen waiting tab indicators
+  const { hasLeft: hasWaitingLeft, hasRight: hasWaitingRight } = useOffScreenWaiting(
+    sortedSessions,
+    storeState,
+    modalTabScrollRef,
+  )
+
+  const scrollToFirstWaiting = useCallback((direction: 'left' | 'right') => {
+    const viewport = modalTabScrollRef.current
+    if (!viewport) return
+    const { scrollLeft, clientWidth } = viewport
+    for (const session of sortedSessions) {
+      if (getSessionStatus(session, storeState) !== 'waiting') continue
+      const el = viewport.querySelector(`[data-session-id="${session.id}"]`) as HTMLElement | null
+      if (!el) continue
+      const isLeft = el.offsetLeft + el.offsetWidth <= scrollLeft
+      const isRight = el.offsetLeft >= scrollLeft + clientWidth
+      if ((direction === 'left' && isLeft) || (direction === 'right' && isRight)) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
+        handleTabClick(session.id)
+        return
+      }
+    }
+  }, [sortedSessions, storeState, handleTabClick])
 
   // Listen for switch-session events from the global keybinding system (OPT+CMD+LEFT/RIGHT)
   useEffect(() => {
@@ -581,7 +675,23 @@ export function SessionChatModal({
 
           {/* Session tabs */}
           {sessions.length > 0 && (
-            <div className="shrink-0 border-b px-2 flex items-center gap-0.5 overflow-x-auto">
+            <div className="shrink-0 border-b px-2 flex items-center gap-0.5 overflow-x-auto relative">
+              {hasWaitingLeft && (
+                <button
+                  type="button"
+                  onClick={() => scrollToFirstWaiting('left')}
+                  className="absolute left-0 top-0 bottom-0 w-1 bg-yellow-500 animate-blink rounded-r z-10 cursor-pointer"
+                  aria-label="Scroll to waiting session"
+                />
+              )}
+              {hasWaitingRight && (
+                <button
+                  type="button"
+                  onClick={() => scrollToFirstWaiting('right')}
+                  className="absolute right-0 top-0 bottom-0 w-1 bg-yellow-500 animate-blink rounded-l z-10 cursor-pointer"
+                  aria-label="Scroll to waiting session"
+                />
+              )}
               <ScrollArea className="flex-1" viewportRef={modalTabScrollRef}>
                 <div className="flex items-center gap-1.5 py-1">
                   {sortedSessions.map((session, idx) => {
@@ -593,6 +703,7 @@ export function SessionChatModal({
                       <ContextMenu key={session.id}>
                         <ContextMenuTrigger asChild>
                           <button
+                            data-session-id={session.id}
                             onClick={() => handleTabClick(session.id)}
                             className={cn(
                               'group/tab flex rounded items-center gap-2 px-2.5 py-1.5 text-xs transition-colors whitespace-nowrap',
@@ -692,7 +803,7 @@ export function SessionChatModal({
                     className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
                     aria-label="Recap"
                   >
-                    <Sparkles className="h-3 w-3" />
+                    <Sparkles className={cn("h-3 w-3", hasRecap && "text-yellow-500")} />
                   </button>
                 </TooltipTrigger>
                 <TooltipContent>Recap (R)</TooltipContent>
@@ -705,7 +816,7 @@ export function SessionChatModal({
                     className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
                     aria-label="Plan"
                   >
-                    <FileText className="h-3 w-3" />
+                    <FileText className={cn("h-3 w-3", hasPlan && "text-yellow-500")} />
                   </button>
                 </TooltipTrigger>
                 <TooltipContent>Plan (P)</TooltipContent>

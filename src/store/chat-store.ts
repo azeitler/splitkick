@@ -115,6 +115,17 @@ interface ChatUIState {
   // Last sent message per session (for restoring on error)
   lastSentMessages: Record<string, string>
 
+  // Last sent attachments per session (for restoring on cancellation)
+  lastSentAttachments: Record<
+    string,
+    {
+      images: PendingImage[]
+      files: PendingFile[]
+      textFiles: PendingTextFile[]
+      skills: PendingSkill[]
+    }
+  >
+
   // Setup script results per worktree (from jean.json) - stays at worktree level
   setupScriptResults: Record<string, SetupScriptResult>
 
@@ -326,6 +337,17 @@ interface ChatUIState {
   setError: (sessionId: string, error: string | null) => void
   setLastSentMessage: (sessionId: string, message: string) => void
   clearLastSentMessage: (sessionId: string) => void
+  setLastSentAttachments: (
+    sessionId: string,
+    attachments: {
+      images: PendingImage[]
+      files: PendingFile[]
+      textFiles: PendingTextFile[]
+      skills: PendingSkill[]
+    }
+  ) => void
+  clearLastSentAttachments: (sessionId: string) => void
+  restoreAttachments: (sessionId: string) => void
 
   // Actions - Setup script results (worktree-based)
   addSetupScriptResult: (worktreeId: string, result: SetupScriptResult) => void
@@ -491,6 +513,7 @@ export const useChatStore = create<ChatUIState>()(
       submittedAnswers: {},
       errors: {},
       lastSentMessages: {},
+      lastSentAttachments: {},
       setupScriptResults: {},
       pendingImages: {},
       pendingFiles: {},
@@ -625,6 +648,7 @@ export const useChatStore = create<ChatUIState>()(
         set(
           state => {
             if (reviewing) {
+              if (state.reviewingSessions[sessionId]) return state
               return {
                 reviewingSessions: {
                   ...state.reviewingSessions,
@@ -632,6 +656,7 @@ export const useChatStore = create<ChatUIState>()(
                 },
               }
             } else {
+              if (!(sessionId in state.reviewingSessions)) return state
               const { [sessionId]: _, ...rest } = state.reviewingSessions
               return { reviewingSessions: rest }
             }
@@ -750,12 +775,15 @@ export const useChatStore = create<ChatUIState>()(
       // Sending state (session-based)
       addSendingSession: sessionId =>
         set(
-          state => ({
-            sendingSessionIds: {
-              ...state.sendingSessionIds,
-              [sessionId]: true,
-            },
-          }),
+          state => {
+            if (state.sendingSessionIds[sessionId]) return state
+            return {
+              sendingSessionIds: {
+                ...state.sendingSessionIds,
+                [sessionId]: true,
+              },
+            }
+          },
           undefined,
           'addSendingSession'
         ),
@@ -777,6 +805,7 @@ export const useChatStore = create<ChatUIState>()(
         set(
           state => {
             if (isWaiting) {
+              if (state.waitingForInputSessionIds[sessionId]) return state
               return {
                 waitingForInputSessionIds: {
                   ...state.waitingForInputSessionIds,
@@ -784,6 +813,7 @@ export const useChatStore = create<ChatUIState>()(
                 },
               }
             } else {
+              if (!(sessionId in state.waitingForInputSessionIds)) return state
               const { [sessionId]: _, ...rest } =
                 state.waitingForInputSessionIds
               return { waitingForInputSessionIds: rest }
@@ -889,6 +919,8 @@ export const useChatStore = create<ChatUIState>()(
         set(
           state => {
             const toolCalls = state.activeToolCalls[sessionId] ?? []
+            const existing = toolCalls.find(tc => tc.id === toolUseId)
+            if (!existing || existing.output === output) return state
             const updatedToolCalls = toolCalls.map(tc =>
               tc.id === toolUseId ? { ...tc, output } : tc
             )
@@ -1213,6 +1245,7 @@ export const useChatStore = create<ChatUIState>()(
           state => {
             const existingAnswered =
               state.answeredQuestions[sessionId] ?? new Set()
+            if (existingAnswered.has(toolCallId)) return state
             const existingSubmitted = state.submittedAnswers[sessionId] ?? {}
             return {
               answeredQuestions: {
@@ -1294,6 +1327,71 @@ export const useChatStore = create<ChatUIState>()(
           },
           undefined,
           'clearLastSentMessage'
+        ),
+
+      setLastSentAttachments: (sessionId, attachments) =>
+        set(
+          state => ({
+            lastSentAttachments: {
+              ...state.lastSentAttachments,
+              [sessionId]: attachments,
+            },
+          }),
+          undefined,
+          'setLastSentAttachments'
+        ),
+
+      clearLastSentAttachments: sessionId =>
+        set(
+          state => {
+            const { [sessionId]: _, ...rest } = state.lastSentAttachments
+            return { lastSentAttachments: rest }
+          },
+          undefined,
+          'clearLastSentAttachments'
+        ),
+
+      restoreAttachments: sessionId =>
+        set(
+          state => {
+            const saved = state.lastSentAttachments[sessionId]
+            if (!saved) return state
+            const { [sessionId]: _, ...restAttachments } =
+              state.lastSentAttachments
+            return {
+              pendingImages: {
+                ...state.pendingImages,
+                [sessionId]: [
+                  ...(state.pendingImages[sessionId] ?? []),
+                  ...saved.images,
+                ],
+              },
+              pendingFiles: {
+                ...state.pendingFiles,
+                [sessionId]: [
+                  ...(state.pendingFiles[sessionId] ?? []),
+                  ...saved.files,
+                ],
+              },
+              pendingTextFiles: {
+                ...state.pendingTextFiles,
+                [sessionId]: [
+                  ...(state.pendingTextFiles[sessionId] ?? []),
+                  ...saved.textFiles,
+                ],
+              },
+              pendingSkills: {
+                ...state.pendingSkills,
+                [sessionId]: [
+                  ...(state.pendingSkills[sessionId] ?? []),
+                  ...saved.skills,
+                ],
+              },
+              lastSentAttachments: restAttachments,
+            }
+          },
+          undefined,
+          'restoreAttachments'
         ),
 
       // Setup script results (worktree-based)
@@ -1660,12 +1758,15 @@ export const useChatStore = create<ChatUIState>()(
       // Executing mode actions (tracks mode prompt was sent with)
       setExecutingMode: (sessionId, mode) =>
         set(
-          state => ({
-            executingModes: {
-              ...state.executingModes,
-              [sessionId]: mode,
-            },
-          }),
+          state => {
+            if (state.executingModes[sessionId] === mode) return state
+            return {
+              executingModes: {
+                ...state.executingModes,
+                [sessionId]: mode,
+              },
+            }
+          },
           undefined,
           'setExecutingMode'
         ),
@@ -1713,12 +1814,16 @@ export const useChatStore = create<ChatUIState>()(
       // Pending permission denials
       setPendingDenials: (sessionId, denials) =>
         set(
-          state => ({
-            pendingPermissionDenials: {
-              ...state.pendingPermissionDenials,
-              [sessionId]: denials,
-            },
-          }),
+          state => {
+            const current = state.pendingPermissionDenials[sessionId]
+            if (!current && denials.length === 0) return state
+            return {
+              pendingPermissionDenials: {
+                ...state.pendingPermissionDenials,
+                [sessionId]: denials,
+              },
+            }
+          },
           undefined,
           'setPendingDenials'
         ),

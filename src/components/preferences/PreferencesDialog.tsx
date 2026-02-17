@@ -121,7 +121,9 @@ const getPaneTitle = (pane: PreferencePane): string => {
 
 export function PreferencesDialog() {
   const [activePane, setActivePane] = useState<PreferencePane>('general')
-  const { preferencesOpen, setPreferencesOpen, preferencesPane } = useUIStore()
+  const preferencesOpen = useUIStore(state => state.preferencesOpen)
+  const setPreferencesOpen = useUIStore(state => state.setPreferencesOpen)
+  const preferencesPane = useUIStore(state => state.preferencesPane)
 
   // Handle open state change and navigate to specific pane if requested
   const handleOpenChange = useCallback(
@@ -233,5 +235,6 @@ export function PreferencesDialog() {
     </Dialog>
   )
 }
+
 
 export default PreferencesDialog

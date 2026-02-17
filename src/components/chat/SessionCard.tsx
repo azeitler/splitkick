@@ -235,3 +235,5 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
     )
   }
 )
+
+SessionCard.displayName = 'SessionCard'

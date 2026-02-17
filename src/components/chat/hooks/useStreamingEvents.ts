@@ -262,6 +262,7 @@ export default function useStreamingEvents({
       // false before the new message appears in the cache
       setError(sessionId, null)
       clearLastSentMessage(sessionId)
+      useChatStore.getState().clearLastSentAttachments(sessionId)
 
       if (hasUnansweredBlockingTool) {
         // Check if there are queued messages AND only ExitPlanMode is blocking (not AskUserQuestion)
@@ -691,9 +692,12 @@ export default function useStreamingEvents({
             // Only restore if input is empty (user hasn't typed new content)
             if (!currentDraft.trim()) {
               setInputDraft(session_id, lastMessage)
+              // Restore any attachments that were sent with the message
+              useChatStore.getState().restoreAttachments(session_id)
               toast.info('Message restored to input')
             } else {
               toast.info('Request cancelled')
+              useChatStore.getState().clearLastSentAttachments(session_id)
             }
             clearLastSentMessage(session_id)
 
@@ -715,6 +719,7 @@ export default function useStreamingEvents({
             )
           } else {
             toast.info('Request cancelled')
+            useChatStore.getState().clearLastSentAttachments(session_id)
           }
 
           // Restore review state if session still has messages after undoing the send
@@ -725,6 +730,8 @@ export default function useStreamingEvents({
             setSessionReviewing(session_id, true)
           }
         } else {
+          // Partial response exists — attachments were consumed, don't restore
+          useChatStore.getState().clearLastSentAttachments(session_id)
           // Preserve partial response as optimistic message
           // This provides immediate visual feedback; mutation completion will update with persisted version
           queryClient.setQueryData<Session>(

@@ -304,6 +304,12 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     })),
   })
 
+  // Derive a stable fingerprint from query data to avoid re-computing
+  // sessionsByWorktreeId when useQueries returns a new array with same data.
+  const sessionsFingerprint = sessionQueries
+    .map(q => `${q.data?.worktree_id}:${q.dataUpdatedAt}:${q.isLoading}`)
+    .join('|')
+
   // Build a Map of worktree ID -> session data for stable lookups
   const sessionsByWorktreeId = useMemo(() => {
     const map = new Map<string, { sessions: Session[]; isLoading: boolean }>()
@@ -317,7 +323,8 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       }
     }
     return map
-  }, [sessionQueries])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionsFingerprint])
 
   // Use shared store state hook
   const storeState = useCanvasStoreState()
@@ -1410,3 +1417,4 @@ function EmptyDashboardTabs({
     </div>
   )
 }
+

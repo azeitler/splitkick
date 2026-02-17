@@ -281,17 +281,8 @@ export const ChatInput = memo(function ChatInput({
             setSlashQuery('')
             setSlashPopoverOpen(true)
 
-            // Calculate anchor position relative to form
-            const textarea = e.target
-            const form = formRef.current
-            if (form) {
-              const formRect = form.getBoundingClientRect()
-              const textareaRect = textarea.getBoundingClientRect()
-              setSlashAnchor({
-                top: textareaRect.top - formRect.top - 8,
-                left: textareaRect.left - formRect.left + 16,
-              })
-            }
+            // Anchor at the top-left of the form so popover appears above the input
+            setSlashAnchor({ top: 0, left: 16 })
           }
         } else if (slashTriggerIndex !== null && slashPopoverOpen) {
           // Continuing to type after /, update query
@@ -781,7 +772,7 @@ export const ChatInput = memo(function ChatInput({
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
         disabled={false}
-        className="field-sizing-fixed min-h-[40px] max-h-[200px] w-full resize-none border-0 bg-transparent dark:bg-transparent p-0 font-mono text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+        className="custom-scrollbar field-sizing-fixed min-h-[40px] max-h-[200px] w-full resize-none border-0 bg-transparent dark:bg-transparent p-0 font-mono text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
         rows={1}
         autoFocus
       />
@@ -812,9 +803,11 @@ export const ChatInput = memo(function ChatInput({
         onSelectCommand={handleCommandSelect}
         searchQuery={slashQuery}
         anchorPosition={slashAnchor}
+        containerRef={formRef}
         isAtPromptStart={isSlashAtPromptStart}
         handleRef={slashPopoverHandleRef}
       />
     </div>
   )
 })
+

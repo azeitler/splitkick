@@ -281,24 +281,6 @@ export function WorktreeItem({
     return groupCardsByStatus(allCards)
   }, [isExpanded, allCards])
 
-  // Compute active status for colored summary (same logic as ProjectCanvasView)
-  const activeStatus = useMemo(() => {
-    if (allCards.some(c => c.status === 'waiting' || c.status === 'permission')) return 'waiting' as const
-    if (allCards.some(c => c.status === 'yoloing')) return 'yoloing' as const
-    if (allCards.some(c => c.status === 'vibing')) return 'vibing' as const
-    if (allCards.some(c => c.status === 'planning')) return 'planning' as const
-    if (allCards.some(c => c.status === 'review' || c.status === 'completed')) return 'review' as const
-    return null
-  }, [allCards])
-
-  // Session status summary text (e.g. "1 waiting · 2 idle")
-  const sessionSummary = useMemo(() => {
-    if (allCards.length === 0) return null
-    const groups = groupCardsByStatus(allCards).filter(g => g.key !== 'idle' && g.key !== 'waiting')
-    if (groups.length === 0) return null
-    return groups.map(g => `${g.cards.length} ${g.title.toLowerCase()}`).join(' · ')
-  }, [allCards])
-
   const handleChevronClick = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation()
@@ -619,19 +601,6 @@ export function WorktreeItem({
             </Tooltip>
           )}
 
-          {/* Session status summary */}
-          {sessionSummary && (
-            <span className={cn(
-              'ml-auto shrink-0 text-[10px]',
-              activeStatus === 'waiting' ? 'text-yellow-500 font-medium animate-blink' :
-                activeStatus === 'yoloing' ? 'text-destructive font-medium' :
-                  activeStatus === 'review' ? 'text-green-500 font-medium' :
-                    activeStatus ? 'text-yellow-500 font-medium' :
-                      'text-muted-foreground/50'
-            )}>
-              {sessionSummary}
-            </span>
-          )}
         </div>
       </WorktreeContextMenu>
 

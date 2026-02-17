@@ -372,3 +372,17 @@ kbd {
 .font-mono .text-2xl {
   font-size: calc(var(--chat-font-size) * 1.5) !important;
 }
+
+/* Custom scrollbar styling to match Radix ScrollArea */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 10px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}

@@ -558,3 +558,4 @@ export function WorktreeCanvasView({
     </div>
   )
 }
+

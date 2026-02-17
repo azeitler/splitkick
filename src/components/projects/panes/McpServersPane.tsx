@@ -138,10 +138,23 @@ export function McpServersPane({
     // Always update known servers to include all current server names
     const updatedKnown = [...new Set([...knownServers, ...allServerNames])]
     const knownChanged = updatedKnown.length !== knownServers.length
-    if (newServers.length > 0 || knownChanged) {
+
+    // Don't auto-enable if user explicitly disabled all servers (empty array).
+    // null/undefined = not configured yet (inherit global), [] = explicitly all off.
+    const hasExplicitEmpty =
+      Array.isArray(project?.enabled_mcp_servers) &&
+      project.enabled_mcp_servers.length === 0
+    const serversToAdd = hasExplicitEmpty ? [] : newServers
+
+    if (serversToAdd.length > 0) {
       updateSettings.mutate({
         projectId,
-        enabledMcpServers: [...enabledServers, ...newServers],
+        enabledMcpServers: [...enabledServers, ...serversToAdd],
+        knownMcpServers: updatedKnown,
+      })
+    } else if (knownChanged) {
+      updateSettings.mutate({
+        projectId,
         knownMcpServers: updatedKnown,
       })
     }
