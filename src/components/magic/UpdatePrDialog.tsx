@@ -159,7 +159,7 @@ export function UpdatePrDialog() {
   return (
     <Dialog open={updatePrModalOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="!max-w-lg h-[500px] p-0 flex flex-col">
-        <DialogHeader className="px-4 pt-4 pb-0">
+        <DialogHeader className="px-4 pt-5 pb-0">
           <DialogTitle className="flex items-center gap-2">
             <GitPullRequest className="h-4 w-4" />
             {phase === 'generate'

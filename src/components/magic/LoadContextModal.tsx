@@ -951,7 +951,7 @@ export function LoadContextModal({
         className="overflow-hidden p-0 !w-screen !h-dvh !max-w-screen !max-h-none !rounded-none sm:!w-[calc(100vw-4rem)] sm:!max-w-[calc(100vw-4rem)] sm:!h-[calc(100vh-4rem)] sm:!rounded-xl font-sans flex flex-col"
         onKeyDown={handleKeyDown}
       >
-        <DialogHeader className="px-4 pt-4 pb-2">
+        <DialogHeader className="px-4 pt-5 pb-2">
           <DialogTitle className="flex items-center gap-2">
             <FolderOpen className="h-4 w-4" />
             Load Context

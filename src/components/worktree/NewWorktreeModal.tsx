@@ -770,7 +770,7 @@ export function NewWorktreeModal() {
         className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none sm:!w-[90vw] sm:!max-w-[90vw] sm:!h-[85vh] sm:!max-h-[85vh] sm:!rounded-lg p-0 flex flex-col overflow-hidden"
         onKeyDown={handleKeyDown}
       >
-        <DialogHeader className="px-4 pt-4 pb-2">
+        <DialogHeader className="px-4 pt-5 pb-2">
           <DialogTitle>
             New Session for {selectedProject?.name ?? 'Project'}
           </DialogTitle>

@@ -348,8 +348,11 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       const sessionData = sessionsByWorktreeId.get(worktree.id)
       const sessions = sessionData?.sessions ?? []
 
+      // Base sessions are always visible (not searchable)
+      const isBase = isBaseSession(worktree)
+
       // Filter sessions based on search query
-      const filteredSessions = searchQuery.trim()
+      const filteredSessions = searchQuery.trim() && !isBase
         ? sessions.filter(
           session =>
             session.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -1080,7 +1083,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-          {worktreeSections.length > 0 && (
+          {(worktreeSections.length > 0 || searchQuery) && (
             <>
               <div className="flex-1 flex justify-center max-w-md mx-auto">
                 <div className="relative w-full">

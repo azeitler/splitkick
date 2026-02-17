@@ -10,6 +10,7 @@ import {
   Loader2,
   RefreshCw,
   Tag,
+  XIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { openExternal } from '@/lib/platform'
@@ -18,6 +19,7 @@ import { useGhLogin } from '@/hooks/useGhLogin'
 import { GhAuthError } from '@/components/shared/GhAuthError'
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -223,6 +225,7 @@ export function ReleaseNotesDialog() {
       <DialogContent
         className="!max-w-lg h-[500px] p-0 flex flex-col"
         onKeyDown={handleKeyDown}
+        showCloseButton={false}
       >
         <DialogHeader className="px-4 pt-4 pb-0">
           <DialogTitle className="flex items-center gap-2">
@@ -236,37 +239,42 @@ export function ReleaseNotesDialog() {
               </button>
             )}
             <FileText className="h-4 w-4" />
-            {phase === 'select'
-              ? `Release Notes for ${selectedProject?.name ?? 'Project'}`
-              : phase === 'generate'
-                ? 'Generating...'
-                : 'Release Notes'}
+            <span className="flex-1">
+              {phase === 'select'
+                ? `Release Notes for ${selectedProject?.name ?? 'Project'}`
+                : phase === 'generate'
+                  ? 'Generating...'
+                  : 'Release Notes'}
+            </span>
+            {phase === 'select' && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={fetchReleases}
+                    disabled={isLoadingReleases}
+                    className={cn(
+                      'inline-flex h-7 w-7 items-center justify-center rounded-md opacity-70 transition-opacity hover:opacity-100 hover:bg-accent',
+                      'focus:ring-ring focus:ring-2 focus:ring-offset-2 focus:outline-hidden',
+                      isLoadingReleases && 'opacity-50 cursor-not-allowed'
+                    )}
+                  >
+                    <RefreshCw
+                      className={cn(
+                        'size-4 text-muted-foreground',
+                        isLoadingReleases && 'animate-spin'
+                      )}
+                    />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Refresh releases</TooltipContent>
+              </Tooltip>
+            )}
+            <DialogClose className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50">
+              <XIcon className="size-4" />
+              <span className="sr-only">Close</span>
+            </DialogClose>
           </DialogTitle>
         </DialogHeader>
-
-        {phase === 'select' && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={fetchReleases}
-                disabled={isLoadingReleases}
-                className={cn(
-                  'absolute top-4 right-12 rounded-xs opacity-70 transition-opacity hover:opacity-100',
-                  'focus:ring-ring focus:ring-2 focus:ring-offset-2 focus:outline-hidden',
-                  isLoadingReleases && 'opacity-50 cursor-not-allowed'
-                )}
-              >
-                <RefreshCw
-                  className={cn(
-                    'size-4 text-muted-foreground',
-                    isLoadingReleases && 'animate-spin'
-                  )}
-                />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Refresh releases</TooltipContent>
-          </Tooltip>
-        )}
 
         {/* Phase 1: Select Release */}
         {phase === 'select' && (

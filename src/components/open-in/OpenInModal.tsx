@@ -326,7 +326,7 @@ export function OpenInModal() {
         className={cn('p-0', useWideLayout ? 'sm:max-w-[560px]' : 'sm:max-w-[280px]')}
         onKeyDown={handleKeyDown}
       >
-        <DialogHeader className="px-4 pt-4 pb-2">
+        <DialogHeader className="px-4 pt-5 pb-2">
           <DialogTitle className="text-sm font-medium">Open in...</DialogTitle>
         </DialogHeader>
 

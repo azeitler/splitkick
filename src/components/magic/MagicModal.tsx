@@ -674,7 +674,7 @@ ${resolveInstructions}`
   return (
     <Dialog open={magicModalOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[560px] p-0" onKeyDown={handleKeyDown}>
-        <DialogHeader className="px-4 pt-4 pb-2">
+        <DialogHeader className="px-4 pt-5 pb-2">
           <DialogTitle className="flex items-center gap-2">
             <Wand2 className="h-4 w-4" />
             Magic
