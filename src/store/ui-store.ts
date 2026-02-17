@@ -28,6 +28,7 @@ interface UIState {
   onboardingOpen: boolean
   onboardingStartStep: OnboardingStartStep
   openInModalOpen: boolean
+  loadContextModalOpen: boolean
   magicModalOpen: boolean
   newWorktreeModalOpen: boolean
   newWorktreeModalDefaultTab: 'quick' | 'issues' | 'prs' | null
@@ -84,6 +85,7 @@ interface UIState {
   setOnboardingOpen: (open: boolean) => void
   setOnboardingStartStep: (step: OnboardingStartStep) => void
   setOpenInModalOpen: (open: boolean) => void
+  setLoadContextModalOpen: (open: boolean) => void
   setMagicModalOpen: (open: boolean) => void
   setNewWorktreeModalOpen: (open: boolean) => void
   setNewWorktreeModalDefaultTab: (
@@ -139,6 +141,7 @@ export const useUIStore = create<UIState>()(
       onboardingOpen: false,
       onboardingStartStep: null,
       openInModalOpen: false,
+      loadContextModalOpen: false,
       magicModalOpen: false,
       newWorktreeModalOpen: false,
       newWorktreeModalDefaultTab: null,
@@ -240,6 +243,13 @@ export const useUIStore = create<UIState>()(
 
       setOpenInModalOpen: open =>
         set({ openInModalOpen: open }, undefined, 'setOpenInModalOpen'),
+
+      setLoadContextModalOpen: open =>
+        set(
+          { loadContextModalOpen: open },
+          undefined,
+          'setLoadContextModalOpen'
+        ),
 
       setMagicModalOpen: open =>
         set({ magicModalOpen: open }, undefined, 'setMagicModalOpen'),

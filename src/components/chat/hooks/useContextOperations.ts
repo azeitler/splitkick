@@ -1,5 +1,6 @@
-import { useCallback, useState } from 'react'
+import { useCallback } from 'react'
 import { invoke } from '@/lib/transport'
+import { useUIStore } from '@/store/ui-store'
 import type { QueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import type { SaveContextResponse } from '@/types/chat'
@@ -43,7 +44,10 @@ export function useContextOperations({
   queryClient,
   preferences,
 }: UseContextOperationsParams): UseContextOperationsReturn {
-  const [loadContextModalOpen, setLoadContextModalOpen] = useState(false)
+  const loadContextModalOpen = useUIStore(state => state.loadContextModalOpen)
+  const setLoadContextModalOpen = useUIStore(
+    state => state.setLoadContextModalOpen
+  )
 
   // Handle Save Context - generates context summary in the background
   // eslint-disable-next-line react-hooks/preserve-manual-memoization
@@ -97,7 +101,7 @@ export function useContextOperations({
   // Handle Load Context - opens modal to select saved context
   const handleLoadContext = useCallback(() => {
     setLoadContextModalOpen(true)
-  }, [])
+  }, [setLoadContextModalOpen])
 
   return {
     handleLoadContext,

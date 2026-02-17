@@ -343,6 +343,7 @@ export function useMainWindowEventListeners() {
       // Skip when a blocking modal/dialog is open - let it handle its own shortcuts
       const uiState = useUIStore.getState()
       if (
+        uiState.loadContextModalOpen ||
         uiState.magicModalOpen ||
         uiState.openInModalOpen ||
         uiState.newWorktreeModalOpen ||

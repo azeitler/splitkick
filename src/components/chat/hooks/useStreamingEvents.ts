@@ -574,7 +574,11 @@ export default function useStreamingEvents({
     const unlistenCancelled = listen<CancelledEvent>(
       'chat:cancelled',
       event => {
-        const { session_id, undo_send } = event.payload
+        const {
+          session_id,
+          worktree_id: eventWorktreeId,
+          undo_send,
+        } = event.payload
 
         // Capture streaming state BEFORE clearing (like chat:done does)
         const {
@@ -761,12 +765,47 @@ export default function useStreamingEvents({
           setSessionReviewing(session_id, true)
         }
 
-        // Invalidate sessions to ensure persisted state is loaded
-        // (optimistic update above may differ from what backend persisted)
-        if (sessionWorktreeId) {
-          queryClient.invalidateQueries({
-            queryKey: chatQueryKeys.sessions(sessionWorktreeId),
+        // Persist cancel state to disk BEFORE invalidating queries
+        // This prevents a race where invalidation refetches stale waiting_for_input: true from disk
+        const resolvedWorktreeId = sessionWorktreeId || eventWorktreeId
+        const { worktreePaths } = useChatStore.getState()
+        const wtPath = resolvedWorktreeId
+          ? worktreePaths[resolvedWorktreeId]
+          : null
+
+        const invalidateSessions = () => {
+          if (resolvedWorktreeId) {
+            queryClient.invalidateQueries({
+              queryKey: chatQueryKeys.sessions(resolvedWorktreeId),
+            })
+          }
+        }
+
+        if (resolvedWorktreeId && wtPath) {
+          // Determine final reviewing state from the branch that just ran
+          const isNowReviewing = shouldRestoreMessage
+            ? (queryClient.getQueryData<Session>(
+                chatQueryKeys.session(session_id)
+              )?.messages.length ?? 0) > 0
+            : true
+
+          invoke('update_session_state', {
+            worktreeId: resolvedWorktreeId,
+            worktreePath: wtPath,
+            sessionId: session_id,
+            waitingForInput: false,
+            waitingForInputType: null,
+            isReviewing: isNowReviewing,
           })
+            .catch(err =>
+              console.error(
+                '[useStreamingEvents] Failed to persist cancel state:',
+                err
+              )
+            )
+            .finally(invalidateSessions)
+        } else {
+          invalidateSessions()
         }
       }
     )
