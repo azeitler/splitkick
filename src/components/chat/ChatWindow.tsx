@@ -3033,7 +3033,7 @@ export function ChatWindow({
                               (todoSourceMessageId !== null &&
                                 todoSourceMessageId !==
                                   dismissedTodoMessageId)) && (
-                              <div className="hidden xl:block absolute left-full bottom-0 ml-3 w-64">
+                              <div className="hidden xl:block absolute left-full bottom-0 ml-3 w-64 z-20">
                                 <TodoWidget
                                   todos={normalizeTodosForDisplay(
                                     activeTodos,
