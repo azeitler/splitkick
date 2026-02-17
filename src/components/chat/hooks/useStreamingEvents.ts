@@ -166,7 +166,7 @@ export default function useStreamingEvents({
       }
     )
 
-    const unlistenDone = listen<DoneEvent>('chat:done', event => {
+    const unlistenDone = listen<DoneEvent>('chat:done', async event => {
       const sessionId = event.payload.session_id
       const worktreeId = event.payload.worktree_id
 
@@ -387,6 +387,26 @@ export default function useStreamingEvents({
         clearStreamingPlanApproval(sessionId)
         clearExecutingMode(sessionId)
         setSessionReviewing(sessionId, true)
+
+        // Persist reviewing state to disk BEFORE invalidating queries below.
+        // Without this, invalidateQueries can refetch stale is_reviewing: false
+        // and useSessionStatePersistence overwrites Zustand, causing idle↔review oscillation.
+        const { worktreePaths: wtPaths } = useChatStore.getState()
+        const wtPath = wtPaths[worktreeId]
+        if (wtPath) {
+          await invoke('update_session_state', {
+            worktreeId,
+            worktreePath: wtPath,
+            sessionId,
+            isReviewing: true,
+            waitingForInput: false,
+          }).catch(err =>
+            console.error(
+              '[useStreamingEvents] Failed to persist reviewing state:',
+              err
+            )
+          )
+        }
 
         // Play review sound if not currently viewing this session
         if (!isCurrentlyViewing) {
