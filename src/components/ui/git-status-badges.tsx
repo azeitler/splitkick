@@ -1,5 +1,9 @@
 import { ArrowDown, ArrowUp } from 'lucide-react'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip'
 
 interface GitStatusBadgesProps {
   behindCount: number

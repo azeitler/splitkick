@@ -57,7 +57,7 @@ pub fn spawn_terminal(
         {
             c.arg("-c");
             // Note: Caller is responsible for properly quoting paths with spaces
-            c.arg(run_command.to_string());
+            c.arg(run_command);
         }
         c
     } else {

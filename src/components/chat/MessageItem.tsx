@@ -457,7 +457,9 @@ export const MessageItem = memo(function MessageItem({
                   />
                 </>
               ) : message.role === 'user' ? (
-                <div className="whitespace-pre-wrap break-words">{displayContent}</div>
+                <div className="whitespace-pre-wrap break-words">
+                  {displayContent}
+                </div>
               ) : (
                 <Markdown>{displayContent}</Markdown>
               )}
@@ -546,4 +548,3 @@ export const MessageItem = memo(function MessageItem({
     </div>
   )
 })
-

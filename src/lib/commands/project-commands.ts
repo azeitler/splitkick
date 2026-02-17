@@ -1,4 +1,13 @@
-import { FolderPlus, FolderGit, Bug, Keyboard, Archive, ArchiveRestore, Settings, RefreshCw } from 'lucide-react'
+import {
+  FolderPlus,
+  FolderGit,
+  Bug,
+  Keyboard,
+  Archive,
+  ArchiveRestore,
+  Settings,
+  RefreshCw,
+} from 'lucide-react'
 import type { AppCommand } from './types'
 import { useUIStore } from '@/store/ui-store'
 
@@ -35,7 +44,14 @@ export const projectCommands: AppCommand[] = [
     description: 'Configure settings for the current project',
     icon: Settings,
     group: 'projects',
-    keywords: ['project', 'settings', 'configure', 'mcp', 'branch', 'jean.json'],
+    keywords: [
+      'project',
+      'settings',
+      'configure',
+      'mcp',
+      'branch',
+      'jean.json',
+    ],
 
     isAvailable: context => context.hasSelectedProject(),
 

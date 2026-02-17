@@ -103,7 +103,9 @@ export function useMagicCommands({
     }
 
     const handleMagicCommand = (
-      e: CustomEvent<{ command: string; sessionId?: string } & Partial<WorkflowRunDetail>>
+      e: CustomEvent<
+        { command: string; sessionId?: string } & Partial<WorkflowRunDetail>
+      >
     ) => {
       const { command, sessionId, ...rest } = e.detail
       const handlers = handlersRef.current
@@ -139,7 +141,9 @@ export function useMagicCommands({
           handlers.handleResolveConflicts()
           break
         case 'investigate':
-          handlers.handleInvestigate((rest as { type: 'issue' | 'pr' }).type ?? 'issue')
+          handlers.handleInvestigate(
+            (rest as { type: 'issue' | 'pr' }).type ?? 'issue'
+          )
           break
         case 'investigate-workflow-run':
           handlers.handleInvestigateWorkflowRun(rest as WorkflowRunDetail)

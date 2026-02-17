@@ -28,7 +28,11 @@ import {
   triggerImmediateGitPoll,
   performGitPull,
 } from '@/services/git-status'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip'
 import { useSidebarWidth } from '@/components/layout/SidebarWidthContext'
 
 interface WorktreeItemProps {
@@ -44,8 +48,13 @@ export function WorktreeItem({
   projectPath,
   defaultBranch,
 }: WorktreeItemProps) {
-  const { selectedWorktreeId, selectWorktree, selectProject, expandedWorktreeIds, toggleWorktreeExpanded } =
-    useProjectsStore()
+  const {
+    selectedWorktreeId,
+    selectWorktree,
+    selectProject,
+    expandedWorktreeIds,
+    toggleWorktreeExpanded,
+  } = useProjectsStore()
   // Check if any session in this worktree is running (chat)
   const isChatRunning = useChatStore(state =>
     state.isWorktreeRunning(worktree.id)
@@ -521,11 +530,12 @@ export function WorktreeItem({
             />
           ) : (
             <span
-              className={cn('flex flex-1 items-center gap-0.5 truncate text-sm', isBase && 'font-medium')}
+              className={cn(
+                'flex flex-1 items-center gap-0.5 truncate text-sm',
+                isBase && 'font-medium'
+              )}
             >
-              <span className="truncate">
-                {worktree.name}
-              </span>
+              <span className="truncate">{worktree.name}</span>
               {/* Chevron for expand/collapse sessions */}
               <button
                 className="flex size-4 shrink-0 items-center justify-center rounded opacity-0 transition-opacity group-hover:opacity-50 hover:!opacity-100 hover:bg-accent-foreground/10"
@@ -540,7 +550,8 @@ export function WorktreeItem({
               </button>
               {/* Show branch name only when different from displayed name */}
               {(() => {
-                const displayBranch = gitStatus?.current_branch ?? worktree.branch
+                const displayBranch =
+                  gitStatus?.current_branch ?? worktree.branch
                 return displayBranch !== worktree.name ? (
                   <span className="ml-0.5 inline-flex max-w-[80px] items-center gap-0.5 truncate text-xs text-muted-foreground">
                     <GitBranch className="h-2.5 w-2.5" />
@@ -600,13 +611,17 @@ export function WorktreeItem({
               <TooltipContent>{`Uncommitted: +${uncommittedAdded}/-${uncommittedRemoved} lines`}</TooltipContent>
             </Tooltip>
           )}
-
         </div>
       </WorktreeContextMenu>
 
       {/* Expandable session list grouped by status */}
       {isExpanded && sessionGroups.length > 0 && (
-        <div className={cn('border-l border-border/40 py-0.5', isNarrowSidebar ? 'ml-6' : 'ml-9')}>
+        <div
+          className={cn(
+            'border-l border-border/40 py-0.5',
+            isNarrowSidebar ? 'ml-6' : 'ml-9'
+          )}
+        >
           {sessionGroups.map(group => (
             <div key={group.key}>
               <div className="pl-3 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">

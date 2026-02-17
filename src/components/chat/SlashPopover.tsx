@@ -160,12 +160,7 @@ export function SlashPopover({
         selectHighlighted()
       },
     }
-  }, [
-    filteredItems.length,
-    selectHighlighted,
-    selectedIndex,
-    clampedSelectedIndex,
-  ])
+  }, [filteredItems.length, selectHighlighted])
 
   // Scroll selected item into view
   useEffect(() => {
@@ -185,7 +180,12 @@ export function SlashPopover({
   const [stableAnchorTop, setStableAnchorTop] = useState(0)
 
   useEffect(() => {
-    if (!open || !anchorPosition || !containerRef?.current || !anchorRef.current) {
+    if (
+      !open ||
+      !anchorPosition ||
+      !containerRef?.current ||
+      !anchorRef.current
+    ) {
       return
     }
     const formRect = containerRef.current.getBoundingClientRect()

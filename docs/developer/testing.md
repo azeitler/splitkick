@@ -100,8 +100,8 @@ Every Tauri command needs an entry here, even if the response is `null`. This is
 ```typescript
 // e2e/fixtures/invoke-handlers.ts
 export const invokeHandlers: Record<string, unknown> = {
-  load_preferences: null,           // Overridden by mock-data.ts
-  get_worktrees: [],                // Overridden by mock-data.ts
+  load_preferences: null, // Overridden by mock-data.ts
+  get_worktrees: [], // Overridden by mock-data.ts
   get_sessions: { sessions: [], active_session_id: null },
   rename_session: null,
   send_chat_message: null,
@@ -153,7 +153,10 @@ test('streaming response', async ({ mockPage, emitEvent }) => {
   const sessionId = 'session-1'
 
   // Simulate chat streaming lifecycle
-  await emitEvent('chat:sending', { session_id: sessionId, worktree_id: 'wt-1' })
+  await emitEvent('chat:sending', {
+    session_id: sessionId,
+    worktree_id: 'wt-1',
+  })
   await emitEvent('chat:chunk', { session_id: sessionId, content: 'Hello ' })
   await emitEvent('chat:chunk', { session_id: sessionId, content: 'world!' })
 
@@ -164,7 +167,7 @@ test('streaming response', async ({ mockPage, emitEvent }) => {
 })
 ```
 
-**Important**: Verify streaming content *before* `chat:done`. After `chat:done`, TanStack Query refetches `get_session` which may return empty messages (unless the dynamic handler has the messages stored).
+**Important**: Verify streaming content _before_ `chat:done`. After `chat:done`, TanStack Query refetches `get_session` which may return empty messages (unless the dynamic handler has the messages stored).
 
 ### Common Patterns
 
@@ -185,7 +188,9 @@ Shadcn `<Select>` renders as `button[role="combobox"]`. Find by current value te
 
 ```typescript
 // Find the theme selector showing "System"
-const themeSelect = mockPage.locator('button[role="combobox"]', { hasText: 'System' })
+const themeSelect = mockPage.locator('button[role="combobox"]', {
+  hasText: 'System',
+})
 await themeSelect.click()
 await mockPage.getByRole('option', { name: 'Dark' }).click()
 ```

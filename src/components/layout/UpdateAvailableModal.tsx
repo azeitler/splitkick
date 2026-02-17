@@ -24,7 +24,12 @@ export function UpdateAvailableModal() {
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={open => { if (!open) handleLater() }}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={open => {
+        if (!open) handleLater()
+      }}
+    >
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -39,9 +44,7 @@ export function UpdateAvailableModal() {
           <Button variant="outline" onClick={handleLater}>
             Later
           </Button>
-          <Button onClick={handleUpdate}>
-            Update Now
-          </Button>
+          <Button onClick={handleUpdate}>Update Now</Button>
         </div>
       </DialogContent>
     </Dialog>

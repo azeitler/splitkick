@@ -45,7 +45,9 @@ export function useSessionPrefetch(projects: Project[] | undefined) {
         })
         await Promise.all(
           worktrees.map(w =>
-            prefetchSessions(queryClient, w.id, w.path).catch(() => { /* silent */ })
+            prefetchSessions(queryClient, w.id, w.path).catch(() => {
+              /* silent */
+            })
           )
         )
       } catch {
@@ -67,7 +69,6 @@ export function useSessionPrefetch(projects: Project[] | undefined) {
         const batch = collapsedProjects.slice(i, i + concurrencyLimit)
         await Promise.all(batch.map(p => fetchSessionsForProject(p.id)))
       }
-
     }
 
     fetchAll()

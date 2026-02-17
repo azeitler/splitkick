@@ -19,7 +19,11 @@ const sizeMap = {
  * Reusable close button for modals, dialogs, drawers, and panel headers.
  * For inline chip/tag removal, use DismissButton instead.
  */
-export function ModalCloseButton({ onClick, size = 'md', className }: ModalCloseButtonProps) {
+export function ModalCloseButton({
+  onClick,
+  size = 'md',
+  className,
+}: ModalCloseButtonProps) {
   const s = sizeMap[size]
 
   return (

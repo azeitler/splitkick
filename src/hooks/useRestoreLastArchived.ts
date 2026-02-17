@@ -6,7 +6,10 @@ import { useUnarchiveSession, chatQueryKeys } from '@/services/chat'
 import { invoke } from '@/lib/transport'
 import { isTauri } from '@/services/projects'
 import { logger } from '@/lib/logger'
-import { isOnCanvasView, navigateToRestoredItem } from '@/lib/restore-navigation'
+import {
+  isOnCanvasView,
+  navigateToRestoredItem,
+} from '@/lib/restore-navigation'
 import type { Worktree } from '@/types/projects'
 import type { ArchivedSessionEntry } from '@/types/chat'
 

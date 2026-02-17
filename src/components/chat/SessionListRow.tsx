@@ -1,5 +1,14 @@
 import { forwardRef } from 'react'
-import { Archive, Eye, EyeOff, FileText, Shield, Sparkles, Tag, Trash2 } from 'lucide-react'
+import {
+  Archive,
+  Eye,
+  EyeOff,
+  FileText,
+  Shield,
+  Sparkles,
+  Tag,
+  Trash2,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getLabelTextColor } from '@/lib/label-colors'
 import { Button } from '@/components/ui/button'
@@ -63,9 +72,7 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
             />
 
             {/* Session name */}
-            <span className="flex-1 truncate text-sm">
-              {card.session.name}
-            </span>
+            <span className="flex-1 truncate text-sm">{card.session.name}</span>
 
             {/* Blocked badge */}
             {card.hasPermissionDenials && (
@@ -144,9 +151,7 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
                   >
                     Approve
                     <Kbd className="ml-1 h-3.5 text-[9px] bg-primary-foreground/20 text-primary-foreground">
-                      {formatShortcutDisplay(
-                        DEFAULT_KEYBINDINGS.approve_plan
-                      )}
+                      {formatShortcutDisplay(DEFAULT_KEYBINDINGS.approve_plan)}
                     </Kbd>
                   </Button>
                   <Button

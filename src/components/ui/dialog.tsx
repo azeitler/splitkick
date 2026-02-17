@@ -72,7 +72,7 @@ const DialogContent = React.forwardRef<
         )}
         onEscapeKeyDown={preventClose ? e => e.preventDefault() : undefined}
         onInteractOutside={preventClose ? e => e.preventDefault() : undefined}
-        onPointerDownOutside={(e) => {
+        onPointerDownOutside={e => {
           const target = e.target as HTMLElement
           if (target?.closest?.('[data-tauri-drag-region]')) {
             e.preventDefault()

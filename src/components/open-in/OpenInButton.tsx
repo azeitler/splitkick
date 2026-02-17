@@ -28,36 +28,62 @@ interface OpenInButtonProps {
   className?: string
 }
 
-export function OpenInButton({ worktreePath, branch, className }: OpenInButtonProps) {
+export function OpenInButton({
+  worktreePath,
+  branch,
+  className,
+}: OpenInButtonProps) {
   const { data: preferences } = usePreferences()
   const openInEditor = useOpenWorktreeInEditor()
   const openInTerminal = useOpenWorktreeInTerminal()
   const openInFinder = useOpenWorktreeInFinder()
   const openOnGitHub = useOpenBranchOnGitHub()
 
-  const openAction = useCallback((target: string) => {
-    switch (target) {
-      case 'terminal':
-        openInTerminal.mutate({ worktreePath, terminal: preferences?.terminal })
-        break
-      case 'finder':
-        openInFinder.mutate(worktreePath)
-        break
-      case 'github':
-        if (branch) openOnGitHub.mutate({ repoPath: worktreePath, branch })
-        else openInEditor.mutate({ worktreePath, editor: preferences?.editor })
-        break
-      default:
-        openInEditor.mutate({ worktreePath, editor: preferences?.editor })
-    }
-  }, [openInEditor, openInTerminal, openInFinder, openOnGitHub, worktreePath, branch, preferences?.editor, preferences?.terminal])
+  const openAction = useCallback(
+    (target: string) => {
+      switch (target) {
+        case 'terminal':
+          openInTerminal.mutate({
+            worktreePath,
+            terminal: preferences?.terminal,
+          })
+          break
+        case 'finder':
+          openInFinder.mutate(worktreePath)
+          break
+        case 'github':
+          if (branch) openOnGitHub.mutate({ repoPath: worktreePath, branch })
+          else
+            openInEditor.mutate({ worktreePath, editor: preferences?.editor })
+          break
+        default:
+          openInEditor.mutate({ worktreePath, editor: preferences?.editor })
+      }
+    },
+    [
+      openInEditor,
+      openInTerminal,
+      openInFinder,
+      openOnGitHub,
+      worktreePath,
+      branch,
+      preferences?.editor,
+      preferences?.terminal,
+    ]
+  )
 
-  const defaultLabel = getOpenInDefaultLabel(preferences?.open_in ?? 'editor', preferences?.editor, preferences?.terminal)
+  const defaultLabel = getOpenInDefaultLabel(
+    preferences?.open_in ?? 'editor',
+    preferences?.editor,
+    preferences?.terminal
+  )
 
   if (!isNativeApp()) return null
 
   return (
-    <div className={`inline-flex items-center rounded-md border border-border/50 bg-muted/50 ${className ?? ''}`}>
+    <div
+      className={`inline-flex items-center rounded-md border border-border/50 bg-muted/50 ${className ?? ''}`}
+    >
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
@@ -84,11 +110,19 @@ export function OpenInButton({ worktreePath, branch, className }: OpenInButtonPr
         <DropdownMenuContent align="end">
           <DropdownMenuItem onSelect={() => openAction('editor')}>
             <Code className="h-4 w-4" />
-            {getOpenInDefaultLabel('editor', preferences?.editor, preferences?.terminal)}
+            {getOpenInDefaultLabel(
+              'editor',
+              preferences?.editor,
+              preferences?.terminal
+            )}
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => openAction('terminal')}>
             <Terminal className="h-4 w-4" />
-            {getOpenInDefaultLabel('terminal', preferences?.editor, preferences?.terminal)}
+            {getOpenInDefaultLabel(
+              'terminal',
+              preferences?.editor,
+              preferences?.terminal
+            )}
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => openAction('finder')}>
             <FolderOpen className="h-4 w-4" />

@@ -2,7 +2,9 @@ import { test, expect } from '../fixtures/tauri-mock'
 
 test.describe('Keyboard shortcuts', () => {
   test('Cmd+K opens command palette', async ({ mockPage }) => {
-    await expect(mockPage.getByText('Test Project')).toBeVisible({ timeout: 5000 })
+    await expect(mockPage.getByText('Test Project')).toBeVisible({
+      timeout: 5000,
+    })
 
     await mockPage.keyboard.press('Meta+k')
 
@@ -11,7 +13,9 @@ test.describe('Keyboard shortcuts', () => {
   })
 
   test('Cmd+B toggles sidebar panel', async ({ mockPage }) => {
-    await expect(mockPage.getByText('Test Project')).toBeVisible({ timeout: 5000 })
+    await expect(mockPage.getByText('Test Project')).toBeVisible({
+      timeout: 5000,
+    })
 
     // Toggle sidebar on (may start hidden or visible depending on default)
     await mockPage.keyboard.press('Meta+b')
@@ -35,7 +39,9 @@ test.describe('Keyboard shortcuts', () => {
   })
 
   test('Escape closes command palette', async ({ mockPage }) => {
-    await expect(mockPage.getByText('Test Project')).toBeVisible({ timeout: 5000 })
+    await expect(mockPage.getByText('Test Project')).toBeVisible({
+      timeout: 5000,
+    })
 
     await mockPage.keyboard.press('Meta+k')
     const input = mockPage.locator('[cmdk-input]')

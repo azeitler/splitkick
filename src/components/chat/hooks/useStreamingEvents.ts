@@ -566,7 +566,6 @@ export default function useStreamingEvents({
         useChatStore.getState()
       clearExecutingMode(session_id)
       setSessionReviewing(session_id, true)
-
     })
 
     // Handle cancellation (user pressed Cmd+Option+Backspace / Ctrl+Alt+Backspace)
@@ -674,8 +673,10 @@ export default function useStreamingEvents({
         // - No content streamed yet (cancelled before any response)
         // BUT: Don't restore if there are queued messages (user chose "Skip to Next")
         const hasContent = content || (toolCalls && toolCalls.length > 0)
-        const hasQueuedMessages = (useChatStore.getState().messageQueues[session_id] ?? []).length > 0
-        const shouldRestoreMessage = !hasQueuedMessages && (undo_send || !hasContent)
+        const hasQueuedMessages =
+          (useChatStore.getState().messageQueues[session_id] ?? []).length > 0
+        const shouldRestoreMessage =
+          !hasQueuedMessages && (undo_send || !hasContent)
 
         if (shouldRestoreMessage) {
           // Restore message to input and remove from chat (no content to preserve)

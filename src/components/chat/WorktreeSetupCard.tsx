@@ -88,9 +88,7 @@ export const WorktreeSetupCard = forwardRef<
 
       {/* Bottom section: status text */}
       <div className="flex items-center gap-1.5 mt-auto">
-        <span className="text-xs text-muted-foreground">
-          {statusText}
-        </span>
+        <span className="text-xs text-muted-foreground">{statusText}</span>
       </div>
     </div>
   )

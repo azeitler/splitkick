@@ -43,4 +43,6 @@ let cargo = readFileSync(cargoPath, 'utf-8')
 cargo = cargo.replace(/^version = ".*"/m, `version = "${newVersion}"`)
 writeFileSync(cargoPath, cargo)
 
-console.log(`Bumped version: ${pkg.version.replace(newVersion, '')}${major}.${minor}.${patch} → ${newVersion}`)
+console.log(
+  `Bumped version: ${pkg.version.replace(newVersion, '')}${major}.${minor}.${patch} → ${newVersion}`
+)

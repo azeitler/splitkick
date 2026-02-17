@@ -24,7 +24,12 @@ import {
 import type { ReviewResponse } from '@/types/projects'
 
 /** Available Claude models */
-export type ClaudeModel = 'opus' | 'opus-4.5' | 'sonnet' | 'sonnet-4.5' | 'haiku'
+export type ClaudeModel =
+  | 'opus'
+  | 'opus-4.5'
+  | 'sonnet'
+  | 'sonnet-4.5'
+  | 'haiku'
 
 /** Default model to use when none is selected (fallback only - preferences take priority) */
 export const DEFAULT_MODEL: ClaudeModel = 'opus'
@@ -315,7 +320,11 @@ interface ChatUIState {
 
   // Actions - MCP servers (session-based)
   setEnabledMcpServers: (sessionId: string, servers: string[]) => void
-  toggleMcpServer: (sessionId: string, serverName: string, currentDefaults?: string[]) => void
+  toggleMcpServer: (
+    sessionId: string,
+    serverName: string,
+    currentDefaults?: string[]
+  ) => void
 
   // Actions - Question answering (session-based)
   markQuestionAnswered: (
@@ -355,7 +364,11 @@ interface ChatUIState {
 
   // Actions - Pending images (session-based)
   addPendingImage: (sessionId: string, image: PendingImage) => void
-  updatePendingImage: (sessionId: string, imageId: string, updates: Partial<PendingImage>) => void
+  updatePendingImage: (
+    sessionId: string,
+    imageId: string,
+    updates: Partial<PendingImage>
+  ) => void
   removePendingImage: (sessionId: string, imageId: string) => void
   clearPendingImages: (sessionId: string) => void
   getPendingImages: (sessionId: string) => PendingImage[]
@@ -575,8 +588,7 @@ export const useChatStore = create<ChatUIState>()(
         set(
           state => {
             const { [sessionId]: _, ...restResults } = state.reviewResults
-            const { [sessionId]: __, ...restFixed } =
-              state.fixedReviewFindings
+            const { [sessionId]: __, ...restFixed } = state.fixedReviewFindings
             return {
               reviewResults: restResults,
               fixedReviewFindings: restFixed,
@@ -587,7 +599,11 @@ export const useChatStore = create<ChatUIState>()(
         ),
 
       setReviewSidebarVisible: visible =>
-        set({ reviewSidebarVisible: visible }, undefined, 'setReviewSidebarVisible'),
+        set(
+          { reviewSidebarVisible: visible },
+          undefined,
+          'setReviewSidebarVisible'
+        ),
 
       toggleReviewSidebar: () =>
         set(
@@ -844,10 +860,7 @@ export const useChatStore = create<ChatUIState>()(
         for (const [sessionId, isSending] of Object.entries(
           state.sendingSessionIds
         )) {
-          if (
-            isSending &&
-            state.sessionWorktreeMap[sessionId] === worktreeId
-          ) {
+          if (isSending && state.sessionWorktreeMap[sessionId] === worktreeId) {
             const mode = state.executingModes[sessionId]
             if (mode === 'build' || mode === 'yolo') {
               return true
@@ -1196,13 +1209,16 @@ export const useChatStore = create<ChatUIState>()(
       setSelectedProvider: (sessionId: string, provider: string | null) =>
         set(
           state => {
-            const updated = { ...state.selectedProviders }
             if (provider === undefined) {
-              delete updated[sessionId]
-            } else {
-              updated[sessionId] = provider
+              const { [sessionId]: _, ...rest } = state.selectedProviders
+              return { selectedProviders: rest }
             }
-            return { selectedProviders: updated }
+            return {
+              selectedProviders: {
+                ...state.selectedProviders,
+                [sessionId]: provider,
+              },
+            }
           },
           undefined,
           'setSelectedProvider'
@@ -1224,7 +1240,8 @@ export const useChatStore = create<ChatUIState>()(
       toggleMcpServer: (sessionId, serverName, currentDefaults) =>
         set(
           state => {
-            const current = state.enabledMcpServers[sessionId] ?? currentDefaults ?? []
+            const current =
+              state.enabledMcpServers[sessionId] ?? currentDefaults ?? []
             const updated = current.includes(serverName)
               ? current.filter(n => n !== serverName)
               : [...current, serverName]

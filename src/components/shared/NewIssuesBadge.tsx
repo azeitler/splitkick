@@ -2,7 +2,11 @@ import { useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { CircleDot } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip'
 import { useGitHubIssues } from '@/services/github'
 import { ghCliQueryKeys } from '@/services/gh-cli'
 import { useUIStore } from '@/store/ui-store'

@@ -97,7 +97,11 @@ export function WorktreeDropdownMenu({
             Edit jean.json
           </DropdownMenuItem>
 
-          <DropdownMenuItem onClick={() => useProjectsStore.getState().openProjectSettings(projectId)}>
+          <DropdownMenuItem
+            onClick={() =>
+              useProjectsStore.getState().openProjectSettings(projectId)
+            }
+          >
             <Settings className="mr-2 h-4 w-4" />
             Project Settings
           </DropdownMenuItem>
@@ -159,7 +163,7 @@ export function WorktreeDropdownMenu({
 
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
         <AlertDialogContent
-          onKeyDown={(e) => {
+          onKeyDown={e => {
             if (e.key === 'Enter') {
               e.preventDefault()
               e.stopPropagation()

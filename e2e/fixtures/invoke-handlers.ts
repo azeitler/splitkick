@@ -44,7 +44,13 @@ export const defaultResponses: Record<string, unknown> = {
 
   // Sessions
   get_sessions: { sessions: [], active_session_id: null },
-  get_session: { id: 'unknown', name: 'Session', order: 0, created_at: 0, messages: [] },
+  get_session: {
+    id: 'unknown',
+    name: 'Session',
+    order: 0,
+    created_at: 0,
+    messages: [],
+  },
   list_all_sessions: { worktrees: {} },
   create_session: {
     id: 'session-new',

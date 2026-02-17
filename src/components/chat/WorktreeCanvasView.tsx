@@ -36,7 +36,15 @@ import { CanvasList } from './CanvasList'
 import { KeybindingHints } from '@/components/ui/keybinding-hints'
 import { usePreferences, useSavePreferences } from '@/services/preferences'
 import { DEFAULT_KEYBINDINGS } from '@/types/keybindings'
-import { Search, Loader2, MoreHorizontal, Settings, Plus, LayoutGrid, List } from 'lucide-react'
+import {
+  Search,
+  Loader2,
+  MoreHorizontal,
+  Settings,
+  Plus,
+  LayoutGrid,
+  List,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -76,10 +84,14 @@ export function WorktreeCanvasView({
     gitStatus?.behind_count ?? worktree?.cached_behind_count ?? 0
   const unpushedCount =
     gitStatus?.unpushed_count ?? worktree?.cached_unpushed_count ?? 0
-  const uncommittedAdded = gitStatus?.uncommitted_added ?? worktree?.cached_uncommitted_added ?? 0
-  const uncommittedRemoved = gitStatus?.uncommitted_removed ?? worktree?.cached_uncommitted_removed ?? 0
-  const branchDiffAdded = gitStatus?.branch_diff_added ?? worktree?.cached_branch_diff_added ?? 0
-  const branchDiffRemoved = gitStatus?.branch_diff_removed ?? worktree?.cached_branch_diff_removed ?? 0
+  const uncommittedAdded =
+    gitStatus?.uncommitted_added ?? worktree?.cached_uncommitted_added ?? 0
+  const uncommittedRemoved =
+    gitStatus?.uncommitted_removed ?? worktree?.cached_uncommitted_removed ?? 0
+  const branchDiffAdded =
+    gitStatus?.branch_diff_added ?? worktree?.cached_branch_diff_added ?? 0
+  const branchDiffRemoved =
+    gitStatus?.branch_diff_removed ?? worktree?.cached_branch_diff_removed ?? 0
   const diffAdded = isBase ? uncommittedAdded : branchDiffAdded
   const diffRemoved = isBase ? uncommittedRemoved : branchDiffRemoved
 
@@ -165,7 +177,11 @@ export function WorktreeCanvasView({
 
   const handleCloseWorktree = useCallback(() => {
     if (!worktree || !project) return
-    console.log('[CLOSE_WT] handleCloseWorktree called', { isBase, worktreeId, removalBehavior: preferences?.removal_behavior })
+    console.log('[CLOSE_WT] handleCloseWorktree called', {
+      isBase,
+      worktreeId,
+      removalBehavior: preferences?.removal_behavior,
+    })
     if (isBase) {
       if (preferences?.removal_behavior === 'delete') {
         console.log('[CLOSE_WT] -> closeBaseSessionClean')
@@ -226,9 +242,7 @@ export function WorktreeCanvasView({
   useEffect(() => {
     if (!sessionsData?.sessions?.length) return
 
-    const autoOpen = useUIStore
-      .getState()
-      .consumeAutoOpenSession(worktreeId)
+    const autoOpen = useUIStore.getState().consumeAutoOpenSession(worktreeId)
     if (!autoOpen.shouldOpen) return
 
     const targetSession = autoOpen.sessionId
@@ -301,8 +315,7 @@ export function WorktreeCanvasView({
 
   // Re-sync selectedIndex when sessionCards reorders (status changes, etc.)
   useEffect(() => {
-    const highlightedId =
-      selectedSessionId ?? highlightedSessionIdRef.current
+    const highlightedId = selectedSessionId ?? highlightedSessionIdRef.current
     if (!highlightedId) return
     const cardIndex = sessionCards.findIndex(
       card => card.session.id === highlightedId
@@ -340,9 +353,12 @@ export function WorktreeCanvasView({
   // Keep selectedIndex stable when sessionCards reorders (e.g. status changes during streaming)
   useEffect(() => {
     if (selectedIndex === null) return
-    const currentSessionId = useChatStore.getState().canvasSelectedSessionIds[worktreeId]
+    const currentSessionId =
+      useChatStore.getState().canvasSelectedSessionIds[worktreeId]
     if (!currentSessionId) return
-    const newIndex = sessionCards.findIndex(c => c.session.id === currentSessionId)
+    const newIndex = sessionCards.findIndex(
+      c => c.session.id === currentSessionId
+    )
     if (newIndex !== -1 && newIndex !== selectedIndex) {
       setSelectedIndex(newIndex)
     }
@@ -352,7 +368,9 @@ export function WorktreeCanvasView({
   // Sync selection to store for cancel shortcut - updates when user navigates with arrow keys
   useEffect(() => {
     if (selectedSessionId) {
-      useChatStore.getState().setCanvasSelectedSession(worktreeId, selectedSessionId)
+      useChatStore
+        .getState()
+        .setCanvasSelectedSession(worktreeId, selectedSessionId)
     }
   }, [selectedSessionId, worktreeId])
 
@@ -366,7 +384,8 @@ export function WorktreeCanvasView({
               <h2 className="text-lg font-semibold">
                 {project?.name}
                 {(() => {
-                  const displayBranch = gitStatus?.current_branch ?? worktree?.branch
+                  const displayBranch =
+                    gitStatus?.current_branch ?? worktree?.branch
                   return displayBranch ? (
                     <span className="ml-1.5 text-sm font-normal text-muted-foreground">
                       · {displayBranch}
@@ -436,7 +455,10 @@ export function WorktreeCanvasView({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            <OpenInButton worktreePath={worktreePath} branch={gitStatus?.current_branch ?? worktree?.branch} />
+            <OpenInButton
+              worktreePath={worktreePath}
+              branch={gitStatus?.current_branch ?? worktree?.branch}
+            />
             <ToggleGroup
               type="single"
               size="sm"
@@ -444,7 +466,10 @@ export function WorktreeCanvasView({
               value={canvasLayout}
               onValueChange={value => {
                 if (value && preferences) {
-                  savePreferences.mutate({ ...preferences, canvas_layout: value as 'grid' | 'list' })
+                  savePreferences.mutate({
+                    ...preferences,
+                    canvas_layout: value as 'grid' | 'list',
+                  })
                 }
               }}
             >
@@ -472,38 +497,38 @@ export function WorktreeCanvasView({
                 : 'No sessions yet'}
             </div>
           ) : canvasLayout === 'list' ? (
-              <CanvasList
-                cards={sessionCards}
-                worktreeId={worktreeId}
-                worktreePath={worktreePath}
-                selectedIndex={selectedIndex}
-                onSelectedIndexChange={handleSelectedIndexChange}
-                selectedSessionId={selectedSessionId}
-                onSelectedSessionIdChange={setSelectedSessionId}
-                onArchiveSession={handleArchiveSession}
-                onDeleteSession={handleDeleteSession}
-                onPlanApproval={handlePlanApproval}
-                onPlanApprovalYolo={handlePlanApprovalYolo}
-                onCloseWorktree={handleCloseWorktreeOrConfirm}
-                searchInputRef={searchInputRef}
-              />
-            ) : (
-              <CanvasGrid
-                cards={sessionCards}
-                worktreeId={worktreeId}
-                worktreePath={worktreePath}
-                selectedIndex={selectedIndex}
-                onSelectedIndexChange={handleSelectedIndexChange}
-                selectedSessionId={selectedSessionId}
-                onSelectedSessionIdChange={setSelectedSessionId}
-                onArchiveSession={handleArchiveSession}
-                onDeleteSession={handleDeleteSession}
-                onPlanApproval={handlePlanApproval}
-                onPlanApprovalYolo={handlePlanApprovalYolo}
-                onCloseWorktree={handleCloseWorktreeOrConfirm}
-                searchInputRef={searchInputRef}
-              />
-            )}
+            <CanvasList
+              cards={sessionCards}
+              worktreeId={worktreeId}
+              worktreePath={worktreePath}
+              selectedIndex={selectedIndex}
+              onSelectedIndexChange={handleSelectedIndexChange}
+              selectedSessionId={selectedSessionId}
+              onSelectedSessionIdChange={setSelectedSessionId}
+              onArchiveSession={handleArchiveSession}
+              onDeleteSession={handleDeleteSession}
+              onPlanApproval={handlePlanApproval}
+              onPlanApprovalYolo={handlePlanApprovalYolo}
+              onCloseWorktree={handleCloseWorktreeOrConfirm}
+              searchInputRef={searchInputRef}
+            />
+          ) : (
+            <CanvasGrid
+              cards={sessionCards}
+              worktreeId={worktreeId}
+              worktreePath={worktreePath}
+              selectedIndex={selectedIndex}
+              onSelectedIndexChange={handleSelectedIndexChange}
+              selectedSessionId={selectedSessionId}
+              onSelectedSessionIdChange={setSelectedSessionId}
+              onArchiveSession={handleArchiveSession}
+              onDeleteSession={handleDeleteSession}
+              onPlanApproval={handlePlanApproval}
+              onPlanApprovalYolo={handlePlanApprovalYolo}
+              onCloseWorktree={handleCloseWorktreeOrConfirm}
+              searchInputRef={searchInputRef}
+            />
+          )}
         </div>
       </div>
 
@@ -545,7 +570,10 @@ export function WorktreeCanvasView({
       <GitDiffModal
         diffRequest={diffRequest}
         onClose={() => setDiffRequest(null)}
-        uncommittedStats={{ added: uncommittedAdded, removed: uncommittedRemoved }}
+        uncommittedStats={{
+          added: uncommittedAdded,
+          removed: uncommittedRemoved,
+        }}
         branchStats={{ added: branchDiffAdded, removed: branchDiffRemoved }}
       />
 
@@ -558,4 +586,3 @@ export function WorktreeCanvasView({
     </div>
   )
 }
-

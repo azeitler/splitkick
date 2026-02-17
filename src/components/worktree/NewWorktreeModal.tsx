@@ -323,7 +323,8 @@ export function NewWorktreeModal() {
         return
       }
       setCreatingFromBranch(branchName)
-      if (background) useUIStore.getState().incrementPendingBackgroundCreations()
+      if (background)
+        useUIStore.getState().incrementPendingBackgroundCreations()
       createWorktreeFromBranch.mutate(
         { projectId: selectedProjectId, branchName, background },
         {
@@ -379,7 +380,8 @@ export function NewWorktreeModal() {
         }
 
         // Create worktree with issue context
-        if (background) useUIStore.getState().incrementPendingBackgroundCreations()
+        if (background)
+          useUIStore.getState().incrementPendingBackgroundCreations()
         createWorktree.mutate({
           projectId: selectedProjectId,
           issueContext,
@@ -442,7 +444,8 @@ export function NewWorktreeModal() {
         // Set investigate flag BEFORE mutateAsync so it's available
         // when worktree:created or worktree:unarchived fires
         useUIStore.getState().setPendingInvestigateType('issue')
-        if (background) useUIStore.getState().incrementPendingBackgroundCreations()
+        if (background)
+          useUIStore.getState().incrementPendingBackgroundCreations()
 
         await createWorktree.mutateAsync({
           projectId: selectedProjectId,
@@ -519,7 +522,8 @@ export function NewWorktreeModal() {
         }
 
         // Create worktree with PR context
-        if (background) useUIStore.getState().incrementPendingBackgroundCreations()
+        if (background)
+          useUIStore.getState().incrementPendingBackgroundCreations()
         createWorktree.mutate({
           projectId: selectedProjectId,
           prContext,
@@ -598,7 +602,8 @@ export function NewWorktreeModal() {
         // Set investigate flag BEFORE mutateAsync so it's available
         // when worktree:created or worktree:unarchived fires
         useUIStore.getState().setPendingInvestigateType('pr')
-        if (background) useUIStore.getState().incrementPendingBackgroundCreations()
+        if (background)
+          useUIStore.getState().incrementPendingBackgroundCreations()
 
         await createWorktree.mutateAsync({
           projectId: selectedProjectId,
@@ -688,7 +693,10 @@ export function NewWorktreeModal() {
         }
         if (key === 'm' && filteredIssues[selectedItemIndex]) {
           e.preventDefault()
-          handleSelectIssueAndInvestigate(filteredIssues[selectedItemIndex], e.metaKey)
+          handleSelectIssueAndInvestigate(
+            filteredIssues[selectedItemIndex],
+            e.metaKey
+          )
           return
         }
       }
@@ -714,7 +722,10 @@ export function NewWorktreeModal() {
         }
         if (key === 'm' && filteredPRs[selectedItemIndex]) {
           e.preventDefault()
-          handleSelectPRAndInvestigate(filteredPRs[selectedItemIndex], e.metaKey)
+          handleSelectPRAndInvestigate(
+            filteredPRs[selectedItemIndex],
+            e.metaKey
+          )
           return
         }
       }
@@ -862,7 +873,11 @@ export function NewWorktreeModal() {
         {activeTab !== 'quick' && (
           <div className="shrink-0 border-t border-border px-3 py-1.5">
             <span className="text-xs text-muted-foreground">
-              Hold <kbd className="mx-0.5 rounded bg-muted px-1 py-0.5 text-[10px]">{getModifierSymbol()}</kbd> to open in background
+              Hold{' '}
+              <kbd className="mx-0.5 rounded bg-muted px-1 py-0.5 text-[10px]">
+                {getModifierSymbol()}
+              </kbd>{' '}
+              to open in background
             </span>
           </div>
         )}
@@ -1165,8 +1180,8 @@ export function GitHubIssuesTab({
                 isSelected={index === selectedIndex}
                 isCreating={creatingFromNumber === issue.number}
                 onMouseEnter={() => setSelectedIndex(index)}
-                onClick={(bg) => onSelectIssue(issue, bg)}
-                onInvestigate={(bg) => onInvestigateIssue(issue, bg)}
+                onClick={bg => onSelectIssue(issue, bg)}
+                onInvestigate={bg => onInvestigateIssue(issue, bg)}
               />
             ))}
             {isSearching && (
@@ -1331,8 +1346,8 @@ export function GitHubPRsTab({
                 isSelected={index === selectedIndex}
                 isCreating={creatingFromNumber === pr.number}
                 onMouseEnter={() => setSelectedIndex(index)}
-                onClick={(bg) => onSelectPR(pr, bg)}
-                onInvestigate={(bg) => onInvestigatePR(pr, bg)}
+                onClick={bg => onSelectPR(pr, bg)}
+                onInvestigate={bg => onInvestigatePR(pr, bg)}
               />
             ))}
             {isSearching && (
@@ -1665,7 +1680,7 @@ export function BranchesTab({
                 isSelected={index === selectedIndex}
                 isCreating={creatingFromBranch === branch}
                 onMouseEnter={() => setSelectedIndex(index)}
-                onClick={(bg) => onSelectBranch(branch, bg)}
+                onClick={bg => onSelectBranch(branch, bg)}
               />
             ))}
           </div>

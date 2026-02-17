@@ -147,15 +147,19 @@ export function SessionDebugPanel({
         session: <span className="text-foreground">{sessionId}</span>
       </div>
       <div className="text-muted-foreground">
-        model: <span className="text-foreground">{selectedModel ?? 'unknown'}</span>
+        model:{' '}
+        <span className="text-foreground">{selectedModel ?? 'unknown'}</span>
         {' / '}
-        provider: <span className="text-foreground">{!selectedProvider || selectedProvider === '__anthropic__' ? 'Anthropic' : selectedProvider}</span>
+        provider:{' '}
+        <span className="text-foreground">
+          {!selectedProvider || selectedProvider === '__anthropic__'
+            ? 'Anthropic'
+            : selectedProvider}
+        </span>
       </div>
       <Tooltip>
         <TooltipTrigger asChild>
-          <div
-            className="text-muted-foreground truncate"
-          >
+          <div className="text-muted-foreground truncate">
             sessions file:{' '}
             <span
               className="text-foreground/70 cursor-pointer hover:underline"

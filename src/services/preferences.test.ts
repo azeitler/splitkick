@@ -254,7 +254,6 @@ describe('preferences service', () => {
   describe('useSavePreferences', () => {
     it('saves preferences to backend', async () => {
       const { invoke } = await import('@/lib/transport')
-      const { toast } = await import('sonner')
       vi.mocked(invoke).mockResolvedValueOnce(undefined)
 
       const newPrefs: AppPreferences = {
@@ -326,7 +325,7 @@ describe('preferences service', () => {
       expect(invoke).toHaveBeenCalledWith('save_preferences', {
         preferences: newPrefs,
       })
-      expect(toast.success).toHaveBeenCalledWith('Preferences saved')
+      // Toast was removed — preferences save silently logs instead
     })
 
     it('updates cache on success', async () => {

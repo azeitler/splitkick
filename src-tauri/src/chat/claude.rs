@@ -162,7 +162,10 @@ pub fn apply_custom_profile_settings(cmd: &mut std::process::Command, profile_na
                 if path.exists() {
                     cmd.arg("--settings").arg(&path);
                 } else {
-                    log::warn!("CLI profile file not found for '{name}': {}", path.display());
+                    log::warn!(
+                        "CLI profile file not found for '{name}': {}",
+                        path.display()
+                    );
                 }
             }
         }
@@ -266,7 +269,10 @@ fn build_claude_args(
                     args.push("--settings".to_string());
                     args.push(path.to_string_lossy().to_string());
                 } else {
-                    log::warn!("CLI profile file not found for '{name}': {}", path.display());
+                    log::warn!(
+                        "CLI profile file not found for '{name}': {}",
+                        path.display()
+                    );
                 }
             }
         }

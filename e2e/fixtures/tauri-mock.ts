@@ -59,7 +59,7 @@ export const test = base.extend<TauriMockFixtures>({
           string,
           (args?: Record<string, unknown>) => unknown
         > = {
-          get_sessions: (args) => {
+          get_sessions: args => {
             const wid = (args?.worktreeId as string) ?? 'unknown'
             const store = getWorktreeStore(wid)
             return {
@@ -69,12 +69,11 @@ export const test = base.extend<TauriMockFixtures>({
               version: 2,
             }
           },
-          create_session: (args) => {
+          create_session: args => {
             const wid = (args?.worktreeId as string) ?? 'unknown'
             const store = getWorktreeStore(wid)
             const name =
-              (args?.name as string) ||
-              `Session ${store.sessions.length + 1}`
+              (args?.name as string) || `Session ${store.sessions.length + 1}`
             const session = {
               id: `session-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
               name,
@@ -86,40 +85,34 @@ export const test = base.extend<TauriMockFixtures>({
             store.active_session_id = session.id
             return session
           },
-          rename_session: (args) => {
+          rename_session: args => {
             const wid = (args?.worktreeId as string) ?? 'unknown'
             const store = getWorktreeStore(wid)
-            const session = store.sessions.find(
-              (s) => s.id === args?.sessionId
-            )
+            const session = store.sessions.find(s => s.id === args?.sessionId)
             if (session) {
               session.name = args?.newName as string
             }
             return null
           },
-          set_active_session: (args) => {
+          set_active_session: args => {
             const wid = (args?.worktreeId as string) ?? 'unknown'
             const store = getWorktreeStore(wid)
             store.active_session_id = (args?.sessionId as string) ?? null
             return null
           },
-          set_session_model: (args) => {
+          set_session_model: args => {
             const wid = (args?.worktreeId as string) ?? 'unknown'
             const store = getWorktreeStore(wid)
-            const session = store.sessions.find(
-              (s) => s.id === args?.sessionId
-            )
+            const session = store.sessions.find(s => s.id === args?.sessionId)
             if (session) {
               session.selected_model = args?.model as string
             }
             return null
           },
-          get_session: (args) => {
+          get_session: args => {
             const wid = (args?.worktreeId as string) ?? 'unknown'
             const store = getWorktreeStore(wid)
-            const session = store.sessions.find(
-              (s) => s.id === args?.sessionId
-            )
+            const session = store.sessions.find(s => s.id === args?.sessionId)
             return session
               ? structuredClone(session)
               : {
@@ -130,7 +123,7 @@ export const test = base.extend<TauriMockFixtures>({
                   messages: [],
                 }
           },
-          send_chat_message: (args) => {
+          send_chat_message: args => {
             // Return a mock assistant ChatMessage
             // Actual streaming is handled via emitEvent
             return {
@@ -187,9 +180,7 @@ export const test = base.extend<TauriMockFixtures>({
         ({ event, payload }) => {
           const emitter = (window as any).__JEAN_E2E_MOCK__?.eventEmitter
           if (emitter) {
-            emitter.dispatchEvent(
-              new CustomEvent(event, { detail: payload })
-            )
+            emitter.dispatchEvent(new CustomEvent(event, { detail: payload }))
           }
         },
         { event, payload }

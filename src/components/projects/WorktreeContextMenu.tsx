@@ -136,7 +136,7 @@ export function WorktreeContextMenu({
 
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
         <AlertDialogContent
-          onKeyDown={(e) => {
+          onKeyDown={e => {
             if (e.key === 'Enter') {
               e.preventDefault()
               e.stopPropagation()

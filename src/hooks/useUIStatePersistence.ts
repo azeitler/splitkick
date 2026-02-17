@@ -227,7 +227,9 @@ export function useUIStatePersistence() {
     // This must happen AFTER setActiveWorktree which also sets it,
     // but covers the case where the user was on the dashboard (no active worktree)
     if (uiState.last_active_worktree_id) {
-      useChatStore.getState().setLastActiveWorktreeId(uiState.last_active_worktree_id)
+      useChatStore
+        .getState()
+        .setLastActiveWorktreeId(uiState.last_active_worktree_id)
     }
 
     // Restore active sessions per worktree
@@ -247,7 +249,9 @@ export function useUIStatePersistence() {
 
     // Restore review sidebar visibility
     if (uiState.review_sidebar_visible != null) {
-      useChatStore.setState({ reviewSidebarVisible: uiState.review_sidebar_visible })
+      useChatStore.setState({
+        reviewSidebarVisible: uiState.review_sidebar_visible,
+      })
     }
 
     // Restore pending digest session IDs (convert array to record with true values)
@@ -291,7 +295,8 @@ export function useUIStatePersistence() {
     }
 
     // Restore dashboard worktree collapse overrides
-    const collapseOverrides = uiState.dashboard_worktree_collapse_overrides ?? {}
+    const collapseOverrides =
+      uiState.dashboard_worktree_collapse_overrides ?? {}
     if (Object.keys(collapseOverrides).length > 0) {
       logger.debug('Restoring dashboard worktree collapse overrides', {
         count: Object.keys(collapseOverrides).length,
@@ -344,7 +349,8 @@ export function useUIStatePersistence() {
       const accessTimestampsChanged =
         state.projectAccessTimestamps !== prevProjectAccessTimestamps
       const collapseOverridesChanged =
-        state.dashboardWorktreeCollapseOverrides !== prevDashboardCollapseOverrides
+        state.dashboardWorktreeCollapseOverrides !==
+        prevDashboardCollapseOverrides
 
       if (
         projectIdsChanged ||
@@ -357,7 +363,8 @@ export function useUIStatePersistence() {
         prevExpandedFolderIds = state.expandedFolderIds
         prevSelectedProjectId = state.selectedProjectId
         prevProjectAccessTimestamps = state.projectAccessTimestamps
-        prevDashboardCollapseOverrides = state.dashboardWorktreeCollapseOverrides
+        prevDashboardCollapseOverrides =
+          state.dashboardWorktreeCollapseOverrides
         const currentState = getCurrentUIState()
         debouncedSaveRef.current?.(currentState)
       }

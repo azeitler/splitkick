@@ -127,12 +127,30 @@ export function DiagnosticsPanel() {
           Background Polling
         </h4>
         <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
-          <Row label="Git poll interval" value={`${pollingStatus.gitPollIntervalSecs}s`} />
-          <Row label="Last git poll" value={formatAgo(pollingStatus.lastLocalPollAgoSecs)} />
-          <Row label="PR poll interval" value={`${pollingStatus.remotePollIntervalSecs}s`} />
-          <Row label="Last PR poll" value={formatAgo(pollingStatus.lastRemotePollAgoSecs)} />
-          <Row label="PR sweep worktrees" value={String(pollingStatus.prSweepCount)} />
-          <Row label="Git sweep worktrees" value={String(pollingStatus.gitSweepCount)} />
+          <Row
+            label="Git poll interval"
+            value={`${pollingStatus.gitPollIntervalSecs}s`}
+          />
+          <Row
+            label="Last git poll"
+            value={formatAgo(pollingStatus.lastLocalPollAgoSecs)}
+          />
+          <Row
+            label="PR poll interval"
+            value={`${pollingStatus.remotePollIntervalSecs}s`}
+          />
+          <Row
+            label="Last PR poll"
+            value={formatAgo(pollingStatus.lastRemotePollAgoSecs)}
+          />
+          <Row
+            label="PR sweep worktrees"
+            value={String(pollingStatus.prSweepCount)}
+          />
+          <Row
+            label="Git sweep worktrees"
+            value={String(pollingStatus.gitSweepCount)}
+          />
         </div>
       </div>
     </div>
@@ -147,4 +165,3 @@ function Row({ label, value }: { label: string; value: string }) {
     </div>
   )
 }
-

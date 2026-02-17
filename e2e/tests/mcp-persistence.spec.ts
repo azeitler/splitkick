@@ -57,7 +57,7 @@ const test = base.extend<{ mockPage: Page }>({
           string,
           (args?: Record<string, unknown>) => unknown
         > = {
-          get_sessions: (args) => {
+          get_sessions: args => {
             const wid = (args?.worktreeId as string) ?? 'unknown'
             const store = getWorktreeStore(wid)
             return {
@@ -67,12 +67,11 @@ const test = base.extend<{ mockPage: Page }>({
               version: 2,
             }
           },
-          create_session: (args) => {
+          create_session: args => {
             const wid = (args?.worktreeId as string) ?? 'unknown'
             const store = getWorktreeStore(wid)
             const name =
-              (args?.name as string) ||
-              `Session ${store.sessions.length + 1}`
+              (args?.name as string) || `Session ${store.sessions.length + 1}`
             const session = {
               id: `session-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
               name,
@@ -85,19 +84,17 @@ const test = base.extend<{ mockPage: Page }>({
             persistStore()
             return session
           },
-          set_active_session: (args) => {
+          set_active_session: args => {
             const wid = (args?.worktreeId as string) ?? 'unknown'
             const store = getWorktreeStore(wid)
             store.active_session_id = (args?.sessionId as string) ?? null
             persistStore()
             return null
           },
-          get_session: (args) => {
+          get_session: args => {
             const wid = (args?.worktreeId as string) ?? 'unknown'
             const store = getWorktreeStore(wid)
-            const session = store.sessions.find(
-              (s) => s.id === args?.sessionId
-            )
+            const session = store.sessions.find(s => s.id === args?.sessionId)
             return session
               ? structuredClone(session)
               : {
@@ -108,17 +105,15 @@ const test = base.extend<{ mockPage: Page }>({
                   messages: [],
                 }
           },
-          rename_session: (args) => {
+          rename_session: args => {
             const wid = (args?.worktreeId as string) ?? 'unknown'
             const store = getWorktreeStore(wid)
-            const session = store.sessions.find(
-              (s) => s.id === args?.sessionId
-            )
+            const session = store.sessions.find(s => s.id === args?.sessionId)
             if (session) session.name = args?.newName as string
             persistStore()
             return null
           },
-          update_session_state: (args) => {
+          update_session_state: args => {
             // Record for test assertions
             ;(window as any).__updateSessionStateCalls.push(
               structuredClone(args)
@@ -126,9 +121,7 @@ const test = base.extend<{ mockPage: Page }>({
             // Persist enabled_mcp_servers into the session store
             const wid = (args?.worktreeId as string) ?? 'unknown'
             const store = getWorktreeStore(wid)
-            const session = store.sessions.find(
-              (s) => s.id === args?.sessionId
-            )
+            const session = store.sessions.find(s => s.id === args?.sessionId)
             if (session && args?.enabledMcpServers !== undefined) {
               session.enabled_mcp_servers = args.enabledMcpServers
             }
@@ -204,9 +197,7 @@ test.describe('MCP Server Session Persistence', () => {
       () => (window as any).__updateSessionStateCalls
     )
     expect(calls.length).toBeGreaterThan(0)
-    const mcpCall = calls.find(
-      (c: any) => c.enabledMcpServers !== undefined
-    )
+    const mcpCall = calls.find((c: any) => c.enabledMcpServers !== undefined)
     expect(mcpCall).toBeDefined()
     expect(Array.isArray(mcpCall.enabledMcpServers)).toBe(true)
 
@@ -263,9 +254,7 @@ test.describe('MCP Server Session Persistence', () => {
       sessions: Array<Record<string, unknown>>
       active_session_id: string | null
     }>
-    const storeWithSessions = worktreeStores.find(
-      (s) => s.sessions.length > 0
-    )
+    const storeWithSessions = worktreeStores.find(s => s.sessions.length > 0)
     expect(storeWithSessions).toBeDefined()
 
     // The session should have enabled_mcp_servers persisted

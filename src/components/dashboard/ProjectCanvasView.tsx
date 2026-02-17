@@ -2,7 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueries } from '@tanstack/react-query'
 import { invoke } from '@/lib/transport'
 import { cn } from '@/lib/utils'
-import { Search, MoreHorizontal, Settings, Plus, FileJson, LayoutGrid, List } from 'lucide-react'
+import {
+  Search,
+  MoreHorizontal,
+  Settings,
+  Plus,
+  FileJson,
+  LayoutGrid,
+  List,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -97,14 +105,22 @@ interface FlatCard {
   isPending?: boolean
 }
 
-type ActiveStatus = 'waiting' | 'planning' | 'vibing' | 'yoloing' | 'review' | null
+type ActiveStatus =
+  | 'waiting'
+  | 'planning'
+  | 'vibing'
+  | 'yoloing'
+  | 'review'
+  | null
 
 function getActiveStatus(cards: SessionCardData[]): ActiveStatus {
-  if (cards.some(c => c.status === 'waiting' || c.status === 'permission')) return 'waiting'
+  if (cards.some(c => c.status === 'waiting' || c.status === 'permission'))
+    return 'waiting'
   if (cards.some(c => c.status === 'yoloing')) return 'yoloing'
   if (cards.some(c => c.status === 'vibing')) return 'vibing'
   if (cards.some(c => c.status === 'planning')) return 'planning'
-  if (cards.some(c => c.status === 'review' || c.status === 'completed')) return 'review'
+  if (cards.some(c => c.status === 'review' || c.status === 'completed'))
+    return 'review'
   return null
 }
 
@@ -139,12 +155,20 @@ function WorktreeSectionHeader({
     gitStatus?.unpushed_count ?? worktree.cached_unpushed_count ?? 0
 
   // Diff stats: branch diff + uncommitted for non-base; uncommitted only for base
-  const branchDiffAdded = gitStatus?.branch_diff_added ?? worktree.cached_branch_diff_added ?? 0
-  const branchDiffRemoved = gitStatus?.branch_diff_removed ?? worktree.cached_branch_diff_removed ?? 0
-  const uncommittedAdded = gitStatus?.uncommitted_added ?? worktree.cached_uncommitted_added ?? 0
-  const uncommittedRemoved = gitStatus?.uncommitted_removed ?? worktree.cached_uncommitted_removed ?? 0
-  const diffAdded = isBase ? uncommittedAdded : branchDiffAdded + uncommittedAdded
-  const diffRemoved = isBase ? uncommittedRemoved : branchDiffRemoved + uncommittedRemoved
+  const branchDiffAdded =
+    gitStatus?.branch_diff_added ?? worktree.cached_branch_diff_added ?? 0
+  const branchDiffRemoved =
+    gitStatus?.branch_diff_removed ?? worktree.cached_branch_diff_removed ?? 0
+  const uncommittedAdded =
+    gitStatus?.uncommitted_added ?? worktree.cached_uncommitted_added ?? 0
+  const uncommittedRemoved =
+    gitStatus?.uncommitted_removed ?? worktree.cached_uncommitted_removed ?? 0
+  const diffAdded = isBase
+    ? uncommittedAdded
+    : branchDiffAdded + uncommittedAdded
+  const diffRemoved = isBase
+    ? uncommittedRemoved
+    : branchDiffRemoved + uncommittedRemoved
 
   const handlePull = useCallback(
     async (e: React.MouseEvent) => {
@@ -189,7 +213,7 @@ function WorktreeSectionHeader({
         className={cn(
           'mb-0.5 flex items-center gap-2 border border-transparent transition-colors',
           onRowClick && 'cursor-pointer px-2 -mx-2 py-1 hover:bg-muted/50',
-          isSelected && onRowClick && 'bg-primary/5 border-primary/50',
+          isSelected && onRowClick && 'bg-primary/5 border-primary/50'
         )}
         onClick={onRowClick}
         role={onRowClick ? 'button' : undefined}
@@ -213,7 +237,10 @@ function WorktreeSectionHeader({
               <TooltipContent>Run active</TooltipContent>
             </Tooltip>
           )}
-          <span className="inline-flex items-center font-normal" onClick={e => e.stopPropagation()}>
+          <span
+            className="inline-flex items-center font-normal"
+            onClick={e => e.stopPropagation()}
+          >
             <GitStatusBadges
               behindCount={behindCount}
               unpushedCount={unpushedCount}
@@ -226,14 +253,20 @@ function WorktreeSectionHeader({
           </span>
         </span>
         {sessionSummary && (
-          <span className={cn(
-            'ml-auto text-xs',
-            activeStatus === 'waiting' ? 'text-yellow-500 font-medium animate-blink' :
-              activeStatus === 'yoloing' ? 'text-destructive font-medium' :
-                activeStatus === 'review' ? 'text-green-500 font-medium' :
-                  activeStatus ? 'text-yellow-500 font-medium' :
-                    'text-muted-foreground/70'
-          )}>
+          <span
+            className={cn(
+              'ml-auto text-xs',
+              activeStatus === 'waiting'
+                ? 'text-yellow-500 font-medium animate-blink'
+                : activeStatus === 'yoloing'
+                  ? 'text-destructive font-medium'
+                  : activeStatus === 'review'
+                    ? 'text-green-500 font-medium'
+                    : activeStatus
+                      ? 'text-yellow-500 font-medium'
+                      : 'text-muted-foreground/70'
+            )}
+          >
             {sessionSummary}
           </span>
         )}
@@ -241,7 +274,10 @@ function WorktreeSectionHeader({
       <GitDiffModal
         diffRequest={diffRequest}
         onClose={() => setDiffRequest(null)}
-        uncommittedStats={{ added: uncommittedAdded, removed: uncommittedRemoved }}
+        uncommittedStats={{
+          added: uncommittedAdded,
+          removed: uncommittedRemoved,
+        }}
         branchStats={{ added: branchDiffAdded, removed: branchDiffRemoved }}
       />
     </>
@@ -359,14 +395,21 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       const isBase = isBaseSession(worktree)
 
       // Filter sessions based on search query
-      const filteredSessions = searchQuery.trim() && !isBase
-        ? sessions.filter(
-          session =>
-            session.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            worktree.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            worktree.branch.toLowerCase().includes(searchQuery.toLowerCase())
-        )
-        : sessions
+      const filteredSessions =
+        searchQuery.trim() && !isBase
+          ? sessions.filter(
+              session =>
+                session.name
+                  .toLowerCase()
+                  .includes(searchQuery.toLowerCase()) ||
+                worktree.name
+                  .toLowerCase()
+                  .includes(searchQuery.toLowerCase()) ||
+                worktree.branch
+                  .toLowerCase()
+                  .includes(searchQuery.toLowerCase())
+            )
+          : sessions
 
       // Compute card data for each session
       const cards = filteredSessions.map(session =>
@@ -483,31 +526,44 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   const closeBaseSessionClean = useCloseBaseSessionClean()
   const closeBaseSessionArchive = useCloseBaseSessionArchive()
 
-  const closeWorktreeDirectly = useCallback((worktreeId: string) => {
-    if (!project) return
-    const wt = visibleWorktrees.find(w => w.id === worktreeId)
-    if (!wt) return
-    console.log('[CLOSE_WT_DASH] closeWorktreeDirectly', { isBase: isBaseSession(wt), worktreeId: wt.id, removalBehavior: preferences?.removal_behavior })
-    if (isBaseSession(wt)) {
-      if (preferences?.removal_behavior === 'delete') {
-        closeBaseSessionClean.mutate({ worktreeId: wt.id, projectId: project.id })
+  const closeWorktreeDirectly = useCallback(
+    (worktreeId: string) => {
+      if (!project) return
+      const wt = visibleWorktrees.find(w => w.id === worktreeId)
+      if (!wt) return
+      console.log('[CLOSE_WT_DASH] closeWorktreeDirectly', {
+        isBase: isBaseSession(wt),
+        worktreeId: wt.id,
+        removalBehavior: preferences?.removal_behavior,
+      })
+      if (isBaseSession(wt)) {
+        if (preferences?.removal_behavior === 'delete') {
+          closeBaseSessionClean.mutate({
+            worktreeId: wt.id,
+            projectId: project.id,
+          })
+        } else {
+          closeBaseSessionArchive.mutate({
+            worktreeId: wt.id,
+            projectId: project.id,
+          })
+        }
+      } else if (preferences?.removal_behavior === 'delete') {
+        deleteWorktree.mutate({ worktreeId: wt.id, projectId: project.id })
       } else {
-        closeBaseSessionArchive.mutate({ worktreeId: wt.id, projectId: project.id })
+        archiveWorktree.mutate({ worktreeId: wt.id, projectId: project.id })
       }
-    } else if (preferences?.removal_behavior === 'delete') {
-      deleteWorktree.mutate({ worktreeId: wt.id, projectId: project.id })
-    } else {
-      archiveWorktree.mutate({ worktreeId: wt.id, projectId: project.id })
-    }
-  }, [
-    project,
-    visibleWorktrees,
-    preferences?.removal_behavior,
-    archiveWorktree,
-    deleteWorktree,
-    closeBaseSessionClean,
-    closeBaseSessionArchive,
-  ])
+    },
+    [
+      project,
+      visibleWorktrees,
+      preferences?.removal_behavior,
+      archiveWorktree,
+      deleteWorktree,
+      closeBaseSessionClean,
+      closeBaseSessionArchive,
+    ]
+  )
 
   const handleConfirmCloseWorktree = useCallback(() => {
     if (!closeWorktreeTarget) return
@@ -540,6 +596,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       if (index !== null && flatCards[index]?.card) {
         highlightedCardRef.current = {
           worktreeId: flatCards[index].worktreeId,
+          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
           sessionId: flatCards[index].card!.session.id,
         }
       }
@@ -556,10 +613,12 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     const cardIndex = isListLayout
       ? flatCards.findIndex(fc => fc.worktreeId === highlighted.worktreeId)
       : flatCards.findIndex(
-        fc =>
-          fc.worktreeId === highlighted.worktreeId &&
-          ('sessionId' in highlighted ? fc.card?.session.id === highlighted.sessionId : true)
-      )
+          fc =>
+            fc.worktreeId === highlighted.worktreeId &&
+            ('sessionId' in highlighted
+              ? fc.card?.session.id === highlighted.sessionId
+              : true)
+        )
     if (cardIndex !== -1 && cardIndex !== selectedIndex) {
       setSelectedIndex(cardIndex)
     }
@@ -570,9 +629,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     for (const [worktreeId, sessionData] of sessionsByWorktreeId) {
       if (!sessionData.sessions.length) continue
 
-      const autoOpen = useUIStore
-        .getState()
-        .consumeAutoOpenSession(worktreeId)
+      const autoOpen = useUIStore.getState().consumeAutoOpenSession(worktreeId)
       if (!autoOpen.shouldOpen) continue
 
       const worktree = readyWorktrees.find(w => w.id === worktreeId)
@@ -625,7 +682,10 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       if (lastActiveSessionId) {
         for (const fc of flatCards) {
           if (!fc.card || fc.isPending) continue
-          if (fc.worktreeId === lastActiveWorktreeId && fc.card.session.id === lastActiveSessionId) {
+          if (
+            fc.worktreeId === lastActiveWorktreeId &&
+            fc.card.session.id === lastActiveSessionId
+          ) {
             targetIndex = fc.globalIndex
             break
           }
@@ -674,11 +734,17 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   // Sync selection to store for cancel shortcut - updates when user navigates with arrow keys
   useEffect(() => {
     if (selectedWorktreeModal?.worktreeId) {
-      const activeSessionId = useChatStore.getState().activeSessionIds[selectedWorktreeModal.worktreeId]
+      const activeSessionId =
+        useChatStore.getState().activeSessionIds[
+          selectedWorktreeModal.worktreeId
+        ]
       if (activeSessionId) {
         useChatStore
           .getState()
-          .setCanvasSelectedSession(selectedWorktreeModal.worktreeId, activeSessionId)
+          .setCanvasSelectedSession(
+            selectedWorktreeModal.worktreeId,
+            activeSessionId
+          )
       }
     }
   }, [selectedWorktreeModal?.worktreeId])
@@ -931,7 +997,9 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
         if (preferences?.confirm_session_close === false) {
           closeWorktreeDirectly(item.worktreeId)
         } else {
-          const wt = worktreeSections.find(s => s.worktree.id === item.worktreeId)?.worktree
+          const wt = worktreeSections.find(
+            s => s.worktree.id === item.worktreeId
+          )?.worktree
           setCloseWorktreeTarget({
             worktreeId: item.worktreeId,
             branchName: wt?.branch,
@@ -984,7 +1052,9 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
               worktreeId: item.worktreeId,
               sessionId: session.id,
             }
-            useChatStore.getState().setActiveSession(item.worktreeId, session.id)
+            useChatStore
+              .getState()
+              .setActiveSession(item.worktreeId, session.id)
             setSelectedWorktreeModal({
               worktreeId: item.worktreeId,
               worktreePath: item.worktreePath,
@@ -1008,7 +1078,12 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     const handleOpenSessionModal = (e: CustomEvent<{ sessionId: string }>) => {
       // The modal manages session tabs internally, just set active session in store
       if (selectedWorktreeModal) {
-        useChatStore.getState().setActiveSession(selectedWorktreeModal.worktreeId, e.detail.sessionId)
+        useChatStore
+          .getState()
+          .setActiveSession(
+            selectedWorktreeModal.worktreeId,
+            e.detail.sessionId
+          )
       }
     }
 
@@ -1021,7 +1096,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
         'open-session-modal',
         handleOpenSessionModal as EventListener
       )
-  }, [])
+  }, [selectedWorktreeModal])
 
   // Check if loading
   const isLoading =
@@ -1114,7 +1189,10 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                   value={canvasLayout}
                   onValueChange={value => {
                     if (value && preferences) {
-                      savePreferences.mutate({ ...preferences, canvas_layout: value as 'grid' | 'list' })
+                      savePreferences.mutate({
+                        ...preferences,
+                        canvas_layout: value as 'grid' | 'list',
+                      })
                     }
                   }}
                 >
@@ -1140,7 +1218,10 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                 No worktrees or sessions match your search
               </div>
             ) : (
-              <EmptyDashboardTabs projectId={projectId} projectPath={project?.path ?? null} />
+              <EmptyDashboardTabs
+                projectId={projectId}
+                projectPath={project?.path ?? null}
+              />
             )
           ) : isListLayout ? (
             /* List view: one compact row per worktree */
@@ -1174,7 +1255,10 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                       isSelected={selectedIndex === currentIndex}
                       onRowClick={() => {
                         setSelectedIndex(currentIndex)
-                        handleWorktreeClick(section.worktree.id, section.worktree.path)
+                        handleWorktreeClick(
+                          section.worktree.id,
+                          section.worktree.path
+                        )
                       }}
                     />
                   </div>
@@ -1263,9 +1347,17 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                                     handleOpenLabelModal(card)
                                   }
                                   onToggleReview={() => {
-                                    const { reviewingSessions, setSessionReviewing } = useChatStore.getState()
-                                    const isReviewing = reviewingSessions[card.session.id] || !!card.session.review_results
-                                    setSessionReviewing(card.session.id, !isReviewing)
+                                    const {
+                                      reviewingSessions,
+                                      setSessionReviewing,
+                                    } = useChatStore.getState()
+                                    const isReviewing =
+                                      reviewingSessions[card.session.id] ||
+                                      !!card.session.review_results
+                                    setSessionReviewing(
+                                      card.session.id,
+                                      !isReviewing
+                                    )
                                   }}
                                 />
                               )
@@ -1368,7 +1460,9 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
 
       <CloseWorktreeDialog
         open={!!closeWorktreeTarget}
-        onOpenChange={open => { if (!open) setCloseWorktreeTarget(null) }}
+        onOpenChange={open => {
+          if (!open) setCloseWorktreeTarget(null)
+        }}
         onConfirm={handleConfirmCloseWorktree}
         branchName={closeWorktreeTarget?.branchName}
       />
@@ -1390,12 +1484,16 @@ function EmptyDashboardTabs({
   return (
     <div className="flex h-full items-center justify-center">
       <div className="flex flex-col items-center gap-3">
-        <p className="text-sm text-muted-foreground">Your imagination is the only limit</p>
+        <p className="text-sm text-muted-foreground">
+          Your imagination is the only limit
+        </p>
         <Button
           variant="outline"
           size="lg"
           className="gap-2"
-          onClick={() => window.dispatchEvent(new CustomEvent('create-new-worktree'))}
+          onClick={() =>
+            window.dispatchEvent(new CustomEvent('create-new-worktree'))
+          }
         >
           <Plus className="h-4 w-4" />
           Start Building
@@ -1417,4 +1515,3 @@ function EmptyDashboardTabs({
     </div>
   )
 }
-

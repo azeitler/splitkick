@@ -1,4 +1,11 @@
-import { useCallback, useMemo, useState, useRef, useEffect, forwardRef } from 'react'
+import {
+  useCallback,
+  useMemo,
+  useState,
+  useRef,
+  useEffect,
+  forwardRef,
+} from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   CheckCircle2,
@@ -9,7 +16,11 @@ import {
   Wand2,
   RefreshCw,
 } from 'lucide-react'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip'
 import {
   Dialog,
   DialogContent,
@@ -25,12 +36,19 @@ import { useChatStore, DEFAULT_MODEL } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useWorkflowRuns, githubQueryKeys } from '@/services/github'
 import { projectsQueryKeys } from '@/services/projects'
-import { useCreateSession, useSendMessage, chatQueryKeys } from '@/services/chat'
+import {
+  useCreateSession,
+  useSendMessage,
+  chatQueryKeys,
+} from '@/services/chat'
 import type { WorktreeSessions } from '@/types/chat'
 import { usePreferences } from '@/services/preferences'
 import { openExternal } from '@/lib/platform'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT, DEFAULT_PARALLEL_EXECUTION_PROMPT } from '@/types/preferences'
+import {
+  DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT,
+  DEFAULT_PARALLEL_EXECUTION_PROMPT,
+} from '@/types/preferences'
 import type { WorkflowRun } from '@/types/github'
 import type { Project, Worktree } from '@/types/projects'
 
@@ -82,14 +100,17 @@ interface WorkflowGroup {
   latestStatus: 'success' | 'failure' | 'pending'
 }
 
-const SidebarItem = forwardRef<HTMLButtonElement, {
-  label: string
-  count: number
-  latestStatus: 'success' | 'failure' | 'pending'
-  isSelected: boolean
-  isFocused: boolean
-  onClick: () => void
-}>(({ label, count, latestStatus, isSelected, isFocused, onClick }, ref) => {
+const SidebarItem = forwardRef<
+  HTMLButtonElement,
+  {
+    label: string
+    count: number
+    latestStatus: 'success' | 'failure' | 'pending'
+    isSelected: boolean
+    isFocused: boolean
+    onClick: () => void
+  }
+>(({ label, count, latestStatus, isSelected, isFocused, onClick }, ref) => {
   const countBg =
     latestStatus === 'success'
       ? 'bg-green-500/10 text-green-600 dark:text-green-400'
@@ -106,7 +127,9 @@ const SidebarItem = forwardRef<HTMLButtonElement, {
       <div className="flex items-center justify-between gap-2">
         <span className="truncate">{label}</span>
         <div className="flex items-center gap-1 shrink-0">
-          <span className={`rounded px-1 py-0.5 text-[10px] font-medium ${countBg}`}>
+          <span
+            className={`rounded px-1 py-0.5 text-[10px] font-medium ${countBg}`}
+          >
             {count}
           </span>
         </div>
@@ -122,9 +145,7 @@ export function WorkflowRunsModal() {
   const sendMessage = useSendMessage()
   const { data: preferences } = usePreferences()
 
-  const workflowRunsModalOpen = useUIStore(
-    state => state.workflowRunsModalOpen
-  )
+  const workflowRunsModalOpen = useUIStore(state => state.workflowRunsModalOpen)
   const workflowRunsModalProjectPath = useUIStore(
     state => state.workflowRunsModalProjectPath
   )
@@ -135,7 +156,11 @@ export function WorkflowRunsModal() {
     state => state.setWorkflowRunsModalOpen
   )
 
-  const { data: result, isLoading, isFetching } = useWorkflowRuns(
+  const {
+    data: result,
+    isLoading,
+    isFetching,
+  } = useWorkflowRuns(
     workflowRunsModalOpen ? workflowRunsModalProjectPath : null,
     workflowRunsModalBranch ?? undefined
   )
@@ -143,12 +168,15 @@ export function WorkflowRunsModal() {
   const handleRefresh = useCallback(() => {
     if (workflowRunsModalProjectPath) {
       queryClient.invalidateQueries({
-        queryKey: githubQueryKeys.workflowRuns(workflowRunsModalProjectPath, workflowRunsModalBranch ?? undefined),
+        queryKey: githubQueryKeys.workflowRuns(
+          workflowRunsModalProjectPath,
+          workflowRunsModalBranch ?? undefined
+        ),
       })
     }
   }, [queryClient, workflowRunsModalProjectPath, workflowRunsModalBranch])
 
-  const runs = result?.runs ?? []
+  const runs = useMemo(() => result?.runs ?? [], [result?.runs])
   const [selectedWorkflow, setSelectedWorkflow] = useState<string | null>(null)
   const [focusedIndex, setFocusedIndex] = useState(0)
   const [focusedPane, setFocusedPane] = useState<'sidebar' | 'list'>('sidebar')
@@ -196,9 +224,13 @@ export function WorkflowRunsModal() {
   // Reset focus when modal opens or runs change
   useEffect(() => {
     if (workflowRunsModalOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedWorkflow(null)
+
       setFocusedIndex(0)
+
       setFocusedPane('sidebar')
+
       setSidebarFocusedIndex(0)
       requestAnimationFrame(() => sidebarRef.current?.focus())
     }
@@ -206,6 +238,7 @@ export function WorkflowRunsModal() {
 
   // Reset focus when filter changes
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFocusedIndex(0)
   }, [selectedWorkflow])
 
@@ -215,7 +248,9 @@ export function WorkflowRunsModal() {
   }, [focusedIndex])
 
   useEffect(() => {
-    sidebarItemRefs.current[sidebarFocusedIndex]?.scrollIntoView({ block: 'nearest' })
+    sidebarItemRefs.current[sidebarFocusedIndex]?.scrollIntoView({
+      block: 'nearest',
+    })
   }, [sidebarFocusedIndex])
 
   const title = useMemo(() => {
@@ -244,8 +279,7 @@ export function WorkflowRunsModal() {
       setWorkflowRunsModalOpen(false)
 
       // Build the investigate prompt
-      const customPrompt =
-        preferences?.magic_prompts?.investigate_workflow_run
+      const customPrompt = preferences?.magic_prompts?.investigate_workflow_run
       const template =
         customPrompt && customPrompt.trim()
           ? customPrompt
@@ -260,7 +294,8 @@ export function WorkflowRunsModal() {
         .replace(/\{displayTitle\}/g, run.displayTitle)
 
       const investigateModel =
-        preferences?.magic_prompt_models?.investigate_workflow_run_model ?? DEFAULT_MODEL
+        preferences?.magic_prompt_models?.investigate_workflow_run_model ??
+        DEFAULT_MODEL
 
       // --- Find/create the target worktree ---
       let targetWorktreeId: string | null = null
@@ -289,8 +324,7 @@ export function WorkflowRunsModal() {
             console.error('[WF-MODAL] Failed to fetch worktrees:', err)
           }
 
-          const isUsable = (w: Worktree) =>
-            !w.status || w.status === 'ready'
+          const isUsable = (w: Worktree) => !w.status || w.status === 'ready'
 
           if (worktrees.length > 0) {
             const matching = worktrees.find(
@@ -377,9 +411,11 @@ export function WorkflowRunsModal() {
           model: investigateModel,
           executionMode: 'build',
           thinkingLevel: 'think',
-          parallelExecutionPrompt: preferences?.parallel_execution_prompt_enabled
-            ? (preferences.magic_prompts?.parallel_execution ?? DEFAULT_PARALLEL_EXECUTION_PROMPT)
-            : undefined,
+          parallelExecutionPrompt:
+            preferences?.parallel_execution_prompt_enabled
+              ? (preferences.magic_prompts?.parallel_execution ??
+                DEFAULT_PARALLEL_EXECUTION_PROMPT)
+              : undefined,
           chromeEnabled: preferences?.chrome_enabled ?? false,
           aiLanguage: preferences?.ai_language,
         })
@@ -409,7 +445,8 @@ export function WorkflowRunsModal() {
       }
 
       const emptySession = existingSessions?.sessions.find(
-        s => !s.archived_at && (s.message_count === 0 || s.message_count == null)
+        s =>
+          !s.archived_at && (s.message_count === 0 || s.message_count == null)
       )
 
       if (emptySession) {
@@ -444,10 +481,13 @@ export function WorkflowRunsModal() {
     return [null, ...groups.map(g => g.workflowName)] as (string | null)[]
   }, [groups])
 
-  const handleSidebarSelect = useCallback((index: number) => {
-    setSelectedWorkflow(sidebarItems[index] ?? null)
-    setSidebarFocusedIndex(index)
-  }, [sidebarItems])
+  const handleSidebarSelect = useCallback(
+    (index: number) => {
+      setSelectedWorkflow(sidebarItems[index] ?? null)
+      setSidebarFocusedIndex(index)
+    },
+    [sidebarItems]
+  )
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -461,7 +501,10 @@ export function WorkflowRunsModal() {
           case 'ArrowDown':
           case 'j': {
             e.preventDefault()
-            const next = Math.min(sidebarFocusedIndex + 1, sidebarItems.length - 1)
+            const next = Math.min(
+              sidebarFocusedIndex + 1,
+              sidebarItems.length - 1
+            )
             handleSidebarSelect(next)
             break
           }
@@ -511,12 +554,26 @@ export function WorkflowRunsModal() {
         }
       }
     },
-    [focusedPane, sidebarItems, sidebarFocusedIndex, handleSidebarSelect, displayedRuns, focusedIndex, handleRunClick, handleInvestigate, handleRefresh]
+    [
+      focusedPane,
+      sidebarItems,
+      sidebarFocusedIndex,
+      handleSidebarSelect,
+      displayedRuns,
+      focusedIndex,
+      handleRunClick,
+      handleInvestigate,
+      handleRefresh,
+    ]
   )
 
   return (
     <Dialog open={workflowRunsModalOpen} onOpenChange={handleOpenChange}>
-      <DialogContent showCloseButton={false} className="h-[80vh] sm:max-w-5xl overflow-hidden flex flex-col" onOpenAutoFocus={e => e.preventDefault()}>
+      <DialogContent
+        showCloseButton={false}
+        className="h-[80vh] sm:max-w-5xl overflow-hidden flex flex-col"
+        onOpenAutoFocus={e => e.preventDefault()}
+      >
         <DialogHeader>
           <div className="flex items-center gap-2">
             <DialogTitle>{title}</DialogTitle>
@@ -530,7 +587,9 @@ export function WorkflowRunsModal() {
                     onClick={handleRefresh}
                     disabled={isFetching}
                   >
-                    <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+                    <RefreshCw
+                      className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`}
+                    />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>Refresh</TooltipContent>
@@ -549,22 +608,44 @@ export function WorkflowRunsModal() {
             No workflow runs found
           </div>
         ) : (
-          <div ref={sidebarRef} tabIndex={0} onKeyDown={handleKeyDown} className="flex min-h-0 flex-1 gap-4 outline-none">
+          <div
+            ref={sidebarRef}
+            tabIndex={0}
+            onKeyDown={handleKeyDown}
+            className="flex min-h-0 flex-1 gap-4 outline-none"
+          >
             {/* Sidebar */}
             <ScrollArea className="w-80 shrink-0">
               <div className="space-y-0.5 pr-3">
                 {sidebarItems.map((workflowName, idx) => {
-                  const group = workflowName ? groups.find(g => g.workflowName === workflowName) : null
+                  const group = workflowName
+                    ? groups.find(g => g.workflowName === workflowName)
+                    : null
                   return (
                     <SidebarItem
                       key={workflowName ?? '__all__'}
-                      ref={el => { sidebarItemRefs.current[idx] = el }}
+                      ref={el => {
+                        sidebarItemRefs.current[idx] = el
+                      }}
                       label={workflowName ?? 'All'}
                       count={group ? group.totalCount : runs.length}
-                      latestStatus={group ? group.latestStatus : ((result?.failedCount ?? 0) > 0 ? 'failure' : runs.length > 0 ? 'success' : 'pending')}
+                      latestStatus={
+                        group
+                          ? group.latestStatus
+                          : (result?.failedCount ?? 0) > 0
+                            ? 'failure'
+                            : runs.length > 0
+                              ? 'success'
+                              : 'pending'
+                      }
                       isSelected={selectedWorkflow === workflowName}
-                      isFocused={focusedPane === 'sidebar' && sidebarFocusedIndex === idx}
-                      onClick={() => { setSelectedWorkflow(workflowName); setSidebarFocusedIndex(idx) }}
+                      isFocused={
+                        focusedPane === 'sidebar' && sidebarFocusedIndex === idx
+                      }
+                      onClick={() => {
+                        setSelectedWorkflow(workflowName)
+                        setSidebarFocusedIndex(idx)
+                      }}
                     />
                   )
                 })}
@@ -572,15 +653,23 @@ export function WorkflowRunsModal() {
             </ScrollArea>
 
             {/* Run list */}
-            <div ref={listRef} className="flex-1 min-w-0 overflow-y-auto outline-none">
+            <div
+              ref={listRef}
+              className="flex-1 min-w-0 overflow-y-auto outline-none"
+            >
               <div className="space-y-1 pb-2">
                 {displayedRuns.map((run, index) => (
                   <div
                     key={run.databaseId}
-                    ref={el => { itemRefs.current[index] = el }}
+                    ref={el => {
+                      itemRefs.current[index] = el
+                    }}
                     className={`group relative flex cursor-pointer items-center rounded-md px-2 py-2 transition-colors hover:bg-accent ${focusedPane === 'list' && index === focusedIndex ? 'bg-accent' : ''}`}
                     onClick={() => handleRunClick(run.url)}
-                    onMouseEnter={() => { setFocusedIndex(index); setFocusedPane('list') }}
+                    onMouseEnter={() => {
+                      setFocusedIndex(index)
+                      setFocusedPane('list')
+                    }}
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-2.5">
                       <RunStatusIcon run={run} />
@@ -606,7 +695,9 @@ export function WorkflowRunsModal() {
                                   <span>M</span>
                                 </button>
                               </TooltipTrigger>
-                              <TooltipContent>Investigate this failure</TooltipContent>
+                              <TooltipContent>
+                                Investigate this failure
+                              </TooltipContent>
                             </Tooltip>
                           )}
                         </div>

@@ -53,8 +53,13 @@ interface ProjectsUIState {
   toggleWorktreeExpanded: (id: string) => void
 
   // Dashboard collapse actions
-  toggleDashboardWorktreeCollapsed: (id: string, defaultCollapsed: boolean) => void
-  setDashboardWorktreeCollapseOverrides: (overrides: Record<string, boolean>) => void
+  toggleDashboardWorktreeCollapsed: (
+    id: string,
+    defaultCollapsed: boolean
+  ) => void
+  setDashboardWorktreeCollapseOverrides: (
+    overrides: Record<string, boolean>
+  ) => void
 
   // Folder expansion actions
   toggleFolderExpanded: (id: string) => void

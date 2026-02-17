@@ -91,6 +91,7 @@ import {
 } from '@/services/github'
 
 /** Model options with display labels */
+// eslint-disable-next-line react-refresh/only-export-components
 export const MODEL_OPTIONS: { value: ClaudeModel; label: string }[] = [
   { value: 'opus', label: 'Opus 4.6' },
   { value: 'opus-4.5', label: 'Opus 4.5' },
@@ -100,28 +101,30 @@ export const MODEL_OPTIONS: { value: ClaudeModel; label: string }[] = [
 ]
 
 /** Thinking level options with display labels and token counts */
+// eslint-disable-next-line react-refresh/only-export-components
 export const THINKING_LEVEL_OPTIONS: {
   value: ThinkingLevel
   label: string
   tokens: string
 }[] = [
-    { value: 'off', label: 'Off', tokens: 'Disabled' },
-    { value: 'think', label: 'Think', tokens: '4K' },
-    { value: 'megathink', label: 'Megathink', tokens: '10K' },
-    { value: 'ultrathink', label: 'Ultrathink', tokens: '32K' },
-  ]
+  { value: 'off', label: 'Off', tokens: 'Disabled' },
+  { value: 'think', label: 'Think', tokens: '4K' },
+  { value: 'megathink', label: 'Megathink', tokens: '10K' },
+  { value: 'ultrathink', label: 'Ultrathink', tokens: '32K' },
+]
 
 /** Effort level options for Opus 4.6 adaptive thinking */
+// eslint-disable-next-line react-refresh/only-export-components
 export const EFFORT_LEVEL_OPTIONS: {
   value: EffortLevel
   label: string
   description: string
 }[] = [
-    { value: 'low', label: 'Low', description: 'Minimal' },
-    { value: 'medium', label: 'Medium', description: 'Moderate' },
-    { value: 'high', label: 'High', description: 'Deep' },
-    { value: 'max', label: 'Max', description: 'No limits' },
-  ]
+  { value: 'low', label: 'Low', description: 'Minimal' },
+  { value: 'medium', label: 'Medium', description: 'Moderate' },
+  { value: 'high', label: 'High', description: 'Deep' },
+  { value: 'max', label: 'Max', description: 'No limits' },
+]
 
 /** Get display label and color for PR status */
 function getPrStatusDisplay(status: PrDisplayStatus): {
@@ -237,7 +240,6 @@ interface ChatToolbarProps {
   displayStatus: PrDisplayStatus | undefined
   checkStatus: CheckStatus | undefined
   mergeableStatus: MergeableStatus | undefined
-
 
   // Worktree info
   activeWorktreePath: string | undefined
@@ -426,7 +428,8 @@ export const ChatToolbar = memo(function ChatToolbar({
   // and drop Opus 4.5 (providers only have one opus-tier model).
   // Parse actual model names from the provider's settings JSON when available.
   const filteredModelOptions = useMemo(() => {
-    if (!selectedProvider || selectedProvider === '__anthropic__') return MODEL_OPTIONS
+    if (!selectedProvider || selectedProvider === '__anthropic__')
+      return MODEL_OPTIONS
     // Try to extract model names from the active profile's settings_json
     const profile = customCliProfiles.find(p => p.name === selectedProvider)
     let opusModel: string | undefined
@@ -438,12 +441,15 @@ export const ChatToolbar = memo(function ChatToolbar({
         const env = settings?.env
         if (env) {
           opusModel = env.ANTHROPIC_DEFAULT_OPUS_MODEL || env.ANTHROPIC_MODEL
-          sonnetModel = env.ANTHROPIC_DEFAULT_SONNET_MODEL || env.ANTHROPIC_MODEL
+          sonnetModel =
+            env.ANTHROPIC_DEFAULT_SONNET_MODEL || env.ANTHROPIC_MODEL
           haikuModel = env.ANTHROPIC_DEFAULT_HAIKU_MODEL || env.ANTHROPIC_MODEL
         }
-      } catch { /* ignore parse errors */ }
+      } catch {
+        /* ignore parse errors */
+      }
     }
-    const suffix = (model?: string) => model ? ` (${model})` : ''
+    const suffix = (model?: string) => (model ? ` (${model})` : '')
     return [
       { value: 'opus' as ClaudeModel, label: `Opus${suffix(opusModel)}` },
       { value: 'sonnet' as ClaudeModel, label: `Sonnet${suffix(sonnetModel)}` },
@@ -464,7 +470,11 @@ export const ChatToolbar = memo(function ChatToolbar({
       const provider = value === 'default' ? null : value
       onProviderChange(provider)
       // Auto-switch from Opus 4.6 when selecting a custom provider (it's Anthropic-only)
-      if (provider && provider !== '__anthropic__' && selectedModel === 'opus-4.5') {
+      if (
+        provider &&
+        provider !== '__anthropic__' &&
+        selectedModel === 'opus-4.5'
+      ) {
         onModelChange('opus' as ClaudeModel)
       }
     },
@@ -788,7 +798,10 @@ export const ChatToolbar = memo(function ChatToolbar({
                       : 'Open'}{' '}
                     #{prNumber}
                   </span>
-                  <CheckStatusButton status={checkStatus ?? null} projectPath={activeWorktreePath} />
+                  <CheckStatusButton
+                    status={checkStatus ?? null}
+                    projectPath={activeWorktreePath}
+                  />
                 </a>
               </DropdownMenuItem>
             )}
@@ -802,7 +815,9 @@ export const ChatToolbar = memo(function ChatToolbar({
                   <Sparkles className="mr-2 h-4 w-4" />
                   <span>Provider</span>
                   <span className="ml-auto text-xs text-muted-foreground">
-                    {!selectedProvider || selectedProvider === '__anthropic__' ? 'Anthropic' : selectedProvider}
+                    {!selectedProvider || selectedProvider === '__anthropic__'
+                      ? 'Anthropic'
+                      : selectedProvider}
                   </span>
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent>
@@ -840,14 +855,20 @@ export const ChatToolbar = memo(function ChatToolbar({
                 <Sparkles className="mr-2 h-4 w-4" />
                 <span>Model</span>
                 <span className="ml-auto text-xs text-muted-foreground">
-                  {filteredModelOptions.find(o => o.value === selectedModel)?.label}
+                  {
+                    filteredModelOptions.find(o => o.value === selectedModel)
+                      ?.label
+                  }
                 </span>
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
                 {providerLocked && customCliProfiles.length > 0 && (
                   <>
                     <DropdownMenuLabel className="text-xs text-muted-foreground">
-                      Provider: {!selectedProvider || selectedProvider === '__anthropic__' ? 'Anthropic' : selectedProvider}
+                      Provider:{' '}
+                      {!selectedProvider || selectedProvider === '__anthropic__'
+                        ? 'Anthropic'
+                        : selectedProvider}
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
                   </>
@@ -878,8 +899,8 @@ export const ChatToolbar = memo(function ChatToolbar({
                     {thinkingOverrideActive
                       ? 'Off'
                       : EFFORT_LEVEL_OPTIONS.find(
-                        o => o.value === selectedEffortLevel
-                      )?.label}
+                          o => o.value === selectedEffortLevel
+                        )?.label}
                   </span>
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent>
@@ -910,8 +931,8 @@ export const ChatToolbar = memo(function ChatToolbar({
                     {thinkingOverrideActive
                       ? 'Off'
                       : THINKING_LEVEL_OPTIONS.find(
-                        o => o.value === selectedThinkingLevel
-                      )?.label}
+                          o => o.value === selectedThinkingLevel
+                        )?.label}
                   </span>
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent>
@@ -993,126 +1014,126 @@ export const ChatToolbar = memo(function ChatToolbar({
         {(loadedIssueCount > 0 ||
           loadedPRCount > 0 ||
           loadedContextCount > 0) && (
-            <>
-              <div className="hidden @xl:block h-4 w-px bg-border/50" />
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
-                  >
-                    <CircleDot className="h-3.5 w-3.5" />
-                    <span>
-                      {loadedIssueCount > 0 &&
-                        `${loadedIssueCount} Issue${loadedIssueCount > 1 ? 's' : ''}`}
-                      {loadedIssueCount > 0 &&
-                        (loadedPRCount > 0 || loadedContextCount > 0) &&
-                        ', '}
-                      {loadedPRCount > 0 &&
-                        `${loadedPRCount} PR${loadedPRCount > 1 ? 's' : ''}`}
-                      {loadedPRCount > 0 && loadedContextCount > 0 && ', '}
-                      {loadedContextCount > 0 &&
-                        `${loadedContextCount} Context${loadedContextCount > 1 ? 's' : ''}`}
-                    </span>
-                    <ChevronDown className="h-3 w-3 opacity-50" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-64">
-                  {/* Issues section */}
-                  {loadedIssueContexts.length > 0 && (
-                    <>
-                      <DropdownMenuLabel className="text-xs text-muted-foreground">
-                        Issues
-                      </DropdownMenuLabel>
-                      {loadedIssueContexts.map(ctx => (
-                        <DropdownMenuItem
-                          key={ctx.number}
-                          onClick={() => handleViewIssue(ctx)}
+          <>
+            <div className="hidden @xl:block h-4 w-px bg-border/50" />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
+                >
+                  <CircleDot className="h-3.5 w-3.5" />
+                  <span>
+                    {loadedIssueCount > 0 &&
+                      `${loadedIssueCount} Issue${loadedIssueCount > 1 ? 's' : ''}`}
+                    {loadedIssueCount > 0 &&
+                      (loadedPRCount > 0 || loadedContextCount > 0) &&
+                      ', '}
+                    {loadedPRCount > 0 &&
+                      `${loadedPRCount} PR${loadedPRCount > 1 ? 's' : ''}`}
+                    {loadedPRCount > 0 && loadedContextCount > 0 && ', '}
+                    {loadedContextCount > 0 &&
+                      `${loadedContextCount} Context${loadedContextCount > 1 ? 's' : ''}`}
+                  </span>
+                  <ChevronDown className="h-3 w-3 opacity-50" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-64">
+                {/* Issues section */}
+                {loadedIssueContexts.length > 0 && (
+                  <>
+                    <DropdownMenuLabel className="text-xs text-muted-foreground">
+                      Issues
+                    </DropdownMenuLabel>
+                    {loadedIssueContexts.map(ctx => (
+                      <DropdownMenuItem
+                        key={ctx.number}
+                        onClick={() => handleViewIssue(ctx)}
+                      >
+                        <CircleDot className="h-4 w-4 text-green-500" />
+                        <span className="truncate">
+                          #{ctx.number} {ctx.title}
+                        </span>
+                        <button
+                          className="ml-auto shrink-0 rounded p-0.5 hover:bg-accent"
+                          onClick={e => {
+                            e.stopPropagation()
+                            openExternal(
+                              `https://github.com/${ctx.repoOwner}/${ctx.repoName}/issues/${ctx.number}`
+                            )
+                          }}
                         >
-                          <CircleDot className="h-4 w-4 text-green-500" />
-                          <span className="truncate">
-                            #{ctx.number} {ctx.title}
-                          </span>
-                          <button
-                            className="ml-auto shrink-0 rounded p-0.5 hover:bg-accent"
-                            onClick={e => {
-                              e.stopPropagation()
-                              openExternal(
-                                `https://github.com/${ctx.repoOwner}/${ctx.repoName}/issues/${ctx.number}`
-                              )
-                            }}
-                          >
-                            <ExternalLink className="h-3.5 w-3.5 opacity-60" />
-                          </button>
-                        </DropdownMenuItem>
-                      ))}
-                    </>
-                  )}
+                          <ExternalLink className="h-3.5 w-3.5 opacity-60" />
+                        </button>
+                      </DropdownMenuItem>
+                    ))}
+                  </>
+                )}
 
-                  {/* PRs section */}
-                  {loadedPRContexts.length > 0 && (
-                    <>
-                      {loadedIssueContexts.length > 0 && (
-                        <DropdownMenuSeparator />
-                      )}
-                      <DropdownMenuLabel className="text-xs text-muted-foreground">
-                        Pull Requests
-                      </DropdownMenuLabel>
-                      {loadedPRContexts.map(ctx => (
-                        <DropdownMenuItem
-                          key={ctx.number}
-                          onClick={() => handleViewPR(ctx)}
+                {/* PRs section */}
+                {loadedPRContexts.length > 0 && (
+                  <>
+                    {loadedIssueContexts.length > 0 && (
+                      <DropdownMenuSeparator />
+                    )}
+                    <DropdownMenuLabel className="text-xs text-muted-foreground">
+                      Pull Requests
+                    </DropdownMenuLabel>
+                    {loadedPRContexts.map(ctx => (
+                      <DropdownMenuItem
+                        key={ctx.number}
+                        onClick={() => handleViewPR(ctx)}
+                      >
+                        <GitPullRequest className="h-4 w-4 text-green-500" />
+                        <span className="truncate">
+                          #{ctx.number} {ctx.title}
+                        </span>
+                        <button
+                          className="ml-auto shrink-0 rounded p-0.5 hover:bg-accent"
+                          onClick={e => {
+                            e.stopPropagation()
+                            openExternal(
+                              `https://github.com/${ctx.repoOwner}/${ctx.repoName}/pull/${ctx.number}`
+                            )
+                          }}
                         >
-                          <GitPullRequest className="h-4 w-4 text-green-500" />
-                          <span className="truncate">
-                            #{ctx.number} {ctx.title}
-                          </span>
-                          <button
-                            className="ml-auto shrink-0 rounded p-0.5 hover:bg-accent"
-                            onClick={e => {
-                              e.stopPropagation()
-                              openExternal(
-                                `https://github.com/${ctx.repoOwner}/${ctx.repoName}/pull/${ctx.number}`
-                              )
-                            }}
-                          >
-                            <ExternalLink className="h-3.5 w-3.5 opacity-60" />
-                          </button>
-                        </DropdownMenuItem>
-                      ))}
-                    </>
-                  )}
+                          <ExternalLink className="h-3.5 w-3.5 opacity-60" />
+                        </button>
+                      </DropdownMenuItem>
+                    ))}
+                  </>
+                )}
 
-                  {/* Saved contexts section */}
-                  {attachedSavedContexts.length > 0 && (
-                    <>
-                      {(loadedIssueContexts.length > 0 ||
-                        loadedPRContexts.length > 0) && <DropdownMenuSeparator />}
-                      <DropdownMenuLabel className="text-xs text-muted-foreground">
-                        Contexts
-                      </DropdownMenuLabel>
-                      {attachedSavedContexts.map(ctx => (
-                        <DropdownMenuItem
-                          key={ctx.slug}
-                          onClick={() => handleViewSavedContext(ctx)}
-                        >
-                          <FolderOpen className="h-4 w-4 text-blue-500" />
-                          <span className="truncate">{ctx.name || ctx.slug}</span>
-                        </DropdownMenuItem>
-                      ))}
-                    </>
-                  )}
+                {/* Saved contexts section */}
+                {attachedSavedContexts.length > 0 && (
+                  <>
+                    {(loadedIssueContexts.length > 0 ||
+                      loadedPRContexts.length > 0) && <DropdownMenuSeparator />}
+                    <DropdownMenuLabel className="text-xs text-muted-foreground">
+                      Contexts
+                    </DropdownMenuLabel>
+                    {attachedSavedContexts.map(ctx => (
+                      <DropdownMenuItem
+                        key={ctx.slug}
+                        onClick={() => handleViewSavedContext(ctx)}
+                      >
+                        <FolderOpen className="h-4 w-4 text-blue-500" />
+                        <span className="truncate">{ctx.name || ctx.slug}</span>
+                      </DropdownMenuItem>
+                    ))}
+                  </>
+                )}
 
-                  {/* Manage button */}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={onLoadContext}>
-                    <FolderOpen className="h-4 w-4" />
-                    Manage Contexts...
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </>
-          )}
+                {/* Manage button */}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={onLoadContext}>
+                  <FolderOpen className="h-4 w-4" />
+                  Manage Contexts...
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        )}
 
         {/* PR link indicator - desktop only */}
         {prUrl && prNumber && (
@@ -1142,7 +1163,10 @@ export const ChatToolbar = memo(function ChatToolbar({
                       : 'Open'}{' '}
                     #{prNumber}
                   </span>
-                  <CheckStatusButton status={checkStatus ?? null} projectPath={activeWorktreePath} />
+                  <CheckStatusButton
+                    status={checkStatus ?? null}
+                    projectPath={activeWorktreePath}
+                  />
                 </a>
               </TooltipTrigger>
               <TooltipContent>{`Open PR #${prNumber} on GitHub`}</TooltipContent>
@@ -1183,7 +1207,11 @@ export const ChatToolbar = memo(function ChatToolbar({
                   disabled={hasPendingQuestions}
                   className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
                 >
-                  <span>{!selectedProvider || selectedProvider === '__anthropic__' ? 'Anthropic' : selectedProvider}</span>
+                  <span>
+                    {!selectedProvider || selectedProvider === '__anthropic__'
+                      ? 'Anthropic'
+                      : selectedProvider}
+                  </span>
                   <ChevronDown className="h-3 w-3 opacity-50" />
                 </button>
               </DropdownMenuTrigger>
@@ -1200,7 +1228,9 @@ export const ChatToolbar = memo(function ChatToolbar({
                       <DropdownMenuSeparator />
                       <DropdownMenuLabel className="text-xs text-muted-foreground flex items-center gap-1.5">
                         Custom Providers
-                        <span className="rounded bg-muted px-1 py-0.5 text-[10px] font-medium leading-none">cc</span>
+                        <span className="rounded bg-muted px-1 py-0.5 text-[10px] font-medium leading-none">
+                          cc
+                        </span>
                       </DropdownMenuLabel>
                       {customCliProfiles.map(profile => (
                         <DropdownMenuRadioItem
@@ -1231,7 +1261,8 @@ export const ChatToolbar = memo(function ChatToolbar({
             >
               <Sparkles className="h-3.5 w-3.5" />
               <span>
-                {filteredModelOptions.find(o => o.value === selectedModel)?.label ?? selectedModel}
+                {filteredModelOptions.find(o => o.value === selectedModel)
+                  ?.label ?? selectedModel}
               </span>
               <ChevronDown className="h-3 w-3 opacity-50" />
             </button>
@@ -1240,7 +1271,10 @@ export const ChatToolbar = memo(function ChatToolbar({
             {providerLocked && customCliProfiles.length > 0 && (
               <>
                 <DropdownMenuLabel className="text-xs text-muted-foreground">
-                  Provider: {!selectedProvider || selectedProvider === '__anthropic__' ? 'Anthropic' : selectedProvider}
+                  Provider:{' '}
+                  {!selectedProvider || selectedProvider === '__anthropic__'
+                    ? 'Anthropic'
+                    : selectedProvider}
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
               </>
@@ -1259,7 +1293,9 @@ export const ChatToolbar = memo(function ChatToolbar({
         </DropdownMenu>
 
         {/* Divider - desktop only */}
-        {!hideThinkingLevel && <div className="hidden @xl:block h-4 w-px bg-border/50" />}
+        {!hideThinkingLevel && (
+          <div className="hidden @xl:block h-4 w-px bg-border/50" />
+        )}
 
         {/* Thinking/Effort level dropdown - desktop only */}
         {hideThinkingLevel ? null : useAdaptiveThinking ? (
@@ -1272,13 +1308,19 @@ export const ChatToolbar = memo(function ChatToolbar({
                     disabled={hasPendingQuestions}
                     className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
                   >
-                    <Brain className={cn('h-3.5 w-3.5', !thinkingOverrideActive && 'text-purple-600 dark:text-purple-400')} />
+                    <Brain
+                      className={cn(
+                        'h-3.5 w-3.5',
+                        !thinkingOverrideActive &&
+                          'text-purple-600 dark:text-purple-400'
+                      )}
+                    />
                     <span>
                       {thinkingOverrideActive
                         ? 'Off'
                         : EFFORT_LEVEL_OPTIONS.find(
-                          o => o.value === selectedEffortLevel
-                        )?.label}
+                            o => o.value === selectedEffortLevel
+                          )?.label}
                     </span>
                     <ChevronDown className="h-3 w-3 opacity-50" />
                   </button>
@@ -1320,13 +1362,20 @@ export const ChatToolbar = memo(function ChatToolbar({
                     disabled={hasPendingQuestions}
                     className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
                   >
-                    <Brain className={cn('h-3.5 w-3.5', selectedThinkingLevel !== 'off' && !thinkingOverrideActive && 'text-purple-600 dark:text-purple-400')} />
+                    <Brain
+                      className={cn(
+                        'h-3.5 w-3.5',
+                        selectedThinkingLevel !== 'off' &&
+                          !thinkingOverrideActive &&
+                          'text-purple-600 dark:text-purple-400'
+                      )}
+                    />
                     <span>
                       {thinkingOverrideActive
                         ? 'Off'
                         : THINKING_LEVEL_OPTIONS.find(
-                          o => o.value === selectedThinkingLevel
-                        )?.label}
+                            o => o.value === selectedThinkingLevel
+                          )?.label}
                     </span>
                     <ChevronDown className="h-3 w-3 opacity-50" />
                   </button>
@@ -1379,7 +1428,9 @@ export const ChatToolbar = memo(function ChatToolbar({
                   {executionMode === 'build' && (
                     <Hammer className="h-3.5 w-3.5" />
                   )}
-                  {executionMode === 'yolo' && <Zap className="h-3.5 w-3.5 text-red-500 dark:text-red-400" />}
+                  {executionMode === 'yolo' && (
+                    <Zap className="h-3.5 w-3.5 text-red-500 dark:text-red-400" />
+                  )}
                   <ChevronDown className="h-3 w-3 opacity-50" />
                 </button>
               </DropdownMenuTrigger>
@@ -1431,7 +1482,13 @@ export const ChatToolbar = memo(function ChatToolbar({
                   disabled={hasPendingQuestions}
                   className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
                 >
-                  <Plug className={cn('h-3.5 w-3.5', activeMcpCount > 0 && 'text-emerald-600 dark:text-emerald-400')} />
+                  <Plug
+                    className={cn(
+                      'h-3.5 w-3.5',
+                      activeMcpCount > 0 &&
+                        'text-emerald-600 dark:text-emerald-400'
+                    )}
+                  />
                   {activeMcpCount > 0 && <span>{activeMcpCount}</span>}
                   <ChevronDown className="h-3 w-3 opacity-50" />
                 </button>
@@ -1573,4 +1630,3 @@ export const ChatToolbar = memo(function ChatToolbar({
     </div>
   )
 })
-

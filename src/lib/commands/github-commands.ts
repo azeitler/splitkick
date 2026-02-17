@@ -46,7 +46,15 @@ export const githubCommands: AppCommand[] = [
     description: 'View workflow runs for current project',
     icon: Activity,
     group: 'github',
-    keywords: ['github', 'workflows', 'actions', 'ci', 'cd', 'pipelines', 'runs'],
+    keywords: [
+      'github',
+      'workflows',
+      'actions',
+      'ci',
+      'cd',
+      'pipelines',
+      'runs',
+    ],
 
     execute: context => {
       const { selectedProjectId } = useProjectsStore.getState()

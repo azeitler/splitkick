@@ -89,7 +89,8 @@ function ProjectSettingsDialogContent({
     initialPane && navigationItems.some(item => item.id === initialPane)
       ? (initialPane as ProjectSettingsPane)
       : 'general'
-  const [activePane, setActivePane] = useState<ProjectSettingsPane>(validInitialPane)
+  const [activePane, setActivePane] =
+    useState<ProjectSettingsPane>(validInitialPane)
 
   const { data: projects = [] } = useProjects()
   const project = projects.find(p => p.id === projectId)
@@ -106,7 +107,10 @@ function ProjectSettingsDialogContent({
 
   return (
     <Dialog open onOpenChange={handleOpenChange}>
-      <DialogContent showCloseButton={false} className="overflow-hidden p-0 !w-screen !h-dvh !max-w-screen !max-h-none !rounded-none sm:!w-[calc(100vw-4rem)] sm:!max-w-[calc(100vw-4rem)] sm:!h-[85vh] sm:!rounded-xl font-sans">
+      <DialogContent
+        showCloseButton={false}
+        className="overflow-hidden p-0 !w-screen !h-dvh !max-w-screen !max-h-none !rounded-none sm:!w-[calc(100vw-4rem)] sm:!max-w-[calc(100vw-4rem)] sm:!h-[85vh] sm:!rounded-xl font-sans"
+      >
         <DialogTitle className="sr-only">
           Project Settings — {project?.name ?? 'Project'}
         </DialogTitle>
@@ -148,9 +152,7 @@ function ProjectSettingsDialogContent({
                 {/* Mobile pane selector */}
                 <Select
                   value={activePane}
-                  onValueChange={v =>
-                    setActivePane(v as ProjectSettingsPane)
-                  }
+                  onValueChange={v => setActivePane(v as ProjectSettingsPane)}
                 >
                   <SelectTrigger className="md:hidden w-full">
                     <SelectValue />
@@ -163,7 +165,11 @@ function ProjectSettingsDialogContent({
                     ))}
                   </SelectContent>
                 </Select>
-                <ModalCloseButton size="lg" className="md:hidden" onClick={() => handleOpenChange(false)} />
+                <ModalCloseButton
+                  size="lg"
+                  className="md:hidden"
+                  onClick={() => handleOpenChange(false)}
+                />
                 <Breadcrumb className="hidden md:block">
                   <BreadcrumbList>
                     <BreadcrumbItem>
@@ -179,7 +185,10 @@ function ProjectSettingsDialogContent({
                     </BreadcrumbItem>
                   </BreadcrumbList>
                 </Breadcrumb>
-                <ModalCloseButton className="hidden md:inline-flex ml-auto" onClick={() => handleOpenChange(false)} />
+                <ModalCloseButton
+                  className="hidden md:inline-flex ml-auto"
+                  onClick={() => handleOpenChange(false)}
+                />
               </div>
             </header>
 

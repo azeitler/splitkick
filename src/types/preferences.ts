@@ -626,7 +626,12 @@ export const fileEditModeOptions: { value: FileEditMode; label: string }[] = [
   { value: 'external', label: 'External editor' },
 ]
 
-export type ClaudeModel = 'opus' | 'opus-4.5' | 'sonnet' | 'sonnet-4.5' | 'haiku'
+export type ClaudeModel =
+  | 'opus'
+  | 'opus-4.5'
+  | 'sonnet'
+  | 'sonnet-4.5'
+  | 'haiku'
 
 export const modelOptions: { value: ClaudeModel; label: string }[] = [
   { value: 'opus', label: 'Claude Opus 4.6' },

@@ -106,8 +106,14 @@ interface UIState {
   consumeAutoInvestigate: (worktreeId: string) => boolean
   markWorktreeForAutoInvestigatePR: (worktreeId: string) => void
   consumeAutoInvestigatePR: (worktreeId: string) => boolean
-  markWorktreeForAutoOpenSession: (worktreeId: string, sessionId?: string) => void
-  consumeAutoOpenSession: (worktreeId: string) => { shouldOpen: boolean; sessionId?: string }
+  markWorktreeForAutoOpenSession: (
+    worktreeId: string,
+    sessionId?: string
+  ) => void
+  consumeAutoOpenSession: (worktreeId: string) => {
+    shouldOpen: boolean
+    sessionId?: string
+  }
   openSessionBoardModal: (projectId: string) => void
   closeSessionBoardModal: () => void
   setSessionChatModalOpen: (open: boolean, worktreeId?: string | null) => void
@@ -263,11 +269,7 @@ export const useUIStore = create<UIState>()(
         ),
 
       setUpdatePrModalOpen: open =>
-        set(
-          { updatePrModalOpen: open },
-          undefined,
-          'setUpdatePrModalOpen'
-        ),
+        set({ updatePrModalOpen: open }, undefined, 'setUpdatePrModalOpen'),
 
       setWorkflowRunsModalOpen: (open, projectPath, branch) =>
         set(
@@ -421,8 +423,12 @@ export const useUIStore = create<UIState>()(
             state => {
               const newSet = new Set(state.autoOpenSessionWorktreeIds)
               newSet.delete(worktreeId)
-              const { [worktreeId]: _, ...restPending } = state.pendingAutoOpenSessionIds
-              return { autoOpenSessionWorktreeIds: newSet, pendingAutoOpenSessionIds: restPending }
+              const { [worktreeId]: _, ...restPending } =
+                state.pendingAutoOpenSessionIds
+              return {
+                autoOpenSessionWorktreeIds: newSet,
+                pendingAutoOpenSessionIds: restPending,
+              }
             },
             undefined,
             'consumeAutoOpenSession'
@@ -463,19 +469,39 @@ export const useUIStore = create<UIState>()(
         set({ featureTourOpen: open }, undefined, 'setFeatureTourOpen'),
 
       setUIStateInitialized: (initialized: boolean) =>
-        set({ uiStateInitialized: initialized }, undefined, 'setUIStateInitialized'),
+        set(
+          { uiStateInitialized: initialized },
+          undefined,
+          'setUIStateInitialized'
+        ),
 
       setPendingUpdateVersion: (version: string | null) =>
-        set({ pendingUpdateVersion: version }, undefined, 'setPendingUpdateVersion'),
+        set(
+          { pendingUpdateVersion: version },
+          undefined,
+          'setPendingUpdateVersion'
+        ),
 
       setUpdateModalVersion: (version: string | null) =>
-        set({ updateModalVersion: version }, undefined, 'setUpdateModalVersion'),
+        set(
+          { updateModalVersion: version },
+          undefined,
+          'setUpdateModalVersion'
+        ),
       setPendingInvestigateType: (type: 'issue' | 'pr' | null) =>
-        set({ pendingInvestigateType: type }, undefined, 'setPendingInvestigateType'),
+        set(
+          { pendingInvestigateType: type },
+          undefined,
+          'setPendingInvestigateType'
+        ),
       consumePendingInvestigateType: () => {
         const current = get().pendingInvestigateType
         if (current) {
-          set({ pendingInvestigateType: null }, undefined, 'consumePendingInvestigateType')
+          set(
+            { pendingInvestigateType: null },
+            undefined,
+            'consumePendingInvestigateType'
+          )
         }
         return current
       },

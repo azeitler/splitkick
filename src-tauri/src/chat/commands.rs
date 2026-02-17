@@ -90,7 +90,11 @@ pub async fn get_sessions(
             session.last_run_execution_mode
         );
         if session.enabled_mcp_servers.is_some() {
-            log::debug!("get_sessions: session={}, enabled_mcp_servers={:?}", session.id, session.enabled_mcp_servers);
+            log::debug!(
+                "get_sessions: session={}, enabled_mcp_servers={:?}",
+                session.id,
+                session.enabled_mcp_servers
+            );
         }
     }
 
@@ -762,19 +766,18 @@ pub async fn restore_session_with_base(
         crate::chat::storage::restore_base_sessions(&app, &project_id, &new_worktree.id)?;
 
     // Atomically unarchive the target session within the restored sessions
-    let restored_session =
-        with_sessions_mut(&app, &worktree_path, &new_worktree.id, |sessions| {
-            let session = sessions
-                .find_session_mut(&session_id)
-                .ok_or_else(|| format!("Session not found: {session_id}"))?;
+    let restored_session = with_sessions_mut(&app, &worktree_path, &new_worktree.id, |sessions| {
+        let session = sessions
+            .find_session_mut(&session_id)
+            .ok_or_else(|| format!("Session not found: {session_id}"))?;
 
-            if session.archived_at.is_none() {
-                return Err("Session is not archived".to_string());
-            }
+        if session.archived_at.is_none() {
+            return Err("Session is not archived".to_string());
+        }
 
-            session.archived_at = None;
-            Ok(session.clone())
-        })?;
+        session.archived_at = None;
+        Ok(session.clone())
+    })?;
 
     log::trace!("Base session recreated and sessions migrated");
 
@@ -1115,7 +1118,11 @@ pub async fn send_chat_message(
                     generate_session_name: generate_session,
                     generate_branch_name: generate_branch,
                     custom_session_prompt,
-                    custom_profile_name: prefs.magic_prompt_providers.session_naming_provider.clone().or_else(|| prefs.default_provider.clone()),
+                    custom_profile_name: prefs
+                        .magic_prompt_providers
+                        .session_naming_provider
+                        .clone()
+                        .or_else(|| prefs.default_provider.clone()),
                 };
 
                 // Spawn in background - does not block chat
@@ -1317,7 +1324,8 @@ pub async fn send_chat_message(
                             &thread_worktree_path,
                             &thread_worktree_id,
                             |sessions| {
-                                if let Some(session) = sessions.find_session_mut(&thread_session_id) {
+                                if let Some(session) = sessions.find_session_mut(&thread_session_id)
+                                {
                                     session.claude_session_id = None;
                                 }
                                 Ok(())
@@ -1344,7 +1352,8 @@ pub async fn send_chat_message(
                             &thread_worktree_path,
                             &thread_worktree_id,
                             |sessions| {
-                                if let Some(session) = sessions.find_session_mut(&thread_session_id) {
+                                if let Some(session) = sessions.find_session_mut(&thread_session_id)
+                                {
                                     session.claude_session_id = None;
                                 }
                                 Ok(())
@@ -1374,9 +1383,9 @@ pub async fn send_chat_message(
         let _ = tx.send(result);
     });
 
-    let (pid, claude_response) = rx
-        .await
-        .map_err(|_| "Claude execution thread closed unexpectedly (possible crash or panic)".to_string())??;
+    let (pid, claude_response) = rx.await.map_err(|_| {
+        "Claude execution thread closed unexpectedly (possible crash or panic)".to_string()
+    })??;
 
     // Store the PID in the run log for recovery
     run_log_writer.set_pid(pid)?;
@@ -1717,8 +1726,8 @@ fn process_image(image_data: &[u8], extension: &str) -> Result<(Vec<u8>, String)
         return Ok((image_data.to_vec(), extension.to_string()));
     }
 
-    let img = image::load_from_memory(image_data)
-        .map_err(|e| format!("Failed to decode image: {e}"))?;
+    let img =
+        image::load_from_memory(image_data).map_err(|e| format!("Failed to decode image: {e}"))?;
 
     let (width, height) = (img.width(), img.height());
     let max_dim = width.max(height);
@@ -2888,7 +2897,12 @@ pub async fn generate_context_from_session(
 
     // 4. Call Claude CLI with JSON schema (non-streaming)
     // If JSON parsing fails, use fallback slug from project + session name
-    let (summary, slug) = match execute_summarization_claude(&app, &prompt, model.as_deref(), custom_profile_name.as_deref()) {
+    let (summary, slug) = match execute_summarization_claude(
+        &app,
+        &prompt,
+        model.as_deref(),
+        custom_profile_name.as_deref(),
+    ) {
         Ok(response) => {
             // Validate slug is not empty
             let slug = if response.slug.trim().is_empty() {
@@ -3406,7 +3420,10 @@ pub async fn generate_session_digest(
 
     // Use magic prompt model/provider if available, fall back to legacy session_recap_model
     let model = &prefs.magic_prompt_models.session_recap_model;
-    let provider = prefs.magic_prompt_providers.session_recap_provider.as_deref();
+    let provider = prefs
+        .magic_prompt_providers
+        .session_recap_provider
+        .as_deref();
 
     // Call Claude CLI with JSON schema (non-streaming)
     let response = execute_digest_claude(&app, &prompt, model, provider)?;

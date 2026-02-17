@@ -105,7 +105,7 @@ export function FileMentionPopover({
         }
       },
     }
-  }, [filteredFiles, clampedSelectedIndex, handleSelect, selectedIndex])
+  }, [filteredFiles, clampedSelectedIndex, handleSelect])
 
   // Scroll selected item into view
   useEffect(() => {

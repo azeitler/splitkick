@@ -77,15 +77,28 @@ export function useSessionStatePersistence() {
     if (state.activeWorktreeId) {
       return state.activeSessionIds[state.activeWorktreeId] ?? null
     }
-    return Object.values(state.canvasSelectedSessionIds).find(id => id != null) ?? null
+    return (
+      Object.values(state.canvasSelectedSessionIds).find(id => id != null) ??
+      null
+    )
   })
 
   // Derive worktree context via getState() (non-reactive) keyed on the reactive activeSessionId
   const { effectiveWorktreeId, effectiveWorktreePath } = useMemo(() => {
-    if (!activeSessionId) return { effectiveWorktreeId: null as string | null, effectiveWorktreePath: null as string | null }
-    const { activeWorktreeId, activeWorktreePath, sessionWorktreeMap, worktreePaths } = useChatStore.getState()
+    if (!activeSessionId)
+      return {
+        effectiveWorktreeId: null as string | null,
+        effectiveWorktreePath: null as string | null,
+      }
+    const {
+      activeWorktreeId,
+      activeWorktreePath,
+      sessionWorktreeMap,
+      worktreePaths,
+    } = useChatStore.getState()
     const wtId = activeWorktreeId ?? sessionWorktreeMap[activeSessionId] ?? null
-    const wtPath = activeWorktreePath ?? (wtId ? worktreePaths[wtId] ?? null : null)
+    const wtPath =
+      activeWorktreePath ?? (wtId ? (worktreePaths[wtId] ?? null) : null)
     return { effectiveWorktreeId: wtId, effectiveWorktreePath: wtPath }
   }, [activeSessionId])
 
@@ -275,7 +288,8 @@ export function useSessionStatePersistence() {
 
     // Load reviewing status (handle both true and false to fix asymmetry bug)
     const isReviewing = session.is_reviewing ?? false
-    const currentReviewing = currentState.reviewingSessions[activeSessionId] ?? false
+    const currentReviewing =
+      currentState.reviewingSessions[activeSessionId] ?? false
     if (currentReviewing !== isReviewing) {
       updates.reviewingSessions = {
         ...currentState.reviewingSessions,
@@ -301,7 +315,8 @@ export function useSessionStatePersistence() {
 
     // Load waiting for input status
     const waitingForInput = session.waiting_for_input ?? false
-    const currentWaiting = currentState.waitingForInputSessionIds[activeSessionId] ?? false
+    const currentWaiting =
+      currentState.waitingForInputSessionIds[activeSessionId] ?? false
     if (currentWaiting !== waitingForInput) {
       updates.waitingForInputSessionIds = {
         ...currentState.waitingForInputSessionIds,

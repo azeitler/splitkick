@@ -184,7 +184,7 @@ export const MemoizedFileDiff = memo(
         </div>
         {/* Diff content */}
         {fileDiff.hunks.length === 0 ||
-          fileDiff.hunks.every(h => h.hunkContent.length === 0) ? (
+        fileDiff.hunks.every(h => h.hunkContent.length === 0) ? (
           <div className="px-4 py-8 text-center text-muted-foreground text-sm">
             {fileDiff.type === 'deleted'
               ? 'This file was deleted'
@@ -202,7 +202,9 @@ export const MemoizedFileDiff = memo(
             ) : (
               <>
                 <span>
-                  Large diff — {(stats.additions + stats.deletions).toLocaleString()} lines changed
+                  Large diff —{' '}
+                  {(stats.additions + stats.deletions).toLocaleString()} lines
+                  changed
                 </span>
                 <button
                   type="button"
@@ -375,9 +377,9 @@ export function GitDiffModal({
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [diffStyle, setDiffStyle] = useState<DiffStyle>('split')
-  const [activeDiffType, setActiveDiffType] = useState<'uncommitted' | 'branch'>(
-    diffRequest?.type ?? 'uncommitted'
-  )
+  const [activeDiffType, setActiveDiffType] = useState<
+    'uncommitted' | 'branch'
+  >(diffRequest?.type ?? 'uncommitted')
   const dialogContentRef = useRef<HTMLDivElement>(null)
   const { theme } = useTheme()
   const { data: preferences } = usePreferences()
@@ -624,7 +626,8 @@ export function GitDiffModal({
             fileDiff: {
               name: backendFile.path,
               prevName: backendFile.old_path ?? undefined,
-              type: (statusToType[backendFile.status] ?? 'change') as FileDiffMetadata['type'],
+              type: (statusToType[backendFile.status] ??
+                'change') as FileDiffMetadata['type'],
               hunks: [],
               splitLineCount: 0,
               unifiedLineCount: 0,
@@ -742,8 +745,10 @@ export function GitDiffModal({
   }, [])
 
   // Determine if both diff types are available for the switcher
-  const hasUncommitted = (uncommittedStats?.added ?? 0) > 0 || (uncommittedStats?.removed ?? 0) > 0
-  const hasBranchDiff = (branchStats?.added ?? 0) > 0 || (branchStats?.removed ?? 0) > 0
+  const hasUncommitted =
+    (uncommittedStats?.added ?? 0) > 0 || (uncommittedStats?.removed ?? 0) > 0
+  const hasBranchDiff =
+    (branchStats?.added ?? 0) > 0 || (branchStats?.removed ?? 0) > 0
   const showSwitcher = hasUncommitted && hasBranchDiff
 
   // Handle switching between diff types
@@ -772,13 +777,13 @@ export function GitDiffModal({
         showCloseButton={false}
         className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none p-0 sm:!w-[calc(100vw-4rem)] sm:!max-w-[calc(100vw-4rem)] sm:!h-[85vh] sm:!rounded-lg sm:p-4 bg-background/95 backdrop-blur-sm overflow-hidden flex flex-col"
         style={{ fontSize: 'var(--ui-font-size)' }}
-        onOpenAutoFocus={(e) => {
+        onOpenAutoFocus={e => {
           // Prevent Radix from focusing the first focusable element (a tooltip trigger button),
           // which would cause the tooltip to open immediately on modal open
           e.preventDefault()
           dialogContentRef.current?.focus()
         }}
-        onEscapeKeyDown={(e) => {
+        onEscapeKeyDown={e => {
           if (showCommentInput) {
             e.preventDefault()
             handleCancelComment()
@@ -803,8 +808,12 @@ export function GitDiffModal({
               >
                 <Pencil className="h-3.5 w-3.5" />
                 Uncommitted
-                <span className="text-green-500">+{uncommittedStats!.added}</span>
-                <span className="text-red-500">-{uncommittedStats!.removed}</span>
+                <span className="text-green-500">
+                  +{uncommittedStats?.added}
+                </span>
+                <span className="text-red-500">
+                  -{uncommittedStats?.removed}
+                </span>
               </button>
               <button
                 type="button"
@@ -818,8 +827,8 @@ export function GitDiffModal({
               >
                 <GitBranch className="h-3.5 w-3.5" />
                 Branch
-                <span className="text-green-500">+{branchStats!.added}</span>
-                <span className="text-red-500">-{branchStats!.removed}</span>
+                <span className="text-green-500">+{branchStats?.added}</span>
+                <span className="text-red-500">-{branchStats?.removed}</span>
               </button>
             </div>
           ) : (
@@ -901,7 +910,10 @@ export function GitDiffModal({
                   variant="ghost"
                   size="icon"
                   className="h-7 w-7 shrink-0 p-0"
-                  onClick={() => diffRequest && loadDiff({ ...diffRequest, type: activeDiffType }, true)}
+                  onClick={() =>
+                    diffRequest &&
+                    loadDiff({ ...diffRequest, type: activeDiffType }, true)
+                  }
                   disabled={isLoading}
                 >
                   <RefreshCw

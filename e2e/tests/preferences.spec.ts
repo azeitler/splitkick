@@ -2,7 +2,9 @@ import { test, expect } from '../fixtures/tauri-mock'
 
 test.describe('Preferences', () => {
   test('Cmd+, opens settings dialog', async ({ mockPage }) => {
-    await expect(mockPage.getByText('Test Project')).toBeVisible({ timeout: 5000 })
+    await expect(mockPage.getByText('Test Project')).toBeVisible({
+      timeout: 5000,
+    })
 
     await mockPage.keyboard.press('Meta+,')
 
@@ -13,7 +15,9 @@ test.describe('Preferences', () => {
   })
 
   test('settings dialog shows navigation tabs', async ({ mockPage }) => {
-    await expect(mockPage.getByText('Test Project')).toBeVisible({ timeout: 5000 })
+    await expect(mockPage.getByText('Test Project')).toBeVisible({
+      timeout: 5000,
+    })
 
     await mockPage.keyboard.press('Meta+,')
 
@@ -22,7 +26,11 @@ test.describe('Preferences', () => {
 
     // Should show setting section buttons
     await expect(dialog.getByRole('button', { name: 'General' })).toBeVisible()
-    await expect(dialog.getByRole('button', { name: 'Appearance' })).toBeVisible()
-    await expect(dialog.getByRole('button', { name: 'Keybindings' })).toBeVisible()
+    await expect(
+      dialog.getByRole('button', { name: 'Appearance' })
+    ).toBeVisible()
+    await expect(
+      dialog.getByRole('button', { name: 'Keybindings' })
+    ).toBeVisible()
   })
 })

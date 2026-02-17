@@ -1,10 +1,5 @@
 import React, { useEffect, useMemo } from 'react'
-import {
-  CheckCircle,
-  Loader2,
-  ShieldAlert,
-  XCircle,
-} from 'lucide-react'
+import { CheckCircle, Loader2, ShieldAlert, XCircle } from 'lucide-react'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
@@ -14,10 +9,7 @@ import {
   TooltipContent,
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import {
-  useProjects,
-  useUpdateProjectSettings,
-} from '@/services/projects'
+import { useProjects, useUpdateProjectSettings } from '@/services/projects'
 import {
   useMcpServers,
   invalidateMcpServers,
@@ -134,7 +126,11 @@ export function McpServersPane({
   useEffect(() => {
     if (!mcpServers.length) return
     const allServerNames = mcpServers.filter(s => !s.disabled).map(s => s.name)
-    const newServers = getNewServersToAutoEnable(mcpServers, enabledServers, knownServers)
+    const newServers = getNewServersToAutoEnable(
+      mcpServers,
+      enabledServers,
+      knownServers
+    )
     // Always update known servers to include all current server names
     const updatedKnown = [...new Set([...knownServers, ...allServerNames])]
     const knownChanged = updatedKnown.length !== knownServers.length

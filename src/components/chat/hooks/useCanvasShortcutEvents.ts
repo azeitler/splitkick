@@ -85,9 +85,8 @@ export function useCanvasShortcutEvents({
   const [labelModalSessionId, setLabelModalSessionId] = useState<string | null>(
     null
   )
-  const [labelModalCurrentLabel, setLabelModalCurrentLabel] = useState<
-    LabelData | null
-  >(null)
+  const [labelModalCurrentLabel, setLabelModalCurrentLabel] =
+    useState<LabelData | null>(null)
 
   // Recap dialog state
   const [recapDialogDigest, setRecapDialogDigest] =

@@ -84,7 +84,11 @@ function CopyErrorButton({ error }: { error: Error }) {
       className="absolute top-1.5 right-1.5 rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted-foreground/10 transition-colors"
       title="Copy error details"
     >
-      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+      {copied ? (
+        <Check className="h-3.5 w-3.5" />
+      ) : (
+        <Copy className="h-3.5 w-3.5" />
+      )}
     </button>
   )
 }

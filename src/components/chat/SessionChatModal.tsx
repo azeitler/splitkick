@@ -1,5 +1,30 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
-import { Archive, ArrowLeft, Code, Eye, EyeOff, FileText, FolderOpen, Github, MoreHorizontal, Pencil, Sparkles, Tag, Terminal, Play, Plus, Trash2 } from 'lucide-react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from 'react'
+import {
+  Archive,
+  ArrowLeft,
+  Code,
+  Eye,
+  EyeOff,
+  FileText,
+  FolderOpen,
+  Github,
+  MoreHorizontal,
+  Pencil,
+  Sparkles,
+  Tag,
+  Terminal,
+  Play,
+  Plus,
+  Trash2,
+} from 'lucide-react'
 import { ModalCloseButton } from '@/components/ui/modal-close-button'
 import { cn } from '@/lib/utils'
 import {
@@ -21,7 +46,11 @@ import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { CloseWorktreeDialog } from './CloseWorktreeDialog'
 import { useChatStore } from '@/store/chat-store'
 import { useTerminalStore } from '@/store/terminal-store'
-import { useSessions, useCreateSession, useRenameSession } from '@/services/chat'
+import {
+  useSessions,
+  useCreateSession,
+  useRenameSession,
+} from '@/services/chat'
 import { usePreferences } from '@/services/preferences'
 import { useWorktree, useProjects, useRunScript } from '@/services/projects'
 import {
@@ -70,8 +99,12 @@ import { useSessionArchive } from './hooks/useSessionArchive'
 /** Track whether any waiting tabs are off-screen to the left or right */
 function useOffScreenWaiting(
   sortedSessions: Session[],
-  storeState: { sendingSessionIds: Record<string, boolean>; executionModes: Record<string, string>; reviewingSessions: Record<string, boolean> },
-  viewportRef: RefObject<HTMLDivElement | null>,
+  storeState: {
+    sendingSessionIds: Record<string, boolean>
+    executionModes: Record<string, string>
+    reviewingSessions: Record<string, boolean>
+  },
+  viewportRef: RefObject<HTMLDivElement | null>
 ) {
   const [hasLeft, setHasLeft] = useState(false)
   const [hasRight, setHasRight] = useState(false)
@@ -85,6 +118,7 @@ function useOffScreenWaiting(
       .map(s => s.id)
 
     if (waitingIds.length === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setHasLeft(false)
       setHasRight(false)
       return
@@ -95,7 +129,9 @@ function useOffScreenWaiting(
       let left = false
       let right = false
       for (const id of waitingIds) {
-        const el = viewport.querySelector(`[data-session-id="${id}"]`) as HTMLElement | null
+        const el = viewport.querySelector(
+          `[data-session-id="${id}"]`
+        ) as HTMLElement | null
         if (!el) continue
         if (el.offsetLeft + el.offsetWidth <= scrollLeft) left = true
         else if (el.offsetLeft >= scrollLeft + clientWidth) right = true
@@ -124,14 +160,18 @@ interface SessionChatModalProps {
   onClose: () => void
 }
 
-function getSessionStatus(session: Session, storeState: {
-  sendingSessionIds: Record<string, boolean>
-  executionModes: Record<string, string>
-  reviewingSessions: Record<string, boolean>
-}): SessionStatus {
+function getSessionStatus(
+  session: Session,
+  storeState: {
+    sendingSessionIds: Record<string, boolean>
+    executionModes: Record<string, string>
+    reviewingSessions: Record<string, boolean>
+  }
+): SessionStatus {
   const isSending = storeState.sendingSessionIds[session.id]
   const executionMode = storeState.executionModes[session.id]
-  const isReviewing = storeState.reviewingSessions[session.id] || !!session.review_results
+  const isReviewing =
+    storeState.reviewingSessions[session.id] || !!session.review_results
 
   if (isSending) {
     if (executionMode === 'plan') return 'planning'
@@ -153,8 +193,14 @@ export function SessionChatModal({
   isOpen,
   onClose,
 }: SessionChatModalProps) {
-  const { data: sessionsData } = useSessions(worktreeId || null, worktreePath || null)
-  const sessions = sessionsData?.sessions ?? []
+  const { data: sessionsData } = useSessions(
+    worktreeId || null,
+    worktreePath || null
+  )
+  const sessions = useMemo(
+    () => sessionsData?.sessions ?? [],
+    [sessionsData?.sessions]
+  )
   const { data: preferences } = usePreferences()
   const { data: runScript } = useRunScript(worktreePath)
   const createSession = useCreateSession()
@@ -177,7 +223,9 @@ export function SessionChatModal({
   }, [sessions.length])
 
   // Active session from store
-  const activeSessionId = useChatStore(state => state.activeSessionIds[worktreeId])
+  const activeSessionId = useChatStore(
+    state => state.activeSessionIds[worktreeId]
+  )
   const currentSessionId = activeSessionId ?? sessions[0]?.id ?? null
   const currentSession = sessions.find(s => s.id === currentSessionId) ?? null
 
@@ -186,9 +234,15 @@ export function SessionChatModal({
     if (!currentSessionId) return
     const viewport = modalTabScrollRef.current
     if (!viewport) return
-    const activeTab = viewport.querySelector(`[data-session-id="${currentSessionId}"]`)
+    const activeTab = viewport.querySelector(
+      `[data-session-id="${currentSessionId}"]`
+    )
     if (activeTab) {
-      activeTab.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
+      activeTab.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+        inline: 'nearest',
+      })
     }
   }, [currentSessionId, sessions.length])
 
@@ -196,15 +250,20 @@ export function SessionChatModal({
   const sendingSessionIds = useChatStore(state => state.sendingSessionIds)
   const executionModes = useChatStore(state => state.executionModes)
   const reviewingSessions = useChatStore(state => state.reviewingSessions)
-  const storeState = { sendingSessionIds, executionModes, reviewingSessions }
+  const storeState = useMemo(
+    () => ({ sendingSessionIds, executionModes, reviewingSessions }),
+    [sendingSessionIds, executionModes, reviewingSessions]
+  )
 
   // Plan/recap indicators for tab bar buttons
-  const hasPlan = useChatStore(state =>
-    currentSessionId ? !!(state.planFilePaths[currentSessionId]) : false
-  ) || !!currentSession?.plan_file_path
-  const hasRecap = useChatStore(state =>
-    currentSessionId ? !!(state.sessionDigests[currentSessionId]) : false
-  ) || !!currentSession?.digest
+  const hasPlan =
+    useChatStore(state =>
+      currentSessionId ? !!state.planFilePaths[currentSessionId] : false
+    ) || !!currentSession?.plan_file_path
+  const hasRecap =
+    useChatStore(state =>
+      currentSessionId ? !!state.sessionDigests[currentSessionId] : false
+    ) || !!currentSession?.digest
 
   // Git status for header badges
   const { data: worktree } = useWorktree(worktreeId)
@@ -240,7 +299,11 @@ export function SessionChatModal({
 
   // Set active session synchronously before paint
   useLayoutEffect(() => {
-    if (isOpen && currentSessionId && hasSetActiveRef.current !== currentSessionId) {
+    if (
+      isOpen &&
+      currentSessionId &&
+      hasSetActiveRef.current !== currentSessionId
+    ) {
       const { setActiveSession } = useChatStore.getState()
       setActiveSession(worktreeId, currentSessionId)
       hasSetActiveRef.current = currentSessionId
@@ -256,39 +319,52 @@ export function SessionChatModal({
 
   // Label modal state
   const [labelModalOpen, setLabelModalOpen] = useState(false)
-  const [labelTargetSessionId, setLabelTargetSessionId] = useState<string | null>(null)
+  const [labelTargetSessionId, setLabelTargetSessionId] = useState<
+    string | null
+  >(null)
   const labelSessionId = labelTargetSessionId ?? currentSessionId
   const currentLabel = useChatStore(state =>
-    labelSessionId ? state.sessionLabels[labelSessionId] ?? null : null
+    labelSessionId ? (state.sessionLabels[labelSessionId] ?? null) : null
   )
 
   // Rename session state
   const renameSession = useRenameSession()
-  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null)
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(
+    null
+  )
   const [renameValue, setRenameValue] = useState('')
   // Delay rename start so the input renders after the context menu fully closes
   // (Radix restores focus to the trigger on close, which would steal focus from the input)
-  const handleStartRename = useCallback((sessionId: string, currentName: string) => {
-    setRenameValue(currentName)
-    setTimeout(() => setRenamingSessionId(sessionId), 200)
-  }, [])
+  const handleStartRename = useCallback(
+    (sessionId: string, currentName: string) => {
+      setRenameValue(currentName)
+      setTimeout(() => setRenamingSessionId(sessionId), 200)
+    },
+    []
+  )
 
-  const handleRenameSubmit = useCallback((sessionId: string) => {
-    const newName = renameValue.trim()
-    if (newName && newName !== sessions.find(s => s.id === sessionId)?.name) {
-      renameSession.mutate({ worktreeId, worktreePath, sessionId, newName })
-    }
-    setRenamingSessionId(null)
-  }, [renameValue, worktreeId, worktreePath, renameSession, sessions])
-
-  const handleRenameKeyDown = useCallback((e: React.KeyboardEvent, sessionId: string) => {
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      handleRenameSubmit(sessionId)
-    } else if (e.key === 'Escape') {
+  const handleRenameSubmit = useCallback(
+    (sessionId: string) => {
+      const newName = renameValue.trim()
+      if (newName && newName !== sessions.find(s => s.id === sessionId)?.name) {
+        renameSession.mutate({ worktreeId, worktreePath, sessionId, newName })
+      }
       setRenamingSessionId(null)
-    }
-  }, [handleRenameSubmit])
+    },
+    [renameValue, worktreeId, worktreePath, renameSession, sessions]
+  )
+
+  const handleRenameKeyDown = useCallback(
+    (e: React.KeyboardEvent, sessionId: string) => {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        handleRenameSubmit(sessionId)
+      } else if (e.key === 'Escape') {
+        setRenamingSessionId(null)
+      }
+    },
+    [handleRenameSubmit]
+  )
 
   const renameInputRef = useCallback((node: HTMLInputElement | null) => {
     if (node) {
@@ -339,9 +415,22 @@ export function SessionChatModal({
         action()
       }
     }
-    window.addEventListener('close-session-or-worktree', handler, { capture: true })
-    return () => window.removeEventListener('close-session-or-worktree', handler, { capture: true })
-  }, [isOpen, sessions, currentSessionId, onClose, handleArchiveSession, handleDeleteSession, preferences?.confirm_session_close])
+    window.addEventListener('close-session-or-worktree', handler, {
+      capture: true,
+    })
+    return () =>
+      window.removeEventListener('close-session-or-worktree', handler, {
+        capture: true,
+      })
+  }, [
+    isOpen,
+    sessions,
+    currentSessionId,
+    onClose,
+    handleArchiveSession,
+    handleDeleteSession,
+    preferences?.confirm_session_close,
+  ])
 
   // Listen for toggle-session-label event (CMD+S)
   useEffect(() => {
@@ -370,7 +459,7 @@ export function SessionChatModal({
     createSession.mutate(
       { worktreeId, worktreePath },
       {
-        onSuccess: (newSession) => {
+        onSuccess: newSession => {
           const { setActiveSession } = useChatStore.getState()
           setActiveSession(worktreeId, newSession.id)
         },
@@ -380,7 +469,11 @@ export function SessionChatModal({
 
   // Sorted sessions for tab order (waiting → review → idle)
   const sortedSessions = useMemo(() => {
-    const priority: Record<string, number> = { waiting: 0, permission: 0, review: 1 }
+    const priority: Record<string, number> = {
+      waiting: 0,
+      permission: 0,
+      review: 1,
+    }
     return [...sessions].sort((a, b) => {
       const pa = priority[getSessionStatus(a, storeState)] ?? 2
       const pb = priority[getSessionStatus(b, storeState)] ?? 2
@@ -389,29 +482,38 @@ export function SessionChatModal({
   }, [sessions, storeState])
 
   // Off-screen waiting tab indicators
-  const { hasLeft: hasWaitingLeft, hasRight: hasWaitingRight } = useOffScreenWaiting(
-    sortedSessions,
-    storeState,
-    modalTabScrollRef,
-  )
+  const { hasLeft: hasWaitingLeft, hasRight: hasWaitingRight } =
+    useOffScreenWaiting(sortedSessions, storeState, modalTabScrollRef)
 
-  const scrollToFirstWaiting = useCallback((direction: 'left' | 'right') => {
-    const viewport = modalTabScrollRef.current
-    if (!viewport) return
-    const { scrollLeft, clientWidth } = viewport
-    for (const session of sortedSessions) {
-      if (getSessionStatus(session, storeState) !== 'waiting') continue
-      const el = viewport.querySelector(`[data-session-id="${session.id}"]`) as HTMLElement | null
-      if (!el) continue
-      const isLeft = el.offsetLeft + el.offsetWidth <= scrollLeft
-      const isRight = el.offsetLeft >= scrollLeft + clientWidth
-      if ((direction === 'left' && isLeft) || (direction === 'right' && isRight)) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
-        handleTabClick(session.id)
-        return
+  const scrollToFirstWaiting = useCallback(
+    (direction: 'left' | 'right') => {
+      const viewport = modalTabScrollRef.current
+      if (!viewport) return
+      const { scrollLeft, clientWidth } = viewport
+      for (const session of sortedSessions) {
+        if (getSessionStatus(session, storeState) !== 'waiting') continue
+        const el = viewport.querySelector(
+          `[data-session-id="${session.id}"]`
+        ) as HTMLElement | null
+        if (!el) continue
+        const isLeft = el.offsetLeft + el.offsetWidth <= scrollLeft
+        const isRight = el.offsetLeft >= scrollLeft + clientWidth
+        if (
+          (direction === 'left' && isLeft) ||
+          (direction === 'right' && isRight)
+        ) {
+          el.scrollIntoView({
+            behavior: 'smooth',
+            block: 'nearest',
+            inline: 'nearest',
+          })
+          handleTabClick(session.id)
+          return
+        }
       }
-    }
-  }, [sortedSessions, storeState, handleTabClick])
+    },
+    [sortedSessions, storeState, handleTabClick]
+  )
 
   // Listen for switch-session events from the global keybinding system (OPT+CMD+LEFT/RIGHT)
   useEffect(() => {
@@ -428,11 +530,14 @@ export function SessionChatModal({
       } else {
         const direction = detail?.direction as 'next' | 'previous'
         if (!direction) return
-        const currentIndex = sortedSessions.findIndex(s => s.id === currentSessionId)
+        const currentIndex = sortedSessions.findIndex(
+          s => s.id === currentSessionId
+        )
         if (currentIndex === -1) return
-        newIndex = direction === 'next'
-          ? (currentIndex + 1) % sortedSessions.length
-          : (currentIndex - 1 + sortedSessions.length) % sortedSessions.length
+        newIndex =
+          direction === 'next'
+            ? (currentIndex + 1) % sortedSessions.length
+            : (currentIndex - 1 + sortedSessions.length) % sortedSessions.length
       }
 
       const target = sortedSessions[newIndex]
@@ -442,7 +547,8 @@ export function SessionChatModal({
     }
 
     window.addEventListener('switch-session', handleSwitchSession)
-    return () => window.removeEventListener('switch-session', handleSwitchSession)
+    return () =>
+      window.removeEventListener('switch-session', handleSwitchSession)
   }, [isOpen, sortedSessions, currentSessionId, worktreeId])
 
   const handlePull = useCallback(
@@ -523,10 +629,13 @@ export function SessionChatModal({
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
                 <DialogTitle className="text-sm font-medium shrink-0">
-                  {isBase ? 'Base Session' : worktree?.name ?? 'Worktree'}
+                  {isBase ? 'Base Session' : (worktree?.name ?? 'Worktree')}
                 </DialogTitle>
                 {worktree && project && (
-                  <WorktreeDropdownMenu worktree={worktree} projectId={project.id} />
+                  <WorktreeDropdownMenu
+                    worktree={worktree}
+                    projectId={project.id}
+                  />
                 )}
                 <GitStatusBadges
                   behindCount={behindCount}
@@ -545,7 +654,10 @@ export function SessionChatModal({
                 {/* Desktop: inline action buttons */}
                 {isNativeApp() && (
                   <div className="hidden sm:flex items-center gap-1">
-                    <OpenInButton worktreePath={worktreePath} branch={worktree?.branch} />
+                    <OpenInButton
+                      worktreePath={worktreePath}
+                      branch={worktree?.branch}
+                    />
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
@@ -553,16 +665,34 @@ export function SessionChatModal({
                           size="sm"
                           className="h-7 px-2 text-xs"
                           onClick={() => {
-                            const { reviewResults, toggleReviewSidebar } = useChatStore.getState()
-                            const hasReviewResults = currentSessionId && (reviewResults[currentSessionId] || currentSession?.review_results)
+                            const { reviewResults, toggleReviewSidebar } =
+                              useChatStore.getState()
+                            const hasReviewResults =
+                              currentSessionId &&
+                              (reviewResults[currentSessionId] ||
+                                currentSession?.review_results)
                             if (hasReviewResults) {
-                              if (currentSessionId && !reviewResults[currentSessionId] && currentSession?.review_results) {
-                                useChatStore.getState().setReviewResults(currentSessionId, currentSession.review_results)
+                              if (
+                                currentSessionId &&
+                                !reviewResults[currentSessionId] &&
+                                currentSession?.review_results
+                              ) {
+                                useChatStore
+                                  .getState()
+                                  .setReviewResults(
+                                    currentSessionId,
+                                    currentSession.review_results
+                                  )
                               }
                               toggleReviewSidebar()
                             } else {
                               window.dispatchEvent(
-                                new CustomEvent('magic-command', { detail: { command: 'review', sessionId: currentSessionId } })
+                                new CustomEvent('magic-command', {
+                                  detail: {
+                                    command: 'review',
+                                    sessionId: currentSessionId,
+                                  },
+                                })
                               )
                             }
                           }}
@@ -619,43 +749,100 @@ export function SessionChatModal({
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onSelect={() => openInEditor.mutate({ worktreePath, editor: preferences?.editor })}>
+                      <DropdownMenuItem
+                        onSelect={() =>
+                          openInEditor.mutate({
+                            worktreePath,
+                            editor: preferences?.editor,
+                          })
+                        }
+                      >
                         <Code className="h-4 w-4" />
-                        {getOpenInDefaultLabel('editor', preferences?.editor, preferences?.terminal)}
+                        {getOpenInDefaultLabel(
+                          'editor',
+                          preferences?.editor,
+                          preferences?.terminal
+                        )}
                       </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => openInTerminal.mutate({ worktreePath, terminal: preferences?.terminal })}>
+                      <DropdownMenuItem
+                        onSelect={() =>
+                          openInTerminal.mutate({
+                            worktreePath,
+                            terminal: preferences?.terminal,
+                          })
+                        }
+                      >
                         <Terminal className="h-4 w-4" />
-                        {getOpenInDefaultLabel('terminal', preferences?.editor, preferences?.terminal)}
+                        {getOpenInDefaultLabel(
+                          'terminal',
+                          preferences?.editor,
+                          preferences?.terminal
+                        )}
                       </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => openInFinder.mutate(worktreePath)}>
+                      <DropdownMenuItem
+                        onSelect={() => openInFinder.mutate(worktreePath)}
+                      >
                         <FolderOpen className="h-4 w-4" />
                         Finder
                       </DropdownMenuItem>
                       {worktree?.branch && (
-                        <DropdownMenuItem onSelect={() => openOnGitHub.mutate({ repoPath: worktreePath, branch: worktree.branch })}>
+                        <DropdownMenuItem
+                          onSelect={() =>
+                            openOnGitHub.mutate({
+                              repoPath: worktreePath,
+                              branch: worktree.branch,
+                            })
+                          }
+                        >
                           <Github className="h-4 w-4" />
                           GitHub
                         </DropdownMenuItem>
                       )}
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem onSelect={() => {
-                        const { reviewResults, toggleReviewSidebar } = useChatStore.getState()
-                        const hasReviewResults = currentSessionId && (reviewResults[currentSessionId] || currentSession?.review_results)
-                        if (hasReviewResults) {
-                          if (currentSessionId && !reviewResults[currentSessionId] && currentSession?.review_results) {
-                            useChatStore.getState().setReviewResults(currentSessionId, currentSession.review_results)
+                      <DropdownMenuItem
+                        onSelect={() => {
+                          const { reviewResults, toggleReviewSidebar } =
+                            useChatStore.getState()
+                          const hasReviewResults =
+                            currentSessionId &&
+                            (reviewResults[currentSessionId] ||
+                              currentSession?.review_results)
+                          if (hasReviewResults) {
+                            if (
+                              currentSessionId &&
+                              !reviewResults[currentSessionId] &&
+                              currentSession?.review_results
+                            ) {
+                              useChatStore
+                                .getState()
+                                .setReviewResults(
+                                  currentSessionId,
+                                  currentSession.review_results
+                                )
+                            }
+                            toggleReviewSidebar()
+                          } else {
+                            window.dispatchEvent(
+                              new CustomEvent('magic-command', {
+                                detail: {
+                                  command: 'review',
+                                  sessionId: currentSessionId,
+                                },
+                              })
+                            )
                           }
-                          toggleReviewSidebar()
-                        } else {
-                          window.dispatchEvent(
-                            new CustomEvent('magic-command', { detail: { command: 'review', sessionId: currentSessionId } })
-                          )
-                        }
-                      }}>
+                        }}
+                      >
                         <Eye className="h-4 w-4" />
                         Review
                       </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => useTerminalStore.getState().toggleModalTerminal(worktreeId)}>
+                      <DropdownMenuItem
+                        onSelect={() =>
+                          useTerminalStore
+                            .getState()
+                            .toggleModalTerminal(worktreeId)
+                        }
+                      >
                         <Terminal className="h-4 w-4" />
                         Terminal
                       </DropdownMenuItem>
@@ -698,7 +885,8 @@ export function SessionChatModal({
                     const isActive = session.id === currentSessionId
                     const status = getSessionStatus(session, storeState)
                     const config = statusConfig[status]
-                    const sessionLabel = useChatStore.getState().sessionLabels[session.id]
+                    const sessionLabel =
+                      useChatStore.getState().sessionLabels[session.id]
                     return (
                       <ContextMenu key={session.id}>
                         <ContextMenuTrigger asChild>
@@ -710,7 +898,8 @@ export function SessionChatModal({
                               isActive
                                 ? 'bg-muted text-foreground'
                                 : 'text-muted-foreground hover:text-foreground hover:bg-muted/50',
-                              status === 'waiting' && 'border border-dashed border-yellow-500 dark:border-yellow-400'
+                              status === 'waiting' &&
+                                'border border-dashed border-yellow-500 dark:border-yellow-400'
                             )}
                           >
                             <StatusIndicator
@@ -730,43 +919,57 @@ export function SessionChatModal({
                                 value={renameValue}
                                 onChange={e => setRenameValue(e.target.value)}
                                 onBlur={() => handleRenameSubmit(session.id)}
-                                onKeyDown={e => handleRenameKeyDown(e, session.id)}
+                                onKeyDown={e =>
+                                  handleRenameKeyDown(e, session.id)
+                                }
                                 onClick={e => e.stopPropagation()}
                                 className="w-full min-w-0 bg-transparent text-xs outline-none"
                               />
                             ) : (
                               session.name
                             )}
-                            {sessions.length > 1 && renamingSessionId !== session.id && (
-                              <DismissButton
-                                tooltip="Remove session"
-                                onClick={e => {
-                                  e.stopPropagation()
-                                  handleArchiveSession(session.id)
-                                }}
-                                className="ml-0.5 opacity-0 group-hover/tab:opacity-60 hover:!opacity-100"
-                                size="xs"
-                              />
-                            )}
+                            {sessions.length > 1 &&
+                              renamingSessionId !== session.id && (
+                                <DismissButton
+                                  tooltip="Remove session"
+                                  onClick={e => {
+                                    e.stopPropagation()
+                                    handleArchiveSession(session.id)
+                                  }}
+                                  className="ml-0.5 opacity-0 group-hover/tab:opacity-60 hover:!opacity-100"
+                                  size="xs"
+                                />
+                              )}
                           </button>
                         </ContextMenuTrigger>
                         <ContextMenuContent className="w-48">
-                          <ContextMenuItem onSelect={() => handleStartRename(session.id, session.name)}>
+                          <ContextMenuItem
+                            onSelect={() =>
+                              handleStartRename(session.id, session.name)
+                            }
+                          >
                             <Pencil className="mr-2 h-4 w-4" />
                             Rename
                           </ContextMenuItem>
-                          <ContextMenuItem onSelect={() => {
-                            setLabelTargetSessionId(session.id)
-                            setLabelModalOpen(true)
-                          }}>
+                          <ContextMenuItem
+                            onSelect={() => {
+                              setLabelTargetSessionId(session.id)
+                              setLabelModalOpen(true)
+                            }}
+                          >
                             <Tag className="mr-2 h-4 w-4" />
                             {sessionLabel ? 'Remove Label' : 'Add Label'}
                           </ContextMenuItem>
-                          <ContextMenuItem onSelect={() => {
-                            const { reviewingSessions, setSessionReviewing } = useChatStore.getState()
-                            const isReviewing = reviewingSessions[session.id] || !!session.review_results
-                            setSessionReviewing(session.id, !isReviewing)
-                          }}>
+                          <ContextMenuItem
+                            onSelect={() => {
+                              const { reviewingSessions, setSessionReviewing } =
+                                useChatStore.getState()
+                              const isReviewing =
+                                reviewingSessions[session.id] ||
+                                !!session.review_results
+                              setSessionReviewing(session.id, !isReviewing)
+                            }}
+                          >
                             {status === 'review' ? (
                               <>
                                 <EyeOff className="mr-2 h-4 w-4" />
@@ -779,12 +982,17 @@ export function SessionChatModal({
                               </>
                             )}
                           </ContextMenuItem>
-                          <ContextMenuItem onSelect={() => handleArchiveSession(session.id)}>
+                          <ContextMenuItem
+                            onSelect={() => handleArchiveSession(session.id)}
+                          >
                             <Archive className="mr-2 h-4 w-4" />
                             Archive Session
                           </ContextMenuItem>
                           <ContextMenuSeparator />
-                          <ContextMenuItem variant="destructive" onSelect={() => handleDeleteSession(session.id)}>
+                          <ContextMenuItem
+                            variant="destructive"
+                            onSelect={() => handleDeleteSession(session.id)}
+                          >
                             <Trash2 className="mr-2 h-4 w-4" />
                             Delete Session
                           </ContextMenuItem>
@@ -799,11 +1007,15 @@ export function SessionChatModal({
                 <TooltipTrigger asChild>
                   <button
                     type="button"
-                    onClick={() => window.dispatchEvent(new CustomEvent('open-recap'))}
+                    onClick={() =>
+                      window.dispatchEvent(new CustomEvent('open-recap'))
+                    }
                     className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
                     aria-label="Recap"
                   >
-                    <Sparkles className={cn("h-3 w-3", hasRecap && "text-yellow-500")} />
+                    <Sparkles
+                      className={cn('h-3 w-3', hasRecap && 'text-yellow-500')}
+                    />
                   </button>
                 </TooltipTrigger>
                 <TooltipContent>Recap (R)</TooltipContent>
@@ -812,11 +1024,15 @@ export function SessionChatModal({
                 <TooltipTrigger asChild>
                   <button
                     type="button"
-                    onClick={() => window.dispatchEvent(new CustomEvent('open-plan'))}
+                    onClick={() =>
+                      window.dispatchEvent(new CustomEvent('open-plan'))
+                    }
                     className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
                     aria-label="Plan"
                   >
-                    <FileText className={cn("h-3 w-3", hasPlan && "text-yellow-500")} />
+                    <FileText
+                      className={cn('h-3 w-3', hasPlan && 'text-yellow-500')}
+                    />
                   </button>
                 </TooltipTrigger>
                 <TooltipContent>Plan (P)</TooltipContent>
@@ -859,8 +1075,14 @@ export function SessionChatModal({
             <GitDiffModal
               diffRequest={diffRequest}
               onClose={() => setDiffRequest(null)}
-              uncommittedStats={{ added: uncommittedAdded, removed: uncommittedRemoved }}
-              branchStats={{ added: branchDiffAdded, removed: branchDiffRemoved }}
+              uncommittedStats={{
+                added: uncommittedAdded,
+                removed: uncommittedRemoved,
+              }}
+              branchStats={{
+                added: branchDiffAdded,
+                removed: branchDiffRemoved,
+              }}
             />
           )}
         </DialogContent>

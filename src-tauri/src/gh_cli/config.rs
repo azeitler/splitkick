@@ -56,7 +56,9 @@ fn resolve_gh_binary_with(
 /// Returns the embedded binary path if it exists, otherwise falls back to `gh` found on PATH.
 /// This ensures commands work whether `gh` was installed via the app or system-wide.
 pub fn resolve_gh_binary(app: &AppHandle) -> PathBuf {
-    let embedded_binary = get_gh_cli_binary_path(app).ok().filter(|path| path.exists());
+    let embedded_binary = get_gh_cli_binary_path(app)
+        .ok()
+        .filter(|path| path.exists());
     let path_binary = which::which(GH_CLI_BINARY_NAME).ok();
 
     resolve_gh_binary_with(embedded_binary, path_binary)

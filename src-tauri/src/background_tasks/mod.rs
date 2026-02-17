@@ -309,11 +309,7 @@ impl BackgroundTaskManager {
                         // Filter out the currently active worktree (already polled above)
                         let candidates: Vec<_> = worktrees
                             .iter()
-                            .filter(|w| {
-                                active_worktree_id
-                                    .as_ref()
-                                    .map_or(true, |id| &w.worktree_id != id)
-                            })
+                            .filter(|w| active_worktree_id.as_ref() != Some(&w.worktree_id))
                             .filter(|w| w.pr_number.is_some() && w.pr_url.is_some())
                             .collect();
 
@@ -341,16 +337,11 @@ impl BackgroundTaskManager {
                                 ) {
                                     Ok(status) => {
                                         if let Err(e) = emit_pr_status(&app, status) {
-                                            log::error!(
-                                                "Sweep: failed to emit PR status: {e}"
-                                            );
+                                            log::error!("Sweep: failed to emit PR status: {e}");
                                         }
                                     }
                                     Err(e) => {
-                                        log::warn!(
-                                            "Sweep: failed PR status for #{}: {e}",
-                                            pr_num
-                                        );
+                                        log::warn!("Sweep: failed PR status for #{}: {e}", pr_num);
                                     }
                                 }
                             }
@@ -378,11 +369,7 @@ impl BackgroundTaskManager {
                         // Filter out the currently active worktree (already polled above)
                         let candidates: Vec<_> = worktrees
                             .iter()
-                            .filter(|w| {
-                                active_worktree_id
-                                    .as_ref()
-                                    .map_or(true, |id| &w.worktree_id != id)
-                            })
+                            .filter(|w| active_worktree_id.as_ref() != Some(&w.worktree_id))
                             .collect();
 
                         if !candidates.is_empty() {
@@ -398,9 +385,7 @@ impl BackgroundTaskManager {
                             match get_branch_status(candidate) {
                                 Ok(status) => {
                                     if let Err(e) = emit_git_status(&app, status) {
-                                        log::error!(
-                                            "Git sweep: failed to emit git status: {e}"
-                                        );
+                                        log::error!("Git sweep: failed to emit git status: {e}");
                                     }
                                 }
                                 Err(e) => {
@@ -559,7 +544,10 @@ impl BackgroundTaskManager {
     /// The sweep polls these worktrees round-robin at a slow interval (60s)
     /// to keep uncommitted diff stats up to date even when not actively selected.
     pub fn set_all_worktrees(&self, worktrees: Vec<ActiveWorktreeInfo>) {
-        log::trace!("Setting {} worktrees for git status sweep polling", worktrees.len());
+        log::trace!(
+            "Setting {} worktrees for git status sweep polling",
+            worktrees.len()
+        );
         let mut guard = self.all_worktrees.lock().unwrap();
         *guard = worktrees;
     }

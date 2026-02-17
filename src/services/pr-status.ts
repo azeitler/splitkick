@@ -62,7 +62,9 @@ export function usePrStatusEvents(
           status.check_status,
           null, // behind_count - handled by git-status service
           null // ahead_count - handled by git-status service
-        ).catch(() => { /* silent */ })
+        ).catch(() => {
+          /* silent */
+        })
 
         // Call the optional callback
         onStatusUpdate?.(status)

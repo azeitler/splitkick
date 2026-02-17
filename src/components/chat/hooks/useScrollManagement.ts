@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react'
 import type { RefObject } from 'react'
 import type { VirtualizedMessageListHandle } from '../VirtualizedMessageList'
 import type { ChatMessage } from '@/types/chat'

@@ -6,7 +6,11 @@ import remarkGfm from 'remark-gfm'
 import remend from 'remend'
 import { Copy, Check } from 'lucide-react'
 import { toast } from 'sonner'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
 interface MarkdownProps {
@@ -49,7 +53,11 @@ function CodeBlock({ children }: { children: ReactNode }) {
             onClick={handleCopy}
             className="absolute right-2 top-2 opacity-50 hover:opacity-100 transition-opacity p-1.5 rounded-md hover:bg-background/80 text-muted-foreground hover:text-foreground cursor-pointer"
           >
-            {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+            {copied ? (
+              <Check className="size-4" />
+            ) : (
+              <Copy className="size-4" />
+            )}
           </button>
         </TooltipTrigger>
         <TooltipContent>Copy code</TooltipContent>
@@ -188,7 +196,11 @@ const Markdown = memo(function Markdown({
 
   return (
     <div className={cn('markdown leading-relaxed break-words', className)}>
-      <ReactMarkdown components={components} remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
+      <ReactMarkdown
+        components={components}
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeRaw]}
+      >
         {content}
       </ReactMarkdown>
     </div>

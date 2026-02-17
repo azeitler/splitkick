@@ -16,7 +16,8 @@ export const isNativeApp = (): boolean =>
 export const hasBackend = (): boolean => {
   if (isNativeApp()) return true
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  if (typeof window !== 'undefined' && (window as any).__JEAN_E2E_MOCK__) return true
+  if (typeof window !== 'undefined' && (window as any).__JEAN_E2E_MOCK__)
+    return true
   // In browser mode, check if we have WS connection info
   // (set when the transport connects)
   return _wsConnected

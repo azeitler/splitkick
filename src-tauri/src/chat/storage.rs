@@ -366,7 +366,7 @@ pub fn cleanup_orphaned_session_data(app: &AppHandle) -> Result<u32, String> {
     if let Ok(entries) = fs::read_dir(&index_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.extension().map_or(false, |ext| ext == "json") {
+            if path.extension().is_some_and(|ext| ext == "json") {
                 if let Ok(content) = fs::read_to_string(&path) {
                     if let Ok(index) =
                         serde_json::from_str::<crate::chat::types::WorktreeIndex>(&content)

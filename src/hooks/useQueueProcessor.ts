@@ -197,9 +197,11 @@ export function useQueueProcessor(): void {
           effortLevel: queuedMsg.effortLevel,
           mcpConfig: queuedMsg.mcpConfig,
           customProfileName: queuedMsg.provider ?? undefined,
-          parallelExecutionPrompt: preferences?.parallel_execution_prompt_enabled
-            ? (preferences.magic_prompts?.parallel_execution ?? DEFAULT_PARALLEL_EXECUTION_PROMPT)
-            : undefined,
+          parallelExecutionPrompt:
+            preferences?.parallel_execution_prompt_enabled
+              ? (preferences.magic_prompts?.parallel_execution ??
+                DEFAULT_PARALLEL_EXECUTION_PROMPT)
+              : undefined,
           chromeEnabled: preferences?.chrome_enabled ?? false,
           allowedTools,
         },
@@ -215,6 +217,7 @@ export function useQueueProcessor(): void {
     hasProcessableQueue,
     sendMessage,
     preferences?.parallel_execution_prompt_enabled,
+    preferences?.magic_prompts?.parallel_execution,
     preferences?.chrome_enabled,
     wsConnected,
   ])

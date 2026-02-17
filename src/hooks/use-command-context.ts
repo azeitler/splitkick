@@ -561,7 +561,11 @@ export function useCommandContext(
         worktreePath: activeWorktreePath,
         customPrompt: preferences?.magic_prompts?.code_review,
         model: preferences?.magic_prompt_models?.code_review_model,
-        customProfileName: resolveMagicPromptProvider(preferences?.magic_prompt_providers, 'code_review_provider', preferences?.default_provider),
+        customProfileName: resolveMagicPromptProvider(
+          preferences?.magic_prompt_providers,
+          'code_review_provider',
+          preferences?.default_provider
+        ),
       })
 
       // Store review results in Zustand (also activates review tab)
@@ -586,6 +590,8 @@ export function useCommandContext(
   }, [
     preferences?.magic_prompts?.code_review,
     preferences?.magic_prompt_models?.code_review_model,
+    preferences?.magic_prompt_providers,
+    preferences?.default_provider,
   ])
 
   // Terminal - Open terminal panel
@@ -703,7 +709,11 @@ export function useCommandContext(
         sessionId,
         customPrompt: preferences?.magic_prompts?.session_naming ?? null,
         model: preferences?.magic_prompt_models?.session_naming_model ?? null,
-        customProfileName: resolveMagicPromptProvider(preferences?.magic_prompt_providers, 'session_naming_provider', preferences?.default_provider),
+        customProfileName: resolveMagicPromptProvider(
+          preferences?.magic_prompt_providers,
+          'session_naming_provider',
+          preferences?.default_provider
+        ),
       })
       toast.success('Session title will update shortly', { id: toastId })
     } catch (error) {
@@ -713,6 +723,8 @@ export function useCommandContext(
   }, [
     preferences?.magic_prompts?.session_naming,
     preferences?.magic_prompt_models?.session_naming_model,
+    preferences?.magic_prompt_providers,
+    preferences?.default_provider,
   ])
 
   // State getter - Check if run script is available

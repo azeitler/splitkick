@@ -48,7 +48,9 @@ export function ProjectsSidebar() {
     const fetchGitStatusBatch = async (batch: typeof actualProjects) => {
       await Promise.all(
         batch.map(p =>
-          fetchWorktreesStatus(p.id).catch(() => { /* silent */ })
+          fetchWorktreesStatus(p.id).catch(() => {
+            /* silent */
+          })
         )
       )
     }
@@ -67,7 +69,6 @@ export function ProjectsSidebar() {
         const batch = collapsedProjects.slice(i, i + concurrencyLimit)
         await fetchGitStatusBatch(batch)
       }
-
     }
 
     fetchAll()
@@ -125,13 +126,14 @@ export function ProjectsSidebar() {
         <button
           type="button"
           className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
-          onClick={() => window.dispatchEvent(new CustomEvent('command:open-archived-modal'))}
+          onClick={() =>
+            window.dispatchEvent(new CustomEvent('command:open-archived-modal'))
+          }
         >
           {!isNarrow && <Archive className="size-3.5" />}
           Archived
         </button>
       </div>
-
     </div>
   )
 }

@@ -63,48 +63,48 @@ export function SkillBadge({ skill, onRemove, compact }: SkillBadgeProps) {
     <>
       <Tooltip>
         <TooltipTrigger asChild>
-      <button
-        type="button"
-        onClick={handleOpen}
-        className={cn(
-          'flex items-center gap-1.5 rounded-md border border-border/50 bg-muted/50 cursor-pointer hover:border-primary/50 transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
-          compact ? 'h-6 px-2' : 'h-7 px-2.5'
-        )}
-      >
-        <Wand2
-          className={cn(
-            'shrink-0 text-purple-500',
-            compact ? 'h-3 w-3' : 'h-3.5 w-3.5'
-          )}
-        />
-        <span
-          className={cn(
-            'font-medium truncate max-w-[120px]',
-            compact ? 'text-[10px]' : 'text-xs'
-          )}
-        >
-          /{skill.name}
-        </span>
-        {onRemove && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={handleRemove}
-                className="ml-0.5 p-0.5 rounded hover:bg-accent/50 transition-colors"
-              >
-                <X
-                  className={cn(
-                    'text-muted-foreground',
-                    compact ? 'h-3 w-3' : 'h-3.5 w-3.5'
-                  )}
-                />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Remove skill</TooltipContent>
-          </Tooltip>
-        )}
-      </button>
+          <button
+            type="button"
+            onClick={handleOpen}
+            className={cn(
+              'flex items-center gap-1.5 rounded-md border border-border/50 bg-muted/50 cursor-pointer hover:border-primary/50 transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
+              compact ? 'h-6 px-2' : 'h-7 px-2.5'
+            )}
+          >
+            <Wand2
+              className={cn(
+                'shrink-0 text-purple-500',
+                compact ? 'h-3 w-3' : 'h-3.5 w-3.5'
+              )}
+            />
+            <span
+              className={cn(
+                'font-medium truncate max-w-[120px]',
+                compact ? 'text-[10px]' : 'text-xs'
+              )}
+            >
+              /{skill.name}
+            </span>
+            {onRemove && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={handleRemove}
+                    className="ml-0.5 p-0.5 rounded hover:bg-accent/50 transition-colors"
+                  >
+                    <X
+                      className={cn(
+                        'text-muted-foreground',
+                        compact ? 'h-3 w-3' : 'h-3.5 w-3.5'
+                      )}
+                    />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Remove skill</TooltipContent>
+              </Tooltip>
+            )}
+          </button>
         </TooltipTrigger>
         <TooltipContent>{`Skill: ${skill.name}\n${skill.path}`}</TooltipContent>
       </Tooltip>

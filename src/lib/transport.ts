@@ -114,7 +114,8 @@ let initialDataResolved = false
 export async function preloadInitialData(): Promise<InitialData | null> {
   if (isNativeApp()) return null
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  if (typeof window !== 'undefined' && (window as any).__JEAN_E2E_MOCK__) return null
+  if (typeof window !== 'undefined' && (window as any).__JEAN_E2E_MOCK__)
+    return null
   if (initialDataPromise) return initialDataPromise
 
   initialDataPromise = (async () => {
@@ -440,8 +441,12 @@ class WsTransport {
 const wsTransport = new WsTransport()
 
 // Auto-connect in browser mode (skip when E2E mocks are active)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-if (!isNativeApp() && typeof window !== 'undefined' && !(window as any).__JEAN_E2E_MOCK__) {
+if (
+  !isNativeApp() &&
+  typeof window !== 'undefined' &&
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  !(window as any).__JEAN_E2E_MOCK__
+) {
   wsTransport.connect()
 }
 
@@ -454,8 +459,10 @@ const getSnapshot = () => wsTransport.getSnapshot()
 const getAuthErrorSnapshot = () => wsTransport.getAuthErrorSnapshot()
 
 // E2E mock: always report connected, no auth errors
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const isE2eMocked = typeof window !== 'undefined' && !!(window as any).__JEAN_E2E_MOCK__
+const isE2eMocked =
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  typeof window !== 'undefined' && !!(window as any).__JEAN_E2E_MOCK__
+// eslint-disable-next-line @typescript-eslint/no-empty-function
 const noopSubscribe = () => () => {}
 
 /**

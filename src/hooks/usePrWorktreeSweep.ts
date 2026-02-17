@@ -8,7 +8,10 @@
 import { useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
-import { setPrWorktreesForPolling, setAllWorktreesForPolling } from '@/services/git-status'
+import {
+  setPrWorktreesForPolling,
+  setAllWorktreesForPolling,
+} from '@/services/git-status'
 import { projectsQueryKeys, isTauri } from '@/services/projects'
 import type { Project, Worktree } from '@/types/projects'
 
@@ -27,19 +30,19 @@ export function usePrWorktreeSweep(projects: Project[] | undefined) {
     if (!isTauri() || !projects || projects.length === 0) return
 
     const sync = () => {
-      const prWorktrees: Array<{
+      const prWorktrees: {
         worktreeId: string
         worktreePath: string
         baseBranch: string
         prNumber: number
         prUrl: string
-      }> = []
+      }[] = []
 
-      const allWorktrees: Array<{
+      const allWorktrees: {
         worktreeId: string
         worktreePath: string
         baseBranch: string
-      }> = []
+      }[] = []
 
       for (const project of projects) {
         if (project.is_folder) continue
@@ -78,8 +81,12 @@ export function usePrWorktreeSweep(projects: Project[] | undefined) {
       const json = JSON.stringify({ prWorktrees, allWorktrees })
       if (json !== lastJsonRef.current) {
         lastJsonRef.current = json
-        setPrWorktreesForPolling(prWorktrees).catch(() => { /* silent */ })
-        setAllWorktreesForPolling(allWorktrees).catch(() => { /* silent */ })
+        setPrWorktreesForPolling(prWorktrees).catch(() => {
+          /* silent */
+        })
+        setAllWorktreesForPolling(allWorktrees).catch(() => {
+          /* silent */
+        })
       }
     }
 

@@ -200,7 +200,7 @@ export function useMessageHandlers({
             ? selectedEffortLevelRef.current
             : undefined,
           mcpConfig: getMcpConfig(),
-        customProfileName: getCustomProfileName(),
+          customProfileName: getCustomProfileName(),
         },
         {
           onSettled: () => {
@@ -370,7 +370,7 @@ export function useMessageHandlers({
             : undefined,
           disableThinkingForMode: true, // Always disable thinking when executing approved plan
           mcpConfig: getMcpConfig(),
-        customProfileName: getCustomProfileName(),
+          customProfileName: getCustomProfileName(),
         },
         {
           onSettled: () => {
@@ -482,7 +482,7 @@ export function useMessageHandlers({
             : undefined,
           disableThinkingForMode: true, // Always disable thinking when executing approved plan
           mcpConfig: getMcpConfig(),
-        customProfileName: getCustomProfileName(),
+          customProfileName: getCustomProfileName(),
         },
         {
           onSettled: () => {
@@ -785,7 +785,7 @@ export function useMessageHandlers({
             : undefined,
           allowedTools: [...GIT_ALLOWED_TOOLS, ...allApprovedTools],
           mcpConfig: getMcpConfig(),
-        customProfileName: getCustomProfileName(),
+          customProfileName: getCustomProfileName(),
         },
         {
           onSettled: () => {
@@ -912,7 +912,7 @@ export function useMessageHandlers({
             ? selectedEffortLevelRef.current
             : undefined,
           mcpConfig: getMcpConfig(),
-        customProfileName: getCustomProfileName(),
+          customProfileName: getCustomProfileName(),
         },
         {
           onSettled: () => {
@@ -1059,7 +1059,7 @@ Please apply this fix to the file.`
             ? selectedEffortLevelRef.current
             : undefined,
           mcpConfig: getMcpConfig(),
-        customProfileName: getCustomProfileName(),
+          customProfileName: getCustomProfileName(),
         },
         {
           onSettled: () => {
@@ -1198,7 +1198,7 @@ Please apply all these fixes to the respective files.`
             ? selectedEffortLevelRef.current
             : undefined,
           mcpConfig: getMcpConfig(),
-        customProfileName: getCustomProfileName(),
+          customProfileName: getCustomProfileName(),
         },
         {
           onSettled: () => {

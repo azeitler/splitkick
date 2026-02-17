@@ -95,60 +95,72 @@ function App() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const pendingUpdateRef = useRef<any>(null)
 
-  const installAppUpdate = useCallback(async (update: { version: string; downloadAndInstall: (cb: (event: any) => void) => Promise<void> }) => {
-    let totalBytes = 0
-    let downloadedBytes = 0
-    const toastId = toast.loading(`Downloading update ${update.version}...`)
+  const installAppUpdate = useCallback(
+    async (update: {
+      version: string
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      downloadAndInstall: (cb: (event: any) => void) => Promise<void>
+    }) => {
+      let totalBytes = 0
+      let downloadedBytes = 0
+      const toastId = toast.loading(`Downloading update ${update.version}...`)
 
-    // Clear the pending indicator since we're installing now
-    useUIStore.getState().setPendingUpdateVersion(null)
-    pendingUpdateRef.current = null
+      // Clear the pending indicator since we're installing now
+      useUIStore.getState().setPendingUpdateVersion(null)
+      pendingUpdateRef.current = null
 
-    try {
-      await update.downloadAndInstall(event => {
-        switch (event.event) {
-          case 'Started':
-            totalBytes = event.data.contentLength ?? 0
-            logger.info(`Downloading ${totalBytes} bytes`)
-            break
-          case 'Progress':
-            downloadedBytes += event.data.chunkLength
-            if (totalBytes > 0) {
-              const percent = Math.round((downloadedBytes / totalBytes) * 100)
-              toast.loading(`Downloading update... ${percent}%`, { id: toastId })
-            }
-            break
-          case 'Finished':
-            logger.info('Download complete, installing...')
-            toast.loading('Installing update...', { id: toastId })
-            break
-        }
-      })
+      try {
+        await update.downloadAndInstall(event => {
+          switch (event.event) {
+            case 'Started':
+              totalBytes = event.data.contentLength ?? 0
+              logger.info(`Downloading ${totalBytes} bytes`)
+              break
+            case 'Progress':
+              downloadedBytes += event.data.chunkLength
+              if (totalBytes > 0) {
+                const percent = Math.round((downloadedBytes / totalBytes) * 100)
+                toast.loading(`Downloading update... ${percent}%`, {
+                  id: toastId,
+                })
+              }
+              break
+            case 'Finished':
+              logger.info('Download complete, installing...')
+              toast.loading('Installing update...', { id: toastId })
+              break
+          }
+        })
 
-      toast.success(`Update ${update.version} installed!`, {
-        id: toastId,
-        duration: Infinity,
-        action: {
-          label: 'Restart',
-          onClick: async () => {
-            const { relaunch } = await import('@tauri-apps/plugin-process')
-            await relaunch()
+        toast.success(`Update ${update.version} installed!`, {
+          id: toastId,
+          duration: Infinity,
+          action: {
+            label: 'Restart',
+            onClick: async () => {
+              const { relaunch } = await import('@tauri-apps/plugin-process')
+              await relaunch()
+            },
           },
-        },
-      })
-    } catch (updateError) {
-      const errorStr = String(updateError)
-      logger.error(`Update installation failed: ${errorStr}`)
-      if (errorStr.includes('invalid updater binary format')) {
-        toast.error(
-          `Auto-update not supported for this installation type. Please update manually.`,
-          { id: toastId, duration: 8000 }
-        )
-      } else {
-        toast.error(`Update failed: ${errorStr}`, { id: toastId, duration: 8000 })
+        })
+      } catch (updateError) {
+        const errorStr = String(updateError)
+        logger.error(`Update installation failed: ${errorStr}`)
+        if (errorStr.includes('invalid updater binary format')) {
+          toast.error(
+            `Auto-update not supported for this installation type. Please update manually.`,
+            { id: toastId, duration: 8000 }
+          )
+        } else {
+          toast.error(`Update failed: ${errorStr}`, {
+            id: toastId,
+            duration: 8000,
+          })
+        }
       }
-    }
-  }, [])
+    },
+    []
+  )
 
   // Preload initial data via HTTP for web view (faster than waiting for WebSocket)
   useEffect(() => {
@@ -548,6 +560,5 @@ function App() {
     </ErrorBoundary>
   )
 }
-
 
 export default App

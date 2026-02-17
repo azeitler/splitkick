@@ -36,7 +36,9 @@ export function KeybindingHints({ hints, className }: KeybindingHintsProps) {
           <Kbd className="h-5 px-1.5 text-[11px]">
             {formatShortcutDisplay(hint.shortcut)}
           </Kbd>
-          <span className="text-[10px] lg:text-xs leading-none">{hint.label}</span>
+          <span className="text-[10px] lg:text-xs leading-none">
+            {hint.label}
+          </span>
         </div>
       ))}
     </div>

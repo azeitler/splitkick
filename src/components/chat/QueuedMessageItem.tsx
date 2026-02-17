@@ -120,7 +120,8 @@ export const QueuedMessageItem = memo(function QueuedMessageItem({
           {/* Model badge */}
           <span className="inline-flex items-center gap-1 rounded bg-muted/80 px-1.5 py-0.5 text-[10px] text-muted-foreground">
             <Sparkles className="h-2.5 w-2.5" />
-            {MODEL_OPTIONS.find(o => o.value === message.model)?.label ?? message.model}
+            {MODEL_OPTIONS.find(o => o.value === message.model)?.label ??
+              message.model}
           </span>
           {/* Mode badge */}
           <span
@@ -150,12 +151,20 @@ export const QueuedMessageItem = memo(function QueuedMessageItem({
             (message.effortLevel ? (
               <span className="inline-flex items-center gap-1 rounded bg-muted/80 px-1.5 py-0.5 text-[10px] text-muted-foreground">
                 <Brain className="h-2.5 w-2.5" />
-                {EFFORT_LEVEL_OPTIONS.find(o => o.value === message.effortLevel)?.label}
+                {
+                  EFFORT_LEVEL_OPTIONS.find(
+                    o => o.value === message.effortLevel
+                  )?.label
+                }
               </span>
             ) : message.thinkingLevel !== 'off' ? (
               <span className="inline-flex items-center gap-1 rounded bg-muted/80 px-1.5 py-0.5 text-[10px] text-muted-foreground">
                 <Brain className="h-2.5 w-2.5" />
-                {THINKING_LEVEL_OPTIONS.find(o => o.value === message.thinkingLevel)?.label}
+                {
+                  THINKING_LEVEL_OPTIONS.find(
+                    o => o.value === message.thinkingLevel
+                  )?.label
+                }
               </span>
             ) : null)}
         </div>

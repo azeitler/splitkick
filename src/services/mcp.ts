@@ -78,7 +78,9 @@ export function getNewServersToAutoEnable(
   const enabledSet = new Set(currentEnabled)
   const knownSet = new Set(knownServers)
   return allServers
-    .filter(s => !s.disabled && !enabledSet.has(s.name) && !knownSet.has(s.name))
+    .filter(
+      s => !s.disabled && !enabledSet.has(s.name) && !knownSet.has(s.name)
+    )
     .map(s => s.name)
 }
 

@@ -477,7 +477,9 @@ export function useCreateWorktree() {
       expandProject(projectId)
       if (!isBackground) {
         selectWorktree(pendingWorktree.id)
-        toast.loading('Setting up worktree...', { id: `worktree-creating-${pendingWorktree.id}` })
+        toast.loading('Setting up worktree...', {
+          id: `worktree-creating-${pendingWorktree.id}`,
+        })
       }
     },
     onError: error => {
@@ -598,7 +600,9 @@ export function useCreateWorktreeFromExistingBranch() {
       expandProject(projectId)
       if (!isBackground) {
         selectWorktree(pendingWorktree.id)
-        toast.loading('Setting up worktree...', { id: `worktree-creating-${pendingWorktree.id}` })
+        toast.loading('Setting up worktree...', {
+          id: `worktree-creating-${pendingWorktree.id}`,
+        })
       }
     },
     onError: error => {
@@ -685,7 +689,6 @@ function handleWorktreeReady(
       setActiveWorktree(worktree.id, worktree.path)
     }
   }
-
 }
 
 /**
@@ -715,10 +718,7 @@ export function useWorktreeEvents() {
       }
     }
 
-    const startPendingTimeout = (
-      worktreeId: string,
-      projectId: string
-    ) => {
+    const startPendingTimeout = (worktreeId: string, projectId: string) => {
       clearPendingTimeout(worktreeId)
       const timeoutId = setTimeout(() => {
         pendingTimeouts.delete(worktreeId)
@@ -795,7 +795,8 @@ export function useWorktreeEvents() {
           action: {
             label: 'Open',
             onClick: () => {
-              const { selectWorktree, selectProject } = useProjectsStore.getState()
+              const { selectWorktree, selectProject } =
+                useProjectsStore.getState()
               selectProject(worktree.project_id)
               selectWorktree(worktree.id)
               const { setActiveWorktree } = useChatStore.getState()
@@ -1024,8 +1025,7 @@ export function useWorktreeEvents() {
           toast.error(
             `Path conflict with archived worktree "${archived_worktree_name}"`,
             {
-              description:
-                'Restore it or permanently delete it first.',
+              description: 'Restore it or permanently delete it first.',
             }
           )
         } else {

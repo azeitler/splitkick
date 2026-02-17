@@ -801,15 +801,12 @@ describe('ChatStore', () => {
     })
 
     it('clears review results', () => {
-      const { setReviewResults, clearReviewResults } =
-        useChatStore.getState()
+      const { setReviewResults, clearReviewResults } = useChatStore.getState()
 
       setReviewResults('session-1', mockResults)
       clearReviewResults('session-1')
 
-      expect(
-        useChatStore.getState().reviewResults['session-1']
-      ).toBeUndefined()
+      expect(useChatStore.getState().reviewResults['session-1']).toBeUndefined()
     })
 
     it('toggles review sidebar visibility', () => {

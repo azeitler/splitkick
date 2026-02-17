@@ -28,9 +28,7 @@
         "shadow": true,
         "dragDropEnabled": true,
         "windowEffects": {
-          "effects": [
-            "hudWindow"
-          ],
+          "effects": ["hudWindow"],
           "radius": 12,
           "state": "active"
         }
@@ -41,10 +39,7 @@
       "assetProtocol": {
         "enable": true,
         "scope": {
-          "allow": [
-            "**/.jean/images/**",
-            "$APPDATA/**"
-          ],
+          "allow": ["**/.jean/images/**", "$APPDATA/**"],
           "requireLiteralLeadingDot": false
         }
       }

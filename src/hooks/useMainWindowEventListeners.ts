@@ -34,14 +34,17 @@ function executeKeybindingAction(
   queryClient: QueryClient
 ) {
   // Canvas-only actions: blocked when the session chat modal is open
-  const CANVAS_ONLY_ACTIONS: Set<KeybindingAction> = new Set([
+  const CANVAS_ONLY_ACTIONS = new Set<KeybindingAction>([
     'new_worktree',
     'open_plan',
     'open_recap',
     'restore_last_archived',
     'focus_canvas_search',
   ])
-  if (CANVAS_ONLY_ACTIONS.has(action) && useUIStore.getState().sessionChatModalOpen) {
+  if (
+    CANVAS_ONLY_ACTIONS.has(action) &&
+    useUIStore.getState().sessionChatModalOpen
+  ) {
     return
   }
 
@@ -82,12 +85,15 @@ function executeKeybindingAction(
       const sessionModalOpen = uiStore.sessionChatModalOpen
 
       // Resolve target worktree: modal > active worktree > selected worktree (dashboard)
-      const targetWorktreeId = sessionModalOpen && uiStore.sessionChatModalWorktreeId
-        ? uiStore.sessionChatModalWorktreeId
-        : chatStore.activeWorktreeId ?? useProjectsStore.getState().selectedWorktreeId
+      const targetWorktreeId =
+        sessionModalOpen && uiStore.sessionChatModalWorktreeId
+          ? uiStore.sessionChatModalWorktreeId
+          : (chatStore.activeWorktreeId ??
+            useProjectsStore.getState().selectedWorktreeId)
 
       const targetWorktreePath = targetWorktreeId
-        ? chatStore.activeWorktreePath ?? chatStore.worktreePaths[targetWorktreeId]
+        ? (chatStore.activeWorktreePath ??
+          chatStore.worktreePaths[targetWorktreeId])
         : null
 
       if (!targetWorktreeId || !targetWorktreePath) {
@@ -106,7 +112,10 @@ function executeKeybindingAction(
           try {
             runScript = await queryClient.fetchQuery<string | null>({
               queryKey: ['run-script', targetWorktreePath],
-              queryFn: () => invoke<string | null>('get_run_script', { worktreePath: targetWorktreePath }),
+              queryFn: () =>
+                invoke<string | null>('get_run_script', {
+                  worktreePath: targetWorktreePath,
+                }),
             })
           } catch {
             runScript = null
@@ -120,7 +129,9 @@ function executeKeybindingAction(
               ? {
                   label: 'Configure',
                   onClick: () =>
-                    useProjectsStore.getState().openProjectSettings(projectId, 'jean-json'),
+                    useProjectsStore
+                      .getState()
+                      .openProjectSettings(projectId, 'jean-json'),
                 }
               : undefined,
           })
@@ -132,7 +143,9 @@ function executeKeybindingAction(
 
         // If modal is open, also open the terminal drawer
         if (sessionModalOpen) {
-          useTerminalStore.getState().setModalTerminalOpen(targetWorktreeId, true)
+          useTerminalStore
+            .getState()
+            .setModalTerminalOpen(targetWorktreeId, true)
         }
       })()
       break
@@ -284,7 +297,11 @@ function executeKeybindingAction(
       // Only works when a session is active (modal open or in session view, not on dashboard canvas)
       const uiStoreForLabel = useUIStore.getState()
       const chatStoreForLabel = useChatStore.getState()
-      if (!uiStoreForLabel.sessionChatModalOpen && !chatStoreForLabel.activeWorktreePath) break
+      if (
+        !uiStoreForLabel.sessionChatModalOpen &&
+        !chatStoreForLabel.activeWorktreePath
+      )
+        break
       window.dispatchEvent(new CustomEvent('toggle-session-label'))
       break
     }
@@ -391,7 +408,9 @@ export function useMainWindowEventListeners() {
             const update = await check()
             if (update) {
               // Pass update object to App.tsx for installation handling
-              window.dispatchEvent(new CustomEvent('update-available', { detail: update }))
+              window.dispatchEvent(
+                new CustomEvent('update-available', { detail: update })
+              )
               // Show the update modal (same as auto-check on startup)
               useUIStore.getState().setUpdateModalVersion(update.version)
             } else {

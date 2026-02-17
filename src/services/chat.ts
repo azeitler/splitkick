@@ -818,7 +818,9 @@ export function useAllArchivedSessions() {
  * - Closes the base session cleanly (if it's a base session with last session)
  * - Removes the worktree (archive or delete based on removal_behavior preference)
  */
-export function useCloseSessionOrWorktreeKeybinding(onConfirmRequired?: (branchName?: string) => void) {
+export function useCloseSessionOrWorktreeKeybinding(
+  onConfirmRequired?: (branchName?: string) => void
+) {
   const archiveSession = useArchiveSession()
   const closeSession = useCloseSession()
   const archiveWorktree = useArchiveWorktree()

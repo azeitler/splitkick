@@ -1443,7 +1443,6 @@ pub async fn list_loaded_pr_contexts(
     Ok(contexts)
 }
 
-
 /// Remove a loaded PR context for a session
 #[tauri::command]
 pub async fn remove_pr_context(

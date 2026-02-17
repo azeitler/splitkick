@@ -321,4 +321,3 @@ export const VirtualizedMessageList = memo(
     }
   )
 )
-

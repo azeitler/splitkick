@@ -30,7 +30,7 @@ export function CloseWorktreeDialog({
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent
-        onKeyDown={(e) => {
+        onKeyDown={e => {
           if (e.key === 'Enter') {
             e.preventDefault()
             e.stopPropagation()
@@ -73,7 +73,11 @@ export function CloseWorktreeDialog({
           <AlertDialogAction
             autoFocus
             onClick={onConfirm}
-            className={isDelete ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : undefined}
+            className={
+              isDelete
+                ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
+                : undefined
+            }
           >
             {isDelete ? 'Delete' : 'Archive & Close'}
             <kbd className="ml-1.5 text-xs opacity-70">↵</kbd>

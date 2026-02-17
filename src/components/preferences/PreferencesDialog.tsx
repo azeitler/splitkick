@@ -146,7 +146,10 @@ export function PreferencesDialog() {
 
   return (
     <Dialog open={preferencesOpen} onOpenChange={handleOpenChange}>
-      <DialogContent showCloseButton={false} className="overflow-hidden p-0 !w-screen !h-dvh !max-w-screen !max-h-none !rounded-none sm:!w-[calc(100vw-4rem)] sm:!max-w-[calc(100vw-4rem)] sm:!h-[85vh] sm:!rounded-xl font-sans">
+      <DialogContent
+        showCloseButton={false}
+        className="overflow-hidden p-0 !w-screen !h-dvh !max-w-screen !max-h-none !rounded-none sm:!w-[calc(100vw-4rem)] sm:!max-w-[calc(100vw-4rem)] sm:!h-[85vh] sm:!rounded-xl font-sans"
+      >
         <DialogTitle className="sr-only">Settings</DialogTitle>
         <DialogDescription className="sr-only">
           Customize your application preferences here.
@@ -201,7 +204,11 @@ export function PreferencesDialog() {
                       ))}
                   </SelectContent>
                 </Select>
-                <ModalCloseButton size="lg" className="md:hidden" onClick={() => handleOpenChange(false)} />
+                <ModalCloseButton
+                  size="lg"
+                  className="md:hidden"
+                  onClick={() => handleOpenChange(false)}
+                />
                 <Breadcrumb className="hidden md:block">
                   <BreadcrumbList>
                     <BreadcrumbItem>
@@ -215,7 +222,10 @@ export function PreferencesDialog() {
                     </BreadcrumbItem>
                   </BreadcrumbList>
                 </Breadcrumb>
-                <ModalCloseButton className="hidden md:inline-flex ml-auto" onClick={() => handleOpenChange(false)} />
+                <ModalCloseButton
+                  className="hidden md:inline-flex ml-auto"
+                  onClick={() => handleOpenChange(false)}
+                />
               </div>
             </header>
 
@@ -235,6 +245,5 @@ export function PreferencesDialog() {
     </Dialog>
   )
 }
-
 
 export default PreferencesDialog

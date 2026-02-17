@@ -120,13 +120,17 @@ export function MainWindow() {
   useMainWindowEventListeners()
 
   // Handle CMD+W keybinding to close session or worktree (with optional confirmation)
-  const [closeConfirmBranch, setCloseConfirmBranch] = useState<string | undefined>()
+  const [closeConfirmBranch, setCloseConfirmBranch] = useState<
+    string | undefined
+  >()
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false)
   const handleConfirmRequired = useCallback((branchName?: string) => {
     setCloseConfirmBranch(branchName)
     setCloseConfirmOpen(true)
   }, [])
-  const { executeClose } = useCloseSessionOrWorktreeKeybinding(handleConfirmRequired)
+  const { executeClose } = useCloseSessionOrWorktreeKeybinding(
+    handleConfirmRequired
+  )
 
   // Handle CMD+SHIFT+T to restore last archived item
   useRestoreLastArchived()
@@ -136,7 +140,8 @@ export function MainWindow() {
   useEffect(() => {
     const handler = () => setArchivedModalOpen(true)
     window.addEventListener('command:open-archived-modal', handler)
-    return () => window.removeEventListener('command:open-archived-modal', handler)
+    return () =>
+      window.removeEventListener('command:open-archived-modal', handler)
   }, [])
 
   // Auto-cleanup old archived items on startup
@@ -263,7 +268,10 @@ export function MainWindow() {
       <SessionBoardModal />
       <AddProjectDialog />
       <GitInitModal />
-      <ArchivedModal open={archivedModalOpen} onOpenChange={setArchivedModalOpen} />
+      <ArchivedModal
+        open={archivedModalOpen}
+        onOpenChange={setArchivedModalOpen}
+      />
       <CloseWorktreeDialog
         open={closeConfirmOpen}
         onOpenChange={setCloseConfirmOpen}
@@ -290,6 +298,5 @@ export function MainWindow() {
     </div>
   )
 }
-
 
 export default MainWindow

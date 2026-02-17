@@ -12,7 +12,11 @@ import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip'
 import { usePreferences, useSavePreferences } from '@/services/preferences'
 import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
@@ -225,7 +229,9 @@ export const WebAccessPane: React.FC = () => {
     <div className="space-y-6">
       <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 p-4">
         <p className="text-sm text-muted-foreground">
-          <strong className="text-yellow-600 dark:text-yellow-400">Experimental.</strong>{' '}
+          <strong className="text-yellow-600 dark:text-yellow-400">
+            Experimental.
+          </strong>{' '}
           Enable HTTP server to access Jean from a web browser on your local
           network. All commands are routed over WebSocket with token
           authentication.
@@ -338,7 +344,9 @@ export const WebAccessPane: React.FC = () => {
                 <Input
                   type={tokenVisible ? 'text' : 'password'}
                   className="w-64 font-mono text-xs"
-                  value={serverStatus?.token ?? preferences?.http_server_token ?? ''}
+                  value={
+                    serverStatus?.token ?? preferences?.http_server_token ?? ''
+                  }
                   readOnly
                 />
                 <Button

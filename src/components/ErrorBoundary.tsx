@@ -18,7 +18,10 @@ interface State {
  * Automatically saves crash data to recovery files for debugging
  * Shows a user-friendly error message instead of a blank screen
  */
-export class ErrorBoundary extends Component<Props, State & { copied: boolean }> {
+export class ErrorBoundary extends Component<
+  Props,
+  State & { copied: boolean }
+> {
   private copyTimeout: ReturnType<typeof setTimeout> | null = null
 
   constructor(props: Props) {
@@ -142,7 +145,10 @@ export class ErrorBoundary extends Component<Props, State & { copied: boolean }>
                         navigator.clipboard.writeText(text)
                         this.setState({ copied: true })
                         if (this.copyTimeout) clearTimeout(this.copyTimeout)
-                        this.copyTimeout = setTimeout(() => this.setState({ copied: false }), 2000)
+                        this.copyTimeout = setTimeout(
+                          () => this.setState({ copied: false }),
+                          2000
+                        )
                       }}
                       className="shrink-0 px-2 py-1 text-xs rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
                     >

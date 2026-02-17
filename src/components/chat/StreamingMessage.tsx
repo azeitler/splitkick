@@ -310,4 +310,3 @@ export const StreamingMessage = memo(function StreamingMessage({
     </div>
   )
 })
-

@@ -39,9 +39,7 @@ export function UpdatePrDialog() {
   const { data: preferences } = usePreferences()
 
   const { data: worktrees } = useWorktrees(selectedProjectId)
-  const selectedWorktreeId = useProjectsStore(
-    state => state.selectedWorktreeId
-  )
+  const selectedWorktreeId = useProjectsStore(state => state.selectedWorktreeId)
   const worktree = worktrees?.find(w => w.id === selectedWorktreeId) ?? null
 
   const prNumber = worktree?.pr_number
@@ -162,9 +160,7 @@ export function UpdatePrDialog() {
         <DialogHeader className="px-4 pt-5 pb-0">
           <DialogTitle className="flex items-center gap-2">
             <GitPullRequest className="h-4 w-4" />
-            {phase === 'generate'
-              ? 'Generating...'
-              : `Update PR #${prNumber}`}
+            {phase === 'generate' ? 'Generating...' : `Update PR #${prNumber}`}
           </DialogTitle>
         </DialogHeader>
 
@@ -174,9 +170,7 @@ export function UpdatePrDialog() {
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               <span className="text-sm text-muted-foreground">
                 Generating PR description for{' '}
-                <span className="font-medium text-foreground">
-                  #{prNumber}
-                </span>
+                <span className="font-medium text-foreground">#{prNumber}</span>
                 ...
               </span>
             </div>

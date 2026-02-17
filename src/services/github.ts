@@ -56,7 +56,12 @@ export const githubQueryKeys = {
   prSearch: (projectPath: string, query: string) =>
     [...githubQueryKeys.all, 'pr-search', projectPath, query] as const,
   workflowRuns: (projectPath: string, branch?: string) =>
-    [...githubQueryKeys.all, 'workflow-runs', projectPath, branch ?? ''] as const,
+    [
+      ...githubQueryKeys.all,
+      'workflow-runs',
+      projectPath,
+      branch ?? '',
+    ] as const,
 }
 
 /**
@@ -79,11 +84,17 @@ export function useGitHubIssues(
 
       try {
         logger.debug('Fetching GitHub issues', { projectPath, state })
-        const result = await invoke<GitHubIssueListResult>('list_github_issues', {
-          projectPath,
-          state,
+        const result = await invoke<GitHubIssueListResult>(
+          'list_github_issues',
+          {
+            projectPath,
+            state,
+          }
+        )
+        logger.info('GitHub issues loaded', {
+          count: result.issues.length,
+          totalCount: result.totalCount,
         })
-        logger.info('GitHub issues loaded', { count: result.issues.length, totalCount: result.totalCount })
         return result
       } catch (error) {
         logger.error('Failed to load GitHub issues', { error, projectPath })

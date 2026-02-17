@@ -54,6 +54,7 @@ brew install --cask jean
 ### Building from Source
 
 Prerequisites:
+
 - [Node.js](https://nodejs.org/)
 - [Rust](https://www.rust-lang.org/tools/install)
 - **Windows only**: In the Visual Studio Installer, ensure the **"Desktop development with C++"** workload is selected, which includes:
@@ -79,9 +80,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
 ## Core Maintainer
 
-| Andras Bacsai |
-|:---:|
-| <img src="https://github.com/andrasbacsai.png" width="200px" alt="Andras Bacsai" /> |
+|                                                                                                                                                                            Andras Bacsai                                                                                                                                                                             |
+| :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------: |
+|                                                                                                                                         <img src="https://github.com/andrasbacsai.png" width="200px" alt="Andras Bacsai" />                                                                                                                                          |
 | <a href="https://github.com/andrasbacsai"><img src="https://api.iconify.design/devicon:github.svg" width="25px"></a> <a href="https://x.com/heyandras"><img src="https://api.iconify.design/devicon:twitter.svg" width="25px"></a> <a href="https://bsky.app/profile/heyandras.dev"><img src="https://api.iconify.design/simple-icons:bluesky.svg" width="25px"></a> |
 
 ## Philosophy

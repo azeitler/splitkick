@@ -1,5 +1,14 @@
 import { forwardRef } from 'react'
-import { Archive, Eye, EyeOff, FileText, Shield, Sparkles, Tag, Trash2 } from 'lucide-react'
+import {
+  Archive,
+  Eye,
+  EyeOff,
+  FileText,
+  Shield,
+  Sparkles,
+  Tag,
+  Trash2,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getLabelTextColor } from '@/lib/label-colors'
 import { Button } from '@/components/ui/button'

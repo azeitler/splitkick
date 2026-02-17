@@ -250,7 +250,11 @@ export const ChatInput = memo(function ChatInput({
         // Re-detect @mention: scan backward from cursor for @ preceded by whitespace/start
         // This handles editing an already-completed mention (e.g. backspacing into @filename)
         let scanPos = cursorPos - 1
-        while (scanPos >= 0 && value[scanPos] !== ' ' && value[scanPos] !== '\n') {
+        while (
+          scanPos >= 0 &&
+          value[scanPos] !== ' ' &&
+          value[scanPos] !== '\n'
+        ) {
           if (value[scanPos] === '@') {
             const charBefore = value[scanPos - 1]
             if (scanPos === 0 || charBefore === ' ' || charBefore === '\n') {
@@ -314,7 +318,6 @@ export const ChatInput = memo(function ChatInput({
       fileMentionOpen,
       slashTriggerIndex,
       slashPopoverOpen,
-      formRef,
     ]
   )
 
@@ -371,11 +374,7 @@ export const ChatInput = memo(function ChatInput({
       }
 
       // Cmd+Option+Backspace (Mac) / Ctrl+Alt+Backspace (Windows/Linux) cancels the running Claude process
-      if (
-        e.key === 'Backspace' &&
-        (e.metaKey || e.ctrlKey) &&
-        e.altKey
-      ) {
+      if (e.key === 'Backspace' && (e.metaKey || e.ctrlKey) && e.altKey) {
         e.preventDefault()
         onCancel()
         return
@@ -401,13 +400,7 @@ export const ChatInput = memo(function ChatInput({
       }
       // Shift+Enter adds a new line (default behavior)
     },
-    [
-      activeSessionId,
-      fileMentionOpen,
-      slashPopoverOpen,
-      onCancel,
-      onSubmit,
-    ]
+    [activeSessionId, fileMentionOpen, slashPopoverOpen, onCancel, onSubmit]
   )
 
   // Handle paste events
@@ -701,9 +694,7 @@ export const ChatInput = memo(function ChatInput({
         // Cancel pending debounced save (it still has the old "/query" value)
         // and sync cleaned value to store immediately
         clearTimeout(debouncedSaveRef.current)
-        useChatStore
-          .getState()
-          .setInputDraft(activeSessionId, newValue)
+        useChatStore.getState().setInputDraft(activeSessionId, newValue)
         onHasValueChangeRef.current?.(Boolean(newValue.trim()))
 
         // Set cursor position where the slash was
@@ -810,4 +801,3 @@ export const ChatInput = memo(function ChatInput({
     </div>
   )
 })
-

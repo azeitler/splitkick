@@ -12,7 +12,15 @@ import {
 } from '@/components/ui/tooltip'
 import { useUIStore } from '@/store/ui-store'
 import { useCommandContext } from '@/lib/commands'
-import { ArrowUpCircle, Github, Heart, PanelLeft, PanelLeftClose, Plus, Settings } from 'lucide-react'
+import {
+  ArrowUpCircle,
+  Github,
+  Heart,
+  PanelLeft,
+  PanelLeftClose,
+  Plus,
+  Settings,
+} from 'lucide-react'
 import { usePreferences } from '@/services/preferences'
 import { formatShortcutDisplay, DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 import { isNativeApp } from '@/lib/environment'
@@ -135,9 +143,7 @@ export function TitleBar({
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
-                onClick={() =>
-                  openExternal('https://jean.build/sponsorships/')
-                }
+                onClick={() => openExternal('https://jean.build/sponsorships/')}
                 variant="ghost"
                 size="icon"
                 className="h-6 w-6 text-pink-500 hover:text-pink-400"
@@ -204,16 +210,16 @@ function UpdateIndicator() {
     <Tooltip>
       <TooltipTrigger asChild>
         <button
-          onClick={() => window.dispatchEvent(new Event('install-pending-update'))}
+          onClick={() =>
+            window.dispatchEvent(new Event('install-pending-update'))
+          }
           className="mr-1.5 flex items-center gap-1 rounded-md bg-primary/15 px-1.5 py-0.5 text-[0.625rem] font-medium text-primary hover:bg-primary/25 transition-colors cursor-pointer"
         >
           <ArrowUpCircle className="size-3" />
           Update available
         </button>
       </TooltipTrigger>
-      <TooltipContent side="bottom">
-        Update to v{pendingVersion}
-      </TooltipContent>
+      <TooltipContent side="bottom">Update to v{pendingVersion}</TooltipContent>
     </Tooltip>
   )
 }

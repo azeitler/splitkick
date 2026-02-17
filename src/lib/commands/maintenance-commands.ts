@@ -17,7 +17,14 @@ export const maintenanceCommands: AppCommand[] = [
     description: 'Remove session data not linked to any worktree',
     icon: Trash2,
     group: 'settings',
-    keywords: ['cleanup', 'orphan', 'session', 'maintenance', 'storage', 'disk'],
+    keywords: [
+      'cleanup',
+      'orphan',
+      'session',
+      'maintenance',
+      'storage',
+      'disk',
+    ],
     async execute(context) {
       const toastId = toast.loading('Cleaning up orphaned session data...')
 
@@ -39,17 +46,27 @@ export const maintenanceCommands: AppCommand[] = [
         if (total > 0) {
           const parts: string[] = []
           if (result.deleted_worktrees > 0) {
-            parts.push(`${result.deleted_worktrees} worktree${result.deleted_worktrees === 1 ? '' : 's'}`)
+            parts.push(
+              `${result.deleted_worktrees} worktree${result.deleted_worktrees === 1 ? '' : 's'}`
+            )
           }
           if (result.deleted_sessions > 0) {
-            parts.push(`${result.deleted_sessions} session${result.deleted_sessions === 1 ? '' : 's'}`)
+            parts.push(
+              `${result.deleted_sessions} session${result.deleted_sessions === 1 ? '' : 's'}`
+            )
           }
           if (result.deleted_contexts > 0) {
-            parts.push(`${result.deleted_contexts} context${result.deleted_contexts === 1 ? '' : 's'}`)
+            parts.push(
+              `${result.deleted_contexts} context${result.deleted_contexts === 1 ? '' : 's'}`
+            )
           }
 
-          context.queryClient.invalidateQueries({ queryKey: ['archived-worktrees'] })
-          context.queryClient.invalidateQueries({ queryKey: ['all-archived-sessions'] })
+          context.queryClient.invalidateQueries({
+            queryKey: ['archived-worktrees'],
+          })
+          context.queryClient.invalidateQueries({
+            queryKey: ['all-archived-sessions'],
+          })
 
           toast.success(`Cleaned up ${parts.join(' and ')}`, { id: toastId })
         } else {

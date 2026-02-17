@@ -22,4 +22,11 @@ export function initializeCommandSystem(): void {
   registerCommands(windowCommands)
 }
 
-export { appearanceCommands, notificationCommands, projectCommands, githubCommands, maintenanceCommands, windowCommands }
+export {
+  appearanceCommands,
+  notificationCommands,
+  projectCommands,
+  githubCommands,
+  maintenanceCommands,
+  windowCommands,
+}

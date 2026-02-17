@@ -37,9 +37,9 @@ export function JeanJsonPane({
     if (jeanConfig) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setLocalSetup(jeanConfig.scripts.setup ?? '')
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+
       setLocalRun(jeanConfig.scripts.run ?? '')
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+
       setSynced(true)
     }
   }, [jeanConfig])

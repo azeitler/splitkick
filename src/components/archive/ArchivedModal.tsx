@@ -29,7 +29,11 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import {
   useArchivedWorktrees,
@@ -569,7 +573,9 @@ export function ArchivedModal({ open, onOpenChange }: ArchivedModalProps) {
                         subtitle={
                           <>
                             <span>
-                              {result.entry.session.message_count ?? result.entry.session.messages.length} messages
+                              {result.entry.session.message_count ??
+                                result.entry.session.messages.length}{' '}
+                              messages
                             </span>
                             <span className="text-border mx-1">•</span>
                             <span>
@@ -912,7 +918,9 @@ function SessionWorktreeGroup({
                   </div>
                   <div className="text-sm text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-0.5">
                     <span className="text-xs">
-                      {entry.session.message_count ?? entry.session.messages.length} messages
+                      {entry.session.message_count ??
+                        entry.session.messages.length}{' '}
+                      messages
                     </span>
                     {entry.session.archived_at && (
                       <>

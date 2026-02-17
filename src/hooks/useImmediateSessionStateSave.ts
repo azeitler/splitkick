@@ -34,13 +34,16 @@ export function useImmediateSessionStateSave() {
 
       // Short-circuit: skip all iteration if no relevant record changed
       const reviewingChanged = reviewingSessions !== prevReviewingRef.current
-      const waitingChanged = waitingForInputSessionIds !== prevWaitingRef.current
+      const waitingChanged =
+        waitingForInputSessionIds !== prevWaitingRef.current
       const labelsChanged = sessionLabels !== prevLabelsRef.current
 
       if (!reviewingChanged && !waitingChanged && !labelsChanged) return
 
       if (reviewingChanged) {
-        for (const [sessionId, isReviewing] of Object.entries(reviewingSessions)) {
+        for (const [sessionId, isReviewing] of Object.entries(
+          reviewingSessions
+        )) {
           if (prevReviewingRef.current[sessionId] !== isReviewing) {
             saveSessionStatus(sessionId, sessionWorktreeMap, worktreePaths, {
               isReviewing,
@@ -58,7 +61,9 @@ export function useImmediateSessionStateSave() {
       }
 
       if (waitingChanged) {
-        for (const [sessionId, isWaiting] of Object.entries(waitingForInputSessionIds)) {
+        for (const [sessionId, isWaiting] of Object.entries(
+          waitingForInputSessionIds
+        )) {
           if (prevWaitingRef.current[sessionId] !== isWaiting) {
             saveSessionStatus(sessionId, sessionWorktreeMap, worktreePaths, {
               waitingForInput: isWaiting,
@@ -77,7 +82,10 @@ export function useImmediateSessionStateSave() {
 
       if (labelsChanged) {
         for (const [sessionId, label] of Object.entries(sessionLabels)) {
-          if (JSON.stringify(prevLabelsRef.current[sessionId]) !== JSON.stringify(label)) {
+          if (
+            JSON.stringify(prevLabelsRef.current[sessionId]) !==
+            JSON.stringify(label)
+          ) {
             saveSessionStatus(sessionId, sessionWorktreeMap, worktreePaths, {
               label,
             })

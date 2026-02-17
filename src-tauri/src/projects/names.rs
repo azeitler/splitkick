@@ -76,7 +76,7 @@ mod tests {
 
     #[test]
     fn test_generate_unique_workspace_name() {
-        let existing = vec!["swift-falcon".to_string(), "calm-eagle".to_string()];
+        let existing = ["swift-falcon".to_string(), "calm-eagle".to_string()];
 
         let name = generate_unique_workspace_name(|n| existing.contains(&n.to_string()));
 

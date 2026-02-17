@@ -387,7 +387,7 @@ fn default_show_keybinding_hints() -> bool {
 /// Customizable prompts for AI-powered features.
 /// Fields are Option<String>: None = use current app default (auto-updates on new versions),
 /// Some(text) = user customization (preserved across updates).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct MagicPrompts {
     #[serde(default)]
     pub investigate_issue: Option<String>,
@@ -706,31 +706,12 @@ pub struct MagicPromptProviders {
     pub session_recap_provider: Option<String>,
 }
 
-impl Default for MagicPrompts {
-    fn default() -> Self {
-        Self {
-            investigate_issue: None,
-            investigate_pr: None,
-            pr_content: None,
-            commit_message: None,
-            code_review: None,
-            context_summary: None,
-            resolve_conflicts: None,
-            investigate_workflow_run: None,
-            release_notes: None,
-            session_naming: None,
-            parallel_execution: None,
-            global_system_prompt: None,
-            session_recap: None,
-        }
-    }
-}
-
 impl MagicPrompts {
     /// Migrate prompts that match the current default to None.
     /// This ensures users who never customized a prompt get auto-updated defaults.
     fn migrate_defaults(&mut self) {
-        let defaults: [(fn() -> String, &mut Option<String>); 9] = [
+        type DefaultEntry<'a> = (fn() -> String, &'a mut Option<String>);
+        let defaults: [DefaultEntry; 9] = [
             (
                 default_investigate_issue_prompt,
                 &mut self.investigate_issue,
@@ -982,7 +963,11 @@ async fn load_preferences(app: AppHandle) -> Result<AppPreferences, String> {
             if let Err(e) = std::fs::write(&path, &profile.settings_json) {
                 log::error!("Failed to migrate CLI profile '{}': {e}", profile.name);
             } else {
-                log::info!("Migrated CLI profile '{}' to {}", profile.name, path.display());
+                log::info!(
+                    "Migrated CLI profile '{}' to {}",
+                    profile.name,
+                    path.display()
+                );
                 needs_resave = true;
             }
         }
@@ -1076,8 +1061,7 @@ async fn save_cli_profile(name: String, settings_json: String) -> Result<String,
 
     // Ensure ~/.claude/ exists
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create directory: {e}"))?;
+        std::fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {e}"))?;
     }
 
     // Atomic write via temp file

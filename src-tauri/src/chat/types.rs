@@ -419,7 +419,11 @@ pub struct Session {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_run_execution_mode: Option<String>,
     /// User-assigned label with color (e.g. "Needs testing")
-    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "deserialize_label_compat")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_label_compat"
+    )]
     pub label: Option<LabelData>,
 }
 
@@ -919,7 +923,11 @@ pub struct SessionMetadata {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub digest: Option<SessionDigest>,
     /// User-assigned label with color (e.g. "Needs testing")
-    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "deserialize_label_compat")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_label_compat"
+    )]
     pub label: Option<LabelData>,
 
     /// Run history - each entry corresponds to one Claude CLI execution

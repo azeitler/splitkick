@@ -337,7 +337,10 @@ export const MagicPromptsPane: React.FC = () => {
     preferences?.magic_prompt_models ?? DEFAULT_MAGIC_PROMPT_MODELS
   const currentProviders =
     preferences?.magic_prompt_providers ?? DEFAULT_MAGIC_PROMPT_PROVIDERS
-  const profiles = preferences?.custom_cli_profiles ?? []
+  const profiles = useMemo(
+    () => preferences?.custom_cli_profiles ?? [],
+    [preferences?.custom_cli_profiles]
+  )
   // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
   const selectedConfig = PROMPT_CONFIGS.find(c => c.key === selectedKey)!
   const currentValue =
@@ -358,9 +361,18 @@ export const MagicPromptsPane: React.FC = () => {
       if (!env) return MODEL_OPTIONS
       const suffix = (m?: string) => (m ? ` (${m})` : '')
       return [
-        { value: 'opus' as const, label: `Opus${suffix(env.ANTHROPIC_DEFAULT_OPUS_MODEL || env.ANTHROPIC_MODEL)}` },
-        { value: 'sonnet' as const, label: `Sonnet${suffix(env.ANTHROPIC_DEFAULT_SONNET_MODEL || env.ANTHROPIC_MODEL)}` },
-        { value: 'haiku' as const, label: `Haiku${suffix(env.ANTHROPIC_DEFAULT_HAIKU_MODEL || env.ANTHROPIC_MODEL)}` },
+        {
+          value: 'opus' as const,
+          label: `Opus${suffix(env.ANTHROPIC_DEFAULT_OPUS_MODEL || env.ANTHROPIC_MODEL)}`,
+        },
+        {
+          value: 'sonnet' as const,
+          label: `Sonnet${suffix(env.ANTHROPIC_DEFAULT_SONNET_MODEL || env.ANTHROPIC_MODEL)}`,
+        },
+        {
+          value: 'haiku' as const,
+          label: `Haiku${suffix(env.ANTHROPIC_DEFAULT_HAIKU_MODEL || env.ANTHROPIC_MODEL)}`,
+        },
       ]
     } catch {
       return MODEL_OPTIONS
@@ -408,7 +420,13 @@ export const MagicPromptsPane: React.FC = () => {
         })
       }, 500)
     },
-    [preferences, savePreferences, currentPrompts, selectedKey, selectedConfig.defaultValue]
+    [
+      preferences,
+      savePreferences,
+      currentPrompts,
+      selectedKey,
+      selectedConfig.defaultValue,
+    ]
   )
 
   const handleBlur = useCallback(() => {
@@ -469,7 +487,8 @@ export const MagicPromptsPane: React.FC = () => {
         ...preferences,
         magic_prompt_providers: {
           ...currentProviders,
-          [selectedConfig.providerKey]: provider === 'anthropic' ? null : provider,
+          [selectedConfig.providerKey]:
+            provider === 'anthropic' ? null : provider,
         },
       })
     },
@@ -579,7 +598,9 @@ export const MagicPromptsPane: React.FC = () => {
                 <span className="text-xs text-muted-foreground">Model</span>
                 <Select
                   value={currentModel}
-                  onValueChange={(v: string) => handleModelChange(v as ClaudeModel)}
+                  onValueChange={(v: string) =>
+                    handleModelChange(v as ClaudeModel)
+                  }
                 >
                   <SelectTrigger className="w-[220px] h-8 text-xs">
                     <SelectValue />

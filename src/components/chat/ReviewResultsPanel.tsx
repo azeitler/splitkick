@@ -204,7 +204,10 @@ const FindingCard = memo(function FindingCard({
             {/* File location */}
             <p className="text-xs font-mono">
               <span className="text-muted-foreground">Affected code: </span>
-              <span className="text-foreground">{finding.file}{finding.line ? `:${finding.line}` : ''}</span>
+              <span className="text-foreground">
+                {finding.file}
+                {finding.line ? `:${finding.line}` : ''}
+              </span>
             </p>
 
             {/* Description */}
@@ -306,7 +309,8 @@ export function ReviewResultsPanel({ sessionId }: ReviewResultsPanelProps) {
       index: number,
       customSuggestion?: string
     ) => {
-      const { activeWorktreeId, activeWorktreePath, markReviewFindingFixed } = useChatStore.getState()
+      const { activeWorktreeId, activeWorktreePath, markReviewFindingFixed } =
+        useChatStore.getState()
       if (!activeWorktreePath || !activeWorktreeId) return
 
       setFixingIndices(prev => new Set(prev).add(index))
@@ -443,8 +447,13 @@ Please apply all these fixes to the codebase.`
     <div className="relative flex h-full flex-col bg-background border-l">
       {/* Sidebar title bar */}
       <div className="flex items-center justify-between border-b px-3 py-2">
-        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Review</span>
-        <ModalCloseButton size="sm" onClick={() => useChatStore.getState().setReviewSidebarVisible(false)} />
+        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+          Review
+        </span>
+        <ModalCloseButton
+          size="sm"
+          onClick={() => useChatStore.getState().setReviewSidebarVisible(false)}
+        />
       </div>
       {/* Header with summary */}
       <div className="border-b p-3">
@@ -479,11 +488,7 @@ Please apply all these fixes to the codebase.`
           <div className="flex items-center gap-2">
             {/* Fix All button */}
             {unfixedCount > 0 && (
-              <Button
-                onClick={handleFixAll}
-                disabled={isFixingAll}
-                size="sm"
-              >
+              <Button onClick={handleFixAll} disabled={isFixingAll} size="sm">
                 {isFixingAll ? (
                   <>
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -555,4 +560,3 @@ Please apply all these fixes to the codebase.`
     </div>
   )
 }
-

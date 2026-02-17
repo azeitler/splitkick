@@ -3,7 +3,11 @@ import { CheckCircle, Loader2, ShieldAlert, XCircle } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { usePreferences, useSavePreferences } from '@/services/preferences'
 import {
@@ -68,7 +72,9 @@ function HealthIndicator({
               needs auth
             </span>
           </TooltipTrigger>
-          <TooltipContent>{"Run 'claude /mcp' in your terminal to authenticate"}</TooltipContent>
+          <TooltipContent>
+            {"Run 'claude /mcp' in your terminal to authenticate"}
+          </TooltipContent>
         </Tooltip>
       )
     case 'couldNotConnect':
@@ -80,7 +86,9 @@ function HealthIndicator({
               connection failed
             </span>
           </TooltipTrigger>
-          <TooltipContent>Could not connect -- check that the server is running</TooltipContent>
+          <TooltipContent>
+            Could not connect -- check that the server is running
+          </TooltipContent>
         </Tooltip>
       )
     case 'disabled':
@@ -118,7 +126,11 @@ export const McpServersPane: React.FC = () => {
   useEffect(() => {
     if (!preferences || !mcpServers) return
     const allServerNames = mcpServers.filter(s => !s.disabled).map(s => s.name)
-    const newServers = getNewServersToAutoEnable(mcpServers, enabledServers, knownServers)
+    const newServers = getNewServersToAutoEnable(
+      mcpServers,
+      enabledServers,
+      knownServers
+    )
     const updatedKnown = [...new Set([...knownServers, ...allServerNames])]
     const knownChanged = updatedKnown.length !== knownServers.length
     if (newServers.length > 0 || knownChanged) {

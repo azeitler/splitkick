@@ -91,4 +91,3 @@ export function TerminalPanel({ isCollapsed, onExpand }: TerminalPanelProps) {
     </div>
   )
 }
-

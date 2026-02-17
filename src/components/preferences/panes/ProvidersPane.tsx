@@ -143,7 +143,11 @@ const CliProfilesEditor: React.FC<{
       return
     }
 
-    const newProfile: CustomCliProfile = { name, settings_json: editJson, supports_thinking: editSupportsThinking }
+    const newProfile: CustomCliProfile = {
+      name,
+      settings_json: editJson,
+      supports_thinking: editSupportsThinking,
+    }
     if (editingIndex !== null) {
       const updated = [...profiles]
       updated[editingIndex] = newProfile
@@ -163,7 +167,9 @@ const CliProfilesEditor: React.FC<{
     setEditingIndex(index)
     setEditName(profile.name)
     setEditJson(profile.settings_json)
-    const predefined = PREDEFINED_CLI_PROFILES.find(p => p.name === profile.name)
+    const predefined = PREDEFINED_CLI_PROFILES.find(
+      p => p.name === profile.name
+    )
     setEditSupportsThinking(
       (profile.supports_thinking ?? predefined?.supports_thinking) !== false
     )
@@ -259,7 +265,9 @@ const CliProfilesEditor: React.FC<{
               checked={editSupportsThinking}
               onCheckedChange={setEditSupportsThinking}
             />
-            <p className="text-sm text-muted-foreground">Supports thinking/effort levels</p>
+            <p className="text-sm text-muted-foreground">
+              Supports thinking/effort levels
+            </p>
           </div>
           {jsonError && <p className="text-xs text-destructive">{jsonError}</p>}
           <div className="flex gap-2">

@@ -133,7 +133,12 @@ import { supportsAdaptiveThinking } from '@/lib/model-utils'
 import { useClaudeCliStatus } from '@/services/claude-cli'
 import { usePrStatus, usePrStatusEvents } from '@/services/pr-status'
 import type { PrDisplayStatus, CheckStatus } from '@/types/pr-status'
-import type { QueuedMessage, ExecutionMode, Session, SessionDigest } from '@/types/chat'
+import type {
+  QueuedMessage,
+  ExecutionMode,
+  Session,
+  SessionDigest,
+} from '@/types/chat'
 import type { DiffRequest } from '@/types/git-diff'
 import { GitDiffModal } from './GitDiffModal'
 import { FileDiffModal } from './FileDiffModal'
@@ -213,7 +218,7 @@ export function ChatWindow({
   )
   // Session label for top-right badge
   const sessionLabel = useChatStore(state =>
-    activeSessionId ? state.sessionLabels[activeSessionId] ?? null : null
+    activeSessionId ? (state.sessionLabels[activeSessionId] ?? null) : null
   )
 
   // Function selectors - these return stable function references
@@ -225,7 +230,7 @@ export function ChatWindow({
   // Subscribe to the size of answered questions (a stable primitive) to trigger re-renders
   // when questions are answered, without creating new Set references on every store update
   const answeredQuestionsSize = useChatStore(state =>
-    activeSessionId ? state.answeredQuestions[activeSessionId]?.size ?? 0 : 0
+    activeSessionId ? (state.answeredQuestions[activeSessionId]?.size ?? 0) : 0
   )
   // Review sidebar state
   const reviewSidebarVisible = useChatStore(state => state.reviewSidebarVisible)
@@ -239,7 +244,6 @@ export function ChatWindow({
       ? (state.viewingCanvasTab[state.activeWorktreeId] ?? true)
       : false
   )
-
 
   const isStreamingPlanApproved = useChatStore(
     state => state.isStreamingPlanApproved
@@ -301,7 +305,6 @@ export function ChatWindow({
   const handleReviewSidebarExpand = useCallback(() => {
     useChatStore.getState().setReviewSidebarVisible(true)
   }, [])
-
 
   // Actions - get via getState() for stable references (no subscriptions needed)
   const {
@@ -456,9 +459,12 @@ export function ChatWindow({
     deferredSessionId ? state.selectedProviders[deferredSessionId] : undefined
   )
   const sessionProvider = session?.selected_provider ?? zustandProvider
-  const selectedProvider = sessionProvider !== undefined ? sessionProvider : defaultProvider
+  const selectedProvider =
+    sessionProvider !== undefined ? sessionProvider : defaultProvider
   // __anthropic__ is the sentinel for "use default Anthropic" — treat as non-custom for feature detection
-  const isCustomProvider = Boolean(selectedProvider && selectedProvider !== '__anthropic__')
+  const isCustomProvider = Boolean(
+    selectedProvider && selectedProvider !== '__anthropic__'
+  )
 
   // Per-session thinking level, falls back to preferences default
   const defaultThinkingLevel =
@@ -513,7 +519,12 @@ export function ChatWindow({
     [project?.known_mcp_servers, preferences?.known_mcp_servers]
   )
   const newAutoEnabled = useMemo(
-    () => getNewServersToAutoEnable(availableMcpServers, baseEnabledMcpServers, knownMcpServers),
+    () =>
+      getNewServersToAutoEnable(
+        availableMcpServers,
+        baseEnabledMcpServers,
+        knownMcpServers
+      ),
     [availableMcpServers, baseEnabledMcpServers, knownMcpServers]
   )
   const enabledMcpServers = useMemo(
@@ -527,10 +538,9 @@ export function ChatWindow({
   // CLI version for adaptive thinking feature detection
   const { data: cliStatus } = useClaudeCliStatus()
   // Custom providers don't support Opus 4.6 adaptive thinking — use thinking levels instead
-  const useAdaptiveThinkingFlag = !isCustomProvider && supportsAdaptiveThinking(
-    selectedModel,
-    cliStatus?.version ?? null
-  )
+  const useAdaptiveThinkingFlag =
+    !isCustomProvider &&
+    supportsAdaptiveThinking(selectedModel, cliStatus?.version ?? null)
 
   // Hide thinking level UI entirely for providers that don't support it
   const customCliProfiles = preferences?.custom_cli_profiles ?? []
@@ -538,8 +548,10 @@ export function ChatWindow({
     ? customCliProfiles.find(p => p.name === selectedProvider)
     : null
   // Fall back to predefined template's supports_thinking for profiles saved before this field existed
-  const activeSupportsThinking = activeProfile?.supports_thinking
-    ?? PREDEFINED_CLI_PROFILES.find(p => p.name === selectedProvider)?.supports_thinking
+  const activeSupportsThinking =
+    activeProfile?.supports_thinking ??
+    PREDEFINED_CLI_PROFILES.find(p => p.name === selectedProvider)
+      ?.supports_thinking
   const hideThinkingLevel = activeSupportsThinking === false
 
   const isSending = isSendingForSession
@@ -872,7 +884,8 @@ export function ChatWindow({
 
   // State for recap dialog
   const [isRecapDialogOpen, setIsRecapDialogOpen] = useState(false)
-  const [recapDialogDigest, setRecapDialogDigest] = useState<SessionDigest | null>(null)
+  const [recapDialogDigest, setRecapDialogDigest] =
+    useState<SessionDigest | null>(null)
   const [isGeneratingRecap, setIsGeneratingRecap] = useState(false)
 
   // Manage dismissal state based on streaming and message ID changes
@@ -975,7 +988,9 @@ export function ChatWindow({
       }
 
       // Check for existing digest (Zustand cache → persisted)
-      const cachedDigest = useChatStore.getState().getSessionDigest(activeSessionId)
+      const cachedDigest = useChatStore
+        .getState()
+        .getSessionDigest(activeSessionId)
       const existingDigest = cachedDigest ?? session?.digest ?? null
 
       if (existingDigest && !isRecapDialogOpen) {
@@ -1005,7 +1020,10 @@ export function ChatWindow({
         useChatStore.getState().setSessionDigest(activeSessionId, digest)
 
         // Persist to disk (fire and forget)
-        invoke('update_session_digest', { sessionId: activeSessionId, digest }).catch(err => {
+        invoke('update_session_digest', {
+          sessionId: activeSessionId,
+          digest,
+        }).catch(err => {
           console.error('[ChatWindow] Failed to persist digest:', err)
         })
 
@@ -1021,7 +1039,14 @@ export function ChatWindow({
 
     window.addEventListener('open-recap', handleOpenRecap)
     return () => window.removeEventListener('open-recap', handleOpenRecap)
-  }, [isViewingCanvasTab, isModal, activeSessionId, session, isRecapDialogOpen, recapDialogDigest])
+  }, [
+    isViewingCanvasTab,
+    isModal,
+    activeSessionId,
+    session,
+    isRecapDialogOpen,
+    recapDialogDigest,
+  ])
 
   // Listen for global create-new-session event from keybinding (CMD+T)
   useEffect(() => {
@@ -1048,11 +1073,7 @@ export function ChatWindow({
     window.addEventListener('create-new-session', handleCreateNewSession)
     return () =>
       window.removeEventListener('create-new-session', handleCreateNewSession)
-  }, [
-    activeWorktreeId,
-    activeWorktreePath,
-    createSession,
-  ])
+  }, [activeWorktreeId, activeWorktreePath, createSession])
 
   // Listen for cycle-execution-mode event from keybinding (SHIFT+TAB)
   useEffect(() => {
@@ -1101,11 +1122,8 @@ export function ChatWindow({
   // (works even when textarea is disabled)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (
-        e.key !== 'Backspace' ||
-        !(e.metaKey || e.ctrlKey) ||
-        !e.altKey
-      ) return
+      if (e.key !== 'Backspace' || !(e.metaKey || e.ctrlKey) || !e.altKey)
+        return
 
       // Read all state fresh via getState() to avoid stale closures
       const state = useChatStore.getState()
@@ -1116,9 +1134,8 @@ export function ChatWindow({
       const canvasSession = state.canvasSelectedSessionIds[wtId] ?? null
       const activeSession = state.activeSessionIds[wtId] ?? null
 
-      const sessionToCancel = isCanvas && canvasSession
-        ? canvasSession
-        : activeSession
+      const sessionToCancel =
+        isCanvas && canvasSession ? canvasSession : activeSession
 
       if (!sessionToCancel) return
 
@@ -1300,7 +1317,8 @@ export function ChatWindow({
       preferences?.parallel_execution_prompt_enabled,
       preferences?.chrome_enabled,
       preferences?.ai_language,
-      preferences?.allow_web_tools_in_plan_mode,
+      preferences?.magic_prompts?.parallel_execution,
+      resolveCustomProfile,
     ]
   )
 
@@ -1352,7 +1370,10 @@ export function ChatWindow({
       const hasManualOverride = useChatStore
         .getState()
         .hasManualThinkingOverride(activeSessionId)
-      const diffResolved = resolveCustomProfile(model, selectedProviderRef.current)
+      const diffResolved = resolveCustomProfile(
+        model,
+        selectedProviderRef.current
+      )
       sendMessage.mutate(
         {
           sessionId: activeSessionId,
@@ -1388,6 +1409,7 @@ export function ChatWindow({
       activeWorktreePath,
       preferences,
       sendMessage,
+      resolveCustomProfile,
     ]
   )
 
@@ -1449,14 +1471,12 @@ export function ChatWindow({
         textFiles.length > 0 ||
         skills.length > 0
       ) {
-        useChatStore
-          .getState()
-          .setLastSentAttachments(activeSessionId, {
-            images,
-            files,
-            textFiles,
-            skills,
-          })
+        useChatStore.getState().setLastSentAttachments(activeSessionId, {
+          images,
+          files,
+          textFiles,
+          skills,
+        })
       }
 
       // Clear input and pending attachments immediately
@@ -1684,7 +1704,9 @@ export function ChatWindow({
   const handleToggleMcpServer = useCallback((serverName: string) => {
     const sessionId = activeSessionIdRef.current
     if (!sessionId) return
-    useChatStore.getState().toggleMcpServer(sessionId, serverName, enabledMcpServersRef.current)
+    useChatStore
+      .getState()
+      .toggleMcpServer(sessionId, serverName, enabledMcpServersRef.current)
   }, [])
 
   const handleOpenProjectSettings = useCallback(() => {
@@ -1726,11 +1748,14 @@ export function ChatWindow({
     async (type: 'issue' | 'pr') => {
       if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
 
-      const modelKey = type === 'issue' ? 'investigate_issue_model' : 'investigate_pr_model'
-      const providerKey = type === 'issue' ? 'investigate_issue_provider' : 'investigate_pr_provider'
+      const modelKey =
+        type === 'issue' ? 'investigate_issue_model' : 'investigate_pr_model'
+      const providerKey =
+        type === 'issue'
+          ? 'investigate_issue_provider'
+          : 'investigate_pr_provider'
       const investigateModel =
-        preferences?.magic_prompt_models?.[modelKey] ??
-        selectedModelRef.current
+        preferences?.magic_prompt_models?.[modelKey] ?? selectedModelRef.current
       const investigateProvider = resolveMagicPromptProvider(
         preferences?.magic_prompt_providers,
         providerKey,
@@ -1808,10 +1833,12 @@ export function ChatWindow({
       })
 
       // Compute adaptive thinking for the resolved provider (not the stale ref)
-      const investigateIsCustom = Boolean(investigateProvider && investigateProvider !== '__anthropic__')
-      const investigateUseAdaptive = !investigateIsCustom && supportsAdaptiveThinking(
-        investigateModel, cliStatus?.version ?? null
+      const investigateIsCustom = Boolean(
+        investigateProvider && investigateProvider !== '__anthropic__'
       )
+      const investigateUseAdaptive =
+        !investigateIsCustom &&
+        supportsAdaptiveThinking(investigateModel, cliStatus?.version ?? null)
 
       sendMessage.mutate(
         {
@@ -1849,12 +1876,11 @@ export function ChatWindow({
       queryClient,
       preferences?.magic_prompts?.investigate_issue,
       preferences?.magic_prompts?.investigate_pr,
-      preferences?.magic_prompt_models?.investigate_issue_model,
-      preferences?.magic_prompt_models?.investigate_pr_model,
-      preferences?.magic_prompt_providers?.investigate_issue_provider,
-      preferences?.magic_prompt_providers?.investigate_pr_provider,
       preferences?.default_provider,
       preferences?.parallel_execution_prompt_enabled,
+      preferences?.magic_prompts?.parallel_execution,
+      preferences?.magic_prompt_models,
+      preferences?.magic_prompt_providers,
       preferences?.chrome_enabled,
       preferences?.ai_language,
       setSessionProvider,
@@ -1979,10 +2005,12 @@ export function ChatWindow({
       const worktreePath = targetWorktreePath
 
       // Compute adaptive thinking for the resolved provider (not the stale ref)
-      const investigateIsCustom = Boolean(investigateProvider && investigateProvider !== '__anthropic__')
-      const investigateUseAdaptive = !investigateIsCustom && supportsAdaptiveThinking(
-        investigateModel, cliStatus?.version ?? null
+      const investigateIsCustom = Boolean(
+        investigateProvider && investigateProvider !== '__anthropic__'
       )
+      const investigateUseAdaptive =
+        !investigateIsCustom &&
+        supportsAdaptiveThinking(investigateModel, cliStatus?.version ?? null)
 
       const sendInvestigateMessage = (targetSessionId: string) => {
         const {
@@ -2071,9 +2099,10 @@ export function ChatWindow({
       queryClient,
       preferences?.magic_prompts?.investigate_workflow_run,
       preferences?.magic_prompt_models?.investigate_workflow_run_model,
-      preferences?.magic_prompt_providers?.investigate_workflow_run_provider,
       preferences?.default_provider,
       preferences?.parallel_execution_prompt_enabled,
+      preferences?.magic_prompts?.parallel_execution,
+      preferences?.magic_prompt_providers,
       preferences?.chrome_enabled,
       preferences?.ai_language,
       setSessionProvider,
@@ -2345,7 +2374,10 @@ export function ChatWindow({
       const hasManualOverride = useChatStore
         .getState()
         .hasManualThinkingOverride(sessionId)
-      const fixResolved = resolveCustomProfile(selectedModelRef.current, selectedProviderRef.current)
+      const fixResolved = resolveCustomProfile(
+        selectedModelRef.current,
+        selectedProviderRef.current
+      )
 
       // If session is already busy, queue the fix message instead of sending immediately
       if (isSending(sessionId)) {
@@ -2425,6 +2457,8 @@ export function ChatWindow({
   }, [
     sendMessage,
     preferences?.parallel_execution_prompt_enabled,
+    preferences?.magic_prompts?.parallel_execution,
+    resolveCustomProfile,
     preferences?.chrome_enabled,
     preferences?.ai_language,
     isModal,
@@ -2448,7 +2482,8 @@ export function ChatWindow({
     if (!activeSessionId || !activeWorktreeId) return
     // Read directly from store to avoid React re-render delay —
     // allows canceling before the first response chunk arrives
-    const sending = useChatStore.getState().sendingSessionIds[activeSessionId] ?? false
+    const sending =
+      useChatStore.getState().sendingSessionIds[activeSessionId] ?? false
     if (!sending) return
 
     const cancelled = await cancelChatMessage(activeSessionId, activeWorktreeId)
@@ -2641,391 +2676,408 @@ export function ChatWindow({
           />
         ) : (
           <ResizablePanelGroup direction="horizontal" className="flex-1">
-            <ResizablePanel defaultSize={hasReviewResults && reviewSidebarVisible ? 50 : 100} minSize={40}>
-          <ResizablePanelGroup direction="vertical" className="h-full">
             <ResizablePanel
-              defaultSize={terminalVisible ? 70 : 100}
-              minSize={30}
+              defaultSize={hasReviewResults && reviewSidebarVisible ? 50 : 100}
+              minSize={40}
             >
-              <div className="flex h-full flex-col">
-                {/* Messages area */}
-                <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
-                  {/* Session label badge - absolute positioned to avoid covering content */}
-                  {sessionLabel && (
-                    <span
-                      className="absolute top-2 right-4 z-20 inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium"
-                      style={{
-                        backgroundColor: sessionLabel.color,
-                        color: getLabelTextColor(sessionLabel.color),
-                      }}
-                    >
-                      {sessionLabel.name}
-                    </span>
-                  )}
-                  {/* Bottom fade gradient so messages don't hard-cut at the input area */}
-                  <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-10 h-8 bg-gradient-to-b from-transparent to-background" />
-                  {/* Session digest reminder (shows when opening a session that had activity while out of focus) */}
-                  {activeSessionId && (
-                    <SessionDigestReminder sessionId={activeSessionId} />
-                  )}
-                  <ScrollArea
-                    className="h-full w-full"
-                    viewportRef={scrollViewportRef}
-                    onScroll={handleScroll}
-                  >
-                    <div className="mx-auto max-w-7xl px-4 py-4 md:px-6 min-w-0 w-full">
-                      <div className="select-text space-y-4 font-mono text-sm min-w-0 break-words overflow-x-auto">
-                        {/* Debug info (enabled via Settings → Experimental → Debug mode) */}
-                        {preferences?.debug_mode_enabled &&
-                          activeWorktreeId &&
-                          activeWorktreePath &&
-                          activeSessionId && (
-                            <div className="text-[0.625rem] text-muted-foreground/50 bg-muted/30 rounded font-mono">
-                              <SessionDebugPanel
-                                worktreeId={activeWorktreeId}
-                                worktreePath={activeWorktreePath}
-                                sessionId={activeSessionId}
-                                selectedModel={selectedModel}
-                                selectedProvider={selectedProvider}
+              <ResizablePanelGroup direction="vertical" className="h-full">
+                <ResizablePanel
+                  defaultSize={terminalVisible ? 70 : 100}
+                  minSize={30}
+                >
+                  <div className="flex h-full flex-col">
+                    {/* Messages area */}
+                    <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
+                      {/* Session label badge - absolute positioned to avoid covering content */}
+                      {sessionLabel && (
+                        <span
+                          className="absolute top-2 right-4 z-20 inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium"
+                          style={{
+                            backgroundColor: sessionLabel.color,
+                            color: getLabelTextColor(sessionLabel.color),
+                          }}
+                        >
+                          {sessionLabel.name}
+                        </span>
+                      )}
+                      {/* Bottom fade gradient so messages don't hard-cut at the input area */}
+                      <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-10 h-8 bg-gradient-to-b from-transparent to-background" />
+                      {/* Session digest reminder (shows when opening a session that had activity while out of focus) */}
+                      {activeSessionId && (
+                        <SessionDigestReminder sessionId={activeSessionId} />
+                      )}
+                      <ScrollArea
+                        className="h-full w-full"
+                        viewportRef={scrollViewportRef}
+                        onScroll={handleScroll}
+                      >
+                        <div className="mx-auto max-w-7xl px-4 py-4 md:px-6 min-w-0 w-full">
+                          <div className="select-text space-y-4 font-mono text-sm min-w-0 break-words overflow-x-auto">
+                            {/* Debug info (enabled via Settings → Experimental → Debug mode) */}
+                            {preferences?.debug_mode_enabled &&
+                              activeWorktreeId &&
+                              activeWorktreePath &&
+                              activeSessionId && (
+                                <div className="text-[0.625rem] text-muted-foreground/50 bg-muted/30 rounded font-mono">
+                                  <SessionDebugPanel
+                                    worktreeId={activeWorktreeId}
+                                    worktreePath={activeWorktreePath}
+                                    sessionId={activeSessionId}
+                                    selectedModel={selectedModel}
+                                    selectedProvider={selectedProvider}
+                                    onFileClick={setViewingFilePath}
+                                  />
+                                </div>
+                              )}
+                            {/* Setup script output from jean.json */}
+                            {setupScriptResult && activeWorktreeId && (
+                              <SetupScriptOutput
+                                result={setupScriptResult}
+                                onDismiss={() =>
+                                  clearSetupScriptResult(activeWorktreeId)
+                                }
+                              />
+                            )}
+                            {isLoading ||
+                            isSessionsLoading ||
+                            isSessionSwitching ? (
+                              <div className="text-muted-foreground">
+                                Loading...
+                              </div>
+                            ) : !session || session.messages.length === 0 ? (
+                              <div className="text-muted-foreground">
+                                No messages yet. Start a conversation!
+                              </div>
+                            ) : (
+                              // Virtualized message list - only renders visible messages for performance
+                              <VirtualizedMessageList
+                                ref={virtualizedListRef}
+                                messages={messages}
+                                scrollContainerRef={scrollViewportRef}
+                                totalMessages={messages.length}
+                                lastPlanMessageIndex={lastPlanMessageIndex}
+                                hasFollowUpMap={hasFollowUpMap}
+                                sessionId={deferredSessionId ?? ''}
+                                worktreePath={activeWorktreePath ?? ''}
+                                approveShortcut={approveShortcut}
+                                approveShortcutYolo={approveShortcutYolo}
+                                approveButtonRef={approveButtonRef}
+                                isSending={isSending}
+                                onPlanApproval={handlePlanApproval}
+                                onPlanApprovalYolo={handlePlanApprovalYolo}
+                                onQuestionAnswer={handleQuestionAnswer}
+                                onQuestionSkip={handleSkipQuestion}
                                 onFileClick={setViewingFilePath}
+                                onEditedFileClick={setViewingFilePath}
+                                onFixFinding={handleFixFinding}
+                                onFixAllFindings={handleFixAllFindings}
+                                isQuestionAnswered={isQuestionAnswered}
+                                getSubmittedAnswers={getSubmittedAnswers}
+                                areQuestionsSkipped={areQuestionsSkipped}
+                                isFindingFixed={isFindingFixed}
+                                onCopyToInput={handleCopyToInput}
+                                shouldScrollToBottom={isAtBottom}
+                                onScrollToBottomHandled={
+                                  handleScrollToBottomHandled
+                                }
+                              />
+                            )}
+                            {isSending && activeSessionId && (
+                              <StreamingMessage
+                                sessionId={activeSessionId}
+                                contentBlocks={currentStreamingContentBlocks}
+                                toolCalls={currentToolCalls}
+                                streamingContent={streamingContent}
+                                streamingExecutionMode={streamingExecutionMode}
+                                selectedThinkingLevel={selectedThinkingLevel}
+                                approveShortcut={approveShortcut}
+                                approveShortcutYolo={approveShortcutYolo}
+                                onQuestionAnswer={handleQuestionAnswer}
+                                onQuestionSkip={handleSkipQuestion}
+                                onFileClick={setViewingFilePath}
+                                onEditedFileClick={setViewingFilePath}
+                                isQuestionAnswered={isQuestionAnswered}
+                                getSubmittedAnswers={getSubmittedAnswers}
+                                areQuestionsSkipped={areQuestionsSkipped}
+                                isStreamingPlanApproved={
+                                  isStreamingPlanApproved
+                                }
+                                onStreamingPlanApproval={
+                                  handleStreamingPlanApproval
+                                }
+                                onStreamingPlanApprovalYolo={
+                                  handleStreamingPlanApprovalYolo
+                                }
+                              />
+                            )}
+
+                            {/* Permission approval UI - shown when tools require approval (never in yolo mode) */}
+                            {pendingDenials.length > 0 &&
+                              activeSessionId &&
+                              !isSending &&
+                              executionMode !== 'yolo' && (
+                                <PermissionApproval
+                                  sessionId={activeSessionId}
+                                  denials={pendingDenials}
+                                  onApprove={handlePermissionApproval}
+                                  onApproveYolo={handlePermissionApprovalYolo}
+                                  onDeny={handlePermissionDeny}
+                                />
+                              )}
+
+                            {/* Queued messages - shown inline after streaming/messages */}
+                            {activeSessionId && (
+                              <QueuedMessagesList
+                                messages={currentQueuedMessages}
+                                sessionId={activeSessionId}
+                                onRemove={handleRemoveQueuedMessage}
+                                onForceSend={handleForceSendQueued}
+                                isSessionIdle={!isSending}
+                              />
+                            )}
+                          </div>
+                        </div>
+                      </ScrollArea>
+
+                      {/* Floating scroll buttons */}
+                      <FloatingButtons
+                        hasPendingPlan={!!pendingPlanMessage}
+                        hasStreamingPlan={hasStreamingPlan}
+                        showFindingsButton={!areFindingsVisible}
+                        isAtBottom={isAtBottom}
+                        approveShortcut={approveShortcut}
+                        onStreamingPlanApproval={handleStreamingPlanApproval}
+                        onPendingPlanApproval={
+                          handlePendingPlanApprovalCallback
+                        }
+                        onScrollToFindings={scrollToFindings}
+                        onScrollToBottom={scrollToBottom}
+                      />
+                    </div>
+
+                    {/* Error banner - shows when request fails */}
+                    {currentError && (
+                      <ErrorBanner
+                        error={currentError}
+                        onDismiss={() =>
+                          activeSessionId && setError(activeSessionId, null)
+                        }
+                      />
+                    )}
+
+                    {/* Input container - full width, centered content */}
+                    <div>
+                      <div className="mx-auto max-w-7xl">
+                        <div className="relative sm:mx-auto sm:mb-3 sm:max-w-3xl">
+                          {/* Input area - unified container with textarea and toolbar */}
+                          <form
+                            ref={formRef}
+                            onSubmit={handleSubmit}
+                            className={cn(
+                              'relative overflow-hidden border-t border-border bg-sidebar transition-all duration-150 sm:rounded-lg sm:border',
+                              isDragging &&
+                                'ring-2 ring-primary ring-inset bg-primary/5'
+                            )}
+                          >
+                            {/* Pending file preview (@ mentions) */}
+                            <FilePreview
+                              files={currentPendingFiles}
+                              onRemove={handleRemovePendingFile}
+                            />
+
+                            {/* Pending image preview */}
+                            <ImagePreview
+                              images={currentPendingImages}
+                              onRemove={handleRemovePendingImage}
+                            />
+
+                            {/* Pending text file preview */}
+                            <TextFilePreview
+                              textFiles={currentPendingTextFiles}
+                              onRemove={handleRemovePendingTextFile}
+                            />
+
+                            {/* Pending skills preview */}
+                            {currentPendingSkills.length > 0 && (
+                              <div className="px-4 md:px-6 pt-2 flex flex-wrap gap-2">
+                                {currentPendingSkills.map(skill => (
+                                  <SkillBadge
+                                    key={skill.id}
+                                    skill={skill}
+                                    onRemove={() =>
+                                      handleRemovePendingSkill(skill.id)
+                                    }
+                                  />
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Task widget - inline fallback for narrow screens */}
+                            {activeTodos.length > 0 &&
+                              (dismissedTodoMessageId === null ||
+                                (todoSourceMessageId !== null &&
+                                  todoSourceMessageId !==
+                                    dismissedTodoMessageId)) && (
+                                <div className="px-4 md:px-6 pt-2 xl:hidden">
+                                  <TodoWidget
+                                    todos={normalizeTodosForDisplay(
+                                      activeTodos,
+                                      isFromStreaming
+                                    )}
+                                    isStreaming={isSending}
+                                    onClose={() =>
+                                      setDismissedTodoMessageId(
+                                        todoSourceMessageId ?? '__streaming__'
+                                      )
+                                    }
+                                  />
+                                </div>
+                              )}
+
+                            {/* Textarea section */}
+                            <div className="px-4 pt-3 pb-2 md:px-6">
+                              <ChatInput
+                                activeSessionId={activeSessionId}
+                                activeWorktreePath={activeWorktreePath}
+                                isSending={isSending}
+                                executionMode={executionMode}
+                                focusChatShortcut={focusChatShortcut}
+                                onSubmit={handleSubmit}
+                                onCancel={handleCancel}
+                                onCommandExecute={handleCommandExecute}
+                                onHasValueChange={setHasInputValue}
+                                formRef={formRef}
+                                inputRef={inputRef}
                               />
                             </div>
-                          )}
-                        {/* Setup script output from jean.json */}
-                        {setupScriptResult && activeWorktreeId && (
-                          <SetupScriptOutput
-                            result={setupScriptResult}
-                            onDismiss={() =>
-                              clearSetupScriptResult(activeWorktreeId)
-                            }
-                          />
-                        )}
-                        {isLoading ||
-                          isSessionsLoading ||
-                          isSessionSwitching ? (
-                          <div className="text-muted-foreground">
-                            Loading...
-                          </div>
-                        ) : !session || session.messages.length === 0 ? (
-                          <div className="text-muted-foreground">
-                            No messages yet. Start a conversation!
-                          </div>
-                        ) : (
-                          // Virtualized message list - only renders visible messages for performance
-                          <VirtualizedMessageList
-                            ref={virtualizedListRef}
-                            messages={messages}
-                            scrollContainerRef={scrollViewportRef}
-                            totalMessages={messages.length}
-                            lastPlanMessageIndex={lastPlanMessageIndex}
-                            hasFollowUpMap={hasFollowUpMap}
-                            sessionId={deferredSessionId ?? ''}
-                            worktreePath={activeWorktreePath ?? ''}
-                            approveShortcut={approveShortcut}
-                            approveShortcutYolo={approveShortcutYolo}
-                            approveButtonRef={approveButtonRef}
-                            isSending={isSending}
-                            onPlanApproval={handlePlanApproval}
-                            onPlanApprovalYolo={handlePlanApprovalYolo}
-                            onQuestionAnswer={handleQuestionAnswer}
-                            onQuestionSkip={handleSkipQuestion}
-                            onFileClick={setViewingFilePath}
-                            onEditedFileClick={setViewingFilePath}
-                            onFixFinding={handleFixFinding}
-                            onFixAllFindings={handleFixAllFindings}
-                            isQuestionAnswered={isQuestionAnswered}
-                            getSubmittedAnswers={getSubmittedAnswers}
-                            areQuestionsSkipped={areQuestionsSkipped}
-                            isFindingFixed={isFindingFixed}
-                            onCopyToInput={handleCopyToInput}
-                            shouldScrollToBottom={isAtBottom}
-                            onScrollToBottomHandled={
-                              handleScrollToBottomHandled
-                            }
-                          />
-                        )}
-                        {isSending && activeSessionId && (
-                          <StreamingMessage
-                            sessionId={activeSessionId}
-                            contentBlocks={currentStreamingContentBlocks}
-                            toolCalls={currentToolCalls}
-                            streamingContent={streamingContent}
-                            streamingExecutionMode={streamingExecutionMode}
-                            selectedThinkingLevel={selectedThinkingLevel}
-                            approveShortcut={approveShortcut}
-                            approveShortcutYolo={approveShortcutYolo}
-                            onQuestionAnswer={handleQuestionAnswer}
-                            onQuestionSkip={handleSkipQuestion}
-                            onFileClick={setViewingFilePath}
-                            onEditedFileClick={setViewingFilePath}
-                            isQuestionAnswered={isQuestionAnswered}
-                            getSubmittedAnswers={getSubmittedAnswers}
-                            areQuestionsSkipped={areQuestionsSkipped}
-                            isStreamingPlanApproved={isStreamingPlanApproved}
-                            onStreamingPlanApproval={
-                              handleStreamingPlanApproval
-                            }
-                            onStreamingPlanApprovalYolo={
-                              handleStreamingPlanApprovalYolo
-                            }
-                          />
-                        )}
 
-                        {/* Permission approval UI - shown when tools require approval (never in yolo mode) */}
-                        {pendingDenials.length > 0 &&
-                          activeSessionId &&
-                          !isSending &&
-                          executionMode !== 'yolo' && (
-                            <PermissionApproval
-                              sessionId={activeSessionId}
-                              denials={pendingDenials}
-                              onApprove={handlePermissionApproval}
-                              onApproveYolo={handlePermissionApprovalYolo}
-                              onDeny={handlePermissionDeny}
-                            />
-                          )}
-
-                        {/* Queued messages - shown inline after streaming/messages */}
-                        {activeSessionId && (
-                          <QueuedMessagesList
-                            messages={currentQueuedMessages}
-                            sessionId={activeSessionId}
-                            onRemove={handleRemoveQueuedMessage}
-                            onForceSend={handleForceSendQueued}
-                            isSessionIdle={!isSending}
-                          />
-                        )}
-                      </div>
-                    </div>
-                  </ScrollArea>
-
-                  {/* Floating scroll buttons */}
-                  <FloatingButtons
-                    hasPendingPlan={!!pendingPlanMessage}
-                    hasStreamingPlan={hasStreamingPlan}
-                    showFindingsButton={!areFindingsVisible}
-                    isAtBottom={isAtBottom}
-                    approveShortcut={approveShortcut}
-                    onStreamingPlanApproval={handleStreamingPlanApproval}
-                    onPendingPlanApproval={handlePendingPlanApprovalCallback}
-                    onScrollToFindings={scrollToFindings}
-                    onScrollToBottom={scrollToBottom}
-                  />
-                </div>
-
-                {/* Error banner - shows when request fails */}
-                {currentError && (
-                  <ErrorBanner
-                    error={currentError}
-                    onDismiss={() =>
-                      activeSessionId && setError(activeSessionId, null)
-                    }
-                  />
-                )}
-
-                {/* Input container - full width, centered content */}
-                <div>
-                  <div className="mx-auto max-w-7xl">
-                    <div className="relative sm:mx-auto sm:mb-3 sm:max-w-3xl">
-                    {/* Input area - unified container with textarea and toolbar */}
-                    <form
-                      ref={formRef}
-                      onSubmit={handleSubmit}
-                      className={cn(
-                        'relative overflow-hidden border-t border-border bg-sidebar transition-all duration-150 sm:rounded-lg sm:border',
-                        isDragging &&
-                        'ring-2 ring-primary ring-inset bg-primary/5'
-                      )}
-                    >
-                      {/* Pending file preview (@ mentions) */}
-                      <FilePreview
-                        files={currentPendingFiles}
-                        onRemove={handleRemovePendingFile}
-                      />
-
-                      {/* Pending image preview */}
-                      <ImagePreview
-                        images={currentPendingImages}
-                        onRemove={handleRemovePendingImage}
-                      />
-
-                      {/* Pending text file preview */}
-                      <TextFilePreview
-                        textFiles={currentPendingTextFiles}
-                        onRemove={handleRemovePendingTextFile}
-                      />
-
-                      {/* Pending skills preview */}
-                      {currentPendingSkills.length > 0 && (
-                        <div className="px-4 md:px-6 pt-2 flex flex-wrap gap-2">
-                          {currentPendingSkills.map(skill => (
-                            <SkillBadge
-                              key={skill.id}
-                              skill={skill}
-                              onRemove={() =>
-                                handleRemovePendingSkill(skill.id)
+                            {/* Bottom toolbar - memoized to prevent re-renders */}
+                            <ChatToolbar
+                              isSending={isSending}
+                              hasPendingQuestions={hasPendingQuestions}
+                              hasPendingAttachments={hasPendingAttachments}
+                              hasInputValue={hasInputValue}
+                              executionMode={executionMode}
+                              selectedModel={selectedModel}
+                              selectedProvider={selectedProvider}
+                              providerLocked={
+                                (session?.messages?.length ?? 0) > 0
                               }
-                            />
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Task widget - inline fallback for narrow screens */}
-                      {activeTodos.length > 0 &&
-                        (dismissedTodoMessageId === null ||
-                          (todoSourceMessageId !== null &&
-                            todoSourceMessageId !==
-                            dismissedTodoMessageId)) && (
-                          <div className="px-4 md:px-6 pt-2 xl:hidden">
-                            <TodoWidget
-                              todos={normalizeTodosForDisplay(
-                                activeTodos,
-                                isFromStreaming
-                              )}
-                              isStreaming={isSending}
-                              onClose={() =>
-                                setDismissedTodoMessageId(
-                                  todoSourceMessageId ?? '__streaming__'
-                                )
+                              selectedThinkingLevel={selectedThinkingLevel}
+                              selectedEffortLevel={selectedEffortLevel}
+                              thinkingOverrideActive={
+                                executionMode !== 'plan' &&
+                                (useAdaptiveThinkingFlag ||
+                                  selectedThinkingLevel !== 'off') &&
+                                !hasManualThinkingOverride
                               }
+                              useAdaptiveThinking={useAdaptiveThinkingFlag}
+                              hideThinkingLevel={hideThinkingLevel}
+                              baseBranch={gitStatus?.base_branch ?? 'main'}
+                              uncommittedAdded={uncommittedAdded}
+                              uncommittedRemoved={uncommittedRemoved}
+                              branchDiffAdded={branchDiffAdded}
+                              branchDiffRemoved={branchDiffRemoved}
+                              prUrl={worktree?.pr_url}
+                              prNumber={worktree?.pr_number}
+                              displayStatus={displayStatus}
+                              checkStatus={checkStatus}
+                              mergeableStatus={mergeableStatus}
+                              activeWorktreePath={activeWorktreePath}
+                              worktreeId={activeWorktreeId ?? null}
+                              activeSessionId={activeSessionId}
+                              projectId={worktree?.project_id}
+                              loadedIssueContexts={loadedIssueContexts ?? []}
+                              loadedPRContexts={loadedPRContexts ?? []}
+                              attachedSavedContexts={
+                                attachedSavedContexts ?? []
+                              }
+                              onOpenMagicModal={handleOpenMagicModal}
+                              onSaveContext={handleSaveContext}
+                              onLoadContext={handleLoadContext}
+                              onCommit={handleCommit}
+                              onCommitAndPush={handleCommitAndPush}
+                              onOpenPr={handleOpenPr}
+                              onReview={() =>
+                                handleReview(activeSessionId ?? undefined)
+                              }
+                              onMerge={handleMerge}
+                              onResolvePrConflicts={handleResolvePrConflicts}
+                              onResolveConflicts={handleResolveConflicts}
+                              hasOpenPr={Boolean(worktree?.pr_url)}
+                              onSetDiffRequest={setDiffRequest}
+                              onModelChange={handleToolbarModelChange}
+                              onProviderChange={handleToolbarProviderChange}
+                              customCliProfiles={
+                                preferences?.custom_cli_profiles ?? []
+                              }
+                              onThinkingLevelChange={
+                                handleToolbarThinkingLevelChange
+                              }
+                              onEffortLevelChange={
+                                handleToolbarEffortLevelChange
+                              }
+                              onSetExecutionMode={handleToolbarSetExecutionMode}
+                              onCancel={handleCancel}
+                              queuedMessageCount={currentQueuedMessages.length}
+                              availableMcpServers={availableMcpServers}
+                              enabledMcpServers={enabledMcpServers}
+                              onToggleMcpServer={handleToggleMcpServer}
+                              onOpenProjectSettings={handleOpenProjectSettings}
                             />
-                          </div>
-                        )}
+                          </form>
 
-                      {/* Textarea section */}
-                      <div className="px-4 pt-3 pb-2 md:px-6">
-                        <ChatInput
-                          activeSessionId={activeSessionId}
-                          activeWorktreePath={activeWorktreePath}
-                          isSending={isSending}
-                          executionMode={executionMode}
-                          focusChatShortcut={focusChatShortcut}
-                          onSubmit={handleSubmit}
-                          onCancel={handleCancel}
-                          onCommandExecute={handleCommandExecute}
-                          onHasValueChange={setHasInputValue}
-                          formRef={formRef}
-                          inputRef={inputRef}
-                        />
-                      </div>
-
-                      {/* Bottom toolbar - memoized to prevent re-renders */}
-                      <ChatToolbar
-                        isSending={isSending}
-                        hasPendingQuestions={hasPendingQuestions}
-                        hasPendingAttachments={hasPendingAttachments}
-                        hasInputValue={hasInputValue}
-                        executionMode={executionMode}
-                        selectedModel={selectedModel}
-                        selectedProvider={selectedProvider}
-                        providerLocked={(session?.messages?.length ?? 0) > 0}
-                        selectedThinkingLevel={selectedThinkingLevel}
-                        selectedEffortLevel={selectedEffortLevel}
-                        thinkingOverrideActive={
-                          executionMode !== 'plan' &&
-                          (useAdaptiveThinkingFlag ||
-                            selectedThinkingLevel !== 'off') &&
-                          !hasManualThinkingOverride
-                        }
-                        useAdaptiveThinking={useAdaptiveThinkingFlag}
-                        hideThinkingLevel={hideThinkingLevel}
-                        baseBranch={gitStatus?.base_branch ?? 'main'}
-                        uncommittedAdded={uncommittedAdded}
-                        uncommittedRemoved={uncommittedRemoved}
-                        branchDiffAdded={branchDiffAdded}
-                        branchDiffRemoved={branchDiffRemoved}
-                        prUrl={worktree?.pr_url}
-                        prNumber={worktree?.pr_number}
-                        displayStatus={displayStatus}
-                        checkStatus={checkStatus}
-                        mergeableStatus={mergeableStatus}
-                        activeWorktreePath={activeWorktreePath}
-                        worktreeId={activeWorktreeId ?? null}
-                        activeSessionId={activeSessionId}
-                        projectId={worktree?.project_id}
-                        loadedIssueContexts={loadedIssueContexts ?? []}
-                        loadedPRContexts={loadedPRContexts ?? []}
-                        attachedSavedContexts={attachedSavedContexts ?? []}
-                        onOpenMagicModal={handleOpenMagicModal}
-                        onSaveContext={handleSaveContext}
-                        onLoadContext={handleLoadContext}
-                        onCommit={handleCommit}
-                        onCommitAndPush={handleCommitAndPush}
-                        onOpenPr={handleOpenPr}
-                        onReview={() => handleReview(activeSessionId ?? undefined)}
-                        onMerge={handleMerge}
-                        onResolvePrConflicts={handleResolvePrConflicts}
-                        onResolveConflicts={handleResolveConflicts}
-                        hasOpenPr={Boolean(worktree?.pr_url)}
-                        onSetDiffRequest={setDiffRequest}
-                        onModelChange={handleToolbarModelChange}
-                        onProviderChange={handleToolbarProviderChange}
-                        customCliProfiles={
-                          preferences?.custom_cli_profiles ?? []
-                        }
-                        onThinkingLevelChange={handleToolbarThinkingLevelChange}
-                        onEffortLevelChange={handleToolbarEffortLevelChange}
-                        onSetExecutionMode={handleToolbarSetExecutionMode}
-                        onCancel={handleCancel}
-                        queuedMessageCount={currentQueuedMessages.length}
-                        availableMcpServers={availableMcpServers}
-                        enabledMcpServers={enabledMcpServers}
-                        onToggleMcpServer={handleToggleMcpServer}
-                        onOpenProjectSettings={handleOpenProjectSettings}
-                      />
-                    </form>
-
-                    {/* Task widget - side panel for wide screens */}
-                    {activeTodos.length > 0 &&
-                      (dismissedTodoMessageId === null ||
-                        (todoSourceMessageId !== null &&
-                          todoSourceMessageId !==
-                          dismissedTodoMessageId)) && (
-                        <div className="hidden xl:block absolute left-full bottom-0 ml-3 w-64">
-                          <TodoWidget
-                            todos={normalizeTodosForDisplay(
-                              activeTodos,
-                              isFromStreaming
+                          {/* Task widget - side panel for wide screens */}
+                          {activeTodos.length > 0 &&
+                            (dismissedTodoMessageId === null ||
+                              (todoSourceMessageId !== null &&
+                                todoSourceMessageId !==
+                                  dismissedTodoMessageId)) && (
+                              <div className="hidden xl:block absolute left-full bottom-0 ml-3 w-64">
+                                <TodoWidget
+                                  todos={normalizeTodosForDisplay(
+                                    activeTodos,
+                                    isFromStreaming
+                                  )}
+                                  isStreaming={isSending}
+                                  onClose={() =>
+                                    setDismissedTodoMessageId(
+                                      todoSourceMessageId ?? '__streaming__'
+                                    )
+                                  }
+                                />
+                              </div>
                             )}
-                            isStreaming={isSending}
-                            onClose={() =>
-                              setDismissedTodoMessageId(
-                                todoSourceMessageId ?? '__streaming__'
-                              )
-                            }
-                          />
                         </div>
-                      )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
-            </ResizablePanel>
+                </ResizablePanel>
 
-            {/* Terminal panel - only render when panel is open (native app only, not in modal) */}
-            {!isModal &&
-              isNativeApp() &&
-              activeWorktreePath &&
-              terminalPanelOpen && (
-                <>
-                  <ResizableHandle withHandle />
-                  <ResizablePanel
-                    ref={terminalPanelRef}
-                    defaultSize={terminalVisible ? 30 : 4}
-                    minSize={terminalVisible ? 15 : 4}
-                    collapsible
-                    collapsedSize={4}
-                    onCollapse={handleTerminalCollapse}
-                    onExpand={handleTerminalExpand}
-                  >
-                    <TerminalPanel
-                      isCollapsed={!terminalVisible}
-                      onExpand={handleTerminalExpand}
-                    />
-                  </ResizablePanel>
-                </>
-              )}
-          </ResizablePanelGroup>
+                {/* Terminal panel - only render when panel is open (native app only, not in modal) */}
+                {!isModal &&
+                  isNativeApp() &&
+                  activeWorktreePath &&
+                  terminalPanelOpen && (
+                    <>
+                      <ResizableHandle withHandle />
+                      <ResizablePanel
+                        ref={terminalPanelRef}
+                        defaultSize={terminalVisible ? 30 : 4}
+                        minSize={terminalVisible ? 15 : 4}
+                        collapsible
+                        collapsedSize={4}
+                        onCollapse={handleTerminalCollapse}
+                        onExpand={handleTerminalExpand}
+                      >
+                        <TerminalPanel
+                          isCollapsed={!terminalVisible}
+                          onExpand={handleTerminalExpand}
+                        />
+                      </ResizablePanel>
+                    </>
+                  )}
+              </ResizablePanelGroup>
             </ResizablePanel>
 
             {/* Review sidebar - shown when active session has review results */}
@@ -3062,7 +3114,10 @@ export function ChatWindow({
           onClose={() => setDiffRequest(null)}
           onAddToPrompt={handleGitDiffAddToPrompt}
           onExecutePrompt={handleGitDiffExecutePrompt}
-          uncommittedStats={{ added: uncommittedAdded, removed: uncommittedRemoved }}
+          uncommittedStats={{
+            added: uncommittedAdded,
+            removed: uncommittedRemoved,
+          }}
           branchStats={{ added: branchDiffAdded, removed: branchDiffRemoved }}
         />
 
@@ -3097,11 +3152,11 @@ export function ChatWindow({
               approvalContext={
                 activeWorktreeId && activeWorktreePath && activeSessionId
                   ? {
-                    worktreeId: activeWorktreeId,
-                    worktreePath: activeWorktreePath,
-                    sessionId: activeSessionId,
-                    pendingPlanMessageId: pendingPlanMessage?.id ?? null,
-                  }
+                      worktreeId: activeWorktreeId,
+                      worktreePath: activeWorktreePath,
+                      sessionId: activeSessionId,
+                      pendingPlanMessageId: pendingPlanMessage?.id ?? null,
+                    }
                   : undefined
               }
               onApprove={updatedPlan => {
@@ -3260,11 +3315,11 @@ export function ChatWindow({
               approvalContext={
                 activeWorktreeId && activeWorktreePath && activeSessionId
                   ? {
-                    worktreeId: activeWorktreeId,
-                    worktreePath: activeWorktreePath,
-                    sessionId: activeSessionId,
-                    pendingPlanMessageId: pendingPlanMessage?.id ?? null,
-                  }
+                      worktreeId: activeWorktreeId,
+                      worktreePath: activeWorktreePath,
+                      sessionId: activeSessionId,
+                      pendingPlanMessageId: pendingPlanMessage?.id ?? null,
+                    }
                   : undefined
               }
               onApprove={updatedPlan => {
@@ -3425,7 +3480,9 @@ export function ChatWindow({
             setRecapDialogDigest(null)
           }}
           isGenerating={isGeneratingRecap}
-          onRegenerate={() => window.dispatchEvent(new CustomEvent('open-recap'))}
+          onRegenerate={() =>
+            window.dispatchEvent(new CustomEvent('open-recap'))
+          }
         />
 
         {/* Merge options dialog */}
@@ -3502,4 +3559,3 @@ export function ChatWindow({
     </ErrorBoundary>
   )
 }
-

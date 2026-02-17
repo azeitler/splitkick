@@ -32,7 +32,11 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Markdown } from '@/components/ui/markdown'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { useAllSessions } from '@/services/chat'
 import type {
@@ -477,7 +481,11 @@ export function LoadContextModal({
       )
 
       try {
-        const result = await loadPRContext(activeSessionId, prNumber, worktreePath)
+        const result = await loadPRContext(
+          activeSessionId,
+          prNumber,
+          worktreePath
+        )
 
         // Refresh loaded contexts list
         await refetchPRContexts()
@@ -769,7 +777,11 @@ export function LoadContextModal({
             projectName: sessionProjectName,
             customPrompt: preferences?.magic_prompts?.context_summary,
             model: preferences?.magic_prompt_models?.context_summary_model,
-            customProfileName: resolveMagicPromptProvider(preferences?.magic_prompt_providers, 'context_summary_provider', preferences?.default_provider),
+            customProfileName: resolveMagicPromptProvider(
+              preferences?.magic_prompt_providers,
+              'context_summary_provider',
+              preferences?.default_provider
+            ),
           }
         )
 
@@ -804,6 +816,8 @@ export function LoadContextModal({
       refetchAttachedContexts,
       preferences?.magic_prompts?.context_summary,
       preferences?.magic_prompt_models?.context_summary_model,
+      preferences?.magic_prompt_providers,
+      preferences?.default_provider,
     ]
   )
 

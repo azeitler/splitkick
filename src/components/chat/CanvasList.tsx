@@ -11,10 +11,7 @@ import { CloseWorktreeDialog } from './CloseWorktreeDialog'
 import { usePreferences } from '@/services/preferences'
 import { useCanvasKeyboardNav } from './hooks/useCanvasKeyboardNav'
 import { useCanvasShortcutEvents } from './hooks/useCanvasShortcutEvents'
-import {
-  type SessionCardData,
-  groupCardsByStatus,
-} from './session-card-utils'
+import { type SessionCardData, groupCardsByStatus } from './session-card-utils'
 
 interface CanvasListProps {
   cards: SessionCardData[]
@@ -262,8 +259,11 @@ export function CanvasList({
                       onYolo={() => onPlanApprovalYolo(card)}
                       onToggleLabel={() => handleOpenLabelModal(card)}
                       onToggleReview={() => {
-                        const { reviewingSessions, setSessionReviewing } = useChatStore.getState()
-                        const isReviewing = reviewingSessions[card.session.id] || !!card.session.review_results
+                        const { reviewingSessions, setSessionReviewing } =
+                          useChatStore.getState()
+                        const isReviewing =
+                          reviewingSessions[card.session.id] ||
+                          !!card.session.review_results
                         setSessionReviewing(card.session.id, !isReviewing)
                       }}
                     />
@@ -333,4 +333,3 @@ export function CanvasList({
     </>
   )
 }
-

@@ -34,7 +34,7 @@ import { openExternal } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 import { isNativeApp } from '@/lib/environment'
 
-type ModalOption = {
+interface ModalOption {
   id: string
   label: string
   icon: typeof Code
@@ -43,9 +43,15 @@ type ModalOption = {
 }
 
 export function OpenInModal() {
-  const { openInModalOpen, setOpenInModalOpen, openPreferencesPane, sessionChatModalWorktreeId } =
-    useUIStore()
-  const selectedWorktreeIdFromProjects = useProjectsStore(state => state.selectedWorktreeId)
+  const {
+    openInModalOpen,
+    setOpenInModalOpen,
+    openPreferencesPane,
+    sessionChatModalWorktreeId,
+  } = useUIStore()
+  const selectedWorktreeIdFromProjects = useProjectsStore(
+    state => state.selectedWorktreeId
+  )
   const activeWorktreeId = useChatStore(state => state.activeWorktreeId)
   const selectedWorktreeId =
     selectedWorktreeIdFromProjects ??
@@ -63,7 +69,9 @@ export function OpenInModal() {
   const openOnGitHub = useOpenBranchOnGitHub()
   const { data: preferences } = usePreferences()
   const activeSessionId = useChatStore(state =>
-    selectedWorktreeId ? state.activeSessionIds[selectedWorktreeId] ?? null : null
+    selectedWorktreeId
+      ? (state.activeSessionIds[selectedWorktreeId] ?? null)
+      : null
   )
   const { data: loadedPRs } = useLoadedPRContexts(activeSessionId)
   const { data: loadedIssues } = useLoadedIssueContexts(activeSessionId)
@@ -71,6 +79,7 @@ export function OpenInModal() {
   const isNative = isNativeApp()
 
   // Base options (Editor, Terminal, Finder, GitHub)
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const baseOptions = useMemo(() => {
     const allOptions: ModalOption[] = [
       {
@@ -112,7 +121,13 @@ export function OpenInModal() {
     return isNative
       ? allOptions
       : allOptions.filter(opt => opt.id === 'github' || opt.id === 'open-pr')
-  }, [preferences?.editor, preferences?.terminal, isNative, worktree?.pr_url, worktree?.pr_number])
+  }, [
+    preferences?.editor,
+    preferences?.terminal,
+    isNative,
+    worktree?.pr_url,
+    worktree?.pr_number,
+  ])
 
   // Context options (loaded PRs + issues, numbered 1-9)
   const contextOptions = useMemo(() => {
@@ -323,16 +338,17 @@ export function OpenInModal() {
   return (
     <Dialog open={openInModalOpen} onOpenChange={handleOpenChange}>
       <DialogContent
-        className={cn('p-0', useWideLayout ? 'sm:max-w-[560px]' : 'sm:max-w-[280px]')}
+        className={cn(
+          'p-0',
+          useWideLayout ? 'sm:max-w-[560px]' : 'sm:max-w-[280px]'
+        )}
         onKeyDown={handleKeyDown}
       >
         <DialogHeader className="px-4 pt-5 pb-2">
           <DialogTitle className="text-sm font-medium">Open in...</DialogTitle>
         </DialogHeader>
 
-        <div className="pb-2">
-          {baseOptions.map(renderOption)}
-        </div>
+        <div className="pb-2">{baseOptions.map(renderOption)}</div>
 
         {contextOptions.length > 0 && (
           <div className="border-t pb-2">

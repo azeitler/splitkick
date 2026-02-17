@@ -106,7 +106,11 @@ export function useGitOperations({
           customPrompt: preferences?.magic_prompts?.commit_message,
           push: false,
           model: preferences?.magic_prompt_models?.commit_message_model,
-          customProfileName: resolveMagicPromptProvider(preferences?.magic_prompt_providers, 'commit_message_provider', preferences?.default_provider),
+          customProfileName: resolveMagicPromptProvider(
+            preferences?.magic_prompt_providers,
+            'commit_message_provider',
+            preferences?.default_provider
+          ),
         }
       )
 
@@ -127,7 +131,7 @@ export function useGitOperations({
     worktree?.branch,
     preferences?.magic_prompts?.commit_message,
     preferences?.magic_prompt_models?.commit_message_model,
-    preferences?.magic_prompt_providers?.commit_message_provider,
+    preferences?.magic_prompt_providers,
     preferences?.default_provider,
   ])
 
@@ -148,7 +152,11 @@ export function useGitOperations({
           customPrompt: preferences?.magic_prompts?.commit_message,
           push: true,
           model: preferences?.magic_prompt_models?.commit_message_model,
-          customProfileName: resolveMagicPromptProvider(preferences?.magic_prompt_providers, 'commit_message_provider', preferences?.default_provider),
+          customProfileName: resolveMagicPromptProvider(
+            preferences?.magic_prompt_providers,
+            'commit_message_provider',
+            preferences?.default_provider
+          ),
         }
       )
 
@@ -156,7 +164,10 @@ export function useGitOperations({
       triggerImmediateGitPoll()
 
       if (result.commit_hash) {
-        toast.success(`Committed and pushed: ${result.message.split('\n')[0]}`, { id: toastId })
+        toast.success(
+          `Committed and pushed: ${result.message.split('\n')[0]}`,
+          { id: toastId }
+        )
       } else {
         toast.success('Pushed to remote', { id: toastId })
       }
@@ -171,7 +182,7 @@ export function useGitOperations({
     worktree?.branch,
     preferences?.magic_prompts?.commit_message,
     preferences?.magic_prompt_models?.commit_message_model,
-    preferences?.magic_prompt_providers?.commit_message_provider,
+    preferences?.magic_prompt_providers,
     preferences?.default_provider,
   ])
 
@@ -185,7 +196,12 @@ export function useGitOperations({
       baseBranch: project?.default_branch ?? 'main',
       branchLabel: worktree?.branch,
     })
-  }, [activeWorktreeId, activeWorktreePath, worktree?.branch, project?.default_branch])
+  }, [
+    activeWorktreeId,
+    activeWorktreePath,
+    worktree?.branch,
+    project?.default_branch,
+  ])
 
   // Handle Push - pushes commits to remote
   const handlePush = useCallback(async () => {
@@ -205,7 +221,12 @@ export function useGitOperations({
     } finally {
       clearWorktreeLoading(activeWorktreeId)
     }
-  }, [activeWorktreeId, activeWorktreePath, worktree?.branch, worktree?.pr_number])
+  }, [
+    activeWorktreeId,
+    activeWorktreePath,
+    worktree?.branch,
+    worktree?.pr_number,
+  ])
 
   // Handle Open PR - creates PR with AI-generated title and description in background
   const handleOpenPr = useCallback(async () => {
@@ -224,7 +245,11 @@ export function useGitOperations({
           sessionId: activeSessionId,
           customPrompt: preferences?.magic_prompts?.pr_content,
           model: preferences?.magic_prompt_models?.pr_content_model,
-          customProfileName: resolveMagicPromptProvider(preferences?.magic_prompt_providers, 'pr_content_provider', preferences?.default_provider),
+          customProfileName: resolveMagicPromptProvider(
+            preferences?.magic_prompt_providers,
+            'pr_content_provider',
+            preferences?.default_provider
+          ),
         }
       )
 
@@ -259,94 +284,105 @@ export function useGitOperations({
     queryClient,
     preferences?.magic_prompts?.pr_content,
     preferences?.magic_prompt_models?.pr_content_model,
-    preferences?.magic_prompt_providers?.pr_content_provider,
+    preferences?.magic_prompt_providers,
     preferences?.default_provider,
   ])
 
   // Handle Review - runs AI code review in background
   // If existingSessionId is provided, stores results on that session (in-place review from ChatWindow)
   // Otherwise creates a new session for the results
-  const handleReview = useCallback(async (existingSessionId?: string) => {
-    if (!activeWorktreeId || !activeWorktreePath) return
+  const handleReview = useCallback(
+    async (existingSessionId?: string) => {
+      if (!activeWorktreeId || !activeWorktreePath) return
 
-    const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
-    setWorktreeLoading(activeWorktreeId, 'review')
-    const branch = worktree?.branch ?? ''
-    const toastId = toast.loading(`Reviewing ${branch}...`)
+      const { setWorktreeLoading, clearWorktreeLoading } =
+        useChatStore.getState()
+      setWorktreeLoading(activeWorktreeId, 'review')
+      const branch = worktree?.branch ?? ''
+      const toastId = toast.loading(`Reviewing ${branch}...`)
 
-    try {
-      const result = await invoke<ReviewResponse>('run_review_with_ai', {
-        worktreePath: activeWorktreePath,
-        customPrompt: preferences?.magic_prompts?.code_review,
-        model: preferences?.magic_prompt_models?.code_review_model,
-        customProfileName: resolveMagicPromptProvider(preferences?.magic_prompt_providers, 'code_review_provider', preferences?.default_provider),
-      })
+      try {
+        const result = await invoke<ReviewResponse>('run_review_with_ai', {
+          worktreePath: activeWorktreePath,
+          customPrompt: preferences?.magic_prompts?.code_review,
+          model: preferences?.magic_prompt_models?.code_review_model,
+          customProfileName: resolveMagicPromptProvider(
+            preferences?.magic_prompt_providers,
+            'code_review_provider',
+            preferences?.default_provider
+          ),
+        })
 
-      let targetSessionId: string
+        let targetSessionId: string
 
-      if (existingSessionId) {
-        // Reuse existing session (triggered from ChatWindow/SessionChatModal)
-        targetSessionId = existingSessionId
-      } else {
-        // Create a new session for the review
-        const newSession = await invoke<Session>('create_session', {
+        if (existingSessionId) {
+          // Reuse existing session (triggered from ChatWindow/SessionChatModal)
+          targetSessionId = existingSessionId
+        } else {
+          // Create a new session for the review
+          const newSession = await invoke<Session>('create_session', {
+            worktreeId: activeWorktreeId,
+            worktreePath: activeWorktreePath,
+            name: 'Code Review',
+          })
+          targetSessionId = newSession.id
+
+          // Navigate to the new session
+          const { setActiveSession, setViewingCanvasTab } =
+            useChatStore.getState()
+          setActiveSession(activeWorktreeId, targetSessionId)
+          setViewingCanvasTab(activeWorktreeId, false)
+        }
+
+        // Store review results in Zustand (session-scoped, auto-opens sidebar)
+        useChatStore.getState().setReviewResults(targetSessionId, result)
+
+        // Persist review results to session file
+        invoke('update_session_state', {
           worktreeId: activeWorktreeId,
           worktreePath: activeWorktreePath,
-          name: 'Code Review',
+          sessionId: targetSessionId,
+          reviewResults: result,
+        }).catch(() => {
+          /* noop - best effort persist */
         })
-        targetSessionId = newSession.id
 
-        // Navigate to the new session
-        const { setActiveSession, setViewingCanvasTab } = useChatStore.getState()
-        setActiveSession(activeWorktreeId, targetSessionId)
-        setViewingCanvasTab(activeWorktreeId, false)
+        // Invalidate sessions query to refresh tab bar
+        queryClient.invalidateQueries({
+          queryKey: chatQueryKeys.sessions(activeWorktreeId),
+        })
+
+        const findingCount = result.findings.length
+        const statusEmoji =
+          result.approval_status === 'approved'
+            ? 'Approved'
+            : result.approval_status === 'changes_requested'
+              ? 'Changes requested'
+              : 'Needs discussion'
+
+        toast.success(
+          `Review complete: ${statusEmoji} (${findingCount} findings)`,
+          {
+            id: toastId,
+          }
+        )
+      } catch (error) {
+        toast.error(`Failed to review: ${error}`, { id: toastId })
+      } finally {
+        clearWorktreeLoading(activeWorktreeId)
       }
-
-      // Store review results in Zustand (session-scoped, auto-opens sidebar)
-      useChatStore.getState().setReviewResults(targetSessionId, result)
-
-      // Persist review results to session file
-      invoke('update_session_state', {
-        worktreeId: activeWorktreeId,
-        worktreePath: activeWorktreePath,
-        sessionId: targetSessionId,
-        reviewResults: result,
-      }).catch(() => { /* noop - best effort persist */ })
-
-      // Invalidate sessions query to refresh tab bar
-      queryClient.invalidateQueries({
-        queryKey: chatQueryKeys.sessions(activeWorktreeId),
-      })
-
-      const findingCount = result.findings.length
-      const statusEmoji =
-        result.approval_status === 'approved'
-          ? 'Approved'
-          : result.approval_status === 'changes_requested'
-            ? 'Changes requested'
-            : 'Needs discussion'
-
-      toast.success(
-        `Review complete: ${statusEmoji} (${findingCount} findings)`,
-        {
-          id: toastId,
-        }
-      )
-    } catch (error) {
-      toast.error(`Failed to review: ${error}`, { id: toastId })
-    } finally {
-      clearWorktreeLoading(activeWorktreeId)
-    }
-  }, [
-    activeWorktreeId,
-    activeWorktreePath,
-    worktree,
-    queryClient,
-    preferences?.magic_prompts?.code_review,
-    preferences?.magic_prompt_models?.code_review_model,
-    preferences?.magic_prompt_providers?.code_review_provider,
-    preferences?.default_provider,
-  ])
+    },
+    [
+      activeWorktreeId,
+      activeWorktreePath,
+      worktree,
+      queryClient,
+      preferences?.magic_prompts?.code_review,
+      preferences?.magic_prompt_models?.code_review_model,
+      preferences?.magic_prompt_providers,
+      preferences?.default_provider,
+    ]
+  )
 
   // Handle Merge - validates and shows merge options dialog
   const handleMerge = useCallback(async () => {

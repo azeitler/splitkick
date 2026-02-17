@@ -72,9 +72,7 @@ pub fn get_diagnostics_snapshot(
     sys.refresh_processes_specifics(
         sysinfo::ProcessesToUpdate::All,
         true,
-        ProcessRefreshKind::nothing()
-            .with_cpu()
-            .with_memory(),
+        ProcessRefreshKind::nothing().with_cpu().with_memory(),
     );
 
     // Collect Jean app processes (self + children like WebKit renderer)
@@ -98,8 +96,7 @@ pub fn get_diagnostics_snapshot(
 
     // Find child processes (WebKit renderer, helpers)
     // Collect registry PIDs to exclude Claude CLI processes from children
-    let cli_pids: std::collections::HashSet<u32> =
-        registry.iter().map(|(_, pid)| *pid).collect();
+    let cli_pids: std::collections::HashSet<u32> = registry.iter().map(|(_, pid)| *pid).collect();
 
     for (pid, process) in sys.processes() {
         if process.parent() == Some(my_pid) && !cli_pids.contains(&pid.as_u32()) {
@@ -169,10 +166,10 @@ pub fn get_diagnostics_snapshot(
 
     Ok(DiagnosticsSnapshot {
         app_processes,
-        app_total_cpu: app_total_cpu,
+        app_total_cpu,
         app_total_memory_mb: app_total_memory,
         running_processes,
-        cli_total_cpu: cli_total_cpu,
+        cli_total_cpu,
         cli_total_memory_mb: cli_total_memory,
         polling_status,
         active_tailer_count: crate::chat::get_active_tailer_count(),

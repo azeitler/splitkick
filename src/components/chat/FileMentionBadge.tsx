@@ -73,7 +73,10 @@ export function FileMentionBadge({
             className="flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-border/50 bg-muted/50 cursor-pointer hover:border-primary/50 transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
           >
             <FileIcon
-              className={cn('h-3.5 w-3.5 shrink-0', getExtensionColor(extension))}
+              className={cn(
+                'h-3.5 w-3.5 shrink-0',
+                getExtensionColor(extension)
+              )}
             />
             <span className="text-xs font-medium truncate max-w-[120px]">
               {filename}

@@ -2,12 +2,12 @@
 
 use tauri::State;
 
-use serde::Deserialize;
 use super::{
     BackgroundTaskManager, MAX_POLL_INTERVAL, MAX_REMOTE_POLL_INTERVAL, MIN_POLL_INTERVAL,
     MIN_REMOTE_POLL_INTERVAL,
 };
 use crate::projects::git_status::ActiveWorktreeInfo;
+use serde::Deserialize;
 
 /// Set the application focus state
 ///

@@ -42,7 +42,9 @@ export function LabelModal({
   currentLabel,
 }: LabelModalProps) {
   const [inputValue, setInputValue] = useState('')
-  const [selectedColor, setSelectedColor] = useState(LABEL_COLORS[2]?.value ?? '#eab308')
+  const [selectedColor, setSelectedColor] = useState(
+    LABEL_COLORS[2]?.value ?? '#eab308'
+  )
   const [isCreatingCustom, setIsCreatingCustom] = useState(false)
   const [editingLabelName, setEditingLabelName] = useState<string | null>(null)
   const [focusedIndex, setFocusedIndex] = useState(0)
@@ -65,23 +67,30 @@ export function LabelModal({
   )
 
   // Get the label data for current label (for preset labels, use default yellow)
-  const getLabelData = useCallback((name: string): LabelData => {
-    // Check if this label name exists in sessionLabels (has a color)
-    const existing = Object.values(sessionLabels).find(l => l.name === name)
-    if (existing) return existing
-    // Preset labels get yellow by default
-    return { name, color: '#eab308' }
-  }, [sessionLabels])
+  const getLabelData = useCallback(
+    (name: string): LabelData => {
+      // Check if this label name exists in sessionLabels (has a color)
+      const existing = Object.values(sessionLabels).find(l => l.name === name)
+      if (existing) return existing
+      // Preset labels get yellow by default
+      return { name, color: '#eab308' }
+    },
+    [sessionLabels]
+  )
 
   // Update all sessions that use a given label name to use a new color
-  const updateAllSessionsWithLabel = useCallback((labelName: string, newColor: string) => {
-    const { sessionLabels: allLabels, setSessionLabel } = useChatStore.getState()
-    for (const [sid, label] of Object.entries(allLabels)) {
-      if (label.name === labelName) {
-        setSessionLabel(sid, { name: labelName, color: newColor })
+  const updateAllSessionsWithLabel = useCallback(
+    (labelName: string, newColor: string) => {
+      const { sessionLabels: allLabels, setSessionLabel } =
+        useChatStore.getState()
+      for (const [sid, label] of Object.entries(allLabels)) {
+        if (label.name === labelName) {
+          setSessionLabel(sid, { name: labelName, color: newColor })
+        }
       }
-    }
-  }, [])
+    },
+    []
+  )
 
   const applyLabel = useCallback(
     (labelData: LabelData | null) => {
@@ -94,11 +103,14 @@ export function LabelModal({
   )
 
   // Start editing an existing label's color
-  const startEditColor = useCallback((labelData: LabelData, e: React.MouseEvent) => {
-    e.stopPropagation()
-    setEditingLabelName(labelData.name)
-    setSelectedColor(labelData.color)
-  }, [])
+  const startEditColor = useCallback(
+    (labelData: LabelData, e: React.MouseEvent) => {
+      e.stopPropagation()
+      setEditingLabelName(labelData.name)
+      setSelectedColor(labelData.color)
+    },
+    []
+  )
 
   // Save the edited color for a label
   const saveEditedColor = useCallback(() => {
@@ -137,7 +149,9 @@ export function LabelModal({
         setFocusedIndex(i => (i + 1) % allLabelNames.length)
       } else if (e.key === 'ArrowUp') {
         e.preventDefault()
-        setFocusedIndex(i => (i - 1 + allLabelNames.length) % allLabelNames.length)
+        setFocusedIndex(
+          i => (i - 1 + allLabelNames.length) % allLabelNames.length
+        )
       } else if (e.key === 'Enter') {
         e.preventDefault()
         const labelName = allLabelNames[focusedIndex]
@@ -153,7 +167,18 @@ export function LabelModal({
         }
       }
     },
-    [isCreatingCustom, editingLabelName, inputValue, selectedColor, allLabelNames, focusedIndex, currentLabel, getLabelData, applyLabel, saveEditedColor]
+    [
+      isCreatingCustom,
+      editingLabelName,
+      inputValue,
+      selectedColor,
+      allLabelNames,
+      focusedIndex,
+      currentLabel,
+      getLabelData,
+      applyLabel,
+      saveEditedColor,
+    ]
   )
 
   const handleCreateCustom = useCallback(() => {
@@ -168,7 +193,13 @@ export function LabelModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={open => !open && onClose()}>
-      <DialogContent className="sm:max-w-[360px]" onKeyDown={e => { e.stopPropagation(); handleKeyDown(e) }}>
+      <DialogContent
+        className="sm:max-w-[360px]"
+        onKeyDown={e => {
+          e.stopPropagation()
+          handleKeyDown(e)
+        }}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Tag className="h-4 w-4" />
@@ -189,7 +220,10 @@ export function LabelModal({
             <div className="flex items-center gap-3">
               <span
                 className="flex items-center justify-center w-16 h-10 rounded-md font-medium text-sm"
-                style={{ backgroundColor: selectedColor, color: getLabelTextColor(selectedColor) }}
+                style={{
+                  backgroundColor: selectedColor,
+                  color: getLabelTextColor(selectedColor),
+                }}
               >
                 Preview
               </span>
@@ -203,14 +237,18 @@ export function LabelModal({
                 <button
                   key={color.value}
                   className={`w-full h-8 rounded-md transition-transform hover:scale-105 ${
-                    selectedColor === color.value ? 'ring-2 ring-offset-2 ring-primary' : ''
+                    selectedColor === color.value
+                      ? 'ring-2 ring-offset-2 ring-primary'
+                      : ''
                   }`}
                   style={{ backgroundColor: color.value }}
                   onClick={() => setSelectedColor(color.value)}
                   title={color.name}
                 >
                   {selectedColor === color.value && (
-                    <Check className={`h-4 w-4 mx-auto ${getLabelTextColor(color.value)}`} />
+                    <Check
+                      className={`h-4 w-4 mx-auto ${getLabelTextColor(color.value)}`}
+                    />
                   )}
                 </button>
               ))}
@@ -229,7 +267,9 @@ export function LabelModal({
               </button>
               <button
                 className="flex-1 h-8 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90"
-                onClick={editingLabelName ? saveEditedColor : handleCreateCustom}
+                onClick={
+                  editingLabelName ? saveEditedColor : handleCreateCustom
+                }
                 disabled={!editingLabelName && !inputValue.trim()}
               >
                 {editingLabelName ? 'Save' : 'Create'}
@@ -254,7 +294,9 @@ export function LabelModal({
                           ? 'bg-primary/10 text-primary'
                           : 'hover:bg-accent/50'
                     }`}
-                    onClick={() => isSelected ? applyLabel(null) : applyLabel(labelData)}
+                    onClick={() =>
+                      isSelected ? applyLabel(null) : applyLabel(labelData)
+                    }
                     onMouseEnter={() => setFocusedIndex(i)}
                     tabIndex={-1}
                   >
@@ -266,7 +308,7 @@ export function LabelModal({
                     {isCustom && (
                       <Pencil
                         className="h-3 w-3 opacity-0 group-hover:opacity-50 hover:!opacity-100 transition-opacity mr-1"
-                        onClick={(e) => startEditColor(labelData, e)}
+                        onClick={e => startEditColor(labelData, e)}
                       />
                     )}
                   </button>
@@ -298,14 +340,25 @@ export function LabelModal({
         <div className="flex gap-3 text-[10px] text-muted-foreground px-1">
           {isEditing ? (
             <>
-              <span><kbd className="px-1 rounded border bg-muted">↵</kbd>{' '}{editingLabelName ? 'save' : 'create'}</span>
-              <span><kbd className="px-1 rounded border bg-muted">esc</kbd>{' '}back</span>
+              <span>
+                <kbd className="px-1 rounded border bg-muted">↵</kbd>{' '}
+                {editingLabelName ? 'save' : 'create'}
+              </span>
+              <span>
+                <kbd className="px-1 rounded border bg-muted">esc</kbd> back
+              </span>
             </>
           ) : (
             <>
-              <span><kbd className="px-1 rounded border bg-muted">↵</kbd>{' '}apply</span>
-              <span><kbd className="px-1 rounded border bg-muted">⌫</kbd>{' '}remove</span>
-              <span><kbd className="px-1 rounded border bg-muted">↑↓</kbd>{' '}navigate</span>
+              <span>
+                <kbd className="px-1 rounded border bg-muted">↵</kbd> apply
+              </span>
+              <span>
+                <kbd className="px-1 rounded border bg-muted">⌫</kbd> remove
+              </span>
+              <span>
+                <kbd className="px-1 rounded border bg-muted">↑↓</kbd> navigate
+              </span>
             </>
           )}
         </div>

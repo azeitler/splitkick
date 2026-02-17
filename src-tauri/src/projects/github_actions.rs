@@ -92,13 +92,13 @@ pub async fn list_workflow_runs(
     let mut seen_workflows = std::collections::HashSet::new();
     let mut failed_count: u32 = 0;
     for run in &runs {
-        if seen_workflows.insert(&run.workflow_name) {
-            if matches!(
+        if seen_workflows.insert(&run.workflow_name)
+            && matches!(
                 run.conclusion.as_deref(),
                 Some("failure") | Some("startup_failure")
-            ) {
-                failed_count += 1;
-            }
+            )
+        {
+            failed_count += 1;
         }
     }
 
@@ -152,13 +152,13 @@ mod tests {
         let mut seen = std::collections::HashSet::new();
         let mut count: u32 = 0;
         for run in runs {
-            if seen.insert(&run.workflow_name) {
-                if matches!(
+            if seen.insert(&run.workflow_name)
+                && matches!(
                     run.conclusion.as_deref(),
                     Some("failure") | Some("startup_failure")
-                ) {
-                    count += 1;
-                }
+                )
+            {
+                count += 1;
             }
         }
         count

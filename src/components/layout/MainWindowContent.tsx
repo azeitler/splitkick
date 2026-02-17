@@ -45,7 +45,12 @@ export function MainWindowContent({
       if (useUIStore.getState().featureTourOpen) return
       // Don't intercept Enter from input elements (e.g. preferences font size)
       const tag = (e.target as HTMLElement)?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable) return
+      if (
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        (e.target as HTMLElement)?.isContentEditable
+      )
+        return
       if (e.key === 'Enter') {
         e.preventDefault()
         setAddProjectDialogOpen(true)
@@ -105,6 +110,5 @@ export function MainWindowContent({
     </div>
   )
 }
-
 
 export default MainWindowContent

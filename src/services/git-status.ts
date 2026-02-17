@@ -10,7 +10,11 @@ import { listen, type UnlistenFn } from '@/lib/transport'
 import { useEffect, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { isTauri, updateWorktreeCachedStatus, projectsQueryKeys } from '@/services/projects'
+import {
+  isTauri,
+  updateWorktreeCachedStatus,
+  projectsQueryKeys,
+} from '@/services/projects'
 import type { Worktree } from '@/types/projects'
 import type { GitDiff } from '@/types/git-diff'
 
@@ -189,7 +193,14 @@ export interface GitPullOptions {
  * All 9 pull locations in the app should use this function.
  */
 export async function performGitPull(opts: GitPullOptions): Promise<void> {
-  const { worktreeId, worktreePath, baseBranch, branchLabel, projectId, onMergeConflict } = opts
+  const {
+    worktreeId,
+    worktreePath,
+    baseBranch,
+    branchLabel,
+    projectId,
+    onMergeConflict,
+  } = opts
   const { toast } = await import('sonner')
   const { useChatStore } = await import('@/store/chat-store')
 
@@ -212,10 +223,14 @@ export async function performGitPull(opts: GitPullOptions): Promise<void> {
     // Auto-stash path: local changes would be overwritten
     if (
       errorStr.includes('local changes') &&
-      (errorStr.includes('would be overwritten') || errorStr.includes('Please commit your changes or stash'))
+      (errorStr.includes('would be overwritten') ||
+        errorStr.includes('Please commit your changes or stash'))
     ) {
       // Safety: refuse if a build/yolo session is running on this worktree
-      if (worktreeId && useChatStore.getState().isWorktreeRunningNonPlan(worktreeId)) {
+      if (
+        worktreeId &&
+        useChatStore.getState().isWorktreeRunningNonPlan(worktreeId)
+      ) {
         toast.error(
           'Cannot auto-stash: a build/yolo session is running on this worktree. Stop it first.',
           { id: toastId }
@@ -231,11 +246,18 @@ export async function performGitPull(opts: GitPullOptions): Promise<void> {
         await gitStashPop(worktreePath)
         await triggerImmediateGitPoll()
         if (projectId) fetchWorktreesStatus(projectId)
-        toast.success('Pulled (auto-stashed and restored local changes)', { id: toastId })
+        toast.success('Pulled (auto-stashed and restored local changes)', {
+          id: toastId,
+        })
       } catch (stashError) {
         const stashErrStr = String(stashError)
-        if (stashErrStr.includes('CONFLICT') || stashErrStr.includes('Merge conflict')) {
-          toast.warning('Stash pop caused conflicts. Resolve manually.', { id: toastId })
+        if (
+          stashErrStr.includes('CONFLICT') ||
+          stashErrStr.includes('Merge conflict')
+        ) {
+          toast.warning('Stash pop caused conflicts. Resolve manually.', {
+            id: toastId,
+          })
           onMergeConflict?.()
         } else {
           toast.error(`Auto-stash failed: ${stashErrStr}`, { id: toastId })
@@ -329,24 +351,24 @@ export async function getRemotePollInterval(): Promise<number> {
  * to keep uncommitted diff stats up to date even when not actively selected.
  */
 export async function setAllWorktreesForPolling(
-  worktrees: Array<{
+  worktrees: {
     worktreeId: string
     worktreePath: string
     baseBranch: string
-  }>
+  }[]
 ): Promise<void> {
   if (!isTauri()) return
   await invoke('set_all_worktrees_for_polling', { worktrees })
 }
 
 export async function setPrWorktreesForPolling(
-  worktrees: Array<{
+  worktrees: {
     worktreeId: string
     worktreePath: string
     baseBranch: string
     prNumber: number
     prUrl: string
-  }>
+  }[]
 ): Promise<void> {
   if (!isTauri()) return
   await invoke('set_pr_worktrees_for_polling', { worktrees })
@@ -431,7 +453,10 @@ export function useGitStatusEvents(
           gitStatusQueryKeys.worktree(status.worktree_id),
           status
         )
-        if (!existingStatus || existingStatus.current_branch !== status.current_branch) {
+        if (
+          !existingStatus ||
+          existingStatus.current_branch !== status.current_branch
+        ) {
           const worktreesQueries = queryClient.getQueriesData<Worktree[]>({
             queryKey: projectsQueryKeys.all,
           })

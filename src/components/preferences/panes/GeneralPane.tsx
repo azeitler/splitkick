@@ -39,10 +39,7 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from '@/components/ui/tooltip'
-import {
-  usePreferences,
-  useSavePreferences,
-} from '@/services/preferences'
+import { usePreferences, useSavePreferences } from '@/services/preferences'
 import type { AppPreferences } from '@/types/preferences'
 import {
   modelOptions,
@@ -936,8 +933,7 @@ const AiLanguageField: FC<{
 }> = ({ preferences, savePreferences }) => {
   const [localValue, setLocalValue] = useState(preferences?.ai_language ?? '')
 
-  const hasChanges =
-    localValue !== (preferences?.ai_language ?? '')
+  const hasChanges = localValue !== (preferences?.ai_language ?? '')
 
   const handleSave = useCallback(() => {
     if (!preferences) return

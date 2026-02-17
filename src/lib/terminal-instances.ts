@@ -76,9 +76,11 @@ export function getOrCreateTerminal(
 
   const fitAddon = new FitAddon()
   terminal.loadAddon(fitAddon)
-  terminal.loadAddon(new WebLinksAddon((_event, uri) => {
-    openExternal(uri)
-  }))
+  terminal.loadAddon(
+    new WebLinksAddon((_event, uri) => {
+      openExternal(uri)
+    })
+  )
 
   // Handle user input - forward to PTY
   terminal.onData(data => {
@@ -117,13 +119,13 @@ export function getOrCreateTerminal(
         const wId = inst.worktreeId
         setTimeout(() => {
           if (!instances.has(terminalId)) return // Already disposed
+          // eslint-disable-next-line @typescript-eslint/no-empty-function
           invoke('stop_terminal', { terminalId }).catch(() => {})
           disposeTerminal(terminalId)
           const { removeTerminal, setTerminalPanelOpen } =
             useTerminalStore.getState()
           removeTerminal(wId, terminalId)
-          const remaining =
-            useTerminalStore.getState().terminals[wId] ?? []
+          const remaining = useTerminalStore.getState().terminals[wId] ?? []
           if (remaining.length === 0) {
             setTerminalPanelOpen(wId, false)
             useTerminalStore.getState().setTerminalVisible(false)
@@ -322,10 +324,7 @@ export function hasInstance(terminalId: string): boolean {
 }
 
 // Pending onStopped callbacks for terminals not yet created
-const pendingOnStopped = new Map<
-  string,
-  (exitCode: number | null) => void
->()
+const pendingOnStopped = new Map<string, (exitCode: number | null) => void>()
 
 /**
  * Register a callback for when a terminal's process exits.
