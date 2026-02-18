@@ -1958,6 +1958,7 @@ pub fn run() {
             projects::commit_changes,
             projects::open_project_on_github,
             projects::open_branch_on_github,
+            projects::get_git_remotes,
             projects::get_github_remotes,
             projects::get_github_branch_url,
             projects::get_github_repo_url,

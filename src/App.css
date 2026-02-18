@@ -195,7 +195,9 @@
     transparent 60%,
     var(--spinner-color) 100%
   );
-  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
   mask-composite: exclude;
   padding: 2px;
   animation: square-spin 1s linear infinite;
@@ -206,7 +208,7 @@
   }
 }
 @property --spinner-angle {
-  syntax: "<angle>";
+  syntax: '<angle>';
   initial-value: 0deg;
   inherits: false;
 }

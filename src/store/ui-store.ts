@@ -28,6 +28,9 @@ interface UIState {
   onboardingOpen: boolean
   onboardingStartStep: OnboardingStartStep
   openInModalOpen: boolean
+  remotePickerOpen: boolean
+  remotePickerRepoPath: string | null
+  remotePickerCallback: ((remote: string) => void) | null
   loadContextModalOpen: boolean
   magicModalOpen: boolean
   newWorktreeModalOpen: boolean
@@ -85,6 +88,11 @@ interface UIState {
   setOnboardingOpen: (open: boolean) => void
   setOnboardingStartStep: (step: OnboardingStartStep) => void
   setOpenInModalOpen: (open: boolean) => void
+  openRemotePicker: (
+    repoPath: string,
+    callback: (remote: string) => void
+  ) => void
+  closeRemotePicker: () => void
   setLoadContextModalOpen: (open: boolean) => void
   setMagicModalOpen: (open: boolean) => void
   setNewWorktreeModalOpen: (open: boolean) => void
@@ -141,6 +149,9 @@ export const useUIStore = create<UIState>()(
       onboardingOpen: false,
       onboardingStartStep: null,
       openInModalOpen: false,
+      remotePickerOpen: false,
+      remotePickerRepoPath: null,
+      remotePickerCallback: null,
       loadContextModalOpen: false,
       magicModalOpen: false,
       newWorktreeModalOpen: false,
@@ -243,6 +254,28 @@ export const useUIStore = create<UIState>()(
 
       setOpenInModalOpen: open =>
         set({ openInModalOpen: open }, undefined, 'setOpenInModalOpen'),
+
+      openRemotePicker: (repoPath, callback) =>
+        set(
+          {
+            remotePickerOpen: true,
+            remotePickerRepoPath: repoPath,
+            remotePickerCallback: callback,
+          },
+          undefined,
+          'openRemotePicker'
+        ),
+
+      closeRemotePicker: () =>
+        set(
+          {
+            remotePickerOpen: false,
+            remotePickerRepoPath: null,
+            remotePickerCallback: null,
+          },
+          undefined,
+          'closeRemotePicker'
+        ),
 
       setLoadContextModalOpen: open =>
         set(

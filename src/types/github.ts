@@ -40,6 +40,7 @@ export interface IssueComment {
 }
 
 export interface GitHubIssueDetail extends GitHubIssue {
+  url: string
   comments: GitHubComment[]
 }
 
@@ -90,6 +91,7 @@ export interface GitHubReview {
 }
 
 export interface GitHubPullRequestDetail extends GitHubPullRequest {
+  url: string
   comments: GitHubComment[]
   reviews: GitHubReview[]
 }

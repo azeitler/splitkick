@@ -223,7 +223,9 @@ function WorktreeSectionHeader({
             <TooltipTrigger asChild>
               <span className="shrink-0 block h-3 w-3 square-spinner" />
             </TooltipTrigger>
-            <TooltipContent>Dev server running in terminal. Press ⌘R to open</TooltipContent>
+            <TooltipContent>
+              Dev server running in terminal. Press ⌘R to open
+            </TooltipContent>
           </Tooltip>
         )}
         <span className="inline-flex items-center gap-1.5 font-medium">

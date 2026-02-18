@@ -128,6 +128,7 @@ import {
 } from '@/services/mcp'
 import type { McpServerInfo } from '@/types/chat'
 import { useGitStatus } from '@/services/git-status'
+import { useRemotePicker } from '@/hooks/useRemotePicker'
 import { isNativeApp } from '@/lib/environment'
 import { supportsAdaptiveThinking } from '@/lib/model-utils'
 import { useClaudeCliStatus } from '@/services/claude-cli'
@@ -1572,6 +1573,24 @@ export function ChatWindow({
     preferences,
   })
 
+  // Wrap push/pull/commit-and-push with remote picker for multi-remote repos
+  const pickRemoteOrRun = useRemotePicker(activeWorktreePath)
+
+  const handlePushWithPicker = useCallback(
+    () => pickRemoteOrRun(remote => handlePush(remote)),
+    [pickRemoteOrRun, handlePush]
+  )
+
+  const handleCommitAndPushWithPicker = useCallback(
+    () => pickRemoteOrRun(remote => handleCommitAndPush(remote)),
+    [pickRemoteOrRun, handleCommitAndPush]
+  )
+
+  const handlePullWithPicker = useCallback(
+    () => pickRemoteOrRun(remote => handlePull(remote)),
+    [pickRemoteOrRun, handlePull]
+  )
+
   // Keyboard shortcuts for merge dialog
   useEffect(() => {
     if (!showMergeDialog) return
@@ -2117,9 +2136,9 @@ export function ChatWindow({
     handleSaveContext,
     handleLoadContext,
     handleCommit,
-    handleCommitAndPush,
-    handlePull,
-    handlePush,
+    handleCommitAndPush: handleCommitAndPushWithPicker,
+    handlePull: handlePullWithPicker,
+    handlePush: handlePushWithPicker,
     handleOpenPr,
     handleReview,
     handleMerge,
@@ -2996,7 +3015,7 @@ export function ChatWindow({
                               onSaveContext={handleSaveContext}
                               onLoadContext={handleLoadContext}
                               onCommit={handleCommit}
-                              onCommitAndPush={handleCommitAndPush}
+                              onCommitAndPush={handleCommitAndPushWithPicker}
                               onOpenPr={handleOpenPr}
                               onReview={() =>
                                 handleReview(activeSessionId ?? undefined)

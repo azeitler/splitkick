@@ -827,7 +827,9 @@ export function NewWorktreeModal() {
               setSelectedIndex={setSelectedItemIndex}
               onSelectIssue={handleSelectIssue}
               onInvestigateIssue={handleSelectIssueAndInvestigate}
-              onPreviewIssue={issue => setPreviewItem({ type: 'issue', number: issue.number })}
+              onPreviewIssue={issue =>
+                setPreviewItem({ type: 'issue', number: issue.number })
+              }
               creatingFromNumber={creatingFromNumber}
               searchInputRef={searchInputRef}
               onGhLogin={triggerGhLogin}
@@ -851,7 +853,9 @@ export function NewWorktreeModal() {
               setSelectedIndex={setSelectedItemIndex}
               onSelectPR={handleSelectPR}
               onInvestigatePR={handleSelectPRAndInvestigate}
-              onPreviewPR={pr => setPreviewItem({ type: 'pr', number: pr.number })}
+              onPreviewPR={pr =>
+                setPreviewItem({ type: 'pr', number: pr.number })
+              }
               creatingFromNumber={creatingFromNumber}
               searchInputRef={searchInputRef}
               onGhLogin={triggerGhLogin}

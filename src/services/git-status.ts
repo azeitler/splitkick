@@ -142,12 +142,17 @@ export async function triggerImmediateGitPoll(): Promise<void> {
  */
 export async function gitPull(
   worktreePath: string,
-  baseBranch: string
+  baseBranch: string,
+  remote?: string
 ): Promise<string> {
   if (!isTauri()) {
     throw new Error('Git pull only available in Tauri')
   }
-  return invoke<string>('git_pull', { worktreePath, baseBranch })
+  return invoke<string>('git_pull', {
+    worktreePath,
+    baseBranch,
+    remote: remote ?? null,
+  })
 }
 
 /**
@@ -180,6 +185,7 @@ export interface GitPullOptions {
   baseBranch: string
   branchLabel?: string
   projectId?: string
+  remote?: string
   onMergeConflict?: () => void
 }
 
@@ -199,6 +205,7 @@ export async function performGitPull(opts: GitPullOptions): Promise<void> {
     baseBranch,
     branchLabel,
     projectId,
+    remote,
     onMergeConflict,
   } = opts
   const { toast } = await import('sonner')
@@ -213,7 +220,7 @@ export async function performGitPull(opts: GitPullOptions): Promise<void> {
   const toastId = toast.loading(`Pulling changes on ${label}...`)
 
   try {
-    await gitPull(worktreePath, baseBranch)
+    await gitPull(worktreePath, baseBranch, remote)
     await triggerImmediateGitPoll()
     if (projectId) fetchWorktreesStatus(projectId)
     toast.success('Changes pulled', { id: toastId })
@@ -241,7 +248,7 @@ export async function performGitPull(opts: GitPullOptions): Promise<void> {
       toast.loading('Auto-stashing local changes...', { id: toastId })
       try {
         await gitStash(worktreePath)
-        await gitPull(worktreePath, baseBranch)
+        await gitPull(worktreePath, baseBranch, remote)
         toast.loading('Restoring stashed changes...', { id: toastId })
         await gitStashPop(worktreePath)
         await triggerImmediateGitPoll()
@@ -291,7 +298,8 @@ export async function performGitPull(opts: GitPullOptions): Promise<void> {
  */
 export async function gitPush(
   worktreePath: string,
-  prNumber?: number
+  prNumber?: number,
+  remote?: string
 ): Promise<string> {
   if (!isTauri()) {
     throw new Error('Git push only available in Tauri')
@@ -299,7 +307,19 @@ export async function gitPush(
   return invoke<string>('git_push', {
     worktreePath,
     prNumber: prNumber ?? null,
+    remote: remote ?? null,
   })
+}
+
+export interface GitRemote {
+  name: string
+}
+
+/**
+ * Get all git remotes for a repository.
+ */
+export async function getGitRemotes(repoPath: string): Promise<GitRemote[]> {
+  return invoke<GitRemote[]>('get_git_remotes', { repoPath })
 }
 
 /**

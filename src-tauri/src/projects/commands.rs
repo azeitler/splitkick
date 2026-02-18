@@ -597,7 +597,7 @@ pub async fn create_worktree(
             // Auto-pull base branch if enabled (non-blocking on failure)
             if should_auto_pull {
                 log::trace!("Auto-pulling base branch {base_clone} before worktree creation");
-                match git::git_pull(&project_path, &base_clone) {
+                match git::git_pull(&project_path, &base_clone, None) {
                     Ok(_) => log::trace!("Successfully pulled base branch {base_clone}"),
                     Err(e) => log::warn!("Failed to auto-pull base branch {base_clone}: {e}"),
                 }
@@ -2899,6 +2899,13 @@ pub async fn open_worktree_in_editor(
     Ok(())
 }
 
+/// Get all git remotes for a repository
+#[tauri::command]
+pub async fn get_git_remotes(repo_path: String) -> Result<Vec<git::GitRemote>, String> {
+    log::trace!("Getting git remotes for: {repo_path}");
+    git::get_git_remotes(&repo_path)
+}
+
 /// Get all GitHub remotes for a repository
 #[tauri::command]
 pub async fn get_github_remotes(repo_path: String) -> Result<Vec<git::GitHubRemote>, String> {
@@ -4591,9 +4598,10 @@ fn create_git_commit(repo_path: &str, message: &str) -> Result<String, String> {
 }
 
 /// Push to remote
-fn push_to_remote(repo_path: &str) -> Result<(), String> {
+fn push_to_remote(repo_path: &str, remote: Option<&str>) -> Result<(), String> {
+    let remote = remote.unwrap_or("origin");
     let output = silent_command("git")
-        .args(["push", "-u", "origin", "HEAD"])
+        .args(["push", "-u", remote, "HEAD"])
         .current_dir(repo_path)
         .output()
         .map_err(|e| format!("Failed to push: {e}"))?;
@@ -4694,6 +4702,7 @@ pub async fn create_commit_with_ai(
     worktree_path: String,
     custom_prompt: Option<String>,
     push: bool,
+    remote: Option<String>,
     model: Option<String>,
     custom_profile_name: Option<String>,
 ) -> Result<CreateCommitResponse, String> {
@@ -4704,7 +4713,7 @@ pub async fn create_commit_with_ai(
     if status.trim().is_empty() {
         if push {
             // No changes to commit, but user wants to push — push existing commits
-            push_to_remote(&worktree_path)?;
+            push_to_remote(&worktree_path, remote.as_deref())?;
             log::trace!("No changes to commit, pushed existing commits");
             return Ok(CreateCommitResponse {
                 commit_hash: String::new(),
@@ -4761,7 +4770,7 @@ pub async fn create_commit_with_ai(
 
     // 8. Push if requested
     let pushed = if push {
-        push_to_remote(&worktree_path)?;
+        push_to_remote(&worktree_path, remote.as_deref())?;
         log::trace!("Pushed to remote");
         true
     } else {
@@ -5064,9 +5073,13 @@ pub async fn run_review_with_ai(
 
 /// Pull changes from remote origin for the specified base branch
 #[tauri::command]
-pub async fn git_pull(worktree_path: String, base_branch: String) -> Result<String, String> {
-    log::trace!("Pulling changes for worktree: {worktree_path}, base branch: {base_branch}");
-    git::git_pull(&worktree_path, &base_branch)
+pub async fn git_pull(
+    worktree_path: String,
+    base_branch: String,
+    remote: Option<String>,
+) -> Result<String, String> {
+    log::trace!("Pulling changes for worktree: {worktree_path}, base branch: {base_branch}, remote: {remote:?}");
+    git::git_pull(&worktree_path, &base_branch, remote.as_deref())
 }
 
 /// Stash all local changes including untracked files
@@ -5090,11 +5103,12 @@ pub async fn git_push(
     app: tauri::AppHandle,
     worktree_path: String,
     pr_number: Option<u32>,
+    remote: Option<String>,
 ) -> Result<String, String> {
-    log::trace!("Pushing changes for worktree: {worktree_path}, pr_number: {pr_number:?}");
+    log::trace!("Pushing changes for worktree: {worktree_path}, pr_number: {pr_number:?}, remote: {remote:?}");
     match pr_number {
         Some(pr) => git::git_push_to_pr(&worktree_path, pr, &resolve_gh_binary(&app)),
-        None => git::git_push(&worktree_path),
+        None => git::git_push(&worktree_path, remote.as_deref()),
     }
 }
 

@@ -71,7 +71,11 @@ fn fetch_origin_branch(repo_path: &str, branch: &str) -> Result<(), String> {
 }
 
 /// Fetch a branch from a specific remote (not necessarily origin)
-fn fetch_origin_branch_from_remote(repo_path: &str, remote: &str, branch: &str) -> Result<(), String> {
+fn fetch_origin_branch_from_remote(
+    repo_path: &str,
+    remote: &str,
+    branch: &str,
+) -> Result<(), String> {
     log::trace!("Fetching {remote}/{branch} in {repo_path}");
 
     let output = silent_command("git")

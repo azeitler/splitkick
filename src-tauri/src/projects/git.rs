@@ -178,6 +178,12 @@ pub fn get_repo_name(path: &str) -> Result<String, String> {
         })
 }
 
+/// A git remote name
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitRemote {
+    pub name: String,
+}
+
 /// A GitHub remote with its name and resolved HTTPS URL
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -263,6 +269,29 @@ pub fn get_github_remotes(repo_path: &str) -> Result<Vec<GitHubRemote>, String> 
     }
 
     Ok(result)
+}
+
+/// Get all git remotes for a repository (not filtered to GitHub)
+pub fn get_git_remotes(repo_path: &str) -> Result<Vec<GitRemote>, String> {
+    let output = silent_command("git")
+        .args(["remote"])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to list remotes: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to list remotes: {stderr}"));
+    }
+
+    let remotes = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .map(|name| GitRemote { name })
+        .collect();
+
+    Ok(remotes)
 }
 
 /// Get the current branch name (HEAD) for a repository
@@ -453,26 +482,31 @@ pub fn get_branches(repo_path: &str) -> Result<Vec<String>, String> {
 }
 
 /// Pull changes from remote origin for the specified base branch
-pub fn git_pull(repo_path: &str, base_branch: &str) -> Result<String, String> {
-    log::trace!("Pulling from origin/{base_branch} in {repo_path}");
+pub fn git_pull(
+    repo_path: &str,
+    base_branch: &str,
+    remote: Option<&str>,
+) -> Result<String, String> {
+    let remote = remote.unwrap_or("origin");
+    log::trace!("Pulling from {remote}/{base_branch} in {repo_path}");
 
     // Use explicit fetch + merge instead of `git pull` to avoid
     // "Cannot rebase onto multiple branches" when pull.rebase=true
     // is set in git config (common in worktree contexts)
     let fetch = silent_command("git")
-        .args(["fetch", "origin", base_branch])
+        .args(["fetch", remote, base_branch])
         .current_dir(repo_path)
         .output()
         .map_err(|e| format!("Failed to run git fetch: {e}"))?;
 
     if !fetch.status.success() {
         let stderr = String::from_utf8_lossy(&fetch.stderr).to_string();
-        log::error!("Failed to fetch origin/{base_branch}: {stderr}");
+        log::error!("Failed to fetch {remote}/{base_branch}: {stderr}");
         return Err(stderr);
     }
 
     let merge = silent_command("git")
-        .args(["merge", &format!("origin/{base_branch}")])
+        .args(["merge", &format!("{remote}/{base_branch}")])
         .current_dir(repo_path)
         .output()
         .map_err(|e| format!("Failed to run git merge: {e}"))?;
@@ -554,12 +588,13 @@ pub fn git_stash_pop(repo_path: &str) -> Result<String, String> {
     }
 }
 
-/// Push current branch to remote origin
-pub fn git_push(repo_path: &str) -> Result<String, String> {
-    log::trace!("Pushing to origin in {repo_path}");
+/// Push current branch to remote
+pub fn git_push(repo_path: &str, remote: Option<&str>) -> Result<String, String> {
+    let remote = remote.unwrap_or("origin");
+    log::trace!("Pushing to {remote} in {repo_path}");
 
     let output = silent_command("git")
-        .args(["push"])
+        .args(["push", remote])
         .current_dir(repo_path)
         .output()
         .map_err(|e| format!("Failed to run git push: {e}"))?;
@@ -569,16 +604,16 @@ pub fn git_push(repo_path: &str) -> Result<String, String> {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         // Git push often outputs to stderr even on success
         let result = if stdout.is_empty() { stderr } else { stdout };
-        log::trace!("Successfully pushed to origin");
+        log::trace!("Successfully pushed to {remote}");
         Ok(result)
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
         // Check if branch doesn't have upstream yet (same pattern as rebase_feature_branch)
         if stderr.contains("has no upstream branch") {
-            log::trace!("No upstream branch, retrying with -u origin HEAD");
+            log::trace!("No upstream branch, retrying with -u {remote} HEAD");
             let push_u_output = silent_command("git")
-                .args(["push", "-u", "origin", "HEAD"])
+                .args(["push", "-u", remote, "HEAD"])
                 .current_dir(repo_path)
                 .output()
                 .map_err(|e| format!("Failed to run git push -u: {e}"))?;
@@ -596,7 +631,7 @@ pub fn git_push(repo_path: &str) -> Result<String, String> {
             }
         }
 
-        log::error!("Failed to push to origin: {stderr}");
+        log::error!("Failed to push to {remote}: {stderr}");
         Err(stderr)
     }
 }
@@ -631,7 +666,7 @@ pub fn git_push_to_pr(
     if !gh_output.status.success() {
         let stderr = String::from_utf8_lossy(&gh_output.stderr).to_string();
         log::warn!("gh pr view failed, falling back to regular push: {stderr}");
-        return git_push(repo_path);
+        return git_push(repo_path, None);
     }
 
     let pr_info: serde_json::Value = serde_json::from_slice(&gh_output.stdout)

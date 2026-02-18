@@ -23,6 +23,9 @@ export type KeybindingAction =
   | 'focus_canvas_search'
   | 'toggle_modal_terminal'
   | 'toggle_session_label'
+  | 'open_provider_dropdown'
+  | 'open_model_dropdown'
+  | 'open_thinking_dropdown'
 
 // Shortcut string format: "mod+key" where mod is cmd/ctrl
 // Examples: "mod+l", "mod+shift+p", "mod+1"
@@ -65,6 +68,9 @@ export const DEFAULT_KEYBINDINGS: KeybindingsMap = {
   focus_canvas_search: 'slash',
   toggle_modal_terminal: 'mod+backquote',
   toggle_session_label: 'mod+s',
+  open_provider_dropdown: 'alt+p',
+  open_model_dropdown: 'alt+m',
+  open_thinking_dropdown: 'alt+e',
 }
 
 // UI definitions for the settings pane
@@ -229,6 +235,27 @@ export const KEYBINDING_DEFINITIONS: KeybindingDefinition[] = [
     label: 'Toggle label',
     description: 'Mark/unmark session with "Needs testing" label',
     default_shortcut: 'mod+s',
+    category: 'chat',
+  },
+  {
+    action: 'open_provider_dropdown',
+    label: 'Open provider dropdown',
+    description: 'Open the provider selector dropdown',
+    default_shortcut: 'alt+p',
+    category: 'chat',
+  },
+  {
+    action: 'open_model_dropdown',
+    label: 'Open model dropdown',
+    description: 'Open the model selector dropdown',
+    default_shortcut: 'alt+m',
+    category: 'chat',
+  },
+  {
+    action: 'open_thinking_dropdown',
+    label: 'Open thinking dropdown',
+    description: 'Open the thinking/effort level dropdown',
+    default_shortcut: 'alt+e',
     category: 'chat',
   },
 ]

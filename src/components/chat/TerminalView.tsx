@@ -10,6 +10,8 @@ import {
 import { cn } from '@/lib/utils'
 import '@xterm/xterm/css/xterm.css'
 
+const EMPTY_TERMINALS: TerminalInstance[] = []
+
 interface TerminalViewProps {
   worktreeId: string
   worktreePath: string
@@ -100,7 +102,7 @@ export function TerminalView({
   onExpand,
   hideControls = false,
 }: TerminalViewProps) {
-  const terminals = useTerminalStore(state => state.terminals[worktreeId] ?? [])
+  const terminals = useTerminalStore(state => state.terminals[worktreeId] ?? EMPTY_TERMINALS)
   const activeTerminalId = useTerminalStore(
     state => state.activeTerminalIds[worktreeId]
   )

@@ -9,7 +9,9 @@ import {
   XCircle,
   AlertCircle,
   Clock,
+  ExternalLink,
 } from 'lucide-react'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import {
   Dialog,
   DialogContent,
@@ -48,9 +50,10 @@ function formatDate(dateStr: string): string {
 
 // Detail endpoints use serde rename_all = "camelCase", so created_at becomes createdAt at runtime
 function getCreatedAt(obj: { created_at: string }): string {
-  return obj.created_at || (obj as unknown as { createdAt: string }).createdAt || ''
+  return (
+    obj.created_at || (obj as unknown as { createdAt: string }).createdAt || ''
+  )
 }
-
 
 function Labels({ labels }: { labels: GitHubLabel[] }) {
   if (labels.length === 0) return null
@@ -86,7 +89,9 @@ function CommentItem({ comment }: { comment: GitHubComment }) {
         {comment.body ? (
           <Markdown className="text-sm">{comment.body}</Markdown>
         ) : (
-          <p className="text-sm text-muted-foreground italic">No description provided.</p>
+          <p className="text-sm text-muted-foreground italic">
+            No description provided.
+          </p>
         )}
       </div>
     </div>
@@ -94,12 +99,31 @@ function CommentItem({ comment }: { comment: GitHubComment }) {
 }
 
 function ReviewItem({ review }: { review: GitHubReview }) {
-  const defaultConfig = { icon: MessageSquare, color: 'text-muted-foreground', label: 'Reviewed' }
-  const stateConfig: Record<string, { icon: typeof CheckCircle2; color: string; label: string }> = {
-    APPROVED: { icon: CheckCircle2, color: 'text-green-500', label: 'Approved' },
-    CHANGES_REQUESTED: { icon: XCircle, color: 'text-red-500', label: 'Changes requested' },
+  const defaultConfig = {
+    icon: MessageSquare,
+    color: 'text-muted-foreground',
+    label: 'Reviewed',
+  }
+  const stateConfig: Record<
+    string,
+    { icon: typeof CheckCircle2; color: string; label: string }
+  > = {
+    APPROVED: {
+      icon: CheckCircle2,
+      color: 'text-green-500',
+      label: 'Approved',
+    },
+    CHANGES_REQUESTED: {
+      icon: XCircle,
+      color: 'text-red-500',
+      label: 'Changes requested',
+    },
     COMMENTED: defaultConfig,
-    DISMISSED: { icon: AlertCircle, color: 'text-yellow-500', label: 'Dismissed' },
+    DISMISSED: {
+      icon: AlertCircle,
+      color: 'text-yellow-500',
+      label: 'Dismissed',
+    },
     PENDING: { icon: Clock, color: 'text-yellow-500', label: 'Pending' },
   }
 
@@ -111,7 +135,9 @@ function ReviewItem({ review }: { review: GitHubReview }) {
       <div className="flex items-center gap-2 px-4 py-2.5 bg-muted/50 border-b border-border">
         <Icon className={cn('h-4 w-4', config.color)} />
         <span className="text-sm font-medium">{review.author.login}</span>
-        <span className={cn('text-xs font-medium', config.color)}>{config.label}</span>
+        <span className={cn('text-xs font-medium', config.color)}>
+          {config.label}
+        </span>
         {review.submittedAt && (
           <span className="text-xs text-muted-foreground">
             on {formatDate(review.submittedAt)}
@@ -141,7 +167,9 @@ function IssueContent({ detail }: { detail: GitHubIssueDetail }) {
         <div className="min-w-0 flex-1">
           <h2 className="text-lg font-semibold leading-snug">
             {detail.title}{' '}
-            <span className="text-muted-foreground font-normal">#{detail.number}</span>
+            <span className="text-muted-foreground font-normal">
+              #{detail.number}
+            </span>
           </h2>
           <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
             <span>{detail.author.login}</span>
@@ -164,7 +192,9 @@ function IssueContent({ detail }: { detail: GitHubIssueDetail }) {
           {detail.body ? (
             <Markdown className="text-sm">{detail.body}</Markdown>
           ) : (
-            <p className="text-sm text-muted-foreground italic">No description provided.</p>
+            <p className="text-sm text-muted-foreground italic">
+              No description provided.
+            </p>
           )}
         </div>
       </div>
@@ -175,7 +205,8 @@ function IssueContent({ detail }: { detail: GitHubIssueDetail }) {
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <MessageSquare className="h-4 w-4" />
             <span>
-              {detail.comments.length} comment{detail.comments.length !== 1 && 's'}
+              {detail.comments.length} comment
+              {detail.comments.length !== 1 && 's'}
             </span>
           </div>
           {detail.comments.map((comment, i) => (
@@ -190,10 +221,16 @@ function IssueContent({ detail }: { detail: GitHubIssueDetail }) {
 function PRContent({ detail }: { detail: GitHubPullRequestDetail }) {
   const stateIcon = useMemo(() => {
     if (detail.state === 'MERGED')
-      return <GitMerge className="h-5 w-5 mt-0.5 flex-shrink-0 text-purple-500" />
+      return (
+        <GitMerge className="h-5 w-5 mt-0.5 flex-shrink-0 text-purple-500" />
+      )
     if (detail.state === 'CLOSED')
-      return <GitPullRequest className="h-5 w-5 mt-0.5 flex-shrink-0 text-red-500" />
-    return <GitPullRequest className="h-5 w-5 mt-0.5 flex-shrink-0 text-green-500" />
+      return (
+        <GitPullRequest className="h-5 w-5 mt-0.5 flex-shrink-0 text-red-500" />
+      )
+    return (
+      <GitPullRequest className="h-5 w-5 mt-0.5 flex-shrink-0 text-green-500" />
+    )
   }, [detail.state])
 
   return (
@@ -204,13 +241,17 @@ function PRContent({ detail }: { detail: GitHubPullRequestDetail }) {
         <div className="min-w-0 flex-1">
           <h2 className="text-lg font-semibold leading-snug">
             {detail.title}{' '}
-            <span className="text-muted-foreground font-normal">#{detail.number}</span>
+            <span className="text-muted-foreground font-normal">
+              #{detail.number}
+            </span>
           </h2>
           <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground flex-wrap">
             <span>{detail.author.login}</span>
             <span>opened on {formatDate(getCreatedAt(detail))}</span>
             {detail.isDraft && (
-              <span className="bg-muted px-1.5 py-0.5 rounded text-xs">Draft</span>
+              <span className="bg-muted px-1.5 py-0.5 rounded text-xs">
+                Draft
+              </span>
             )}
           </div>
           <div className="flex items-center gap-1.5 mt-1.5 text-xs">
@@ -239,7 +280,9 @@ function PRContent({ detail }: { detail: GitHubPullRequestDetail }) {
           {detail.body ? (
             <Markdown className="text-sm">{detail.body}</Markdown>
           ) : (
-            <p className="text-sm text-muted-foreground italic">No description provided.</p>
+            <p className="text-sm text-muted-foreground italic">
+              No description provided.
+            </p>
           )}
         </div>
       </div>
@@ -265,7 +308,8 @@ function PRContent({ detail }: { detail: GitHubPullRequestDetail }) {
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <MessageSquare className="h-4 w-4" />
             <span>
-              {detail.comments.length} comment{detail.comments.length !== 1 && 's'}
+              {detail.comments.length} comment
+              {detail.comments.length !== 1 && 's'}
             </span>
           </div>
           {detail.comments.map((comment, i) => (
@@ -284,20 +328,31 @@ export function IssuePreviewModal({
   type,
   number,
 }: IssuePreviewModalProps) {
-  const issueQuery = useGitHubIssue(projectPath, type === 'issue' ? number : null)
+  const issueQuery = useGitHubIssue(
+    projectPath,
+    type === 'issue' ? number : null
+  )
   const prQuery = useGitHubPR(projectPath, type === 'pr' ? number : null)
 
   const isLoading = type === 'issue' ? issueQuery.isLoading : prQuery.isLoading
   const error = type === 'issue' ? issueQuery.error : prQuery.error
+  const githubUrl = type === 'issue' ? issueQuery.data?.url : prQuery.data?.url
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="!w-screen !max-w-screen sm:!w-[90vw] sm:!max-w-4xl sm:!h-[85vh] sm:!max-h-[85vh] sm:!rounded-lg flex flex-col overflow-hidden z-[80] !p-8 [&>[data-slot=dialog-close]]:top-8 [&>[data-slot=dialog-close]]:right-8"
-      >
-        <DialogHeader className="flex-shrink-0 px-1">
-          <DialogTitle className="text-lg">
+      <DialogContent className="!w-screen !max-w-screen sm:!w-[90vw] sm:!max-w-4xl sm:!h-[85vh] sm:!max-h-[85vh] sm:!rounded-lg flex flex-col overflow-hidden z-[80] [&>[data-slot=dialog-close]]:top-6">
+        <DialogHeader className="flex-shrink-0">
+          <DialogTitle className="text-lg flex items-center gap-2">
             {type === 'issue' ? 'Issue' : 'Pull Request'} #{number}
+            {githubUrl && (
+              <button
+                onClick={() => openUrl(githubUrl)}
+                className="p-1 rounded hover:bg-accent transition-colors"
+                title="Open on GitHub"
+              >
+                <ExternalLink className="h-4 w-4 text-muted-foreground" />
+              </button>
+            )}
           </DialogTitle>
         </DialogHeader>
 
@@ -312,7 +367,10 @@ export function IssuePreviewModal({
             {error && (
               <div className="flex flex-col items-center gap-2 py-12 text-sm text-muted-foreground">
                 <AlertCircle className="h-6 w-6" />
-                <p>Failed to load {type === 'issue' ? 'issue' : 'pull request'} details.</p>
+                <p>
+                  Failed to load {type === 'issue' ? 'issue' : 'pull request'}{' '}
+                  details.
+                </p>
                 <p className="text-xs">{String(error)}</p>
               </div>
             )}

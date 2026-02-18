@@ -164,13 +164,16 @@ pub async fn dispatch_command(
         "git_pull" => {
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
             let base_branch: String = field(&args, "baseBranch", "base_branch")?;
-            let result = crate::projects::git_pull(worktree_path, base_branch).await?;
+            let remote: Option<String> = field_opt(&args, "remote", "remote")?;
+            let result = crate::projects::git_pull(worktree_path, base_branch, remote).await?;
             to_value(result)
         }
         "git_push" => {
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
             let pr_number: Option<u32> = field_opt(&args, "prNumber", "pr_number")?;
-            let result = crate::projects::git_push(app.clone(), worktree_path, pr_number).await?;
+            let remote: Option<String> = field_opt(&args, "remote", "remote")?;
+            let result =
+                crate::projects::git_push(app.clone(), worktree_path, pr_number, remote).await?;
             to_value(result)
         }
         "commit_changes" => {
@@ -218,6 +221,7 @@ pub async fn dispatch_command(
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
             let custom_prompt: Option<String> = field_opt(&args, "magicPrompt", "magic_prompt")?;
             let push: bool = from_field_opt(&args, "push")?.unwrap_or(false);
+            let remote: Option<String> = from_field_opt(&args, "remote")?;
             let model: Option<String> = from_field_opt(&args, "model")?;
             let custom_profile_name: Option<String> =
                 field_opt(&args, "customProfileName", "custom_profile_name")?;
@@ -226,6 +230,7 @@ pub async fn dispatch_command(
                 worktree_path,
                 custom_prompt,
                 push,
+                remote,
                 model,
                 custom_profile_name,
             )
@@ -965,6 +970,11 @@ pub async fn dispatch_command(
             let project_id: String = field(&args, "projectId", "project_id")?;
             crate::projects::open_project_on_github(app.clone(), project_id).await?;
             Ok(Value::Null)
+        }
+        "get_git_remotes" => {
+            let repo_path: String = field(&args, "repoPath", "repo_path")?;
+            let result = crate::projects::get_git_remotes(repo_path).await?;
+            to_value(result)
         }
         "get_github_remotes" => {
             let repo_path: String = field(&args, "repoPath", "repo_path")?;

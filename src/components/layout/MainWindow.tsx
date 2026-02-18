@@ -17,6 +17,7 @@ import { CliLoginModal } from '@/components/preferences/CliLoginModal'
 import { OpenInModal } from '@/components/open-in/OpenInModal'
 import { WorkflowRunsModal } from '@/components/shared/WorkflowRunsModal'
 import { MagicModal } from '@/components/magic/MagicModal'
+import { RemotePickerModal } from '@/components/magic/RemotePickerModal'
 import { ReleaseNotesDialog } from '@/components/magic/ReleaseNotesDialog'
 import { UpdatePrDialog } from '@/components/magic/UpdatePrDialog'
 import { NewWorktreeModal } from '@/components/worktree/NewWorktreeModal'
@@ -262,6 +263,7 @@ export function MainWindow() {
       <OpenInModal />
       <WorkflowRunsModal />
       <MagicModal />
+      <RemotePickerModal />
       <ReleaseNotesDialog />
       <UpdatePrDialog />
       <NewWorktreeModal />

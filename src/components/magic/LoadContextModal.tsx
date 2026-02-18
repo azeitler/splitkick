@@ -20,6 +20,7 @@ import {
 import type { LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { isGhAuthError } from '@/services/github'
+import { IssuePreviewModal } from '@/components/worktree/IssuePreviewModal'
 import { useGhLogin } from '@/hooks/useGhLogin'
 import { GhAuthError } from '@/components/shared/GhAuthError'
 import {
@@ -64,8 +65,6 @@ import {
   removeIssueContext,
   loadPRContext,
   removePRContext,
-  getIssueContextContent,
-  getPRContextContent,
   attachSavedContext,
   removeSavedContext,
   getSavedContextContent,
@@ -391,13 +390,10 @@ export function LoadContextModal({
     attachedSavedContexts?.length,
   ])
 
-  // Focus search input when modal opens or tab changes
+  // Focus search input when tab changes
   useEffect(() => {
     if (open) {
-      const timer = setTimeout(() => {
-        searchInputRef.current?.focus()
-      }, 50)
-      return () => clearTimeout(timer)
+      searchInputRef.current?.focus()
     }
   }, [open, activeTab])
 
@@ -556,52 +552,44 @@ export function LoadContextModal({
   )
 
   // Handle viewing an issue context
-  const handleViewIssue = useCallback(
-    async (ctx: LoadedIssueContext) => {
-      if (!activeSessionId || !worktreePath) return
-
-      try {
-        const content = await getIssueContextContent(
-          activeSessionId,
-          ctx.number,
-          worktreePath
-        )
-        setViewingContext({
-          type: 'issue',
-          number: ctx.number,
-          title: ctx.title,
-          content,
-        })
-      } catch (error) {
-        toast.error(`Failed to load context: ${error}`)
-      }
-    },
-    [activeSessionId, worktreePath]
-  )
+  const handleViewIssue = useCallback((ctx: LoadedIssueContext) => {
+    setViewingContext({
+      type: 'issue',
+      number: ctx.number,
+      title: ctx.title,
+      content: '',
+    })
+  }, [])
 
   // Handle viewing a PR context
-  const handleViewPR = useCallback(
-    async (ctx: LoadedPullRequestContext) => {
-      if (!activeSessionId || !worktreePath) return
+  const handleViewPR = useCallback((ctx: LoadedPullRequestContext) => {
+    setViewingContext({
+      type: 'pr',
+      number: ctx.number,
+      title: ctx.title,
+      content: '',
+    })
+  }, [])
 
-      try {
-        const content = await getPRContextContent(
-          activeSessionId,
-          ctx.number,
-          worktreePath
-        )
-        setViewingContext({
-          type: 'pr',
-          number: ctx.number,
-          title: ctx.title,
-          content,
-        })
-      } catch (error) {
-        toast.error(`Failed to load context: ${error}`)
-      }
-    },
-    [activeSessionId, worktreePath]
-  )
+  // Handle previewing an issue from the search list
+  const handlePreviewIssue = useCallback((issue: GitHubIssue) => {
+    setViewingContext({
+      type: 'issue',
+      number: issue.number,
+      title: issue.title,
+      content: '',
+    })
+  }, [])
+
+  // Handle previewing a PR from the search list
+  const handlePreviewPR = useCallback((pr: GitHubPullRequest) => {
+    setViewingContext({
+      type: 'pr',
+      number: pr.number,
+      title: pr.title,
+      content: '',
+    })
+  }, [])
 
   // Handle selecting an issue from the search list
   const handleSelectIssue = useCallback(
@@ -963,6 +951,10 @@ export function LoadContextModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="overflow-hidden p-0 !w-screen !h-dvh !max-w-screen !max-h-none !rounded-none sm:!w-[calc(100vw-4rem)] sm:!max-w-[calc(100vw-4rem)] sm:!h-[calc(100vh-4rem)] sm:!rounded-xl font-sans flex flex-col"
+        onOpenAutoFocus={e => {
+          e.preventDefault()
+          searchInputRef.current?.focus()
+        }}
         onKeyDown={handleKeyDown}
       >
         <DialogHeader className="px-4 pt-5 pb-2">
@@ -1025,6 +1017,7 @@ export function LoadContextModal({
               }
               onRemoveItem={handleRemoveIssue}
               onViewItem={handleViewIssue}
+              onPreviewItem={handlePreviewIssue}
               hasLoadedContexts={hasLoadedIssueContexts}
               onGhLogin={triggerGhLogin}
               isGhInstalled={isGhInstalled}
@@ -1056,6 +1049,7 @@ export function LoadContextModal({
               }
               onRemoveItem={handleRemovePR}
               onViewItem={handleViewPR}
+              onPreviewItem={handlePreviewPR}
               hasLoadedContexts={hasLoadedPRContexts}
               onGhLogin={triggerGhLogin}
               isGhInstalled={isGhInstalled}
@@ -1099,22 +1093,29 @@ export function LoadContextModal({
           )}
         </div>
 
-        {/* Context viewer modal */}
-        {viewingContext && (
+        {/* GitHub issue/PR preview modal */}
+        {viewingContext &&
+          viewingContext.type !== 'saved' &&
+          viewingContext.number &&
+          worktreePath && (
+            <IssuePreviewModal
+              open={true}
+              onOpenChange={open => {
+                if (!open) setViewingContext(null)
+              }}
+              projectPath={worktreePath}
+              type={viewingContext.type}
+              number={viewingContext.number}
+            />
+          )}
+
+        {/* Saved context viewer modal */}
+        {viewingContext && viewingContext.type === 'saved' && (
           <Dialog open={true} onOpenChange={() => setViewingContext(null)}>
             <DialogContent className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none sm:!w-[calc(100vw-8rem)] sm:!max-w-[calc(100vw-8rem)] sm:!h-[calc(100vh-8rem)] sm:!rounded-lg flex flex-col">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
-                  {viewingContext.type === 'issue' && (
-                    <CircleDot className="h-4 w-4 text-green-500" />
-                  )}
-                  {viewingContext.type === 'pr' && (
-                    <GitPullRequest className="h-4 w-4 text-green-500" />
-                  )}
-                  {viewingContext.type === 'saved' && (
-                    <FolderOpen className="h-4 w-4 text-blue-500" />
-                  )}
-                  {viewingContext.number ? `#${viewingContext.number}: ` : ''}
+                  <FolderOpen className="h-4 w-4 text-blue-500" />
                   {viewingContext.title}
                 </DialogTitle>
               </DialogHeader>
@@ -1155,6 +1156,7 @@ interface IssuesTabProps {
   onLoadItem: (num: number, refresh: boolean) => void
   onRemoveItem: (num: number) => void
   onViewItem: (ctx: LoadedIssueContext) => void
+  onPreviewItem: (issue: GitHubIssue) => void
   hasLoadedContexts: boolean
   onGhLogin: () => void
   isGhInstalled: boolean
@@ -1182,6 +1184,7 @@ function IssuesTab({
   onLoadItem,
   onRemoveItem,
   onViewItem,
+  onPreviewItem,
   hasLoadedContexts,
   onGhLogin,
   isGhInstalled,
@@ -1324,6 +1327,7 @@ function IssuesTab({
                 isLoading={loadingNumbers.has(issue.number)}
                 onMouseEnter={() => setSelectedIndex(index)}
                 onClick={() => onSelectItem(issue)}
+                onPreview={() => onPreviewItem(issue)}
               />
             ))}
             {isSearching && (
@@ -1367,6 +1371,7 @@ interface PullRequestsTabProps {
   onLoadItem: (num: number, refresh: boolean) => void
   onRemoveItem: (num: number) => void
   onViewItem: (ctx: LoadedPullRequestContext) => void
+  onPreviewItem: (pr: GitHubPullRequest) => void
   hasLoadedContexts: boolean
   onGhLogin: () => void
   isGhInstalled: boolean
@@ -1394,6 +1399,7 @@ function PullRequestsTab({
   onLoadItem,
   onRemoveItem,
   onViewItem,
+  onPreviewItem,
   hasLoadedContexts,
   onGhLogin,
   isGhInstalled,
@@ -1536,6 +1542,7 @@ function PullRequestsTab({
                 isLoading={loadingNumbers.has(pr.number)}
                 onMouseEnter={() => setSelectedIndex(index)}
                 onClick={() => onSelectItem(pr)}
+                onPreview={() => onPreviewItem(pr)}
               />
             ))}
             {isSearching && (
@@ -2038,6 +2045,7 @@ interface IssueItemProps {
   isLoading: boolean
   onMouseEnter: () => void
   onClick: () => void
+  onPreview: () => void
 }
 
 function IssueItem({
@@ -2047,59 +2055,80 @@ function IssueItem({
   isLoading,
   onMouseEnter,
   onClick,
+  onPreview,
 }: IssueItemProps) {
   return (
-    <button
+    <div
       data-load-item-index={index}
-      onClick={onClick}
       onMouseEnter={onMouseEnter}
-      disabled={isLoading}
       className={cn(
         'w-full flex items-start gap-3 px-3 py-2 text-left transition-colors',
-        'hover:bg-accent focus:outline-none',
+        'hover:bg-accent',
         isSelected && 'bg-accent',
-        isLoading && 'opacity-50 cursor-not-allowed'
+        isLoading && 'opacity-50'
       )}
     >
-      {isLoading ? (
-        <Loader2 className="h-4 w-4 mt-0.5 animate-spin text-muted-foreground flex-shrink-0" />
-      ) : (
-        <CircleDot
-          className={cn(
-            'h-4 w-4 mt-0.5 flex-shrink-0',
-            issue.state === 'OPEN' ? 'text-green-500' : 'text-purple-500'
-          )}
-        />
-      )}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">#{issue.number}</span>
-          <span className="text-sm font-medium truncate">{issue.title}</span>
-        </div>
-        {issue.labels.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-1">
-            {issue.labels.slice(0, 3).map(label => (
-              <span
-                key={label.name}
-                className="px-1.5 py-0.5 text-xs rounded-full"
-                style={{
-                  backgroundColor: `#${label.color}20`,
-                  color: `#${label.color}`,
-                  border: `1px solid #${label.color}40`,
-                }}
-              >
-                {label.name}
-              </span>
-            ))}
-            {issue.labels.length > 3 && (
-              <span className="text-xs text-muted-foreground">
-                +{issue.labels.length - 3}
-              </span>
+      <button
+        onClick={onClick}
+        disabled={isLoading}
+        className="flex items-start gap-3 flex-1 min-w-0 focus:outline-none"
+      >
+        {isLoading ? (
+          <Loader2 className="h-4 w-4 mt-0.5 animate-spin text-muted-foreground flex-shrink-0" />
+        ) : (
+          <CircleDot
+            className={cn(
+              'h-4 w-4 mt-0.5 flex-shrink-0',
+              issue.state === 'OPEN' ? 'text-green-500' : 'text-purple-500'
             )}
-          </div>
+          />
         )}
-      </div>
-    </button>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">
+              #{issue.number}
+            </span>
+            <span className="text-sm font-medium truncate">{issue.title}</span>
+          </div>
+          {issue.labels.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {issue.labels.slice(0, 3).map(label => (
+                <span
+                  key={label.name}
+                  className="px-1.5 py-0.5 text-xs rounded-full"
+                  style={{
+                    backgroundColor: `#${label.color}20`,
+                    color: `#${label.color}`,
+                    border: `1px solid #${label.color}40`,
+                  }}
+                >
+                  {label.name}
+                </span>
+              ))}
+              {issue.labels.length > 3 && (
+                <span className="text-xs text-muted-foreground">
+                  +{issue.labels.length - 3}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            onClick={e => {
+              e.stopPropagation()
+              onPreview()
+            }}
+            className="p-1 rounded hover:bg-accent focus:outline-none focus:ring-1 focus:ring-ring transition-colors mt-0.5 flex-shrink-0"
+          >
+            <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>Preview issue</TooltipContent>
+      </Tooltip>
+    </div>
   )
 }
 
@@ -2110,6 +2139,7 @@ interface PRItemProps {
   isLoading: boolean
   onMouseEnter: () => void
   onClick: () => void
+  onPreview: () => void
 }
 
 function PRItem({
@@ -2119,73 +2149,92 @@ function PRItem({
   isLoading,
   onMouseEnter,
   onClick,
+  onPreview,
 }: PRItemProps) {
   return (
-    <button
+    <div
       data-load-item-index={index}
-      onClick={onClick}
       onMouseEnter={onMouseEnter}
-      disabled={isLoading}
       className={cn(
         'w-full flex items-start gap-3 px-3 py-2 text-left transition-colors',
-        'hover:bg-accent focus:outline-none',
+        'hover:bg-accent',
         isSelected && 'bg-accent',
-        isLoading && 'opacity-50 cursor-not-allowed'
+        isLoading && 'opacity-50'
       )}
     >
-      {isLoading ? (
-        <Loader2 className="h-4 w-4 mt-0.5 animate-spin text-muted-foreground flex-shrink-0" />
-      ) : (
-        <GitPullRequest
-          className={cn(
-            'h-4 w-4 mt-0.5 flex-shrink-0',
-            pr.state === 'OPEN'
-              ? 'text-green-500'
-              : pr.state === 'MERGED'
-                ? 'text-purple-500'
-                : 'text-red-500'
-          )}
-        />
-      )}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">#{pr.number}</span>
-          <span className="text-sm font-medium truncate">{pr.title}</span>
-          {pr.isDraft && (
-            <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-              Draft
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2 mt-0.5">
-          <span className="text-xs text-muted-foreground truncate">
-            {pr.headRefName} → {pr.baseRefName}
-          </span>
-        </div>
-        {pr.labels.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-1">
-            {pr.labels.slice(0, 3).map(label => (
-              <span
-                key={label.name}
-                className="px-1.5 py-0.5 text-xs rounded-full"
-                style={{
-                  backgroundColor: `#${label.color}20`,
-                  color: `#${label.color}`,
-                  border: `1px solid #${label.color}40`,
-                }}
-              >
-                {label.name}
-              </span>
-            ))}
-            {pr.labels.length > 3 && (
-              <span className="text-xs text-muted-foreground">
-                +{pr.labels.length - 3}
+      <button
+        onClick={onClick}
+        disabled={isLoading}
+        className="flex items-start gap-3 flex-1 min-w-0 focus:outline-none"
+      >
+        {isLoading ? (
+          <Loader2 className="h-4 w-4 mt-0.5 animate-spin text-muted-foreground flex-shrink-0" />
+        ) : (
+          <GitPullRequest
+            className={cn(
+              'h-4 w-4 mt-0.5 flex-shrink-0',
+              pr.state === 'OPEN'
+                ? 'text-green-500'
+                : pr.state === 'MERGED'
+                  ? 'text-purple-500'
+                  : 'text-red-500'
+            )}
+          />
+        )}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">#{pr.number}</span>
+            <span className="text-sm font-medium truncate">{pr.title}</span>
+            {pr.isDraft && (
+              <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                Draft
               </span>
             )}
           </div>
-        )}
-      </div>
-    </button>
+          <div className="flex items-center gap-2 mt-0.5">
+            <span className="text-xs text-muted-foreground truncate">
+              {pr.headRefName} → {pr.baseRefName}
+            </span>
+          </div>
+          {pr.labels.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {pr.labels.slice(0, 3).map(label => (
+                <span
+                  key={label.name}
+                  className="px-1.5 py-0.5 text-xs rounded-full"
+                  style={{
+                    backgroundColor: `#${label.color}20`,
+                    color: `#${label.color}`,
+                    border: `1px solid #${label.color}40`,
+                  }}
+                >
+                  {label.name}
+                </span>
+              ))}
+              {pr.labels.length > 3 && (
+                <span className="text-xs text-muted-foreground">
+                  +{pr.labels.length - 3}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            onClick={e => {
+              e.stopPropagation()
+              onPreview()
+            }}
+            className="p-1 rounded hover:bg-accent focus:outline-none focus:ring-1 focus:ring-ring transition-colors mt-0.5 flex-shrink-0"
+          >
+            <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>Preview PR</TooltipContent>
+      </Tooltip>
+    </div>
   )
 }
 

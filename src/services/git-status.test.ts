@@ -214,6 +214,7 @@ describe('git-status service', () => {
       expect(mockInvoke).toHaveBeenCalledWith('git_pull', {
         worktreePath: '/path/to/repo',
         baseBranch: 'main',
+        remote: null,
       })
     })
 

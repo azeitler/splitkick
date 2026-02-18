@@ -62,8 +62,8 @@ export function TodoWidget({
               )}
             />
             {!isOpen &&
-              !allCompleted &&
-              (isStreaming || todos.some(t => t.status === 'in_progress')) ? (
+            !allCompleted &&
+            (isStreaming || todos.some(t => t.status === 'in_progress')) ? (
               <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
             ) : (
               <ListTodo className="h-4 w-4 shrink-0" />
@@ -73,7 +73,7 @@ export function TodoWidget({
               className={cn(
                 'rounded bg-muted/50 px-1.5 py-0.5 text-xs',
                 allCompleted &&
-                'bg-green-500/20 text-green-600 dark:text-green-400'
+                  'bg-green-500/20 text-green-600 dark:text-green-400'
               )}
             >
               {completedCount}/{totalCount}
@@ -127,7 +127,7 @@ function TodoItem({ todo }: TodoItemProps) {
         className={cn(
           'text-muted-foreground',
           todo.status === 'completed' &&
-          'line-through text-muted-foreground/60',
+            'line-through text-muted-foreground/60',
           todo.status === 'cancelled' && 'text-muted-foreground/60'
         )}
       >

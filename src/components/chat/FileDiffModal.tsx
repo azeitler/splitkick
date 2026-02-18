@@ -162,6 +162,7 @@ export function FileDiffModal({
       disableFileHeader: true,
       unsafeCSS: `
         pre { font-family: var(--font-family-mono) !important; font-size: calc(var(--ui-font-size) * 0.85) !important; line-height: var(--ui-line-height) !important; }
+        * { user-select: text !important; -webkit-user-select: text !important; cursor: text !important; }
       `,
     }),
     [

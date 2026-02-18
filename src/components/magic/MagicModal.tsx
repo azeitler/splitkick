@@ -49,6 +49,7 @@ import {
   DEFAULT_RESOLVE_CONFLICTS_PROMPT,
   resolveMagicPromptProvider,
 } from '@/types/preferences'
+import { useRemotePicker } from '@/hooks/useRemotePicker'
 import { chatQueryKeys } from '@/services/chat'
 import { saveWorktreePr, projectsQueryKeys } from '@/services/projects'
 import { useQueryClient } from '@tanstack/react-query'
@@ -244,6 +245,7 @@ export function MagicModal() {
     activeWorktreeId ??
     sessionChatModalWorktreeId
   const { data: worktree } = useWorktree(selectedWorktreeId)
+  const contentRef = useRef<HTMLDivElement>(null)
   const hasInitializedRef = useRef(false)
   const [selectedOption, setSelectedOption] =
     useState<MagicOption>('save-context')
@@ -273,6 +275,7 @@ export function MagicModal() {
   })
   const sessionModalOpen = useUIStore(state => state.sessionChatModalOpen)
   const isOnCanvas = isViewingCanvasTab && !sessionModalOpen
+  const pickRemoteOrRun = useRemotePicker(worktree?.path)
 
   // Build columns dynamically based on PR state
   const magicColumns = useMemo(() => buildMagicColumns(hasOpenPr), [hasOpenPr])
@@ -319,65 +322,78 @@ export function MagicModal() {
       const { setWorktreeLoading, clearWorktreeLoading } =
         useChatStore.getState()
 
-      switch (option) {
-        case 'commit':
-        case 'commit-and-push': {
-          setWorktreeLoading(selectedWorktreeId, 'commit')
-          const isPush = option === 'commit-and-push'
-          const branch = worktree.branch ?? ''
-          const toastId = toast.loading(
-            isPush
-              ? `Committing and pushing on ${branch}...`
-              : `Creating commit on ${branch}...`
+      const doCommit = async (isPush: boolean, remote?: string) => {
+        setWorktreeLoading(selectedWorktreeId, 'commit')
+        const branch = worktree.branch ?? ''
+        const toastId = toast.loading(
+          isPush
+            ? `Committing and pushing on ${branch}...`
+            : `Creating commit on ${branch}...`
+        )
+        try {
+          const result = await invoke<CreateCommitResponse>(
+            'create_commit_with_ai',
+            {
+              worktreePath: worktree.path,
+              customPrompt: preferences?.magic_prompts?.commit_message,
+              push: isPush,
+              remote: remote ?? null,
+              model: preferences?.magic_prompt_models?.commit_message_model,
+              customProfileName: resolveMagicPromptProvider(
+                preferences?.magic_prompt_providers,
+                'commit_message_provider',
+                preferences?.default_provider
+              ),
+            }
           )
-          try {
-            const result = await invoke<CreateCommitResponse>(
-              'create_commit_with_ai',
-              {
-                worktreePath: worktree.path,
-                customPrompt: preferences?.magic_prompts?.commit_message,
-                push: isPush,
-                model: preferences?.magic_prompt_models?.commit_message_model,
-                customProfileName: resolveMagicPromptProvider(
-                  preferences?.magic_prompt_providers,
-                  'commit_message_provider',
-                  preferences?.default_provider
-                ),
-              }
-            )
-            triggerImmediateGitPoll()
-            if (worktree.project_id) fetchWorktreesStatus(worktree.project_id)
-            const prefix = isPush ? 'Committed and pushed' : 'Committed'
-            toast.success(`${prefix}: ${result.message.split('\n')[0]}`, {
-              id: toastId,
-            })
-          } catch (error) {
-            toast.error(`Failed: ${error}`, { id: toastId })
-          } finally {
-            clearWorktreeLoading(selectedWorktreeId)
-          }
+          triggerImmediateGitPoll()
+          if (worktree.project_id) fetchWorktreesStatus(worktree.project_id)
+          const prefix = isPush ? 'Committed and pushed' : 'Committed'
+          toast.success(`${prefix}: ${result.message.split('\n')[0]}`, {
+            id: toastId,
+          })
+        } catch (error) {
+          toast.error(`Failed: ${error}`, { id: toastId })
+        } finally {
+          clearWorktreeLoading(selectedWorktreeId)
+        }
+      }
+
+      switch (option) {
+        case 'commit': {
+          await doCommit(false)
+          break
+        }
+        case 'commit-and-push': {
+          await pickRemoteOrRun(remote => doCommit(true, remote))
           break
         }
         case 'pull': {
-          await performGitPull({
-            worktreeId: selectedWorktreeId,
-            worktreePath: worktree.path,
-            baseBranch: project?.default_branch ?? 'main',
-            branchLabel: worktree.branch,
-            projectId: worktree.project_id ?? undefined,
+          await pickRemoteOrRun(async remote => {
+            await performGitPull({
+              worktreeId: selectedWorktreeId,
+              worktreePath: worktree.path,
+              baseBranch: project?.default_branch ?? 'main',
+              branchLabel: worktree.branch,
+              projectId: worktree.project_id ?? undefined,
+              remote,
+              onMergeConflict: () => executeGitDirectly('resolve-conflicts'),
+            })
           })
           break
         }
         case 'push': {
-          const toastId = toast.loading(`Pushing ${worktree.branch}...`)
-          try {
-            await gitPush(worktree.path, worktree.pr_number)
-            triggerImmediateGitPoll()
-            if (worktree.project_id) fetchWorktreesStatus(worktree.project_id)
-            toast.success('Changes pushed', { id: toastId })
-          } catch (error) {
-            toast.error(`Push failed: ${error}`, { id: toastId })
-          }
+          await pickRemoteOrRun(async remote => {
+            const toastId = toast.loading(`Pushing ${worktree.branch}...`)
+            try {
+              await gitPush(worktree.path, worktree.pr_number, remote)
+              triggerImmediateGitPoll()
+              if (worktree.project_id) fetchWorktreesStatus(worktree.project_id)
+              toast.success('Changes pushed', { id: toastId })
+            } catch (error) {
+              toast.error(`Push failed: ${error}`, { id: toastId })
+            }
+          })
           break
         }
         case 'open-pr': {
@@ -592,7 +608,14 @@ ${resolveInstructions}`
         }
       }
     },
-    [selectedWorktreeId, worktree, preferences, project, queryClient]
+    [
+      selectedWorktreeId,
+      worktree,
+      preferences,
+      project,
+      queryClient,
+      pickRemoteOrRun,
+    ]
   )
 
   const executeAction = useCallback(
@@ -761,7 +784,16 @@ ${resolveInstructions}`
 
   return (
     <Dialog open={magicModalOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-[560px] p-0" onKeyDown={handleKeyDown}>
+      <DialogContent
+        ref={contentRef}
+        tabIndex={-1}
+        className="sm:max-w-[560px] p-0 outline-none"
+        onOpenAutoFocus={e => {
+          e.preventDefault()
+          contentRef.current?.focus()
+        }}
+        onKeyDown={handleKeyDown}
+      >
         <DialogHeader className="px-4 pt-5 pb-2">
           <DialogTitle className="flex items-center gap-2">
             <Wand2 className="h-4 w-4" />

@@ -292,6 +292,18 @@ function executeKeybindingAction(
       }
       break
     }
+    case 'open_provider_dropdown':
+      logger.debug('Keybinding: open_provider_dropdown')
+      window.dispatchEvent(new CustomEvent('open-provider-dropdown'))
+      break
+    case 'open_model_dropdown':
+      logger.debug('Keybinding: open_model_dropdown')
+      window.dispatchEvent(new CustomEvent('open-model-dropdown'))
+      break
+    case 'open_thinking_dropdown':
+      logger.debug('Keybinding: open_thinking_dropdown')
+      window.dispatchEvent(new CustomEvent('open-thinking-dropdown'))
+      break
     case 'toggle_session_label': {
       logger.debug('Keybinding: toggle_session_label')
       // Only works when a session is active (modal open or in session view, not on dashboard canvas)

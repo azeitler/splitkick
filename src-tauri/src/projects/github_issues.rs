@@ -58,6 +58,8 @@ pub struct GitHubIssueDetail {
     pub created_at: String,
     pub author: GitHubAuthor,
     #[serde(default)]
+    pub url: String,
+    #[serde(default)]
     pub comments: Vec<GitHubComment>,
 }
 
@@ -243,7 +245,7 @@ pub async fn get_github_issue(
             "view",
             &issue_number.to_string(),
             "--json",
-            "number,title,body,state,labels,createdAt,author,comments",
+            "number,title,body,state,labels,createdAt,author,url,comments",
         ])
         .current_dir(&project_path)
         .output()
@@ -983,6 +985,8 @@ pub struct GitHubPullRequestDetail {
     pub created_at: String,
     pub author: GitHubAuthor,
     #[serde(default)]
+    pub url: String,
+    #[serde(default)]
     pub labels: Vec<GitHubLabel>,
     #[serde(default)]
     pub comments: Vec<GitHubComment>,
@@ -1141,7 +1145,7 @@ pub async fn get_github_pr(
             "view",
             &pr_number.to_string(),
             "--json",
-            "number,title,body,state,headRefName,baseRefName,isDraft,createdAt,author,labels,comments,reviews",
+            "number,title,body,state,headRefName,baseRefName,isDraft,createdAt,author,url,labels,comments,reviews",
         ])
         .current_dir(&project_path)
         .output()

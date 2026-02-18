@@ -120,6 +120,7 @@ export const MemoizedFileDiff = memo(
         disableFileHeader: true, // We render file info in sidebar
         unsafeCSS: `
       pre { font-family: var(--font-family-mono) !important; font-size: calc(var(--ui-font-size) * 0.85) !important; line-height: var(--ui-line-height) !important; }
+      * { user-select: text !important; -webkit-user-select: text !important; cursor: text !important; }
     `,
       }),
       [themeType, syntaxThemeDark, syntaxThemeLight, diffStyle, onLineSelected]

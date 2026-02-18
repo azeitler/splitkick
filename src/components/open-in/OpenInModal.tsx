@@ -60,6 +60,7 @@ export function OpenInModal() {
     sessionChatModalWorktreeId
   const selectedProjectId = useProjectsStore(state => state.selectedProjectId)
   const { data: projects } = useProjects()
+  const contentRef = useRef<HTMLDivElement>(null)
   const hasInitializedRef = useRef(false)
   const [selectedOption, setSelectedOption] = useState<string>('editor')
   const [showingRemotes, setShowingRemotes] = useState(false)
@@ -393,10 +394,16 @@ export function OpenInModal() {
   return (
     <Dialog open={openInModalOpen} onOpenChange={handleOpenChange}>
       <DialogContent
+        ref={contentRef}
+        tabIndex={-1}
         className={cn(
-          'p-0',
+          'p-0 outline-none',
           useWideLayout ? 'sm:max-w-[560px]' : 'sm:max-w-[280px]'
         )}
+        onOpenAutoFocus={e => {
+          e.preventDefault()
+          contentRef.current?.focus()
+        }}
         onKeyDown={handleKeyDown}
       >
         <DialogHeader className="px-4 pt-5 pb-2">

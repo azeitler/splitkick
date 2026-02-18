@@ -8,6 +8,7 @@ import {
   performGitPull,
 } from '@/services/git-status'
 import { useChatStore } from '@/store/chat-store'
+import { useRemotePicker } from '@/hooks/useRemotePicker'
 import {
   Activity,
   ArrowDownToLine,
@@ -408,13 +409,32 @@ export const ChatToolbar = memo(function ChatToolbar({
     refetch: checkHealth,
   } = useMcpHealthCheck()
 
+  const [providerDropdownOpen, setProviderDropdownOpen] = useState(false)
+  const [modelDropdownOpen, setModelDropdownOpen] = useState(false)
+  const [thinkingDropdownOpen, setThinkingDropdownOpen] = useState(false)
   const [mcpDropdownOpen, setMcpDropdownOpen] = useState(false)
+  const pickRemoteOrRun = useRemotePicker(activeWorktreePath)
 
   useEffect(() => {
     if (mcpDropdownOpen) {
       checkHealth()
     }
   }, [mcpDropdownOpen, checkHealth])
+
+  // Listen for keybinding events to open dropdowns
+  useEffect(() => {
+    const onProvider = () => setProviderDropdownOpen(true)
+    const onModel = () => setModelDropdownOpen(true)
+    const onThinking = () => setThinkingDropdownOpen(true)
+    window.addEventListener('open-provider-dropdown', onProvider)
+    window.addEventListener('open-model-dropdown', onModel)
+    window.addEventListener('open-thinking-dropdown', onThinking)
+    return () => {
+      window.removeEventListener('open-provider-dropdown', onProvider)
+      window.removeEventListener('open-model-dropdown', onModel)
+      window.removeEventListener('open-thinking-dropdown', onThinking)
+    }
+  }, [])
 
   // Count only enabled servers that actually exist and aren't disabled
   const activeMcpCount = useMemo(() => {
@@ -512,22 +532,25 @@ export const ChatToolbar = memo(function ChatToolbar({
     onResolveConflicts,
   ])
 
-  const handlePushClick = useCallback(async () => {
+  const handlePushClick = useCallback(() => {
     if (!activeWorktreePath || !worktreeId) return
-    const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
-    setWorktreeLoading(worktreeId, 'push')
-    const toastId = toast.loading('Pushing changes...')
-    try {
-      await gitPush(activeWorktreePath, prNumber)
-      triggerImmediateGitPoll()
-      if (projectId) fetchWorktreesStatus(projectId)
-      toast.success('Changes pushed', { id: toastId })
-    } catch (error) {
-      toast.error(`Push failed: ${error}`, { id: toastId })
-    } finally {
-      clearWorktreeLoading(worktreeId)
-    }
-  }, [activeWorktreePath, worktreeId, projectId, prNumber])
+    pickRemoteOrRun(async remote => {
+      const { setWorktreeLoading, clearWorktreeLoading } =
+        useChatStore.getState()
+      setWorktreeLoading(worktreeId, 'push')
+      const toastId = toast.loading('Pushing changes...')
+      try {
+        await gitPush(activeWorktreePath, prNumber, remote)
+        triggerImmediateGitPoll()
+        if (projectId) fetchWorktreesStatus(projectId)
+        toast.success('Changes pushed', { id: toastId })
+      } catch (error) {
+        toast.error(`Push failed: ${error}`, { id: toastId })
+      } finally {
+        clearWorktreeLoading(worktreeId)
+      }
+    })
+  }, [activeWorktreePath, worktreeId, projectId, prNumber, pickRemoteOrRun])
 
   const handleUncommittedDiffClick = useCallback(() => {
     onSetDiffRequest({
@@ -1200,21 +1223,30 @@ export const ChatToolbar = memo(function ChatToolbar({
         {customCliProfiles.length > 0 && !providerLocked && (
           <>
             <div className="hidden @xl:block h-4 w-px bg-border/50" />
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  disabled={hasPendingQuestions}
-                  className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-                >
-                  <span>
-                    {!selectedProvider || selectedProvider === '__anthropic__'
-                      ? 'Anthropic'
-                      : selectedProvider}
-                  </span>
-                  <ChevronDown className="h-3 w-3 opacity-50" />
-                </button>
-              </DropdownMenuTrigger>
+            <DropdownMenu
+              open={providerDropdownOpen}
+              onOpenChange={setProviderDropdownOpen}
+            >
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      disabled={hasPendingQuestions}
+                      className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+                    >
+                      <span>
+                        {!selectedProvider ||
+                        selectedProvider === '__anthropic__'
+                          ? 'Anthropic'
+                          : selectedProvider}
+                      </span>
+                      <ChevronDown className="h-3 w-3 opacity-50" />
+                    </button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent>Provider (⌥P)</TooltipContent>
+              </Tooltip>
               <DropdownMenuContent align="start" className="min-w-40">
                 <DropdownMenuRadioGroup
                   value={selectedProvider ?? '__anthropic__'}
@@ -1222,6 +1254,7 @@ export const ChatToolbar = memo(function ChatToolbar({
                 >
                   <DropdownMenuRadioItem value="__anthropic__">
                     Anthropic
+                    <Kbd className="ml-auto text-[10px]">1</Kbd>
                   </DropdownMenuRadioItem>
                   {customCliProfiles.length > 0 && (
                     <>
@@ -1232,12 +1265,13 @@ export const ChatToolbar = memo(function ChatToolbar({
                           cc
                         </span>
                       </DropdownMenuLabel>
-                      {customCliProfiles.map(profile => (
+                      {customCliProfiles.map((profile, i) => (
                         <DropdownMenuRadioItem
                           key={profile.name}
                           value={profile.name}
                         >
                           {profile.name}
+                          <Kbd className="ml-auto text-[10px]">{i + 2}</Kbd>
                         </DropdownMenuRadioItem>
                       ))}
                     </>
@@ -1252,21 +1286,29 @@ export const ChatToolbar = memo(function ChatToolbar({
         <div className="hidden @xl:block h-4 w-px bg-border/50" />
 
         {/* Model selector - desktop only (includes provider info when locked) */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              disabled={hasPendingQuestions}
-              className="hidden @xl:flex h-8 items-center gap-1.5 rounded-none bg-transparent px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              <span>
-                {filteredModelOptions.find(o => o.value === selectedModel)
-                  ?.label ?? selectedModel}
-              </span>
-              <ChevronDown className="h-3 w-3 opacity-50" />
-            </button>
-          </DropdownMenuTrigger>
+        <DropdownMenu
+          open={modelDropdownOpen}
+          onOpenChange={setModelDropdownOpen}
+        >
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  disabled={hasPendingQuestions}
+                  className="hidden @xl:flex h-8 items-center gap-1.5 rounded-none bg-transparent px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  <span>
+                    {filteredModelOptions.find(o => o.value === selectedModel)
+                      ?.label ?? selectedModel}
+                  </span>
+                  <ChevronDown className="h-3 w-3 opacity-50" />
+                </button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent>Model (⌥M)</TooltipContent>
+          </Tooltip>
           <DropdownMenuContent align="start" className="min-w-40">
             {providerLocked && customCliProfiles.length > 0 && (
               <>
@@ -1283,9 +1325,10 @@ export const ChatToolbar = memo(function ChatToolbar({
               value={selectedModel}
               onValueChange={handleModelChange}
             >
-              {filteredModelOptions.map(option => (
+              {filteredModelOptions.map((option, i) => (
                 <DropdownMenuRadioItem key={option.value} value={option.value}>
                   {option.label}
+                  <Kbd className="ml-auto text-[10px]">{i + 1}</Kbd>
                 </DropdownMenuRadioItem>
               ))}
             </DropdownMenuRadioGroup>
@@ -1299,7 +1342,10 @@ export const ChatToolbar = memo(function ChatToolbar({
 
         {/* Thinking/Effort level dropdown - desktop only */}
         {hideThinkingLevel ? null : useAdaptiveThinking ? (
-          <DropdownMenu>
+          <DropdownMenu
+            open={thinkingDropdownOpen}
+            onOpenChange={setThinkingDropdownOpen}
+          >
             <Tooltip>
               <TooltipTrigger asChild>
                 <DropdownMenuTrigger asChild>
@@ -1329,7 +1375,7 @@ export const ChatToolbar = memo(function ChatToolbar({
               <TooltipContent>
                 {thinkingOverrideActive
                   ? `Effort disabled in ${executionMode} mode (change in Settings)`
-                  : `Effort: ${EFFORT_LEVEL_OPTIONS.find(o => o.value === selectedEffortLevel)?.label}`}
+                  : `Effort: ${EFFORT_LEVEL_OPTIONS.find(o => o.value === selectedEffortLevel)?.label} (⌥E)`}
               </TooltipContent>
             </Tooltip>
             <DropdownMenuContent align="start">
@@ -1337,7 +1383,7 @@ export const ChatToolbar = memo(function ChatToolbar({
                 value={thinkingOverrideActive ? '' : selectedEffortLevel}
                 onValueChange={handleEffortLevelChange}
               >
-                {EFFORT_LEVEL_OPTIONS.map(option => (
+                {EFFORT_LEVEL_OPTIONS.map((option, i) => (
                   <DropdownMenuRadioItem
                     key={option.value}
                     value={option.value}
@@ -1347,13 +1393,17 @@ export const ChatToolbar = memo(function ChatToolbar({
                     <span className="ml-auto pl-4 text-xs text-muted-foreground">
                       {option.description}
                     </span>
+                    <Kbd className="ml-2 text-[10px]">{i + 1}</Kbd>
                   </DropdownMenuRadioItem>
                 ))}
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
           </DropdownMenu>
         ) : (
-          <DropdownMenu>
+          <DropdownMenu
+            open={thinkingDropdownOpen}
+            onOpenChange={setThinkingDropdownOpen}
+          >
             <Tooltip>
               <TooltipTrigger asChild>
                 <DropdownMenuTrigger asChild>
@@ -1384,7 +1434,7 @@ export const ChatToolbar = memo(function ChatToolbar({
               <TooltipContent>
                 {thinkingOverrideActive
                   ? `Thinking disabled in ${executionMode} mode (change in Settings)`
-                  : `Thinking: ${THINKING_LEVEL_OPTIONS.find(o => o.value === selectedThinkingLevel)?.label}`}
+                  : `Thinking: ${THINKING_LEVEL_OPTIONS.find(o => o.value === selectedThinkingLevel)?.label} (⌥E)`}
               </TooltipContent>
             </Tooltip>
             <DropdownMenuContent align="start">
@@ -1392,7 +1442,7 @@ export const ChatToolbar = memo(function ChatToolbar({
                 value={thinkingOverrideActive ? 'off' : selectedThinkingLevel}
                 onValueChange={handleThinkingLevelChange}
               >
-                {THINKING_LEVEL_OPTIONS.map(option => (
+                {THINKING_LEVEL_OPTIONS.map((option, i) => (
                   <DropdownMenuRadioItem
                     key={option.value}
                     value={option.value}
@@ -1402,6 +1452,7 @@ export const ChatToolbar = memo(function ChatToolbar({
                     <span className="ml-auto pl-4 text-xs text-muted-foreground">
                       {option.tokens}
                     </span>
+                    <Kbd className="ml-2 text-[10px]">{i + 1}</Kbd>
                   </DropdownMenuRadioItem>
                 ))}
               </DropdownMenuRadioGroup>
