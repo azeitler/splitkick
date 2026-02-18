@@ -10,6 +10,7 @@ import {
   Zap,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { ImageLightbox } from '@/components/chat/ImageLightbox'
 import type { QueuedMessage } from '@/types/chat'
 import {
   MODEL_OPTIONS,
@@ -89,6 +90,19 @@ export const QueuedMessageItem = memo(function QueuedMessageItem({
           </TooltipTrigger>
           <TooltipContent>Remove from queue</TooltipContent>
         </Tooltip>
+        {/* Attached images */}
+        {message.pendingImages.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-1.5">
+            {message.pendingImages.map((img, idx) => (
+              <ImageLightbox
+                key={`${message.id}-img-${idx}`}
+                src={img.path}
+                alt={`Attached image ${idx + 1}`}
+                thumbnailClassName="h-20 max-w-40 object-contain rounded border border-border/50 cursor-pointer hover:border-primary/50 transition-colors"
+              />
+            ))}
+          </div>
+        )}
         {/* Message content */}
         <div className="text-sm">
           {message.message.length > 200
@@ -96,14 +110,10 @@ export const QueuedMessageItem = memo(function QueuedMessageItem({
             : message.message}
         </div>
         {/* Attachment indicators */}
-        {(message.pendingImages.length > 0 ||
-          message.pendingFiles.length > 0 ||
+        {(message.pendingFiles.length > 0 ||
           message.pendingSkills.length > 0 ||
           message.pendingTextFiles.length > 0) && (
           <div className="mt-1.5 flex items-center gap-2 text-xs text-muted-foreground">
-            {message.pendingImages.length > 0 && (
-              <span>{message.pendingImages.length} image(s)</span>
-            )}
             {message.pendingFiles.length > 0 && (
               <span>{message.pendingFiles.length} file(s)</span>
             )}
