@@ -14,6 +14,7 @@ import {
   Wand2,
   Zap,
   Settings,
+  Eye,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
@@ -66,6 +67,7 @@ import type {
   IssueContext,
   PullRequestContext,
 } from '@/types/github'
+import { IssuePreviewModal } from './IssuePreviewModal'
 
 export type TabId = 'quick' | 'issues' | 'prs' | 'branches'
 
@@ -116,6 +118,10 @@ export function NewWorktreeModal() {
   const [creatingFromNumber, setCreatingFromNumber] = useState<number | null>(
     null
   )
+  const [previewItem, setPreviewItem] = useState<{
+    type: 'issue' | 'pr'
+    number: number
+  } | null>(null)
   const [creatingFromBranch, setCreatingFromBranch] = useState<string | null>(
     null
   )
@@ -821,6 +827,7 @@ export function NewWorktreeModal() {
               setSelectedIndex={setSelectedItemIndex}
               onSelectIssue={handleSelectIssue}
               onInvestigateIssue={handleSelectIssueAndInvestigate}
+              onPreviewIssue={issue => setPreviewItem({ type: 'issue', number: issue.number })}
               creatingFromNumber={creatingFromNumber}
               searchInputRef={searchInputRef}
               onGhLogin={triggerGhLogin}
@@ -844,6 +851,7 @@ export function NewWorktreeModal() {
               setSelectedIndex={setSelectedItemIndex}
               onSelectPR={handleSelectPR}
               onInvestigatePR={handleSelectPRAndInvestigate}
+              onPreviewPR={pr => setPreviewItem({ type: 'pr', number: pr.number })}
               creatingFromNumber={creatingFromNumber}
               searchInputRef={searchInputRef}
               onGhLogin={triggerGhLogin}
@@ -882,6 +890,17 @@ export function NewWorktreeModal() {
           </div>
         )}
       </DialogContent>
+      {previewItem && selectedProject && (
+        <IssuePreviewModal
+          open={!!previewItem}
+          onOpenChange={open => {
+            if (!open) setPreviewItem(null)
+          }}
+          projectPath={selectedProject.path}
+          type={previewItem.type}
+          number={previewItem.number}
+        />
+      )}
     </Dialog>
   )
 }
@@ -1048,6 +1067,7 @@ export interface GitHubIssuesTabProps {
   setSelectedIndex: (index: number) => void
   onSelectIssue: (issue: GitHubIssue, background?: boolean) => void
   onInvestigateIssue: (issue: GitHubIssue, background?: boolean) => void
+  onPreviewIssue: (issue: GitHubIssue) => void
   creatingFromNumber: number | null
   searchInputRef: React.RefObject<HTMLInputElement | null>
   onGhLogin: () => void
@@ -1069,6 +1089,7 @@ export function GitHubIssuesTab({
   setSelectedIndex,
   onSelectIssue,
   onInvestigateIssue,
+  onPreviewIssue,
   creatingFromNumber,
   searchInputRef,
   onGhLogin,
@@ -1182,6 +1203,7 @@ export function GitHubIssuesTab({
                 onMouseEnter={() => setSelectedIndex(index)}
                 onClick={bg => onSelectIssue(issue, bg)}
                 onInvestigate={bg => onInvestigateIssue(issue, bg)}
+                onPreview={() => onPreviewIssue(issue)}
               />
             ))}
             {isSearching && (
@@ -1214,6 +1236,7 @@ export interface GitHubPRsTabProps {
   setSelectedIndex: (index: number) => void
   onSelectPR: (pr: GitHubPullRequest, background?: boolean) => void
   onInvestigatePR: (pr: GitHubPullRequest, background?: boolean) => void
+  onPreviewPR: (pr: GitHubPullRequest) => void
   creatingFromNumber: number | null
   searchInputRef: React.RefObject<HTMLInputElement | null>
   onGhLogin: () => void
@@ -1235,6 +1258,7 @@ export function GitHubPRsTab({
   setSelectedIndex,
   onSelectPR,
   onInvestigatePR,
+  onPreviewPR,
   creatingFromNumber,
   searchInputRef,
   onGhLogin,
@@ -1348,6 +1372,7 @@ export function GitHubPRsTab({
                 onMouseEnter={() => setSelectedIndex(index)}
                 onClick={bg => onSelectPR(pr, bg)}
                 onInvestigate={bg => onInvestigatePR(pr, bg)}
+                onPreview={() => onPreviewPR(pr)}
               />
             ))}
             {isSearching && (
@@ -1373,6 +1398,7 @@ interface IssueItemProps {
   onMouseEnter: () => void
   onClick: (background: boolean) => void
   onInvestigate: (background: boolean) => void
+  onPreview: () => void
 }
 
 function IssueItem({
@@ -1383,6 +1409,7 @@ function IssueItem({
   onMouseEnter,
   onClick,
   onInvestigate,
+  onPreview,
 }: IssueItemProps) {
   return (
     <div
@@ -1442,6 +1469,21 @@ function IssueItem({
           </div>
         )}
       </button>
+      {/* Preview button */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            onClick={e => {
+              e.stopPropagation()
+              onPreview()
+            }}
+            className="shrink-0 p-1 rounded text-muted-foreground transition-colors hover:text-foreground hover:bg-muted"
+          >
+            <Eye className="h-3.5 w-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>Preview issue</TooltipContent>
+      </Tooltip>
       {/* Investigate button - always visible */}
       <Tooltip>
         <TooltipTrigger asChild>
@@ -1471,6 +1513,7 @@ interface PRItemProps {
   onMouseEnter: () => void
   onClick: (background: boolean) => void
   onInvestigate: (background: boolean) => void
+  onPreview: () => void
 }
 
 function PRItem({
@@ -1481,6 +1524,7 @@ function PRItem({
   onMouseEnter,
   onClick,
   onInvestigate,
+  onPreview,
 }: PRItemProps) {
   return (
     <div
@@ -1549,6 +1593,21 @@ function PRItem({
           </div>
         )}
       </button>
+      {/* Preview button */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            onClick={e => {
+              e.stopPropagation()
+              onPreview()
+            }}
+            className="shrink-0 p-1 rounded text-muted-foreground transition-colors hover:text-foreground hover:bg-muted"
+          >
+            <Eye className="h-3.5 w-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>Preview PR</TooltipContent>
+      </Tooltip>
       {/* Investigate button - always visible */}
       <Tooltip>
         <TooltipTrigger asChild>

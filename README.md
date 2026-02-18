@@ -10,7 +10,7 @@ Tauri v2 · React 19 · Rust · TypeScript · Tailwind CSS v4 · shadcn/ui v4 ·
 
 ## About the Project
 
-Jean is a native desktop app built with Tauri that gives you a powerful interface for working with Claude CLI across multiple projects. It manages git worktrees, chat sessions, terminals, and GitHub integrations — all in one place.
+Jean is an opinionated native desktop app built with Tauri that gives you a powerful interface for working with Claude CLI across multiple projects. It has strong opinions about how AI-assisted development should work — managing git worktrees, chat sessions, terminals, and GitHub integrations in one cohesive workflow.
 
 No vendor lock-in. Everything runs locally on your machine with your own Claude CLI installation.
 
