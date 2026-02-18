@@ -572,7 +572,6 @@ export function WorkflowRunsModal() {
       <DialogContent
         showCloseButton={false}
         className="h-[80vh] sm:max-w-5xl overflow-hidden flex flex-col"
-        onOpenAutoFocus={e => e.preventDefault()}
       >
         <DialogHeader>
           <div className="flex items-center gap-2">

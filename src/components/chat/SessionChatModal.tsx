@@ -862,7 +862,7 @@ export function SessionChatModal({
 
           {/* Session tabs */}
           {sessions.length > 0 && (
-            <div className="shrink-0 border-b px-2 flex items-center gap-0.5 overflow-x-auto relative">
+            <div className="shrink-0 border-b flex items-center gap-0.5 relative">
               {hasWaitingLeft && (
                 <button
                   type="button"
@@ -880,7 +880,7 @@ export function SessionChatModal({
                 />
               )}
               <ScrollArea className="flex-1" viewportRef={modalTabScrollRef}>
-                <div className="flex items-center gap-1.5 py-1">
+                <div className="flex items-center gap-1.5 py-1 px-3">
                   {sortedSessions.map((session, idx) => {
                     const isActive = session.id === currentSessionId
                     const status = getSessionStatus(session, storeState)

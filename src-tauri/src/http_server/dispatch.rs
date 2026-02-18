@@ -966,6 +966,11 @@ pub async fn dispatch_command(
             crate::projects::open_project_on_github(app.clone(), project_id).await?;
             Ok(Value::Null)
         }
+        "get_github_remotes" => {
+            let repo_path: String = field(&args, "repoPath", "repo_path")?;
+            let result = crate::projects::get_github_remotes(repo_path).await?;
+            to_value(result)
+        }
         "get_github_branch_url" => {
             let repo_path: String = field(&args, "repoPath", "repo_path")?;
             let branch: String = from_field(&args, "branch")?;

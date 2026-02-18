@@ -218,6 +218,14 @@ function WorktreeSectionHeader({
         onClick={onRowClick}
         role={onRowClick ? 'button' : undefined}
       >
+        {hasRunningTerminal && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="shrink-0 block h-3 w-3 square-spinner" />
+            </TooltipTrigger>
+            <TooltipContent>Dev server running in terminal. Press ⌘R to open</TooltipContent>
+          </Tooltip>
+        )}
         <span className="inline-flex items-center gap-1.5 font-medium">
           {isBase ? 'Base Session' : worktree.name}
           {(() => {
@@ -229,14 +237,6 @@ function WorktreeSectionHeader({
               </span>
             ) : null
           })()}
-          {hasRunningTerminal && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-              </TooltipTrigger>
-              <TooltipContent>Run active</TooltipContent>
-            </Tooltip>
-          )}
           <span
             className="inline-flex items-center font-normal"
             onClick={e => e.stopPropagation()}

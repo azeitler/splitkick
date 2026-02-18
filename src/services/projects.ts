@@ -1631,6 +1631,26 @@ export function useOpenBranchOnGitHub() {
   })
 }
 
+export interface GitHubRemote {
+  name: string
+  url: string
+}
+
+/**
+ * Hook to fetch all GitHub remotes for a repository
+ */
+export function useGitHubRemotes(repoPath: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: ['github-remotes', repoPath],
+    queryFn: async () => {
+      if (!repoPath) return []
+      return invoke<GitHubRemote[]>('get_github_remotes', { repoPath })
+    },
+    enabled: enabled && repoPath !== null,
+    staleTime: 30_000,
+  })
+}
+
 /**
  * Hook to open a worktree in Finder
  */

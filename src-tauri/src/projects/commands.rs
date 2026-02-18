@@ -2899,6 +2899,13 @@ pub async fn open_worktree_in_editor(
     Ok(())
 }
 
+/// Get all GitHub remotes for a repository
+#[tauri::command]
+pub async fn get_github_remotes(repo_path: String) -> Result<Vec<git::GitHubRemote>, String> {
+    log::trace!("Getting GitHub remotes for: {repo_path}");
+    git::get_github_remotes(&repo_path)
+}
+
 /// Get the GitHub URL for a branch (for frontend to open)
 #[tauri::command]
 pub async fn get_github_branch_url(repo_path: String, branch: String) -> Result<String, String> {

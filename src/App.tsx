@@ -507,6 +507,8 @@ function App() {
     // Auto-updater logic - check for updates 5 seconds after app loads
     const checkForUpdates = async () => {
       if (!isNativeApp()) return
+      // Don't re-show modal if user already dismissed an update
+      if (useUIStore.getState().pendingUpdateVersion) return
 
       try {
         const { check } = await import('@tauri-apps/plugin-updater')
@@ -537,10 +539,12 @@ function App() {
     }
     window.addEventListener('update-available', handleUpdateAvailable)
 
-    // Check for updates 5 seconds after app loads
+    // Check for updates 5 seconds after app loads, then every 30 minutes
     const updateTimer = setTimeout(checkForUpdates, 5000)
+    const updateInterval = setInterval(checkForUpdates, 30 * 60 * 1000)
     return () => {
       clearTimeout(updateTimer)
+      clearInterval(updateInterval)
       window.removeEventListener('install-pending-update', handleInstallPending)
       window.removeEventListener('update-available', handleUpdateAvailable)
     }

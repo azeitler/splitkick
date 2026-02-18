@@ -294,7 +294,6 @@ export function IssuePreviewModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="!w-screen !max-w-screen sm:!w-[90vw] sm:!max-w-4xl sm:!h-[85vh] sm:!max-h-[85vh] sm:!rounded-lg flex flex-col overflow-hidden z-[80] !p-8 [&>[data-slot=dialog-close]]:top-8 [&>[data-slot=dialog-close]]:right-8"
-        onOpenAutoFocus={e => e.preventDefault()}
       >
         <DialogHeader className="flex-shrink-0 px-1">
           <DialogTitle className="text-lg">

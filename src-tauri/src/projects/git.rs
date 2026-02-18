@@ -178,12 +178,34 @@ pub fn get_repo_name(path: &str) -> Result<String, String> {
         })
 }
 
-/// Get the GitHub URL for a repository
-///
-/// Converts git remote URLs to HTTPS GitHub URLs
-pub fn get_github_url(repo_path: &str) -> Result<String, String> {
+/// A GitHub remote with its name and resolved HTTPS URL
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubRemote {
+    pub name: String,
+    pub url: String,
+}
+
+/// Convert a raw git remote URL to a GitHub HTTPS URL, if possible
+fn normalize_github_url(remote_url: &str) -> Option<String> {
+    if remote_url.starts_with("git@github.com:") {
+        Some(
+            remote_url
+                .replace("git@github.com:", "https://github.com/")
+                .trim_end_matches(".git")
+                .to_string(),
+        )
+    } else if remote_url.starts_with("https://github.com/") {
+        Some(remote_url.trim_end_matches(".git").to_string())
+    } else {
+        None
+    }
+}
+
+/// Get the GitHub URL for a specific remote
+pub fn get_github_url_for_remote(repo_path: &str, remote: &str) -> Result<String, String> {
     let output = silent_command("git")
-        .args(["remote", "get-url", "origin"])
+        .args(["remote", "get-url", remote])
         .current_dir(repo_path)
         .output()
         .map_err(|e| format!("Failed to get remote URL: {e}"))?;
@@ -195,23 +217,52 @@ pub fn get_github_url(repo_path: &str) -> Result<String, String> {
 
     let remote_url = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
-    // Convert SSH URL to HTTPS URL if needed
-    // git@github.com:user/repo.git -> https://github.com/user/repo
-    // https://github.com/user/repo.git -> https://github.com/user/repo
-    let github_url = if remote_url.starts_with("git@github.com:") {
-        remote_url
-            .replace("git@github.com:", "https://github.com/")
-            .trim_end_matches(".git")
-            .to_string()
-    } else if remote_url.starts_with("https://github.com/") {
-        remote_url.trim_end_matches(".git").to_string()
-    } else {
-        return Err(format!(
-            "Remote URL is not a GitHub repository: {remote_url}"
-        ));
-    };
+    normalize_github_url(&remote_url)
+        .ok_or_else(|| format!("Remote URL is not a GitHub repository: {remote_url}"))
+}
 
-    Ok(github_url)
+/// Get the GitHub URL for a repository (uses "origin" remote)
+pub fn get_github_url(repo_path: &str) -> Result<String, String> {
+    get_github_url_for_remote(repo_path, "origin")
+}
+
+/// Get all GitHub remotes for a repository
+pub fn get_github_remotes(repo_path: &str) -> Result<Vec<GitHubRemote>, String> {
+    let output = silent_command("git")
+        .args(["remote"])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to list remotes: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to list remotes: {stderr}"));
+    }
+
+    let remote_names: Vec<String> = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+
+    let mut result = Vec::new();
+
+    for name in remote_names {
+        if let Ok(url_out) = silent_command("git")
+            .args(["remote", "get-url", &name])
+            .current_dir(repo_path)
+            .output()
+        {
+            if url_out.status.success() {
+                let raw = String::from_utf8_lossy(&url_out.stdout).trim().to_string();
+                if let Some(url) = normalize_github_url(&raw) {
+                    result.push(GitHubRemote { name, url });
+                }
+            }
+        }
+    }
+
+    Ok(result)
 }
 
 /// Get the current branch name (HEAD) for a repository
