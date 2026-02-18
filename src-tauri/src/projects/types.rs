@@ -76,6 +76,9 @@ pub struct Project {
     /// Default provider profile name for sessions in this project (None = use global default)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_provider: Option<String>,
+    /// Default CLI backend for sessions in this project (None = use global default)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_backend: Option<String>,
 }
 
 /// A git worktree created for a project

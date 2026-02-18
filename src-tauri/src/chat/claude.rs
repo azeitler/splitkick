@@ -1,7 +1,8 @@
 use tauri::Manager;
 
 use super::types::{
-    CompactMetadata, ContentBlock, EffortLevel, ThinkingLevel, ToolCall, UsageData,
+    CompactMetadata, ContentBlock, EffortLevel, PermissionDenial, PermissionDeniedEvent,
+    ThinkingLevel, ToolCall, UsageData,
 };
 use crate::http_server::EmitExt;
 use crate::projects::github_issues::{
@@ -115,22 +116,7 @@ struct ToolResultEvent {
     output: String,
 }
 
-/// A single permission denial from Claude CLI
-#[derive(serde::Serialize, Clone)]
-struct PermissionDenial {
-    tool_name: String,
-    tool_use_id: String,
-    tool_input: serde_json::Value,
-}
-
-/// Payload for permission denied events sent to frontend
-/// Sent when Claude CLI returns permission_denials (tools that require approval)
-#[derive(serde::Serialize, Clone)]
-struct PermissionDeniedEvent {
-    session_id: String,
-    worktree_id: String, // Kept for backward compatibility
-    denials: Vec<PermissionDenial>,
-}
+// PermissionDenial and PermissionDeniedEvent are in types.rs
 
 /// Payload for compacting-in-progress events sent to frontend
 /// Signals that context compaction has started
@@ -437,6 +423,17 @@ fn build_claude_args(
                 "When running Claude CLI commands, use the full path to the embedded binary: {}\n\
                  Do NOT use bare `claude` — always use the full path above.",
                 claude_binary.display()
+            ));
+        }
+    }
+
+    // Embedded Codex CLI path - tell Claude to use the app's bundled binary
+    if let Ok(codex_binary) = crate::codex_cli::get_cli_binary_path(app) {
+        if codex_binary.exists() {
+            system_prompt_parts.push(format!(
+                "When running Codex CLI commands, use the full path to the embedded binary: {}\n\
+                 Do NOT use bare `codex` — always use the full path above.",
+                codex_binary.display()
             ));
         }
     }
@@ -1178,6 +1175,7 @@ pub fn tail_claude_output(
                                         tool_name: tool_name.to_string(),
                                         tool_use_id: d.get("tool_use_id")?.as_str()?.to_string(),
                                         tool_input: tool_input.clone(),
+                                        rpc_id: None,
                                     })
                                 })
                                 .collect();

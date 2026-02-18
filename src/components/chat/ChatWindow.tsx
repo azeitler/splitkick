@@ -30,6 +30,7 @@ import {
   useSendMessage,
   useSetSessionModel,
   useSetSessionThinkingLevel,
+  useSetSessionBackend,
   useSetSessionProvider,
   useCreateSession,
   cancelChatMessage,
@@ -77,11 +78,13 @@ import type {
   PendingFile,
 } from '@/types/chat'
 import { isAskUserQuestion, isExitPlanMode, isTodoWrite } from '@/types/chat'
+import type { CodexAgent } from '@/types/chat'
 import { getFilename, normalizePath } from '@/lib/path-utils'
 import { cn } from '@/lib/utils'
 import { PermissionApproval } from './PermissionApproval'
 import { SetupScriptOutput } from './SetupScriptOutput'
 import { TodoWidget } from './TodoWidget'
+import { AgentWidget } from './AgentWidget'
 import {
   normalizeTodosForDisplay,
   findPlanFilePath,
@@ -391,6 +394,7 @@ export function ChatWindow({
   const createSession = useCreateSession()
   const setSessionModel = useSetSessionModel()
   const setSessionThinkingLevel = useSetSessionThinkingLevel()
+  const setSessionBackend = useSetSessionBackend()
   const setSessionProvider = useSetSessionProvider()
 
   // Fetch worktree data for PR link display
@@ -446,12 +450,6 @@ export function ChatWindow({
   // Run script for this worktree (used by CMD+R keybinding)
   const { data: runScript } = useRunScript(activeWorktreePath ?? null)
 
-  // Per-session model selection, falls back to preferences default
-  const defaultModel: ClaudeModel =
-    (preferences?.selected_model as ClaudeModel) ?? DEFAULT_MODEL
-  const selectedModel: ClaudeModel =
-    (session?.selected_model as ClaudeModel) ?? defaultModel
-
   // Per-session provider selection: persisted session → zustand → project default → global default
   const projectDefaultProvider = project?.default_provider ?? null
   const globalDefaultProvider = preferences?.default_provider ?? null
@@ -467,6 +465,30 @@ export function ChatWindow({
     selectedProvider && selectedProvider !== '__anthropic__'
   )
 
+  // Per-session backend selection: session → zustand → project default → global default
+  const zustandBackend = useChatStore(state =>
+    deferredSessionId ? state.selectedBackends[deferredSessionId] : undefined
+  )
+  const projectDefaultBackend = (project?.default_backend ?? null) as
+    | 'claude'
+    | 'codex'
+    | null
+  const globalDefaultBackend = (preferences?.default_backend ?? 'claude') as
+    | 'claude'
+    | 'codex'
+  const selectedBackend: 'claude' | 'codex' =
+    (session?.backend as 'claude' | 'codex') ??
+    zustandBackend ??
+    projectDefaultBackend ??
+    globalDefaultBackend
+  const isCodexBackend = selectedBackend === 'codex'
+
+  // Per-session model selection, falls back to preferences default (backend-aware)
+  const defaultModel: string = isCodexBackend
+    ? (preferences?.selected_codex_model ?? 'gpt-5.3-codex')
+    : ((preferences?.selected_model as ClaudeModel) ?? DEFAULT_MODEL)
+  const selectedModel: string = session?.selected_model ?? defaultModel
+
   // Per-session thinking level, falls back to preferences default
   const defaultThinkingLevel =
     (preferences?.thinking_level as ThinkingLevel) ?? DEFAULT_THINKING_LEVEL
@@ -479,9 +501,17 @@ export function ChatWindow({
     sessionThinkingLevel ??
     defaultThinkingLevel
 
-  // Per-session effort level, falls back to preferences default
-  const defaultEffortLevel =
-    (preferences?.default_effort_level as EffortLevel) ?? 'high'
+  // Per-session effort level, falls back to preferences default (backend-aware)
+  const defaultEffortLevel = isCodexBackend
+    ? ((
+        {
+          low: 'low',
+          medium: 'medium',
+          high: 'high',
+          xhigh: 'max',
+        } as Record<string, EffortLevel>
+      )[preferences?.default_codex_reasoning_effort ?? 'high'] ?? 'high')
+    : ((preferences?.default_effort_level as EffortLevel) ?? 'high')
   const sessionEffortLevel = useChatStore(state =>
     deferredSessionId ? state.effortLevels[deferredSessionId] : undefined
   )
@@ -694,9 +724,11 @@ export function ChatWindow({
   const selectedThinkingLevelRef = useRef(selectedThinkingLevel)
   const selectedEffortLevelRef = useRef(selectedEffortLevel)
   const useAdaptiveThinkingRef = useRef(useAdaptiveThinkingFlag)
+  const isCodexBackendRef = useRef(isCodexBackend)
   const executionModeRef = useRef(executionMode)
   const enabledMcpServersRef = useRef(enabledMcpServers)
   const mcpServersDataRef = useRef<McpServerInfo[]>(availableMcpServers)
+  const selectedBackendRef = useRef(selectedBackend)
 
   // Keep refs in sync with current values (runs on every render, but cheap)
   activeSessionIdRef.current = activeSessionId
@@ -707,9 +739,11 @@ export function ChatWindow({
   selectedThinkingLevelRef.current = selectedThinkingLevel
   selectedEffortLevelRef.current = selectedEffortLevel
   useAdaptiveThinkingRef.current = useAdaptiveThinkingFlag
+  isCodexBackendRef.current = isCodexBackend
   executionModeRef.current = executionMode
   enabledMcpServersRef.current = enabledMcpServers
   mcpServersDataRef.current = availableMcpServers
+  selectedBackendRef.current = selectedBackend
 
   // Stable callback for useMessageHandlers to build MCP config from current refs
   const getMcpConfig = useCallback(
@@ -807,6 +841,78 @@ export function ChatWindow({
 
     return { todos: [], sourceMessageId: null, isFromStreaming: false }
   }, [activeSessionId, isSending, currentToolCalls, lastAssistantMessage])
+
+  // Track which message's agents were dismissed
+  const [dismissedAgentMessageId, setDismissedAgentMessageId] = useState<
+    string | null
+  >(null)
+
+  // Get active agents from collab_tool_call (SpawnAgent) events
+  const {
+    agents: activeAgents,
+    sourceMessageId: agentSourceMessageId,
+    isFromStreaming: agentIsFromStreaming,
+  } = useMemo(() => {
+    if (!activeSessionId)
+      return { agents: [], sourceMessageId: null, isFromStreaming: false }
+
+    const toolCalls =
+      isSending && currentToolCalls.length > 0
+        ? currentToolCalls
+        : (lastAssistantMessage?.tool_calls ?? [])
+
+    const agents: CodexAgent[] = []
+    for (const tc of toolCalls) {
+      if (tc.name === 'SpawnAgent') {
+        const input = tc.input as Record<string, unknown>
+        const prompt = (input.prompt as string) ?? ''
+        const truncated =
+          prompt.length > 80 ? prompt.substring(0, 80) + '...' : prompt
+        // SpawnAgent gets output when spawn completes — agent is now running
+        // Only mark completed/errored when session is done (!isSending)
+        let status: CodexAgent['status'] = 'in_progress'
+        if (tc.output && !isSending) {
+          const out = tc.output as string
+          if (out.includes('errored')) {
+            status = 'errored'
+          } else {
+            status = 'completed'
+          }
+        }
+        agents.push({ id: tc.id, prompt: truncated, status })
+      }
+    }
+
+    const sourceId =
+      isSending && currentToolCalls.length > 0
+        ? null
+        : (lastAssistantMessage?.id ?? null)
+    return {
+      agents,
+      sourceMessageId: sourceId,
+      isFromStreaming: isSending && currentToolCalls.length > 0,
+    }
+  }, [activeSessionId, isSending, currentToolCalls, lastAssistantMessage])
+
+  // Auto-clear agent dismissal on new streaming agents
+  useEffect(() => {
+    if (isSending && activeAgents.length > 0 && agentSourceMessageId === null) {
+      if (dismissedAgentMessageId !== '__streaming__') {
+        queueMicrotask(() => setDismissedAgentMessageId(null))
+      }
+    } else if (
+      !isSending &&
+      agentSourceMessageId !== null &&
+      dismissedAgentMessageId === '__streaming__'
+    ) {
+      queueMicrotask(() => setDismissedAgentMessageId(agentSourceMessageId))
+    }
+  }, [
+    isSending,
+    activeAgents.length,
+    agentSourceMessageId,
+    dismissedAgentMessageId,
+  ])
 
   // Compute pending plan info for floating approve button
   // Returns the message that has an unapproved plan awaiting action, if any
@@ -1300,6 +1406,7 @@ export function ChatWindow({
           chromeEnabled: preferences?.chrome_enabled ?? false,
           aiLanguage: preferences?.ai_language,
           allowedTools,
+          backend: queuedMsg.backend,
         },
         {
           onSettled: () => {
@@ -1386,9 +1493,10 @@ export function ChatWindow({
           executionMode: 'build',
           thinkingLevel,
           disableThinkingForMode: thinkingLevel !== 'off' && !hasManualOverride,
-          effortLevel: useAdaptiveThinkingRef.current
-            ? selectedEffortLevelRef.current
-            : undefined,
+          effortLevel:
+            useAdaptiveThinkingRef.current || isCodexBackendRef.current
+              ? selectedEffortLevelRef.current
+              : undefined,
           mcpConfig: buildMcpConfigJson(
             mcpServersDataRef.current,
             enabledMcpServersRef.current
@@ -1400,6 +1508,10 @@ export function ChatWindow({
               : undefined,
           chromeEnabled: preferences?.chrome_enabled ?? false,
           aiLanguage: preferences?.ai_language,
+          backend:
+            selectedBackendRef.current !== 'claude'
+              ? selectedBackendRef.current
+              : undefined,
         },
         { onSettled: () => inputRef.current?.focus() }
       )
@@ -1516,13 +1628,18 @@ export function ChatWindow({
         thinkingLevel: thinkingLvl,
         disableThinkingForMode:
           mode !== 'plan' && thinkingLvl !== 'off' && !hasManualOverride,
-        effortLevel: useAdaptiveThinkingRef.current
-          ? selectedEffortLevelRef.current
-          : undefined,
+        effortLevel:
+          useAdaptiveThinkingRef.current || isCodexBackendRef.current
+            ? selectedEffortLevelRef.current
+            : undefined,
         mcpConfig: buildMcpConfigJson(
           mcpServersDataRef.current,
           enabledMcpServersRef.current
         ),
+        backend:
+          selectedBackendRef.current !== 'claude'
+            ? selectedBackendRef.current
+            : undefined,
         queuedAt: Date.now(),
       }
 
@@ -1649,6 +1766,53 @@ export function ChatWindow({
       }
     },
     [activeSessionId, activeWorktreeId, activeWorktreePath, setSessionModel]
+  )
+
+  const handleToolbarBackendChange = useCallback(
+    (backend: 'claude' | 'codex') => {
+      if (activeSessionId && activeWorktreeId && activeWorktreePath) {
+        useChatStore.getState().setSelectedBackend(activeSessionId, backend)
+        // Optimistically update session cache so selectedBackend resolves immediately
+        const model =
+          backend === 'codex'
+            ? (preferences?.selected_codex_model ?? 'gpt-5.3-codex')
+            : ((preferences?.selected_model as string) ?? DEFAULT_MODEL)
+        queryClient.setQueryData(
+          chatQueryKeys.session(activeSessionId),
+          (old: Session | null | undefined) =>
+            old ? { ...old, backend, selected_model: model } : old
+        )
+        // Persist backend first, then model (chained to avoid race on query invalidation)
+        setSessionBackend.mutate(
+          {
+            sessionId: activeSessionId,
+            worktreeId: activeWorktreeId,
+            worktreePath: activeWorktreePath,
+            backend,
+          },
+          {
+            onSuccess: () => {
+              setSessionModel.mutate({
+                sessionId: activeSessionId,
+                worktreeId: activeWorktreeId,
+                worktreePath: activeWorktreePath,
+                model,
+              })
+            },
+          }
+        )
+      }
+    },
+    [
+      activeSessionId,
+      activeWorktreeId,
+      activeWorktreePath,
+      preferences?.selected_model,
+      preferences?.selected_codex_model,
+      queryClient,
+      setSessionBackend,
+      setSessionModel,
+    ]
   )
 
   const handleToolbarProviderChange = useCallback(
@@ -2412,9 +2576,10 @@ export function ChatWindow({
           executionMode: 'build',
           thinkingLevel: thinkingLvl,
           disableThinkingForMode: thinkingLvl !== 'off' && !hasManualOverride,
-          effortLevel: useAdaptiveThinkingRef.current
-            ? selectedEffortLevelRef.current
-            : undefined,
+          effortLevel:
+            useAdaptiveThinkingRef.current || isCodexBackendRef.current
+              ? selectedEffortLevelRef.current
+              : undefined,
           mcpConfig: buildMcpConfigJson(
             mcpServersDataRef.current,
             enabledMcpServersRef.current
@@ -2441,9 +2606,10 @@ export function ChatWindow({
           executionMode: 'build',
           thinkingLevel: thinkingLvl,
           disableThinkingForMode: thinkingLvl !== 'off' && !hasManualOverride,
-          effortLevel: useAdaptiveThinkingRef.current
-            ? selectedEffortLevelRef.current
-            : undefined,
+          effortLevel:
+            useAdaptiveThinkingRef.current || isCodexBackendRef.current
+              ? selectedEffortLevelRef.current
+              : undefined,
           mcpConfig: buildMcpConfigJson(
             mcpServersDataRef.current,
             enabledMcpServersRef.current
@@ -2562,9 +2728,10 @@ export function ChatWindow({
         executionMode: executionModeRef.current,
         thinkingLevel: selectedThinkingLevelRef.current,
         disableThinkingForMode: false,
-        effortLevel: useAdaptiveThinkingRef.current
-          ? selectedEffortLevelRef.current
-          : undefined,
+        effortLevel:
+          useAdaptiveThinkingRef.current || isCodexBackendRef.current
+            ? selectedEffortLevelRef.current
+            : undefined,
         mcpConfig: buildMcpConfigJson(
           mcpServersDataRef.current,
           enabledMcpServersRef.current
@@ -2744,6 +2911,7 @@ export function ChatWindow({
                                     sessionId={activeSessionId}
                                     selectedModel={selectedModel}
                                     selectedProvider={selectedProvider}
+                                    selectedBackend={selectedBackend}
                                     onFileClick={setViewingFilePath}
                                   />
                                 </div>
@@ -2953,6 +3121,25 @@ export function ChatWindow({
                                 </div>
                               )}
 
+                            {/* Agent widget - inline fallback for narrow screens */}
+                            {activeAgents.length > 0 &&
+                              (dismissedAgentMessageId === null ||
+                                (agentSourceMessageId !== null &&
+                                  agentSourceMessageId !==
+                                    dismissedAgentMessageId)) && (
+                                <div className="px-4 md:px-6 pt-2 xl:hidden">
+                                  <AgentWidget
+                                    agents={activeAgents}
+                                    isStreaming={agentIsFromStreaming}
+                                    onClose={() =>
+                                      setDismissedAgentMessageId(
+                                        agentSourceMessageId ?? '__streaming__'
+                                      )
+                                    }
+                                  />
+                                </div>
+                              )}
+
                             {/* Textarea section */}
                             <div className="px-4 pt-3 pb-2 md:px-6">
                               <ChatInput
@@ -2977,6 +3164,10 @@ export function ChatWindow({
                               hasPendingAttachments={hasPendingAttachments}
                               hasInputValue={hasInputValue}
                               executionMode={executionMode}
+                              selectedBackend={selectedBackend}
+                              sessionHasMessages={
+                                (session?.messages?.length ?? 0) > 0
+                              }
                               selectedModel={selectedModel}
                               selectedProvider={selectedProvider}
                               providerLocked={
@@ -3025,6 +3216,7 @@ export function ChatWindow({
                               onResolveConflicts={handleResolveConflicts}
                               hasOpenPr={Boolean(worktree?.pr_url)}
                               onSetDiffRequest={setDiffRequest}
+                              onBackendChange={handleToolbarBackendChange}
                               onModelChange={handleToolbarModelChange}
                               onProviderChange={handleToolbarProviderChange}
                               customCliProfiles={
@@ -3046,27 +3238,45 @@ export function ChatWindow({
                             />
                           </form>
 
-                          {/* Task widget - side panel for wide screens */}
-                          {activeTodos.length > 0 &&
-                            (dismissedTodoMessageId === null ||
-                              (todoSourceMessageId !== null &&
-                                todoSourceMessageId !==
-                                  dismissedTodoMessageId)) && (
-                              <div className="hidden xl:block absolute left-full bottom-0 ml-3 w-64 z-20">
-                                <TodoWidget
-                                  todos={normalizeTodosForDisplay(
-                                    activeTodos,
-                                    isFromStreaming
-                                  )}
-                                  isStreaming={isSending}
-                                  onClose={() =>
-                                    setDismissedTodoMessageId(
-                                      todoSourceMessageId ?? '__streaming__'
-                                    )
-                                  }
-                                />
-                              </div>
-                            )}
+                          {/* Side panel widgets (Tasks + Agents) for wide screens */}
+                          {(activeTodos.length > 0 ||
+                            activeAgents.length > 0) && (
+                            <div className="hidden xl:flex flex-col gap-2 absolute left-full bottom-0 ml-3 w-64 z-20">
+                              {activeTodos.length > 0 &&
+                                (dismissedTodoMessageId === null ||
+                                  (todoSourceMessageId !== null &&
+                                    todoSourceMessageId !==
+                                      dismissedTodoMessageId)) && (
+                                  <TodoWidget
+                                    todos={normalizeTodosForDisplay(
+                                      activeTodos,
+                                      isFromStreaming
+                                    )}
+                                    isStreaming={isSending}
+                                    onClose={() =>
+                                      setDismissedTodoMessageId(
+                                        todoSourceMessageId ?? '__streaming__'
+                                      )
+                                    }
+                                  />
+                                )}
+                              {activeAgents.length > 0 &&
+                                (dismissedAgentMessageId === null ||
+                                  (agentSourceMessageId !== null &&
+                                    agentSourceMessageId !==
+                                      dismissedAgentMessageId)) && (
+                                  <AgentWidget
+                                    agents={activeAgents}
+                                    isStreaming={agentIsFromStreaming}
+                                    onClose={() =>
+                                      setDismissedAgentMessageId(
+                                        agentSourceMessageId ?? '__streaming__'
+                                      )
+                                    }
+                                  />
+                                )}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -3239,9 +3449,10 @@ export function ChatWindow({
                   disableThinkingForMode: !useChatStore
                     .getState()
                     .hasManualThinkingOverride(activeSessionId),
-                  effortLevel: useAdaptiveThinkingRef.current
-                    ? selectedEffortLevelRef.current
-                    : undefined,
+                  effortLevel:
+                    useAdaptiveThinkingRef.current || isCodexBackendRef.current
+                      ? selectedEffortLevelRef.current
+                      : undefined,
                   mcpConfig: buildMcpConfigJson(
                     mcpServersDataRef.current,
                     enabledMcpServersRef.current
@@ -3312,9 +3523,10 @@ export function ChatWindow({
                   disableThinkingForMode: !useChatStore
                     .getState()
                     .hasManualThinkingOverride(activeSessionId),
-                  effortLevel: useAdaptiveThinkingRef.current
-                    ? selectedEffortLevelRef.current
-                    : undefined,
+                  effortLevel:
+                    useAdaptiveThinkingRef.current || isCodexBackendRef.current
+                      ? selectedEffortLevelRef.current
+                      : undefined,
                   mcpConfig: buildMcpConfigJson(
                     mcpServersDataRef.current,
                     enabledMcpServersRef.current
@@ -3402,9 +3614,10 @@ export function ChatWindow({
                   disableThinkingForMode: !useChatStore
                     .getState()
                     .hasManualThinkingOverride(activeSessionId),
-                  effortLevel: useAdaptiveThinkingRef.current
-                    ? selectedEffortLevelRef.current
-                    : undefined,
+                  effortLevel:
+                    useAdaptiveThinkingRef.current || isCodexBackendRef.current
+                      ? selectedEffortLevelRef.current
+                      : undefined,
                   mcpConfig: buildMcpConfigJson(
                     mcpServersDataRef.current,
                     enabledMcpServersRef.current
@@ -3475,9 +3688,10 @@ export function ChatWindow({
                   disableThinkingForMode: !useChatStore
                     .getState()
                     .hasManualThinkingOverride(activeSessionId),
-                  effortLevel: useAdaptiveThinkingRef.current
-                    ? selectedEffortLevelRef.current
-                    : undefined,
+                  effortLevel:
+                    useAdaptiveThinkingRef.current || isCodexBackendRef.current
+                      ? selectedEffortLevelRef.current
+                      : undefined,
                   mcpConfig: buildMcpConfigJson(
                     mcpServersDataRef.current,
                     enabledMcpServersRef.current

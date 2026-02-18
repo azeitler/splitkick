@@ -27,6 +27,11 @@ export type ThinkingLevel = 'off' | 'think' | 'megathink' | 'ultrathink'
 export type EffortLevel = 'low' | 'medium' | 'high' | 'max'
 
 /**
+ * Backend for a chat session (Claude CLI or Codex CLI)
+ */
+export type Backend = 'claude' | 'codex'
+
+/**
  * Execution mode for Claude CLI permission handling
  * - plan: Read-only mode, Claude can't make changes (--permission-mode plan)
  * - build: Auto-approve file edits only (--permission-mode acceptEdits)
@@ -127,8 +132,12 @@ export interface Session {
   messages: ChatMessage[]
   /** Message count (populated separately for efficiency when full messages not needed) */
   message_count?: number
+  /** Backend for this session (claude or codex) */
+  backend?: Backend
   /** Claude CLI session ID for resuming conversations */
   claude_session_id?: string
+  /** Codex CLI thread ID for resuming conversations */
+  codex_thread_id?: string
   /** Selected model for this session */
   selected_model?: string
   /** Selected thinking level for this session */
@@ -366,10 +375,12 @@ export interface ToolResultEvent {
 export interface PermissionDenial {
   /** Name of the denied tool (e.g., "Bash") */
   tool_name: string
-  /** Tool use ID from Claude */
+  /** Tool use ID */
   tool_use_id: string
   /** Input parameters that were denied */
   tool_input: unknown
+  /** JSON-RPC request ID (Codex only — used to respond to approval requests) */
+  rpc_id?: number
 }
 
 /**
@@ -469,6 +480,35 @@ export function isTodoWrite(
     'todos' in toolCall.input &&
     Array.isArray((toolCall.input as TodoWriteInput).todos)
   )
+}
+
+/**
+ * A Codex multi-agent entry extracted from collab_tool_call events
+ */
+export interface CodexAgent {
+  /** Tool call ID of the SpawnAgent collab_tool_call */
+  id: string
+  /** The prompt given to the agent (truncated for display) */
+  prompt: string
+  /** Agent lifecycle status */
+  status: 'in_progress' | 'completed' | 'errored'
+  /** Completion message from agents_states */
+  message?: string
+}
+
+/** Names of collab tool calls that should be shown in the AgentWidget, not the timeline */
+const COLLAB_TOOL_NAMES = new Set([
+  'SpawnAgent',
+  'WaitForAgents',
+  'CloseAgent',
+  'SendInput',
+])
+
+/**
+ * Check if a tool call is a Codex collab tool (multi-agent)
+ */
+export function isCollabToolCall(toolCall: ToolCall): boolean {
+  return COLLAB_TOOL_NAMES.has(toolCall.name)
 }
 
 /**
@@ -719,6 +759,8 @@ export interface QueuedMessage {
   effortLevel?: EffortLevel
   /** MCP config JSON to pass to CLI (snapshot at queue time) */
   mcpConfig?: string
+  /** Backend to use for this message (snapshot at queue time) */
+  backend?: Backend
   /** Timestamp when queued (for display ordering) */
   queuedAt: number
 }

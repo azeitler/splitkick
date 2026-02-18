@@ -459,31 +459,29 @@ pub async fn check_claude_cli_auth(app: AppHandle) -> Result<ClaudeAuthStatus, S
         });
     }
 
-    // Run a simple non-interactive query to check if authenticated
-    // Use --print to avoid interactive mode, and a simple prompt
+    // Run `claude auth status` to check authentication
     log::trace!("Running auth check: {:?}", binary_path);
 
     let output = silent_command(&binary_path)
-        .args([
-            "--print",
-            "--output-format",
-            "text",
-            "-p",
-            "Reply with just the word OK",
-        ])
+        .args(["auth", "status"])
         .output()
         .map_err(|e| format!("Failed to execute Claude CLI: {e}"))?;
 
     if output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        log::trace!("Claude CLI auth check successful, response: {}", stdout);
+        log::trace!("Claude CLI auth check output: {stdout}");
+        // Parse JSON response: {"loggedIn": true, ...}
+        let logged_in = serde_json::from_str::<serde_json::Value>(&stdout)
+            .ok()
+            .and_then(|v| v.get("loggedIn")?.as_bool())
+            .unwrap_or(false);
         Ok(ClaudeAuthStatus {
-            authenticated: true,
-            error: None,
+            authenticated: logged_in,
+            error: if logged_in { None } else { Some(stdout) },
         })
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        log::warn!("Claude CLI auth check failed: {}", stderr);
+        log::warn!("Claude CLI auth check failed: {stderr}");
         Ok(ClaudeAuthStatus {
             authenticated: false,
             error: Some(stderr),

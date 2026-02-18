@@ -68,8 +68,8 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Markdown } from '@/components/ui/markdown'
 import { cn } from '@/lib/utils'
-import type { ClaudeModel } from '@/store/chat-store'
-import type { CustomCliProfile } from '@/types/preferences'
+import type { ClaudeModel, CustomCliProfile } from '@/types/preferences'
+import { codexModelOptions } from '@/types/preferences'
 import { useMcpHealthCheck } from '@/services/mcp'
 import type { McpServerInfo, McpHealthStatus } from '@/types/chat'
 import type { ThinkingLevel, EffortLevel, ExecutionMode } from '@/types/chat'
@@ -100,6 +100,13 @@ export const MODEL_OPTIONS: { value: ClaudeModel; label: string }[] = [
   { value: 'sonnet-4.5', label: 'Sonnet 4.5' },
   { value: 'haiku', label: 'Haiku' },
 ]
+
+/** Codex model options - re-exported from preferences for backward compat */
+// eslint-disable-next-line react-refresh/only-export-components
+export const CODEX_MODEL_OPTIONS = codexModelOptions as {
+  value: string
+  label: string
+}[]
 
 /** Thinking level options with display labels and token counts */
 // eslint-disable-next-line react-refresh/only-export-components
@@ -219,13 +226,15 @@ interface ChatToolbarProps {
   hasPendingAttachments: boolean
   hasInputValue: boolean
   executionMode: ExecutionMode
-  selectedModel: ClaudeModel
+  selectedBackend: 'claude' | 'codex'
+  selectedModel: string
   selectedProvider: string | null // null = default (Anthropic), or profile name
   selectedThinkingLevel: ThinkingLevel
   selectedEffortLevel: EffortLevel
   thinkingOverrideActive: boolean // True when thinking is disabled in build/yolo due to preference
   useAdaptiveThinking: boolean // True when model supports effort (Opus on CLI >= 2.1.32)
   hideThinkingLevel?: boolean // True when selected provider doesn't support thinking
+  sessionHasMessages?: boolean // True when session has messages (backend locked)
   providerLocked?: boolean // True after first message — provider can't change mid-session
 
   // Git state
@@ -266,6 +275,7 @@ interface ChatToolbarProps {
   onResolveConflicts: () => void
   hasOpenPr: boolean
   onSetDiffRequest: (request: DiffRequest) => void
+  onBackendChange: (backend: 'claude' | 'codex') => void
   onModelChange: (model: ClaudeModel) => void
   onProviderChange: (provider: string | null) => void
   customCliProfiles: CustomCliProfile[]
@@ -352,6 +362,7 @@ export const ChatToolbar = memo(function ChatToolbar({
   hasPendingAttachments,
   hasInputValue,
   executionMode,
+  selectedBackend,
   selectedModel,
   selectedProvider,
   selectedThinkingLevel,
@@ -359,6 +370,7 @@ export const ChatToolbar = memo(function ChatToolbar({
   thinkingOverrideActive,
   useAdaptiveThinking,
   hideThinkingLevel,
+  sessionHasMessages,
   providerLocked,
   baseBranch,
   uncommittedAdded,
@@ -389,6 +401,7 @@ export const ChatToolbar = memo(function ChatToolbar({
   onResolveConflicts,
   hasOpenPr,
   onSetDiffRequest,
+  onBackendChange,
   onModelChange,
   onProviderChange,
   customCliProfiles,
@@ -447,7 +460,11 @@ export const ChatToolbar = memo(function ChatToolbar({
   // For custom providers: show generic tier names (Opus/Sonnet/Haiku) without version numbers,
   // and drop Opus 4.5 (providers only have one opus-tier model).
   // Parse actual model names from the provider's settings JSON when available.
+  const isCodex = selectedBackend === 'codex'
+
   const filteredModelOptions = useMemo(() => {
+    if (isCodex)
+      return CODEX_MODEL_OPTIONS as { value: string; label: string }[]
     if (!selectedProvider || selectedProvider === '__anthropic__')
       return MODEL_OPTIONS
     // Try to extract model names from the active profile's settings_json
@@ -475,7 +492,7 @@ export const ChatToolbar = memo(function ChatToolbar({
       { value: 'sonnet' as ClaudeModel, label: `Sonnet${suffix(sonnetModel)}` },
       { value: 'haiku' as ClaudeModel, label: `Haiku${suffix(haikuModel)}` },
     ]
-  }, [selectedProvider, customCliProfiles])
+  }, [selectedProvider, customCliProfiles, isCodex])
 
   // Memoize callbacks to prevent Select re-renders
   const handleModelChange = useCallback(
@@ -656,7 +673,7 @@ export const ChatToolbar = memo(function ChatToolbar({
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="flex @xl:hidden h-8 items-center gap-1 rounded-l-lg px-2 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+              className="flex @xl:hidden h-8 items-center gap-1 rounded-l-lg px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
               disabled={isDisabled}
             >
               <MoreHorizontal className="h-4 w-4" />
@@ -831,6 +848,34 @@ export const ChatToolbar = memo(function ChatToolbar({
 
             <DropdownMenuSeparator />
 
+            {/* Backend selector as submenu - only before first message */}
+            {!sessionHasMessages && (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  <span>Backend</span>
+                  <span className="ml-auto text-xs text-muted-foreground capitalize">
+                    {selectedBackend}
+                  </span>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuRadioGroup
+                    value={selectedBackend}
+                    onValueChange={v =>
+                      onBackendChange(v as 'claude' | 'codex')
+                    }
+                  >
+                    <DropdownMenuRadioItem value="claude">
+                      Claude
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="codex">
+                      Codex <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">BETA</span>
+                    </DropdownMenuRadioItem>
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            )}
+
             {/* Provider selector as submenu - only when NOT locked */}
             {customCliProfiles.length > 0 && !providerLocked && (
               <DropdownMenuSub>
@@ -913,7 +958,7 @@ export const ChatToolbar = memo(function ChatToolbar({
             </DropdownMenuSub>
 
             {/* Thinking/Effort level as submenu */}
-            {hideThinkingLevel ? null : useAdaptiveThinking ? (
+            {hideThinkingLevel ? null : useAdaptiveThinking || isCodex ? (
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger>
                   <Brain className="mr-2 h-4 w-4" />
@@ -1026,7 +1071,7 @@ export const ChatToolbar = memo(function ChatToolbar({
         {/* Magic modal button - desktop only */}
         <button
           type="button"
-          className="hidden @xl:flex h-8 items-center gap-1 rounded-l-lg px-2 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+          className="hidden @xl:flex h-8 items-center gap-1 rounded-l-lg px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
           disabled={isDisabled}
           onClick={onOpenMagicModal}
         >
@@ -1043,7 +1088,7 @@ export const ChatToolbar = memo(function ChatToolbar({
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
+                  className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
                 >
                   <CircleDot className="h-3.5 w-3.5" />
                   <span>
@@ -1169,7 +1214,7 @@ export const ChatToolbar = memo(function ChatToolbar({
                   target="_blank"
                   rel="noopener noreferrer"
                   className={cn(
-                    'hidden @xl:flex h-8 items-center gap-1.5 px-3 text-sm transition-colors select-none hover:bg-muted/80 hover:text-foreground',
+                    'hidden @xl:flex h-8 items-center gap-1.5 px-3 text-xs font-medium transition-colors select-none hover:bg-muted/80 hover:text-foreground',
                     displayStatus
                       ? getPrStatusDisplay(displayStatus).className
                       : 'text-muted-foreground'
@@ -1205,7 +1250,7 @@ export const ChatToolbar = memo(function ChatToolbar({
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-sm text-amber-600 dark:text-amber-400 transition-colors cursor-pointer hover:bg-muted/80"
+                  className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-xs font-medium text-amber-600 dark:text-amber-400 transition-colors cursor-pointer hover:bg-muted/80"
                   onClick={onResolvePrConflicts}
                 >
                   <GitMerge className="h-3 w-3" />
@@ -1219,8 +1264,42 @@ export const ChatToolbar = memo(function ChatToolbar({
           </>
         )}
 
-        {/* Provider selector - desktop only, shown when profiles exist and NOT locked */}
-        {customCliProfiles.length > 0 && !providerLocked && (
+        {/* Backend toggle - only before first message */}
+        {!sessionHasMessages && (
+          <>
+            <div className="hidden @xl:block h-4 w-px bg-border/50" />
+            <div className="hidden @xl:flex items-center gap-0.5 rounded-md bg-muted/50 p-0.5">
+              <button
+                type="button"
+                onClick={() => onBackendChange('claude')}
+                className={cn(
+                  'h-7 rounded px-2.5 text-xs font-medium transition-colors',
+                  selectedBackend === 'claude'
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                Claude
+              </button>
+              <button
+                type="button"
+                onClick={() => onBackendChange('codex')}
+                className={cn(
+                  'h-7 rounded px-2.5 text-xs font-medium transition-colors',
+                  selectedBackend === 'codex'
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                Codex
+                <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">BETA</span>
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* Provider selector - desktop only, shown when profiles exist and NOT locked, Claude only */}
+        {customCliProfiles.length > 0 && !providerLocked && !isCodex && (
           <>
             <div className="hidden @xl:block h-4 w-px bg-border/50" />
             <DropdownMenu
@@ -1233,7 +1312,7 @@ export const ChatToolbar = memo(function ChatToolbar({
                     <button
                       type="button"
                       disabled={hasPendingQuestions}
-                      className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+                      className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
                     >
                       <span>
                         {!selectedProvider ||
@@ -1296,7 +1375,7 @@ export const ChatToolbar = memo(function ChatToolbar({
                 <button
                   type="button"
                   disabled={hasPendingQuestions}
-                  className="hidden @xl:flex h-8 items-center gap-1.5 rounded-none bg-transparent px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+                  className="hidden @xl:flex h-8 items-center gap-1.5 rounded-none bg-transparent px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
                 >
                   <Sparkles className="h-3.5 w-3.5" />
                   <span>
@@ -1341,7 +1420,7 @@ export const ChatToolbar = memo(function ChatToolbar({
         )}
 
         {/* Thinking/Effort level dropdown - desktop only */}
-        {hideThinkingLevel ? null : useAdaptiveThinking ? (
+        {hideThinkingLevel ? null : useAdaptiveThinking || isCodex ? (
           <DropdownMenu
             open={thinkingDropdownOpen}
             onOpenChange={setThinkingDropdownOpen}
@@ -1352,7 +1431,7 @@ export const ChatToolbar = memo(function ChatToolbar({
                   <button
                     type="button"
                     disabled={hasPendingQuestions}
-                    className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+                    className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
                   >
                     <Brain
                       className={cn(
@@ -1410,7 +1489,7 @@ export const ChatToolbar = memo(function ChatToolbar({
                   <button
                     type="button"
                     disabled={hasPendingQuestions}
-                    className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+                    className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
                   >
                     <Brain
                       className={cn(
@@ -1471,7 +1550,7 @@ export const ChatToolbar = memo(function ChatToolbar({
                 <button
                   type="button"
                   disabled={hasPendingQuestions}
-                  className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+                  className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
                 >
                   {executionMode === 'plan' && (
                     <ClipboardList className="h-3.5 w-3.5 text-yellow-600 dark:text-yellow-400" />
@@ -1531,7 +1610,7 @@ export const ChatToolbar = memo(function ChatToolbar({
                 <button
                   type="button"
                   disabled={hasPendingQuestions}
-                  className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+                  className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
                 >
                   <Plug
                     className={cn(
@@ -1618,7 +1697,7 @@ export const ChatToolbar = memo(function ChatToolbar({
               <button
                 type="button"
                 onClick={onCancel}
-                className="flex h-8 items-center justify-center gap-1.5 rounded-r-lg px-3 text-sm transition-colors bg-primary text-primary-foreground hover:bg-primary/90"
+                className="flex h-8 items-center justify-center gap-1.5 rounded-r-lg px-3 text-xs font-medium transition-colors bg-primary text-primary-foreground hover:bg-primary/90"
               >
                 <span>{queuedMessageCount ? 'Skip to Next' : 'Cancel'}</span>
                 <Kbd className="ml-0.5 h-4 text-[10px] bg-primary-foreground/20 text-primary-foreground">
@@ -1639,7 +1718,7 @@ export const ChatToolbar = memo(function ChatToolbar({
                 type="submit"
                 disabled={hasPendingQuestions || !canSend}
                 className={cn(
-                  'flex h-8 items-center justify-center gap-1.5 rounded-r-lg px-3 text-sm transition-colors disabled:pointer-events-none disabled:opacity-50',
+                  'flex h-8 items-center justify-center gap-1.5 rounded-r-lg px-3 text-xs font-medium transition-colors disabled:pointer-events-none disabled:opacity-50',
                   canSend
                     ? 'bg-primary text-primary-foreground hover:bg-primary/90'
                     : 'text-muted-foreground hover:bg-muted/80 hover:text-foreground'

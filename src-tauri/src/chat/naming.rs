@@ -294,12 +294,6 @@ fn extract_text_from_stream_json(output: &str) -> Result<String, String> {
 
 /// Generate names using Claude CLI
 fn generate_names(app: &AppHandle, request: &NamingRequest) -> Result<NamingOutput, String> {
-    let cli_path = resolve_cli_binary(app);
-
-    if !cli_path.exists() {
-        return Err("Claude CLI not installed".to_string());
-    }
-
     // Detect if attachments are present to enable Read tool
     let has_images = contains_image_attachment(&request.first_message);
     let has_text_files = contains_text_attachment(&request.first_message);
@@ -346,6 +340,16 @@ fn generate_names(app: &AppHandle, request: &NamingRequest) -> Result<NamingOutp
         (false, false, true) => format!("{FILE_MENTION_INSTRUCTION_PREFIX}{base_prompt}"),
         (false, false, false) => base_prompt,
     };
+
+    // Route to Codex CLI if model is a Codex model
+    if crate::is_codex_model(&request.model) {
+        return generate_names_codex(app, &prompt, &request.model, request);
+    }
+
+    let cli_path = resolve_cli_binary(app);
+    if !cli_path.exists() {
+        return Err("Claude CLI not installed".to_string());
+    }
 
     let model_alias = get_cli_model_alias(&request.model);
 
@@ -483,6 +487,35 @@ fn generate_names(app: &AppHandle, request: &NamingRequest) -> Result<NamingOutp
         .map_err(|e| format!("Failed to parse naming JSON: {e}, raw: {json_text}"))?;
 
     Ok(naming_output)
+}
+
+/// Schema for Codex naming output
+const NAMING_SCHEMA: &str = r#"{
+    "type": "object",
+    "properties": {
+        "session_name": {
+            "type": "string",
+            "description": "A short, descriptive name for the session (2-6 words)"
+        },
+        "branch_name": {
+            "type": "string",
+            "description": "A git branch name in kebab-case (e.g. feat/add-dark-mode)"
+        }
+    }
+}"#;
+
+/// Generate names using Codex CLI with --output-schema
+fn generate_names_codex(
+    app: &tauri::AppHandle,
+    prompt: &str,
+    model: &str,
+    _request: &NamingRequest,
+) -> Result<NamingOutput, String> {
+    log::trace!("Generating names with Codex CLI using model {model}");
+    let json_str = super::codex::execute_one_shot_codex(app, prompt, model, NAMING_SCHEMA)?;
+    log::trace!("Codex generated naming response: {json_str}");
+    serde_json::from_str(&json_str)
+        .map_err(|e| format!("Failed to parse Codex naming JSON: {e}, raw: {json_str}"))
 }
 
 /// Validate and sanitize a session name

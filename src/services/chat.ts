@@ -1217,6 +1217,7 @@ export function useSendMessage() {
       mcpConfig,
       chromeEnabled,
       customProfileName,
+      backend,
     }: {
       sessionId: string
       worktreeId: string
@@ -1233,6 +1234,7 @@ export function useSendMessage() {
       mcpConfig?: string
       chromeEnabled?: boolean
       customProfileName?: string
+      backend?: string
     }): Promise<ChatMessage> => {
       if (!isTauri()) {
         throw new Error('Not in Tauri context')
@@ -1268,6 +1270,7 @@ export function useSendMessage() {
         mcpConfig,
         chromeEnabled,
         customProfileName,
+        backend,
       })
       logger.info('Chat message sent', { responseId: response.id })
       return response
@@ -1327,7 +1330,7 @@ export function useSendMessage() {
 
       return { previous, worktreeId }
     },
-    onSuccess: (response, { sessionId, worktreeId }) => {
+    onSuccess: (response, { sessionId, worktreeId, executionMode }) => {
       // Handle undo_send: cancelled with no meaningful content
       // Remove the optimistic user message (backend already removed it from storage)
       if (
@@ -1357,6 +1360,30 @@ export function useSendMessage() {
         return
       }
 
+      // For Codex plan mode: inject synthetic ExitPlanMode tool call into the response
+      // so the plan approval UI renders (Codex has no native ExitPlanMode tool)
+      const { selectedBackends } = useChatStore.getState()
+      const isCodexPlan =
+        selectedBackends[sessionId] === 'codex' &&
+        executionMode === 'plan' &&
+        !response.cancelled &&
+        response.content.length > 0
+      let finalResponse = response
+      if (isCodexPlan) {
+        const syntheticId = `codex-plan-${sessionId}-${Date.now()}`
+        finalResponse = {
+          ...response,
+          tool_calls: [
+            ...response.tool_calls,
+            { id: syntheticId, name: 'ExitPlanMode', input: {} },
+          ],
+          content_blocks: [
+            ...(response.content_blocks ?? []),
+            { type: 'tool_use' as const, tool_call_id: syntheticId },
+          ],
+        }
+      }
+
       // Replace the optimistic assistant message with the complete one from backend
       // This fixes a race condition where chat:done creates an optimistic message
       // with incomplete content_blocks (missing Edit/Read/Write tool blocks)
@@ -1377,12 +1404,12 @@ export function useSendMessage() {
 
           if (lastAssistantIdx >= 0) {
             const newMessages = [...old.messages]
-            newMessages[lastAssistantIdx] = response
+            newMessages[lastAssistantIdx] = finalResponse
             return { ...old, messages: newMessages }
           }
 
           // If no assistant message found, add the response
-          return { ...old, messages: [...old.messages, response] }
+          return { ...old, messages: [...old.messages, finalResponse] }
         }
       )
 
@@ -1579,6 +1606,50 @@ export function useSetSessionModel() {
             : 'Unknown error occurred'
       logger.error('Failed to save model selection', { error })
       toast.error('Failed to save model', { description: message })
+    },
+  })
+}
+
+/**
+ * Hook to set the backend for a session
+ */
+export function useSetSessionBackend() {
+  return useMutation({
+    mutationFn: async ({
+      worktreeId,
+      worktreePath,
+      sessionId,
+      backend,
+    }: {
+      worktreeId: string
+      worktreePath: string
+      sessionId: string
+      backend: string
+    }): Promise<void> => {
+      if (!isTauri()) {
+        throw new Error('Not in Tauri context')
+      }
+
+      logger.debug('Setting session backend', { sessionId, backend })
+      await invoke('set_session_backend', {
+        worktreeId,
+        worktreePath,
+        sessionId,
+        backend,
+      })
+      logger.info('Session backend saved')
+    },
+    // No query invalidation here — callers chain setSessionModel after,
+    // which handles invalidation (avoids race where refetch overwrites optimistic update)
+    onError: error => {
+      const message =
+        error instanceof Error
+          ? error.message
+          : typeof error === 'string'
+            ? error
+            : 'Unknown error occurred'
+      logger.error('Failed to save backend selection', { error })
+      toast.error('Failed to save backend', { description: message })
     },
   })
 }

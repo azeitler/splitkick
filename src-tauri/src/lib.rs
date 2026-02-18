@@ -11,6 +11,7 @@ use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuild
 mod background_tasks;
 mod chat;
 mod claude_cli;
+mod codex_cli;
 mod diagnostics;
 mod gh_cli;
 pub mod http_server;
@@ -180,6 +181,16 @@ pub struct AppPreferences {
     pub canvas_layout: String, // Canvas display mode: grid or list
     #[serde(default = "default_confirm_session_close")]
     pub confirm_session_close: bool, // Show confirmation dialog before closing sessions/worktrees
+    #[serde(default = "default_backend")]
+    pub default_backend: String, // Default CLI backend: "claude" or "codex"
+    #[serde(default = "default_codex_model")]
+    pub selected_codex_model: String, // Default Codex model
+    #[serde(default = "default_codex_reasoning_effort")]
+    pub default_codex_reasoning_effort: String, // Codex reasoning effort: low, medium, high, xhigh
+    #[serde(default)]
+    pub codex_multi_agent_enabled: bool, // Enable multi-agent collaboration (experimental)
+    #[serde(default = "default_codex_max_agent_threads")]
+    pub codex_max_agent_threads: u32, // Max concurrent agent threads (1-8)
 }
 
 fn default_true() -> Option<bool> {
@@ -338,6 +349,22 @@ fn default_canvas_layout() -> String {
 
 fn default_confirm_session_close() -> bool {
     true // Enabled by default
+}
+
+fn default_backend() -> String {
+    "claude".to_string()
+}
+
+fn default_codex_model() -> String {
+    "gpt-5.3-codex".to_string()
+}
+
+fn default_codex_reasoning_effort() -> String {
+    "high".to_string()
+}
+
+fn default_codex_max_agent_threads() -> u32 {
+    3
 }
 
 fn default_zoom_level() -> u32 {
@@ -679,6 +706,12 @@ impl Default for MagicPromptModels {
     }
 }
 
+/// Returns true if the given model string identifies a Codex model.
+/// Codex model IDs contain "codex" or start with "gpt-".
+pub fn is_codex_model(model: &str) -> bool {
+    model.contains("codex") || model.starts_with("gpt-")
+}
+
 /// Per-prompt provider overrides for magic prompts (None = use global default_provider)
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MagicPromptProviders {
@@ -802,6 +835,11 @@ impl Default for AppPreferences {
             default_provider: None,
             canvas_layout: default_canvas_layout(),
             confirm_session_close: default_confirm_session_close(),
+            default_backend: default_backend(),
+            selected_codex_model: default_codex_model(),
+            default_codex_reasoning_effort: default_codex_reasoning_effort(),
+            codex_multi_agent_enabled: false,
+            codex_max_agent_threads: default_codex_max_agent_threads(),
         }
     }
 }
@@ -2053,12 +2091,14 @@ pub fn run() {
             chat::check_mcp_health,
             chat::clear_session_history,
             chat::set_session_model,
+            chat::set_session_backend,
             chat::set_session_thinking_level,
             chat::set_session_provider,
             chat::cancel_chat_message,
             chat::has_running_sessions,
             chat::save_cancelled_message,
             chat::mark_plan_approved,
+            chat::approve_codex_command,
             // Chat commands - Image handling
             chat::save_pasted_image,
             chat::save_dropped_image,
@@ -2095,6 +2135,11 @@ pub fn run() {
             claude_cli::check_claude_cli_auth,
             claude_cli::get_available_cli_versions,
             claude_cli::install_claude_cli,
+            // Codex CLI management commands
+            codex_cli::check_codex_cli_installed,
+            codex_cli::check_codex_cli_auth,
+            codex_cli::get_available_codex_versions,
+            codex_cli::install_codex_cli,
             // GitHub CLI management commands
             gh_cli::check_gh_cli_installed,
             gh_cli::check_gh_cli_auth,

@@ -10,6 +10,7 @@ import { useCallback, useEffect, useRef, useMemo } from 'react'
 import { invoke } from '@/lib/transport'
 import { useQueryClient } from '@tanstack/react-query'
 import { ghCliQueryKeys } from '@/services/gh-cli'
+import { codexCliQueryKeys } from '@/services/codex-cli'
 import { githubQueryKeys } from '@/services/github'
 import {
   Dialog,
@@ -41,7 +42,7 @@ export function CliLoginModal() {
 }
 
 interface CliLoginModalContentProps {
-  cliType: 'claude' | 'gh' | null
+  cliType: 'claude' | 'gh' | 'codex' | null
   command: string
   onClose: () => void
 }
@@ -54,7 +55,12 @@ function CliLoginModalContent({
   const queryClient = useQueryClient()
   const initialized = useRef(false)
   const observerRef = useRef<ResizeObserver | null>(null)
-  const cliName = cliType === 'claude' ? 'Claude CLI' : 'GitHub CLI'
+  const cliName =
+    cliType === 'claude'
+      ? 'Claude CLI'
+      : cliType === 'codex'
+        ? 'Codex CLI'
+        : 'GitHub CLI'
 
   // Generate unique terminal ID for this login session
   const terminalId = useMemo(() => {
@@ -132,6 +138,8 @@ function CliLoginModalContent({
         if (cliType === 'gh') {
           queryClient.invalidateQueries({ queryKey: ghCliQueryKeys.auth() })
           queryClient.invalidateQueries({ queryKey: githubQueryKeys.all })
+        } else if (cliType === 'codex') {
+          queryClient.invalidateQueries({ queryKey: codexCliQueryKeys.auth() })
         }
 
         onClose()

@@ -392,17 +392,17 @@ export const DEFAULT_MAGIC_PROMPTS: MagicPrompts = {
  * Per-prompt model overrides. Field names use snake_case to match Rust struct exactly.
  */
 export interface MagicPromptModels {
-  investigate_issue_model: ClaudeModel
-  investigate_pr_model: ClaudeModel
-  investigate_workflow_run_model: ClaudeModel
-  pr_content_model: ClaudeModel
-  commit_message_model: ClaudeModel
-  code_review_model: ClaudeModel
-  context_summary_model: ClaudeModel
-  resolve_conflicts_model: ClaudeModel
-  release_notes_model: ClaudeModel
-  session_naming_model: ClaudeModel
-  session_recap_model: ClaudeModel
+  investigate_issue_model: MagicPromptModel
+  investigate_pr_model: MagicPromptModel
+  investigate_workflow_run_model: MagicPromptModel
+  pr_content_model: MagicPromptModel
+  commit_message_model: MagicPromptModel
+  code_review_model: MagicPromptModel
+  context_summary_model: MagicPromptModel
+  resolve_conflicts_model: MagicPromptModel
+  release_notes_model: MagicPromptModel
+  session_naming_model: MagicPromptModel
+  session_recap_model: MagicPromptModel
 }
 
 /** Default models for each magic prompt */
@@ -418,6 +418,21 @@ export const DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
   release_notes_model: 'haiku',
   session_naming_model: 'haiku',
   session_recap_model: 'haiku',
+}
+
+/** Codex preset: heavy tasks use top model, light tasks use mini */
+export const CODEX_DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
+  investigate_issue_model: 'gpt-5.3-codex',
+  investigate_pr_model: 'gpt-5.3-codex',
+  investigate_workflow_run_model: 'gpt-5.3-codex',
+  pr_content_model: 'gpt-5.1-codex-mini',
+  commit_message_model: 'gpt-5.1-codex-mini',
+  code_review_model: 'gpt-5.3-codex',
+  context_summary_model: 'gpt-5.3-codex',
+  resolve_conflicts_model: 'gpt-5.3-codex',
+  release_notes_model: 'gpt-5.1-codex-mini',
+  session_naming_model: 'gpt-5.1-codex-mini',
+  session_recap_model: 'gpt-5.1-codex-mini',
 }
 
 /**
@@ -534,6 +549,11 @@ export interface AppPreferences {
   default_provider: string | null // Default provider profile name (null = Anthropic direct)
   canvas_layout: CanvasLayout // Canvas display mode: grid (cards) or list (compact rows)
   confirm_session_close: boolean // Show confirmation dialog before closing sessions/worktrees
+  default_backend: CliBackend // Default CLI backend for new sessions: 'claude' or 'codex'
+  selected_codex_model: CodexModel // Default Codex model
+  default_codex_reasoning_effort: CodexReasoningEffort // Default reasoning effort for Codex: 'low' | 'medium' | 'high' | 'xhigh'
+  codex_multi_agent_enabled: boolean // Enable Codex multi-agent collaboration (experimental)
+  codex_max_agent_threads: number // Max concurrent agent threads (1-8) when multi-agent is enabled
 }
 
 export type CanvasLayout = 'grid' | 'list'
@@ -657,6 +677,61 @@ export const effortLevelOptions: {
   { value: 'medium', label: 'Medium', description: 'Moderate thinking' },
   { value: 'high', label: 'High', description: 'Deep reasoning' },
   { value: 'max', label: 'Max', description: 'No limits' },
+]
+
+// =============================================================================
+// Codex Types
+// =============================================================================
+
+export type CodexModel =
+  | 'gpt-5.3-codex'
+  | 'gpt-5.2-codex'
+  | 'gpt-5.1-codex-max'
+  | 'gpt-5.2'
+  | 'gpt-5.1-codex-mini'
+
+export const codexModelOptions: { value: CodexModel; label: string }[] = [
+  { value: 'gpt-5.3-codex', label: 'GPT 5.3 Codex' },
+  { value: 'gpt-5.2-codex', label: 'GPT 5.2 Codex' },
+  { value: 'gpt-5.1-codex-max', label: 'GPT 5.1 Codex Max' },
+  { value: 'gpt-5.2', label: 'GPT 5.2' },
+  { value: 'gpt-5.1-codex-mini', label: 'GPT 5.1 Codex Mini' },
+]
+
+export type CodexReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh'
+
+// =============================================================================
+// Magic Prompt Model (unified type for both Claude and Codex)
+// =============================================================================
+
+export type MagicPromptModel = ClaudeModel | CodexModel
+
+/** Check if a model string identifies a Codex model */
+export function isCodexModel(model: string): model is CodexModel {
+  return (codexModelOptions as { value: string }[]).some(
+    opt => opt.value === model
+  )
+}
+
+export const codexReasoningOptions: {
+  value: CodexReasoningEffort
+  label: string
+}[] = [
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+  { value: 'xhigh', label: 'Extra High' },
+]
+
+// =============================================================================
+// CLI Backend
+// =============================================================================
+
+export type CliBackend = 'claude' | 'codex'
+
+export const backendOptions: { value: CliBackend; label: string }[] = [
+  { value: 'claude', label: 'Claude' },
+  { value: 'codex', label: 'Codex' },
 ]
 
 export type TerminalApp =
@@ -950,4 +1025,9 @@ export const defaultPreferences: AppPreferences = {
   default_provider: null,
   canvas_layout: 'grid',
   confirm_session_close: true, // Default: enabled (show confirmation)
+  default_backend: 'claude', // Default: Claude
+  selected_codex_model: 'gpt-5.3-codex', // Default: latest Codex model
+  default_codex_reasoning_effort: 'high', // Default: high reasoning
+  codex_multi_agent_enabled: false, // Default: disabled
+  codex_max_agent_threads: 3, // Default: 3 threads
 }

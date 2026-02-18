@@ -22,17 +22,14 @@ import {
   isExitPlanMode,
 } from '@/types/chat'
 import type { ReviewResponse } from '@/types/projects'
-
-/** Available Claude models */
-export type ClaudeModel =
-  | 'opus'
-  | 'opus-4.5'
-  | 'sonnet'
-  | 'sonnet-4.5'
-  | 'haiku'
+import type { ClaudeModel, CodexModel } from '@/types/preferences'
+export type { ClaudeModel, CodexModel }
 
 /** Default model to use when none is selected (fallback only - preferences take priority) */
 export const DEFAULT_MODEL: ClaudeModel = 'opus'
+
+/** Default Codex model */
+export const DEFAULT_CODEX_MODEL: CodexModel = 'gpt-5.3-codex'
 
 /** Default thinking level */
 export const DEFAULT_THINKING_LEVEL: ThinkingLevel = 'off'
@@ -98,6 +95,9 @@ interface ChatUIState {
 
   // Effort level per session (for Opus 4.6 adaptive thinking)
   effortLevels: Record<string, EffortLevel>
+
+  // Selected backend per session (claude or codex)
+  selectedBackends: Record<string, 'claude' | 'codex'>
 
   // Selected model per session (for tracking what model was used)
   selectedModels: Record<string, string>
@@ -312,6 +312,9 @@ interface ChatUIState {
   setEffortLevel: (sessionId: string, level: EffortLevel) => void
   getEffortLevel: (sessionId: string) => EffortLevel
 
+  // Actions - Selected backend (session-based)
+  setSelectedBackend: (sessionId: string, backend: 'claude' | 'codex') => void
+
   // Actions - Selected model (session-based)
   setSelectedModel: (sessionId: string, model: string) => void
 
@@ -519,6 +522,7 @@ export const useChatStore = create<ChatUIState>()(
       thinkingLevels: {},
       manualThinkingOverrides: {},
       effortLevels: {},
+      selectedBackends: {},
       selectedModels: {},
       selectedProviders: {},
       enabledMcpServers: {},
@@ -1191,6 +1195,19 @@ export const useChatStore = create<ChatUIState>()(
         ),
 
       getEffortLevel: sessionId => get().effortLevels[sessionId] ?? 'high',
+
+      // Selected backend (session-based)
+      setSelectedBackend: (sessionId, backend) =>
+        set(
+          state => ({
+            selectedBackends: {
+              ...state.selectedBackends,
+              [sessionId]: backend,
+            },
+          }),
+          undefined,
+          'setSelectedBackend'
+        ),
 
       // Selected model (session-based)
       setSelectedModel: (sessionId, model) =>

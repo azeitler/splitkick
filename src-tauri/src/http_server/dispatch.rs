@@ -109,6 +109,7 @@ pub async fn dispatch_command(
                 None,
                 None,
                 None,
+                None,
             )
             .await?;
             to_value(result)
@@ -498,7 +499,8 @@ pub async fn dispatch_command(
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
             let name: Option<String> = from_field_opt(&args, "name")?;
             let result =
-                crate::chat::create_session(app.clone(), worktree_id, worktree_path, name).await?;
+                crate::chat::create_session(app.clone(), worktree_id, worktree_path, name, None)
+                    .await?;
             to_value(result)
         }
         "rename_session" => {
@@ -589,6 +591,7 @@ pub async fn dispatch_command(
                 mcp_config,
                 chrome_enabled,
                 custom_profile_name,
+                None, // backend
             )
             .await?;
             to_value(result)
