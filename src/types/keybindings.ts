@@ -325,6 +325,14 @@ export function eventToShortcutString(e: KeyboardEvent): ShortcutString | null {
   if (e.shiftKey) parts.push('shift')
   if (e.altKey) parts.push('alt')
 
+  // Prefer physical key codes when possible so Option/Alt modified letters
+  // on macOS (e.g. Alt+M -> µ, Alt+E -> Dead) still map to alt+m / alt+e.
+  const keyFromCode = keyboardCodeToShortcutKey(e.code)
+  if (keyFromCode) {
+    parts.push(keyFromCode)
+    return parts.join('+')
+  }
+
   // Normalize key names
   let key = e.key.toLowerCase()
   if (key === ',') key = 'comma'
@@ -342,6 +350,60 @@ export function eventToShortcutString(e: KeyboardEvent): ShortcutString | null {
   parts.push(key)
 
   return parts.join('+')
+}
+
+function keyboardCodeToShortcutKey(code: string): string | null {
+  if (code.startsWith('Key') && code.length === 4) {
+    return code.slice(3).toLowerCase()
+  }
+  if (code.startsWith('Digit') && code.length === 6) {
+    return code.slice(5)
+  }
+
+  switch (code) {
+    case 'Comma':
+      return 'comma'
+    case 'Period':
+      return 'period'
+    case 'Slash':
+      return 'slash'
+    case 'Backslash':
+      return 'backslash'
+    case 'BracketLeft':
+      return 'bracketleft'
+    case 'BracketRight':
+      return 'bracketright'
+    case 'Semicolon':
+      return 'semicolon'
+    case 'Quote':
+      return 'quote'
+    case 'Backquote':
+      return 'backquote'
+    case 'Minus':
+      return 'minus'
+    case 'Equal':
+      return 'equal'
+    case 'ArrowUp':
+      return 'arrowup'
+    case 'ArrowDown':
+      return 'arrowdown'
+    case 'ArrowLeft':
+      return 'arrowleft'
+    case 'ArrowRight':
+      return 'arrowright'
+    case 'Enter':
+      return 'enter'
+    case 'Tab':
+      return 'tab'
+    case 'Escape':
+      return 'escape'
+    case 'Backspace':
+      return 'backspace'
+    case 'Space':
+      return 'space'
+    default:
+      return null
+  }
 }
 
 // Helper to check if an event matches a shortcut string

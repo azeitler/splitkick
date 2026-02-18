@@ -1201,6 +1201,11 @@ export function ChatWindow({
   // Listen for global git diff request from keybinding (CMD+G by default)
   // If modal is closed, open with 'uncommitted'. If already open, toggle between types.
   useEffect(() => {
+    // Avoid duplicate listeners when modal ChatWindow is open over canvas ChatWindow.
+    if (!isModal && isViewingCanvasTab && sessionModalOpen) {
+      return
+    }
+
     const handleOpenGitDiff = () => {
       if (!activeWorktreePath) return
       const baseBranch = gitStatus?.base_branch ?? 'main'
@@ -1223,7 +1228,13 @@ export function ChatWindow({
 
     window.addEventListener('open-git-diff', handleOpenGitDiff)
     return () => window.removeEventListener('open-git-diff', handleOpenGitDiff)
-  }, [activeWorktreePath, gitStatus?.base_branch])
+  }, [
+    isModal,
+    isViewingCanvasTab,
+    sessionModalOpen,
+    activeWorktreePath,
+    gitStatus?.base_branch,
+  ])
 
   // Global Cmd+Option+Backspace (Mac) / Ctrl+Alt+Backspace (Windows/Linux) listener for cancellation
   // (works even when textarea is disabled)

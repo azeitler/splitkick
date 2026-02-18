@@ -229,22 +229,26 @@ export function SessionChatModal({
   const currentSessionId = activeSessionId ?? sessions[0]?.id ?? null
   const currentSession = sessions.find(s => s.id === currentSessionId) ?? null
 
-  // Auto-scroll active tab into view
+  // Auto-scroll active tab into view, including when modal opens
   useEffect(() => {
+    if (!isOpen) return
     if (!currentSessionId) return
-    const viewport = modalTabScrollRef.current
-    if (!viewport) return
-    const activeTab = viewport.querySelector(
-      `[data-session-id="${currentSessionId}"]`
-    )
-    if (activeTab) {
-      activeTab.scrollIntoView({
-        behavior: 'smooth',
-        block: 'nearest',
-        inline: 'nearest',
-      })
-    }
-  }, [currentSessionId, sessions.length])
+    const scrollId = requestAnimationFrame(() => {
+      const viewport = modalTabScrollRef.current
+      if (!viewport) return
+      const activeTab = viewport.querySelector(
+        `[data-session-id="${currentSessionId}"]`
+      )
+      if (activeTab) {
+        activeTab.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+          inline: 'nearest',
+        })
+      }
+    })
+    return () => cancelAnimationFrame(scrollId)
+  }, [isOpen, currentSessionId, sessions.length])
 
   // Store state for tab status indicators
   const sendingSessionIds = useChatStore(state => state.sendingSessionIds)
