@@ -2344,6 +2344,7 @@ pub fn execute_one_shot_codex(
     prompt: &str,
     model: &str,
     output_schema: &str,
+    working_dir: Option<&std::path::Path>,
 ) -> Result<String, String> {
     let cli_path = crate::codex_cli::resolve_cli_binary(app);
 
@@ -2369,10 +2370,21 @@ pub fn execute_one_shot_codex(
         "--output-schema",
     ]);
     cmd.arg(&schema_file);
+    if let Some(dir) = working_dir {
+        cmd.arg("--cd");
+        cmd.arg(dir);
+    } else {
+        // One-shot calls that don't know a repository path should still run.
+        cmd.arg("--skip-git-repo-check");
+    }
     cmd.arg("-"); // Read prompt from stdin
     cmd.stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
+
+    if let Some(dir) = working_dir {
+        cmd.current_dir(dir);
+    }
 
     let mut child = cmd
         .spawn()

@@ -3279,14 +3279,20 @@ fn execute_summarization_claude(
     prompt: &str,
     model: Option<&str>,
     custom_profile_name: Option<&str>,
+    working_dir: Option<&std::path::Path>,
 ) -> Result<ContextSummaryResponse, String> {
     let model_str = model.unwrap_or("opus");
 
     // Route to Codex CLI if model is a Codex model
     if crate::is_codex_model(model_str) {
         log::trace!("Executing one-shot Codex summarization with output-schema");
-        let json_str =
-            super::codex::execute_one_shot_codex(app, prompt, model_str, CONTEXT_SUMMARY_SCHEMA)?;
+        let json_str = super::codex::execute_one_shot_codex(
+            app,
+            prompt,
+            model_str,
+            CONTEXT_SUMMARY_SCHEMA,
+            working_dir,
+        )?;
         return serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse Codex summarization JSON: {e}, content: {json_str}");
             format!("Failed to parse summarization response: {e}")
@@ -3441,6 +3447,7 @@ pub async fn generate_context_from_session(
         &prompt,
         model.as_deref(),
         custom_profile_name.as_deref(),
+        Some(std::path::Path::new(&worktree_path)),
     ) {
         Ok(response) => {
             // Validate slug is not empty
@@ -3849,12 +3856,18 @@ fn execute_digest_claude(
     prompt: &str,
     model: &str,
     custom_profile_name: Option<&str>,
+    working_dir: Option<&std::path::Path>,
 ) -> Result<SessionDigestResponse, String> {
     // Route to Codex CLI if model is a Codex model
     if crate::is_codex_model(model) {
         log::trace!("Executing one-shot Codex digest with output-schema");
-        let json_str =
-            super::codex::execute_one_shot_codex(app, prompt, model, SESSION_DIGEST_SCHEMA)?;
+        let json_str = super::codex::execute_one_shot_codex(
+            app,
+            prompt,
+            model,
+            SESSION_DIGEST_SCHEMA,
+            working_dir,
+        )?;
         return serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse Codex digest JSON: {e}, content: {json_str}");
             format!("Failed to parse digest response: {e}")
@@ -3997,7 +4010,7 @@ pub async fn generate_session_digest(
         .as_deref();
 
     // Call Claude CLI with JSON schema (non-streaming)
-    let response = execute_digest_claude(&app, &prompt, model, provider)?;
+    let response = execute_digest_claude(&app, &prompt, model, provider, None)?;
 
     Ok(SessionDigest {
         chat_summary: response.chat_summary,

@@ -4116,8 +4116,13 @@ fn generate_pr_content(
     // Route to Codex CLI if model is a Codex model
     if crate::is_codex_model(model_str) {
         log::trace!("Generating PR content with Codex CLI (output-schema)");
-        let json_str =
-            crate::chat::codex::execute_one_shot_codex(app, &prompt, model_str, PR_CONTENT_SCHEMA)?;
+        let json_str = crate::chat::codex::execute_one_shot_codex(
+            app,
+            &prompt,
+            model_str,
+            PR_CONTENT_SCHEMA,
+            Some(std::path::Path::new(repo_path)),
+        )?;
         return serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse Codex PR content JSON: {e}, content: {json_str}");
             format!("Failed to parse PR content: {e}")
@@ -4678,6 +4683,7 @@ fn generate_commit_message(
     prompt: &str,
     model: Option<&str>,
     custom_profile_name: Option<&str>,
+    working_dir: Option<&std::path::Path>,
 ) -> Result<CommitMessageResponse, String> {
     let model_str = model.unwrap_or("haiku");
 
@@ -4689,6 +4695,7 @@ fn generate_commit_message(
             prompt,
             model_str,
             COMMIT_MESSAGE_SCHEMA,
+            working_dir,
         )?;
         return serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse Codex commit message JSON: {e}, content: {json_str}");
@@ -4829,6 +4836,7 @@ pub async fn create_commit_with_ai(
         &prompt,
         model.as_deref(),
         custom_profile_name.as_deref(),
+        Some(std::path::Path::new(&worktree_path)),
     )?;
 
     log::trace!(
@@ -4925,14 +4933,20 @@ fn generate_review(
     prompt: &str,
     model: Option<&str>,
     custom_profile_name: Option<&str>,
+    working_dir: Option<&std::path::Path>,
 ) -> Result<ReviewResponse, String> {
     let model_str = model.unwrap_or("haiku");
 
     // Route to Codex CLI if model is a Codex model
     if crate::is_codex_model(model_str) {
         log::trace!("Running code review with Codex CLI (output-schema)");
-        let json_str =
-            crate::chat::codex::execute_one_shot_codex(app, prompt, model_str, REVIEW_SCHEMA)?;
+        let json_str = crate::chat::codex::execute_one_shot_codex(
+            app,
+            prompt,
+            model_str,
+            REVIEW_SCHEMA,
+            working_dir,
+        )?;
         return serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse Codex review JSON: {e}, content: {json_str}");
             format!("Failed to parse review: {e}")
@@ -5144,6 +5158,7 @@ pub async fn run_review_with_ai(
         &prompt,
         model.as_deref(),
         custom_profile_name.as_deref(),
+        Some(std::path::Path::new(&worktree_path)),
     )?;
 
     log::trace!(
@@ -5358,6 +5373,7 @@ fn generate_release_notes_content(
             &prompt,
             model_str,
             RELEASE_NOTES_SCHEMA,
+            Some(std::path::Path::new(project_path)),
         )?;
         return serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse Codex release notes JSON: {e}, content: {json_str}");
@@ -5545,7 +5561,13 @@ pub async fn merge_worktree_to_base(
             .replace("{recent_commits}", &recent_commits)
             .replace("{remote_info}", &remote_info);
 
-        match generate_commit_message(&app, &prompt, None, None) {
+        match generate_commit_message(
+            &app,
+            &prompt,
+            None,
+            None,
+            Some(std::path::Path::new(&worktree.path)),
+        ) {
             Ok(response) => {
                 // Create the commit with AI-generated message
                 match create_git_commit(&worktree.path, &response.message) {
