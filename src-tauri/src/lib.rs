@@ -187,6 +187,10 @@ pub struct AppPreferences {
     pub selected_codex_model: String, // Default Codex model
     #[serde(default = "default_codex_reasoning_effort")]
     pub default_codex_reasoning_effort: String, // Codex reasoning effort: low, medium, high, xhigh
+    #[serde(default)]
+    pub codex_multi_agent_enabled: bool, // Enable multi-agent collaboration (experimental)
+    #[serde(default = "default_codex_max_agent_threads")]
+    pub codex_max_agent_threads: u32, // Max concurrent agent threads (1-8)
 }
 
 fn default_true() -> Option<bool> {
@@ -357,6 +361,10 @@ fn default_codex_model() -> String {
 
 fn default_codex_reasoning_effort() -> String {
     "high".to_string()
+}
+
+fn default_codex_max_agent_threads() -> u32 {
+    3
 }
 
 fn default_zoom_level() -> u32 {
@@ -698,6 +706,12 @@ impl Default for MagicPromptModels {
     }
 }
 
+/// Returns true if the given model string identifies a Codex model.
+/// Codex model IDs contain "codex" or start with "gpt-".
+pub fn is_codex_model(model: &str) -> bool {
+    model.contains("codex") || model.starts_with("gpt-")
+}
+
 /// Per-prompt provider overrides for magic prompts (None = use global default_provider)
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MagicPromptProviders {
@@ -824,6 +838,8 @@ impl Default for AppPreferences {
             default_backend: default_backend(),
             selected_codex_model: default_codex_model(),
             default_codex_reasoning_effort: default_codex_reasoning_effort(),
+            codex_multi_agent_enabled: false,
+            codex_max_agent_threads: default_codex_max_agent_threads(),
         }
     }
 }
@@ -2082,6 +2098,7 @@ pub fn run() {
             chat::has_running_sessions,
             chat::save_cancelled_message,
             chat::mark_plan_approved,
+            chat::approve_codex_command,
             // Chat commands - Image handling
             chat::save_pasted_image,
             chat::save_dropped_image,

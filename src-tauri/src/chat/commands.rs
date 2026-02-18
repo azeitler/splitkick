@@ -48,7 +48,10 @@ pub(crate) fn resolve_default_backend(app: &AppHandle, worktree_id: Option<&str>
         if let Ok(data) = load_projects_data(app) {
             if let Some(project) = data.projects.iter().find(|p| {
                 !p.is_folder
-                    && data.worktrees.iter().any(|w| w.id == wt_id && w.project_id == p.id)
+                    && data
+                        .worktrees
+                        .iter()
+                        .any(|w| w.id == wt_id && w.project_id == p.id)
             }) {
                 if let Some(ref pb) = project.default_backend {
                     resolved = match pb.as_str() {
@@ -1349,6 +1352,8 @@ pub async fn send_chat_message(
     // Codex: set search_enabled flag for --search
     let mut final_allowed_tools = allowed_tools.unwrap_or_default();
     let mut codex_search_enabled = false;
+    let mut codex_multi_agent_enabled = false;
+    let mut codex_max_agent_threads: Option<u32> = None;
     if execution_mode.as_deref() == Some("plan") {
         if let Ok(prefs) = crate::load_preferences(app.clone()).await {
             if prefs.allow_web_tools_in_plan_mode {
@@ -1361,6 +1366,15 @@ pub async fn send_chat_message(
                         codex_search_enabled = true;
                     }
                 }
+            }
+        }
+    }
+    // Read Codex multi-agent preferences
+    if effective_backend == Backend::Codex {
+        if let Ok(prefs) = crate::load_preferences(app.clone()).await {
+            codex_multi_agent_enabled = prefs.codex_multi_agent_enabled;
+            if codex_multi_agent_enabled {
+                codex_max_agent_threads = Some(prefs.codex_max_agent_threads.clamp(1, 8));
             }
         }
     }
@@ -1405,6 +1419,8 @@ pub async fn send_chat_message(
     let thread_message = message.clone();
     let thread_backend = effective_backend.clone();
     let thread_codex_search = codex_search_enabled;
+    let thread_codex_multi_agent = codex_multi_agent_enabled;
+    let thread_codex_max_threads = codex_max_agent_threads;
 
     let (tx, rx) = tokio::sync::oneshot::channel();
     std::thread::spawn(move || {
@@ -1566,6 +1582,242 @@ pub async fn send_chat_message(
                     }
                 }
 
+                // Build combined instructions file (system prompt equivalent for Codex)
+                let codex_instructions_file = {
+                    use crate::projects::github_issues::{
+                        get_github_contexts_dir, get_session_issue_refs, get_session_pr_refs,
+                    };
+                    use crate::projects::storage::load_projects_data;
+
+                    const DEFAULT_GLOBAL_SYSTEM_PROMPT: &str = "\
+## Plan Mode\n\
+\n\
+- Make the plan extremely concise. Sacrifice grammar for the sake of concision.\n\
+- At the end of each plan, give me a list of unresolved questions to answer, if any.\n\
+\n\
+## Not Plan Mode\n\
+\n\
+- After each finished task, please write a few bullet points on how to test the changes.";
+
+                    let mut system_prompt_parts: Vec<String> = Vec::new();
+
+                    // Codex plan mode: inject planning-only instructions
+                    if thread_execution_mode.as_deref() == Some("plan") {
+                        system_prompt_parts.push(
+                            "You are in PLANNING MODE (read-only sandbox). Create a detailed implementation plan. \
+                             Do NOT attempt to make any file changes — you are running in a read-only sandbox and writes will fail. \
+                             Describe exactly what changes you WOULD make: which files to create/modify, \
+                             what code to write, and in what order. End with any unresolved questions."
+                                .to_string(),
+                        );
+                    }
+
+                    // AI language preference
+                    if let Some(lang) = &thread_ai_language {
+                        let lang = lang.trim();
+                        if !lang.is_empty() {
+                            system_prompt_parts.push(format!("Respond to the user in {lang}."));
+                        }
+                    }
+
+                    // Global system prompt from preferences
+                    if let Ok(prefs_path) = crate::get_preferences_path(&thread_app) {
+                        if let Ok(contents) = std::fs::read_to_string(&prefs_path) {
+                            if let Ok(prefs) =
+                                serde_json::from_str::<crate::AppPreferences>(&contents)
+                            {
+                                let prompt = prefs
+                                    .magic_prompts
+                                    .global_system_prompt
+                                    .as_deref()
+                                    .map(|s| s.trim())
+                                    .filter(|s| !s.is_empty())
+                                    .unwrap_or(DEFAULT_GLOBAL_SYSTEM_PROMPT);
+                                system_prompt_parts.push(prompt.to_string());
+                            }
+                        }
+                    }
+
+                    // Parallel execution prompt
+                    if let Some(prompt) = &thread_parallel_prompt {
+                        let prompt = prompt.trim();
+                        if !prompt.is_empty() {
+                            system_prompt_parts.push(prompt.to_string());
+                        }
+                    }
+
+                    // Per-project custom system prompt
+                    if let Ok(data) = load_projects_data(&thread_app) {
+                        if let Some(worktree) = data.find_worktree(&thread_worktree_id) {
+                            if let Some(project) = data.find_project(&worktree.project_id) {
+                                if let Some(prompt) = &project.custom_system_prompt {
+                                    let prompt = prompt.trim();
+                                    if !prompt.is_empty() {
+                                        system_prompt_parts.push(prompt.to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Embedded binary path hints
+                    let gh_binary = crate::gh_cli::config::resolve_gh_binary(&thread_app);
+                    if gh_binary != std::path::PathBuf::from("gh") {
+                        system_prompt_parts.push(format!(
+                            "When running GitHub CLI commands, use the full path to the embedded binary: {}\n\
+                             Do NOT use bare `gh` — always use the full path above.",
+                            gh_binary.display()
+                        ));
+                    }
+                    if let Ok(claude_binary) = crate::claude_cli::get_cli_binary_path(&thread_app) {
+                        if claude_binary.exists() {
+                            system_prompt_parts.push(format!(
+                                "When running Claude CLI commands, use the full path to the embedded binary: {}\n\
+                                 Do NOT use bare `claude` — always use the full path above.",
+                                claude_binary.display()
+                            ));
+                        }
+                    }
+                    if let Ok(codex_binary) = crate::codex_cli::get_cli_binary_path(&thread_app) {
+                        if codex_binary.exists() {
+                            system_prompt_parts.push(format!(
+                                "When running Codex CLI commands, use the full path to the embedded binary: {}\n\
+                                 Do NOT use bare `codex` — always use the full path above.",
+                                codex_binary.display()
+                            ));
+                        }
+                    }
+
+                    // Collect context file paths (issues, PRs, saved contexts)
+                    let mut all_context_paths: Vec<std::path::PathBuf> = Vec::new();
+
+                    let mut issue_keys =
+                        get_session_issue_refs(&thread_app, &thread_session_id).unwrap_or_default();
+                    if let Ok(wt_keys) = get_session_issue_refs(&thread_app, &thread_worktree_id) {
+                        for key in wt_keys {
+                            if !issue_keys.contains(&key) {
+                                issue_keys.push(key);
+                            }
+                        }
+                    }
+                    if !issue_keys.is_empty() {
+                        if let Ok(contexts_dir) = get_github_contexts_dir(&thread_app) {
+                            for key in &issue_keys {
+                                let parts: Vec<&str> = key.rsplitn(2, '-').collect();
+                                if parts.len() == 2 {
+                                    let number = parts[0];
+                                    let repo_key = parts[1];
+                                    let file_path =
+                                        contexts_dir.join(format!("{repo_key}-issue-{number}.md"));
+                                    if file_path.exists() {
+                                        all_context_paths.push(file_path);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    let mut pr_keys =
+                        get_session_pr_refs(&thread_app, &thread_session_id).unwrap_or_default();
+                    if let Ok(wt_keys) = get_session_pr_refs(&thread_app, &thread_worktree_id) {
+                        for key in wt_keys {
+                            if !pr_keys.contains(&key) {
+                                pr_keys.push(key);
+                            }
+                        }
+                    }
+                    if !pr_keys.is_empty() {
+                        if let Ok(contexts_dir) = get_github_contexts_dir(&thread_app) {
+                            for key in &pr_keys {
+                                let parts: Vec<&str> = key.rsplitn(2, '-').collect();
+                                if parts.len() == 2 {
+                                    let number = parts[0];
+                                    let repo_key = parts[1];
+                                    let file_path =
+                                        contexts_dir.join(format!("{repo_key}-pr-{number}.md"));
+                                    if file_path.exists() {
+                                        all_context_paths.push(file_path);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Saved context files
+                    if let Ok(app_data_dir) = thread_app.path().app_data_dir() {
+                        let saved_contexts_dir = app_data_dir.join("session-context");
+                        if saved_contexts_dir.exists() {
+                            let prefix = format!("{}-context-", thread_session_id);
+                            if let Ok(entries) = std::fs::read_dir(&saved_contexts_dir) {
+                                let mut context_files: Vec<_> = entries
+                                    .flatten()
+                                    .filter(|entry| {
+                                        let name = entry.file_name().to_string_lossy().to_string();
+                                        name.starts_with(&prefix) && name.ends_with(".md")
+                                    })
+                                    .collect();
+                                context_files.sort_by_key(|e| e.file_name());
+                                for entry in context_files {
+                                    all_context_paths.push(entry.path());
+                                }
+                            }
+                        }
+                    }
+
+                    // Write combined instructions file if we have anything
+                    if !system_prompt_parts.is_empty() || !all_context_paths.is_empty() {
+                        if let Ok(app_data_dir) = thread_app.path().app_data_dir() {
+                            let combined_dir = app_data_dir.join("combined-contexts");
+                            let _ = std::fs::create_dir_all(&combined_dir);
+                            let combined_file = combined_dir
+                                .join(format!("{}-codex-combined.md", thread_session_id));
+
+                            let mut content = String::new();
+
+                            if !system_prompt_parts.is_empty() {
+                                content.push_str("# Instructions\n\n");
+                                for part in &system_prompt_parts {
+                                    content.push_str(part);
+                                    content.push('\n');
+                                }
+                                content.push_str("\n---\n\n");
+                            }
+
+                            if !all_context_paths.is_empty() {
+                                content.push_str("# Loaded Context\n\n");
+                                content.push_str(
+                                    "The following context has been loaded. \
+                                     You should be aware of this when working on this task.\n\n---\n\n",
+                                );
+                                for path in &all_context_paths {
+                                    if let Ok(file_content) = std::fs::read_to_string(path) {
+                                        content.push_str(&file_content);
+                                        content.push_str("\n\n---\n\n");
+                                    }
+                                }
+                            }
+
+                            match std::fs::write(&combined_file, &content) {
+                                Ok(_) => {
+                                    log::debug!(
+                                        "Created Codex instructions file: {:?}",
+                                        combined_file
+                                    );
+                                    Some(combined_file)
+                                }
+                                Err(e) => {
+                                    log::error!("Failed to write Codex instructions file: {e}");
+                                    None
+                                }
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                };
+
                 // For Codex: first message uses positional arg, resume pipes via stdin
                 let prompt = Some(thread_message.as_str());
 
@@ -1582,6 +1834,9 @@ pub async fn send_chat_message(
                     thread_codex_search,
                     &codex_add_dirs,
                     prompt,
+                    codex_instructions_file.as_deref(),
+                    thread_codex_multi_agent,
+                    thread_codex_max_threads,
                 ) {
                     Ok((pid, response)) => Ok((
                         pid,
@@ -1729,6 +1984,24 @@ pub async fn send_chat_message(
         }
         Ok(())
     })?;
+
+    // For Codex plan mode: persist waiting state so frontend shows plan approval UI
+    if response_backend == Backend::Codex
+        && execution_mode.as_deref() == Some("plan")
+        && !unified_response.cancelled
+        && has_content
+    {
+        let plan_session_id = session_id.clone();
+        let plan_msg_id = assistant_msg_id.clone();
+        with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
+            if let Some(session) = sessions.find_session_mut(&plan_session_id) {
+                session.waiting_for_input = true;
+                session.waiting_for_input_type = Some("plan".to_string());
+                session.pending_plan_message_id = Some(plan_msg_id);
+            }
+            Ok(())
+        })?;
+    }
 
     if unified_response.cancelled {
         log::trace!("Chat message cancelled but partial response saved for session: {session_id}");
@@ -3007,15 +3280,26 @@ fn execute_summarization_claude(
     model: Option<&str>,
     custom_profile_name: Option<&str>,
 ) -> Result<ContextSummaryResponse, String> {
-    let cli_path = resolve_cli_binary(app);
+    let model_str = model.unwrap_or("opus");
 
+    // Route to Codex CLI if model is a Codex model
+    if crate::is_codex_model(model_str) {
+        log::trace!("Executing one-shot Codex summarization with output-schema");
+        let json_str =
+            super::codex::execute_one_shot_codex(app, prompt, model_str, CONTEXT_SUMMARY_SCHEMA)?;
+        return serde_json::from_str(&json_str).map_err(|e| {
+            log::error!("Failed to parse Codex summarization JSON: {e}, content: {json_str}");
+            format!("Failed to parse summarization response: {e}")
+        });
+    }
+
+    let cli_path = resolve_cli_binary(app);
     if !cli_path.exists() {
         return Err("Claude CLI not installed".to_string());
     }
 
     log::trace!("Executing one-shot Claude summarization with JSON schema");
 
-    let model_str = model.unwrap_or("opus");
     let mut cmd = silent_command(&cli_path);
     crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
     cmd.args([
@@ -3566,8 +3850,18 @@ fn execute_digest_claude(
     model: &str,
     custom_profile_name: Option<&str>,
 ) -> Result<SessionDigestResponse, String> {
-    let cli_path = resolve_cli_binary(app);
+    // Route to Codex CLI if model is a Codex model
+    if crate::is_codex_model(model) {
+        log::trace!("Executing one-shot Codex digest with output-schema");
+        let json_str =
+            super::codex::execute_one_shot_codex(app, prompt, model, SESSION_DIGEST_SCHEMA)?;
+        return serde_json::from_str(&json_str).map_err(|e| {
+            log::error!("Failed to parse Codex digest JSON: {e}, content: {json_str}");
+            format!("Failed to parse digest response: {e}")
+        });
+    }
 
+    let cli_path = resolve_cli_binary(app);
     if !cli_path.exists() {
         return Err("Claude CLI not installed".to_string());
     }
@@ -3970,6 +4264,19 @@ pub async fn check_mcp_health(app: AppHandle) -> Result<McpHealthResult, String>
     log::debug!("MCP health check: {} servers", statuses.len());
 
     Ok(McpHealthResult { statuses })
+}
+
+/// Approve or decline a Codex command execution approval request.
+///
+/// Called by the frontend when the user clicks "Approve" or "Cancel" in the
+/// PermissionApproval UI during a Codex build-mode session.
+#[tauri::command]
+pub fn approve_codex_command(
+    session_id: String,
+    rpc_id: u64,
+    decision: String,
+) -> Result<(), String> {
+    super::codex::send_approval(&session_id, rpc_id, &decision)
 }
 
 #[cfg(test)]

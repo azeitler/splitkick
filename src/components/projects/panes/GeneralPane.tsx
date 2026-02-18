@@ -320,7 +320,7 @@ export function GeneralPane({
             <SelectContent>
               <SelectItem value="global-default">Use global default</SelectItem>
               <SelectItem value="claude">Claude</SelectItem>
-              <SelectItem value="codex">Codex</SelectItem>
+              <SelectItem value="codex">Codex <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">BETA</span></SelectItem>
             </SelectContent>
           </Select>
         </InlineField>

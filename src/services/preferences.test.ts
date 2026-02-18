@@ -137,6 +137,8 @@ describe('preferences service', () => {
         default_backend: 'claude',
         selected_codex_model: 'gpt-5.3-codex',
         default_codex_reasoning_effort: 'high',
+        codex_multi_agent_enabled: false,
+        codex_max_agent_threads: 3,
       }
       vi.mocked(invoke).mockResolvedValueOnce(mockPreferences)
 
@@ -241,6 +243,8 @@ describe('preferences service', () => {
         default_backend: 'claude',
         selected_codex_model: 'gpt-5.3-codex',
         default_codex_reasoning_effort: 'high',
+        codex_multi_agent_enabled: false,
+        codex_max_agent_threads: 3,
       }
       vi.mocked(invoke).mockResolvedValueOnce(prefsWithOldBinding)
 
@@ -321,6 +325,8 @@ describe('preferences service', () => {
         default_backend: 'claude',
         selected_codex_model: 'gpt-5.3-codex',
         default_codex_reasoning_effort: 'high',
+        codex_multi_agent_enabled: false,
+        codex_max_agent_threads: 3,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -400,6 +406,8 @@ describe('preferences service', () => {
         default_backend: 'claude',
         selected_codex_model: 'gpt-5.3-codex',
         default_codex_reasoning_effort: 'high',
+        codex_multi_agent_enabled: false,
+        codex_max_agent_threads: 3,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -479,6 +487,8 @@ describe('preferences service', () => {
         default_backend: 'claude',
         selected_codex_model: 'gpt-5.3-codex',
         default_codex_reasoning_effort: 'high',
+        codex_multi_agent_enabled: false,
+        codex_max_agent_threads: 3,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -556,6 +566,8 @@ describe('preferences service', () => {
         default_backend: 'claude',
         selected_codex_model: 'gpt-5.3-codex',
         default_codex_reasoning_effort: 'high',
+        codex_multi_agent_enabled: false,
+        codex_max_agent_threads: 3,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {

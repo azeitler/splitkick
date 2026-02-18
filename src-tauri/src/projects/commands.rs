@@ -4087,12 +4087,6 @@ fn generate_pr_content(
     context: &str,
     custom_profile_name: Option<&str>,
 ) -> Result<PrContentResponse, String> {
-    let cli_path = resolve_cli_binary(app);
-
-    if !cli_path.exists() {
-        return Err("Claude CLI not installed".to_string());
-    }
-
     // Get diff and commits
     let diff = get_branch_diff(repo_path, target_branch)?;
     if diff.trim().is_empty() {
@@ -4115,7 +4109,25 @@ fn generate_pr_content(
         .replace("{commits}", &commits)
         .replace("{diff}", &diff);
 
+    let model_str = model.unwrap_or("haiku");
+
+    // Route to Codex CLI if model is a Codex model
+    if crate::is_codex_model(model_str) {
+        log::trace!("Generating PR content with Codex CLI (output-schema)");
+        let json_str =
+            crate::chat::codex::execute_one_shot_codex(app, &prompt, model_str, PR_CONTENT_SCHEMA)?;
+        return serde_json::from_str(&json_str).map_err(|e| {
+            log::error!("Failed to parse Codex PR content JSON: {e}, content: {json_str}");
+            format!("Failed to parse PR content: {e}")
+        });
+    }
+
     log::trace!("Generating PR content with Claude CLI (JSON schema)");
+
+    let cli_path = resolve_cli_binary(app);
+    if !cli_path.exists() {
+        return Err("Claude CLI not installed".to_string());
+    }
 
     let mut cmd = silent_command(&cli_path);
     crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
@@ -4127,7 +4139,7 @@ fn generate_pr_content(
         "--output-format",
         "stream-json",
         "--model",
-        model.unwrap_or("haiku"),
+        model_str,
         "--no-session-persistence",
         "--tools",
         "",
@@ -4630,15 +4642,30 @@ fn generate_commit_message(
     model: Option<&str>,
     custom_profile_name: Option<&str>,
 ) -> Result<CommitMessageResponse, String> {
-    let cli_path = resolve_cli_binary(app);
+    let model_str = model.unwrap_or("haiku");
 
-    if !cli_path.exists() {
-        return Err("Claude CLI not installed".to_string());
+    // Route to Codex CLI if model is a Codex model
+    if crate::is_codex_model(model_str) {
+        log::trace!("Generating commit message with Codex CLI (output-schema)");
+        let json_str = crate::chat::codex::execute_one_shot_codex(
+            app,
+            prompt,
+            model_str,
+            COMMIT_MESSAGE_SCHEMA,
+        )?;
+        return serde_json::from_str(&json_str).map_err(|e| {
+            log::error!("Failed to parse Codex commit message JSON: {e}, content: {json_str}");
+            format!("Failed to parse commit message: {e}")
+        });
     }
 
     log::trace!("Generating commit message with Claude CLI (JSON schema)");
 
-    let model_str = model.unwrap_or("haiku");
+    let cli_path = resolve_cli_binary(app);
+    if !cli_path.exists() {
+        return Err("Claude CLI not installed".to_string());
+    }
+
     let mut cmd = silent_command(&cli_path);
     crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
     cmd.args([
@@ -4862,15 +4889,26 @@ fn generate_review(
     model: Option<&str>,
     custom_profile_name: Option<&str>,
 ) -> Result<ReviewResponse, String> {
-    let cli_path = resolve_cli_binary(app);
+    let model_str = model.unwrap_or("haiku");
 
+    // Route to Codex CLI if model is a Codex model
+    if crate::is_codex_model(model_str) {
+        log::trace!("Running code review with Codex CLI (output-schema)");
+        let json_str =
+            crate::chat::codex::execute_one_shot_codex(app, prompt, model_str, REVIEW_SCHEMA)?;
+        return serde_json::from_str(&json_str).map_err(|e| {
+            log::error!("Failed to parse Codex review JSON: {e}, content: {json_str}");
+            format!("Failed to parse review: {e}")
+        });
+    }
+
+    let cli_path = resolve_cli_binary(app);
     if !cli_path.exists() {
         return Err("Claude CLI not installed".to_string());
     }
 
     log::trace!("Running code review with Claude CLI (JSON schema)");
 
-    let model_str = model.unwrap_or("haiku");
     let mut cmd = silent_command(&cli_path);
     crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
     cmd.args([
@@ -5217,12 +5255,6 @@ fn generate_release_notes_content(
     model: Option<&str>,
     custom_profile_name: Option<&str>,
 ) -> Result<ReleaseNotesResponse, String> {
-    let cli_path = resolve_cli_binary(app);
-
-    if !cli_path.exists() {
-        return Err("Claude CLI not installed".to_string());
-    }
-
     // Fetch tags to ensure we have the tag locally
     let fetch_output = silent_command("git")
         .args(["fetch", "--tags"])
@@ -5279,6 +5311,28 @@ fn generate_release_notes_content(
         .replace("{previous_release_name}", release_name)
         .replace("{commits}", &commits);
 
+    let model_str = model.unwrap_or("haiku");
+
+    // Route to Codex CLI if model is a Codex model
+    if crate::is_codex_model(model_str) {
+        log::trace!("Generating release notes with Codex CLI (output-schema)");
+        let json_str = crate::chat::codex::execute_one_shot_codex(
+            app,
+            &prompt,
+            model_str,
+            RELEASE_NOTES_SCHEMA,
+        )?;
+        return serde_json::from_str(&json_str).map_err(|e| {
+            log::error!("Failed to parse Codex release notes JSON: {e}, content: {json_str}");
+            format!("Failed to parse release notes: {e}")
+        });
+    }
+
+    let cli_path = resolve_cli_binary(app);
+    if !cli_path.exists() {
+        return Err("Claude CLI not installed".to_string());
+    }
+
     log::trace!("Generating release notes with Claude CLI (JSON schema)");
 
     let mut cmd = silent_command(&cli_path);
@@ -5291,7 +5345,7 @@ fn generate_release_notes_content(
         "--output-format",
         "stream-json",
         "--model",
-        model.unwrap_or("haiku"),
+        model_str,
         "--no-session-persistence",
         "--tools",
         "",

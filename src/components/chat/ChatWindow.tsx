@@ -78,11 +78,13 @@ import type {
   PendingFile,
 } from '@/types/chat'
 import { isAskUserQuestion, isExitPlanMode, isTodoWrite } from '@/types/chat'
+import type { CodexAgent } from '@/types/chat'
 import { getFilename, normalizePath } from '@/lib/path-utils'
 import { cn } from '@/lib/utils'
 import { PermissionApproval } from './PermissionApproval'
 import { SetupScriptOutput } from './SetupScriptOutput'
 import { TodoWidget } from './TodoWidget'
+import { AgentWidget } from './AgentWidget'
 import {
   normalizeTodosForDisplay,
   findPlanFilePath,
@@ -839,6 +841,78 @@ export function ChatWindow({
 
     return { todos: [], sourceMessageId: null, isFromStreaming: false }
   }, [activeSessionId, isSending, currentToolCalls, lastAssistantMessage])
+
+  // Track which message's agents were dismissed
+  const [dismissedAgentMessageId, setDismissedAgentMessageId] = useState<
+    string | null
+  >(null)
+
+  // Get active agents from collab_tool_call (SpawnAgent) events
+  const {
+    agents: activeAgents,
+    sourceMessageId: agentSourceMessageId,
+    isFromStreaming: agentIsFromStreaming,
+  } = useMemo(() => {
+    if (!activeSessionId)
+      return { agents: [], sourceMessageId: null, isFromStreaming: false }
+
+    const toolCalls =
+      isSending && currentToolCalls.length > 0
+        ? currentToolCalls
+        : (lastAssistantMessage?.tool_calls ?? [])
+
+    const agents: CodexAgent[] = []
+    for (const tc of toolCalls) {
+      if (tc.name === 'SpawnAgent') {
+        const input = tc.input as Record<string, unknown>
+        const prompt = (input.prompt as string) ?? ''
+        const truncated =
+          prompt.length > 80 ? prompt.substring(0, 80) + '...' : prompt
+        // SpawnAgent gets output when spawn completes — agent is now running
+        // Only mark completed/errored when session is done (!isSending)
+        let status: CodexAgent['status'] = 'in_progress'
+        if (tc.output && !isSending) {
+          const out = tc.output as string
+          if (out.includes('errored')) {
+            status = 'errored'
+          } else {
+            status = 'completed'
+          }
+        }
+        agents.push({ id: tc.id, prompt: truncated, status })
+      }
+    }
+
+    const sourceId =
+      isSending && currentToolCalls.length > 0
+        ? null
+        : (lastAssistantMessage?.id ?? null)
+    return {
+      agents,
+      sourceMessageId: sourceId,
+      isFromStreaming: isSending && currentToolCalls.length > 0,
+    }
+  }, [activeSessionId, isSending, currentToolCalls, lastAssistantMessage])
+
+  // Auto-clear agent dismissal on new streaming agents
+  useEffect(() => {
+    if (isSending && activeAgents.length > 0 && agentSourceMessageId === null) {
+      if (dismissedAgentMessageId !== '__streaming__') {
+        queueMicrotask(() => setDismissedAgentMessageId(null))
+      }
+    } else if (
+      !isSending &&
+      agentSourceMessageId !== null &&
+      dismissedAgentMessageId === '__streaming__'
+    ) {
+      queueMicrotask(() => setDismissedAgentMessageId(agentSourceMessageId))
+    }
+  }, [
+    isSending,
+    activeAgents.length,
+    agentSourceMessageId,
+    dismissedAgentMessageId,
+  ])
 
   // Compute pending plan info for floating approve button
   // Returns the message that has an unapproved plan awaiting action, if any
@@ -1702,7 +1776,7 @@ export function ChatWindow({
         const model =
           backend === 'codex'
             ? (preferences?.selected_codex_model ?? 'gpt-5.3-codex')
-            : defaultModel
+            : ((preferences?.selected_model as string) ?? DEFAULT_MODEL)
         queryClient.setQueryData(
           chatQueryKeys.session(activeSessionId),
           (old: Session | null | undefined) =>
@@ -1733,7 +1807,7 @@ export function ChatWindow({
       activeSessionId,
       activeWorktreeId,
       activeWorktreePath,
-      defaultModel,
+      preferences?.selected_model,
       preferences?.selected_codex_model,
       queryClient,
       setSessionBackend,
@@ -3047,6 +3121,25 @@ export function ChatWindow({
                                 </div>
                               )}
 
+                            {/* Agent widget - inline fallback for narrow screens */}
+                            {activeAgents.length > 0 &&
+                              (dismissedAgentMessageId === null ||
+                                (agentSourceMessageId !== null &&
+                                  agentSourceMessageId !==
+                                    dismissedAgentMessageId)) && (
+                                <div className="px-4 md:px-6 pt-2 xl:hidden">
+                                  <AgentWidget
+                                    agents={activeAgents}
+                                    isStreaming={agentIsFromStreaming}
+                                    onClose={() =>
+                                      setDismissedAgentMessageId(
+                                        agentSourceMessageId ?? '__streaming__'
+                                      )
+                                    }
+                                  />
+                                </div>
+                              )}
+
                             {/* Textarea section */}
                             <div className="px-4 pt-3 pb-2 md:px-6">
                               <ChatInput
@@ -3145,27 +3238,45 @@ export function ChatWindow({
                             />
                           </form>
 
-                          {/* Task widget - side panel for wide screens */}
-                          {activeTodos.length > 0 &&
-                            (dismissedTodoMessageId === null ||
-                              (todoSourceMessageId !== null &&
-                                todoSourceMessageId !==
-                                  dismissedTodoMessageId)) && (
-                              <div className="hidden xl:block absolute left-full bottom-0 ml-3 w-64 z-20">
-                                <TodoWidget
-                                  todos={normalizeTodosForDisplay(
-                                    activeTodos,
-                                    isFromStreaming
-                                  )}
-                                  isStreaming={isSending}
-                                  onClose={() =>
-                                    setDismissedTodoMessageId(
-                                      todoSourceMessageId ?? '__streaming__'
-                                    )
-                                  }
-                                />
-                              </div>
-                            )}
+                          {/* Side panel widgets (Tasks + Agents) for wide screens */}
+                          {(activeTodos.length > 0 ||
+                            activeAgents.length > 0) && (
+                            <div className="hidden xl:flex flex-col gap-2 absolute left-full bottom-0 ml-3 w-64 z-20">
+                              {activeTodos.length > 0 &&
+                                (dismissedTodoMessageId === null ||
+                                  (todoSourceMessageId !== null &&
+                                    todoSourceMessageId !==
+                                      dismissedTodoMessageId)) && (
+                                  <TodoWidget
+                                    todos={normalizeTodosForDisplay(
+                                      activeTodos,
+                                      isFromStreaming
+                                    )}
+                                    isStreaming={isSending}
+                                    onClose={() =>
+                                      setDismissedTodoMessageId(
+                                        todoSourceMessageId ?? '__streaming__'
+                                      )
+                                    }
+                                  />
+                                )}
+                              {activeAgents.length > 0 &&
+                                (dismissedAgentMessageId === null ||
+                                  (agentSourceMessageId !== null &&
+                                    agentSourceMessageId !==
+                                      dismissedAgentMessageId)) && (
+                                  <AgentWidget
+                                    agents={activeAgents}
+                                    isStreaming={agentIsFromStreaming}
+                                    onClose={() =>
+                                      setDismissedAgentMessageId(
+                                        agentSourceMessageId ?? '__streaming__'
+                                      )
+                                    }
+                                  />
+                                )}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>

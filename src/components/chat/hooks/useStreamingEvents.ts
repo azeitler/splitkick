@@ -10,7 +10,7 @@ import { isTauri, saveWorktreePr, projectsQueryKeys } from '@/services/projects'
 import { preferencesQueryKeys } from '@/services/preferences'
 import type { AppPreferences, NotificationSound } from '@/types/preferences'
 import { triggerImmediateGitPoll } from '@/services/git-status'
-import { isAskUserQuestion, isExitPlanMode } from '@/types/chat'
+import { isAskUserQuestion, isExitPlanMode, type ToolCall } from '@/types/chat'
 import { playNotificationSound } from '@/lib/sounds'
 import { findPlanFilePath } from '@/components/chat/tool-call-utils'
 import { generateId } from '@/lib/uuid'
@@ -248,9 +248,35 @@ export default function useStreamingEvents({
       const toolCalls = activeToolCalls[sessionId]
       const contentBlocks = streamingContentBlocks[sessionId]
 
+      // Codex plan mode: inject synthetic ExitPlanMode tool call so existing plan UI works
+      const { selectedBackends, executingModes } = useChatStore.getState()
+      const isCodexPlanCompletion =
+        selectedBackends[sessionId] === 'codex' &&
+        executingModes[sessionId] === 'plan' &&
+        content &&
+        content.length > 0
+      let effectiveToolCalls = toolCalls
+      let effectiveContentBlocks = contentBlocks
+      if (isCodexPlanCompletion) {
+        const syntheticId = `codex-plan-${sessionId}-${Date.now()}`
+        const syntheticTool: ToolCall = {
+          id: syntheticId,
+          name: 'ExitPlanMode',
+          input: {},
+        }
+        effectiveToolCalls = [...(toolCalls ?? []), syntheticTool]
+        effectiveContentBlocks = [
+          ...(contentBlocks ?? []),
+          { type: 'tool_use' as const, tool_call_id: syntheticId },
+        ]
+        // Also add to store so rendering components see it
+        useChatStore.getState().addToolCall(sessionId, syntheticTool)
+        useChatStore.getState().addToolBlock(sessionId, syntheticId)
+      }
+
       // Check for unanswered blocking tools BEFORE clearing state
       // This determines whether to show "waiting" status in the UI
-      const hasUnansweredBlockingTool = toolCalls?.some(
+      const hasUnansweredBlockingTool = effectiveToolCalls?.some(
         tc =>
           (isAskUserQuestion(tc) || isExitPlanMode(tc)) &&
           !isQuestionAnswered(sessionId, tc.id)
@@ -272,10 +298,10 @@ export default function useStreamingEvents({
         const { messageQueues } = useChatStore.getState()
         const hasQueuedMessages = (messageQueues[sessionId]?.length ?? 0) > 0
         const isOnlyExitPlanMode =
-          toolCalls?.every(
+          effectiveToolCalls?.every(
             tc => !isAskUserQuestion(tc) || isQuestionAnswered(sessionId, tc.id)
           ) &&
-          toolCalls?.some(
+          effectiveToolCalls?.some(
             tc => isExitPlanMode(tc) && !isQuestionAnswered(sessionId, tc.id)
           )
 
@@ -299,10 +325,10 @@ export default function useStreamingEvents({
           removeSendingSession(sessionId)
 
           // Determine waiting type: question or plan
-          const hasUnansweredQuestion = toolCalls?.some(
+          const hasUnansweredQuestion = effectiveToolCalls?.some(
             tc => isAskUserQuestion(tc) && !isQuestionAnswered(sessionId, tc.id)
           )
-          const hasUnansweredPlan = toolCalls?.some(
+          const hasUnansweredPlan = effectiveToolCalls?.some(
             tc => isExitPlanMode(tc) && !isQuestionAnswered(sessionId, tc.id)
           )
           // Questions take priority over plans for the type indicator
@@ -313,15 +339,15 @@ export default function useStreamingEvents({
               : null
 
           // Persist plan file path and pending message ID for ExitPlanMode
-          if (toolCalls) {
-            const planPath = findPlanFilePath(toolCalls)
+          if (effectiveToolCalls) {
+            const planPath = findPlanFilePath(effectiveToolCalls)
             if (planPath) {
               useChatStore.getState().setPlanFilePath(sessionId, planPath)
             }
 
             // Check if there's an ExitPlanMode tool call - if so, generate a message ID
             // that will be used for the optimistic message and persist it
-            const hasExitPlanModeCall = toolCalls.some(tc => isExitPlanMode(tc))
+            const hasExitPlanModeCall = effectiveToolCalls.some(tc => isExitPlanMode(tc))
             if (hasExitPlanModeCall) {
               // Generate message ID now so we can persist it before the optimistic message is created
               const pendingMessageId = generateId()
@@ -421,7 +447,7 @@ export default function useStreamingEvents({
 
       // NOW add optimistic message after streaming state is cleared
       // Add message if there's content OR tool calls (some responses are only tool calls)
-      if (content || (toolCalls && toolCalls.length > 0)) {
+      if (content || (effectiveToolCalls && effectiveToolCalls.length > 0)) {
         // Use pre-generated message ID if available (for ExitPlanMode), otherwise generate new
         const pendingIdKey = `__pendingMessageId_${sessionId}`
         const preGeneratedId = (window as unknown as Record<string, string>)[
@@ -448,8 +474,8 @@ export default function useStreamingEvents({
                   role: 'assistant' as const,
                   content: content ?? '',
                   timestamp: Math.floor(Date.now() / 1000),
-                  tool_calls: toolCalls ?? [],
-                  content_blocks: contentBlocks ?? [],
+                  tool_calls: effectiveToolCalls ?? [],
+                  content_blocks: effectiveContentBlocks ?? [],
                 },
               ],
             }

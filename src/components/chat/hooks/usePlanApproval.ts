@@ -138,8 +138,13 @@ export function usePlanApproval({
       const thinkingLevel = preferences?.thinking_level ?? 'off'
 
       // Format message - if no pending plan, always include the updated plan content
+      // For Codex: use explicit execution instruction since it resumes a thread
+      const isCodex = card.session.backend === 'codex'
+      const baseMsg = isCodex
+        ? 'Execute the plan you created. Implement all changes described.'
+        : 'Approved'
       const message = messageId
-        ? formatApprovalMessage('Approved', updatedPlan, originalPlan)
+        ? formatApprovalMessage(baseMsg, updatedPlan, originalPlan)
         : `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
 
       setLastSentMessage(sessionId, message)
@@ -257,8 +262,12 @@ export function usePlanApproval({
       const thinkingLevel = preferences?.thinking_level ?? 'off'
 
       // Format message - if no pending plan, always include the updated plan content
+      const isCodexYolo = card.session.backend === 'codex'
+      const baseMsgYolo = isCodexYolo
+        ? 'Execute the plan you created. Implement all changes described.'
+        : 'Approved - yolo'
       const message = messageId
-        ? formatApprovalMessage('Approved - yolo', updatedPlan, originalPlan)
+        ? formatApprovalMessage(baseMsgYolo, updatedPlan, originalPlan)
         : `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
 
       setLastSentMessage(sessionId, message)

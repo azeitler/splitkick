@@ -86,7 +86,7 @@ interface CleanupResult {
 }
 
 const SettingsSection: React.FC<{
-  title: string
+  title: React.ReactNode
   actions?: React.ReactNode
   children: React.ReactNode
 }> = ({ title, actions, children }) => (
@@ -225,6 +225,25 @@ export const GeneralPane: React.FC = () => {
       savePreferences.mutate({
         ...preferences,
         default_codex_reasoning_effort: value,
+      })
+    }
+  }
+
+  const handleCodexMultiAgentToggle = (enabled: boolean) => {
+    if (preferences) {
+      savePreferences.mutate({
+        ...preferences,
+        codex_multi_agent_enabled: enabled,
+      })
+    }
+  }
+
+  const handleCodexMaxThreadsChange = (value: string) => {
+    if (preferences) {
+      const num = Math.max(1, Math.min(8, parseInt(value, 10) || 3))
+      savePreferences.mutate({
+        ...preferences,
+        codex_max_agent_threads: num,
       })
     }
   }
@@ -544,7 +563,7 @@ export const GeneralPane: React.FC = () => {
 
       {isNativeApp() && (
         <SettingsSection
-          title="Codex CLI"
+          title={<>Codex CLI <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">BETA</span></>}
           actions={
             codexStatus?.installed ? (
               checkingCodexAuth || isCodexAuthLoading ? (
@@ -741,7 +760,7 @@ export const GeneralPane: React.FC = () => {
           {/* Codex subsection */}
           <div className="pt-2">
             <div className="text-sm font-semibold text-foreground/80 mb-3">
-              Codex
+              Codex <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">BETA</span>
             </div>
           </div>
 
@@ -786,6 +805,32 @@ export const GeneralPane: React.FC = () => {
               </SelectContent>
             </Select>
           </InlineField>
+
+          <InlineField
+            label="Multi-Agent"
+            description="Allow Codex to spawn parallel sub-agents (experimental)"
+          >
+            <Switch
+              checked={preferences?.codex_multi_agent_enabled ?? false}
+              onCheckedChange={handleCodexMultiAgentToggle}
+            />
+          </InlineField>
+
+          {preferences?.codex_multi_agent_enabled && (
+            <InlineField
+              label="Max agent threads"
+              description="Maximum concurrent sub-agents (1–8)"
+            >
+              <Input
+                type="number"
+                min={1}
+                max={8}
+                className="w-20"
+                value={preferences?.codex_max_agent_threads ?? 3}
+                onChange={e => handleCodexMaxThreadsChange(e.target.value)}
+              />
+            </InlineField>
+          )}
 
           {/* Shared settings */}
           <div className="pt-2">

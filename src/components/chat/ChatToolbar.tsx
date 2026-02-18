@@ -869,7 +869,7 @@ export const ChatToolbar = memo(function ChatToolbar({
                       Claude
                     </DropdownMenuRadioItem>
                     <DropdownMenuRadioItem value="codex">
-                      Codex
+                      Codex <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">BETA</span>
                     </DropdownMenuRadioItem>
                   </DropdownMenuRadioGroup>
                 </DropdownMenuSubContent>
@@ -1292,6 +1292,7 @@ export const ChatToolbar = memo(function ChatToolbar({
                 )}
               >
                 Codex
+                <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">BETA</span>
               </button>
             </div>
           </>

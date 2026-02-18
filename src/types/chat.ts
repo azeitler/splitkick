@@ -375,10 +375,12 @@ export interface ToolResultEvent {
 export interface PermissionDenial {
   /** Name of the denied tool (e.g., "Bash") */
   tool_name: string
-  /** Tool use ID from Claude */
+  /** Tool use ID */
   tool_use_id: string
   /** Input parameters that were denied */
   tool_input: unknown
+  /** JSON-RPC request ID (Codex only — used to respond to approval requests) */
+  rpc_id?: number
 }
 
 /**
@@ -478,6 +480,35 @@ export function isTodoWrite(
     'todos' in toolCall.input &&
     Array.isArray((toolCall.input as TodoWriteInput).todos)
   )
+}
+
+/**
+ * A Codex multi-agent entry extracted from collab_tool_call events
+ */
+export interface CodexAgent {
+  /** Tool call ID of the SpawnAgent collab_tool_call */
+  id: string
+  /** The prompt given to the agent (truncated for display) */
+  prompt: string
+  /** Agent lifecycle status */
+  status: 'in_progress' | 'completed' | 'errored'
+  /** Completion message from agents_states */
+  message?: string
+}
+
+/** Names of collab tool calls that should be shown in the AgentWidget, not the timeline */
+const COLLAB_TOOL_NAMES = new Set([
+  'SpawnAgent',
+  'WaitForAgents',
+  'CloseAgent',
+  'SendInput',
+])
+
+/**
+ * Check if a tool call is a Codex collab tool (multi-agent)
+ */
+export function isCollabToolCall(toolCall: ToolCall): boolean {
+  return COLLAB_TOOL_NAMES.has(toolCall.name)
 }
 
 /**

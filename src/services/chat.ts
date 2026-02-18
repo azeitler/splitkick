@@ -1330,7 +1330,7 @@ export function useSendMessage() {
 
       return { previous, worktreeId }
     },
-    onSuccess: (response, { sessionId, worktreeId }) => {
+    onSuccess: (response, { sessionId, worktreeId, executionMode }) => {
       // Handle undo_send: cancelled with no meaningful content
       // Remove the optimistic user message (backend already removed it from storage)
       if (
@@ -1360,6 +1360,30 @@ export function useSendMessage() {
         return
       }
 
+      // For Codex plan mode: inject synthetic ExitPlanMode tool call into the response
+      // so the plan approval UI renders (Codex has no native ExitPlanMode tool)
+      const { selectedBackends } = useChatStore.getState()
+      const isCodexPlan =
+        selectedBackends[sessionId] === 'codex' &&
+        executionMode === 'plan' &&
+        !response.cancelled &&
+        response.content.length > 0
+      let finalResponse = response
+      if (isCodexPlan) {
+        const syntheticId = `codex-plan-${sessionId}-${Date.now()}`
+        finalResponse = {
+          ...response,
+          tool_calls: [
+            ...response.tool_calls,
+            { id: syntheticId, name: 'ExitPlanMode', input: {} },
+          ],
+          content_blocks: [
+            ...(response.content_blocks ?? []),
+            { type: 'tool_use' as const, tool_call_id: syntheticId },
+          ],
+        }
+      }
+
       // Replace the optimistic assistant message with the complete one from backend
       // This fixes a race condition where chat:done creates an optimistic message
       // with incomplete content_blocks (missing Edit/Read/Write tool blocks)
@@ -1380,12 +1404,12 @@ export function useSendMessage() {
 
           if (lastAssistantIdx >= 0) {
             const newMessages = [...old.messages]
-            newMessages[lastAssistantIdx] = response
+            newMessages[lastAssistantIdx] = finalResponse
             return { ...old, messages: newMessages }
           }
 
           // If no assistant message found, add the response
-          return { ...old, messages: [...old.messages, response] }
+          return { ...old, messages: [...old.messages, finalResponse] }
         }
       )
 

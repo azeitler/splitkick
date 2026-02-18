@@ -344,10 +344,15 @@ export function useMessageHandlers({
       })
 
       // Format approval message - include updated plan if provided
+      // For Codex: use explicit execution instruction since it resumes a thread
+      const isCodex =
+        useChatStore.getState().selectedBackends[sessionId] === 'codex'
       const message = updatedPlan
         ? `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
-        : 'Approved'
-      // Send approval message to Claude so it continues with execution
+        : isCodex
+          ? 'Execute the plan you created. Implement all changes described.'
+          : 'Approved'
+      // Send approval message so the backend continues with execution
       // NOTE: setLastSentMessage is critical for permission denial flow - without it,
       // the denied message context won't be set and approval UI won't work
       setLastSentMessage(sessionId, message)
@@ -458,10 +463,14 @@ export function useMessageHandlers({
       })
 
       // Format approval message - include updated plan if provided
+      const isCodexYolo =
+        useChatStore.getState().selectedBackends[sessionId] === 'codex'
       const message = updatedPlan
         ? `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
-        : 'Approved - yolo'
-      // Send approval message to Claude so it continues with execution
+        : isCodexYolo
+          ? 'Execute the plan you created. Implement all changes described.'
+          : 'Approved - yolo'
+      // Send approval message so the backend continues with execution
       setLastSentMessage(sessionId, message)
       setError(sessionId, null)
       addSendingSession(sessionId)
@@ -695,23 +704,55 @@ export function useMessageHandlers({
         getDeniedMessageContext,
         clearDeniedMessageContext,
         getApprovedTools,
+        getPendingDenials,
         addSendingSession,
         setLastSentMessage,
         setError,
         setSelectedModel,
         setExecutingMode,
         setWaitingForInput,
+        selectedBackends,
       } = useChatStore.getState()
 
-      // Add approved patterns to session store
+      const backend = selectedBackends[sessionId] ?? 'claude'
+
+      // Codex path: send approval response via JSON-RPC (process is still running)
+      if (backend === 'codex') {
+        const denials = getPendingDenials(sessionId)
+        clearPendingDenials(sessionId)
+        clearDeniedMessageContext(sessionId)
+        setWaitingForInput(sessionId, false)
+
+        requestAnimationFrame(() => {
+          scrollToBottom(true)
+        })
+
+        // Send accept for each denial that has an rpc_id
+        for (const denial of denials) {
+          if (denial.rpc_id != null) {
+            invoke('approve_codex_command', {
+              sessionId,
+              rpcId: denial.rpc_id,
+              decision: 'accept',
+            }).catch(err => {
+              console.error(
+                '[ChatWindow] Failed to approve Codex command:',
+                err
+              )
+              toast.error(`Failed to approve command: ${err}`)
+            })
+          }
+        }
+        return
+      }
+
+      // Claude path: re-send message with approved tools
       for (const pattern of approvedPatterns) {
         addApprovedTool(sessionId, pattern)
       }
 
-      // Get all approved tools for this session (including previously approved)
       const allApprovedTools = getApprovedTools(sessionId)
 
-      // Get the original message context
       const context = getDeniedMessageContext(sessionId)
       if (!context) {
         console.error(
@@ -721,18 +762,14 @@ export function useMessageHandlers({
         return
       }
 
-      // Clear pending state
       clearPendingDenials(sessionId)
       clearDeniedMessageContext(sessionId)
       setWaitingForInput(sessionId, false)
 
-      // Scroll to bottom after DOM updates from collapsing the permission approval UI
       requestAnimationFrame(() => {
         scrollToBottom(true)
       })
 
-      // Build explicit continuation message that tells Claude exactly what to run
-      // Extract commands from Bash(command) patterns for a more direct instruction
       const bashCommands: string[] = []
       const otherPatterns: string[] = []
       for (const pattern of approvedPatterns) {
@@ -744,24 +781,19 @@ export function useMessageHandlers({
         }
       }
 
-      // Build a message that explicitly asks Claude to run the commands
       let continuationMessage: string
       if (bashCommands.length > 0 && otherPatterns.length === 0) {
-        // Only Bash commands - be very explicit
         if (bashCommands.length === 1) {
           continuationMessage = `I approved the command. Run it now: \`${bashCommands[0]}\``
         } else {
           continuationMessage = `I approved these commands. Run them now:\n${bashCommands.map(cmd => `- \`${cmd}\``).join('\n')}`
         }
       } else if (bashCommands.length > 0) {
-        // Mix of Bash and other tools
         continuationMessage = `I approved: ${approvedPatterns.join(', ')}. Execute them now.`
       } else {
-        // Only non-Bash tools
         continuationMessage = `I approved ${approvedPatterns.join(', ')}. Continue with the task.`
       }
 
-      // Send continuation with approved tools
       const modelToUse = context.model ?? selectedModelRef.current
       const modeToUse = context.executionMode ?? executionModeRef.current
       setLastSentMessage(sessionId, continuationMessage)
@@ -823,6 +855,7 @@ export function useMessageHandlers({
         clearPendingDenials,
         getDeniedMessageContext,
         clearDeniedMessageContext,
+        getPendingDenials,
         addSendingSession,
         setLastSentMessage,
         setError,
@@ -830,14 +863,45 @@ export function useMessageHandlers({
         setExecutingMode,
         setExecutionMode: setMode,
         setWaitingForInput,
+        selectedBackends,
       } = useChatStore.getState()
 
-      // Add approved patterns to session store
+      const backend = selectedBackends[sessionId] ?? 'claude'
+
+      // Codex path: accept current denial and switch to yolo for future messages
+      if (backend === 'codex') {
+        const denials = getPendingDenials(sessionId)
+        clearPendingDenials(sessionId)
+        clearDeniedMessageContext(sessionId)
+        setWaitingForInput(sessionId, false)
+        setMode(sessionId, 'yolo')
+
+        requestAnimationFrame(() => {
+          scrollToBottom(true)
+        })
+
+        for (const denial of denials) {
+          if (denial.rpc_id != null) {
+            invoke('approve_codex_command', {
+              sessionId,
+              rpcId: denial.rpc_id,
+              decision: 'accept',
+            }).catch(err => {
+              console.error(
+                '[ChatWindow] Failed to approve Codex command:',
+                err
+              )
+            })
+          }
+        }
+        return
+      }
+
+      // Claude path
       for (const pattern of approvedPatterns) {
         addApprovedTool(sessionId, pattern)
       }
 
-      // Get the original message context
       const context = getDeniedMessageContext(sessionId)
       if (!context) {
         console.error(
@@ -847,7 +911,6 @@ export function useMessageHandlers({
         return
       }
 
-      // Clear pending state
       clearPendingDenials(sessionId)
       clearDeniedMessageContext(sessionId)
       setWaitingForInput(sessionId, false)
@@ -941,9 +1004,30 @@ export function useMessageHandlers({
     const {
       clearPendingDenials,
       clearDeniedMessageContext,
+      getPendingDenials,
       setWaitingForInput,
       removeSendingSession,
+      selectedBackends,
     } = useChatStore.getState()
+
+    const backend = selectedBackends[sessionId] ?? 'claude'
+
+    // For Codex: send decline response to unblock the attached process
+    if (backend === 'codex') {
+      const denials = getPendingDenials(sessionId)
+      for (const denial of denials) {
+        if (denial.rpc_id != null) {
+          invoke('approve_codex_command', {
+            sessionId,
+            rpcId: denial.rpc_id,
+            decision: 'decline',
+          }).catch(err => {
+            console.error('[ChatWindow] Failed to decline Codex command:', err)
+          })
+        }
+      }
+    }
+
     clearPendingDenials(sessionId)
     clearDeniedMessageContext(sessionId)
     setWaitingForInput(sessionId, false)

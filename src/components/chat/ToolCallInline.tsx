@@ -13,6 +13,13 @@ import {
   Layers,
   Brain,
   Loader2,
+  Users,
+  Send,
+  Clock,
+  XCircle,
+  ListTodo,
+  CheckCircle2,
+  Circle,
 } from 'lucide-react'
 import { diffLines } from 'diff'
 import type { ToolCall } from '@/types/chat'
@@ -648,6 +655,88 @@ function getToolDisplay(toolCall: ToolCall): ToolDisplay {
         expandedContent: url
           ? `URL: ${url}${prompt ? `\n\nPrompt: ${prompt}` : ''}`
           : `Query: ${query ?? '(none)'}`,
+      }
+    }
+
+    // Codex multi-agent tools
+    case 'SpawnAgent': {
+      const prompt = input.prompt as string | undefined
+      const truncatedPrompt =
+        prompt && prompt.length > 60 ? prompt.substring(0, 60) + '...' : prompt
+      return {
+        icon: <Users className="h-4 w-4 shrink-0" />,
+        label: 'Spawn Agent',
+        detail: truncatedPrompt ?? 'sub-agent',
+        expandedContent: prompt ?? JSON.stringify(input, null, 2),
+      }
+    }
+
+    case 'SendInput': {
+      const agentId = input.agent_id as string | undefined
+      return {
+        icon: <Send className="h-4 w-4 shrink-0" />,
+        label: 'Send Input',
+        detail: agentId ? `to agent ${agentId}` : undefined,
+        expandedContent: JSON.stringify(input, null, 2),
+      }
+    }
+
+    case 'WaitForAgents': {
+      const receiverIds = input.receiver_thread_ids as string[] | undefined
+      return {
+        icon: <Clock className="h-4 w-4 shrink-0" />,
+        label: 'Waiting for Agents',
+        detail: receiverIds?.length
+          ? `${receiverIds.length} agent${receiverIds.length === 1 ? '' : 's'}`
+          : undefined,
+        expandedContent: toolCall.output ?? JSON.stringify(input, null, 2),
+      }
+    }
+
+    case 'CloseAgent': {
+      const agentId = input.agent_id as string | undefined
+      return {
+        icon: <XCircle className="h-4 w-4 shrink-0" />,
+        label: 'Close Agent',
+        detail: agentId,
+        expandedContent: JSON.stringify(input, null, 2),
+      }
+    }
+
+    case 'CodexTodoList': {
+      const items = input.items as
+        | { text: string; completed: boolean }[]
+        | undefined
+      return {
+        icon: <ListTodo className="h-4 w-4 shrink-0" />,
+        label: 'Todo List',
+        detail: items?.length
+          ? `${items.filter(i => i.completed).length}/${items.length} done`
+          : undefined,
+        expandedContent: items?.length ? (
+          <div className="space-y-1">
+            {items.map((item, i) => (
+              <div key={i} className="flex items-center gap-1.5">
+                {item.completed ? (
+                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-500" />
+                ) : (
+                  <Circle className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+                )}
+                <span
+                  className={
+                    item.completed
+                      ? 'line-through text-muted-foreground/60'
+                      : ''
+                  }
+                >
+                  {item.text}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          'No items'
+        ),
       }
     }
 

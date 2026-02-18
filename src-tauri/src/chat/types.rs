@@ -184,15 +184,26 @@ pub struct ToolCall {
     pub parent_tool_use_id: Option<String>,
 }
 
-/// A permission denial from Claude CLI when a tool requires approval
+/// A permission denial when a tool requires approval
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PermissionDenial {
     /// Name of the denied tool (e.g., "Bash")
     pub tool_name: String,
-    /// Tool use ID from Claude
+    /// Tool use ID
     pub tool_use_id: String,
     /// Input parameters that were denied
     pub tool_input: serde_json::Value,
+    /// JSON-RPC request ID (Codex only — used to respond to approval requests)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rpc_id: Option<u64>,
+}
+
+/// Payload for permission denied events sent to frontend
+#[derive(Debug, Clone, Serialize)]
+pub struct PermissionDeniedEvent {
+    pub session_id: String,
+    pub worktree_id: String,
+    pub denials: Vec<PermissionDenial>,
 }
 
 /// Context for a denied message that can be re-sent after permission approval

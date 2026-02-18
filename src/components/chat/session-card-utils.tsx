@@ -190,6 +190,24 @@ export function computeSessionCardData(
         break // Only check the last assistant message
       }
     }
+
+    // Codex plan mode fallback: entire message content is the plan
+    // (Codex has no ExitPlanMode tool - the synthetic one only exists in streaming state)
+    if (
+      session.backend === 'codex' &&
+      !hasPendingExitPlan &&
+      session.pending_plan_message_id &&
+      !approvedPlanIds.has(session.pending_plan_message_id)
+    ) {
+      const planMsg = messages.find(
+        m => m.id === session.pending_plan_message_id
+      )
+      if (planMsg?.role === 'assistant' && !planMsg.plan_approved) {
+        hasPendingExitPlan = true
+        pendingPlanMessageId = planMsg.id
+        planContent = planMsg.content || null
+      }
+    }
   }
 
   // Also check for plan file/content in streaming tool calls

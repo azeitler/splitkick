@@ -5,7 +5,10 @@ import { Textarea } from '@/components/ui/textarea'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
@@ -27,10 +30,13 @@ import {
   DEFAULT_MAGIC_PROMPTS,
   DEFAULT_MAGIC_PROMPT_MODELS,
   DEFAULT_MAGIC_PROMPT_PROVIDERS,
+  CODEX_DEFAULT_MAGIC_PROMPT_MODELS,
+  codexModelOptions,
+  isCodexModel,
   type MagicPrompts,
   type MagicPromptModels,
   type MagicPromptProviders,
-  type ClaudeModel,
+  type MagicPromptModel,
 } from '@/types/preferences'
 import { cn } from '@/lib/utils'
 
@@ -47,7 +53,7 @@ interface PromptConfig {
   description: string
   variables: VariableInfo[]
   defaultValue: string
-  defaultModel?: ClaudeModel
+  defaultModel?: MagicPromptModel
 }
 
 interface PromptSection {
@@ -316,13 +322,16 @@ const PROMPT_SECTIONS: PromptSection[] = [
 // Flat list for lookups
 const PROMPT_CONFIGS = PROMPT_SECTIONS.flatMap(s => s.configs)
 
-const MODEL_OPTIONS: { value: ClaudeModel; label: string }[] = [
+const CLAUDE_MODEL_OPTIONS: { value: MagicPromptModel; label: string }[] = [
   { value: 'opus', label: 'Opus 4.6' },
   { value: 'opus-4.5', label: 'Opus 4.5' },
   { value: 'sonnet', label: 'Sonnet 4.6' },
   { value: 'sonnet-4.5', label: 'Sonnet 4.5' },
   { value: 'haiku', label: 'Haiku' },
 ]
+
+const CODEX_MODEL_OPTIONS: { value: MagicPromptModel; label: string }[] =
+  codexModelOptions.map(o => ({ value: o.value, label: o.label }))
 
 export const MagicPromptsPane: React.FC = () => {
   const { data: preferences } = usePreferences()
@@ -351,14 +360,15 @@ export const MagicPromptsPane: React.FC = () => {
   const currentProvider = selectedConfig.providerKey
     ? (currentProviders[selectedConfig.providerKey] ?? null)
     : undefined
-  const filteredModelOptions = useMemo(() => {
-    if (!currentProvider) return MODEL_OPTIONS
+  const currentModelIsCodex = currentModel ? isCodexModel(currentModel) : false
+  const filteredClaudeOptions = useMemo(() => {
+    if (!currentProvider || currentModelIsCodex) return CLAUDE_MODEL_OPTIONS
     const profile = profiles.find(p => p.name === currentProvider)
-    if (!profile?.settings_json) return MODEL_OPTIONS
+    if (!profile?.settings_json) return CLAUDE_MODEL_OPTIONS
     try {
       const settings = JSON.parse(profile.settings_json)
       const env = settings?.env
-      if (!env) return MODEL_OPTIONS
+      if (!env) return CLAUDE_MODEL_OPTIONS
       const suffix = (m?: string) => (m ? ` (${m})` : '')
       return [
         {
@@ -373,11 +383,11 @@ export const MagicPromptsPane: React.FC = () => {
           value: 'haiku' as const,
           label: `Haiku${suffix(env.ANTHROPIC_DEFAULT_HAIKU_MODEL || env.ANTHROPIC_MODEL)}`,
         },
-      ]
+      ] as { value: MagicPromptModel; label: string }[]
     } catch {
-      return MODEL_OPTIONS
+      return CLAUDE_MODEL_OPTIONS
     }
-  }, [currentProvider, profiles])
+  }, [currentProvider, currentModelIsCodex, profiles])
 
   const isModified = currentPrompts[selectedKey] !== null
 
@@ -467,7 +477,7 @@ export const MagicPromptsPane: React.FC = () => {
   }, [preferences, savePreferences, currentPrompts, selectedKey])
 
   const handleModelChange = useCallback(
-    (model: ClaudeModel) => {
+    (model: MagicPromptModel) => {
       if (!preferences || !selectedConfig.modelKey) return
       savePreferences.mutate({
         ...preferences,
@@ -495,8 +505,46 @@ export const MagicPromptsPane: React.FC = () => {
     [preferences, savePreferences, currentProviders, selectedConfig.providerKey]
   )
 
+  const handleApplyClaudeDefaults = useCallback(() => {
+    if (!preferences) return
+    savePreferences.mutate({
+      ...preferences,
+      magic_prompt_models: DEFAULT_MAGIC_PROMPT_MODELS,
+      magic_prompt_providers: DEFAULT_MAGIC_PROMPT_PROVIDERS,
+    })
+  }, [preferences, savePreferences])
+
+  const handleApplyCodexDefaults = useCallback(() => {
+    if (!preferences) return
+    savePreferences.mutate({
+      ...preferences,
+      magic_prompt_models: CODEX_DEFAULT_MAGIC_PROMPT_MODELS,
+    })
+  }, [preferences, savePreferences])
+
   return (
     <div className="flex flex-col min-h-0 flex-1">
+      {/* Preset buttons */}
+      <div className="flex items-center gap-2 mb-3 shrink-0">
+        <span className="text-xs text-muted-foreground">Presets:</span>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleApplyClaudeDefaults}
+          className="h-7 text-xs"
+        >
+          Claude Defaults
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleApplyCodexDefaults}
+          className="h-7 text-xs"
+        >
+          Codex Defaults
+        </Button>
+      </div>
+
       {/* Prompt selector grid grouped by section */}
       <div className="mb-4 shrink-0 space-y-3">
         {PROMPT_SECTIONS.map(section => (
@@ -572,45 +620,61 @@ export const MagicPromptsPane: React.FC = () => {
             {selectedConfig.description}
           </p>
           <div className="flex items-center gap-2 mt-2">
-            {currentProvider !== undefined && profiles.length > 0 && (
-              <>
-                <span className="text-xs text-muted-foreground">Provider</span>
-                <Select
-                  value={currentProvider ?? 'anthropic'}
-                  onValueChange={handleProviderChange}
-                >
-                  <SelectTrigger className="w-[130px] h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="anthropic">Anthropic</SelectItem>
-                    {profiles.map(p => (
-                      <SelectItem key={p.name} value={p.name}>
-                        {p.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </>
-            )}
+            {currentProvider !== undefined &&
+              profiles.length > 0 &&
+              !currentModelIsCodex && (
+                <>
+                  <span className="text-xs text-muted-foreground">
+                    Provider
+                  </span>
+                  <Select
+                    value={currentProvider ?? 'anthropic'}
+                    onValueChange={handleProviderChange}
+                  >
+                    <SelectTrigger className="w-[130px] h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="anthropic">Anthropic</SelectItem>
+                      {profiles.map(p => (
+                        <SelectItem key={p.name} value={p.name}>
+                          {p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </>
+              )}
             {currentModel && (
               <>
                 <span className="text-xs text-muted-foreground">Model</span>
                 <Select
                   value={currentModel}
                   onValueChange={(v: string) =>
-                    handleModelChange(v as ClaudeModel)
+                    handleModelChange(v as MagicPromptModel)
                   }
                 >
                   <SelectTrigger className="w-[220px] h-8 text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {filteredModelOptions.map(opt => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
+                    <SelectGroup>
+                      <SelectLabel>Claude</SelectLabel>
+                      {filteredClaudeOptions.map(opt => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                    <SelectSeparator />
+                    <SelectGroup>
+                      <SelectLabel>Codex <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">BETA</span></SelectLabel>
+                      {CODEX_MODEL_OPTIONS.map(opt => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
                   </SelectContent>
                 </Select>
               </>

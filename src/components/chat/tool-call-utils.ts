@@ -1,5 +1,5 @@
 import type { ToolCall, ContentBlock, Todo } from '@/types/chat'
-import { isTodoWrite } from '@/types/chat'
+import { isTodoWrite, isCollabToolCall } from '@/types/chat'
 
 /**
  * Normalize todos for display - marks in_progress as completed when message is done
@@ -63,7 +63,7 @@ export function groupToolCalls(toolCalls: ToolCall[]): GroupedToolCall[] {
 
   for (const tool of toolCalls) {
     // Skip special tools - they're handled separately
-    if (isSpecialTool(tool)) {
+    if (isSpecialTool(tool) || isCollabToolCall(tool)) {
       continue
     }
 
@@ -307,6 +307,10 @@ export function buildTimeline(
       }
       if (isTodoWrite(toolCall)) {
         // TodoWrite is handled separately (shown above textarea)
+        continue
+      }
+      if (isCollabToolCall(toolCall)) {
+        // Collab tools shown in AgentWidget panel, not timeline
         continue
       }
 
