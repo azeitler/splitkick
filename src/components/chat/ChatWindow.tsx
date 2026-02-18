@@ -2730,7 +2730,7 @@ export function ChatWindow({
                         viewportRef={scrollViewportRef}
                         onScroll={handleScroll}
                       >
-                        <div className="mx-auto max-w-7xl px-4 py-4 md:px-6 min-w-0 w-full">
+                        <div className="mx-auto max-w-7xl px-4 pt-4 pb-8 md:px-6 min-w-0 w-full">
                           <div className="select-text space-y-4 font-mono text-sm min-w-0 break-words overflow-x-auto">
                             {/* Debug info (enabled via Settings → Experimental → Debug mode) */}
                             {preferences?.debug_mode_enabled &&

@@ -137,6 +137,51 @@ return isViewingLogsTab ? <LogsView /> : <ChatView />
 
 **The bug:** Zustand selectors subscribe to whatever the selector returns. If you return a function, you subscribe to that function reference (which never changes), not the data the function reads internally.
 
+#### Zustand Store Mutation Guards
+
+**CRITICAL:** Every Zustand `set()` call notifies ALL subscribers, even if the value didn't change. `useShallow` only prevents re-renders if the selected field references are identical. Store mutations that spread new objects (`{...state.field, [id]: value}`) without checking whether the value actually changed will cause unnecessary re-renders across every component subscribing to that store.
+
+```typescript
+// ✅ GOOD: Guard against no-op updates
+addSendingSession: sessionId =>
+  set(state => {
+    if (state.sendingSessionIds[sessionId]) return state // No new ref
+    return {
+      sendingSessionIds: { ...state.sendingSessionIds, [sessionId]: true },
+    }
+  })
+
+// ❌ BAD: Always creates new object reference, triggers all subscribers
+addSendingSession: sessionId =>
+  set(state => ({
+    sendingSessionIds: { ...state.sendingSessionIds, [sessionId]: true },
+  }))
+```
+
+**Guard patterns by type:**
+
+- **Boolean Records:** `if (state.field[id]) return state` / `if (!(id in state.field)) return state`
+- **Value Records:** `if (state.field[id] === value) return state`
+- **Array fields:** `if (!existing || existing.output === output) return state`
+- **Set fields:** `if (existingSet.has(value)) return state`
+
+#### Debugging Re-renders with WDYR
+
+To diagnose unnecessary re-renders, temporarily install [why-did-you-render](https://github.com/welldone-software/why-did-you-render):
+
+1. `bun add -d @welldone-software/why-did-you-render`
+2. Create `src/wdyr.ts`:
+   ```typescript
+   if (import.meta.env.DEV) {
+     const whyDidYouRender = (await import('@welldone-software/why-did-you-render')).default
+     whyDidYouRender(React, { trackAllPureComponents: false })
+   }
+   ```
+3. Import at top of `src/main.tsx`: `import './wdyr'`
+4. Annotate suspect components: `MyComponent.whyDidYouRender = true`
+5. Check browser console for "Re-rendered because of hook changes" / "different objects that are equal by value"
+6. **Before releasing:** Remove all annotations, `wdyr.ts`, its import, and `bun remove @welldone-software/why-did-you-render`
+
 #### Claude CLI JSON Schema Pattern
 
 **CRITICAL:** When using `--json-schema` with Claude CLI, structured output is returned via a tool call, not plain text.
