@@ -3973,6 +3973,8 @@ pub struct CreatePrResponse {
     pub pr_number: u32,
     pub pr_url: String,
     pub title: String,
+    /// Whether this PR already existed (was linked, not newly created)
+    pub existing: bool,
 }
 
 /// Extract structured output from Claude CLI stream-json response
@@ -4354,6 +4356,40 @@ pub async fn create_pr_with_ai_content(
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         if stderr.contains("already exists") {
+            // Try to look up the existing PR and link it to the worktree
+            let view_output = silent_command(&gh)
+                .args(["pr", "view", "--json", "number,url,title"])
+                .current_dir(&worktree_path)
+                .output();
+
+            if let Ok(view_out) = view_output {
+                if view_out.status.success() {
+                    if let Ok(view_json) = serde_json::from_slice::<serde_json::Value>(&view_out.stdout) {
+                        let pr_number = view_json["number"].as_u64().unwrap_or(0) as u32;
+                        let pr_url = view_json["url"].as_str().unwrap_or("").to_string();
+                        let title = view_json["title"].as_str().unwrap_or("").to_string();
+
+                        if pr_number > 0 && !pr_url.is_empty() {
+                            // Save PR info to worktree
+                            if let Ok(mut data) = load_projects_data(&app) {
+                                if let Some(wt) = data.worktrees.iter_mut().find(|w| w.path == worktree_path) {
+                                    wt.pr_number = Some(pr_number);
+                                    wt.pr_url = Some(pr_url.clone());
+                                    let _ = save_projects_data(&app, &data);
+                                }
+                            }
+
+                            return Ok(CreatePrResponse {
+                                pr_number,
+                                pr_url,
+                                title,
+                                existing: true,
+                            });
+                        }
+                    }
+                }
+            }
+
             return Err("A pull request for this branch already exists".to_string());
         }
         return Err(format!("Failed to create PR: {stderr}"));
@@ -4368,6 +4404,7 @@ pub async fn create_pr_with_ai_content(
         pr_number,
         pr_url,
         title: pr_content.title,
+        existing: false,
     })
 }
 

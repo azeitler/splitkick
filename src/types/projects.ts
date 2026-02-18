@@ -271,6 +271,8 @@ export interface CreatePrResponse {
   pr_url: string
   /** AI-generated PR title */
   title: string
+  /** Whether this PR already existed (was linked, not newly created) */
+  existing: boolean
 }
 
 // =============================================================================

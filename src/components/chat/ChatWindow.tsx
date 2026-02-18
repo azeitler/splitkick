@@ -2538,8 +2538,9 @@ export function ChatWindow({
       // Skip if this is the modal ChatWindow (the main window handles the event)
       if (isModal) return
 
-      const { sessionId, worktreeId, worktreePath, message } = e.detail
+      const { sessionId, worktreeId, worktreePath, message, executionMode: fixExecutionMode } = e.detail
       if (!sessionId || !worktreeId || !worktreePath || !message) return
+      const fixMode = fixExecutionMode ?? 'plan'
       // Only handle events for this ChatWindow's worktree (avoids duplicate from modal)
       if (worktreeId !== activeWorktreeIdRef.current) return
 
@@ -2573,7 +2574,7 @@ export function ChatWindow({
           pendingTextFiles: [],
           model: fixResolved.model,
           provider: fixResolved.customProfileName ?? null,
-          executionMode: 'build',
+          executionMode: fixMode,
           thinkingLevel: thinkingLvl,
           disableThinkingForMode: thinkingLvl !== 'off' && !hasManualOverride,
           effortLevel:
@@ -2594,7 +2595,7 @@ export function ChatWindow({
       setError(sessionId, null)
       addSendingSession(sessionId)
       setSelectedModel(sessionId, selectedModelRef.current)
-      setExecutingMode(sessionId, 'build')
+      setExecutingMode(sessionId, fixMode)
       sendMessage.mutate(
         {
           sessionId,
@@ -2603,7 +2604,7 @@ export function ChatWindow({
           message,
           model: fixResolved.model,
           customProfileName: fixResolved.customProfileName,
-          executionMode: 'build',
+          executionMode: fixMode,
           thinkingLevel: thinkingLvl,
           disableThinkingForMode: thinkingLvl !== 'off' && !hasManualOverride,
           effortLevel:

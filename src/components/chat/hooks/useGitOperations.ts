@@ -273,8 +273,10 @@ export function useGitOperations({
         }
       )
 
-      // Save PR info to worktree
-      await saveWorktreePr(activeWorktreeId, result.pr_number, result.pr_url)
+      if (!result.existing) {
+        // Save PR info to worktree (backend already saved for existing PRs)
+        await saveWorktreePr(activeWorktreeId, result.pr_number, result.pr_url)
+      }
 
       // Invalidate worktree queries to refresh PR status in toolbar
       queryClient.invalidateQueries({
@@ -284,13 +286,18 @@ export function useGitOperations({
         queryKey: [...projectsQueryKeys.all, 'worktree', activeWorktreeId],
       })
 
-      toast.success(`PR created: ${result.title}`, {
-        id: toastId,
-        action: {
-          label: 'Open',
-          onClick: () => openExternal(result.pr_url),
-        },
-      })
+      toast.success(
+        result.existing
+          ? `PR linked: ${result.title}`
+          : `PR created: ${result.title}`,
+        {
+          id: toastId,
+          action: {
+            label: 'Open',
+            onClick: () => openExternal(result.pr_url),
+          },
+        }
+      )
     } catch (error) {
       toast.error(`Failed to create PR: ${error}`, { id: toastId })
     } finally {
@@ -346,12 +353,6 @@ export function useGitOperations({
             name: 'Code Review',
           })
           targetSessionId = newSession.id
-
-          // Navigate to the new session
-          const { setActiveSession, setViewingCanvasTab } =
-            useChatStore.getState()
-          setActiveSession(activeWorktreeId, targetSessionId)
-          setViewingCanvasTab(activeWorktreeId, false)
         }
 
         // Store review results in Zustand (session-scoped, auto-opens sidebar)
@@ -381,9 +382,23 @@ export function useGitOperations({
               : 'Needs discussion'
 
         toast.success(
-          `Review complete: ${statusEmoji} (${findingCount} findings)`,
+          `Review done for ${branch}: ${statusEmoji} (${findingCount} findings)`,
           {
             id: toastId,
+            action: {
+              label: 'Open',
+              onClick: () => {
+                const {
+                  setActiveWorktree,
+                  setActiveSession,
+                  setViewingCanvasTab,
+                } = useChatStore.getState()
+                useProjectsStore.getState().selectWorktree(activeWorktreeId)
+                setActiveWorktree(activeWorktreeId, activeWorktreePath!)
+                setActiveSession(activeWorktreeId, targetSessionId)
+                setViewingCanvasTab(activeWorktreeId, false)
+              },
+            },
           }
         )
       } catch (error) {

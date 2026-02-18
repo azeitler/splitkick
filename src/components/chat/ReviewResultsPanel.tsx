@@ -133,7 +133,8 @@ interface FindingCardProps {
   onFix: (
     finding: ReviewFinding,
     index: number,
-    customSuggestion?: string
+    customSuggestion?: string,
+    executionMode?: 'plan' | 'yolo'
   ) => void
 }
 
@@ -154,10 +155,13 @@ const FindingCard = memo(function FindingCard({
   // Don't show fix for praise findings
   const canFix = finding.severity !== 'praise'
 
-  const handleFix = useCallback(() => {
-    onFix(finding, index, customSuggestion.trim() || undefined)
-    setIsExpanded(false)
-  }, [finding, index, customSuggestion, onFix])
+  const handleFix = useCallback(
+    (executionMode: 'plan' | 'yolo') => {
+      onFix(finding, index, customSuggestion.trim() || undefined, executionMode)
+      setIsExpanded(false)
+    },
+    [finding, index, customSuggestion, onFix]
+  )
 
   return (
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
@@ -248,7 +252,11 @@ const FindingCard = memo(function FindingCard({
                       Fix sent
                     </Badge>
                   )}
-                  <Button onClick={handleFix} disabled={isFixing} size="sm">
+                  <Button
+                    onClick={() => handleFix('plan')}
+                    disabled={isFixing}
+                    size="sm"
+                  >
                     {isFixing ? (
                       <>
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -258,6 +266,23 @@ const FindingCard = memo(function FindingCard({
                       <>Fix again</>
                     ) : (
                       <>Fix</>
+                    )}
+                  </Button>
+                  <Button
+                    onClick={() => handleFix('yolo')}
+                    disabled={isFixing}
+                    size="sm"
+                    variant="destructive"
+                  >
+                    {isFixing ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Fixing...
+                      </>
+                    ) : isFixed ? (
+                      <>Fix again (yolo)</>
+                    ) : (
+                      <>Fix (yolo)</>
                     )}
                   </Button>
                 </div>
@@ -307,7 +332,8 @@ export function ReviewResultsPanel({ sessionId }: ReviewResultsPanelProps) {
     async (
       finding: ReviewFinding,
       index: number,
-      customSuggestion?: string
+      customSuggestion?: string,
+      executionMode?: 'plan' | 'yolo'
     ) => {
       const { activeWorktreeId, activeWorktreePath, markReviewFindingFixed } =
         useChatStore.getState()
@@ -343,6 +369,7 @@ Please apply this fix to the file.`
               worktreeId: activeWorktreeId,
               worktreePath: activeWorktreePath,
               message,
+              executionMode: executionMode ?? 'plan',
             },
           })
         )
@@ -358,7 +385,7 @@ Please apply this fix to the file.`
   )
 
   // Handle fixing all unfixed findings - auto-sends fix message in same session
-  const handleFixAll = useCallback(async () => {
+  const handleFixAll = useCallback(async (executionMode: 'plan' | 'yolo') => {
     const { activeWorktreeId, activeWorktreePath } = useChatStore.getState()
     if (!reviewResults || !activeWorktreePath || !activeWorktreeId) return
 
@@ -410,6 +437,7 @@ Please apply all these fixes to the codebase.`
             worktreeId: activeWorktreeId,
             worktreePath: activeWorktreePath,
             message,
+            executionMode,
           },
         })
       )
@@ -486,21 +514,45 @@ Please apply all these fixes to the codebase.`
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {/* Fix All button */}
+            {/* Fix All buttons */}
             {unfixedCount > 0 && (
-              <Button onClick={handleFixAll} disabled={isFixingAll} size="sm">
-                {isFixingAll ? (
-                  <>
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    Fixing...
-                  </>
-                ) : (
-                  <>
-                    <Wrench className="h-3.5 w-3.5" />
-                    Fix all ({unfixedCount})
-                  </>
-                )}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={() => handleFixAll('plan')}
+                  disabled={isFixingAll}
+                  size="sm"
+                >
+                  {isFixingAll ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Fixing...
+                    </>
+                  ) : (
+                    <>
+                      <Wrench className="h-3.5 w-3.5" />
+                      Fix all ({unfixedCount})
+                    </>
+                  )}
+                </Button>
+                <Button
+                  onClick={() => handleFixAll('yolo')}
+                  disabled={isFixingAll}
+                  size="sm"
+                  variant="destructive"
+                >
+                  {isFixingAll ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Fixing...
+                    </>
+                  ) : (
+                    <>
+                      <Wrench className="h-3.5 w-3.5" />
+                      Fix all (yolo) ({unfixedCount})
+                    </>
+                  )}
+                </Button>
+              </div>
             )}
           </div>
         </div>

@@ -418,11 +418,13 @@ export function MagicModal() {
                 ),
               }
             )
-            await saveWorktreePr(
-              selectedWorktreeId,
-              result.pr_number,
-              result.pr_url
-            )
+            if (!result.existing) {
+              await saveWorktreePr(
+                selectedWorktreeId,
+                result.pr_number,
+                result.pr_url
+              )
+            }
             queryClient.invalidateQueries({
               queryKey: projectsQueryKeys.worktrees(worktree.project_id),
             })
@@ -435,13 +437,18 @@ export function MagicModal() {
             })
             triggerImmediateGitPoll()
             if (worktree.project_id) fetchWorktreesStatus(worktree.project_id)
-            toast.success(`PR created: ${result.title}`, {
-              id: toastId,
-              action: {
-                label: 'Open',
-                onClick: () => openExternal(result.pr_url),
-              },
-            })
+            toast.success(
+              result.existing
+                ? `PR linked: ${result.title}`
+                : `PR created: ${result.title}`,
+              {
+                id: toastId,
+                action: {
+                  label: 'Open',
+                  onClick: () => openExternal(result.pr_url),
+                },
+              }
+            )
           } catch (error) {
             toast.error(`Failed to create PR: ${error}`, { id: toastId })
           } finally {
