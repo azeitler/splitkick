@@ -93,6 +93,15 @@ pub struct UsageData {
 // Message Types
 // ============================================================================
 
+/// Backend for a chat session (Claude CLI or Codex CLI)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Backend {
+    #[default]
+    Claude,
+    Codex,
+}
+
 /// Role of a chat message sender
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -343,9 +352,15 @@ pub struct Session {
     /// Message count (populated separately for efficiency when full messages not needed)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub message_count: Option<u32>,
+    /// Backend for this session (claude or codex)
+    #[serde(default)]
+    pub backend: Backend,
     /// Claude CLI session ID for resuming conversations
     #[serde(default)]
     pub claude_session_id: Option<String>,
+    /// Codex CLI thread ID for resuming conversations
+    #[serde(default)]
+    pub codex_thread_id: Option<String>,
     /// Selected model for this session
     #[serde(default)]
     pub selected_model: Option<String>,
@@ -428,8 +443,8 @@ pub struct Session {
 }
 
 impl Session {
-    /// Create a new session with the given name
-    pub fn new(name: String, order: u32) -> Self {
+    /// Create a new session with the given name and backend
+    pub fn new(name: String, order: u32, backend: Backend) -> Self {
         Self {
             id: uuid::Uuid::new_v4().to_string(),
             name,
@@ -440,7 +455,9 @@ impl Session {
                 .as_secs(),
             messages: vec![],
             message_count: None,
+            backend,
             claude_session_id: None,
+            codex_thread_id: None,
             selected_model: None,
             selected_thinking_level: None,
             selected_provider: None,
@@ -469,7 +486,12 @@ impl Session {
 
     /// Create a default "Session 1" session
     pub fn default_session() -> Self {
-        Self::new("Session 1".to_string(), 0)
+        Self::new("Session 1".to_string(), 0, Backend::default())
+    }
+
+    /// Create a default "Session 1" session with a specific backend
+    pub fn default_session_with_backend(backend: Backend) -> Self {
+        Self::new("Session 1".to_string(), 0, backend)
     }
 }
 
@@ -590,7 +612,9 @@ impl SessionMetadata {
             created_at: self.created_at,
             messages: vec![], // Loaded separately from JSONL files
             message_count: Some(self.to_index_entry().message_count),
+            backend: self.backend.clone(),
             claude_session_id: self.claude_session_id.clone(),
+            codex_thread_id: self.codex_thread_id.clone(),
             selected_model: self.selected_model.clone(),
             selected_thinking_level: self.selected_thinking_level.clone(),
             selected_provider: self.selected_provider.clone(),
@@ -621,7 +645,9 @@ impl SessionMetadata {
     pub fn update_from_session(&mut self, session: &Session) {
         self.name = session.name.clone();
         self.order = session.order;
+        self.backend = session.backend.clone();
         self.claude_session_id = session.claude_session_id.clone();
+        self.codex_thread_id = session.codex_thread_id.clone();
         self.selected_model = session.selected_model.clone();
         self.selected_thinking_level = session.selected_thinking_level.clone();
         self.selected_provider = session.selected_provider.clone();
@@ -860,9 +886,15 @@ pub struct SessionMetadata {
     pub order: u32,
     /// Unix timestamp when session was created
     pub created_at: u64,
+    /// Backend for this session (claude or codex)
+    #[serde(default)]
+    pub backend: Backend,
     /// Claude CLI session ID for resuming conversations
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub claude_session_id: Option<String>,
+    /// Codex CLI thread ID for resuming conversations
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_thread_id: Option<String>,
     /// Selected model for this session
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selected_model: Option<String>,
@@ -997,7 +1029,9 @@ impl SessionMetadata {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs(),
+            backend: Backend::default(),
             claude_session_id: None,
+            codex_thread_id: None,
             selected_model: None,
             selected_thinking_level: None,
             selected_provider: None,
@@ -1316,7 +1350,7 @@ mod tests {
 
     #[test]
     fn test_session_new() {
-        let session = Session::new("Test Session".to_string(), 5);
+        let session = Session::new("Test Session".to_string(), 5, Backend::default());
         assert!(!session.id.is_empty()); // UUID should be generated
         assert_eq!(session.name, "Test Session");
         assert_eq!(session.order, 5);

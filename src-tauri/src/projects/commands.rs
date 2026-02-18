@@ -177,6 +177,7 @@ pub async fn add_project(
         known_mcp_servers: Vec::new(),
         custom_system_prompt: None,
         default_provider: None,
+        default_backend: None,
     };
 
     data.add_project(project.clone());
@@ -331,6 +332,7 @@ pub async fn init_project(
         known_mcp_servers: Vec::new(),
         custom_system_prompt: None,
         default_provider: None,
+        default_backend: None,
     };
 
     data.add_project(project.clone());
@@ -3262,6 +3264,7 @@ pub async fn get_project_branches(
 
 /// Update project settings
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn update_project_settings(
     app: AppHandle,
     project_id: String,
@@ -3270,6 +3273,7 @@ pub async fn update_project_settings(
     known_mcp_servers: Option<Vec<String>>,
     custom_system_prompt: Option<String>,
     default_provider: Option<Option<String>>,
+    default_backend: Option<Option<String>>,
 ) -> Result<Project, String> {
     log::trace!("Updating settings for project: {project_id}");
 
@@ -3311,6 +3315,11 @@ pub async fn update_project_settings(
     if let Some(provider) = default_provider {
         log::trace!("Updating default provider: {provider:?}");
         project.default_provider = provider.filter(|p| p != "__none__");
+    }
+
+    if let Some(backend) = default_backend {
+        log::trace!("Updating default backend: {backend:?}");
+        project.default_backend = backend.filter(|b| b != "__none__");
     }
 
     let updated_project = project.clone();
@@ -6103,6 +6112,7 @@ pub async fn create_folder(
         known_mcp_servers: Vec::new(),
         custom_system_prompt: None,
         default_provider: None,
+        default_backend: None,
     };
 
     data.add_project(folder.clone());

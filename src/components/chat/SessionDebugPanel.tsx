@@ -19,6 +19,7 @@ interface SessionDebugPanelProps {
   sessionId: string
   selectedModel?: string
   selectedProvider?: string | null
+  selectedBackend?: string
   onFileClick?: (path: string) => void
 }
 
@@ -74,6 +75,7 @@ export function SessionDebugPanel({
   sessionId,
   selectedModel,
   selectedProvider,
+  selectedBackend,
   onFileClick,
 }: SessionDebugPanelProps) {
   const { data: debugInfo } = useQuery({
@@ -152,9 +154,11 @@ export function SessionDebugPanel({
         {' / '}
         provider:{' '}
         <span className="text-foreground">
-          {!selectedProvider || selectedProvider === '__anthropic__'
-            ? 'Anthropic'
-            : selectedProvider}
+          {selectedBackend === 'codex'
+            ? 'OpenAI'
+            : !selectedProvider || selectedProvider === '__anthropic__'
+              ? 'Anthropic'
+              : selectedProvider}
         </span>
       </div>
       <Tooltip>

@@ -14,7 +14,7 @@ use super::storage::{
     get_session_dir, list_all_session_ids, load_metadata, save_metadata, with_metadata_mut,
 };
 use super::types::{
-    ChatMessage, ContentBlock, MessageRole, RunEntry, RunStatus, ToolCall, UsageData,
+    Backend, ChatMessage, ContentBlock, MessageRole, RunEntry, RunStatus, ToolCall, UsageData,
 };
 
 // ============================================================================
@@ -638,8 +638,12 @@ pub fn load_session_messages(
         if run.status != RunStatus::Running && !is_undo_send {
             let lines = read_run_log(app, session_id, &run.run_id)?;
 
-            // Parse JSONL content (may only have metadata header if crashed early)
-            let mut assistant_msg = parse_run_to_message(&lines, run)?;
+            // Parse JSONL content — route by backend
+            let mut assistant_msg = if metadata.backend == Backend::Codex {
+                super::codex::parse_codex_run_to_message(&lines, run)?
+            } else {
+                parse_run_to_message(&lines, run)?
+            };
             assistant_msg.session_id = session_id.to_string();
 
             // For crashed runs with no content (only metadata header), add placeholder

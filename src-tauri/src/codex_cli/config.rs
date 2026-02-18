@@ -1,0 +1,94 @@
+//! Configuration and path management for the Codex CLI
+
+use std::path::PathBuf;
+use tauri::{AppHandle, Manager};
+
+/// Directory name for storing the Codex CLI binary
+pub const CLI_DIR_NAME: &str = "codex-cli";
+
+/// Name of the Codex CLI binary
+#[cfg(windows)]
+pub const CLI_BINARY_NAME: &str = "codex.exe";
+#[cfg(not(windows))]
+pub const CLI_BINARY_NAME: &str = "codex";
+
+/// Get the directory where Codex CLI is installed
+///
+/// Returns: `~/Library/Application Support/jean/codex-cli/`
+pub fn get_cli_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {e}"))?;
+    Ok(app_data_dir.join(CLI_DIR_NAME))
+}
+
+/// Get the full path to the Codex CLI binary
+///
+/// Returns: `~/Library/Application Support/jean/codex-cli/codex`
+pub fn get_cli_binary_path(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(get_cli_dir(app)?.join(CLI_BINARY_NAME))
+}
+
+fn resolve_cli_binary_with(
+    embedded_binary: Option<PathBuf>,
+    path_binary: Option<PathBuf>,
+) -> PathBuf {
+    if let Some(embedded_binary) = embedded_binary {
+        return embedded_binary;
+    }
+
+    if let Some(path_binary) = path_binary {
+        return path_binary;
+    }
+
+    // Bare command name — will fail .exists() checks at call sites,
+    // causing appropriate "not installed" errors
+    PathBuf::from(CLI_BINARY_NAME)
+}
+
+pub fn resolve_cli_binary(app: &AppHandle) -> PathBuf {
+    let embedded_binary = get_cli_binary_path(app).ok().filter(|path| path.exists());
+    let path_binary = which::which(CLI_BINARY_NAME).ok();
+
+    resolve_cli_binary_with(embedded_binary, path_binary)
+}
+
+/// Ensure the CLI directory exists, creating it if necessary
+pub fn ensure_cli_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let cli_dir = get_cli_dir(app)?;
+    std::fs::create_dir_all(&cli_dir)
+        .map_err(|e| format!("Failed to create CLI directory: {e}"))?;
+    Ok(cli_dir)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolve_cli_binary_prefers_embedded_binary() {
+        let embedded = PathBuf::from("/tmp/jean/codex");
+        let path_binary = PathBuf::from("/opt/homebrew/bin/codex");
+
+        let resolved = resolve_cli_binary_with(Some(embedded.clone()), Some(path_binary));
+
+        assert_eq!(resolved, embedded);
+    }
+
+    #[test]
+    fn resolve_cli_binary_uses_path_binary_when_embedded_missing() {
+        let path_binary = PathBuf::from("/opt/homebrew/bin/codex");
+
+        let resolved = resolve_cli_binary_with(None, Some(path_binary.clone()));
+
+        assert_eq!(resolved, path_binary);
+    }
+
+    #[test]
+    fn resolve_cli_binary_falls_back_to_command_name() {
+        let resolved = resolve_cli_binary_with(None, None);
+
+        assert_eq!(resolved, PathBuf::from(CLI_BINARY_NAME));
+    }
+}

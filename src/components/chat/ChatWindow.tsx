@@ -30,6 +30,7 @@ import {
   useSendMessage,
   useSetSessionModel,
   useSetSessionThinkingLevel,
+  useSetSessionBackend,
   useSetSessionProvider,
   useCreateSession,
   cancelChatMessage,
@@ -391,6 +392,7 @@ export function ChatWindow({
   const createSession = useCreateSession()
   const setSessionModel = useSetSessionModel()
   const setSessionThinkingLevel = useSetSessionThinkingLevel()
+  const setSessionBackend = useSetSessionBackend()
   const setSessionProvider = useSetSessionProvider()
 
   // Fetch worktree data for PR link display
@@ -446,12 +448,6 @@ export function ChatWindow({
   // Run script for this worktree (used by CMD+R keybinding)
   const { data: runScript } = useRunScript(activeWorktreePath ?? null)
 
-  // Per-session model selection, falls back to preferences default
-  const defaultModel: ClaudeModel =
-    (preferences?.selected_model as ClaudeModel) ?? DEFAULT_MODEL
-  const selectedModel: ClaudeModel =
-    (session?.selected_model as ClaudeModel) ?? defaultModel
-
   // Per-session provider selection: persisted session → zustand → project default → global default
   const projectDefaultProvider = project?.default_provider ?? null
   const globalDefaultProvider = preferences?.default_provider ?? null
@@ -467,6 +463,30 @@ export function ChatWindow({
     selectedProvider && selectedProvider !== '__anthropic__'
   )
 
+  // Per-session backend selection: session → zustand → project default → global default
+  const zustandBackend = useChatStore(state =>
+    deferredSessionId ? state.selectedBackends[deferredSessionId] : undefined
+  )
+  const projectDefaultBackend = (project?.default_backend ?? null) as
+    | 'claude'
+    | 'codex'
+    | null
+  const globalDefaultBackend = (preferences?.default_backend ?? 'claude') as
+    | 'claude'
+    | 'codex'
+  const selectedBackend: 'claude' | 'codex' =
+    (session?.backend as 'claude' | 'codex') ??
+    zustandBackend ??
+    projectDefaultBackend ??
+    globalDefaultBackend
+  const isCodexBackend = selectedBackend === 'codex'
+
+  // Per-session model selection, falls back to preferences default (backend-aware)
+  const defaultModel: string = isCodexBackend
+    ? (preferences?.selected_codex_model ?? 'gpt-5.3-codex')
+    : ((preferences?.selected_model as ClaudeModel) ?? DEFAULT_MODEL)
+  const selectedModel: string = session?.selected_model ?? defaultModel
+
   // Per-session thinking level, falls back to preferences default
   const defaultThinkingLevel =
     (preferences?.thinking_level as ThinkingLevel) ?? DEFAULT_THINKING_LEVEL
@@ -479,9 +499,17 @@ export function ChatWindow({
     sessionThinkingLevel ??
     defaultThinkingLevel
 
-  // Per-session effort level, falls back to preferences default
-  const defaultEffortLevel =
-    (preferences?.default_effort_level as EffortLevel) ?? 'high'
+  // Per-session effort level, falls back to preferences default (backend-aware)
+  const defaultEffortLevel = isCodexBackend
+    ? ((
+        {
+          low: 'low',
+          medium: 'medium',
+          high: 'high',
+          xhigh: 'max',
+        } as Record<string, EffortLevel>
+      )[preferences?.default_codex_reasoning_effort ?? 'high'] ?? 'high')
+    : ((preferences?.default_effort_level as EffortLevel) ?? 'high')
   const sessionEffortLevel = useChatStore(state =>
     deferredSessionId ? state.effortLevels[deferredSessionId] : undefined
   )
@@ -694,9 +722,11 @@ export function ChatWindow({
   const selectedThinkingLevelRef = useRef(selectedThinkingLevel)
   const selectedEffortLevelRef = useRef(selectedEffortLevel)
   const useAdaptiveThinkingRef = useRef(useAdaptiveThinkingFlag)
+  const isCodexBackendRef = useRef(isCodexBackend)
   const executionModeRef = useRef(executionMode)
   const enabledMcpServersRef = useRef(enabledMcpServers)
   const mcpServersDataRef = useRef<McpServerInfo[]>(availableMcpServers)
+  const selectedBackendRef = useRef(selectedBackend)
 
   // Keep refs in sync with current values (runs on every render, but cheap)
   activeSessionIdRef.current = activeSessionId
@@ -707,9 +737,11 @@ export function ChatWindow({
   selectedThinkingLevelRef.current = selectedThinkingLevel
   selectedEffortLevelRef.current = selectedEffortLevel
   useAdaptiveThinkingRef.current = useAdaptiveThinkingFlag
+  isCodexBackendRef.current = isCodexBackend
   executionModeRef.current = executionMode
   enabledMcpServersRef.current = enabledMcpServers
   mcpServersDataRef.current = availableMcpServers
+  selectedBackendRef.current = selectedBackend
 
   // Stable callback for useMessageHandlers to build MCP config from current refs
   const getMcpConfig = useCallback(
@@ -1300,6 +1332,7 @@ export function ChatWindow({
           chromeEnabled: preferences?.chrome_enabled ?? false,
           aiLanguage: preferences?.ai_language,
           allowedTools,
+          backend: queuedMsg.backend,
         },
         {
           onSettled: () => {
@@ -1386,9 +1419,10 @@ export function ChatWindow({
           executionMode: 'build',
           thinkingLevel,
           disableThinkingForMode: thinkingLevel !== 'off' && !hasManualOverride,
-          effortLevel: useAdaptiveThinkingRef.current
-            ? selectedEffortLevelRef.current
-            : undefined,
+          effortLevel:
+            useAdaptiveThinkingRef.current || isCodexBackendRef.current
+              ? selectedEffortLevelRef.current
+              : undefined,
           mcpConfig: buildMcpConfigJson(
             mcpServersDataRef.current,
             enabledMcpServersRef.current
@@ -1400,6 +1434,10 @@ export function ChatWindow({
               : undefined,
           chromeEnabled: preferences?.chrome_enabled ?? false,
           aiLanguage: preferences?.ai_language,
+          backend:
+            selectedBackendRef.current !== 'claude'
+              ? selectedBackendRef.current
+              : undefined,
         },
         { onSettled: () => inputRef.current?.focus() }
       )
@@ -1516,13 +1554,18 @@ export function ChatWindow({
         thinkingLevel: thinkingLvl,
         disableThinkingForMode:
           mode !== 'plan' && thinkingLvl !== 'off' && !hasManualOverride,
-        effortLevel: useAdaptiveThinkingRef.current
-          ? selectedEffortLevelRef.current
-          : undefined,
+        effortLevel:
+          useAdaptiveThinkingRef.current || isCodexBackendRef.current
+            ? selectedEffortLevelRef.current
+            : undefined,
         mcpConfig: buildMcpConfigJson(
           mcpServersDataRef.current,
           enabledMcpServersRef.current
         ),
+        backend:
+          selectedBackendRef.current !== 'claude'
+            ? selectedBackendRef.current
+            : undefined,
         queuedAt: Date.now(),
       }
 
@@ -1649,6 +1692,53 @@ export function ChatWindow({
       }
     },
     [activeSessionId, activeWorktreeId, activeWorktreePath, setSessionModel]
+  )
+
+  const handleToolbarBackendChange = useCallback(
+    (backend: 'claude' | 'codex') => {
+      if (activeSessionId && activeWorktreeId && activeWorktreePath) {
+        useChatStore.getState().setSelectedBackend(activeSessionId, backend)
+        // Optimistically update session cache so selectedBackend resolves immediately
+        const model =
+          backend === 'codex'
+            ? (preferences?.selected_codex_model ?? 'gpt-5.3-codex')
+            : defaultModel
+        queryClient.setQueryData(
+          chatQueryKeys.session(activeSessionId),
+          (old: Session | null | undefined) =>
+            old ? { ...old, backend, selected_model: model } : old
+        )
+        // Persist backend first, then model (chained to avoid race on query invalidation)
+        setSessionBackend.mutate(
+          {
+            sessionId: activeSessionId,
+            worktreeId: activeWorktreeId,
+            worktreePath: activeWorktreePath,
+            backend,
+          },
+          {
+            onSuccess: () => {
+              setSessionModel.mutate({
+                sessionId: activeSessionId,
+                worktreeId: activeWorktreeId,
+                worktreePath: activeWorktreePath,
+                model,
+              })
+            },
+          }
+        )
+      }
+    },
+    [
+      activeSessionId,
+      activeWorktreeId,
+      activeWorktreePath,
+      defaultModel,
+      preferences?.selected_codex_model,
+      queryClient,
+      setSessionBackend,
+      setSessionModel,
+    ]
   )
 
   const handleToolbarProviderChange = useCallback(
@@ -2412,9 +2502,10 @@ export function ChatWindow({
           executionMode: 'build',
           thinkingLevel: thinkingLvl,
           disableThinkingForMode: thinkingLvl !== 'off' && !hasManualOverride,
-          effortLevel: useAdaptiveThinkingRef.current
-            ? selectedEffortLevelRef.current
-            : undefined,
+          effortLevel:
+            useAdaptiveThinkingRef.current || isCodexBackendRef.current
+              ? selectedEffortLevelRef.current
+              : undefined,
           mcpConfig: buildMcpConfigJson(
             mcpServersDataRef.current,
             enabledMcpServersRef.current
@@ -2441,9 +2532,10 @@ export function ChatWindow({
           executionMode: 'build',
           thinkingLevel: thinkingLvl,
           disableThinkingForMode: thinkingLvl !== 'off' && !hasManualOverride,
-          effortLevel: useAdaptiveThinkingRef.current
-            ? selectedEffortLevelRef.current
-            : undefined,
+          effortLevel:
+            useAdaptiveThinkingRef.current || isCodexBackendRef.current
+              ? selectedEffortLevelRef.current
+              : undefined,
           mcpConfig: buildMcpConfigJson(
             mcpServersDataRef.current,
             enabledMcpServersRef.current
@@ -2562,9 +2654,10 @@ export function ChatWindow({
         executionMode: executionModeRef.current,
         thinkingLevel: selectedThinkingLevelRef.current,
         disableThinkingForMode: false,
-        effortLevel: useAdaptiveThinkingRef.current
-          ? selectedEffortLevelRef.current
-          : undefined,
+        effortLevel:
+          useAdaptiveThinkingRef.current || isCodexBackendRef.current
+            ? selectedEffortLevelRef.current
+            : undefined,
         mcpConfig: buildMcpConfigJson(
           mcpServersDataRef.current,
           enabledMcpServersRef.current
@@ -2744,6 +2837,7 @@ export function ChatWindow({
                                     sessionId={activeSessionId}
                                     selectedModel={selectedModel}
                                     selectedProvider={selectedProvider}
+                                    selectedBackend={selectedBackend}
                                     onFileClick={setViewingFilePath}
                                   />
                                 </div>
@@ -2977,6 +3071,10 @@ export function ChatWindow({
                               hasPendingAttachments={hasPendingAttachments}
                               hasInputValue={hasInputValue}
                               executionMode={executionMode}
+                              selectedBackend={selectedBackend}
+                              sessionHasMessages={
+                                (session?.messages?.length ?? 0) > 0
+                              }
                               selectedModel={selectedModel}
                               selectedProvider={selectedProvider}
                               providerLocked={
@@ -3025,6 +3123,7 @@ export function ChatWindow({
                               onResolveConflicts={handleResolveConflicts}
                               hasOpenPr={Boolean(worktree?.pr_url)}
                               onSetDiffRequest={setDiffRequest}
+                              onBackendChange={handleToolbarBackendChange}
                               onModelChange={handleToolbarModelChange}
                               onProviderChange={handleToolbarProviderChange}
                               customCliProfiles={
@@ -3239,9 +3338,10 @@ export function ChatWindow({
                   disableThinkingForMode: !useChatStore
                     .getState()
                     .hasManualThinkingOverride(activeSessionId),
-                  effortLevel: useAdaptiveThinkingRef.current
-                    ? selectedEffortLevelRef.current
-                    : undefined,
+                  effortLevel:
+                    useAdaptiveThinkingRef.current || isCodexBackendRef.current
+                      ? selectedEffortLevelRef.current
+                      : undefined,
                   mcpConfig: buildMcpConfigJson(
                     mcpServersDataRef.current,
                     enabledMcpServersRef.current
@@ -3312,9 +3412,10 @@ export function ChatWindow({
                   disableThinkingForMode: !useChatStore
                     .getState()
                     .hasManualThinkingOverride(activeSessionId),
-                  effortLevel: useAdaptiveThinkingRef.current
-                    ? selectedEffortLevelRef.current
-                    : undefined,
+                  effortLevel:
+                    useAdaptiveThinkingRef.current || isCodexBackendRef.current
+                      ? selectedEffortLevelRef.current
+                      : undefined,
                   mcpConfig: buildMcpConfigJson(
                     mcpServersDataRef.current,
                     enabledMcpServersRef.current
@@ -3402,9 +3503,10 @@ export function ChatWindow({
                   disableThinkingForMode: !useChatStore
                     .getState()
                     .hasManualThinkingOverride(activeSessionId),
-                  effortLevel: useAdaptiveThinkingRef.current
-                    ? selectedEffortLevelRef.current
-                    : undefined,
+                  effortLevel:
+                    useAdaptiveThinkingRef.current || isCodexBackendRef.current
+                      ? selectedEffortLevelRef.current
+                      : undefined,
                   mcpConfig: buildMcpConfigJson(
                     mcpServersDataRef.current,
                     enabledMcpServersRef.current
@@ -3475,9 +3577,10 @@ export function ChatWindow({
                   disableThinkingForMode: !useChatStore
                     .getState()
                     .hasManualThinkingOverride(activeSessionId),
-                  effortLevel: useAdaptiveThinkingRef.current
-                    ? selectedEffortLevelRef.current
-                    : undefined,
+                  effortLevel:
+                    useAdaptiveThinkingRef.current || isCodexBackendRef.current
+                      ? selectedEffortLevelRef.current
+                      : undefined,
                   mcpConfig: buildMcpConfigJson(
                     mcpServersDataRef.current,
                     enabledMcpServersRef.current

@@ -45,6 +45,8 @@ export interface Project {
   custom_system_prompt?: string
   /** Default provider profile name for sessions in this project (undefined = use global default) */
   default_provider?: string | null
+  /** Default CLI backend for sessions in this project (undefined = use global default) */
+  default_backend?: string | null
 }
 
 /**

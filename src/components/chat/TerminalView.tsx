@@ -102,7 +102,9 @@ export function TerminalView({
   onExpand,
   hideControls = false,
 }: TerminalViewProps) {
-  const terminals = useTerminalStore(state => state.terminals[worktreeId] ?? EMPTY_TERMINALS)
+  const terminals = useTerminalStore(
+    state => state.terminals[worktreeId] ?? EMPTY_TERMINALS
+  )
   const activeTerminalId = useTerminalStore(
     state => state.activeTerminalIds[worktreeId]
   )

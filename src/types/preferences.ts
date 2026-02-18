@@ -534,6 +534,9 @@ export interface AppPreferences {
   default_provider: string | null // Default provider profile name (null = Anthropic direct)
   canvas_layout: CanvasLayout // Canvas display mode: grid (cards) or list (compact rows)
   confirm_session_close: boolean // Show confirmation dialog before closing sessions/worktrees
+  default_backend: CliBackend // Default CLI backend for new sessions: 'claude' or 'codex'
+  selected_codex_model: CodexModel // Default Codex model
+  default_codex_reasoning_effort: CodexReasoningEffort // Default reasoning effort for Codex: 'low' | 'medium' | 'high' | 'xhigh'
 }
 
 export type CanvasLayout = 'grid' | 'list'
@@ -657,6 +660,48 @@ export const effortLevelOptions: {
   { value: 'medium', label: 'Medium', description: 'Moderate thinking' },
   { value: 'high', label: 'High', description: 'Deep reasoning' },
   { value: 'max', label: 'Max', description: 'No limits' },
+]
+
+// =============================================================================
+// Codex Types
+// =============================================================================
+
+export type CodexModel =
+  | 'gpt-5.3-codex'
+  | 'gpt-5.2-codex'
+  | 'gpt-5.1-codex-max'
+  | 'gpt-5.2'
+  | 'gpt-5.1-codex-mini'
+
+export const codexModelOptions: { value: CodexModel; label: string }[] = [
+  { value: 'gpt-5.3-codex', label: 'GPT 5.3 Codex' },
+  { value: 'gpt-5.2-codex', label: 'GPT 5.2 Codex' },
+  { value: 'gpt-5.1-codex-max', label: 'GPT 5.1 Codex Max' },
+  { value: 'gpt-5.2', label: 'GPT 5.2' },
+  { value: 'gpt-5.1-codex-mini', label: 'GPT 5.1 Codex Mini' },
+]
+
+export type CodexReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh'
+
+export const codexReasoningOptions: {
+  value: CodexReasoningEffort
+  label: string
+}[] = [
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+  { value: 'xhigh', label: 'Extra High' },
+]
+
+// =============================================================================
+// CLI Backend
+// =============================================================================
+
+export type CliBackend = 'claude' | 'codex'
+
+export const backendOptions: { value: CliBackend; label: string }[] = [
+  { value: 'claude', label: 'Claude' },
+  { value: 'codex', label: 'Codex' },
 ]
 
 export type TerminalApp =
@@ -950,4 +995,7 @@ export const defaultPreferences: AppPreferences = {
   default_provider: null,
   canvas_layout: 'grid',
   confirm_session_close: true, // Default: enabled (show confirmation)
+  default_backend: 'claude', // Default: Claude
+  selected_codex_model: 'gpt-5.3-codex', // Default: latest Codex model
+  default_codex_reasoning_effort: 'high', // Default: high reasoning
 }

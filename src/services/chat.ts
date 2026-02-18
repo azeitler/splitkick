@@ -1217,6 +1217,7 @@ export function useSendMessage() {
       mcpConfig,
       chromeEnabled,
       customProfileName,
+      backend,
     }: {
       sessionId: string
       worktreeId: string
@@ -1233,6 +1234,7 @@ export function useSendMessage() {
       mcpConfig?: string
       chromeEnabled?: boolean
       customProfileName?: string
+      backend?: string
     }): Promise<ChatMessage> => {
       if (!isTauri()) {
         throw new Error('Not in Tauri context')
@@ -1268,6 +1270,7 @@ export function useSendMessage() {
         mcpConfig,
         chromeEnabled,
         customProfileName,
+        backend,
       })
       logger.info('Chat message sent', { responseId: response.id })
       return response
@@ -1579,6 +1582,50 @@ export function useSetSessionModel() {
             : 'Unknown error occurred'
       logger.error('Failed to save model selection', { error })
       toast.error('Failed to save model', { description: message })
+    },
+  })
+}
+
+/**
+ * Hook to set the backend for a session
+ */
+export function useSetSessionBackend() {
+  return useMutation({
+    mutationFn: async ({
+      worktreeId,
+      worktreePath,
+      sessionId,
+      backend,
+    }: {
+      worktreeId: string
+      worktreePath: string
+      sessionId: string
+      backend: string
+    }): Promise<void> => {
+      if (!isTauri()) {
+        throw new Error('Not in Tauri context')
+      }
+
+      logger.debug('Setting session backend', { sessionId, backend })
+      await invoke('set_session_backend', {
+        worktreeId,
+        worktreePath,
+        sessionId,
+        backend,
+      })
+      logger.info('Session backend saved')
+    },
+    // No query invalidation here — callers chain setSessionModel after,
+    // which handles invalidation (avoids race where refetch overwrites optimistic update)
+    onError: error => {
+      const message =
+        error instanceof Error
+          ? error.message
+          : typeof error === 'string'
+            ? error
+            : 'Unknown error occurred'
+      logger.error('Failed to save backend selection', { error })
+      toast.error('Failed to save backend', { description: message })
     },
   })
 }

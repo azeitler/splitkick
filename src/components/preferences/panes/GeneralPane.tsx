@@ -14,9 +14,15 @@ import {
   claudeCliQueryKeys,
 } from '@/services/claude-cli'
 import { useGhCliStatus, useGhCliAuth, ghCliQueryKeys } from '@/services/gh-cli'
+import {
+  useCodexCliStatus,
+  useCodexCliAuth,
+  codexCliQueryKeys,
+} from '@/services/codex-cli'
 import { useUIStore } from '@/store/ui-store'
 import type { ClaudeAuthStatus } from '@/types/claude-cli'
 import type { GhAuthStatus } from '@/types/gh-cli'
+import type { CodexAuthStatus } from '@/types/codex-cli'
 import {
   Select,
   SelectContent,
@@ -45,6 +51,9 @@ import {
   modelOptions,
   thinkingLevelOptions,
   effortLevelOptions,
+  codexModelOptions,
+  codexReasoningOptions,
+  backendOptions,
   terminalOptions,
   editorOptions,
   gitPollIntervalOptions,
@@ -54,6 +63,9 @@ import {
   notificationSoundOptions,
   type RemovalBehavior,
   type ClaudeModel,
+  type CodexModel,
+  type CodexReasoningEffort,
+  type CliBackend,
   type TerminalApp,
   type EditorApp,
   type NotificationSound,
@@ -118,6 +130,7 @@ export const GeneralPane: React.FC = () => {
   // CLI status hooks
   const { data: cliStatus, isLoading: isCliLoading } = useClaudeCliStatus()
   const { data: ghStatus, isLoading: isGhLoading } = useGhCliStatus()
+  const { data: codexStatus, isLoading: isCodexLoading } = useCodexCliStatus()
 
   // Auth status queries - only enabled when CLI is installed
   const { data: claudeAuth, isLoading: isClaudeAuthLoading } = useClaudeCliAuth(
@@ -128,10 +141,14 @@ export const GeneralPane: React.FC = () => {
   const { data: ghAuth, isLoading: isGhAuthLoading } = useGhCliAuth({
     enabled: !!ghStatus?.installed,
   })
+  const { data: codexAuth, isLoading: isCodexAuthLoading } = useCodexCliAuth({
+    enabled: !!codexStatus?.installed,
+  })
 
   // Track which auth check is in progress (for manual refresh)
   const [checkingClaudeAuth, setCheckingClaudeAuth] = useState(false)
   const [checkingGhAuth, setCheckingGhAuth] = useState(false)
+  const [checkingCodexAuth, setCheckingCodexAuth] = useState(false)
 
   // Use global ui-store for CLI modals
   const openCliUpdateModal = useUIStore(state => state.openCliUpdateModal)
@@ -188,6 +205,27 @@ export const GeneralPane: React.FC = () => {
   const handleEffortLevelChange = (value: EffortLevel) => {
     if (preferences) {
       savePreferences.mutate({ ...preferences, default_effort_level: value })
+    }
+  }
+
+  const handleBackendChange = (value: CliBackend) => {
+    if (preferences) {
+      savePreferences.mutate({ ...preferences, default_backend: value })
+    }
+  }
+
+  const handleCodexModelChange = (value: CodexModel) => {
+    if (preferences) {
+      savePreferences.mutate({ ...preferences, selected_codex_model: value })
+    }
+  }
+
+  const handleCodexReasoningChange = (value: CodexReasoningEffort) => {
+    if (preferences) {
+      savePreferences.mutate({
+        ...preferences,
+        default_codex_reasoning_effort: value,
+      })
     }
   }
 
@@ -321,6 +359,34 @@ export const GeneralPane: React.FC = () => {
       : `'${ghStatus.path.replace(/'/g, "'\\''")}'` + ' auth login'
     openCliLoginModal('gh', escapedPath)
   }, [ghStatus?.path, openCliLoginModal, queryClient])
+
+  const handleCodexLogin = useCallback(async () => {
+    if (!codexStatus?.path) return
+
+    setCheckingCodexAuth(true)
+    try {
+      await queryClient.invalidateQueries({
+        queryKey: codexCliQueryKeys.auth(),
+      })
+      const result = await queryClient.fetchQuery<CodexAuthStatus>({
+        queryKey: codexCliQueryKeys.auth(),
+      })
+
+      if (result?.authenticated) {
+        toast.success('Codex CLI is already authenticated')
+        return
+      }
+    } finally {
+      setCheckingCodexAuth(false)
+    }
+
+    // Not authenticated, open login modal with `codex login`
+    const isWindows = navigator.userAgent.includes('Windows')
+    const escapedPath = isWindows
+      ? `& "${codexStatus.path}" login`
+      : `'${codexStatus.path.replace(/'/g, "'\\''")}'` + ' login'
+    openCliLoginModal('codex', escapedPath)
+  }, [codexStatus?.path, openCliLoginModal, queryClient])
 
   const claudeStatusDescription = cliStatus?.installed
     ? cliStatus.path
@@ -476,8 +542,105 @@ export const GeneralPane: React.FC = () => {
         </SettingsSection>
       )}
 
+      {isNativeApp() && (
+        <SettingsSection
+          title="Codex CLI"
+          actions={
+            codexStatus?.installed ? (
+              checkingCodexAuth || isCodexAuthLoading ? (
+                <span className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Loader2 className="size-3 animate-spin" />
+                  Checking...
+                </span>
+              ) : codexAuth?.authenticated ? (
+                <span className="text-sm text-muted-foreground">Logged in</span>
+              ) : (
+                <Button variant="outline" size="sm" onClick={handleCodexLogin}>
+                  Login
+                </Button>
+              )
+            ) : (
+              <span className="text-sm text-muted-foreground">
+                Not installed
+              </span>
+            )
+          }
+        >
+          <div className="space-y-4">
+            <InlineField
+              label={codexStatus?.installed ? 'Version' : 'Status'}
+              description={
+                codexStatus?.installed ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => handleCopyPath(codexStatus.path)}
+                        className="text-left hover:underline cursor-pointer"
+                      >
+                        {codexStatus.path ?? 'Unknown path'}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Click to copy path</TooltipContent>
+                  </Tooltip>
+                ) : (
+                  'Optional — enables Codex AI sessions'
+                )
+              }
+            >
+              {isCodexLoading ? (
+                <Loader2 className="size-4 animate-spin text-muted-foreground" />
+              ) : codexStatus?.installed ? (
+                <Button
+                  variant="outline"
+                  className="w-40 justify-between"
+                  onClick={() => openCliUpdateModal('codex')}
+                >
+                  {codexStatus.version ?? 'Installed'}
+                  <ChevronDown className="size-3" />
+                </Button>
+              ) : (
+                <Button
+                  className="w-40"
+                  onClick={() => openCliUpdateModal('codex')}
+                >
+                  Install
+                </Button>
+              )}
+            </InlineField>
+          </div>
+        </SettingsSection>
+      )}
+
       <SettingsSection title="Defaults">
         <div className="space-y-4">
+          <InlineField
+            label="Default backend"
+            description="CLI to use for new sessions"
+          >
+            <Select
+              value={preferences?.default_backend ?? 'claude'}
+              onValueChange={handleBackendChange}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {backendOptions.map(option => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </InlineField>
+
+          {/* Claude subsection */}
+          <div className="pt-2">
+            <div className="text-sm font-semibold text-foreground/80 mb-3">
+              Claude
+            </div>
+          </div>
+
           <InlineField
             label="Model"
             description="Claude model for AI assistance"
@@ -558,28 +721,6 @@ export const GeneralPane: React.FC = () => {
             />
           </InlineField>
 
-          <AiLanguageField
-            preferences={preferences}
-            savePreferences={savePreferences}
-          />
-
-          <InlineField
-            label="Allow web tools in plan mode"
-            description="Auto-approve WebFetch/WebSearch without prompts"
-          >
-            <Switch
-              checked={preferences?.allow_web_tools_in_plan_mode ?? true}
-              onCheckedChange={checked => {
-                if (preferences) {
-                  savePreferences.mutate({
-                    ...preferences,
-                    allow_web_tools_in_plan_mode: checked,
-                  })
-                }
-              }}
-            />
-          </InlineField>
-
           <InlineField
             label="Chrome browser integration"
             description="Enable browser automation via Chrome extension"
@@ -591,6 +732,84 @@ export const GeneralPane: React.FC = () => {
                   savePreferences.mutate({
                     ...preferences,
                     chrome_enabled: checked,
+                  })
+                }
+              }}
+            />
+          </InlineField>
+
+          {/* Codex subsection */}
+          <div className="pt-2">
+            <div className="text-sm font-semibold text-foreground/80 mb-3">
+              Codex
+            </div>
+          </div>
+
+          <InlineField
+            label="Model"
+            description="Codex model for AI assistance"
+          >
+            <Select
+              value={preferences?.selected_codex_model ?? 'gpt-5.3-codex'}
+              onValueChange={handleCodexModelChange}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {codexModelOptions.map(option => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </InlineField>
+
+          <InlineField
+            label="Reasoning effort"
+            description="Codex reasoning depth"
+          >
+            <Select
+              value={preferences?.default_codex_reasoning_effort ?? 'high'}
+              onValueChange={handleCodexReasoningChange}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {codexReasoningOptions.map(option => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </InlineField>
+
+          {/* Shared settings */}
+          <div className="pt-2">
+            <div className="text-sm font-semibold text-foreground/80 mb-3">
+              General
+            </div>
+          </div>
+
+          <AiLanguageField
+            preferences={preferences}
+            savePreferences={savePreferences}
+          />
+
+          <InlineField
+            label="Allow web tools in plan mode"
+            description="WebFetch/WebSearch for Claude, --search for Codex"
+          >
+            <Switch
+              checked={preferences?.allow_web_tools_in_plan_mode ?? true}
+              onCheckedChange={checked => {
+                if (preferences) {
+                  savePreferences.mutate({
+                    ...preferences,
+                    allow_web_tools_in_plan_mode: checked,
                   })
                 }
               }}

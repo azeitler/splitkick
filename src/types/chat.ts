@@ -27,6 +27,11 @@ export type ThinkingLevel = 'off' | 'think' | 'megathink' | 'ultrathink'
 export type EffortLevel = 'low' | 'medium' | 'high' | 'max'
 
 /**
+ * Backend for a chat session (Claude CLI or Codex CLI)
+ */
+export type Backend = 'claude' | 'codex'
+
+/**
  * Execution mode for Claude CLI permission handling
  * - plan: Read-only mode, Claude can't make changes (--permission-mode plan)
  * - build: Auto-approve file edits only (--permission-mode acceptEdits)
@@ -127,8 +132,12 @@ export interface Session {
   messages: ChatMessage[]
   /** Message count (populated separately for efficiency when full messages not needed) */
   message_count?: number
+  /** Backend for this session (claude or codex) */
+  backend?: Backend
   /** Claude CLI session ID for resuming conversations */
   claude_session_id?: string
+  /** Codex CLI thread ID for resuming conversations */
+  codex_thread_id?: string
   /** Selected model for this session */
   selected_model?: string
   /** Selected thinking level for this session */
@@ -719,6 +728,8 @@ export interface QueuedMessage {
   effortLevel?: EffortLevel
   /** MCP config JSON to pass to CLI (snapshot at queue time) */
   mcpConfig?: string
+  /** Backend to use for this message (snapshot at queue time) */
+  backend?: Backend
   /** Timestamp when queued (for display ordering) */
   queuedAt: number
 }

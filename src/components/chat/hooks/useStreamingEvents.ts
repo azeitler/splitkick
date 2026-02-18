@@ -71,11 +71,14 @@ export default function useStreamingEvents({
       session_id: string
       worktree_id: string
     }>('chat:sending', event => {
-      const { session_id } = event.payload
+      const { session_id, worktree_id: wtId } = event.payload
       addSendingSession(session_id)
-      // Invalidate session query so non-sender loads the user message
+      // Invalidate sessions list so non-sender windows update metadata.
+      // IMPORTANT: Do NOT invalidate individual session queries here — it races
+      // with the mutation's optimistic updates and can overwrite them with stale
+      // JSONL data, causing duplicate/mismatched messages.
       queryClient.invalidateQueries({
-        queryKey: chatQueryKeys.all,
+        queryKey: chatQueryKeys.sessions(wtId),
       })
     })
 
@@ -166,7 +169,7 @@ export default function useStreamingEvents({
       }
     )
 
-    const unlistenDone = listen<DoneEvent>('chat:done', async event => {
+    const unlistenDone = listen<DoneEvent>('chat:done', event => {
       const sessionId = event.payload.session_id
       const worktreeId = event.payload.worktree_id
 
@@ -394,7 +397,7 @@ export default function useStreamingEvents({
         const { worktreePaths: wtPaths } = useChatStore.getState()
         const wtPath = wtPaths[worktreeId]
         if (wtPath) {
-          await invoke('update_session_state', {
+          invoke('update_session_state', {
             worktreeId,
             worktreePath: wtPath,
             sessionId,

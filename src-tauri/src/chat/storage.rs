@@ -422,6 +422,7 @@ pub fn load_sessions(
             metadata.to_session()
         } else {
             // No metadata found - create minimal session from index entry
+            // Use resolved backend from preferences instead of hardcoded Claude
             Session {
                 id: entry.id.clone(),
                 name: entry.name.clone(),
@@ -432,7 +433,9 @@ pub fn load_sessions(
                     .as_secs(),
                 messages: vec![],
                 message_count: Some(entry.message_count),
+                backend: super::commands::resolve_default_backend(app, Some(worktree_id)),
                 claude_session_id: None,
+                codex_thread_id: None,
                 selected_model: None,
                 selected_thinking_level: None,
                 selected_provider: None,

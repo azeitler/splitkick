@@ -2103,6 +2103,7 @@ export function useUpdateProjectSettings() {
       knownMcpServers,
       customSystemPrompt,
       defaultProvider,
+      defaultBackend,
     }: {
       projectId: string
       defaultBranch?: string
@@ -2110,6 +2111,7 @@ export function useUpdateProjectSettings() {
       knownMcpServers?: string[]
       customSystemPrompt?: string
       defaultProvider?: string | null
+      defaultBackend?: string | null
     }): Promise<Project> => {
       if (!isTauri()) {
         throw new Error('Not in Tauri context')
@@ -2123,6 +2125,7 @@ export function useUpdateProjectSettings() {
         knownMcpServers,
         customSystemPrompt,
         defaultProvider,
+        defaultBackend,
       })
       logger.info('Project settings updated', { project })
       return project

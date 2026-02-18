@@ -129,6 +129,16 @@ export function GeneralPane({
     [projectId, updateSettings]
   )
 
+  const handleBackendChange = useCallback(
+    (value: string) => {
+      updateSettings.mutate({
+        projectId,
+        defaultBackend: value === 'global-default' ? '__none__' : value,
+      })
+    },
+    [projectId, updateSettings]
+  )
+
   const systemPromptChanged =
     localSystemPrompt !== null &&
     localSystemPrompt !== (project?.custom_system_prompt ?? '')
@@ -295,6 +305,25 @@ export function GeneralPane({
             </Select>
           </InlineField>
         )}
+
+        <InlineField
+          label="Default Backend"
+          description="CLI to use for new sessions in this project"
+        >
+          <Select
+            value={project?.default_backend ?? 'global-default'}
+            onValueChange={handleBackendChange}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="global-default">Use global default</SelectItem>
+              <SelectItem value="claude">Claude</SelectItem>
+              <SelectItem value="codex">Codex</SelectItem>
+            </SelectContent>
+          </Select>
+        </InlineField>
       </SettingsSection>
 
       <SettingsSection title="System Prompt">
