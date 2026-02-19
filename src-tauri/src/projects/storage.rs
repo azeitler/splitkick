@@ -86,12 +86,27 @@ fn load_projects_data_internal(app: &AppHandle) -> Result<ProjectsData, String> 
     let original_count = data.worktrees.len();
 
     // Filter out worktrees where path doesn't exist on disk
+    // Skip recently created worktrees (< 5 min) - they may still be initializing in a background thread
+    let now_ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let five_minutes_ago = now_ts.saturating_sub(300);
+
     let valid_worktrees: Vec<_> = data
         .worktrees
         .into_iter()
         .filter(|w| {
             let exists = std::path::Path::new(&w.path).exists();
             if !exists {
+                if w.created_at > five_minutes_ago {
+                    log::trace!(
+                        "Keeping recently created worktree '{}' - path doesn't exist yet (created {}s ago)",
+                        w.name,
+                        now_ts - w.created_at
+                    );
+                    return true;
+                }
                 log::warn!(
                     "Removing orphaned worktree '{}' - path does not exist: {}",
                     w.name,

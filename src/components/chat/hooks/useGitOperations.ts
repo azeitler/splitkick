@@ -97,8 +97,11 @@ export function useGitOperations({
 
     const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
     setWorktreeLoading(activeWorktreeId, 'commit')
-    const branch = worktree?.branch ?? ''
-    const toastId = toast.loading(`Creating commit on ${branch}...`)
+    const prefix =
+      project?.name && worktree?.name
+        ? `${project.name}/${worktree.name}`
+        : (worktree?.name ?? '')
+    const toastId = toast.loading(`Creating commit on ${prefix}...`)
 
     try {
       const result = await invoke<CreateCommitResponse>(
@@ -119,18 +122,19 @@ export function useGitOperations({
       // Trigger git status refresh
       triggerImmediateGitPoll()
 
-      toast.success(`Committed: ${result.message.split('\n')[0]}`, {
+      toast.success(`${prefix}: ${result.message.split('\n')[0]}`, {
         id: toastId,
       })
     } catch (error) {
-      toast.error(`Failed to commit: ${error}`, { id: toastId })
+      toast.error(`${prefix}: Failed to commit: ${error}`, { id: toastId })
     } finally {
       clearWorktreeLoading(activeWorktreeId)
     }
   }, [
     activeWorktreeId,
     activeWorktreePath,
-    worktree?.branch,
+    project?.name,
+    worktree?.name,
     preferences?.magic_prompts?.commit_message,
     preferences?.magic_prompt_models?.commit_message_model,
     preferences?.magic_prompt_providers,
@@ -145,8 +149,11 @@ export function useGitOperations({
       const { setWorktreeLoading, clearWorktreeLoading } =
         useChatStore.getState()
       setWorktreeLoading(activeWorktreeId, 'commit')
-      const branch = worktree?.branch ?? ''
-      const toastId = toast.loading(`Committing and pushing on ${branch}...`)
+      const prefix =
+        project?.name && worktree?.name
+          ? `${project.name}/${worktree.name}`
+          : (worktree?.name ?? '')
+      const toastId = toast.loading(`Committing and pushing on ${prefix}...`)
 
       try {
         const result = await invoke<CreateCommitResponse>(
@@ -170,14 +177,14 @@ export function useGitOperations({
 
         if (result.commit_hash) {
           toast.success(
-            `Committed and pushed: ${result.message.split('\n')[0]}`,
+            `${prefix}: ${result.message.split('\n')[0]}`,
             { id: toastId }
           )
         } else {
-          toast.success('Pushed to remote', { id: toastId })
+          toast.success(`${prefix}: Pushed to remote`, { id: toastId })
         }
       } catch (error) {
-        toast.error(`Failed: ${error}`, { id: toastId })
+        toast.error(`${prefix}: Failed: ${error}`, { id: toastId })
       } finally {
         clearWorktreeLoading(activeWorktreeId)
       }
@@ -185,7 +192,8 @@ export function useGitOperations({
     [
       activeWorktreeId,
       activeWorktreePath,
-      worktree?.branch,
+      project?.name,
+      worktree?.name,
       preferences?.magic_prompts?.commit_message,
       preferences?.magic_prompt_models?.commit_message_model,
       preferences?.magic_prompt_providers,

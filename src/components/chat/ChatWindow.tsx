@@ -65,6 +65,7 @@ import {
   DEFAULT_PARALLEL_EXECUTION_PROMPT,
   PREDEFINED_CLI_PROFILES,
   resolveMagicPromptProvider,
+  isCodexModel,
 } from '@/types/preferences'
 import type { Project, Worktree } from '@/types/projects'
 import type {
@@ -1239,16 +1240,26 @@ export function ChatWindow({
     gitStatus?.base_branch,
   ])
 
+  // Keep refs for the cancel-prompt handler so it always has the effective
+  // worktreeId/sessionId (which may come from props in modal mode, not the store)
+  const cancelContextRef = useRef({ activeWorktreeId, activeSessionId })
+  cancelContextRef.current = { activeWorktreeId, activeSessionId }
+
   // Listen for cancel-prompt keybinding event (dispatched by centralized keybinding system)
   useEffect(() => {
     const handleCancelPrompt = () => {
       const state = useChatStore.getState()
-      const wtId = state.activeWorktreeId
+      // Use ref values (which respect prop overrides in modal mode)
+      // instead of store's activeWorktreeId which may be null on project canvas
+      const wtId = cancelContextRef.current.activeWorktreeId
       if (!wtId) return
 
       const isCanvas = state.viewingCanvasTab[wtId] ?? true
       const canvasSession = state.canvasSelectedSessionIds[wtId] ?? null
-      const activeSession = state.activeSessionIds[wtId] ?? null
+      const activeSession =
+        cancelContextRef.current.activeSessionId ??
+        state.activeSessionIds[wtId] ??
+        null
 
       const sessionToCancel =
         isCanvas && canvasSession ? canvasSession : activeSession
@@ -2017,6 +2028,44 @@ export function ChatWindow({
         !investigateIsCustom &&
         supportsAdaptiveThinking(investigateModel, cliStatus?.version ?? null)
 
+      // Update session backend + model to match magic prompt config
+      const investigateBackend = isCodexModel(investigateModel)
+        ? 'codex'
+        : ('claude' as const)
+
+      // Persist to Rust backend
+      setSessionBackend.mutate({
+        sessionId: activeSessionId,
+        worktreeId: activeWorktreeId,
+        worktreePath: activeWorktreePath,
+        backend: investigateBackend,
+      })
+      setSessionModel.mutate({
+        sessionId: activeSessionId,
+        worktreeId: activeWorktreeId,
+        worktreePath: activeWorktreePath,
+        model: investigateModel,
+      })
+
+      // Update Zustand + query cache so UI reflects immediately
+      {
+        const { setSelectedBackend: setZustandBackend, setSelectedModel: setZustandModel } =
+          useChatStore.getState()
+        setZustandBackend(activeSessionId, investigateBackend)
+        setZustandModel(activeSessionId, investigateModel)
+      }
+      queryClient.setQueryData(
+        chatQueryKeys.session(activeSessionId),
+        (old: Session | null | undefined) =>
+          old
+            ? {
+                ...old,
+                backend: investigateBackend,
+                selected_model: investigateModel,
+              }
+            : old
+      )
+
       sendMessage.mutate(
         {
           sessionId: activeSessionId,
@@ -2041,6 +2090,7 @@ export function ChatWindow({
               : undefined,
           chromeEnabled: preferences?.chrome_enabled ?? false,
           aiLanguage: preferences?.ai_language,
+          backend: investigateBackend,
         },
         { onSettled: () => inputRef.current?.focus() }
       )
@@ -2061,6 +2111,8 @@ export function ChatWindow({
       preferences?.chrome_enabled,
       preferences?.ai_language,
       setSessionProvider,
+      setSessionBackend,
+      setSessionModel,
       resolveCustomProfile,
       cliStatus?.version,
     ]
@@ -2189,6 +2241,10 @@ export function ChatWindow({
         !investigateIsCustom &&
         supportsAdaptiveThinking(investigateModel, cliStatus?.version ?? null)
 
+      const investigateBackend = isCodexModel(investigateModel)
+        ? 'codex'
+        : 'claude'
+
       const sendInvestigateMessage = (targetSessionId: string) => {
         const {
           addSendingSession,
@@ -2206,13 +2262,43 @@ export function ChatWindow({
         setSelectedProvider(targetSessionId, investigateProvider)
         setExecutingMode(targetSessionId, executionModeRef.current)
 
-        // Persist the provider to backend so subsequent messages use the same one
+        // Persist backend + provider + model so subsequent messages use the same ones
+        setSessionBackend.mutate({
+          sessionId: targetSessionId,
+          worktreeId,
+          worktreePath,
+          backend: investigateBackend,
+        })
+        setSessionModel.mutate({
+          sessionId: targetSessionId,
+          worktreeId,
+          worktreePath,
+          model: investigateModel,
+        })
         setSessionProvider.mutate({
           sessionId: targetSessionId,
           worktreeId,
           worktreePath,
           provider: investigateProvider,
         })
+        // Update Zustand + query cache so UI reflects immediately
+        {
+          const { setSelectedBackend: setZustandBackend, setSelectedModel: setZustandModel } =
+            useChatStore.getState()
+          setZustandBackend(targetSessionId, investigateBackend)
+          setZustandModel(targetSessionId, investigateModel)
+        }
+        queryClient.setQueryData(
+          chatQueryKeys.session(targetSessionId),
+          (old: Session | null | undefined) =>
+            old
+              ? {
+                  ...old,
+                  backend: investigateBackend,
+                  selected_model: investigateModel,
+                }
+              : old
+        )
 
         sendMessage.mutate(
           {
@@ -2238,6 +2324,7 @@ export function ChatWindow({
                 : undefined,
             chromeEnabled: preferences?.chrome_enabled ?? false,
             aiLanguage: preferences?.ai_language,
+            backend: investigateBackend,
           },
           { onSettled: () => inputRef.current?.focus() }
         )
@@ -2283,6 +2370,8 @@ export function ChatWindow({
       preferences?.chrome_enabled,
       preferences?.ai_language,
       setSessionProvider,
+      setSessionBackend,
+      setSessionModel,
       resolveCustomProfile,
       cliStatus?.version,
     ]
@@ -2611,6 +2700,10 @@ export function ChatWindow({
               : undefined,
           chromeEnabled: preferences?.chrome_enabled ?? false,
           aiLanguage: preferences?.ai_language,
+          backend:
+            selectedBackendRef.current !== 'claude'
+              ? selectedBackendRef.current
+              : undefined,
         },
         {
           onSettled: () => {

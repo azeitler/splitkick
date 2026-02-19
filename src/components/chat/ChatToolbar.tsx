@@ -830,12 +830,7 @@ export const ChatToolbar = memo(function ChatToolbar({
                   ) : (
                     <GitPullRequest className="h-4 w-4" />
                   )}
-                  <span>
-                    {displayStatus
-                      ? getPrStatusDisplay(displayStatus).label
-                      : 'Open'}{' '}
-                    #{prNumber}
-                  </span>
+                  <span>#{prNumber}</span>
                   <CheckStatusButton
                     status={checkStatus ?? null}
                     projectPath={activeWorktreePath}
@@ -1310,19 +1305,18 @@ export const ChatToolbar = memo(function ChatToolbar({
                   ) : (
                     <GitPullRequest className="h-3.5 w-3.5" />
                   )}
-                  <span>
-                    {displayStatus
-                      ? getPrStatusDisplay(displayStatus).label
-                      : 'Open'}{' '}
-                    #{prNumber}
-                  </span>
+                  <span>#{prNumber}</span>
                   <CheckStatusButton
                     status={checkStatus ?? null}
                     projectPath={activeWorktreePath}
                   />
                 </a>
               </TooltipTrigger>
-              <TooltipContent>{`Open PR #${prNumber} on GitHub`}</TooltipContent>
+              <TooltipContent>
+                {displayStatus
+                  ? `${getPrStatusDisplay(displayStatus).label} · PR #${prNumber} on GitHub`
+                  : `PR #${prNumber} on GitHub`}
+              </TooltipContent>
             </Tooltip>
           </>
         )}

@@ -669,7 +669,7 @@ export function NewWorktreeModal() {
             handleCreateWorktree()
             return
           }
-          if (key === 'm') {
+          if (e.altKey && e.code === 'KeyM') {
             e.preventDefault()
             e.nativeEvent.stopImmediatePropagation()
             handleBaseSession()
@@ -697,7 +697,7 @@ export function NewWorktreeModal() {
           handleSelectIssue(filteredIssues[selectedItemIndex], e.metaKey)
           return
         }
-        if (key === 'm' && filteredIssues[selectedItemIndex]) {
+        if (e.altKey && e.code === 'KeyM' && filteredIssues[selectedItemIndex] && creatingFromNumber === null) {
           e.preventDefault()
           handleSelectIssueAndInvestigate(
             filteredIssues[selectedItemIndex],
@@ -726,7 +726,7 @@ export function NewWorktreeModal() {
           handleSelectPR(filteredPRs[selectedItemIndex], e.metaKey)
           return
         }
-        if (key === 'm' && filteredPRs[selectedItemIndex]) {
+        if (e.altKey && e.code === 'KeyM' && filteredPRs[selectedItemIndex] && creatingFromNumber === null) {
           e.preventDefault()
           handleSelectPRAndInvestigate(
             filteredPRs[selectedItemIndex],
@@ -770,6 +770,7 @@ export function NewWorktreeModal() {
       handleSelectPR,
       handleSelectPRAndInvestigate,
       handleSelectBranch,
+      creatingFromNumber,
     ]
   )
 
@@ -998,7 +999,7 @@ export function QuickActionsTab({
             </span>
           </div>
           <kbd className="hidden sm:block absolute top-3 right-3 text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-            M
+            ⌥M
           </kbd>
         </button>
 
@@ -1500,7 +1501,7 @@ function IssueItem({
             className="shrink-0 inline-flex items-center gap-0.5 rounded bg-black px-1 py-0.5 text-[10px] text-white transition-colors hover:bg-black/80 dark:bg-yellow-500/20 dark:text-yellow-400 dark:hover:bg-yellow-500/30 dark:hover:text-yellow-300 disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <Wand2 className="h-3 w-3" />
-            <span>M</span>
+            <span>⌥M</span>
           </button>
         </TooltipTrigger>
         <TooltipContent>Create worktree and investigate issue</TooltipContent>
@@ -1624,7 +1625,7 @@ function PRItem({
             className="shrink-0 inline-flex items-center gap-0.5 rounded bg-black px-1 py-0.5 text-[10px] text-white transition-colors hover:bg-black/80 dark:bg-yellow-500/20 dark:text-yellow-400 dark:hover:bg-yellow-500/30 dark:hover:text-yellow-300 disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <Wand2 className="h-3 w-3" />
-            <span>M</span>
+            <span>⌥M</span>
           </button>
         </TooltipTrigger>
         <TooltipContent>Create worktree and investigate PR</TooltipContent>

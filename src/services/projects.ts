@@ -108,8 +108,15 @@ export function useWorktrees(projectId: string | null) {
  * Used for displaying PR link and other worktree-specific info
  */
 export function useWorktree(worktreeId: string | null) {
+  const queryClient = useQueryClient()
+  const queryKey = [...projectsQueryKeys.all, 'worktree', worktreeId ?? ''] as const
+
+  // Skip backend fetch while worktree is pending — it's not in projects.json yet
+  const cachedData = queryClient.getQueryData<Worktree>(queryKey)
+  const isPending = cachedData?.status === 'pending'
+
   return useQuery({
-    queryKey: [...projectsQueryKeys.all, 'worktree', worktreeId ?? ''] as const,
+    queryKey,
     queryFn: async (): Promise<Worktree | null> => {
       if (!isTauri() || !worktreeId) {
         return null
@@ -127,7 +134,7 @@ export function useWorktree(worktreeId: string | null) {
         return null
       }
     },
-    enabled: !!worktreeId,
+    enabled: !!worktreeId && !isPending,
     staleTime: 1000 * 30, // 30 seconds - PR info may change
     gcTime: 1000 * 60 * 5,
   })
@@ -676,7 +683,7 @@ function handleWorktreeReady(
   }
 
   // Register worktree path
-  const { activeWorktreePath, setActiveWorktree, registerWorktreePath } =
+  const { setActiveWorktree, registerWorktreePath } =
     useChatStore.getState()
   registerWorktreePath(worktree.id, worktree.path)
 
@@ -684,10 +691,8 @@ function handleWorktreeReady(
     // Mark for auto-open BEFORE navigation (critical ordering)
     useUIStore.getState().markWorktreeForAutoOpenSession(worktree.id)
 
-    // Only switch to worktree view if already viewing a worktree
-    if (activeWorktreePath) {
-      setActiveWorktree(worktree.id, worktree.path)
-    }
+    // Always navigate to the new worktree view
+    setActiveWorktree(worktree.id, worktree.path)
   }
 }
 

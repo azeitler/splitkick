@@ -191,6 +191,7 @@ export function OpenInModal() {
   )
 
   const targetPath = useMemo(() => {
+    if (worktree?.path) return worktree.path
     if (selectedWorktreeId) {
       const path = useChatStore.getState().getWorktreePath(selectedWorktreeId)
       if (path) return path
@@ -200,7 +201,7 @@ export function OpenInModal() {
       if (project) return project.path
     }
     return null
-  }, [selectedWorktreeId, selectedProjectId, projects])
+  }, [worktree?.path, selectedWorktreeId, selectedProjectId, projects])
 
   const { data: githubRemotes } = useGitHubRemotes(targetPath, openInModalOpen)
   const hasMultipleRemotes = (githubRemotes?.length ?? 0) > 1

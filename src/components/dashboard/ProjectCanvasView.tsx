@@ -539,11 +539,6 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       if (!project) return
       const wt = visibleWorktrees.find(w => w.id === worktreeId)
       if (!wt) return
-      console.log('[CLOSE_WT_DASH] closeWorktreeDirectly', {
-        isBase: isBaseSession(wt),
-        worktreeId: wt.id,
-        removalBehavior: preferences?.removal_behavior,
-      })
       if (isBaseSession(wt)) {
         if (preferences?.removal_behavior === 'delete') {
           closeBaseSessionClean.mutate({
