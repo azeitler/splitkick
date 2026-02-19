@@ -1695,6 +1695,24 @@ pub fn run() {
     {
         log::trace!("Setting WebKit compatibility fixes for Linux");
 
+        // Detect if running inside an AppImage
+        let is_appimage = std::env::var_os("APPIMAGE").is_some()
+            || std::env::var_os("APPDIR").is_some();
+        if is_appimage {
+            log::trace!("Running inside AppImage");
+        }
+
+        // Detect Wayland compositor type
+        let wayland_display = std::env::var_os("WAYLAND_DISPLAY");
+        let xdg_session_type = std::env::var("XDG_SESSION_TYPE")
+            .unwrap_or_default()
+            .to_lowercase();
+        let is_wayland = wayland_display.is_some() || xdg_session_type == "wayland";
+        let compositor = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
+        log::trace!(
+            "Display: wayland={is_wayland}, compositor={compositor}, session={xdg_session_type}"
+        );
+
         // Disable problematic GPU compositing modes
         if std::env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").is_none() {
             std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
@@ -1707,10 +1725,10 @@ pub fn run() {
             log::trace!("WEBKIT_DISABLE_DMABUF_RENDERER=1");
         }
 
-        // Force X11 backend if Wayland causes issues
-        // Check if user explicitly wants Wayland via environment variable
-        let force_x11 = std::env::var("JEAN_FORCE_X11").unwrap_or_else(|_| "0".to_string()) == "1";
-        if force_x11 && std::env::var_os("GDK_BACKEND").is_none() {
+        // Non-AppImage: Force X11 backend only if user explicitly requests it
+        let force_x11 =
+            std::env::var("JEAN_FORCE_X11").unwrap_or_else(|_| "0".to_string()) == "1";
+        if !is_appimage && force_x11 && std::env::var_os("GDK_BACKEND").is_none() {
             std::env::set_var("GDK_BACKEND", "x11");
             log::trace!("GDK_BACKEND=x11 (forced by JEAN_FORCE_X11)");
         }
