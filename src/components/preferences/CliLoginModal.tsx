@@ -20,14 +20,19 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { useUIStore } from '@/store/ui-store'
+import { useShallow } from 'zustand/react/shallow'
 import { useTerminal } from '@/hooks/useTerminal'
 import { disposeTerminal, setOnStopped } from '@/lib/terminal-instances'
 
 export function CliLoginModal() {
-  const isOpen = useUIStore(state => state.cliLoginModalOpen)
-  const cliType = useUIStore(state => state.cliLoginModalType)
-  const command = useUIStore(state => state.cliLoginModalCommand)
-  const closeModal = useUIStore(state => state.closeCliLoginModal)
+  const { isOpen, cliType, command, closeModal } = useUIStore(
+    useShallow(state => ({
+      isOpen: state.cliLoginModalOpen,
+      cliType: state.cliLoginModalType,
+      command: state.cliLoginModalCommand,
+      closeModal: state.closeCliLoginModal,
+    }))
+  )
 
   // Only render when open to avoid unnecessary terminal setup
   if (!isOpen || !command) return null

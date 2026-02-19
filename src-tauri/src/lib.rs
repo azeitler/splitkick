@@ -1980,6 +1980,7 @@ pub fn run() {
             projects::update_pr_description,
             projects::create_commit_with_ai,
             projects::run_review_with_ai,
+            projects::cancel_review_with_ai,
             projects::list_github_releases,
             projects::generate_release_notes,
             projects::commit_changes,

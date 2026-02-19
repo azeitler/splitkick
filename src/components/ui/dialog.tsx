@@ -57,6 +57,7 @@ const DialogContent = React.forwardRef<
       children,
       showCloseButton = true,
       preventClose = false,
+      ['aria-describedby']: ariaDescribedBy,
       ...props
     },
     ref
@@ -78,6 +79,7 @@ const DialogContent = React.forwardRef<
             e.preventDefault()
           }
         }}
+        aria-describedby={ariaDescribedBy}
         {...props}
       >
         {children}

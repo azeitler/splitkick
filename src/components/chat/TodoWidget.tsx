@@ -94,8 +94,8 @@ export function TodoWidget({
         <CollapsibleContent>
           <div className="border-t border-border/50 px-3 py-2">
             <ul className="space-y-1">
-              {todos.map((todo, index) => (
-                <TodoItem key={index} todo={todo} />
+              {todos.map(todo => (
+                <TodoItem key={todo.content} todo={todo} />
               ))}
             </ul>
           </div>

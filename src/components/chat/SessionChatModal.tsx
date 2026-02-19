@@ -5,6 +5,8 @@ import {
   useMemo,
   useRef,
   useState,
+  lazy,
+  Suspense,
   type RefObject,
 } from 'react'
 import {
@@ -30,6 +32,7 @@ import { cn } from '@/lib/utils'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -65,7 +68,9 @@ import type { Session } from '@/types/chat'
 import { isNativeApp } from '@/lib/environment'
 import { notify } from '@/lib/notifications'
 import { toast } from 'sonner'
-import { GitDiffModal } from './GitDiffModal'
+const GitDiffModal = lazy(() =>
+  import('./GitDiffModal').then(mod => ({ default: mod.GitDiffModal }))
+)
 import type { DiffRequest } from '@/types/git-diff'
 import { ChatWindow } from './ChatWindow'
 import { ModalTerminalDrawer } from './ModalTerminalDrawer'
@@ -635,6 +640,11 @@ export function SessionChatModal({
                 <DialogTitle className="text-sm font-medium shrink-0">
                   {isBase ? 'Base Session' : (worktree?.name ?? 'Worktree')}
                 </DialogTitle>
+                <DialogDescription className="sr-only">
+                  Chat workspace for {worktree?.name ?? 'the current worktree'}.
+                  Use the tabs to switch sessions and run actions for this
+                  branch.
+                </DialogDescription>
                 {worktree && project && (
                   <WorktreeDropdownMenu
                     worktree={worktree}
@@ -866,7 +876,7 @@ export function SessionChatModal({
 
           {/* Session tabs */}
           {sessions.length > 0 && (
-            <div className="shrink-0 border-b flex items-center gap-0.5 relative">
+            <div className="shrink-0 border-b flex items-center gap-0.5 pr-4 relative">
               {hasWaitingLeft && (
                 <button
                   type="button"
@@ -898,12 +908,12 @@ export function SessionChatModal({
                             data-session-id={session.id}
                             onClick={() => handleTabClick(session.id)}
                             className={cn(
-                              'group/tab flex rounded items-center gap-2 px-2.5 py-1.5 text-xs transition-colors whitespace-nowrap',
+                              'group/tab flex rounded items-center gap-2 px-2.5 py-1.5 text-xs transition-colors whitespace-nowrap border border-transparent',
                               isActive
                                 ? 'bg-muted text-foreground'
                                 : 'text-muted-foreground hover:text-foreground hover:bg-muted/50',
                               status === 'waiting' &&
-                                'border border-dashed border-yellow-500 dark:border-yellow-400'
+                              'border-dashed border-yellow-500 dark:border-yellow-400'
                             )}
                           >
                             <StatusIndicator
@@ -932,13 +942,36 @@ export function SessionChatModal({
                             ) : (
                               session.name
                             )}
-                            {sessions.length > 1 &&
-                              renamingSessionId !== session.id && (
+                            {renamingSessionId !== session.id && (
                                 <DismissButton
-                                  tooltip="Remove session"
+                                  tooltip={
+                                    sessions.filter(s => !s.archived_at)
+                                      .length <= 1
+                                      ? 'Close worktree'
+                                      : 'Remove session'
+                                  }
                                   onClick={e => {
                                     e.stopPropagation()
-                                    handleArchiveSession(session.id)
+                                    const activeSessions = sessions.filter(
+                                      s => !s.archived_at,
+                                    )
+                                    if (activeSessions.length <= 1) {
+                                      const action = () => {
+                                        handleDeleteSession(session.id)
+                                        onClose()
+                                      }
+                                      if (
+                                        preferences?.confirm_session_close !==
+                                        false
+                                      ) {
+                                        pendingCloseAction.current = action
+                                        setCloseConfirmOpen(true)
+                                      } else {
+                                        action()
+                                      }
+                                    } else {
+                                      handleArchiveSession(session.id)
+                                    }
                                   }}
                                   className="ml-0.5 opacity-0 group-hover/tab:opacity-60 hover:!opacity-100"
                                   size="xs"
@@ -1076,18 +1109,20 @@ export function SessionChatModal({
             />
           )}
           {diffRequest && (
-            <GitDiffModal
-              diffRequest={diffRequest}
-              onClose={() => setDiffRequest(null)}
-              uncommittedStats={{
-                added: uncommittedAdded,
-                removed: uncommittedRemoved,
-              }}
-              branchStats={{
-                added: branchDiffAdded,
-                removed: branchDiffRemoved,
-              }}
-            />
+            <Suspense fallback={null}>
+              <GitDiffModal
+                diffRequest={diffRequest}
+                onClose={() => setDiffRequest(null)}
+                uncommittedStats={{
+                  added: uncommittedAdded,
+                  removed: uncommittedRemoved,
+                }}
+                branchStats={{
+                  added: branchDiffAdded,
+                  removed: branchDiffRemoved,
+                }}
+              />
+            </Suspense>
           )}
         </DialogContent>
         <LabelModal

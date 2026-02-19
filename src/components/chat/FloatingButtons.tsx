@@ -65,7 +65,7 @@ export const FloatingButtons = memo(function FloatingButtons({
           <button
             type="button"
             onClick={handleApprove}
-            className="flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-sm text-primary-foreground shadow-md transition-all hover:bg-primary/90"
+            className="flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-sm text-primary-foreground shadow-md transition-colors hover:bg-primary/90"
           >
             <Check className="h-3.5 w-3.5" />
             <span>Approve</span>
@@ -79,7 +79,7 @@ export const FloatingButtons = memo(function FloatingButtons({
           <button
             type="button"
             onClick={onScrollToFindings}
-            className="flex h-8 items-center gap-1.5 rounded-lg bg-muted/90 px-3 text-sm text-muted-foreground shadow-md backdrop-blur-sm transition-all hover:bg-muted hover:text-foreground"
+            className="flex h-8 items-center gap-1.5 rounded-lg bg-muted/90 px-3 text-sm text-muted-foreground shadow-md backdrop-blur-sm transition-colors hover:bg-muted hover:text-foreground"
           >
             <AlertCircle className="h-3.5 w-3.5" />
             <span>Findings</span>
@@ -90,7 +90,7 @@ export const FloatingButtons = memo(function FloatingButtons({
           <button
             type="button"
             onClick={onScrollToBottom}
-            className="flex h-8 items-center gap-1.5 rounded-lg bg-muted/90 px-3 text-sm text-muted-foreground shadow-md backdrop-blur-sm transition-all hover:bg-muted hover:text-foreground"
+            className="flex h-8 items-center gap-1.5 rounded-lg bg-muted/90 px-3 text-sm text-muted-foreground shadow-md backdrop-blur-sm transition-colors hover:bg-muted hover:text-foreground"
           >
             <ArrowDown className="h-3.5 w-3.5" />
             <span>Bottom</span>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react'
 import { useQueries } from '@tanstack/react-query'
 import { invoke } from '@/lib/transport'
 import { cn } from '@/lib/utils'
@@ -71,7 +71,11 @@ import { usePreferences, useSavePreferences } from '@/services/preferences'
 import { KeybindingHints } from '@/components/ui/keybinding-hints'
 import { DEFAULT_KEYBINDINGS, formatShortcutDisplay } from '@/types/keybindings'
 import { CloseWorktreeDialog } from '@/components/chat/CloseWorktreeDialog'
-import { GitDiffModal } from '@/components/chat/GitDiffModal'
+const GitDiffModal = lazy(() =>
+  import('@/components/chat/GitDiffModal').then(mod => ({
+    default: mod.GitDiffModal,
+  }))
+)
 import type { DiffRequest } from '@/types/git-diff'
 import { toast } from 'sonner'
 import { useTerminalStore } from '@/store/terminal-store'
@@ -273,15 +277,17 @@ function WorktreeSectionHeader({
           </span>
         )}
       </div>
-      <GitDiffModal
-        diffRequest={diffRequest}
-        onClose={() => setDiffRequest(null)}
-        uncommittedStats={{
-          added: uncommittedAdded,
-          removed: uncommittedRemoved,
-        }}
-        branchStats={{ added: branchDiffAdded, removed: branchDiffRemoved }}
-      />
+      <Suspense fallback={null}>
+        <GitDiffModal
+          diffRequest={diffRequest}
+          onClose={() => setDiffRequest(null)}
+          uncommittedStats={{
+            added: uncommittedAdded,
+            removed: uncommittedRemoved,
+          }}
+          branchStats={{ added: branchDiffAdded, removed: branchDiffRemoved }}
+        />
+      </Suspense>
     </>
   )
 }

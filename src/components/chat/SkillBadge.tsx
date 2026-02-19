@@ -1,7 +1,12 @@
 import { useState, useCallback } from 'react'
 import { Wand2, Loader2, X } from 'lucide-react'
 import { invoke } from '@/lib/transport'
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Markdown } from '@/components/ui/markdown'
 import { cn } from '@/lib/utils'
@@ -115,6 +120,9 @@ export function SkillBadge({ skill, onRemove, compact }: SkillBadgeProps) {
             <Wand2 className="h-4 w-4 text-purple-500" />
             Skill: {skill.name}
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            Preview of the skill definition for slash command {skill.name}.
+          </DialogDescription>
           <p className="text-xs text-muted-foreground truncate">{skill.path}</p>
           <ScrollArea className="h-[calc(85vh-6rem)] mt-2">
             {isLoading ? (

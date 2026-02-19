@@ -28,9 +28,9 @@ export function KeybindingHints({ hints, className }: KeybindingHintsProps) {
         className
       )}
     >
-      {hints.map((hint, index) => (
+      {hints.map(hint => (
         <div
-          key={index}
+          key={hint.shortcut}
           className="flex flex-col lg:flex-row items-center gap-0.5 lg:gap-1.5 text-xs text-muted-foreground"
         >
           <Kbd className="h-5 px-1.5 text-[11px]">

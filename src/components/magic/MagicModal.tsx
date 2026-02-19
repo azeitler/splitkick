@@ -28,6 +28,7 @@ import { useWorktree, useProjects } from '@/services/projects'
 import { useLoadedIssueContexts, useLoadedPRContexts } from '@/services/github'
 import { usePreferences } from '@/services/preferences'
 import { invoke } from '@/lib/transport'
+import { generateId } from '@/lib/uuid'
 import { openExternal } from '@/lib/platform'
 import { notify } from '@/lib/notifications'
 import { cn } from '@/lib/utils'
@@ -537,7 +538,40 @@ ${resolveInstructions}`
         }
         case 'review': {
           setWorktreeLoading(selectedWorktreeId, 'review')
-          const toastId = toast.loading(`Reviewing ${worktree.branch ?? ''}...`)
+          const projectName = project?.name ?? 'project'
+          const worktreeName = worktree.name ?? worktree.branch ?? ''
+          const reviewTarget = `${projectName}/${worktreeName}`
+          const reviewRunId = generateId()
+          let cancelRequested = false
+          const toastId = toast.loading(`Reviewing ${reviewTarget}...`, {
+            cancel: {
+              label: 'Cancel',
+              onClick: () => {
+                cancelRequested = true
+                toast.loading(`Cancelling review for ${reviewTarget}...`, {
+                  id: toastId,
+                })
+                invoke<boolean>('cancel_review_with_ai', { reviewRunId })
+                  .then(cancelled => {
+                    if (cancelled) {
+                      toast.info(`Review cancelled for ${reviewTarget}`, {
+                        id: toastId,
+                      })
+                    } else {
+                      toast.info(
+                        `No active review to cancel for ${reviewTarget}`,
+                        { id: toastId }
+                      )
+                    }
+                  })
+                  .catch(error => {
+                    toast.error(`Failed to cancel review: ${error}`, {
+                      id: toastId,
+                    })
+                  })
+              },
+            },
+          })
           try {
             const result = await invoke<ReviewResponse>('run_review_with_ai', {
               worktreePath: worktree.path,
@@ -548,6 +582,7 @@ ${resolveInstructions}`
                 'code_review_provider',
                 preferences?.default_provider
               ),
+              reviewRunId,
             })
 
             const newSession = await invoke<Session>('create_session', {
@@ -604,10 +639,8 @@ ${resolveInstructions}`
             })
 
             const findingCount = result.findings.length
-            const projectName = project?.name ?? ''
-            const worktreeName = worktree.name ?? worktree.branch ?? ''
             toast.success(
-              `Review done on ${projectName}/${worktreeName} (${findingCount} findings)`,
+              `Review done on ${reviewTarget} (${findingCount} findings)`,
               {
               id: toastId,
               action: {
@@ -634,7 +667,18 @@ ${resolveInstructions}`
               },
             })
           } catch (error) {
-            toast.error(`Review failed: ${error}`, { id: toastId })
+            const errorString = String(error)
+            const cancelled =
+              cancelRequested ||
+              errorString.toLowerCase().includes('cancelled') ||
+              errorString.toLowerCase().includes('canceled')
+            if (cancelled) {
+              toast.info(`Review cancelled for ${reviewTarget}`, {
+                id: toastId,
+              })
+            } else {
+              toast.error(`Review failed: ${error}`, { id: toastId })
+            }
           } finally {
             clearWorktreeLoading(selectedWorktreeId)
           }

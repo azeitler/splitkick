@@ -234,9 +234,9 @@ export function PermissionApproval({
           </CollapsibleTrigger>
           <CollapsibleContent>
             <div className="space-y-1 border-t border-border/30 px-4 py-3">
-              {approvedPatterns.map((pattern, i) => (
+              {approvedPatterns.map(pattern => (
                 <div
-                  key={i}
+                  key={pattern}
                   className="font-mono text-xs text-muted-foreground"
                 >
                   {pattern}

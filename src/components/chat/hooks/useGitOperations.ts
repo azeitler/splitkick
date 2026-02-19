@@ -3,6 +3,7 @@ import { invoke } from '@/lib/transport'
 import { openExternal } from '@/lib/platform'
 import type { QueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { generateId } from '@/lib/uuid'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
@@ -327,7 +328,37 @@ export function useGitOperations({
         useChatStore.getState()
       setWorktreeLoading(activeWorktreeId, 'review')
       const branch = worktree?.branch ?? ''
-      const toastId = toast.loading(`Reviewing ${branch}...`)
+      const projectName = project?.name ?? 'project'
+      const worktreeName = worktree?.name ?? branch
+      const reviewTarget = `${projectName}/${worktreeName}`
+      const reviewRunId = generateId()
+      let cancelRequested = false
+      const toastId = toast.loading(`Reviewing ${reviewTarget}...`, {
+        cancel: {
+          label: 'Cancel',
+          onClick: () => {
+            cancelRequested = true
+            toast.loading(`Cancelling review for ${reviewTarget}...`, {
+              id: toastId,
+            })
+            invoke<boolean>('cancel_review_with_ai', { reviewRunId })
+              .then(cancelled => {
+                if (cancelled) {
+                  toast.info(`Review cancelled for ${reviewTarget}`, {
+                    id: toastId,
+                  })
+                } else {
+                  toast.info(`No active review to cancel for ${reviewTarget}`, {
+                    id: toastId,
+                  })
+                }
+              })
+              .catch(error => {
+                toast.error(`Failed to cancel review: ${error}`, { id: toastId })
+              })
+          },
+        },
+      })
 
       try {
         const result = await invoke<ReviewResponse>('run_review_with_ai', {
@@ -339,6 +370,7 @@ export function useGitOperations({
             'code_review_provider',
             preferences?.default_provider
           ),
+          reviewRunId,
         })
 
         let targetSessionId: string
@@ -375,9 +407,6 @@ export function useGitOperations({
         })
 
         const findingCount = result.findings.length
-        const projectName = project?.name ?? ''
-        const worktreeName = worktree?.name ?? branch
-
         toast.success(
           `Review done on ${projectName}/${worktreeName} (${findingCount} findings)`,
           {
@@ -408,7 +437,16 @@ export function useGitOperations({
           }
         )
       } catch (error) {
-        toast.error(`Failed to review: ${error}`, { id: toastId })
+        const errorString = String(error)
+        const cancelled =
+          cancelRequested ||
+          errorString.toLowerCase().includes('cancelled') ||
+          errorString.toLowerCase().includes('canceled')
+        if (cancelled) {
+          toast.info(`Review cancelled for ${reviewTarget}`, { id: toastId })
+        } else {
+          toast.error(`Failed to review: ${error}`, { id: toastId })
+        }
       } finally {
         clearWorktreeLoading(activeWorktreeId)
       }

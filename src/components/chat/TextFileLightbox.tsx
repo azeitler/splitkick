@@ -1,7 +1,12 @@
 import { useState, useCallback } from 'react'
 import { FileText, Loader2 } from 'lucide-react'
 import { invoke } from '@/lib/transport'
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Markdown } from '@/components/ui/markdown'
 import type { ReadTextResponse } from '@/types/chat'
@@ -87,6 +92,9 @@ export function TextFileLightbox({ path, size }: TextFileLightboxProps) {
               </span>
             )}
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            Preview of text file content for {filename}.
+          </DialogDescription>
           <ScrollArea className="h-[calc(85vh-6rem)] mt-2">
             {isLoading ? (
               <div className="flex items-center justify-center py-8">

@@ -244,14 +244,22 @@ pub async fn dispatch_command(
             let model: Option<String> = from_field_opt(&args, "model")?;
             let custom_profile_name: Option<String> =
                 field_opt(&args, "customProfileName", "custom_profile_name")?;
+            let review_run_id: Option<String> =
+                field_opt(&args, "reviewRunId", "review_run_id")?;
             let result = crate::projects::run_review_with_ai(
                 app.clone(),
                 worktree_path,
                 magic_prompt,
                 model,
                 custom_profile_name,
+                review_run_id,
             )
             .await?;
+            to_value(result)
+        }
+        "cancel_review_with_ai" => {
+            let review_run_id: String = field(&args, "reviewRunId", "review_run_id")?;
+            let result = crate::projects::cancel_review_with_ai(review_run_id).await?;
             to_value(result)
         }
         "update_worktree_cached_status" => {

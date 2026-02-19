@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 import { useSessions, useCreateSession } from '@/services/chat'
@@ -19,7 +19,9 @@ import {
 } from '@/services/git-status'
 import { isBaseSession } from '@/types/projects'
 import { GitStatusBadges } from '@/components/ui/git-status-badges'
-import { GitDiffModal } from './GitDiffModal'
+const GitDiffModal = lazy(() =>
+  import('./GitDiffModal').then(mod => ({ default: mod.GitDiffModal }))
+)
 import type { DiffRequest } from '@/types/git-diff'
 import { toast } from 'sonner'
 import {
@@ -576,15 +578,17 @@ export function WorktreeCanvasView({
         />
       )}
 
-      <GitDiffModal
-        diffRequest={diffRequest}
-        onClose={() => setDiffRequest(null)}
-        uncommittedStats={{
-          added: uncommittedAdded,
-          removed: uncommittedRemoved,
-        }}
-        branchStats={{ added: branchDiffAdded, removed: branchDiffRemoved }}
-      />
+      <Suspense fallback={null}>
+        <GitDiffModal
+          diffRequest={diffRequest}
+          onClose={() => setDiffRequest(null)}
+          uncommittedStats={{
+            added: uncommittedAdded,
+            removed: uncommittedRemoved,
+          }}
+          branchStats={{ added: branchDiffAdded, removed: branchDiffRemoved }}
+        />
+      </Suspense>
 
       <CloseWorktreeDialog
         open={closeWorktreeDialogOpen}

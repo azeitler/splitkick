@@ -210,7 +210,7 @@ function IssueContent({ detail }: { detail: GitHubIssueDetail }) {
             </span>
           </div>
           {detail.comments.map((comment, i) => (
-            <CommentItem key={i} comment={comment} />
+            <CommentItem key={`comment-${comment.author.login}-${comment.created_at}-${i}`} comment={comment} />
           ))}
         </div>
       )}
@@ -297,7 +297,7 @@ function PRContent({ detail }: { detail: GitHubPullRequestDetail }) {
             </span>
           </div>
           {detail.reviews.map((review, i) => (
-            <ReviewItem key={i} review={review} />
+            <ReviewItem key={`review-${review.author.login}-${review.submittedAt ?? i}`} review={review} />
           ))}
         </div>
       )}
@@ -313,7 +313,7 @@ function PRContent({ detail }: { detail: GitHubPullRequestDetail }) {
             </span>
           </div>
           {detail.comments.map((comment, i) => (
-            <CommentItem key={i} comment={comment} />
+            <CommentItem key={`comment-${comment.author.login}-${comment.created_at}-${i}`} comment={comment} />
           ))}
         </div>
       )}

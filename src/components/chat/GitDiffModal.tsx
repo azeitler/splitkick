@@ -28,7 +28,12 @@ import {
   type DiffLineAnnotation,
   type FileDiffMetadata,
 } from '@pierre/diffs'
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { ModalCloseButton } from '@/components/ui/modal-close-button'
 import { cn } from '@/lib/utils'
@@ -927,6 +932,9 @@ export function GitDiffModal({
             <ModalCloseButton onClick={onClose} />
           </div>
         </DialogTitle>
+        <DialogDescription className="sr-only">
+          Review repository diffs, switch view modes, and add line comments.
+        </DialogDescription>
 
         {/* Comment bar - above sidebar and main content */}
         {hasFiles && (

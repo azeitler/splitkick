@@ -2,7 +2,12 @@ import { useState, useCallback } from 'react'
 import { X, FileText } from 'lucide-react'
 import { invoke } from '@/lib/transport'
 import type { PendingTextFile } from '@/types/chat'
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   Tooltip,
   TooltipTrigger,
@@ -119,6 +124,9 @@ export function TextFilePreview({
               ({openFile ? formatBytes(openFile.size) : ''})
             </span>
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            Preview of pending text file content before sending.
+          </DialogDescription>
           <ScrollArea className="h-[calc(85vh-6rem)] mt-2">
             {isMarkdownFile(openFile?.filename) ? (
               <div className="p-3 select-text cursor-text">

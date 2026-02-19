@@ -2,7 +2,12 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { FileText, Loader2, AlertCircle, Columns2, Rows3 } from 'lucide-react'
 import { FileDiff } from '@pierre/diffs/react'
 import { parsePatchFiles, type FileDiffMetadata } from '@pierre/diffs'
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { getGitDiff } from '@/services/git-status'
 import { useTheme } from '@/hooks/use-theme'
@@ -240,6 +245,10 @@ export function FileDiffModal({
             </Tooltip>
           </div>
         </DialogTitle>
+        <DialogDescription className="sr-only">
+          Shows git diff details for {displayFilename}, including additions,
+          deletions, and view mode controls.
+        </DialogDescription>
 
         {/* Content area */}
         <div className="flex-1 min-h-0 mt-2 overflow-y-auto">

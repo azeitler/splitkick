@@ -1,8 +1,11 @@
 use ignore::WalkBuilder;
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
 use std::process::Stdio;
+use std::sync::Mutex;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager};
@@ -28,6 +31,7 @@ use super::types::{
     WorktreePathExistsEvent, WorktreePermanentlyDeletedEvent, WorktreeUnarchivedEvent,
 };
 use crate::claude_cli::resolve_cli_binary;
+use crate::codex_cli::resolve_cli_binary as resolve_codex_cli_binary;
 use crate::gh_cli::config::resolve_gh_binary;
 use crate::http_server::EmitExt;
 use crate::platform::silent_command;
@@ -63,6 +67,21 @@ fn now() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
+}
+
+/// Registry of in-flight AI review process PIDs keyed by review_run_id.
+static REVIEW_PROCESS_REGISTRY: Lazy<Mutex<HashMap<String, u32>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+
+fn register_review_process(review_run_id: &str, pid: u32) {
+    REVIEW_PROCESS_REGISTRY
+        .lock()
+        .unwrap()
+        .insert(review_run_id.to_string(), pid);
+}
+
+fn take_review_process_pid(review_run_id: &str) -> Option<u32> {
+    REVIEW_PROCESS_REGISTRY.lock().unwrap().remove(review_run_id)
 }
 
 /// List all projects
@@ -4182,7 +4201,6 @@ fn generate_pr_content(
 
     // Write prompt to stdin
     {
-        let stdin = child.stdin.as_mut().ok_or("Failed to open stdin")?;
         let input_message = serde_json::json!({
             "type": "user",
             "message": {
@@ -4190,7 +4208,16 @@ fn generate_pr_content(
                 "content": prompt
             }
         });
-        writeln!(stdin, "{input_message}").map_err(|e| format!("Failed to write to stdin: {e}"))?;
+
+        let write_result = if let Some(stdin) = child.stdin.as_mut() {
+            writeln!(stdin, "{input_message}")
+        } else {
+            Err(std::io::Error::other("Failed to open stdin"))
+        };
+
+        if let Err(e) = write_result {
+            return Err(format!("Failed to write to stdin: {e}"));
+        }
     }
 
     let output = child
@@ -4943,6 +4970,163 @@ pub struct ReviewResponse {
     pub approval_status: String,
 }
 
+fn extract_codex_review_structured_output(output: &str) -> Result<String, String> {
+    let mut last_agent_message = None;
+
+    for line in output.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let parsed: serde_json::Value = match serde_json::from_str(line) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+
+        let event_type = parsed.get("type").and_then(|t| t.as_str()).unwrap_or("");
+
+        match event_type {
+            "item.completed" => {
+                if let Some(item) = parsed.get("item") {
+                    let item_type = item.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                    if item_type == "agent_message" {
+                        if let Some(text) = item.get("text").and_then(|t| t.as_str()) {
+                            last_agent_message = Some(text.to_string());
+                        }
+                        if let Some(content) = item.get("content").and_then(|c| c.as_array()) {
+                            for block in content {
+                                if block.get("type").and_then(|t| t.as_str()) == Some("text") {
+                                    if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
+                                        last_agent_message = Some(text.to_string());
+                                    }
+                                }
+                                if block.get("type").and_then(|t| t.as_str()) == Some("output_text")
+                                {
+                                    if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
+                                        if serde_json::from_str::<serde_json::Value>(text).is_ok() {
+                                            return Ok(text.to_string());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            "turn.completed" => {
+                if let Some(output_val) = parsed.get("output") {
+                    if !output_val.is_null() {
+                        return Ok(output_val.to_string());
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if let Some(msg) = last_agent_message {
+        if serde_json::from_str::<serde_json::Value>(&msg).is_ok() {
+            return Ok(msg);
+        }
+    }
+
+    Err("No structured output found in Codex response".to_string())
+}
+
+fn execute_codex_review(
+    app: &AppHandle,
+    prompt: &str,
+    model: &str,
+    working_dir: Option<&std::path::Path>,
+    review_run_id: Option<&str>,
+) -> Result<String, String> {
+    let cli_path = resolve_codex_cli_binary(app);
+    if !cli_path.exists() {
+        return Err("Codex CLI not installed".to_string());
+    }
+
+    let schema_file =
+        std::env::temp_dir().join(format!("jean-codex-review-schema-{}.json", std::process::id()));
+    std::fs::write(&schema_file, REVIEW_SCHEMA)
+        .map_err(|e| format!("Failed to write schema file: {e}"))?;
+
+    let mut cmd = crate::platform::silent_command(&cli_path);
+    cmd.args([
+        "exec",
+        "--json",
+        "--model",
+        model,
+        "--full-auto",
+        "--output-schema",
+    ]);
+    cmd.arg(&schema_file);
+    if let Some(dir) = working_dir {
+        cmd.arg("--cd");
+        cmd.arg(dir);
+        cmd.current_dir(dir);
+    } else {
+        cmd.arg("--skip-git-repo-check");
+    }
+    cmd.arg("-");
+    cmd.stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to spawn Codex CLI: {e}"))?;
+
+    if let Some(run_id) = review_run_id {
+        register_review_process(run_id, child.id());
+    }
+
+    let write_result = if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(prompt.as_bytes())
+    } else {
+        Err(std::io::Error::other("Failed to open stdin"))
+    };
+    if let Err(e) = write_result {
+        if let Some(run_id) = review_run_id {
+            let _ = take_review_process_pid(run_id);
+        }
+        let _ = std::fs::remove_file(&schema_file);
+        return Err(format!("Failed to write to stdin: {e}"));
+    }
+
+    let output_result = child.wait_with_output();
+    let cancelled = review_run_id
+        .map(|run_id| take_review_process_pid(run_id).is_none())
+        .unwrap_or(false);
+    let _ = std::fs::remove_file(&schema_file);
+
+    let output = match output_result {
+        Ok(output) => output,
+        Err(e) => {
+            if cancelled {
+                return Err("Review cancelled".to_string());
+            }
+            return Err(format!("Failed to wait for Codex CLI: {e}"));
+        }
+    };
+
+    if !output.status.success() {
+        if cancelled {
+            return Err("Review cancelled".to_string());
+        }
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        return Err(format!(
+            "Codex CLI failed (exit {}): stderr={}, stdout={}",
+            output.status,
+            stderr.trim(),
+            stdout.trim()
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    extract_codex_review_structured_output(&stdout)
+}
+
 /// Execute Claude CLI to generate a code review
 fn generate_review(
     app: &AppHandle,
@@ -4950,19 +5134,14 @@ fn generate_review(
     model: Option<&str>,
     custom_profile_name: Option<&str>,
     working_dir: Option<&std::path::Path>,
+    review_run_id: Option<&str>,
 ) -> Result<ReviewResponse, String> {
     let model_str = model.unwrap_or("haiku");
 
     // Route to Codex CLI if model is a Codex model
     if crate::is_codex_model(model_str) {
         log::trace!("Running code review with Codex CLI (output-schema)");
-        let json_str = crate::chat::codex::execute_one_shot_codex(
-            app,
-            prompt,
-            model_str,
-            REVIEW_SCHEMA,
-            working_dir,
-        )?;
+        let json_str = execute_codex_review(app, prompt, model_str, working_dir, review_run_id)?;
         return serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse Codex review JSON: {e}, content: {json_str}");
             format!("Failed to parse review: {e}")
@@ -5003,6 +5182,9 @@ fn generate_review(
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("Failed to spawn Claude CLI: {e}"))?;
+    if let Some(run_id) = review_run_id {
+        register_review_process(run_id, child.id());
+    }
 
     // Write prompt to stdin
     {
@@ -5017,11 +5199,24 @@ fn generate_review(
         writeln!(stdin, "{input_message}").map_err(|e| format!("Failed to write to stdin: {e}"))?;
     }
 
-    let output = child
-        .wait_with_output()
-        .map_err(|e| format!("Failed to wait for Claude CLI: {e}"))?;
+    let output_result = child.wait_with_output();
+    let cancelled = review_run_id
+        .map(|run_id| take_review_process_pid(run_id).is_none())
+        .unwrap_or(false);
+    let output = match output_result {
+        Ok(output) => output,
+        Err(e) => {
+            if cancelled {
+                return Err("Review cancelled".to_string());
+            }
+            return Err(format!("Failed to wait for Claude CLI: {e}"));
+        }
+    };
 
     if !output.status.success() {
+        if cancelled {
+            return Err("Review cancelled".to_string());
+        }
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
         return Err(format!(
@@ -5049,6 +5244,7 @@ pub async fn run_review_with_ai(
     custom_prompt: Option<String>,
     model: Option<String>,
     custom_profile_name: Option<String>,
+    review_run_id: Option<String>,
 ) -> Result<ReviewResponse, String> {
     log::trace!("Running AI code review for: {worktree_path}");
 
@@ -5175,6 +5371,7 @@ pub async fn run_review_with_ai(
         model.as_deref(),
         custom_profile_name.as_deref(),
         Some(std::path::Path::new(&worktree_path)),
+        review_run_id.as_deref(),
     )?;
 
     log::trace!(
@@ -5184,6 +5381,25 @@ pub async fn run_review_with_ai(
     );
 
     Ok(response)
+}
+
+/// Cancel a running AI review request by review_run_id.
+/// Returns true if a process was found and cancelled, false otherwise.
+#[tauri::command]
+pub async fn cancel_review_with_ai(review_run_id: String) -> Result<bool, String> {
+    let Some(pid) = take_review_process_pid(&review_run_id) else {
+        return Ok(false);
+    };
+
+    if pid == 0 || pid == 1 {
+        return Err(format!("Invalid PID: {pid}"));
+    }
+
+    if let Err(e) = crate::platform::kill_process(pid) {
+        return Err(format!("Failed to cancel review process {pid}: {e}"));
+    }
+
+    Ok(true)
 }
 
 /// Pull changes from remote origin for the specified base branch

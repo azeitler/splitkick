@@ -715,8 +715,8 @@ function getToolDisplay(toolCall: ToolCall): ToolDisplay {
           : undefined,
         expandedContent: items?.length ? (
           <div className="space-y-1">
-            {items.map((item, i) => (
-              <div key={i} className="flex items-center gap-1.5">
+            {items.map(item => (
+              <div key={item.text} className="flex items-center gap-1.5">
                 {item.completed ? (
                   <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-500" />
                 ) : (

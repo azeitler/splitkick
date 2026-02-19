@@ -477,7 +477,7 @@ Please apply all these fixes to the codebase.`
   return (
     <div className="relative flex h-full flex-col bg-background border-l">
       {/* Sidebar title bar */}
-      <div className="flex items-center justify-between border-b px-3 py-2">
+      <div className="flex items-center justify-between border-b px-4 py-2">
         <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
           Review
         </span>

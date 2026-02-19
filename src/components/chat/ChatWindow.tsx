@@ -5,6 +5,8 @@ import {
   useMemo,
   useRef,
   useState,
+  lazy,
+  Suspense,
 } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { invoke } from '@/lib/transport'
@@ -144,9 +146,17 @@ import type {
   SessionDigest,
 } from '@/types/chat'
 import type { DiffRequest } from '@/types/git-diff'
-import { GitDiffModal } from './GitDiffModal'
 import { FileDiffModal } from './FileDiffModal'
-import { LoadContextModal } from '../magic/LoadContextModal'
+
+// Lazy-loaded heavy modals (code splitting)
+const GitDiffModal = lazy(() =>
+  import('./GitDiffModal').then(mod => ({ default: mod.GitDiffModal }))
+)
+const LoadContextModal = lazy(() =>
+  import('../magic/LoadContextModal').then(mod => ({
+    default: mod.LoadContextModal,
+  }))
+)
 import {
   ResizablePanelGroup,
   ResizablePanel,
@@ -3040,7 +3050,7 @@ export function ChatWindow({
                             ref={formRef}
                             onSubmit={handleSubmit}
                             className={cn(
-                              'relative overflow-hidden border-t border-border bg-sidebar transition-all duration-150 sm:rounded-lg sm:border',
+                              'relative overflow-hidden border-t border-border bg-sidebar transition-[background-color,box-shadow] duration-150 sm:rounded-lg sm:border',
                               isDragging &&
                                 'ring-2 ring-primary ring-inset bg-primary/5'
                             )}
@@ -3315,17 +3325,19 @@ export function ChatWindow({
         />
 
         {/* Git diff modal for viewing diffs */}
-        <GitDiffModal
-          diffRequest={diffRequest}
-          onClose={() => setDiffRequest(null)}
-          onAddToPrompt={handleGitDiffAddToPrompt}
-          onExecutePrompt={handleGitDiffExecutePrompt}
-          uncommittedStats={{
-            added: uncommittedAdded,
-            removed: uncommittedRemoved,
-          }}
-          branchStats={{ added: branchDiffAdded, removed: branchDiffRemoved }}
-        />
+        <Suspense fallback={null}>
+          <GitDiffModal
+            diffRequest={diffRequest}
+            onClose={() => setDiffRequest(null)}
+            onAddToPrompt={handleGitDiffAddToPrompt}
+            onExecutePrompt={handleGitDiffExecutePrompt}
+            uncommittedStats={{
+              added: uncommittedAdded,
+              removed: uncommittedRemoved,
+            }}
+            branchStats={{ added: branchDiffAdded, removed: branchDiffRemoved }}
+          />
+        </Suspense>
 
         {/* Single file diff modal for viewing edited file changes */}
         <FileDiffModal
@@ -3335,14 +3347,16 @@ export function ChatWindow({
         />
 
         {/* Load Context modal for selecting saved contexts */}
-        <LoadContextModal
-          open={loadContextModalOpen}
-          onOpenChange={handleLoadContextModalChange}
-          worktreeId={activeWorktreeId}
-          worktreePath={activeWorktreePath ?? null}
-          activeSessionId={activeSessionId ?? null}
-          projectName={worktree?.name ?? 'unknown-project'}
-        />
+        <Suspense fallback={null}>
+          <LoadContextModal
+            open={loadContextModalOpen}
+            onOpenChange={handleLoadContextModalChange}
+            worktreeId={activeWorktreeId}
+            worktreePath={activeWorktreePath ?? null}
+            activeSessionId={activeSessionId ?? null}
+            projectName={worktree?.name ?? 'unknown-project'}
+          />
+        </Suspense>
 
         {/* Plan dialog - editable view of latest plan */}
         {isPlanDialogOpen &&

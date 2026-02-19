@@ -136,7 +136,7 @@ export function InstallingState({ cliName, progress }: InstallingStateProps) {
       {/* Progress bar */}
       <div className="w-full bg-secondary rounded-full h-2">
         <div
-          className="bg-primary h-2 rounded-full transition-all duration-300"
+          className="bg-primary h-2 rounded-full transition-[width] duration-300"
           style={{ width: `${percent}%` }}
         />
       </div>

@@ -162,9 +162,9 @@ function FeatureTourDialogContent() {
         <DialogHeader>
           {/* Step dots */}
           <div className="flex items-center justify-center gap-1.5 mb-2">
-            {steps.map((_, i) => (
+            {steps.map((s, i) => (
               <button
-                key={i}
+                key={s.title}
                 type="button"
                 onClick={() => setStepIndex(i)}
                 className={`size-2 rounded-full transition-colors cursor-pointer hover:bg-primary/70 ${
@@ -182,9 +182,9 @@ function FeatureTourDialogContent() {
         </DialogHeader>
 
         <div className="min-h-[300px] py-3 space-y-2">
-          {step.shortcuts.map((item, i) => (
+          {step.shortcuts.map(item => (
             <div
-              key={i}
+              key={item.shortcut}
               className="flex items-center gap-3 rounded-md border border-border/50 bg-muted/30 px-3 py-2.5"
             >
               <Kbd className="h-6 min-w-8 shrink-0 px-2 text-xs font-medium">

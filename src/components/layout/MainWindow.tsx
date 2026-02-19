@@ -1,11 +1,10 @@
-import { useMemo, useCallback, useRef, useEffect, useState } from 'react'
+import { useMemo, useCallback, useRef, useEffect, useState, lazy, Suspense } from 'react'
 import { TitleBar } from '@/components/titlebar/TitleBar'
 import { DevModeBanner } from './DevModeBanner'
 import { LeftSideBar } from './LeftSideBar'
 import { SidebarWidthProvider } from './SidebarWidthContext'
 import { MainWindowContent } from './MainWindowContent'
 import { CommandPalette } from '@/components/command-palette/CommandPalette'
-import { PreferencesDialog } from '@/components/preferences/PreferencesDialog'
 import { ProjectSettingsDialog } from '@/components/projects/ProjectSettingsDialog'
 import { CommitModal } from '@/components/commit/CommitModal'
 import { OnboardingDialog } from '@/components/onboarding/OnboardingDialog'
@@ -15,19 +14,46 @@ import { CliUpdateModal } from '@/components/layout/CliUpdateModal'
 import { UpdateAvailableModal } from '@/components/layout/UpdateAvailableModal'
 import { CliLoginModal } from '@/components/preferences/CliLoginModal'
 import { OpenInModal } from '@/components/open-in/OpenInModal'
-import { WorkflowRunsModal } from '@/components/shared/WorkflowRunsModal'
-import { MagicModal } from '@/components/magic/MagicModal'
 import { RemotePickerModal } from '@/components/magic/RemotePickerModal'
-import { ReleaseNotesDialog } from '@/components/magic/ReleaseNotesDialog'
 import { UpdatePrDialog } from '@/components/magic/UpdatePrDialog'
-import { NewWorktreeModal } from '@/components/worktree/NewWorktreeModal'
 import { SessionBoardModal } from '@/components/session-board'
 import { AddProjectDialog } from '@/components/projects/AddProjectDialog'
 import { GitInitModal } from '@/components/projects/GitInitModal'
 import { QuitConfirmationDialog } from './QuitConfirmationDialog'
 import { CloseWorktreeDialog } from '@/components/chat/CloseWorktreeDialog'
 import { BranchConflictDialog } from '@/components/worktree/BranchConflictDialog'
-import { ArchivedModal } from '@/components/archive/ArchivedModal'
+
+// Lazy-loaded heavy modals (code splitting)
+const PreferencesDialog = lazy(() =>
+  import('@/components/preferences/PreferencesDialog').then(mod => ({
+    default: mod.PreferencesDialog,
+  }))
+)
+const NewWorktreeModal = lazy(() =>
+  import('@/components/worktree/NewWorktreeModal').then(mod => ({
+    default: mod.NewWorktreeModal,
+  }))
+)
+const ArchivedModal = lazy(() =>
+  import('@/components/archive/ArchivedModal').then(mod => ({
+    default: mod.ArchivedModal,
+  }))
+)
+const ReleaseNotesDialog = lazy(() =>
+  import('@/components/magic/ReleaseNotesDialog').then(mod => ({
+    default: mod.ReleaseNotesDialog,
+  }))
+)
+const WorkflowRunsModal = lazy(() =>
+  import('@/components/shared/WorkflowRunsModal').then(mod => ({
+    default: mod.WorkflowRunsModal,
+  }))
+)
+const MagicModal = lazy(() =>
+  import('@/components/magic/MagicModal').then(mod => ({
+    default: mod.MagicModal,
+  }))
+)
 import { Toaster } from '@/components/ui/sonner'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
@@ -253,7 +279,9 @@ export function MainWindow() {
 
       {/* Global UI Components (hidden until triggered) */}
       <CommandPalette />
-      <PreferencesDialog />
+      <Suspense fallback={null}>
+        <PreferencesDialog />
+      </Suspense>
       <ProjectSettingsDialog />
       <CommitModal />
       <OnboardingDialog />
@@ -263,19 +291,29 @@ export function MainWindow() {
       <UpdateAvailableModal />
       <CliLoginModal />
       <OpenInModal />
-      <WorkflowRunsModal />
-      <MagicModal />
+      <Suspense fallback={null}>
+        <WorkflowRunsModal />
+      </Suspense>
+      <Suspense fallback={null}>
+        <MagicModal />
+      </Suspense>
       <RemotePickerModal />
-      <ReleaseNotesDialog />
+      <Suspense fallback={null}>
+        <ReleaseNotesDialog />
+      </Suspense>
       <UpdatePrDialog />
-      <NewWorktreeModal />
+      <Suspense fallback={null}>
+        <NewWorktreeModal />
+      </Suspense>
       <SessionBoardModal />
       <AddProjectDialog />
       <GitInitModal />
-      <ArchivedModal
-        open={archivedModalOpen}
-        onOpenChange={setArchivedModalOpen}
-      />
+      <Suspense fallback={null}>
+        <ArchivedModal
+          open={archivedModalOpen}
+          onOpenChange={setArchivedModalOpen}
+        />
+      </Suspense>
       <CloseWorktreeDialog
         open={closeConfirmOpen}
         onOpenChange={setCloseConfirmOpen}
