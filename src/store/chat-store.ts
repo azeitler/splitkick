@@ -90,9 +90,6 @@ interface ChatUIState {
   // Thinking level per session (defaults to 'off')
   thinkingLevels: Record<string, ThinkingLevel>
 
-  // Manual thinking override per session (true if user changed thinking while in build/yolo)
-  manualThinkingOverrides: Record<string, boolean>
-
   // Effort level per session (for Opus 4.6 adaptive thinking)
   effortLevels: Record<string, EffortLevel>
 
@@ -305,9 +302,6 @@ interface ChatUIState {
   // Actions - Thinking level (session-based)
   setThinkingLevel: (sessionId: string, level: ThinkingLevel) => void
   getThinkingLevel: (sessionId: string) => ThinkingLevel
-  setManualThinkingOverride: (sessionId: string, override: boolean) => void
-  hasManualThinkingOverride: (sessionId: string) => boolean
-
   // Actions - Effort level (session-based, for Opus 4.6 adaptive thinking)
   setEffortLevel: (sessionId: string, level: EffortLevel) => void
   getEffortLevel: (sessionId: string) => EffortLevel
@@ -520,7 +514,6 @@ export const useChatStore = create<ChatUIState>()(
       inputDrafts: {},
       executionModes: {},
       thinkingLevels: {},
-      manualThinkingOverrides: {},
       effortLevels: {},
       selectedBackends: {},
       selectedModels: {},
@@ -1165,21 +1158,6 @@ export const useChatStore = create<ChatUIState>()(
         ),
 
       getThinkingLevel: sessionId => get().thinkingLevels[sessionId] ?? 'off',
-
-      setManualThinkingOverride: (sessionId, override) =>
-        set(
-          state => ({
-            manualThinkingOverrides: {
-              ...state.manualThinkingOverrides,
-              [sessionId]: override,
-            },
-          }),
-          undefined,
-          'setManualThinkingOverride'
-        ),
-
-      hasManualThinkingOverride: sessionId =>
-        get().manualThinkingOverrides[sessionId] ?? false,
 
       // Effort level (session-based, for Opus 4.6 adaptive thinking)
       setEffortLevel: (sessionId, level) =>
@@ -1920,8 +1898,6 @@ export const useChatStore = create<ChatUIState>()(
             const { [sessionId]: _submitted, ...restSubmitted } =
               state.submittedAnswers
             const { [sessionId]: _fixed, ...restFixed } = state.fixedFindings
-            const { [sessionId]: _manual, ...restManual } =
-              state.manualThinkingOverrides
             const { [sessionId]: _effort, ...restEffort } = state.effortLevels
             const { [sessionId]: _mcp, ...restMcp } = state.enabledMcpServers
             const { [sessionId]: _label, ...restLabels } = state.sessionLabels
@@ -1935,7 +1911,6 @@ export const useChatStore = create<ChatUIState>()(
               answeredQuestions: restAnswered,
               submittedAnswers: restSubmitted,
               fixedFindings: restFixed,
-              manualThinkingOverrides: restManual,
               effortLevels: restEffort,
               enabledMcpServers: restMcp,
               sessionLabels: restLabels,

@@ -724,23 +724,6 @@ export const GeneralPane: React.FC = () => {
           </InlineField>
 
           <InlineField
-            label="Thinking in plan mode only"
-            description="Disable thinking in build/yolo for faster iteration"
-          >
-            <Switch
-              checked={preferences?.disable_thinking_in_non_plan_modes ?? true}
-              onCheckedChange={checked => {
-                if (preferences) {
-                  savePreferences.mutate({
-                    ...preferences,
-                    disable_thinking_in_non_plan_modes: checked,
-                  })
-                }
-              }}
-            />
-          </InlineField>
-
-          <InlineField
             label="Chrome browser integration"
             description="Enable browser automation via Chrome extension"
           >
@@ -864,7 +847,7 @@ export const GeneralPane: React.FC = () => {
           {isNativeApp() && (
             <InlineField label="Editor" description="App to open worktrees in">
               <Select
-                value={preferences?.editor ?? 'vscode'}
+                value={preferences?.editor ?? 'zed'}
                 onValueChange={handleEditorChange}
               >
                 <SelectTrigger>

@@ -16,6 +16,7 @@ interface CloseWorktreeDialogProps {
   onOpenChange: (open: boolean) => void
   onConfirm: () => void
   branchName?: string
+  mode?: 'worktree' | 'session'
 }
 
 export function CloseWorktreeDialog({
@@ -23,9 +24,44 @@ export function CloseWorktreeDialog({
   onOpenChange,
   onConfirm,
   branchName,
+  mode = 'worktree',
+}: CloseWorktreeDialogProps) {
+  if (!open) return null
+
+  return (
+    <CloseWorktreeDialogContent
+      open={open}
+      onOpenChange={onOpenChange}
+      onConfirm={onConfirm}
+      branchName={branchName}
+      mode={mode}
+    />
+  )
+}
+
+function CloseWorktreeDialogContent({
+  open,
+  onOpenChange,
+  onConfirm,
+  branchName,
+  mode = 'worktree',
 }: CloseWorktreeDialogProps) {
   const { data: preferences } = usePreferences()
   const isDelete = (preferences?.removal_behavior ?? 'delete') === 'delete'
+  const isSession = mode === 'session'
+  const title = isSession
+    ? isDelete
+      ? 'Delete session?'
+      : 'Archive session?'
+    : isDelete
+      ? 'Delete worktree?'
+      : 'Archive & close worktree?'
+
+  const description = isSession
+    ? `This will ${isDelete ? 'permanently delete' : 'archive'} this session.`
+    : branchName
+      ? `This will ${isDelete ? 'permanently delete' : 'archive and close'} the "${branchName}" worktree and all its sessions.`
+      : `This will ${isDelete ? 'permanently delete' : 'archive and close'} the worktree and all its sessions.`
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -40,16 +76,10 @@ export function CloseWorktreeDialog({
         }}
       >
         <AlertDialogHeader>
-          <AlertDialogTitle>
-            {isDelete ? 'Delete worktree?' : 'Archive & close worktree?'}
-          </AlertDialogTitle>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div className="space-y-2">
-              <p>
-                {branchName
-                  ? `This will ${isDelete ? 'permanently delete' : 'archive and close'} the "${branchName}" worktree and all its sessions.`
-                  : `This will ${isDelete ? 'permanently delete' : 'archive and close'} the worktree and all its sessions.`}
-              </p>
+              <p>{description}</p>
               {isDelete && (
                 <p className="text-xs text-muted-foreground">
                   Removal behavior is set to delete.{' '}

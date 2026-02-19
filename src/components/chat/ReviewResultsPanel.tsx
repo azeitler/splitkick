@@ -385,24 +385,25 @@ Please apply this fix to the file.`
   )
 
   // Handle fixing all unfixed findings - auto-sends fix message in same session
-  const handleFixAll = useCallback(async (executionMode: 'plan' | 'yolo') => {
-    const { activeWorktreeId, activeWorktreePath } = useChatStore.getState()
-    if (!reviewResults || !activeWorktreePath || !activeWorktreeId) return
+  const handleFixAll = useCallback(
+    async (executionMode: 'plan' | 'yolo') => {
+      const { activeWorktreeId, activeWorktreePath } = useChatStore.getState()
+      if (!reviewResults || !activeWorktreePath || !activeWorktreeId) return
 
-    setIsFixingAll(true)
+      setIsFixingAll(true)
 
-    try {
-      // Get unfixed, fixable findings
-      const unfixedFindings = reviewResults.findings
-        .map((finding, index) => ({ finding, index }))
-        .filter(
-          ({ finding, index }) =>
-            finding.severity !== 'praise' && !isFindingFixed(finding, index)
-        )
+      try {
+        // Get unfixed, fixable findings
+        const unfixedFindings = reviewResults.findings
+          .map((finding, index) => ({ finding, index }))
+          .filter(
+            ({ finding, index }) =>
+              finding.severity !== 'praise' && !isFindingFixed(finding, index)
+          )
 
-      if (unfixedFindings.length === 0) return
+        if (unfixedFindings.length === 0) return
 
-      const message = `Fix the following ${unfixedFindings.length} code review findings:
+        const message = `Fix the following ${unfixedFindings.length} code review findings:
 
 ${unfixedFindings
   .map(
@@ -421,30 +422,32 @@ ${finding.suggestion ?? '(Please determine the best fix)'}
 
 Please apply all these fixes to the codebase.`
 
-      const { markReviewFindingFixed } = useChatStore.getState()
+        const { markReviewFindingFixed } = useChatStore.getState()
 
-      // Mark all as fixed
-      for (const { finding, index } of unfixedFindings) {
-        const findingKey = getReviewFindingKey(finding, index)
-        markReviewFindingFixed(sessionId, findingKey)
+        // Mark all as fixed
+        for (const { finding, index } of unfixedFindings) {
+          const findingKey = getReviewFindingKey(finding, index)
+          markReviewFindingFixed(sessionId, findingKey)
+        }
+
+        // Dispatch event to send fix message in same session
+        window.dispatchEvent(
+          new CustomEvent('review-fix-message', {
+            detail: {
+              sessionId,
+              worktreeId: activeWorktreeId,
+              worktreePath: activeWorktreePath,
+              message,
+              executionMode,
+            },
+          })
+        )
+      } finally {
+        setIsFixingAll(false)
       }
-
-      // Dispatch event to send fix message in same session
-      window.dispatchEvent(
-        new CustomEvent('review-fix-message', {
-          detail: {
-            sessionId,
-            worktreeId: activeWorktreeId,
-            worktreePath: activeWorktreePath,
-            message,
-            executionMode,
-          },
-        })
-      )
-    } finally {
-      setIsFixingAll(false)
-    }
-  }, [reviewResults, sessionId, isFindingFixed])
+    },
+    [reviewResults, sessionId, isFindingFixed]
+  )
 
   if (!reviewResults) {
     return <EmptyState />
@@ -485,12 +488,14 @@ Please apply all these fixes to the codebase.`
       </div>
       {/* Header with summary */}
       <div className="border-b p-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 mb-2">
+        <div className="space-y-3">
+          <div className="rounded-lg border bg-muted/20 p-3">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
               <div
                 className={cn(
-                  'flex items-center gap-1.5 rounded-full px-2.5 py-1'
+                  'flex items-center gap-1.5 rounded-full px-2.5 py-1',
+                  approvalConfig.label === 'Changes Requested' &&
+                    'bg-yellow-500/10'
                 )}
               >
                 <ApprovalIcon className={cn('h-4 w-4', approvalConfig.color)} />
@@ -508,53 +513,62 @@ Please apply all these fixes to the codebase.`
                   {fixedCount} fixed
                 </Badge>
               )}
+              {unfixedCount > 0 && (
+                <Badge
+                  variant="outline"
+                  className="text-amber-500 border-amber-500"
+                >
+                  {unfixedCount} remaining
+                </Badge>
+              )}
             </div>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm leading-6 text-muted-foreground">
               {reviewResults.summary}
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            {/* Fix All buttons */}
-            {unfixedCount > 0 && (
-              <div className="flex items-center gap-2">
-                <Button
-                  onClick={() => handleFixAll('plan')}
-                  disabled={isFixingAll}
-                  size="sm"
-                >
-                  {isFixingAll ? (
-                    <>
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      Fixing...
-                    </>
-                  ) : (
-                    <>
-                      <Wrench className="h-3.5 w-3.5" />
-                      Fix all ({unfixedCount})
-                    </>
-                  )}
-                </Button>
-                <Button
-                  onClick={() => handleFixAll('yolo')}
-                  disabled={isFixingAll}
-                  size="sm"
-                  variant="destructive"
-                >
-                  {isFixingAll ? (
-                    <>
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      Fixing...
-                    </>
-                  ) : (
-                    <>
-                      <Wrench className="h-3.5 w-3.5" />
-                      Fix all (yolo) ({unfixedCount})
-                    </>
-                  )}
-                </Button>
-              </div>
-            )}
-          </div>
+
+          {/* Fix All buttons */}
+          {unfixedCount > 0 && (
+            <div className="grid grid-cols-1 gap-2">
+              <Button
+                onClick={() => handleFixAll('plan')}
+                disabled={isFixingAll}
+                size="sm"
+                className="justify-start"
+              >
+                {isFixingAll ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Fixing...
+                  </>
+                ) : (
+                  <>
+                    <Wrench className="h-3.5 w-3.5" />
+                    Fix all ({unfixedCount})
+                  </>
+                )}
+              </Button>
+              <Button
+                onClick={() => handleFixAll('yolo')}
+                disabled={isFixingAll}
+                size="sm"
+                variant="destructive"
+                className="justify-start"
+              >
+                {isFixingAll ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Fixing...
+                  </>
+                ) : (
+                  <>
+                    <Wrench className="h-3.5 w-3.5" />
+                    Auto-fix all (yolo) ({unfixedCount})
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Finding counts */}

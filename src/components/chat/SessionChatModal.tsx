@@ -1105,6 +1105,7 @@ export function SessionChatModal({
         onOpenChange={setCloseConfirmOpen}
         onConfirm={executeCloseAction}
         branchName={worktree?.branch}
+        mode={sessions.filter(s => !s.archived_at).length > 1 ? 'session' : 'worktree'}
       />
     </>
   )

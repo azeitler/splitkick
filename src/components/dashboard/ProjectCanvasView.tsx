@@ -640,6 +640,15 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       const targetSession = targetSessionId
         ? sessionData.sessions.find(s => s.id === targetSessionId)
         : sessionData.sessions[0]
+
+      // If requested session hasn't arrived in this query yet, re-queue and retry later.
+      if (targetSessionId && !targetSession) {
+        useUIStore
+          .getState()
+          .markWorktreeForAutoOpenSession(worktreeId, targetSessionId)
+        continue
+      }
+
       if (worktree && targetSession) {
         // Find the index in flatCards for keyboard selection
         const cardIndex = flatCards.findIndex(
@@ -798,28 +807,24 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     }
   }, [selectedIndex, syncSelectionToStore])
 
-  // Cancel running session via Cmd+Alt+Backspace / Ctrl+Alt+Backspace
+  // Cancel running session via cancel-prompt event (dispatched by centralized keybinding system)
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (
-        e.key === 'Backspace' &&
-        (e.metaKey || e.ctrlKey) &&
-        e.altKey &&
-        selectedFlatCard?.card
-      ) {
-        const sessionId = selectedFlatCard.card.session.id
-        const worktreeId = selectedFlatCard.worktreeId
-        const isSending =
-          useChatStore.getState().sendingSessionIds[sessionId] ?? false
-        if (isSending) {
-          e.preventDefault()
-          cancelChatMessage(sessionId, worktreeId)
-        }
+    const handleCancelPrompt = () => {
+      // Skip when session modal is open — ChatWindow handles it in that case
+      if (useUIStore.getState().sessionChatModalOpen) return
+
+      if (!selectedFlatCard?.card) return
+      const sessionId = selectedFlatCard.card.session.id
+      const worktreeId = selectedFlatCard.worktreeId
+      const isSending =
+        useChatStore.getState().sendingSessionIds[sessionId] ?? false
+      if (isSending) {
+        cancelChatMessage(sessionId, worktreeId)
       }
     }
 
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
+    window.addEventListener('cancel-prompt', handleCancelPrompt)
+    return () => window.removeEventListener('cancel-prompt', handleCancelPrompt)
   }, [selectedFlatCard])
 
   // Get selected card for shortcut events

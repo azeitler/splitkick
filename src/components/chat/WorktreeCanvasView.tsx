@@ -248,6 +248,15 @@ export function WorktreeCanvasView({
     const targetSession = autoOpen.sessionId
       ? sessionsData.sessions.find(s => s.id === autoOpen.sessionId)
       : sessionsData.sessions[0]
+
+    // If the requested session isn't in cache yet, re-queue and wait for next refresh.
+    if (autoOpen.sessionId && !targetSession) {
+      useUIStore
+        .getState()
+        .markWorktreeForAutoOpenSession(worktreeId, autoOpen.sessionId)
+      return
+    }
+
     if (targetSession) {
       setSelectedSessionId(targetSession.id)
     }

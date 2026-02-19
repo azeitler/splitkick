@@ -29,7 +29,6 @@ describe('ChatStore', () => {
       inputDrafts: {},
       executionModes: {},
       thinkingLevels: {},
-      manualThinkingOverrides: {},
       selectedModels: {},
       answeredQuestions: {},
       submittedAnswers: {},
@@ -337,15 +336,6 @@ describe('ChatStore', () => {
       expect(getThinkingLevel('session-1')).toBe('think')
     })
 
-    it('tracks manual thinking override', () => {
-      const { setManualThinkingOverride, hasManualThinkingOverride } =
-        useChatStore.getState()
-
-      expect(hasManualThinkingOverride('session-1')).toBe(false)
-
-      setManualThinkingOverride('session-1', true)
-      expect(hasManualThinkingOverride('session-1')).toBe(true)
-    })
   })
 
   describe('question answering', () => {
@@ -394,7 +384,6 @@ describe('ChatStore', () => {
       provider: null,
       executionMode: 'plan',
       thinkingLevel: 'off',
-      disableThinkingForMode: false,
       queuedAt: Date.now(),
     })
 
@@ -552,7 +541,6 @@ describe('ChatStore', () => {
         { questionIndex: 0, selectedOptions: [0] },
       ])
       store.markFindingFixed('session-1', 'finding-1')
-      store.setManualThinkingOverride('session-1', true)
 
       store.clearSessionState('session-1')
 
@@ -563,7 +551,6 @@ describe('ChatStore', () => {
       expect(store.isWaitingForInput('session-1')).toBe(false)
       expect(store.isQuestionAnswered('session-1', 'q1')).toBe(false)
       expect(store.isFindingFixed('session-1', 'finding-1')).toBe(false)
-      expect(store.hasManualThinkingOverride('session-1')).toBe(false)
     })
   })
 

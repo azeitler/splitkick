@@ -161,7 +161,6 @@ export function usePlanApproval({
         model,
         executionMode: 'build',
         thinkingLevel,
-        disableThinkingForMode: true,
         customProfileName: card.session.selected_provider ?? undefined,
       })
     },
@@ -284,7 +283,6 @@ export function usePlanApproval({
         model,
         executionMode: 'yolo',
         thinkingLevel,
-        disableThinkingForMode: true,
         customProfileName: card.session.selected_provider ?? undefined,
       })
     },

@@ -1109,7 +1109,6 @@ pub async fn send_chat_message(
     execution_mode: Option<String>,
     thinking_level: Option<ThinkingLevel>,
     effort_level: Option<EffortLevel>,
-    disable_thinking_for_mode: Option<bool>,
     parallel_execution_prompt: Option<String>,
     ai_language: Option<String>,
     allowed_tools: Option<Vec<String>>,
@@ -1118,7 +1117,7 @@ pub async fn send_chat_message(
     custom_profile_name: Option<String>,
     backend: Option<String>,
 ) -> Result<ChatMessage, String> {
-    log::trace!("Sending chat message for session: {session_id}, worktree: {worktree_id}, model: {model:?}, execution_mode: {execution_mode:?}, thinking: {thinking_level:?}, effort: {effort_level:?}, disable_thinking_for_mode: {disable_thinking_for_mode:?}, allowed_tools: {allowed_tools:?}");
+    log::trace!("Sending chat message for session: {session_id}, worktree: {worktree_id}, model: {model:?}, execution_mode: {execution_mode:?}, thinking: {thinking_level:?}, effort: {effort_level:?}, allowed_tools: {allowed_tools:?}");
 
     // Validate inputs
     if message.trim().is_empty() {
@@ -1338,9 +1337,6 @@ pub async fn send_chat_message(
     // Write input file with the user message
     run_log::write_input_file(&app, &session_id, &run_id, &message)?;
 
-    // Use passed parameter for thinking override (computed by frontend based on preference + manual override)
-    let disable_thinking_in_non_plan_modes = disable_thinking_for_mode.unwrap_or(false);
-
     // Use passed parameter for parallel execution prompt (None = disabled)
     let parallel_execution_prompt = parallel_execution_prompt.filter(|p| !p.trim().is_empty());
 
@@ -1444,7 +1440,6 @@ pub async fn send_chat_message(
                         thread_thinking_level.as_ref(),
                         thread_effort_level.as_ref(),
                         thread_allowed_tools.as_deref(),
-                        disable_thinking_in_non_plan_modes,
                         thread_parallel_prompt.as_deref(),
                         thread_ai_language.as_deref(),
                         thread_mcp_config.as_deref(),
@@ -1597,7 +1592,9 @@ pub async fn send_chat_message(
 \n\
 ## Not Plan Mode\n\
 \n\
-- After each finished task, please write a few bullet points on how to test the changes.";
+- After each finished task, please write a few bullet points on how to test the changes.\n\
+- When multiple independent operations are needed, batch them into parallel tool calls. Launch independent Task sub-agents simultaneously rather than sequentially.\n\
+- When specifying subagent_type for Task tool calls, always use the fully qualified name exactly as listed in the system prompt (e.g., \"code-simplifier:code-simplifier\", not just \"code-simplifier\"). If the agent type contains a colon, include the full namespace:name string.";
 
                     let mut system_prompt_parts: Vec<String> = Vec::new();
 
@@ -2755,15 +2752,16 @@ pub async fn write_file_content(path: String, content: String) -> Result<(), Str
 
 /// Open a file in the user's preferred editor
 ///
-/// Uses the editor preference (vscode, cursor, xcode) to open files.
+/// Uses the editor preference (zed, vscode, cursor, xcode) to open files.
 #[tauri::command]
 pub async fn open_file_in_default_app(path: String, editor: Option<String>) -> Result<(), String> {
-    let editor_app = editor.unwrap_or_else(|| "vscode".to_string());
+    let editor_app = editor.unwrap_or_else(|| "zed".to_string());
     log::trace!("Opening file in {editor_app}: {path}");
 
     #[cfg(target_os = "macos")]
     {
         let result = match editor_app.as_str() {
+            "zed" => std::process::Command::new("zed").arg(&path).spawn(),
             "cursor" => std::process::Command::new("cursor").arg(&path).spawn(),
             "xcode" => std::process::Command::new("xed").arg(&path).spawn(),
             _ => std::process::Command::new("code").arg(&path).spawn(),
@@ -2775,6 +2773,7 @@ pub async fn open_file_in_default_app(path: String, editor: Option<String>) -> R
     #[cfg(target_os = "windows")]
     {
         let result = match editor_app.as_str() {
+            "zed" => std::process::Command::new("zed").arg(&path).spawn(),
             "cursor" => std::process::Command::new("cursor").arg(&path).spawn(),
             _ => std::process::Command::new("code").arg(&path).spawn(),
         };
@@ -2785,6 +2784,7 @@ pub async fn open_file_in_default_app(path: String, editor: Option<String>) -> R
     #[cfg(target_os = "linux")]
     {
         let result = match editor_app.as_str() {
+            "zed" => std::process::Command::new("zed").arg(&path).spawn(),
             "cursor" => std::process::Command::new("cursor").arg(&path).spawn(),
             _ => std::process::Command::new("code").arg(&path).spawn(),
         };
@@ -3128,7 +3128,7 @@ Format as clean markdown. Be concise but capture reasoning.
 </conversation>"#;
 
 /// JSON schema for structured context summarization output
-const CONTEXT_SUMMARY_SCHEMA: &str = r#"{"type":"object","properties":{"summary":{"type":"string","description":"The markdown context summary including main goal, key decisions with rationale, trade-offs considered, problems solved, current state, unresolved questions, key files/patterns, and next steps"},"slug":{"type":"string","description":"A 2-4 word lowercase hyphenated slug describing the main topic (e.g. implement-magic-commands, fix-auth-bug)"}},"required":["summary","slug"]}"#;
+const CONTEXT_SUMMARY_SCHEMA: &str = r#"{"type":"object","properties":{"summary":{"type":"string","description":"The markdown context summary including main goal, key decisions with rationale, trade-offs considered, problems solved, current state, unresolved questions, key files/patterns, and next steps"},"slug":{"type":"string","description":"A 2-4 word lowercase hyphenated slug describing the main topic (e.g. implement-magic-commands, fix-auth-bug)"}},"required":["summary","slug"],"additionalProperties":false}"#;
 
 /// Format chat messages into a conversation history string for summarization
 fn format_messages_for_summary(messages: &[ChatMessage]) -> String {
@@ -3829,7 +3829,7 @@ pub async fn check_resumable_sessions(
 // ============================================================================
 
 /// JSON schema for session digest response
-const SESSION_DIGEST_SCHEMA: &str = r#"{"type":"object","properties":{"chat_summary":{"type":"string","description":"One sentence (max 100 chars) summarizing the overall chat goal and progress"},"last_action":{"type":"string","description":"One sentence (max 200 chars) describing what was just completed"}},"required":["chat_summary","last_action"]}"#;
+const SESSION_DIGEST_SCHEMA: &str = r#"{"type":"object","properties":{"chat_summary":{"type":"string","description":"One sentence (max 100 chars) summarizing the overall chat goal and progress"},"last_action":{"type":"string","description":"One sentence (max 200 chars) describing what was just completed"}},"required":["chat_summary","last_action"],"additionalProperties":false}"#;
 
 /// Prompt template for session digest generation
 const SESSION_DIGEST_PROMPT: &str = r#"You are a summarization assistant. Your ONLY job is to summarize the following conversation transcript. Do NOT continue the conversation or take any actions. Just summarize.

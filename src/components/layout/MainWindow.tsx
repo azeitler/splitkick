@@ -124,9 +124,11 @@ export function MainWindow() {
   const [closeConfirmBranch, setCloseConfirmBranch] = useState<
     string | undefined
   >()
+  const [closeConfirmMode, setCloseConfirmMode] = useState<'worktree' | 'session'>('worktree')
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false)
-  const handleConfirmRequired = useCallback((branchName?: string) => {
+  const handleConfirmRequired = useCallback((branchName?: string, mode?: 'worktree' | 'session') => {
     setCloseConfirmBranch(branchName)
+    setCloseConfirmMode(mode ?? 'worktree')
     setCloseConfirmOpen(true)
   }, [])
   const { executeClose } = useCloseSessionOrWorktreeKeybinding(
@@ -279,6 +281,7 @@ export function MainWindow() {
         onOpenChange={setCloseConfirmOpen}
         onConfirm={executeClose}
         branchName={closeConfirmBranch}
+        mode={closeConfirmMode}
       />
       <QuitConfirmationDialog />
       <BranchConflictDialog />

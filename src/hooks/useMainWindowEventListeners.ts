@@ -304,6 +304,10 @@ function executeKeybindingAction(
       logger.debug('Keybinding: open_thinking_dropdown')
       window.dispatchEvent(new CustomEvent('open-thinking-dropdown'))
       break
+    case 'cancel_prompt':
+      logger.debug('Keybinding: cancel_prompt')
+      window.dispatchEvent(new CustomEvent('cancel-prompt'))
+      break
     case 'toggle_session_label': {
       logger.debug('Keybinding: toggle_session_label')
       // Only works when a session is active (modal open or in session view, not on dashboard canvas)
@@ -350,6 +354,14 @@ export function useMainWindowEventListeners() {
         ) {
           return
         }
+      }
+
+      // Cancel prompt should work even when modals are open
+      if (shortcut === keybindingsRef.current.cancel_prompt) {
+        e.preventDefault()
+        e.stopPropagation()
+        executeKeybindingAction('cancel_prompt', commandContext, queryClient)
+        return
       }
 
       // Skip when a blocking modal/dialog is open - let it handle its own shortcuts

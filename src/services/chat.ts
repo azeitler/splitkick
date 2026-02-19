@@ -825,7 +825,7 @@ export function useAllArchivedSessions() {
  * - Removes the worktree (archive or delete based on removal_behavior preference)
  */
 export function useCloseSessionOrWorktreeKeybinding(
-  onConfirmRequired?: (branchName?: string) => void
+  onConfirmRequired?: (branchName?: string, mode?: 'worktree' | 'session') => void
 ) {
   const archiveSession = useArchiveSession()
   const closeSession = useCloseSession()
@@ -1020,9 +1020,21 @@ export function useCloseSessionOrWorktreeKeybinding(
         preferencesQueryKeys.preferences()
       )
       if (preferences?.confirm_session_close !== false && onConfirmRequired) {
-        // Find branch name for the dialog
+        // Find branch name and session count for the dialog
         const { activeWorktreeId } = useChatStore.getState()
         if (activeWorktreeId) {
+          // Try both with and without 'with-counts' suffix
+          const sessionsData =
+            queryClient.getQueryData<WorktreeSessions>(
+              chatQueryKeys.sessions(activeWorktreeId)
+            ) ??
+            queryClient.getQueryData<WorktreeSessions>([
+              ...chatQueryKeys.sessions(activeWorktreeId),
+              'with-counts',
+            ])
+          const activeSessions = sessionsData?.sessions.filter(s => !s.archived_at) ?? []
+          const mode: 'worktree' | 'session' = activeSessions.length > 1 ? 'session' : 'worktree'
+
           const worktreeQueries = queryClient
             .getQueryCache()
             .findAll({ queryKey: [...projectsQueryKeys.all, 'worktrees'] })
@@ -1030,7 +1042,7 @@ export function useCloseSessionOrWorktreeKeybinding(
             const worktrees = query.state.data as Worktree[] | undefined
             const found = worktrees?.find(w => w.id === activeWorktreeId)
             if (found) {
-              onConfirmRequired(found.branch)
+              onConfirmRequired(found.branch, mode)
               return
             }
           }
@@ -1210,7 +1222,6 @@ export function useSendMessage() {
       executionMode,
       thinkingLevel,
       effortLevel,
-      disableThinkingForMode,
       parallelExecutionPrompt,
       aiLanguage,
       allowedTools,
@@ -1227,7 +1238,6 @@ export function useSendMessage() {
       executionMode?: ExecutionMode
       thinkingLevel?: ThinkingLevel
       effortLevel?: string
-      disableThinkingForMode?: boolean
       parallelExecutionPrompt?: string
       aiLanguage?: string
       allowedTools?: string[]
@@ -1247,8 +1257,7 @@ export function useSendMessage() {
         executionMode,
         thinkingLevel,
         effortLevel,
-        disableThinkingForMode,
-        parallelExecutionPrompt,
+          parallelExecutionPrompt,
         aiLanguage,
         allowedTools,
         mcpConfig: mcpConfig ? '(set)' : undefined,
@@ -1263,8 +1272,7 @@ export function useSendMessage() {
         executionMode,
         thinkingLevel,
         effortLevel,
-        disableThinkingForMode,
-        parallelExecutionPrompt,
+          parallelExecutionPrompt,
         aiLanguage,
         allowedTools,
         mcpConfig,

@@ -12,7 +12,6 @@ mod background_tasks;
 mod chat;
 mod claude_cli;
 mod codex_cli;
-mod diagnostics;
 mod gh_cli;
 pub mod http_server;
 mod platform;
@@ -84,7 +83,7 @@ pub struct AppPreferences {
     #[serde(default = "default_terminal")]
     pub terminal: String, // Terminal app: terminal, warp, ghostty
     #[serde(default = "default_editor")]
-    pub editor: String, // Editor app: vscode, cursor, xcode
+    pub editor: String, // Editor app: zed, vscode, cursor, xcode
     #[serde(default = "default_open_in")]
     pub open_in: String, // Default Open In action: editor, terminal, finder, github
     #[serde(default = "default_auto_branch_naming")]
@@ -115,8 +114,6 @@ pub struct AppPreferences {
     pub syntax_theme_dark: String, // Syntax highlighting theme for dark mode
     #[serde(default = "default_syntax_theme_light")]
     pub syntax_theme_light: String, // Syntax highlighting theme for light mode
-    #[serde(default = "default_disable_thinking_in_non_plan_modes")]
-    pub disable_thinking_in_non_plan_modes: bool, // Disable thinking in build/yolo modes (only plan uses thinking)
     #[serde(default = "default_session_recap_enabled")]
     pub session_recap_enabled: bool, // Show session recap when returning to unfocused sessions
     #[serde(default = "default_session_recap_model")]
@@ -159,8 +156,6 @@ pub struct AppPreferences {
     pub show_keybinding_hints: bool, // Show keyboard shortcut hints at bottom of canvas views
     #[serde(default)]
     pub debug_mode_enabled: bool, // Show debug panel in chat sessions (default: false)
-    #[serde(default)]
-    pub diagnostics_enabled: bool, // Show system diagnostics panel (default: false)
     #[serde(default)]
     pub default_enabled_mcp_servers: Vec<String>, // MCP server names enabled by default (empty = none)
     #[serde(default)]
@@ -280,7 +275,7 @@ fn default_terminal() -> String {
 }
 
 fn default_editor() -> String {
-    "vscode".to_string()
+    "zed".to_string()
 }
 
 fn default_open_in() -> String {
@@ -321,10 +316,6 @@ fn default_syntax_theme_light() -> String {
 
 fn default_file_edit_mode() -> String {
     "external".to_string() // Default to external editor (VS Code, etc.)
-}
-
-fn default_disable_thinking_in_non_plan_modes() -> bool {
-    true // Enabled by default: only plan mode uses thinking
 }
 
 fn default_session_recap_enabled() -> bool {
@@ -801,7 +792,6 @@ impl Default for AppPreferences {
             archive_retention_days: default_archive_retention_days(),
             syntax_theme_dark: default_syntax_theme_dark(),
             syntax_theme_light: default_syntax_theme_light(),
-            disable_thinking_in_non_plan_modes: default_disable_thinking_in_non_plan_modes(),
             session_recap_enabled: default_session_recap_enabled(),
             session_recap_model: default_session_recap_model(),
             parallel_execution_prompt_enabled: default_parallel_execution_prompt_enabled(),
@@ -823,7 +813,6 @@ impl Default for AppPreferences {
             auto_archive_on_pr_merged: default_auto_archive_on_pr_merged(),
             show_keybinding_hints: default_show_keybinding_hints(),
             debug_mode_enabled: false,
-            diagnostics_enabled: false,
             default_effort_level: default_effort_level(),
             default_enabled_mcp_servers: Vec::new(),
             known_mcp_servers: Vec::new(),
@@ -2156,8 +2145,6 @@ pub fn run() {
             background_tasks::commands::set_remote_poll_interval,
             background_tasks::commands::get_remote_poll_interval,
             background_tasks::commands::trigger_immediate_remote_poll,
-            // Diagnostics commands
-            diagnostics::commands::get_diagnostics_snapshot,
             // HTTP server commands
             start_http_server,
             stop_http_server,

@@ -252,13 +252,6 @@ export function ChatWindow({
   const isStreamingPlanApproved = useChatStore(
     state => state.isStreamingPlanApproved
   )
-  // Manual thinking override per session (user changed thinking while in build/yolo)
-  const hasManualThinkingOverride = useChatStore(state =>
-    activeSessionId
-      ? (state.manualThinkingOverrides[activeSessionId] ?? false)
-      : false
-  )
-
   // Terminal panel visibility (per-worktree)
   const terminalVisible = useTerminalStore(state => state.terminalVisible)
   const terminalPanelOpen = useTerminalStore(state =>
@@ -1236,14 +1229,9 @@ export function ChatWindow({
     gitStatus?.base_branch,
   ])
 
-  // Global Cmd+Option+Backspace (Mac) / Ctrl+Alt+Backspace (Windows/Linux) listener for cancellation
-  // (works even when textarea is disabled)
+  // Listen for cancel-prompt keybinding event (dispatched by centralized keybinding system)
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'Backspace' || !(e.metaKey || e.ctrlKey) || !e.altKey)
-        return
-
-      // Read all state fresh via getState() to avoid stale closures
+    const handleCancelPrompt = () => {
       const state = useChatStore.getState()
       const wtId = state.activeWorktreeId
       if (!wtId) return
@@ -1260,12 +1248,11 @@ export function ChatWindow({
       const isSendingTarget = state.sendingSessionIds[sessionToCancel] ?? false
       if (!isSendingTarget) return
 
-      e.preventDefault()
       cancelChatMessage(sessionToCancel, wtId)
     }
 
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
+    window.addEventListener('cancel-prompt', handleCancelPrompt)
+    return () => window.removeEventListener('cancel-prompt', handleCancelPrompt)
   }, [])
 
   // Note: Streaming event listeners are in App.tsx, not here
@@ -1405,7 +1392,6 @@ export function ChatWindow({
           model: resolved.model,
           executionMode: queuedMsg.executionMode,
           thinkingLevel: queuedMsg.thinkingLevel,
-          disableThinkingForMode: queuedMsg.disableThinkingForMode,
           effortLevel: queuedMsg.effortLevel,
           mcpConfig: queuedMsg.mcpConfig,
           customProfileName: resolved.customProfileName,
@@ -1486,9 +1472,6 @@ export function ChatWindow({
       setSelectedModel(activeSessionId, model)
       setExecutingMode(activeSessionId, 'build')
 
-      const hasManualOverride = useChatStore
-        .getState()
-        .hasManualThinkingOverride(activeSessionId)
       const diffResolved = resolveCustomProfile(
         model,
         selectedProviderRef.current
@@ -1503,7 +1486,6 @@ export function ChatWindow({
           customProfileName: diffResolved.customProfileName,
           executionMode: 'build',
           thinkingLevel,
-          disableThinkingForMode: thinkingLevel !== 'off' && !hasManualOverride,
           effortLevel:
             useAdaptiveThinkingRef.current || isCodexBackendRef.current
               ? selectedEffortLevelRef.current
@@ -1623,9 +1605,6 @@ export function ChatWindow({
       // Use refs to avoid recreating callback when these settings change
       const mode = executionModeRef.current
       const thinkingLvl = selectedThinkingLevelRef.current
-      const hasManualOverride = useChatStore
-        .getState()
-        .hasManualThinkingOverride(activeSessionId)
       const queuedMessage: QueuedMessage = {
         id: generateId(),
         message,
@@ -1637,8 +1616,6 @@ export function ChatWindow({
         provider: selectedProviderRef.current,
         executionMode: mode,
         thinkingLevel: thinkingLvl,
-        disableThinkingForMode:
-          mode !== 'plan' && thinkingLvl !== 'off' && !hasManualOverride,
         effortLevel:
           useAdaptiveThinkingRef.current || isCodexBackendRef.current
             ? selectedEffortLevelRef.current
@@ -1826,6 +1803,13 @@ export function ChatWindow({
     ]
   )
 
+  const handleTabBackendSwitch = useCallback(() => {
+    if ((session?.messages?.length ?? 0) > 0) return
+    handleToolbarBackendChange(
+      selectedBackend === 'claude' ? 'codex' : 'claude'
+    )
+  }, [session?.messages?.length, selectedBackend, handleToolbarBackendChange])
+
   const handleToolbarProviderChange = useCallback(
     (provider: string | null) => {
       if (activeSessionId) {
@@ -1856,12 +1840,6 @@ export function ChatWindow({
       // Update Zustand store immediately for responsive UI
       store.setThinkingLevel(sessionId, level)
 
-      // Mark as manually overridden if in build/yolo mode
-      const currentMode = store.getExecutionMode(sessionId)
-      if (currentMode !== 'plan') {
-        store.setManualThinkingOverride(sessionId, true)
-      }
-
       // Persist to backend (fire-and-forget, don't block UI)
       setSessionThinkingLevel.mutate({
         sessionId,
@@ -1888,11 +1866,6 @@ export function ChatWindow({
     const store = useChatStore.getState()
     store.setEffortLevel(sessionId, level)
 
-    // Mark as manually overridden if in build/yolo mode
-    const currentMode = store.getExecutionMode(sessionId)
-    if (currentMode !== 'plan') {
-      store.setManualThinkingOverride(sessionId, true)
-    }
   }, [])
 
   const handleToggleMcpServer = useCallback((serverName: string) => {
@@ -2566,9 +2539,6 @@ export function ChatWindow({
       } = useChatStore.getState()
 
       const thinkingLvl = selectedThinkingLevelRef.current
-      const hasManualOverride = useChatStore
-        .getState()
-        .hasManualThinkingOverride(sessionId)
       const fixResolved = resolveCustomProfile(
         selectedModelRef.current,
         selectedProviderRef.current
@@ -2587,7 +2557,6 @@ export function ChatWindow({
           provider: fixResolved.customProfileName ?? null,
           executionMode: fixMode,
           thinkingLevel: thinkingLvl,
-          disableThinkingForMode: thinkingLvl !== 'off' && !hasManualOverride,
           effortLevel:
             useAdaptiveThinkingRef.current || isCodexBackendRef.current
               ? selectedEffortLevelRef.current
@@ -2617,7 +2586,6 @@ export function ChatWindow({
           customProfileName: fixResolved.customProfileName,
           executionMode: fixMode,
           thinkingLevel: thinkingLvl,
-          disableThinkingForMode: thinkingLvl !== 'off' && !hasManualOverride,
           effortLevel:
             useAdaptiveThinkingRef.current || isCodexBackendRef.current
               ? selectedEffortLevelRef.current
@@ -2739,7 +2707,6 @@ export function ChatWindow({
         provider: selectedProviderRef.current,
         executionMode: executionModeRef.current,
         thinkingLevel: selectedThinkingLevelRef.current,
-        disableThinkingForMode: false,
         effortLevel:
           useAdaptiveThinkingRef.current || isCodexBackendRef.current
             ? selectedEffortLevelRef.current
@@ -3158,10 +3125,14 @@ export function ChatWindow({
                                 activeSessionId={activeSessionId}
                                 activeWorktreePath={activeWorktreePath}
                                 isSending={isSending}
-                                executionMode={executionMode}
+                                executionMode={isSending && executingMode ? executingMode : executionMode}
+                                canSwitchBackendWithTab={
+                                  (session?.messages?.length ?? 0) === 0
+                                }
                                 focusChatShortcut={focusChatShortcut}
                                 onSubmit={handleSubmit}
                                 onCancel={handleCancel}
+                                onSwitchBackendWithTab={handleTabBackendSwitch}
                                 onCommandExecute={handleCommandExecute}
                                 onHasValueChange={setHasInputValue}
                                 formRef={formRef}
@@ -3175,7 +3146,7 @@ export function ChatWindow({
                               hasPendingQuestions={hasPendingQuestions}
                               hasPendingAttachments={hasPendingAttachments}
                               hasInputValue={hasInputValue}
-                              executionMode={executionMode}
+                              executionMode={isSending && executingMode ? executingMode : executionMode}
                               selectedBackend={selectedBackend}
                               sessionHasMessages={
                                 (session?.messages?.length ?? 0) > 0
@@ -3187,12 +3158,6 @@ export function ChatWindow({
                               }
                               selectedThinkingLevel={selectedThinkingLevel}
                               selectedEffortLevel={selectedEffortLevel}
-                              thinkingOverrideActive={
-                                executionMode !== 'plan' &&
-                                (useAdaptiveThinkingFlag ||
-                                  selectedThinkingLevel !== 'off') &&
-                                !hasManualThinkingOverride
-                              }
                               useAdaptiveThinking={useAdaptiveThinkingFlag}
                               hideThinkingLevel={hideThinkingLevel}
                               baseBranch={gitStatus?.base_branch ?? 'main'}
@@ -3458,9 +3423,6 @@ export function ChatWindow({
                   provider: selectedProviderRef.current,
                   executionMode: 'build',
                   thinkingLevel: selectedThinkingLevelRef.current,
-                  disableThinkingForMode: !useChatStore
-                    .getState()
-                    .hasManualThinkingOverride(activeSessionId),
                   effortLevel:
                     useAdaptiveThinkingRef.current || isCodexBackendRef.current
                       ? selectedEffortLevelRef.current
@@ -3532,9 +3494,6 @@ export function ChatWindow({
                   provider: selectedProviderRef.current,
                   executionMode: 'yolo',
                   thinkingLevel: selectedThinkingLevelRef.current,
-                  disableThinkingForMode: !useChatStore
-                    .getState()
-                    .hasManualThinkingOverride(activeSessionId),
                   effortLevel:
                     useAdaptiveThinkingRef.current || isCodexBackendRef.current
                       ? selectedEffortLevelRef.current
@@ -3623,9 +3582,6 @@ export function ChatWindow({
                   provider: selectedProviderRef.current,
                   executionMode: 'build',
                   thinkingLevel: selectedThinkingLevelRef.current,
-                  disableThinkingForMode: !useChatStore
-                    .getState()
-                    .hasManualThinkingOverride(activeSessionId),
                   effortLevel:
                     useAdaptiveThinkingRef.current || isCodexBackendRef.current
                       ? selectedEffortLevelRef.current
@@ -3697,9 +3653,6 @@ export function ChatWindow({
                   provider: selectedProviderRef.current,
                   executionMode: 'yolo',
                   thinkingLevel: selectedThinkingLevelRef.current,
-                  disableThinkingForMode: !useChatStore
-                    .getState()
-                    .hasManualThinkingOverride(activeSessionId),
                   effortLevel:
                     useAdaptiveThinkingRef.current || isCodexBackendRef.current
                       ? selectedEffortLevelRef.current

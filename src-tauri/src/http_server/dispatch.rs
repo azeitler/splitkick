@@ -558,8 +558,6 @@ pub async fn dispatch_command(
             let execution_mode: Option<String> =
                 field_opt(&args, "executionMode", "execution_mode")?;
             let thinking_level = field_opt(&args, "thinkingLevel", "thinking_level")?;
-            let disable_thinking_for_mode: Option<bool> =
-                field_opt(&args, "disableThinkingForMode", "disable_thinking_for_mode")?;
             let parallel_execution_prompt: Option<String> = field_opt(
                 &args,
                 "parallelExecutionPrompt",
@@ -584,7 +582,6 @@ pub async fn dispatch_command(
                 execution_mode,
                 thinking_level,
                 effort_level,
-                disable_thinking_for_mode,
                 parallel_execution_prompt,
                 ai_language,
                 allowed_tools,

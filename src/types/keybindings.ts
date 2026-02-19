@@ -26,6 +26,7 @@ export type KeybindingAction =
   | 'open_provider_dropdown'
   | 'open_model_dropdown'
   | 'open_thinking_dropdown'
+  | 'cancel_prompt'
 
 // Shortcut string format: "mod+key" where mod is cmd/ctrl
 // Examples: "mod+l", "mod+shift+p", "mod+1"
@@ -71,6 +72,7 @@ export const DEFAULT_KEYBINDINGS: KeybindingsMap = {
   open_provider_dropdown: 'alt+p',
   open_model_dropdown: 'alt+m',
   open_thinking_dropdown: 'alt+e',
+  cancel_prompt: 'mod+alt+backspace',
 }
 
 // UI definitions for the settings pane
@@ -256,6 +258,13 @@ export const KEYBINDING_DEFINITIONS: KeybindingDefinition[] = [
     label: 'Open thinking dropdown',
     description: 'Open the thinking/effort level dropdown',
     default_shortcut: 'alt+e',
+    category: 'chat',
+  },
+  {
+    action: 'cancel_prompt',
+    label: 'Cancel prompt',
+    description: 'Cancel the running Claude process for the current session',
+    default_shortcut: 'mod+alt+backspace',
     category: 'chat',
   },
 ]

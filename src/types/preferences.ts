@@ -349,15 +349,15 @@ export const DEFAULT_GLOBAL_SYSTEM_PROMPT = `## Plan Mode
 
 ## Not Plan Mode
 
-- After each finished task, please write a few bullet points on how to test the changes.`
+- After each finished task, please write a few bullet points on how to test the changes.
+- When multiple independent operations are needed, batch them into parallel tool calls. Launch independent Task sub-agents simultaneously rather than sequentially.
+- When specifying subagent_type for Task tool calls, always use the fully qualified name exactly as listed in the system prompt (e.g., "code-simplifier:code-simplifier", not just "code-simplifier"). If the agent type contains a colon, include the full namespace:name string.`
 
 export const DEFAULT_PARALLEL_EXECUTION_PROMPT = `In plan mode, structure plans so sub-agents can work simultaneously. In build/execute mode, use sub-agents in parallel for faster implementation.
 
 When launching multiple Task sub-agents, prefer sending them in a single message rather than sequentially. Group independent work items (e.g., editing separate files, researching unrelated questions) into parallel Task calls. Only sequence Tasks when one depends on another's output.
 
-Instruct each sub-agent to briefly outline its approach before implementing, so it can course-correct early without formal plan mode overhead.
-
-When specifying subagent_type for Task tool calls, always use the fully qualified name exactly as listed in the system prompt (e.g., "code-simplifier:code-simplifier", not just "code-simplifier"). If the agent type contains a colon, include the full namespace:name string.`
+Instruct each sub-agent to briefly outline its approach before implementing, so it can course-correct early without formal plan mode overhead.`
 
 /** Default prompt for session recap (digest) generation */
 export const DEFAULT_SESSION_RECAP_PROMPT = `You are a summarization assistant. Your ONLY job is to summarize the following conversation transcript. Do NOT continue the conversation or take any actions. Just summarize.
@@ -499,7 +499,7 @@ export interface AppPreferences {
   thinking_level: ThinkingLevel // Thinking level: 'off' | 'think' | 'megathink' | 'ultrathink'
   default_effort_level: EffortLevel // Effort level for Opus 4.6 adaptive thinking: 'low' | 'medium' | 'high' | 'max'
   terminal: TerminalApp // Terminal app: 'terminal' | 'warp' | 'ghostty'
-  editor: EditorApp // Editor app: 'vscode' | 'cursor' | 'xcode'
+  editor: EditorApp // Editor app: 'zed' | 'vscode' | 'cursor' | 'xcode'
   open_in: OpenInDefault // Default Open In action: 'editor' | 'terminal' | 'finder' | 'github'
   auto_branch_naming: boolean // Automatically generate branch names from first message
   branch_naming_model: ClaudeModel // Model for generating branch names
@@ -515,7 +515,6 @@ export interface AppPreferences {
   archive_retention_days: number // Days to keep archived items (0 = never delete)
   syntax_theme_dark: SyntaxTheme // Syntax highlighting theme for dark mode
   syntax_theme_light: SyntaxTheme // Syntax highlighting theme for light mode
-  disable_thinking_in_non_plan_modes: boolean // Disable thinking in build/yolo modes (only plan uses thinking)
   session_recap_enabled: boolean // Show session recap when returning to unfocused sessions
   session_recap_model: ClaudeModel // Model for generating session recaps
   parallel_execution_prompt_enabled: boolean // Add system prompt to encourage parallel sub-agent execution
@@ -538,7 +537,6 @@ export interface AppPreferences {
   auto_archive_on_pr_merged: boolean // Auto-archive worktrees when their PR is merged
   show_keybinding_hints: boolean // Show keyboard shortcut hints at bottom of canvas views
   debug_mode_enabled: boolean // Show debug panel in chat sessions
-  diagnostics_enabled: boolean // Show system diagnostics in experimental pane
   default_enabled_mcp_servers: string[] // MCP server names enabled by default (empty = none)
   known_mcp_servers: string[] // All MCP server names ever seen (prevents re-enabling user-disabled servers)
   has_seen_feature_tour: boolean // Whether user has seen the feature tour onboarding
@@ -755,9 +753,10 @@ export const terminalOptions: { value: TerminalApp; label: string }[] =
         { value: 'ghostty', label: 'Ghostty' },
       ]
 
-export type EditorApp = 'vscode' | 'cursor' | 'xcode'
+export type EditorApp = 'zed' | 'vscode' | 'cursor' | 'xcode'
 
 export const editorOptions: { value: EditorApp; label: string }[] = [
+  { value: 'zed', label: 'Zed' },
   { value: 'vscode', label: 'VS Code' },
   { value: 'cursor', label: 'Cursor' },
   { value: 'xcode', label: 'Xcode' },
@@ -975,7 +974,7 @@ export const defaultPreferences: AppPreferences = {
   thinking_level: 'ultrathink',
   default_effort_level: 'high',
   terminal: 'terminal',
-  editor: 'vscode',
+  editor: 'zed',
   open_in: 'editor',
   auto_branch_naming: true,
   branch_naming_model: 'haiku',
@@ -991,7 +990,6 @@ export const defaultPreferences: AppPreferences = {
   archive_retention_days: 7,
   syntax_theme_dark: 'vitesse-black',
   syntax_theme_light: 'github-light',
-  disable_thinking_in_non_plan_modes: true, // Default: only plan mode uses thinking
   session_recap_enabled: false, // Default: disabled (experimental)
   session_recap_model: 'haiku', // Default: haiku for fast recaps
   parallel_execution_prompt_enabled: false, // Default: disabled (experimental)
@@ -1014,7 +1012,6 @@ export const defaultPreferences: AppPreferences = {
   auto_archive_on_pr_merged: true, // Default: enabled
   show_keybinding_hints: true, // Default: enabled
   debug_mode_enabled: false, // Default: disabled
-  diagnostics_enabled: false, // Default: disabled
   default_enabled_mcp_servers: [], // Default: no MCP servers enabled
   known_mcp_servers: [], // Default: no known servers
   has_seen_feature_tour: false, // Default: not seen

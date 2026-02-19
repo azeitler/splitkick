@@ -2817,7 +2817,7 @@ pub async fn open_worktree_in_editor(
     worktree_path: String,
     editor: Option<String>,
 ) -> Result<(), String> {
-    let editor_app = editor.unwrap_or_else(|| "vscode".to_string());
+    let editor_app = editor.unwrap_or_else(|| "zed".to_string());
     log::trace!("Opening worktree in {editor_app}: {worktree_path}");
 
     // If opening jean.json and it doesn't exist, create template
@@ -2840,6 +2840,19 @@ pub async fn open_worktree_in_editor(
     #[cfg(target_os = "macos")]
     {
         let result = match editor_app.as_str() {
+            "zed" => match std::process::Command::new("zed")
+                .arg(&worktree_path)
+                .spawn()
+            {
+                Ok(child) => Ok(child),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    // zed CLI not installed, fall back to macOS open
+                    std::process::Command::new("open")
+                        .args(["-a", "Zed", &worktree_path])
+                        .spawn()
+                }
+                Err(e) => Err(e),
+            },
             "cursor" => {
                 // Cursor uses the same CLI pattern as VS Code
                 std::process::Command::new("cursor")
@@ -2874,6 +2887,9 @@ pub async fn open_worktree_in_editor(
     {
         // VS Code and Cursor CLI work the same on all platforms
         let result = match editor_app.as_str() {
+            "zed" => std::process::Command::new("zed")
+                .arg(&worktree_path)
+                .spawn(),
             "cursor" => std::process::Command::new("cursor")
                 .arg(&worktree_path)
                 .spawn(),
@@ -3936,7 +3952,7 @@ pub async fn reorder_worktrees(
 
 /// JSON schema for structured PR content generation
 /// Format requirements are specified in the schema descriptions
-const PR_CONTENT_SCHEMA: &str = r#"{"type":"object","properties":{"title":{"type":"string","description":"PR title under 72 chars using conventional commit format: type(scope): description. Types: feat, fix, docs, style, refactor, perf, test, chore. Example: 'feat(auth): add OAuth2 login flow'"},"body":{"type":"string","description":"PR description in markdown. Start with ## Summary containing bullet points of key changes. Add ## Breaking Changes section if any. Keep concise but informative."}},"required":["title","body"]}"#;
+const PR_CONTENT_SCHEMA: &str = r#"{"type":"object","properties":{"title":{"type":"string","description":"PR title under 72 chars using conventional commit format: type(scope): description. Types: feat, fix, docs, style, refactor, perf, test, chore. Example: 'feat(auth): add OAuth2 login flow'"},"body":{"type":"string","description":"PR description in markdown. Start with ## Summary containing bullet points of key changes. Add ## Breaking Changes section if any. Keep concise but informative."}},"required":["title","body"],"additionalProperties":false}"#;
 
 /// Prompt template for PR content generation
 /// Focuses on context - format requirements are in the JSON schema
@@ -4529,7 +4545,7 @@ pub async fn update_pr_description(
 // =============================================================================
 
 /// JSON schema for structured commit message generation
-const COMMIT_MESSAGE_SCHEMA: &str = r#"{"type":"object","properties":{"message":{"type":"string","description":"Commit message using Conventional Commits format. First line: type(scope): description (max 72 chars). Types: feat, fix, docs, style, refactor, perf, test, chore. Followed by blank line and optional body explaining what and why."}},"required":["message"]}"#;
+const COMMIT_MESSAGE_SCHEMA: &str = r#"{"type":"object","properties":{"message":{"type":"string","description":"Commit message using Conventional Commits format. First line: type(scope): description (max 72 chars). Types: feat, fix, docs, style, refactor, perf, test, chore. Followed by blank line and optional body explaining what and why."}},"required":["message"],"additionalProperties":false}"#;
 
 /// Prompt template for commit message generation
 const COMMIT_MESSAGE_PROMPT: &str = r#"<task>Generate a commit message for the following changes</task>
@@ -4870,7 +4886,7 @@ pub async fn create_commit_with_ai(
 // =============================================================================
 
 /// JSON schema for structured code review output
-const REVIEW_SCHEMA: &str = r#"{"type":"object","properties":{"summary":{"type":"string","description":"Brief 1-2 sentence summary of the overall changes"},"findings":{"type":"array","items":{"type":"object","properties":{"severity":{"type":"string","enum":["critical","warning","suggestion","praise"],"description":"Severity level of the finding"},"file":{"type":"string","description":"File path where the finding applies"},"line":{"type":"integer","description":"Line number if applicable, 0 if not specific"},"title":{"type":"string","description":"Short title for the finding (max 80 chars)"},"description":{"type":"string","description":"Detailed explanation of the finding"},"suggestion":{"type":"string","description":"Optional code suggestion or fix"}},"required":["severity","file","title","description"]},"description":"List of review findings"},"approval_status":{"type":"string","enum":["approved","changes_requested","needs_discussion"],"description":"Overall review verdict"}},"required":["summary","findings","approval_status"]}"#;
+const REVIEW_SCHEMA: &str = r#"{"type":"object","properties":{"summary":{"type":"string","description":"Brief 1-2 sentence summary of the overall changes"},"findings":{"type":"array","items":{"type":"object","properties":{"severity":{"type":"string","enum":["critical","warning","suggestion","praise"],"description":"Severity level of the finding"},"file":{"type":"string","description":"File path where the finding applies"},"line":{"type":"integer","description":"Line number if applicable, 0 if not specific"},"title":{"type":"string","description":"Short title for the finding (max 80 chars)"},"description":{"type":"string","description":"Detailed explanation of the finding"},"suggestion":{"type":"string","description":"Optional code suggestion or fix"}},"required":["severity","file","line","title","description","suggestion"],"additionalProperties":false},"description":"List of review findings"},"approval_status":{"type":"string","enum":["approved","changes_requested","needs_discussion"],"description":"Overall review verdict"}},"required":["summary","findings","approval_status"],"additionalProperties":false}"#;
 
 /// Prompt template for code review
 const REVIEW_PROMPT: &str = r#"<task>Review the following code changes and provide structured feedback</task>
@@ -5278,7 +5294,8 @@ const RELEASE_NOTES_SCHEMA: &str = r#"{
             "description": "Release notes in markdown format, grouped by category"
         }
     },
-    "required": ["title", "body"]
+    "required": ["title", "body"],
+    "additionalProperties": false
 }"#;
 
 const RELEASE_NOTES_PROMPT: &str = r#"Generate release notes for changes since the `{tag}` release ({previous_release_name}).

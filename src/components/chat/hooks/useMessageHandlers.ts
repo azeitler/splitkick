@@ -41,7 +41,6 @@ interface SendMessageMutation {
       thinkingLevel?: ThinkingLevel
       effortLevel?: string
       allowedTools?: string[]
-      disableThinkingForMode?: boolean
       mcpConfig?: string
       customProfileName?: string
     },
@@ -373,7 +372,6 @@ export function useMessageHandlers({
           effortLevel: useAdaptiveThinkingRef.current
             ? selectedEffortLevelRef.current
             : undefined,
-          disableThinkingForMode: true, // Always disable thinking when executing approved plan
           mcpConfig: getMcpConfig(),
           customProfileName: getCustomProfileName(),
         },
@@ -489,7 +487,6 @@ export function useMessageHandlers({
           effortLevel: useAdaptiveThinkingRef.current
             ? selectedEffortLevelRef.current
             : undefined,
-          disableThinkingForMode: true, // Always disable thinking when executing approved plan
           mcpConfig: getMcpConfig(),
           customProfileName: getCustomProfileName(),
         },
@@ -583,7 +580,6 @@ export function useMessageHandlers({
         effortLevel: useAdaptiveThinkingRef.current
           ? selectedEffortLevelRef.current
           : undefined,
-        disableThinkingForMode: true, // Always disable thinking when executing approved plan
         mcpConfig: getMcpConfig(),
         customProfileName: getCustomProfileName(),
       },
@@ -665,7 +661,6 @@ export function useMessageHandlers({
         effortLevel: useAdaptiveThinkingRef.current
           ? selectedEffortLevelRef.current
           : undefined,
-        disableThinkingForMode: true, // Always disable thinking when executing approved plan
         mcpConfig: getMcpConfig(),
         customProfileName: getCustomProfileName(),
       },
@@ -1113,7 +1108,6 @@ Please apply this fix to the file.`
           provider: getCustomProfileName() ?? null,
           executionMode: 'build',
           thinkingLevel: selectedThinkingLevelRef.current,
-          disableThinkingForMode: false,
           effortLevel: useAdaptiveThinkingRef.current
             ? selectedEffortLevelRef.current
             : undefined,
@@ -1252,7 +1246,6 @@ Please apply all these fixes to the respective files.`
           provider: getCustomProfileName() ?? null,
           executionMode: 'build',
           thinkingLevel: selectedThinkingLevelRef.current,
-          disableThinkingForMode: false,
           effortLevel: useAdaptiveThinkingRef.current
             ? selectedEffortLevelRef.current
             : undefined,

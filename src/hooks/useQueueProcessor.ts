@@ -193,7 +193,6 @@ export function useQueueProcessor(): void {
           model: queuedMsg.model,
           executionMode: queuedMsg.executionMode,
           thinkingLevel: queuedMsg.thinkingLevel,
-          disableThinkingForMode: queuedMsg.disableThinkingForMode,
           effortLevel: queuedMsg.effortLevel,
           mcpConfig: queuedMsg.mcpConfig,
           customProfileName: queuedMsg.provider ?? undefined,

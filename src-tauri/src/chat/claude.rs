@@ -23,7 +23,9 @@ const DEFAULT_GLOBAL_SYSTEM_PROMPT: &str = "\
 \n\
 ## Not Plan Mode\n\
 \n\
-- After each finished task, please write a few bullet points on how to test the changes.";
+- After each finished task, please write a few bullet points on how to test the changes.\n\
+- When multiple independent operations are needed, batch them into parallel tool calls. Launch independent Task sub-agents simultaneously rather than sequentially.\n\
+- When specifying subagent_type for Task tool calls, always use the fully qualified name exactly as listed in the system prompt (e.g., \"code-simplifier:code-simplifier\", not just \"code-simplifier\"). If the agent type contains a colon, include the full namespace:name string.";
 
 // =============================================================================
 // Claude CLI execution
@@ -172,7 +174,6 @@ fn build_claude_args(
     thinking_level: Option<&ThinkingLevel>,
     effort_level: Option<&EffortLevel>,
     allowed_tools: Option<&[String]>,
-    disable_thinking_in_non_plan_modes: bool,
     parallel_execution_prompt: Option<&str>,
     ai_language: Option<&str>,
     mcp_config: Option<&str>,
@@ -240,13 +241,6 @@ fn build_claude_args(
     args.push("--permission-mode".to_string());
     args.push(perm_mode.to_string());
 
-    // Thinking/Effort configuration
-    // If disable_thinking_in_non_plan_modes is true and mode is build/yolo, force off
-    let is_non_plan_override = disable_thinking_in_non_plan_modes && {
-        let mode = execution_mode.unwrap_or("plan");
-        mode == "build" || mode == "yolo"
-    };
-
     // Custom profile settings: resolve name → file path, pass to --settings (secrets stay in file, not in ps)
     if let Some(name) = custom_profile_name {
         if !name.is_empty() {
@@ -269,13 +263,7 @@ fn build_claude_args(
 
     if let Some(effort) = effort_level {
         // Opus 4.6 adaptive thinking: use effort parameter via --settings JSON
-        let effective_effort = if is_non_plan_override {
-            &EffortLevel::Off
-        } else {
-            effort
-        };
-
-        if let Some(effort_value) = effective_effort.effort_value() {
+        if let Some(effort_value) = effort.effort_value() {
             let obj = settings_json.get_or_insert_with(|| serde_json::json!({}));
             if let Some(map) = obj.as_object_mut() {
                 map.insert(
@@ -287,13 +275,7 @@ fn build_claude_args(
         // If Off, don't send any thinking/effort settings (but still send custom profile if present)
     } else {
         // Traditional thinking levels (Opus 4.5, Sonnet, Haiku)
-        let effective_thinking_level = if is_non_plan_override {
-            Some(&ThinkingLevel::Off)
-        } else {
-            thinking_level
-        };
-
-        if let Some(level) = effective_thinking_level {
+        if let Some(level) = thinking_level {
             let obj = settings_json.get_or_insert_with(|| serde_json::json!({}));
             if let Some(map) = obj.as_object_mut() {
                 map.insert(
@@ -672,7 +654,6 @@ pub fn execute_claude_detached(
     thinking_level: Option<&ThinkingLevel>,
     effort_level: Option<&EffortLevel>,
     allowed_tools: Option<&[String]>,
-    disable_thinking_in_non_plan_modes: bool,
     parallel_execution_prompt: Option<&str>,
     ai_language: Option<&str>,
     mcp_config: Option<&str>,
@@ -716,7 +697,6 @@ pub fn execute_claude_detached(
         thinking_level,
         effort_level,
         allowed_tools,
-        disable_thinking_in_non_plan_modes,
         parallel_execution_prompt,
         ai_language,
         mcp_config,

@@ -5,6 +5,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
+import { useUIStore } from '@/store/ui-store'
 import { chatQueryKeys } from '@/services/chat'
 import { saveWorktreePr, projectsQueryKeys } from '@/services/projects'
 import {
@@ -374,29 +375,34 @@ export function useGitOperations({
         })
 
         const findingCount = result.findings.length
-        const statusEmoji =
-          result.approval_status === 'approved'
-            ? 'Approved'
-            : result.approval_status === 'changes_requested'
-              ? 'Changes requested'
-              : 'Needs discussion'
+        const projectName = project?.name ?? ''
+        const worktreeName = worktree?.name ?? branch
 
         toast.success(
-          `Review done for ${branch}: ${statusEmoji} (${findingCount} findings)`,
+          `Review done on ${projectName}/${worktreeName} (${findingCount} findings)`,
           {
             id: toastId,
             action: {
               label: 'Open',
               onClick: () => {
+                if (!activeWorktreePath) return
                 const {
                   setActiveWorktree,
                   setActiveSession,
                   setViewingCanvasTab,
+                  registerWorktreePath,
                 } = useChatStore.getState()
                 useProjectsStore.getState().selectWorktree(activeWorktreeId)
-                setActiveWorktree(activeWorktreeId, activeWorktreePath!)
+                registerWorktreePath(activeWorktreeId, activeWorktreePath)
+                setActiveWorktree(activeWorktreeId, activeWorktreePath)
                 setActiveSession(activeWorktreeId, targetSessionId)
-                setViewingCanvasTab(activeWorktreeId, false)
+                setViewingCanvasTab(activeWorktreeId, true)
+                useUIStore
+                  .getState()
+                  .markWorktreeForAutoOpenSession(
+                    activeWorktreeId,
+                    targetSessionId
+                  )
               },
             },
           }
@@ -411,6 +417,7 @@ export function useGitOperations({
       activeWorktreeId,
       activeWorktreePath,
       worktree,
+      project?.name,
       queryClient,
       preferences?.magic_prompts?.code_review,
       preferences?.magic_prompt_models?.code_review_model,

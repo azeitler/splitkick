@@ -157,8 +157,7 @@ export const QueuedMessageItem = memo(function QueuedMessageItem({
             <span className="capitalize">{message.executionMode}</span>
           </span>
           {/* Thinking/Effort level badge */}
-          {!message.disableThinkingForMode &&
-            (message.effortLevel ? (
+          {message.effortLevel ? (
               <span className="inline-flex items-center gap-1 rounded bg-muted/80 px-1.5 py-0.5 text-[10px] text-muted-foreground">
                 <Brain className="h-2.5 w-2.5" />
                 {
@@ -176,7 +175,7 @@ export const QueuedMessageItem = memo(function QueuedMessageItem({
                   )?.label
                 }
               </span>
-            ) : null)}
+            ) : null}
         </div>
       </div>
     </div>

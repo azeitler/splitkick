@@ -561,18 +561,25 @@ ${resolveInstructions}`
               setActiveSession,
               setActiveWorktree,
               setViewingCanvasTab,
+              registerWorktreePath,
               activeWorktreePath,
             } = useChatStore.getState()
             setReviewResults(newSession.id, result)
 
-            // Navigate to worktree view (needed for ProjectCanvasView → worktree transition)
-            useProjectsStore.getState().selectWorktree(selectedWorktreeId)
-            setActiveWorktree(selectedWorktreeId, worktree.path)
             setActiveSession(selectedWorktreeId, newSession.id)
 
             if (activeWorktreePath) {
-              // Already inside a worktree (worktree canvas or chat view) — switch to chat view
-              setViewingCanvasTab(selectedWorktreeId, false)
+              // Already inside a worktree — route through canvas and open the session in modal
+              useProjectsStore.getState().selectWorktree(selectedWorktreeId)
+              registerWorktreePath(selectedWorktreeId, worktree.path)
+              setActiveWorktree(selectedWorktreeId, worktree.path)
+              setViewingCanvasTab(selectedWorktreeId, true)
+              useUIStore
+                .getState()
+                .markWorktreeForAutoOpenSession(
+                  selectedWorktreeId,
+                  newSession.id
+                )
             } else {
               // On project canvas — stay on dashboard and auto-open session modal
               useUIStore
@@ -597,14 +604,34 @@ ${resolveInstructions}`
             })
 
             const findingCount = result.findings.length
-            const statusEmoji =
-              result.approval_status === 'approved'
-                ? 'Approved'
-                : result.approval_status === 'changes_requested'
-                  ? 'Changes requested'
-                  : 'Reviewed'
-            toast.success(`${statusEmoji} (${findingCount} findings)`, {
+            const projectName = project?.name ?? ''
+            const worktreeName = worktree.name ?? worktree.branch ?? ''
+            toast.success(
+              `Review done on ${projectName}/${worktreeName} (${findingCount} findings)`,
+              {
               id: toastId,
+              action: {
+                label: 'Open',
+                onClick: () => {
+                  const {
+                    setActiveWorktree,
+                    setActiveSession,
+                    setViewingCanvasTab,
+                    registerWorktreePath,
+                  } = useChatStore.getState()
+                  useProjectsStore.getState().selectWorktree(selectedWorktreeId)
+                  registerWorktreePath(selectedWorktreeId, worktree.path)
+                  setActiveWorktree(selectedWorktreeId, worktree.path)
+                  setActiveSession(selectedWorktreeId, newSession.id)
+                  setViewingCanvasTab(selectedWorktreeId, true)
+                  useUIStore
+                    .getState()
+                    .markWorktreeForAutoOpenSession(
+                      selectedWorktreeId,
+                      newSession.id
+                    )
+                },
+              },
             })
           } catch (error) {
             toast.error(`Review failed: ${error}`, { id: toastId })

@@ -329,6 +329,7 @@ export function CanvasList({
         open={closeConfirmOpen}
         onOpenChange={setCloseConfirmOpen}
         onConfirm={executeCloseAction}
+        mode="session"
       />
     </>
   )

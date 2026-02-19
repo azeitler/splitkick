@@ -231,7 +231,6 @@ interface ChatToolbarProps {
   selectedProvider: string | null // null = default (Anthropic), or profile name
   selectedThinkingLevel: ThinkingLevel
   selectedEffortLevel: EffortLevel
-  thinkingOverrideActive: boolean // True when thinking is disabled in build/yolo due to preference
   useAdaptiveThinking: boolean // True when model supports effort (Opus on CLI >= 2.1.32)
   hideThinkingLevel?: boolean // True when selected provider doesn't support thinking
   sessionHasMessages?: boolean // True when session has messages (backend locked)
@@ -367,7 +366,6 @@ export const ChatToolbar = memo(function ChatToolbar({
   selectedProvider,
   selectedThinkingLevel,
   selectedEffortLevel,
-  thinkingOverrideActive,
   useAdaptiveThinking,
   hideThinkingLevel,
   sessionHasMessages,
@@ -964,16 +962,14 @@ export const ChatToolbar = memo(function ChatToolbar({
                   <Brain className="mr-2 h-4 w-4" />
                   <span>Effort</span>
                   <span className="ml-auto text-xs text-muted-foreground">
-                    {thinkingOverrideActive
-                      ? 'Off'
-                      : EFFORT_LEVEL_OPTIONS.find(
+                    {EFFORT_LEVEL_OPTIONS.find(
                           o => o.value === selectedEffortLevel
                         )?.label}
                   </span>
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent>
                   <DropdownMenuRadioGroup
-                    value={thinkingOverrideActive ? '' : selectedEffortLevel}
+                    value={selectedEffortLevel}
                     onValueChange={handleEffortLevelChange}
                   >
                     {EFFORT_LEVEL_OPTIONS.map(option => (
@@ -996,9 +992,7 @@ export const ChatToolbar = memo(function ChatToolbar({
                   <Brain className="mr-2 h-4 w-4" />
                   <span>Thinking</span>
                   <span className="ml-auto text-xs text-muted-foreground">
-                    {thinkingOverrideActive
-                      ? 'Off'
-                      : THINKING_LEVEL_OPTIONS.find(
+                    {THINKING_LEVEL_OPTIONS.find(
                           o => o.value === selectedThinkingLevel
                         )?.label}
                   </span>
@@ -1006,7 +1000,7 @@ export const ChatToolbar = memo(function ChatToolbar({
                 <DropdownMenuSubContent>
                   <DropdownMenuRadioGroup
                     value={
-                      thinkingOverrideActive ? 'off' : selectedThinkingLevel
+                      selectedThinkingLevel
                     }
                     onValueChange={handleThinkingLevelChange}
                   >
@@ -1077,6 +1071,97 @@ export const ChatToolbar = memo(function ChatToolbar({
         >
           <Wand2 className="h-3.5 w-3.5" />
         </button>
+
+        {/* Divider - desktop only */}
+        <div className="hidden @xl:block h-4 w-px bg-border/50" />
+
+        {/* MCP servers button - desktop only */}
+        <DropdownMenu open={mcpDropdownOpen} onOpenChange={setMcpDropdownOpen}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  disabled={hasPendingQuestions}
+                  className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+                >
+                  <Plug
+                    className={cn(
+                      'h-3.5 w-3.5',
+                      activeMcpCount > 0 &&
+                        'text-emerald-600 dark:text-emerald-400'
+                    )}
+                  />
+                  {activeMcpCount > 0 && <span>{activeMcpCount}</span>}
+                  <ChevronDown className="h-3 w-3 opacity-50" />
+                </button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent>
+              {activeMcpCount > 0
+                ? `${activeMcpCount} MCP server(s) enabled`
+                : 'No MCP servers enabled'}
+            </TooltipContent>
+          </Tooltip>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel className="flex items-center gap-2">
+              MCP Servers
+              {isHealthChecking && (
+                <Loader2 className="size-3 animate-spin text-muted-foreground" />
+              )}
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {availableMcpServers.length > 0 ? (
+              availableMcpServers.map(server => {
+                const status = healthResult?.statuses[server.name]
+                const hint = mcpStatusHint(status)
+                const item = (
+                  <DropdownMenuCheckboxItem
+                    key={server.name}
+                    checked={
+                      !server.disabled &&
+                      enabledMcpServers.includes(server.name)
+                    }
+                    onCheckedChange={() => onToggleMcpServer(server.name)}
+                    disabled={server.disabled}
+                    className={server.disabled ? 'opacity-50' : undefined}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <McpStatusDot status={status} />
+                      {server.name}
+                    </span>
+                    <span className="ml-auto pl-4 text-xs text-muted-foreground">
+                      {server.disabled ? 'disabled' : server.scope}
+                    </span>
+                  </DropdownMenuCheckboxItem>
+                )
+                if (!hint) return item
+                return (
+                  <Tooltip key={server.name}>
+                    <TooltipTrigger asChild>{item}</TooltipTrigger>
+                    <TooltipContent side="left">{hint}</TooltipContent>
+                  </Tooltip>
+                )
+              })
+            ) : (
+              <DropdownMenuItem disabled>
+                <span className="text-xs text-muted-foreground">
+                  No MCP servers configured
+                </span>
+              </DropdownMenuItem>
+            )}
+            {onOpenProjectSettings && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={onOpenProjectSettings}>
+                  <span className="text-xs text-muted-foreground">
+                    Set defaults in project settings
+                  </span>
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         {/* Issue/PR/Context dropdown - desktop only */}
         {(loadedIssueCount > 0 ||
@@ -1269,31 +1354,43 @@ export const ChatToolbar = memo(function ChatToolbar({
           <>
             <div className="hidden @xl:block h-4 w-px bg-border/50" />
             <div className="hidden @xl:flex items-center gap-0.5 rounded-md bg-muted/50 p-0.5">
-              <button
-                type="button"
-                onClick={() => onBackendChange('claude')}
-                className={cn(
-                  'h-7 rounded px-2.5 text-xs font-medium transition-colors',
-                  selectedBackend === 'claude'
-                    ? 'bg-background text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                )}
-              >
-                Claude
-              </button>
-              <button
-                type="button"
-                onClick={() => onBackendChange('codex')}
-                className={cn(
-                  'h-7 rounded px-2.5 text-xs font-medium transition-colors',
-                  selectedBackend === 'codex'
-                    ? 'bg-background text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                )}
-              >
-                Codex
-                <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">BETA</span>
-              </button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => onBackendChange('claude')}
+                    className={cn(
+                      'h-7 rounded px-2.5 text-xs font-medium transition-colors',
+                      selectedBackend === 'claude'
+                        ? 'bg-background text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    Claude
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Switch backend (Tab)</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => onBackendChange('codex')}
+                    className={cn(
+                      'h-7 rounded px-2.5 text-xs font-medium transition-colors',
+                      selectedBackend === 'codex'
+                        ? 'bg-background text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    Codex
+                    <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">
+                      BETA
+                    </span>
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Switch backend (Tab)</TooltipContent>
+              </Tooltip>
             </div>
           </>
         )}
@@ -1436,14 +1533,11 @@ export const ChatToolbar = memo(function ChatToolbar({
                     <Brain
                       className={cn(
                         'h-3.5 w-3.5',
-                        !thinkingOverrideActive &&
-                          'text-purple-600 dark:text-purple-400'
+                        'text-purple-600 dark:text-purple-400'
                       )}
                     />
                     <span>
-                      {thinkingOverrideActive
-                        ? 'Off'
-                        : EFFORT_LEVEL_OPTIONS.find(
+                      {EFFORT_LEVEL_OPTIONS.find(
                             o => o.value === selectedEffortLevel
                           )?.label}
                     </span>
@@ -1452,14 +1546,12 @@ export const ChatToolbar = memo(function ChatToolbar({
                 </DropdownMenuTrigger>
               </TooltipTrigger>
               <TooltipContent>
-                {thinkingOverrideActive
-                  ? `Effort disabled in ${executionMode} mode (change in Settings)`
-                  : `Effort: ${EFFORT_LEVEL_OPTIONS.find(o => o.value === selectedEffortLevel)?.label} (⌥E)`}
+                {`Effort: ${EFFORT_LEVEL_OPTIONS.find(o => o.value === selectedEffortLevel)?.label} (⌥E)`}
               </TooltipContent>
             </Tooltip>
             <DropdownMenuContent align="start">
               <DropdownMenuRadioGroup
-                value={thinkingOverrideActive ? '' : selectedEffortLevel}
+                value={selectedEffortLevel}
                 onValueChange={handleEffortLevelChange}
               >
                 {EFFORT_LEVEL_OPTIONS.map((option, i) => (
@@ -1495,14 +1587,11 @@ export const ChatToolbar = memo(function ChatToolbar({
                       className={cn(
                         'h-3.5 w-3.5',
                         selectedThinkingLevel !== 'off' &&
-                          !thinkingOverrideActive &&
                           'text-purple-600 dark:text-purple-400'
                       )}
                     />
                     <span>
-                      {thinkingOverrideActive
-                        ? 'Off'
-                        : THINKING_LEVEL_OPTIONS.find(
+                      {THINKING_LEVEL_OPTIONS.find(
                             o => o.value === selectedThinkingLevel
                           )?.label}
                     </span>
@@ -1511,14 +1600,12 @@ export const ChatToolbar = memo(function ChatToolbar({
                 </DropdownMenuTrigger>
               </TooltipTrigger>
               <TooltipContent>
-                {thinkingOverrideActive
-                  ? `Thinking disabled in ${executionMode} mode (change in Settings)`
-                  : `Thinking: ${THINKING_LEVEL_OPTIONS.find(o => o.value === selectedThinkingLevel)?.label} (⌥E)`}
+                {`Thinking: ${THINKING_LEVEL_OPTIONS.find(o => o.value === selectedThinkingLevel)?.label} (⌥E)`}
               </TooltipContent>
             </Tooltip>
             <DropdownMenuContent align="start">
               <DropdownMenuRadioGroup
-                value={thinkingOverrideActive ? 'off' : selectedThinkingLevel}
+                value={selectedThinkingLevel}
                 onValueChange={handleThinkingLevelChange}
               >
                 {THINKING_LEVEL_OPTIONS.map((option, i) => (
@@ -1601,94 +1688,6 @@ export const ChatToolbar = memo(function ChatToolbar({
 
         {/* Divider */}
         <div className="h-4 w-px bg-border/50" />
-
-        {/* MCP servers button - desktop only */}
-        <DropdownMenu open={mcpDropdownOpen} onOpenChange={setMcpDropdownOpen}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  disabled={hasPendingQuestions}
-                  className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-                >
-                  <Plug
-                    className={cn(
-                      'h-3.5 w-3.5',
-                      activeMcpCount > 0 &&
-                        'text-emerald-600 dark:text-emerald-400'
-                    )}
-                  />
-                  {activeMcpCount > 0 && <span>{activeMcpCount}</span>}
-                  <ChevronDown className="h-3 w-3 opacity-50" />
-                </button>
-              </DropdownMenuTrigger>
-            </TooltipTrigger>
-            <TooltipContent>
-              {activeMcpCount > 0
-                ? `${activeMcpCount} MCP server(s) enabled`
-                : 'No MCP servers enabled'}
-            </TooltipContent>
-          </Tooltip>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel className="flex items-center gap-2">
-              MCP Servers
-              {isHealthChecking && (
-                <Loader2 className="size-3 animate-spin text-muted-foreground" />
-              )}
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {availableMcpServers.length > 0 ? (
-              availableMcpServers.map(server => {
-                const status = healthResult?.statuses[server.name]
-                const hint = mcpStatusHint(status)
-                const item = (
-                  <DropdownMenuCheckboxItem
-                    key={server.name}
-                    checked={
-                      !server.disabled &&
-                      enabledMcpServers.includes(server.name)
-                    }
-                    onCheckedChange={() => onToggleMcpServer(server.name)}
-                    disabled={server.disabled}
-                    className={server.disabled ? 'opacity-50' : undefined}
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <McpStatusDot status={status} />
-                      {server.name}
-                    </span>
-                    <span className="ml-auto pl-4 text-xs text-muted-foreground">
-                      {server.disabled ? 'disabled' : server.scope}
-                    </span>
-                  </DropdownMenuCheckboxItem>
-                )
-                if (!hint) return item
-                return (
-                  <Tooltip key={server.name}>
-                    <TooltipTrigger asChild>{item}</TooltipTrigger>
-                    <TooltipContent side="left">{hint}</TooltipContent>
-                  </Tooltip>
-                )
-              })
-            ) : (
-              <DropdownMenuItem disabled>
-                <span className="text-xs text-muted-foreground">
-                  No MCP servers configured
-                </span>
-              </DropdownMenuItem>
-            )}
-            {onOpenProjectSettings && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={onOpenProjectSettings}>
-                  <span className="text-xs text-muted-foreground">
-                    Set defaults in project settings
-                  </span>
-                </DropdownMenuItem>
-              </>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
 
         {/* Send/Cancel button */}
         {isSending ? (

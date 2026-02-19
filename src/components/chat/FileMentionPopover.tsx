@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { FileIcon } from 'lucide-react'
 import {
   Command,
@@ -15,7 +16,7 @@ import {
   CommandList,
 } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverAnchor } from '@/components/ui/popover'
-import { useWorktreeFiles } from '@/services/files'
+import { useWorktreeFiles, fileQueryKeys } from '@/services/files'
 import type { WorktreeFile, PendingFile } from '@/types/chat'
 import { cn } from '@/lib/utils'
 import { generateId } from '@/lib/uuid'
@@ -55,9 +56,19 @@ export function FileMentionPopover({
   anchorPosition,
   handleRef,
 }: FileMentionPopoverProps) {
+  const queryClient = useQueryClient()
   const { data: files = [] } = useWorktreeFiles(worktreePath)
   const listRef = useRef<HTMLDivElement>(null)
   const [selectedIndex, setSelectedIndex] = useState(0)
+
+  // Refetch file list each time the popover opens so newly added files appear
+  useEffect(() => {
+    if (open && worktreePath) {
+      queryClient.invalidateQueries({
+        queryKey: fileQueryKeys.worktreeFiles(worktreePath),
+      })
+    }
+  }, [open, worktreePath, queryClient])
 
   // Filter files based on search query (case-insensitive substring match)
   const filteredFiles = useMemo(() => {

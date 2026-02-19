@@ -753,8 +753,6 @@ export interface QueuedMessage {
   executionMode: ExecutionMode
   /** Thinking level setting (snapshot at queue time) */
   thinkingLevel: ThinkingLevel
-  /** Whether thinking should be disabled for this mode (snapshot at queue time) */
-  disableThinkingForMode: boolean
   /** Effort level for Opus 4.6 adaptive thinking (snapshot at queue time) */
   effortLevel?: EffortLevel
   /** MCP config JSON to pass to CLI (snapshot at queue time) */

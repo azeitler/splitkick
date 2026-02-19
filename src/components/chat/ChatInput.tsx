@@ -34,9 +34,11 @@ interface ChatInputProps {
   activeWorktreePath: string | undefined
   isSending: boolean
   executionMode: ExecutionMode
+  canSwitchBackendWithTab?: boolean
   focusChatShortcut: string
   onSubmit: (e: React.FormEvent) => void
   onCancel: () => void
+  onSwitchBackendWithTab?: () => void
   onCommandExecute?: (commandName: string) => void
   onHasValueChange?: (hasValue: boolean) => void
   formRef: React.RefObject<HTMLFormElement | null>
@@ -48,9 +50,11 @@ export const ChatInput = memo(function ChatInput({
   activeWorktreePath,
   isSending,
   executionMode,
+  canSwitchBackendWithTab = false,
   focusChatShortcut,
   onSubmit,
   onCancel,
+  onSwitchBackendWithTab,
   onCommandExecute,
   onHasValueChange,
   formRef,
@@ -373,10 +377,19 @@ export const ChatInput = memo(function ChatInput({
         }
       }
 
-      // Cmd+Option+Backspace (Mac) / Ctrl+Alt+Backspace (Windows/Linux) cancels the running Claude process
-      if (e.key === 'Backspace' && (e.metaKey || e.ctrlKey) && e.altKey) {
+      // TAB toggles Claude/Codex backend when available.
+      // Keep Shift+Tab for global "cycle execution mode" keybinding.
+      if (
+        e.key === 'Tab' &&
+        !e.shiftKey &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        canSwitchBackendWithTab &&
+        onSwitchBackendWithTab
+      ) {
         e.preventDefault()
-        onCancel()
+        onSwitchBackendWithTab()
         return
       }
       // Enter without shift sends the message
@@ -400,7 +413,15 @@ export const ChatInput = memo(function ChatInput({
       }
       // Shift+Enter adds a new line (default behavior)
     },
-    [activeSessionId, fileMentionOpen, slashPopoverOpen, onCancel, onSubmit]
+    [
+      activeSessionId,
+      fileMentionOpen,
+      slashPopoverOpen,
+      onCancel,
+      onSubmit,
+      canSwitchBackendWithTab,
+      onSwitchBackendWithTab,
+    ]
   )
 
   // Handle paste events
@@ -749,12 +770,16 @@ export const ChatInput = memo(function ChatInput({
         ref={inputRef}
         placeholder={
           isSending
-            ? 'Type to queue next message...'
+            ? executionMode === 'yolo'
+              ? 'Yolo: Type to queue next message...'
+              : executionMode === 'plan'
+                ? 'Plan: Type to queue next message...'
+                : 'Build: Type to queue next message...'
             : executionMode === 'plan'
-              ? 'Plan a task, @mention files...'
+              ? 'Planning: Plan a task, @mention files...'
               : executionMode === 'yolo'
-                ? 'What do you want Claude to do? (no restrictions!)...'
-                : 'Ask to make changes, @mention files...'
+                ? 'Yolo: No limits, only your imagination and tokens...'
+                : 'Build: Ask to make changes, @mention files...'
         }
         // PERFORMANCE: Uncontrolled input - no value prop
         // Value is managed via valueRef and direct DOM manipulation

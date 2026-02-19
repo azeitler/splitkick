@@ -25,7 +25,3 @@ pub fn increment_tailer_count() {
 pub fn decrement_tailer_count() {
     ACTIVE_TAILER_COUNT.fetch_sub(1, Ordering::Relaxed);
 }
-
-pub fn get_active_tailer_count() -> usize {
-    ACTIVE_TAILER_COUNT.load(Ordering::Relaxed)
-}

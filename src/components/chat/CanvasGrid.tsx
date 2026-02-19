@@ -342,6 +342,7 @@ export function CanvasGrid({
         open={closeConfirmOpen}
         onOpenChange={setCloseConfirmOpen}
         onConfirm={executeCloseAction}
+        mode="session"
       />
     </>
   )

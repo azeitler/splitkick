@@ -36,7 +36,7 @@ For more information, take a look at [jean.build](https://jean.build).
 - **AI Chat (Claude CLI)** — Model selection (Opus, Sonnet, Haiku), thinking/effort levels, MCP server support, file mentions, image support, custom system prompts
 - **Magic Commands** — Investigate issues/PRs/workflows, code review with finding tracking, AI commit messages, PR content generation, merge conflict resolution, release notes
 - **GitHub Integration** — Issue & PR investigation, checkout PRs as worktrees, auto-archive on PR merge, workflow investigation
-- **Developer Tools** — Integrated terminal, open in editor (VS Code, Cursor, Xcode), git status, diff viewer (unified & side-by-side), file tree with preview
+- **Developer Tools** — Integrated terminal, open in editor (Zed, VS Code, Cursor, Xcode), git status, diff viewer (unified & side-by-side), file tree with preview
 - **Remote Access** — Built-in HTTP server with WebSocket support, token-based auth, web browser access
 - **Customization** — Themes (light/dark/system), custom fonts, customizable AI prompts, configurable keybindings
 
