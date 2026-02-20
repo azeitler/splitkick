@@ -1689,15 +1689,15 @@ pub fn run() {
     // - https://github.com/tauri-apps/tauri/issues/9394 (NVIDIA problems doc)
     //
     // The fix disables problematic GPU compositing modes. Users can override via env vars:
-    // - JEAN_FORCE_X11=1 to force X11 backend (default: no)
+    // - JEAN_FORCE_X11=1 to force X11 backend in non-AppImage runs (default: no)
     // - WEBKIT_DISABLE_COMPOSITING_MODE=0 to re-enable GPU compositing (risky)
     #[cfg(target_os = "linux")]
     {
         log::trace!("Setting WebKit compatibility fixes for Linux");
 
         // Detect if running inside an AppImage
-        let is_appimage = std::env::var_os("APPIMAGE").is_some()
-            || std::env::var_os("APPDIR").is_some();
+        let is_appimage =
+            std::env::var_os("APPIMAGE").is_some() || std::env::var_os("APPDIR").is_some();
         if is_appimage {
             log::trace!("Running inside AppImage");
         }
@@ -1726,8 +1726,12 @@ pub fn run() {
         }
 
         // Non-AppImage: Force X11 backend only if user explicitly requests it
-        let force_x11 =
-            std::env::var("JEAN_FORCE_X11").unwrap_or_else(|_| "0".to_string()) == "1";
+        let force_x11 = std::env::var("JEAN_FORCE_X11").unwrap_or_else(|_| "0".to_string()) == "1";
+        if force_x11 && is_appimage {
+            log::trace!(
+                "JEAN_FORCE_X11 requested but ignored in AppImage (AppRun/apprun-hooks control backend)"
+            );
+        }
         if !is_appimage && force_x11 && std::env::var_os("GDK_BACKEND").is_none() {
             std::env::set_var("GDK_BACKEND", "x11");
             log::trace!("GDK_BACKEND=x11 (forced by JEAN_FORCE_X11)");

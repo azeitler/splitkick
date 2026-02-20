@@ -21,13 +21,26 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 BUNDLE_DIR="$PROJECT_DIR/src-tauri/target/release/bundle/appimage"
 APPDIR="$BUNDLE_DIR/Jean.AppDir"
 CUSTOM_APPRUN="$SCRIPT_DIR/appimage-webkit-fix.sh"
+LINUXDEPLOY_BIN="${HOME}/.cache/tauri/linuxdeploy-x86_64.AppImage"
+LINUXDEPLOY_PLUGIN_BIN="${HOME}/.cache/tauri/linuxdeploy-plugin-appimage.AppImage"
+
+if [ "$(uname -s)" != "Linux" ]; then
+    echo "ERROR: AppImage builds are supported only on Linux hosts."
+    echo "Current host: $(uname -s)"
+    echo "Run this command in Linux CI or a Linux environment."
+    exit 1
+fi
 
 echo "==> Building AppImage via Tauri..."
 cd "$PROJECT_DIR"
 NO_STRIP=true tauri build --bundles appimage 2>&1 || {
     echo "Tauri build failed, trying manual linuxdeploy fallback..."
+    if [ ! -x "$LINUXDEPLOY_BIN" ]; then
+        echo "ERROR: linuxdeploy not found/executable at $LINUXDEPLOY_BIN"
+        exit 1
+    fi
     cd "$BUNDLE_DIR"
-    NO_STRIP=1 ~/.cache/tauri/linuxdeploy-x86_64.AppImage --appdir Jean.AppDir --output appimage
+    NO_STRIP=1 "$LINUXDEPLOY_BIN" --appdir Jean.AppDir --output appimage
 }
 
 if [ ! -d "$APPDIR" ]; then
@@ -51,7 +64,13 @@ cd "$BUNDLE_DIR"
 # Remove the old AppImage files
 rm -f Jean_*_amd64.AppImage Jean-x86_64.AppImage
 
-ARCH=x86_64 ~/.cache/tauri/linuxdeploy-plugin-appimage.AppImage --appdir Jean.AppDir 2>&1
+if [ ! -x "$LINUXDEPLOY_PLUGIN_BIN" ]; then
+    echo "ERROR: linuxdeploy appimage plugin not found/executable at $LINUXDEPLOY_PLUGIN_BIN"
+    exit 1
+fi
+
+# Keep NO_STRIP in the repack phase too (Arch/Fedora RELR compatibility).
+NO_STRIP=1 ARCH=x86_64 "$LINUXDEPLOY_PLUGIN_BIN" --appdir Jean.AppDir 2>&1
 
 # Rename to standard naming convention
 if [ -f "Jean-x86_64.AppImage" ]; then
