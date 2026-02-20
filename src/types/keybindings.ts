@@ -355,6 +355,7 @@ export function eventToShortcutString(e: KeyboardEvent): ShortcutString | null {
   if (key === '`') key = 'backquote'
   if (key === '-') key = 'minus'
   if (key === '=') key = 'equal'
+  if (key === 'delete') key = 'backspace'
 
   parts.push(key)
 
@@ -407,6 +408,10 @@ function keyboardCodeToShortcutKey(code: string): string | null {
     case 'Escape':
       return 'escape'
     case 'Backspace':
+      return 'backspace'
+    case 'Delete':
+      // Treat forward delete as backspace so mod+alt+delete also matches
+      // cancel shortcuts across keyboard layouts/devices.
       return 'backspace'
     case 'Space':
       return 'space'

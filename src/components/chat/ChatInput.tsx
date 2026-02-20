@@ -392,6 +392,22 @@ export const ChatInput = memo(function ChatInput({
         onSwitchBackendWithTab()
         return
       }
+
+      // Fallback cancel shortcut handling while input is focused.
+      // Global listeners should handle this already, but this avoids misses when
+      // keybinding state is stale or a platform reports forward-delete.
+      if (
+        isSending &&
+        (e.metaKey || e.ctrlKey) &&
+        e.altKey &&
+        (e.key === 'Backspace' || e.key === 'Delete')
+      ) {
+        e.preventDefault()
+        e.stopPropagation()
+        onCancel()
+        return
+      }
+
       // Enter without shift sends the message
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault()
@@ -417,6 +433,7 @@ export const ChatInput = memo(function ChatInput({
       activeSessionId,
       fileMentionOpen,
       slashPopoverOpen,
+      isSending,
       onCancel,
       onSubmit,
       canSwitchBackendWithTab,

@@ -1340,31 +1340,15 @@ export function useSendMessage() {
     },
     onSuccess: (response, { sessionId, worktreeId, executionMode }) => {
       // Handle undo_send: cancelled with no meaningful content
-      // Remove the optimistic user message (backend already removed it from storage)
+      // Keep the message list stable to avoid flicker; cancellation state is
+      // handled by chat:cancelled event and backend session refresh.
       if (
         response.cancelled &&
         !response.content &&
         response.tool_calls.length === 0
       ) {
-        queryClient.setQueryData<Session>(
-          chatQueryKeys.session(sessionId),
-          old => {
-            if (!old) return old
-            // Remove the last user message (the one we optimistically added)
-            const messages = [...old.messages]
-            for (let i = messages.length - 1; i >= 0; i--) {
-              if (messages[i]?.role === 'user') {
-                messages.splice(i, 1)
-                break
-              }
-            }
-            return { ...old, messages }
-          }
-        )
-        // Invalidate sessions list for metadata consistency
-        queryClient.invalidateQueries({
-          queryKey: chatQueryKeys.sessions(worktreeId),
-        })
+        // Keep cache stable here to avoid a stale refetch briefly re-adding
+        // the optimistically removed user message during cancel undo flow.
         return
       }
 

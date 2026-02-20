@@ -711,7 +711,8 @@ export default function useStreamingEvents({
           !hasQueuedMessages && (undo_send || !hasContent)
 
         if (shouldRestoreMessage) {
-          // Restore message to input and remove from chat (no content to preserve)
+          // Restore message to input and optimistically undo the sent message.
+          // This keeps cancel UX immediate while backend state catches up.
           const {
             lastSentMessages,
             inputDrafts,
@@ -734,12 +735,10 @@ export default function useStreamingEvents({
             }
             clearLastSentMessage(session_id)
 
-            // Remove the user message from chat (undo the send)
             queryClient.setQueryData<Session>(
               chatQueryKeys.session(session_id),
               old => {
                 if (!old) return old
-                // Remove the last user message
                 const messages = [...old.messages]
                 for (let i = messages.length - 1; i >= 0; i--) {
                   if (messages[i]?.role === 'user') {

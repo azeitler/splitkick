@@ -37,6 +37,17 @@ describe('eventToShortcutString', () => {
     expect(eventToShortcutString(f5Event)).toBe('f5')
   })
 
+  it('normalizes delete keys to backspace for shortcut matching', () => {
+    const deleteEvent = new KeyboardEvent('keydown', {
+      key: 'Delete',
+      code: 'Delete',
+      metaKey: true,
+      altKey: true,
+    })
+
+    expect(eventToShortcutString(deleteEvent)).toBe('mod+alt+backspace')
+  })
+
   it('ignores modifier-only keys', () => {
     const altOnlyEvent = new KeyboardEvent('keydown', {
       key: 'Alt',

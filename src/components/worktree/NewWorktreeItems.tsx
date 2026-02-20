@@ -136,38 +136,43 @@ export function IssueItem({
           </div>
         )}
       </button>
-      {/* Preview button */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            onClick={e => {
-              e.stopPropagation()
-              onPreview()
-            }}
-            className="shrink-0 p-1 rounded text-muted-foreground transition-colors hover:text-foreground hover:bg-muted"
-          >
-            <Eye className="h-3.5 w-3.5" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent>Preview issue</TooltipContent>
-      </Tooltip>
-      {/* Investigate button */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            onClick={e => {
-              e.stopPropagation()
-              onInvestigate(e.metaKey)
-            }}
-            disabled={isCreating}
-            className="shrink-0 inline-flex items-center gap-0.5 rounded bg-black px-1 py-0.5 text-[10px] text-white transition-colors hover:bg-black/80 dark:bg-yellow-500/20 dark:text-yellow-400 dark:hover:bg-yellow-500/30 dark:hover:text-yellow-300 disabled:opacity-30 disabled:cursor-not-allowed"
-          >
-            <Wand2 className="h-3 w-3" />
-            <span>M</span>
-          </button>
-        </TooltipTrigger>
-        <TooltipContent>Create worktree and investigate issue</TooltipContent>
-      </Tooltip>
+      <div className="shrink-0 flex items-center gap-1 self-center">
+        {/* Preview button */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={e => {
+                e.stopPropagation()
+                onPreview()
+              }}
+              className="inline-flex h-6 w-6 items-center justify-center rounded px-1 text-foreground/80 transition-colors hover:text-foreground hover:bg-muted"
+            >
+              <Eye className="h-3.5 w-3.5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>
+            Preview issue ({getModifierSymbol()}O)
+          </TooltipContent>
+        </Tooltip>
+        {/* Investigate button */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={e => {
+                e.stopPropagation()
+                onInvestigate(e.metaKey || e.ctrlKey)
+              }}
+              disabled={isCreating}
+              className="inline-flex h-6 w-6 items-center justify-center rounded px-1 text-foreground/80 transition-colors hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <Wand2 className="h-3 w-3 text-current dark:text-yellow-400" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>
+            Create worktree and investigate issue ({getModifierSymbol()}M)
+          </TooltipContent>
+        </Tooltip>
+      </div>
     </div>
   )
 }
@@ -260,38 +265,41 @@ export function PRItem({
           </div>
         )}
       </button>
-      {/* Preview button */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            onClick={e => {
-              e.stopPropagation()
-              onPreview()
-            }}
-            className="shrink-0 p-1 rounded text-muted-foreground transition-colors hover:text-foreground hover:bg-muted"
-          >
-            <Eye className="h-3.5 w-3.5" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent>Preview PR</TooltipContent>
-      </Tooltip>
-      {/* Investigate button */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            onClick={e => {
-              e.stopPropagation()
-              onInvestigate(e.metaKey)
-            }}
-            disabled={isCreating}
-            className="shrink-0 inline-flex items-center gap-0.5 rounded bg-black px-1 py-0.5 text-[10px] text-white transition-colors hover:bg-black/80 dark:bg-yellow-500/20 dark:text-yellow-400 dark:hover:bg-yellow-500/30 dark:hover:text-yellow-300 disabled:opacity-30 disabled:cursor-not-allowed"
-          >
-            <Wand2 className="h-3 w-3" />
-            <span>M</span>
-          </button>
-        </TooltipTrigger>
-        <TooltipContent>Create worktree and investigate PR</TooltipContent>
-      </Tooltip>
+      <div className="shrink-0 flex items-center gap-1 self-center">
+        {/* Preview button */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={e => {
+                e.stopPropagation()
+                onPreview()
+              }}
+              className="inline-flex h-6 w-6 items-center justify-center rounded px-1 text-foreground/80 transition-colors hover:text-foreground hover:bg-muted"
+            >
+              <Eye className="h-3.5 w-3.5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Preview PR ({getModifierSymbol()}O)</TooltipContent>
+        </Tooltip>
+        {/* Investigate button */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={e => {
+                e.stopPropagation()
+                onInvestigate(e.metaKey || e.ctrlKey)
+              }}
+              disabled={isCreating}
+              className="inline-flex h-6 w-6 items-center justify-center rounded px-1 text-foreground/80 transition-colors hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <Wand2 className="h-3 w-3 text-current dark:text-yellow-400" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>
+            Create worktree and investigate PR ({getModifierSymbol()}M)
+          </TooltipContent>
+        </Tooltip>
+      </div>
     </div>
   )
 }

@@ -1542,7 +1542,7 @@ pub async fn send_chat_message(
                         super::types::EffortLevel::Off => None,
                     });
 
-                // Build add_dirs for Codex (mirrors Claude's --add-dir pattern)
+                // Build add_dirs for Codex
                 let mut codex_add_dirs = Vec::new();
                 if let Ok(app_data_dir) = thread_app.path().app_data_dir() {
                     if cfg!(debug_assertions) {
@@ -1568,12 +1568,9 @@ pub async fn send_chat_message(
                     }
                 }
                 if let Some(home) = dirs::home_dir() {
-                    let claude_dir = home.join(".claude");
-                    for subdir in ["skills", "commands"] {
-                        let dir_path = claude_dir.join(subdir);
-                        if dir_path.exists() {
-                            codex_add_dirs.push(dir_path.to_string_lossy().to_string());
-                        }
+                    let codex_skills_dir = home.join(".codex").join("skills");
+                    if codex_skills_dir.exists() {
+                        codex_add_dirs.push(codex_skills_dir.to_string_lossy().to_string());
                     }
                 }
 

@@ -65,6 +65,15 @@ export function NewWorktreeModal() {
     setSelectedItemIndex,
     setIncludeClosed,
   })
+
+  const handlePreviewIssue = (issue: { number: number }) => {
+    setPreviewItem({ type: 'issue', number: issue.number })
+  }
+
+  const handlePreviewPR = (pr: { number: number }) => {
+    setPreviewItem({ type: 'pr', number: pr.number })
+  }
+
   const { handleKeyDown } = useNewWorktreeKeyboard({
     activeTab,
     setActiveTab,
@@ -78,8 +87,10 @@ export function NewWorktreeModal() {
     handleBaseSession: handlers.handleBaseSession,
     handleSelectIssue: handlers.handleSelectIssue,
     handleSelectIssueAndInvestigate: handlers.handleSelectIssueAndInvestigate,
+    handlePreviewIssue,
     handleSelectPR: handlers.handleSelectPR,
     handleSelectPRAndInvestigate: handlers.handleSelectPRAndInvestigate,
+    handlePreviewPR,
     handleSelectBranch: handlers.handleSelectBranch,
   })
 
@@ -172,9 +183,7 @@ export function NewWorktreeModal() {
               setSelectedIndex={setSelectedItemIndex}
               onSelectIssue={handlers.handleSelectIssue}
               onInvestigateIssue={handlers.handleSelectIssueAndInvestigate}
-              onPreviewIssue={issue =>
-                setPreviewItem({ type: 'issue', number: issue.number })
-              }
+              onPreviewIssue={handlePreviewIssue}
               creatingFromNumber={handlers.creatingFromNumber}
               searchInputRef={searchInputRef}
               onGhLogin={triggerGhLogin}
@@ -198,9 +207,7 @@ export function NewWorktreeModal() {
               setSelectedIndex={setSelectedItemIndex}
               onSelectPR={handlers.handleSelectPR}
               onInvestigatePR={handlers.handleSelectPRAndInvestigate}
-              onPreviewPR={pr =>
-                setPreviewItem({ type: 'pr', number: pr.number })
-              }
+              onPreviewPR={handlePreviewPR}
               creatingFromNumber={handlers.creatingFromNumber}
               searchInputRef={searchInputRef}
               onGhLogin={triggerGhLogin}

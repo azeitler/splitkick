@@ -15,6 +15,7 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from '@/components/ui/tooltip'
+import { getModifierSymbol } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 import type {
   GitHubIssue,
@@ -333,12 +334,14 @@ export function IssueItem({
               e.stopPropagation()
               onPreview()
             }}
-            className="p-1 rounded hover:bg-accent focus:outline-none focus:ring-1 focus:ring-ring transition-colors mt-0.5 flex-shrink-0"
+            className="inline-flex h-6 w-6 items-center justify-center rounded px-1 text-foreground/80 hover:bg-accent hover:text-foreground focus:outline-none focus:ring-1 focus:ring-ring transition-colors mt-0.5 flex-shrink-0"
           >
-            <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+            <Eye className="h-3.5 w-3.5" />
           </button>
         </TooltipTrigger>
-        <TooltipContent>Preview issue</TooltipContent>
+        <TooltipContent>
+          Preview issue ({getModifierSymbol()}O)
+        </TooltipContent>
       </Tooltip>
     </div>
   )
@@ -443,12 +446,12 @@ export function PRItem({
               e.stopPropagation()
               onPreview()
             }}
-            className="p-1 rounded hover:bg-accent focus:outline-none focus:ring-1 focus:ring-ring transition-colors mt-0.5 flex-shrink-0"
+            className="inline-flex h-6 w-6 items-center justify-center rounded px-1 text-foreground/80 hover:bg-accent hover:text-foreground focus:outline-none focus:ring-1 focus:ring-ring transition-colors mt-0.5 flex-shrink-0"
           >
-            <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+            <Eye className="h-3.5 w-3.5" />
           </button>
         </TooltipTrigger>
-        <TooltipContent>Preview PR</TooltipContent>
+        <TooltipContent>Preview PR ({getModifierSymbol()}O)</TooltipContent>
       </Tooltip>
     </div>
   )

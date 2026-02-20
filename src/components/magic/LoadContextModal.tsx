@@ -104,6 +104,8 @@ export function LoadContextModal({
     setSelectedIndex,
     onSelectIssue: handlers.handleSelectIssue,
     onSelectPR: handlers.handleSelectPR,
+    onPreviewIssue: handlers.handlePreviewIssue,
+    onPreviewPR: handlers.handlePreviewPR,
     onAttachContext: handlers.handleAttachContext,
     onSessionClick: handlers.handleSessionClick,
     onTabChange: setActiveTab,

@@ -15,6 +15,8 @@ interface UseLoadContextKeyboardOptions {
   setSelectedIndex: (i: number) => void
   onSelectIssue: (issue: GitHubIssue) => void
   onSelectPR: (pr: GitHubPullRequest) => void
+  onPreviewIssue: (issue: GitHubIssue) => void
+  onPreviewPR: (pr: GitHubPullRequest) => void
   onAttachContext: (ctx: SavedContext) => void
   onSessionClick: (s: SessionWithContext) => void
   onTabChange: (tab: TabId) => void
@@ -30,6 +32,8 @@ export function useLoadContextKeyboard({
   setSelectedIndex,
   onSelectIssue,
   onSelectPR,
+  onPreviewIssue,
+  onPreviewPR,
   onAttachContext,
   onSessionClick,
   onTabChange,
@@ -74,6 +78,12 @@ export function useLoadContextKeyboard({
           onSelectIssue(filteredIssues[selectedIndex])
           return
         }
+        if (key === 'o' && (e.metaKey || e.ctrlKey) && filteredIssues[selectedIndex]) {
+          e.preventDefault()
+          e.nativeEvent.stopImmediatePropagation()
+          onPreviewIssue(filteredIssues[selectedIndex])
+          return
+        }
       }
 
       // List navigation for PRs tab
@@ -91,6 +101,12 @@ export function useLoadContextKeyboard({
         if (key === 'enter' && filteredPRs[selectedIndex]) {
           e.preventDefault()
           onSelectPR(filteredPRs[selectedIndex])
+          return
+        }
+        if (key === 'o' && (e.metaKey || e.ctrlKey) && filteredPRs[selectedIndex]) {
+          e.preventDefault()
+          e.nativeEvent.stopImmediatePropagation()
+          onPreviewPR(filteredPRs[selectedIndex])
           return
         }
       }
@@ -149,6 +165,8 @@ export function useLoadContextKeyboard({
       setSelectedIndex,
       onSelectIssue,
       onSelectPR,
+      onPreviewIssue,
+      onPreviewPR,
       onAttachContext,
       onSessionClick,
       onTabChange,

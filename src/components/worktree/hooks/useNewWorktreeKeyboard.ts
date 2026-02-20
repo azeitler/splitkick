@@ -18,11 +18,13 @@ interface Params {
     issue: GitHubIssue,
     background?: boolean
   ) => void
+  handlePreviewIssue: (issue: GitHubIssue) => void
   handleSelectPR: (pr: GitHubPullRequest, background?: boolean) => void
   handleSelectPRAndInvestigate: (
     pr: GitHubPullRequest,
     background?: boolean
   ) => void
+  handlePreviewPR: (pr: GitHubPullRequest) => void
   handleSelectBranch: (branchName: string, background?: boolean) => void
 }
 
@@ -39,8 +41,10 @@ export function useNewWorktreeKeyboard({
   handleBaseSession,
   handleSelectIssue,
   handleSelectIssueAndInvestigate,
+  handlePreviewIssue,
   handleSelectPR,
   handleSelectPRAndInvestigate,
+  handlePreviewPR,
   handleSelectBranch,
 }: Params) {
   // Scroll selected item into view
@@ -118,14 +122,26 @@ export function useNewWorktreeKeyboard({
           return
         }
         if (
+          key === 'o' &&
+          (e.metaKey || e.ctrlKey) &&
+          filteredIssues[selectedItemIndex]
+        ) {
+          e.preventDefault()
+          e.nativeEvent.stopImmediatePropagation()
+          handlePreviewIssue(filteredIssues[selectedItemIndex])
+          return
+        }
+        if (
           key === 'm' &&
+          (e.metaKey || e.ctrlKey) &&
           filteredIssues[selectedItemIndex] &&
           creatingFromNumber === null
         ) {
           e.preventDefault()
+          e.nativeEvent.stopImmediatePropagation()
           handleSelectIssueAndInvestigate(
             filteredIssues[selectedItemIndex],
-            e.metaKey
+            e.metaKey || e.ctrlKey
           )
           return
         }
@@ -151,14 +167,26 @@ export function useNewWorktreeKeyboard({
           return
         }
         if (
+          key === 'o' &&
+          (e.metaKey || e.ctrlKey) &&
+          filteredPRs[selectedItemIndex]
+        ) {
+          e.preventDefault()
+          e.nativeEvent.stopImmediatePropagation()
+          handlePreviewPR(filteredPRs[selectedItemIndex])
+          return
+        }
+        if (
           key === 'm' &&
+          (e.metaKey || e.ctrlKey) &&
           filteredPRs[selectedItemIndex] &&
           creatingFromNumber === null
         ) {
           e.preventDefault()
+          e.nativeEvent.stopImmediatePropagation()
           handleSelectPRAndInvestigate(
             filteredPRs[selectedItemIndex],
-            e.metaKey
+            e.metaKey || e.ctrlKey
           )
           return
         }
@@ -195,8 +223,10 @@ export function useNewWorktreeKeyboard({
       handleBaseSession,
       handleSelectIssue,
       handleSelectIssueAndInvestigate,
+      handlePreviewIssue,
       handleSelectPR,
       handleSelectPRAndInvestigate,
+      handlePreviewPR,
       handleSelectBranch,
       creatingFromNumber,
       setActiveTab,
