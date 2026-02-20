@@ -138,6 +138,7 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
             {/* Approve buttons */}
             {card.hasExitPlanMode &&
               !card.hasQuestion &&
+              card.session.backend !== 'codex' &&
               onApprove &&
               onYolo && (
                 <div className="flex items-center gap-1 shrink-0">

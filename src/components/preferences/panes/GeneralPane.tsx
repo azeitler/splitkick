@@ -111,7 +111,7 @@ const InlineField: React.FC<{
     <div className="space-y-0.5 sm:w-96 sm:shrink-0">
       <Label className="text-sm text-foreground">{label}</Label>
       {description && (
-        <div className="text-xs text-muted-foreground break-all">
+        <div className="text-xs text-muted-foreground break-words">
           {description}
         </div>
       )}
@@ -1036,6 +1036,23 @@ export const GeneralPane: React.FC = () => {
                   savePreferences.mutate({
                     ...preferences,
                     auto_pull_base_branch: checked,
+                  })
+                }
+              }}
+            />
+          </InlineField>
+
+          <InlineField
+            label="Restore last session on project switch"
+            description="Automatically reopen the last worktree and session when switching projects"
+          >
+            <Switch
+              checked={preferences?.restore_last_session ?? false}
+              onCheckedChange={checked => {
+                if (preferences) {
+                  savePreferences.mutate({
+                    ...preferences,
+                    restore_last_session: checked,
                   })
                 }
               }}

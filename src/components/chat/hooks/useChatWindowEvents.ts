@@ -60,6 +60,15 @@ interface UseChatWindowEventsParams {
   handleLoadContext: () => void
   // Run script
   runScript: string | null | undefined
+  // Plan approval (keyboard shortcuts)
+  hasStreamingPlan: boolean
+  pendingPlanMessage: { id: string } | null | undefined
+  handleStreamingPlanApproval: () => void
+  handleStreamingPlanApprovalYolo: () => void
+  handlePlanApproval: (messageId: string) => void
+  handlePlanApprovalYolo: (messageId: string) => void
+  /** Whether the active session uses Codex backend (no native approval flow) */
+  isCodexBackend: boolean
 }
 
 /**
@@ -99,6 +108,13 @@ export function useChatWindowEvents({
   handleSaveContext,
   handleLoadContext,
   runScript,
+  hasStreamingPlan,
+  pendingPlanMessage,
+  handleStreamingPlanApproval,
+  handleStreamingPlanApprovalYolo,
+  handlePlanApproval,
+  handlePlanApprovalYolo,
+  isCodexBackend,
 }: UseChatWindowEventsParams) {
   // Focus input on mount, session change, or worktree change
   useEffect(() => {
@@ -351,4 +367,54 @@ export function useChatWindowEvents({
     return () =>
       window.removeEventListener('set-chat-input', handler as EventListener)
   }, [activeSessionId, inputRef])
+
+  // Approve plan keyboard shortcut (no-op for Codex which has no native approval flow)
+  useEffect(() => {
+    if (!isModal && isViewingCanvasTab) return
+    if (isCodexBackend) return
+    const handler = () => {
+      if (hasStreamingPlan) {
+        handleStreamingPlanApproval()
+        return
+      }
+      if (pendingPlanMessage) {
+        handlePlanApproval(pendingPlanMessage.id)
+      }
+    }
+    window.addEventListener('approve-plan', handler)
+    return () => window.removeEventListener('approve-plan', handler)
+  }, [
+    isModal,
+    isViewingCanvasTab,
+    isCodexBackend,
+    hasStreamingPlan,
+    pendingPlanMessage,
+    handleStreamingPlanApproval,
+    handlePlanApproval,
+  ])
+
+  // Approve plan yolo keyboard shortcut (no-op for Codex)
+  useEffect(() => {
+    if (!isModal && isViewingCanvasTab) return
+    if (isCodexBackend) return
+    const handler = () => {
+      if (hasStreamingPlan) {
+        handleStreamingPlanApprovalYolo()
+        return
+      }
+      if (pendingPlanMessage) {
+        handlePlanApprovalYolo(pendingPlanMessage.id)
+      }
+    }
+    window.addEventListener('approve-plan-yolo', handler)
+    return () => window.removeEventListener('approve-plan-yolo', handler)
+  }, [
+    isModal,
+    isViewingCanvasTab,
+    isCodexBackend,
+    hasStreamingPlan,
+    pendingPlanMessage,
+    handleStreamingPlanApprovalYolo,
+    handlePlanApprovalYolo,
+  ])
 }

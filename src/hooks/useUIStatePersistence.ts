@@ -74,6 +74,7 @@ export function useUIStatePersistence() {
       activeSessionIds,
       reviewSidebarVisible,
       pendingDigestSessionIds,
+      lastOpenedPerProject,
     } = useChatStore.getState()
     const {
       expandedProjectIds,
@@ -107,6 +108,13 @@ export function useUIStatePersistence() {
       project_access_timestamps: projectAccessTimestamps,
       // Dashboard worktree collapse overrides
       dashboard_worktree_collapse_overrides: dashboardWorktreeCollapseOverrides,
+      // Last opened worktree+session per project (convert camelCase → snake_case keys)
+      last_opened_per_project: Object.fromEntries(
+        Object.entries(lastOpenedPerProject).map(([projectId, entry]) => [
+          projectId,
+          { worktree_id: entry.worktreeId, session_id: entry.sessionId },
+        ])
+      ),
       version: 1, // Reset for first release
     }
   }, [])
@@ -306,6 +314,21 @@ export function useUIStatePersistence() {
       })
     }
 
+    // Restore last opened worktree+session per project (convert snake_case → camelCase keys)
+    const lastOpenedPerProject = uiState.last_opened_per_project ?? {}
+    if (Object.keys(lastOpenedPerProject).length > 0) {
+      logger.debug('Restoring last opened per project', {
+        count: Object.keys(lastOpenedPerProject).length,
+      })
+      const converted = Object.fromEntries(
+        Object.entries(lastOpenedPerProject).map(([projectId, entry]) => [
+          projectId,
+          { worktreeId: entry.worktree_id, sessionId: entry.session_id },
+        ])
+      )
+      useChatStore.setState({ lastOpenedPerProject: converted })
+    }
+
     queueMicrotask(() => {
       setIsInitialized(true)
       useUIStore.getState().setUIStateInitialized(true)
@@ -335,6 +358,8 @@ export function useUIStatePersistence() {
     let prevReviewSidebarVisible = useChatStore.getState().reviewSidebarVisible
     let prevPendingDigestSessionIds =
       useChatStore.getState().pendingDigestSessionIds
+    let prevLastOpenedPerProject =
+      useChatStore.getState().lastOpenedPerProject
     let prevModalTerminalOpen = useTerminalStore.getState().modalTerminalOpen
     let prevModalTerminalWidth = useTerminalStore.getState().modalTerminalWidth
 
@@ -397,12 +422,15 @@ export function useUIStatePersistence() {
         state.reviewSidebarVisible !== prevReviewSidebarVisible
       const pendingDigestChanged =
         state.pendingDigestSessionIds !== prevPendingDigestSessionIds
+      const lastOpenedChanged =
+        state.lastOpenedPerProject !== prevLastOpenedPerProject
 
       if (
         worktreeChanged ||
         sessionsChanged ||
         reviewSidebarChanged ||
-        pendingDigestChanged
+        pendingDigestChanged ||
+        lastOpenedChanged
       ) {
         prevWorktreeId = state.activeWorktreeId
         prevWorktreePath = state.activeWorktreePath
@@ -410,6 +438,7 @@ export function useUIStatePersistence() {
         prevActiveSessionIds = state.activeSessionIds
         prevReviewSidebarVisible = state.reviewSidebarVisible
         prevPendingDigestSessionIds = state.pendingDigestSessionIds
+        prevLastOpenedPerProject = state.lastOpenedPerProject
         const currentState = getCurrentUIState()
         debouncedSaveRef.current?.(currentState)
       }

@@ -261,22 +261,16 @@ function WorktreeSectionHeader({
         {sessionSummary && (
           <span
             className={cn(
-              'ml-auto text-xs',
-              activeStatus === 'waiting'
-                ? 'text-yellow-500 font-medium animate-blink'
-                : activeStatus === 'yoloing'
-                  ? 'text-destructive font-medium'
-                  : activeStatus === 'review'
-                    ? 'text-green-500 font-medium'
-                    : activeStatus
-                      ? 'text-yellow-500 font-medium'
-                      : 'text-muted-foreground/70'
+              'ml-auto text-xs font-medium px-1.5 text-muted-foreground py-0.5 rounded',
+              activeStatus === 'waiting' && 'bg-yellow-400 text-black',
+              (activeStatus === 'planning' || activeStatus === 'vibing' || activeStatus === 'review' || activeStatus === 'yoloing') && 'bg-green-600 text-white',
+
             )}
           >
             {sessionSummary}
           </span>
         )}
-      </div>
+      </div >
       <Suspense fallback={null}>
         <GitDiffModal
           diffRequest={diffRequest}
@@ -406,17 +400,17 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       const filteredSessions =
         searchQuery.trim() && !isBase
           ? sessions.filter(
-              session =>
-                session.name
-                  .toLowerCase()
-                  .includes(searchQuery.toLowerCase()) ||
-                worktree.name
-                  .toLowerCase()
-                  .includes(searchQuery.toLowerCase()) ||
-                worktree.branch
-                  .toLowerCase()
-                  .includes(searchQuery.toLowerCase())
-            )
+            session =>
+              session.name
+                .toLowerCase()
+                .includes(searchQuery.toLowerCase()) ||
+              worktree.name
+                .toLowerCase()
+                .includes(searchQuery.toLowerCase()) ||
+              worktree.branch
+                .toLowerCase()
+                .includes(searchQuery.toLowerCase())
+          )
           : sessions
 
       // Compute card data for each session
@@ -456,6 +450,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     return groups
       .map(g => `${g.cards.length} ${g.title.toLowerCase()}`)
       .join(' · ')
+
   }, [])
 
   // Build flat array of all cards for keyboard navigation
@@ -592,6 +587,21 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       )
   }, [selectedWorktreeModal])
 
+  // Record last opened worktree+session per project for restoration on project switch
+  const activeSessionIdForModal = useChatStore(
+    state => selectedWorktreeModal ? state.activeSessionIds[selectedWorktreeModal.worktreeId] : undefined
+  )
+  useEffect(() => {
+    if (!selectedWorktreeModal || !activeSessionIdForModal) return
+    useChatStore
+      .getState()
+      .setLastOpenedForProject(
+        projectId,
+        selectedWorktreeModal.worktreeId,
+        activeSessionIdForModal
+      )
+  }, [projectId, selectedWorktreeModal, activeSessionIdForModal])
+
   // Track highlighted card when selectedIndex changes (for surviving reorders)
   const handleSelectedIndexChange = useCallback(
     (index: number | null) => {
@@ -616,12 +626,12 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     const cardIndex = isListLayout
       ? flatCards.findIndex(fc => fc.worktreeId === highlighted.worktreeId)
       : flatCards.findIndex(
-          fc =>
-            fc.worktreeId === highlighted.worktreeId &&
-            ('sessionId' in highlighted
-              ? fc.card?.session.id === highlighted.sessionId
-              : true)
-        )
+        fc =>
+          fc.worktreeId === highlighted.worktreeId &&
+          ('sessionId' in highlighted
+            ? fc.card?.session.id === highlighted.sessionId
+            : true)
+      )
     if (cardIndex !== -1 && cardIndex !== selectedIndex) {
       setSelectedIndex(cardIndex)
     }
@@ -676,20 +686,37 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     }
   }, [sessionsByWorktreeId, readyWorktrees, flatCards])
 
-  // Auto-select session when dashboard opens (visual selection only, no modal)
-  // Prefers the persisted active session per worktree, falls back to first card
+  // Auto-select session when dashboard opens (visual selection only, no modal unless restore_last_session is on)
+  // Prefers last opened per project, then persisted active session per worktree, falls back to first card
   useEffect(() => {
     if (selectedIndex !== null || selectedWorktreeModal) return
     if (flatCards.length === 0) return
 
-    // Try to find a card matching a persisted active session.
-    // Prefer the last active worktree's session so switching back to a project
-    // selects the worktree-based session you were last in, not just the first base session.
-    const { activeSessionIds, lastActiveWorktreeId } = useChatStore.getState()
+    const { activeSessionIds, lastActiveWorktreeId, lastOpenedPerProject } = useChatStore.getState()
     let targetIndex = -1
+    let shouldAutoOpenModal = false
 
-    // First: check the last active worktree's session
-    if (lastActiveWorktreeId) {
+    // First: check lastOpenedPerProject for this project
+    const lastOpened = lastOpenedPerProject[projectId]
+    if (lastOpened) {
+      for (const fc of flatCards) {
+        if (!fc.card || fc.isPending) continue
+        if (
+          fc.worktreeId === lastOpened.worktreeId &&
+          fc.card.session.id === lastOpened.sessionId
+        ) {
+          targetIndex = fc.globalIndex
+          // Auto-open modal if restore_last_session is enabled
+          if (preferences?.restore_last_session) {
+            shouldAutoOpenModal = true
+          }
+          break
+        }
+      }
+    }
+
+    // Second: check the last active worktree's session
+    if (targetIndex === -1 && lastActiveWorktreeId) {
       const lastActiveSessionId = activeSessionIds[lastActiveWorktreeId]
       if (lastActiveSessionId) {
         for (const fc of flatCards) {
@@ -740,15 +767,26 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       useChatStore
         .getState()
         .registerWorktreePath(targetCard.worktreeId, targetCard.worktreePath)
+
+      // Auto-open SessionChatModal if restore_last_session is enabled
+      if (shouldAutoOpenModal) {
+        useChatStore
+          .getState()
+          .setActiveSession(targetCard.worktreeId, targetCard.card.session.id)
+        setSelectedWorktreeModal({
+          worktreeId: targetCard.worktreeId,
+          worktreePath: targetCard.worktreePath,
+        })
+      }
     }
-  }, [flatCards, selectedIndex, selectedWorktreeModal])
+  }, [flatCards, selectedIndex, selectedWorktreeModal, projectId, preferences?.restore_last_session])
 
   // Sync selection to store for cancel shortcut - updates when user navigates with arrow keys
   useEffect(() => {
     if (selectedWorktreeModal?.worktreeId) {
       const activeSessionId =
         useChatStore.getState().activeSessionIds[
-          selectedWorktreeModal.worktreeId
+        selectedWorktreeModal.worktreeId
         ]
       if (activeSessionId) {
         useChatStore

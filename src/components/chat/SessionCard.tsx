@@ -169,6 +169,7 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
               {/* Actions row - Approve buttons for ExitPlanMode */}
               {card.hasExitPlanMode &&
                 !card.hasQuestion &&
+                card.session.backend !== 'codex' &&
                 onApprove &&
                 onYolo && (
                   <div className="relative z-10 flex items-center gap-1.5">

@@ -9,8 +9,6 @@ import {
   Suspense,
 } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { invoke } from '@/lib/transport'
-import { generateId } from '@/lib/uuid'
 import { toast } from 'sonner'
 import { formatShortcutDisplay, DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -35,8 +33,6 @@ import {
   useSetSessionBackend,
   useSetSessionProvider,
   useCreateSession,
-  cancelChatMessage,
-  chatQueryKeys,
 } from '@/services/chat'
 import {
   useWorktree,
@@ -57,7 +53,6 @@ import {
 import { usePreferences, useSavePreferences } from '@/services/preferences'
 import { getLabelTextColor } from '@/lib/label-colors'
 import {
-  DEFAULT_PARALLEL_EXECUTION_PROMPT,
   PREDEFINED_CLI_PROFILES,
 } from '@/types/preferences'
 import type {
@@ -72,8 +67,7 @@ import type {
   PermissionDenial,
   PendingFile,
 } from '@/types/chat'
-import { isAskUserQuestion, isExitPlanMode, isTodoWrite } from '@/types/chat'
-import type { CodexAgent } from '@/types/chat'
+import { isAskUserQuestion, isExitPlanMode } from '@/types/chat'
 import { getFilename, normalizePath } from '@/lib/path-utils'
 import { cn } from '@/lib/utils'
 import { PermissionApproval } from './PermissionApproval'
@@ -82,8 +76,6 @@ import { TodoWidget } from './TodoWidget'
 import { AgentWidget } from './AgentWidget'
 import {
   normalizeTodosForDisplay,
-  findPlanFilePath,
-  findPlanContent,
 } from './tool-call-utils'
 import { ImagePreview } from './ImagePreview'
 import { TextFilePreview } from './TextFilePreview'
@@ -117,7 +109,6 @@ import {
   stripAllMarkers,
 } from './message-content-utils'
 import { useUIStore } from '@/store/ui-store'
-import { useProjectsStore } from '@/store/projects-store'
 import {
   buildMcpConfigJson,
 } from '@/services/mcp'
@@ -131,8 +122,6 @@ import { usePrStatus, usePrStatusEvents } from '@/services/pr-status'
 import type { PrDisplayStatus, CheckStatus } from '@/types/pr-status'
 import type {
   QueuedMessage,
-  ExecutionMode,
-  Session,
   SessionDigest,
 } from '@/types/chat'
 import type { DiffRequest } from '@/types/git-diff'
@@ -160,16 +149,18 @@ import { useTerminalStore } from '@/store/terminal-store'
 import { useScrollManagement } from './hooks/useScrollManagement'
 import { useGitOperations } from './hooks/useGitOperations'
 import { useContextOperations } from './hooks/useContextOperations'
-import {
-  useMessageHandlers,
-  GIT_ALLOWED_TOOLS,
-} from './hooks/useMessageHandlers'
+import { useMessageHandlers } from './hooks/useMessageHandlers'
 import { useMagicCommands } from './hooks/useMagicCommands'
 import { useDragAndDropImages } from './hooks/useDragAndDropImages'
 import { usePlanDialogApproval } from './hooks/usePlanDialogApproval'
 import { useChatWindowEvents } from './hooks/useChatWindowEvents'
 import { useInvestigateHandlers } from './hooks/useInvestigateHandlers'
 import { useMcpServerResolution } from './hooks/useMcpServerResolution'
+import { useToolbarHandlers } from './hooks/useToolbarHandlers'
+import { useMessageSending } from './hooks/useMessageSending'
+import { usePlanState } from './hooks/usePlanState'
+import { useActiveTodosAndAgents } from './hooks/useActiveTodosAndAgents'
+import { usePendingAttachments } from './hooks/usePendingAttachments'
 
 // PERFORMANCE: Stable empty array references to prevent infinite render loops
 // When Zustand selectors return [], a new reference is created each time
@@ -745,198 +736,34 @@ export function ChatWindow({
   // State for single file diff modal (opened by clicking edited file badges)
   const [editedFilePath, setEditedFilePath] = useState<string | null>(null)
 
-  // Track which message's todos were dismissed (by message ID)
-  // Special value '__streaming__' means dismissed during streaming (before message ID assigned)
-  const [dismissedTodoMessageId, setDismissedTodoMessageId] = useState<
-    string | null
-  >(null)
-
-  // Get active todos - from streaming tool calls OR last assistant message
-  // Returns todos, source message ID for tracking dismissals, and whether from active streaming
-  // isFromStreaming distinguishes actual streaming todos from historical fallback during the gap
-  // when isSending=true but currentToolCalls is empty (after clearToolCalls, before first TodoWrite)
+  // Active todos and agents from streaming/persisted tool calls (with dismissal tracking)
   const {
-    todos: activeTodos,
-    sourceMessageId: todoSourceMessageId,
-    isFromStreaming,
-  } = useMemo(() => {
-    if (!activeSessionId)
-      return { todos: [], sourceMessageId: null, isFromStreaming: false }
-
-    // During streaming: extract from currentToolCalls (no message ID yet)
-    // Iterate backwards without copying array
-    if (isSending && currentToolCalls.length > 0) {
-      for (let i = currentToolCalls.length - 1; i >= 0; i--) {
-        const tc = currentToolCalls[i]
-        if (tc && isTodoWrite(tc)) {
-          return {
-            todos: tc.input.todos,
-            sourceMessageId: null,
-            isFromStreaming: true,
-          }
-        }
-      }
-    }
-
-    // After streaming OR during gap: use pre-computed lastAssistantMessage
-    // isFromStreaming=false ensures normalization even when isSending=true
-    if (lastAssistantMessage?.tool_calls) {
-      // Find last TodoWrite call (iterate backwards, no array copy)
-      for (let i = lastAssistantMessage.tool_calls.length - 1; i >= 0; i--) {
-        const tc = lastAssistantMessage.tool_calls[i]
-        if (tc && isTodoWrite(tc)) {
-          return {
-            todos: tc.input.todos,
-            sourceMessageId: lastAssistantMessage.id,
-            isFromStreaming: false,
-          }
-        }
-      }
-    }
-
-    return { todos: [], sourceMessageId: null, isFromStreaming: false }
-  }, [activeSessionId, isSending, currentToolCalls, lastAssistantMessage])
-
-  // Track which message's agents were dismissed
-  const [dismissedAgentMessageId, setDismissedAgentMessageId] = useState<
-    string | null
-  >(null)
-
-  // Get active agents from collab_tool_call (SpawnAgent) events
-  const {
-    agents: activeAgents,
-    sourceMessageId: agentSourceMessageId,
-    isFromStreaming: agentIsFromStreaming,
-  } = useMemo(() => {
-    if (!activeSessionId)
-      return { agents: [], sourceMessageId: null, isFromStreaming: false }
-
-    const toolCalls =
-      isSending && currentToolCalls.length > 0
-        ? currentToolCalls
-        : (lastAssistantMessage?.tool_calls ?? [])
-
-    const agents: CodexAgent[] = []
-    for (const tc of toolCalls) {
-      if (tc.name === 'SpawnAgent') {
-        const input = tc.input as Record<string, unknown>
-        const prompt = (input.prompt as string) ?? ''
-        const truncated =
-          prompt.length > 80 ? prompt.substring(0, 80) + '...' : prompt
-        // SpawnAgent gets output when spawn completes — agent is now running
-        // Only mark completed/errored when session is done (!isSending)
-        let status: CodexAgent['status'] = 'in_progress'
-        if (tc.output && !isSending) {
-          const out = tc.output as string
-          if (out.includes('errored')) {
-            status = 'errored'
-          } else {
-            status = 'completed'
-          }
-        }
-        agents.push({ id: tc.id, prompt: truncated, status })
-      }
-    }
-
-    const sourceId =
-      isSending && currentToolCalls.length > 0
-        ? null
-        : (lastAssistantMessage?.id ?? null)
-    return {
-      agents,
-      sourceMessageId: sourceId,
-      isFromStreaming: isSending && currentToolCalls.length > 0,
-    }
-  }, [activeSessionId, isSending, currentToolCalls, lastAssistantMessage])
-
-  // Auto-clear agent dismissal on new streaming agents
-  useEffect(() => {
-    if (isSending && activeAgents.length > 0 && agentSourceMessageId === null) {
-      if (dismissedAgentMessageId !== '__streaming__') {
-        queueMicrotask(() => setDismissedAgentMessageId(null))
-      }
-    } else if (
-      !isSending &&
-      agentSourceMessageId !== null &&
-      dismissedAgentMessageId === '__streaming__'
-    ) {
-      queueMicrotask(() => setDismissedAgentMessageId(agentSourceMessageId))
-    }
-  }, [
-    isSending,
-    activeAgents.length,
+    activeTodos,
+    todoSourceMessageId,
+    todoIsFromStreaming: isFromStreaming,
+    dismissedTodoMessageId,
+    setDismissedTodoMessageId,
+    activeAgents,
     agentSourceMessageId,
+    agentIsFromStreaming,
     dismissedAgentMessageId,
-  ])
+    setDismissedAgentMessageId,
+  } = useActiveTodosAndAgents({
+    activeSessionId,
+    isSending,
+    currentToolCalls,
+    lastAssistantMessage,
+  })
 
-  // Compute pending plan info for floating approve button
-  // Returns the message that has an unapproved plan awaiting action, if any
-  const pendingPlanMessage = useMemo(() => {
-    const messages = session?.messages ?? []
-    // Find the last message with ExitPlanMode
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const m = messages[i]
-      if (
-        m &&
-        m.role === 'assistant' &&
-        m.tool_calls?.some(tc => isExitPlanMode(tc))
-      ) {
-        // Check if it's not approved and no follow-up user message
-        // PERFORMANCE: Iterate directly instead of creating array slice
-        let hasFollowUp = false
-        for (let j = i + 1; j < messages.length; j++) {
-          if (messages[j]?.role === 'user') {
-            hasFollowUp = true
-            break
-          }
-        }
-        if (!m.plan_approved && !hasFollowUp) {
-          return m
-        }
-        break // Only check the latest plan message
-      }
-    }
-    return null
-  }, [session?.messages])
-
-  // Check if there's a streaming plan awaiting approval
-  const hasStreamingPlan = useMemo(() => {
-    if (!isSending || !activeSessionId) return false
-    const hasExitPlanModeTool = currentToolCalls.some(isExitPlanMode)
-    return hasExitPlanModeTool && !isStreamingPlanApproved(activeSessionId)
-  }, [isSending, activeSessionId, currentToolCalls, isStreamingPlanApproved])
-
-  // Find latest plan content from ExitPlanMode tool calls (primary source)
-  const latestPlanContent = useMemo(() => {
-    // Check streaming tool calls first
-    const streamingPlan = findPlanContent(currentToolCalls)
-    if (streamingPlan) return streamingPlan
-    // Check persisted messages
-    const msgs = session?.messages ?? []
-    for (let i = msgs.length - 1; i >= 0; i--) {
-      const m = msgs[i]
-      if (m?.tool_calls) {
-        const content = findPlanContent(m.tool_calls)
-        if (content) return content
-      }
-    }
-    return null
-  }, [session?.messages, currentToolCalls])
-
-  // Find latest plan file path across all messages (fallback for old-style file-based plans)
-  const latestPlanFilePath = useMemo(() => {
-    const msgs = session?.messages ?? []
-    for (let i = msgs.length - 1; i >= 0; i--) {
-      const m = msgs[i]
-      if (m?.tool_calls) {
-        const path = findPlanFilePath(m.tool_calls)
-        if (path) return path
-      }
-    }
-    return null
-  }, [session?.messages])
-
-  // Whether a plan is available (content preferred over file)
+  // Plan state: pending plan message, streaming plan, content, file path
+  const { pendingPlanMessage, hasStreamingPlan, latestPlanContent, latestPlanFilePath } =
+    usePlanState({
+      sessionMessages: session?.messages,
+      currentToolCalls,
+      isSending,
+      activeSessionId,
+      isStreamingPlanApproved,
+    })
 
   // State for plan dialog
   const [isPlanDialogOpen, setIsPlanDialogOpen] = useState(false)
@@ -967,427 +794,42 @@ export function ChatWindow({
       enabledMcpServersRef,
     })
 
-  // Manage dismissal state based on streaming and message ID changes
-  useEffect(() => {
-    // When streaming produces NEW todos, clear any previous dismissal
-    if (isSending && activeTodos.length > 0 && todoSourceMessageId === null) {
-      if (dismissedTodoMessageId !== '__streaming__') {
-        queueMicrotask(() => setDismissedTodoMessageId(null))
-      }
-    }
-    // When streaming ends and todos are dismissed, upgrade '__streaming__' to actual message ID
-    if (
-      !isSending &&
-      todoSourceMessageId !== null &&
-      dismissedTodoMessageId === '__streaming__'
-    ) {
-      queueMicrotask(() => setDismissedTodoMessageId(todoSourceMessageId))
-    }
-  }, [
-    isSending,
-    activeTodos.length,
-    todoSourceMessageId,
-    dismissedTodoMessageId,
-  ])
-
   // Note: Streaming event listeners are in App.tsx, not here
   // This ensures they stay active even when ChatWindow is unmounted (e.g., session board view)
 
-  // Helper to resolve custom CLI profile name for the active provider
-  const resolveCustomProfile = useCallback(
-    (model: string, provider: string | null) => {
-      if (!provider || provider === '__anthropic__')
-        return { model, customProfileName: undefined }
-      // Verify the provider exists in profiles
-      const profile = preferences?.custom_cli_profiles?.find(
-        p => p.name === provider
-      )
-      return {
-        model,
-        customProfileName: profile?.name,
-      }
-    },
-    [preferences?.custom_cli_profiles]
-  )
-
-  // Helper to build full message with attachment references for backend
-  const buildMessageWithRefs = useCallback(
-    (queuedMsg: QueuedMessage): string => {
-      let message = queuedMsg.message
-
-      // Add file references (from @ mentions)
-      if (queuedMsg.pendingFiles.length > 0) {
-        const fileRefs = queuedMsg.pendingFiles
-          .map(
-            f =>
-              `[File: ${f.relativePath} - Use the Read tool to view this file]`
-          )
-          .join('\n')
-        message = message ? `${message}\n\n${fileRefs}` : fileRefs
-      }
-
-      // Add skill references (from / mentions)
-      if (queuedMsg.pendingSkills.length > 0) {
-        const skillRefs = queuedMsg.pendingSkills
-          .map(
-            s =>
-              `[Skill: ${s.path} - Read and use this skill to guide your response]`
-          )
-          .join('\n')
-        message = message ? `${message}\n\n${skillRefs}` : skillRefs
-      }
-
-      // Add image references
-      if (queuedMsg.pendingImages.length > 0) {
-        const imageRefs = queuedMsg.pendingImages
-          .map(
-            img =>
-              `[Image attached: ${img.path} - Use the Read tool to view this image]`
-          )
-          .join('\n')
-        message = message ? `${message}\n\n${imageRefs}` : imageRefs
-      }
-
-      // Add text file references
-      if (queuedMsg.pendingTextFiles.length > 0) {
-        const textFileRefs = queuedMsg.pendingTextFiles
-          .map(
-            tf =>
-              `[Text file attached: ${tf.path} - Use the Read tool to view this file]`
-          )
-          .join('\n')
-        message = message ? `${message}\n\n${textFileRefs}` : textFileRefs
-      }
-
-      return message
-    },
-    []
-  )
-
-  // Helper to send a queued message immediately
-  const sendMessageNow = useCallback(
-    (queuedMsg: QueuedMessage) => {
-      if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
-
-      const {
-        addSendingSession,
-        setLastSentMessage,
-        setError,
-        setExecutingMode,
-        setSelectedModel,
-        getApprovedTools,
-        clearStreamingContent,
-        clearToolCalls,
-        clearStreamingContentBlocks,
-      } = useChatStore.getState()
-
-      // Clear any stale streaming state from previous message before starting new one
-      // This prevents content from previous messages appearing in the new streaming response
-      // when queued messages execute (React may batch state updates causing StreamingMessage
-      // to never unmount between messages)
-      clearStreamingContent(activeSessionId)
-      clearToolCalls(activeSessionId)
-      clearStreamingContentBlocks(activeSessionId)
-
-      // Display only the user's text (without refs) in the chat
-      setLastSentMessage(activeSessionId, queuedMsg.message)
-      setError(activeSessionId, null)
-      addSendingSession(activeSessionId)
-      // Invalidate sessions list so canvas cards pick up running state
-      // even if Zustand re-render is deferred during dialog close
-      queryClient.invalidateQueries({
-        queryKey: chatQueryKeys.sessions(activeWorktreeId),
-      })
-      // Capture the execution mode this message is being sent with
-      setExecutingMode(activeSessionId, queuedMsg.executionMode)
-      // Track the model being used for this session (needed for permission approval flow)
-      setSelectedModel(activeSessionId, queuedMsg.model)
-
-      // Get session-approved tools to include
-      const sessionApprovedTools = getApprovedTools(activeSessionId)
-
-      // Build allowed tools (git always; WebFetch/WebSearch injected by backend based on prefs + mode)
-      const allowedTools =
-        sessionApprovedTools.length > 0
-          ? [...GIT_ALLOWED_TOOLS, ...sessionApprovedTools]
-          : undefined
-
-      // Build full message with attachment refs for backend
-      const fullMessage = buildMessageWithRefs(queuedMsg)
-
-      // Resolve custom CLI profile if provider is set
-      const resolved = resolveCustomProfile(queuedMsg.model, queuedMsg.provider)
-
-      sendMessage.mutate(
-        {
-          sessionId: activeSessionId,
-          worktreeId: activeWorktreeId,
-          worktreePath: activeWorktreePath,
-          message: fullMessage,
-          model: resolved.model,
-          executionMode: queuedMsg.executionMode,
-          thinkingLevel: queuedMsg.thinkingLevel,
-          effortLevel: queuedMsg.effortLevel,
-          mcpConfig: queuedMsg.mcpConfig,
-          customProfileName: resolved.customProfileName,
-          parallelExecutionPrompt:
-            preferences?.parallel_execution_prompt_enabled
-              ? (preferences.magic_prompts?.parallel_execution ??
-                DEFAULT_PARALLEL_EXECUTION_PROMPT)
-              : undefined,
-          chromeEnabled: preferences?.chrome_enabled ?? false,
-          aiLanguage: preferences?.ai_language,
-          allowedTools,
-          backend: queuedMsg.backend,
-        },
-        {
-          onSettled: () => {
-            inputRef.current?.focus()
-          },
-        }
-      )
-    },
-    [
-      activeSessionId,
-      activeWorktreeId,
-      activeWorktreePath,
-      buildMessageWithRefs,
-      sendMessage,
-      queryClient,
-      preferences?.parallel_execution_prompt_enabled,
-      preferences?.chrome_enabled,
-      preferences?.ai_language,
-      preferences?.magic_prompts?.parallel_execution,
-      resolveCustomProfile,
-    ]
-  )
-
-  // GitDiffModal handlers - extracted for performance (prevents child re-renders)
-  const handleGitDiffAddToPrompt = useCallback(
-    (reference: string) => {
-      if (activeSessionId) {
-        const { inputDrafts } = useChatStore.getState()
-        const currentInput = inputDrafts[activeSessionId] ?? ''
-        const separator = currentInput.length > 0 ? '\n' : ''
-        setInputDraft(
-          activeSessionId,
-          `${currentInput}${separator}${reference}`
-        )
-      }
-    },
-    [activeSessionId, setInputDraft]
-  )
-
-  const handleGitDiffExecutePrompt = useCallback(
-    (reference: string) => {
-      if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
-
-      const {
-        inputDrafts,
-        addSendingSession,
-        setLastSentMessage,
-        setError,
-        setSelectedModel,
-        setExecutingMode,
-        clearInputDraft,
-      } = useChatStore.getState()
-      const currentInput = inputDrafts[activeSessionId] ?? ''
-      const separator = currentInput.length > 0 ? '\n' : ''
-      const message = `${currentInput}${separator}${reference}`
-
-      // Use refs for model/thinking level to get current values and avoid stale closures
-      const model = selectedModelRef.current
-      const thinkingLevel = selectedThinkingLevelRef.current
-
-      // Clear input and send immediately
-      setLastSentMessage(activeSessionId, message)
-      setError(activeSessionId, null)
-      clearInputDraft(activeSessionId)
-      addSendingSession(activeSessionId)
-      setSelectedModel(activeSessionId, model)
-      setExecutingMode(activeSessionId, 'build')
-
-      const diffResolved = resolveCustomProfile(
-        model,
-        selectedProviderRef.current
-      )
-      sendMessage.mutate(
-        {
-          sessionId: activeSessionId,
-          worktreeId: activeWorktreeId,
-          worktreePath: activeWorktreePath,
-          message,
-          model: diffResolved.model,
-          customProfileName: diffResolved.customProfileName,
-          executionMode: 'build',
-          thinkingLevel,
-          effortLevel:
-            useAdaptiveThinkingRef.current || isCodexBackendRef.current
-              ? selectedEffortLevelRef.current
-              : undefined,
-          mcpConfig: buildMcpConfigJson(
-            mcpServersDataRef.current,
-            enabledMcpServersRef.current
-          ),
-          parallelExecutionPrompt:
-            preferences?.parallel_execution_prompt_enabled
-              ? (preferences.magic_prompts?.parallel_execution ??
-                DEFAULT_PARALLEL_EXECUTION_PROMPT)
-              : undefined,
-          chromeEnabled: preferences?.chrome_enabled ?? false,
-          aiLanguage: preferences?.ai_language,
-          backend:
-            selectedBackendRef.current !== 'claude'
-              ? selectedBackendRef.current
-              : undefined,
-        },
-        { onSettled: () => inputRef.current?.focus() }
-      )
-    },
-    [
-      activeSessionId,
-      activeWorktreeId,
-      activeWorktreePath,
-      preferences,
-      sendMessage,
-      resolveCustomProfile,
-    ]
-  )
-
-  const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
-      e.preventDefault()
-
-      // Get input value from store state to avoid stale closure
-      const {
-        inputDrafts,
-        getPendingImages,
-        clearPendingImages,
-        getPendingFiles,
-        clearPendingFiles,
-        getPendingTextFiles,
-        clearPendingTextFiles,
-        getPendingSkills,
-        clearPendingSkills,
-        enqueueMessage,
-        isSending: checkIsSendingNow,
-        setSessionReviewing,
-      } = useChatStore.getState()
-      const textMessage = (inputDrafts[activeSessionId ?? ''] ?? '').trim()
-      const images = getPendingImages(activeSessionId ?? '')
-      const files = getPendingFiles(activeSessionId ?? '')
-      const skills = getPendingSkills(activeSessionId ?? '')
-      const textFiles = getPendingTextFiles(activeSessionId ?? '')
-
-      // Need either text, images, files, text files, or skills to send
-      if (
-        !textMessage &&
-        images.length === 0 &&
-        files.length === 0 &&
-        textFiles.length === 0 &&
-        skills.length === 0
-      )
-        return
-      if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
-
-      // Verify session exists in loaded data before sending
-      if (
-        sessionsData &&
-        !sessionsData.sessions.some(s => s.id === activeSessionId)
-      ) {
-        toast.error(
-          'Session not found. Please refresh or create a new session.'
-        )
-        return
-      }
-
-      // Build message with image, file, and text file references
-      // Store just the user's text - attachment refs are added when sending to backend
-      const message = textMessage
-
-      // Snapshot attachments for restoration on cancellation
-      if (
-        images.length > 0 ||
-        files.length > 0 ||
-        textFiles.length > 0 ||
-        skills.length > 0
-      ) {
-        useChatStore.getState().setLastSentAttachments(activeSessionId, {
-          images,
-          files,
-          textFiles,
-          skills,
-        })
-      }
-
-      // Clear input and pending attachments immediately
-      clearInputDraft(activeSessionId)
-      clearPendingImages(activeSessionId)
-      clearPendingFiles(activeSessionId)
-      clearPendingSkills(activeSessionId)
-      clearPendingTextFiles(activeSessionId)
-      setSessionReviewing(activeSessionId, false)
-      useChatStore.getState().clearPendingDigest(activeSessionId)
-
-      // Clear question skip state so new questions can be shown
-      // Clear waiting state so tab shows "planning" instead of "waiting" when extending a plan
-      const { setQuestionsSkipped, setWaitingForInput } =
-        useChatStore.getState()
-      setQuestionsSkipped(activeSessionId, false)
-      setWaitingForInput(activeSessionId, false)
-
-      // Create queued message object with current settings
-      // Use refs to avoid recreating callback when these settings change
-      const mode = executionModeRef.current
-      const thinkingLvl = selectedThinkingLevelRef.current
-      const queuedMessage: QueuedMessage = {
-        id: generateId(),
-        message,
-        pendingImages: images,
-        pendingFiles: files,
-        pendingSkills: skills,
-        pendingTextFiles: textFiles,
-        model: selectedModelRef.current,
-        provider: selectedProviderRef.current,
-        executionMode: mode,
-        thinkingLevel: thinkingLvl,
-        effortLevel:
-          useAdaptiveThinkingRef.current || isCodexBackendRef.current
-            ? selectedEffortLevelRef.current
-            : undefined,
-        mcpConfig: buildMcpConfigJson(
-          mcpServersDataRef.current,
-          enabledMcpServersRef.current
-        ),
-        backend:
-          selectedBackendRef.current !== 'claude'
-            ? selectedBackendRef.current
-            : undefined,
-        queuedAt: Date.now(),
-      }
-
-      // Scroll to bottom when user sends a new message (even if scrolled up)
-      scrollToBottom(true)
-
-      // If currently sending, add to queue instead
-      if (checkIsSendingNow(activeSessionId)) {
-        enqueueMessage(activeSessionId, queuedMessage)
-        return
-      }
-
-      // Otherwise, send immediately
-      sendMessageNow(queuedMessage)
-    },
-    [
-      activeSessionId,
-      activeWorktreeId,
-      activeWorktreePath,
-      clearInputDraft,
-      scrollToBottom,
-      sendMessageNow,
-      sessionsData,
-    ]
-  )
+  // Message sending pipeline: resolveCustomProfile, sendMessageNow, handleSubmit, git diff handlers
+  const {
+    resolveCustomProfile,
+    sendMessageNow,
+    handleSubmit,
+    handleCancel,
+    handleGitDiffAddToPrompt,
+    handleGitDiffExecutePrompt,
+  } = useMessageSending({
+    activeSessionId,
+    activeWorktreeId,
+    activeWorktreePath,
+    inputRef,
+    selectedModelRef,
+    selectedProviderRef,
+    selectedThinkingLevelRef,
+    selectedEffortLevelRef,
+    executionModeRef,
+    useAdaptiveThinkingRef,
+    isCodexBackendRef,
+    mcpServersDataRef,
+    enabledMcpServersRef,
+    selectedBackendRef,
+    activeWorktreeIdRef,
+    preferences,
+    sendMessage,
+    queryClient,
+    scrollToBottom,
+    sessionsData,
+    setInputDraft,
+    clearInputDraft,
+    isModal,
+  })
 
   // Note: Queue processing moved to useQueueProcessor hook in App.tsx
   // This ensures queued messages execute even when the worktree is unfocused
@@ -1472,217 +914,41 @@ export function ChatWindow({
     preferences,
   })
 
-  // Window event listeners (focus, plan, recap, git-diff, cancel, create-session, etc.)
-  useChatWindowEvents({
-    inputRef,
+  // Window event listeners are called after useMessageHandlers (needs plan approval handlers)
+
+  // PERFORMANCE: Stable callbacks for ChatToolbar to prevent re-renders
+  const {
+    handleToolbarModelChange,
+    handleToolbarBackendChange,
+    handleTabBackendSwitch,
+    handleToolbarProviderChange,
+    handleToolbarThinkingLevelChange,
+    handleToolbarEffortLevelChange,
+    handleToggleMcpServer,
+    handleOpenProjectSettings,
+    handleToolbarSetExecutionMode,
+    handleOpenMagicModal,
+    handleLoadContextModalChange,
+  } = useToolbarHandlers({
     activeSessionId,
     activeWorktreeId,
     activeWorktreePath,
-    isModal,
-    isViewingCanvasTab,
-    latestPlanContent,
-    latestPlanFilePath,
-    setPlanDialogContent,
-    setIsPlanDialogOpen,
+    activeSessionIdRef,
+    activeWorktreeIdRef,
+    activeWorktreePathRef,
+    enabledMcpServersRef,
+    selectedBackend,
     session,
-    isRecapDialogOpen,
-    recapDialogDigest,
-    setRecapDialogDigest,
-    setIsRecapDialogOpen,
-    setIsGeneratingRecap,
-    gitStatus,
-    sessionModalOpen,
-    setDiffRequest,
-    isAtBottom,
-    scrollToBottom,
-    streamingContent,
-    currentStreamingContentBlocks,
-    isSending,
-    currentQueuedMessages,
-    createSession,
     preferences,
-    savePreferences,
-    handleSaveContext,
-    handleLoadContext,
-    runScript,
+    queryClient,
+    worktreeProjectId: worktree?.project_id,
+    setSessionModel,
+    setSessionBackend,
+    setSessionProvider,
+    setSessionThinkingLevel,
+    setExecutionMode,
+    setLoadContextModalOpen,
   })
-
-  // PERFORMANCE: Stable callbacks for ChatToolbar to prevent re-renders
-  const handleToolbarModelChange = useCallback(
-    (model: string) => {
-      if (activeSessionId && activeWorktreeId && activeWorktreePath) {
-        setSessionModel.mutate({
-          sessionId: activeSessionId,
-          worktreeId: activeWorktreeId,
-          worktreePath: activeWorktreePath,
-          model,
-        })
-        // Broadcast to other clients (fire-and-forget)
-        invoke('broadcast_session_setting', {
-          sessionId: activeSessionId,
-          key: 'model',
-          value: model,
-        }).catch(() => {
-          /* noop */
-        })
-      }
-    },
-    [activeSessionId, activeWorktreeId, activeWorktreePath, setSessionModel]
-  )
-
-  const handleToolbarBackendChange = useCallback(
-    (backend: 'claude' | 'codex') => {
-      if (activeSessionId && activeWorktreeId && activeWorktreePath) {
-        useChatStore.getState().setSelectedBackend(activeSessionId, backend)
-        // Optimistically update session cache so selectedBackend resolves immediately
-        const model =
-          backend === 'codex'
-            ? (preferences?.selected_codex_model ?? 'gpt-5.3-codex')
-            : ((preferences?.selected_model as string) ?? DEFAULT_MODEL)
-        queryClient.setQueryData(
-          chatQueryKeys.session(activeSessionId),
-          (old: Session | null | undefined) =>
-            old ? { ...old, backend, selected_model: model } : old
-        )
-        // Persist backend first, then model (chained to avoid race on query invalidation)
-        setSessionBackend.mutate(
-          {
-            sessionId: activeSessionId,
-            worktreeId: activeWorktreeId,
-            worktreePath: activeWorktreePath,
-            backend,
-          },
-          {
-            onSuccess: () => {
-              setSessionModel.mutate({
-                sessionId: activeSessionId,
-                worktreeId: activeWorktreeId,
-                worktreePath: activeWorktreePath,
-                model,
-              })
-            },
-          }
-        )
-      }
-    },
-    [
-      activeSessionId,
-      activeWorktreeId,
-      activeWorktreePath,
-      preferences?.selected_model,
-      preferences?.selected_codex_model,
-      queryClient,
-      setSessionBackend,
-      setSessionModel,
-    ]
-  )
-
-  const handleTabBackendSwitch = useCallback(() => {
-    if ((session?.messages?.length ?? 0) > 0) return
-    handleToolbarBackendChange(
-      selectedBackend === 'claude' ? 'codex' : 'claude'
-    )
-  }, [session?.messages?.length, selectedBackend, handleToolbarBackendChange])
-
-  const handleToolbarProviderChange = useCallback(
-    (provider: string | null) => {
-      if (activeSessionId) {
-        useChatStore.getState().setSelectedProvider(activeSessionId, provider)
-        if (activeWorktreeId && activeWorktreePath) {
-          setSessionProvider.mutate({
-            sessionId: activeSessionId,
-            worktreeId: activeWorktreeId,
-            worktreePath: activeWorktreePath,
-            provider,
-          })
-        }
-      }
-    },
-    [activeSessionId, activeWorktreeId, activeWorktreePath, setSessionProvider]
-  )
-
-  // PERFORMANCE: Use refs to keep callback stable, get store actions via getState()
-  const handleToolbarThinkingLevelChange = useCallback(
-    (level: ThinkingLevel) => {
-      const sessionId = activeSessionIdRef.current
-      const worktreeId = activeWorktreeIdRef.current
-      const worktreePath = activeWorktreePathRef.current
-      if (!sessionId || !worktreeId || !worktreePath) return
-
-      const store = useChatStore.getState()
-
-      // Update Zustand store immediately for responsive UI
-      store.setThinkingLevel(sessionId, level)
-
-      // Persist to backend (fire-and-forget, don't block UI)
-      setSessionThinkingLevel.mutate({
-        sessionId,
-        worktreeId,
-        worktreePath,
-        thinkingLevel: level,
-      })
-      // Broadcast to other clients (fire-and-forget)
-      invoke('broadcast_session_setting', {
-        sessionId,
-        key: 'thinkingLevel',
-        value: level,
-      }).catch(() => {
-        /* noop */
-      })
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- mutate is stable, refs used for IDs
-    []
-  )
-
-  const handleToolbarEffortLevelChange = useCallback((level: EffortLevel) => {
-    const sessionId = activeSessionIdRef.current
-    if (!sessionId) return
-    const store = useChatStore.getState()
-    store.setEffortLevel(sessionId, level)
-
-  }, [])
-
-  const handleToggleMcpServer = useCallback((serverName: string) => {
-    const sessionId = activeSessionIdRef.current
-    if (!sessionId) return
-    useChatStore
-      .getState()
-      .toggleMcpServer(sessionId, serverName, enabledMcpServersRef.current)
-  }, [])
-
-  const handleOpenProjectSettings = useCallback(() => {
-    if (!worktree?.project_id) return
-    useProjectsStore.getState().openProjectSettings(worktree.project_id)
-  }, [worktree?.project_id])
-
-  const handleToolbarSetExecutionMode = useCallback(
-    (mode: ExecutionMode) => {
-      if (activeSessionId) {
-        setExecutionMode(activeSessionId, mode)
-        // Broadcast to other clients (fire-and-forget)
-        invoke('broadcast_session_setting', {
-          sessionId: activeSessionId,
-          key: 'executionMode',
-          value: mode,
-        }).catch(() => {
-          /* noop */
-        })
-      }
-    },
-    [activeSessionId, setExecutionMode]
-  )
-
-  const handleOpenMagicModal = useCallback(() => {
-    useUIStore.getState().setMagicModalOpen(true)
-  }, [])
-
-  // Wraps modal open/close for load context
-  const handleLoadContextModalChange = useCallback(
-    (open: boolean) => {
-      setLoadContextModalOpen(open)
-    },
-    [setLoadContextModalOpen]
-  )
 
   // Investigate issue/PR and workflow run handlers
   const { handleInvestigate, handleInvestigateWorkflowRun } =
@@ -1823,316 +1089,73 @@ export function ChatWindow({
     }
   }, [])
 
-  // Listen for approve-plan keyboard shortcut event
-  // Skip when on canvas view (non-modal) - CanvasGrid handles it there
-  useEffect(() => {
-    if (!isModal && isViewingCanvasTab) return
-
-    const handleApprovePlanEvent = () => {
-      // Check if we have a streaming plan to approve
-      if (hasStreamingPlan) {
-        handleStreamingPlanApproval()
-        return
-      }
-      // Check if we have a pending (non-streaming) plan to approve
-      if (pendingPlanMessage) {
-        handlePlanApproval(pendingPlanMessage.id)
-      }
-    }
-
-    window.addEventListener('approve-plan', handleApprovePlanEvent)
-    return () =>
-      window.removeEventListener('approve-plan', handleApprovePlanEvent)
-  }, [
+  // Window event listeners (focus, plan, recap, git-diff, cancel, create-session, plan approval, etc.)
+  useChatWindowEvents({
+    inputRef,
+    activeSessionId,
+    activeWorktreeId,
+    activeWorktreePath,
     isModal,
     isViewingCanvasTab,
+    latestPlanContent,
+    latestPlanFilePath,
+    setPlanDialogContent,
+    setIsPlanDialogOpen,
+    session,
+    isRecapDialogOpen,
+    recapDialogDigest,
+    setRecapDialogDigest,
+    setIsRecapDialogOpen,
+    setIsGeneratingRecap,
+    gitStatus,
+    sessionModalOpen,
+    setDiffRequest,
+    isAtBottom,
+    scrollToBottom,
+    streamingContent,
+    currentStreamingContentBlocks,
+    isSending,
+    currentQueuedMessages,
+    createSession,
+    preferences,
+    savePreferences,
+    handleSaveContext,
+    handleLoadContext,
+    runScript,
     hasStreamingPlan,
     pendingPlanMessage,
     handleStreamingPlanApproval,
-    handlePlanApproval,
-  ])
-
-  // Listen for approve-plan-yolo keyboard shortcut event
-  // Skip when on canvas view (non-modal) - CanvasGrid handles it there
-  useEffect(() => {
-    if (!isModal && isViewingCanvasTab) return
-
-    const handleApprovePlanYoloEvent = () => {
-      // Check if we have a streaming plan to approve
-      if (hasStreamingPlan) {
-        handleStreamingPlanApprovalYolo()
-        return
-      }
-      // Check if we have a pending (non-streaming) plan to approve
-      if (pendingPlanMessage) {
-        handlePlanApprovalYolo(pendingPlanMessage.id)
-      }
-    }
-
-    window.addEventListener('approve-plan-yolo', handleApprovePlanYoloEvent)
-    return () =>
-      window.removeEventListener(
-        'approve-plan-yolo',
-        handleApprovePlanYoloEvent
-      )
-  }, [
-    isModal,
-    isViewingCanvasTab,
-    hasStreamingPlan,
-    pendingPlanMessage,
     handleStreamingPlanApprovalYolo,
+    handlePlanApproval,
     handlePlanApprovalYolo,
-  ])
+    isCodexBackend,
+  })
 
-  // Listen for review-fix-message events from ReviewResultsPanel
-  // Fix messages are sent in the same session (the review session)
-  useEffect(() => {
-    const handleReviewFixMessage = (e: CustomEvent) => {
-      // Skip if this is the modal ChatWindow (the main window handles the event)
-      if (isModal) return
-
-      const { sessionId, worktreeId, worktreePath, message, executionMode: fixExecutionMode } = e.detail
-      if (!sessionId || !worktreeId || !worktreePath || !message) return
-      const fixMode = fixExecutionMode ?? 'plan'
-      // Only handle events for this ChatWindow's worktree (avoids duplicate from modal)
-      if (worktreeId !== activeWorktreeIdRef.current) return
-
-      const {
-        addSendingSession,
-        setSelectedModel,
-        setExecutingMode,
-        setLastSentMessage,
-        setError,
-        isSending,
-        enqueueMessage,
-      } = useChatStore.getState()
-
-      const thinkingLvl = selectedThinkingLevelRef.current
-      const fixResolved = resolveCustomProfile(
-        selectedModelRef.current,
-        selectedProviderRef.current
-      )
-
-      // If session is already busy, queue the fix message instead of sending immediately
-      if (isSending(sessionId)) {
-        enqueueMessage(sessionId, {
-          id: generateId(),
-          message,
-          pendingImages: [],
-          pendingFiles: [],
-          pendingSkills: [],
-          pendingTextFiles: [],
-          model: fixResolved.model,
-          provider: fixResolved.customProfileName ?? null,
-          executionMode: fixMode,
-          thinkingLevel: thinkingLvl,
-          effortLevel:
-            useAdaptiveThinkingRef.current || isCodexBackendRef.current
-              ? selectedEffortLevelRef.current
-              : undefined,
-          mcpConfig: buildMcpConfigJson(
-            mcpServersDataRef.current,
-            enabledMcpServersRef.current
-          ),
-          queuedAt: Date.now(),
-        })
-        toast.info('Fix queued — will start when current task completes')
-        return
-      }
-
-      setLastSentMessage(sessionId, message)
-      setError(sessionId, null)
-      addSendingSession(sessionId)
-      setSelectedModel(sessionId, selectedModelRef.current)
-      setExecutingMode(sessionId, fixMode)
-      sendMessage.mutate(
-        {
-          sessionId,
-          worktreeId,
-          worktreePath,
-          message,
-          model: fixResolved.model,
-          customProfileName: fixResolved.customProfileName,
-          executionMode: fixMode,
-          thinkingLevel: thinkingLvl,
-          effortLevel:
-            useAdaptiveThinkingRef.current || isCodexBackendRef.current
-              ? selectedEffortLevelRef.current
-              : undefined,
-          mcpConfig: buildMcpConfigJson(
-            mcpServersDataRef.current,
-            enabledMcpServersRef.current
-          ),
-          parallelExecutionPrompt:
-            preferences?.parallel_execution_prompt_enabled
-              ? (preferences.magic_prompts?.parallel_execution ??
-                DEFAULT_PARALLEL_EXECUTION_PROMPT)
-              : undefined,
-          chromeEnabled: preferences?.chrome_enabled ?? false,
-          aiLanguage: preferences?.ai_language,
-          backend:
-            selectedBackendRef.current !== 'claude'
-              ? selectedBackendRef.current
-              : undefined,
-        },
-        {
-          onSettled: () => {
-            inputRef.current?.focus()
-          },
-        }
-      )
-    }
-
-    window.addEventListener(
-      'review-fix-message',
-      handleReviewFixMessage as EventListener
-    )
-    return () =>
-      window.removeEventListener(
-        'review-fix-message',
-        handleReviewFixMessage as EventListener
-      )
-  }, [
-    sendMessage,
-    preferences?.parallel_execution_prompt_enabled,
-    preferences?.magic_prompts?.parallel_execution,
-    resolveCustomProfile,
-    preferences?.chrome_enabled,
-    preferences?.ai_language,
-    isModal,
-  ])
-
-  // Handle removing a queued message
-  const handleRemoveQueuedMessage = useCallback(
-    (sessionId: string, messageId: string) => {
-      useChatStore.getState().removeQueuedMessage(sessionId, messageId)
-    },
-    []
-  )
-
-  // Handle force-sending a stuck queued message
-  const handleForceSendQueued = useCallback((sessionId: string) => {
-    useChatStore.getState().forceProcessQueue(sessionId)
-  }, [])
-
-  // Handle cancellation of running Claude process (triggered by Cmd+Option+Backspace / Ctrl+Alt+Backspace)
-  const handleCancel = useCallback(async () => {
-    if (!activeSessionId || !activeWorktreeId) return
-    // Read directly from store to avoid React re-render delay —
-    // allows canceling before the first response chunk arrives
-    const sending =
-      useChatStore.getState().sendingSessionIds[activeSessionId] ?? false
-    if (!sending) return
-
-    const cancelled = await cancelChatMessage(activeSessionId, activeWorktreeId)
-    if (!cancelled) {
-      // Process might have finished just before we tried to cancel
-      toast.info('No active request to cancel')
-    }
-    // Note: The chat:cancelled event listener will handle UI cleanup
-  }, [activeSessionId, activeWorktreeId])
-
-  // Handle removing a pending image
-  const handleRemovePendingImage = useCallback(
-    (imageId: string) => {
-      if (!activeSessionId) return
-      const { removePendingImage } = useChatStore.getState()
-      removePendingImage(activeSessionId, imageId)
-    },
-    [activeSessionId]
-  )
-
-  // Handle removing a pending text file
-  const handleRemovePendingTextFile = useCallback(
-    (textFileId: string) => {
-      if (!activeSessionId) return
-      const { removePendingTextFile } = useChatStore.getState()
-      removePendingTextFile(activeSessionId, textFileId)
-    },
-    [activeSessionId]
-  )
-
-  // Handle removing a pending skill
-  const handleRemovePendingSkill = useCallback(
-    (skillId: string) => {
-      if (!activeSessionId) return
-      const { removePendingSkill } = useChatStore.getState()
-      removePendingSkill(activeSessionId, skillId)
-    },
-    [activeSessionId]
-  )
-
-  // Handle slash command execution (from / menu)
-  const handleCommandExecute = useCallback(
-    (commandName: string) => {
-      if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
-
-      // Commands are executed immediately by sending as the message
-      // The command name (e.g., "/commit") is sent directly, Claude CLI interprets it
-      const queuedMessage: QueuedMessage = {
-        id: generateId(),
-        message: commandName,
-        pendingImages: [],
-        pendingFiles: [],
-        pendingSkills: [],
-        pendingTextFiles: [],
-        model: selectedModelRef.current,
-        provider: selectedProviderRef.current,
-        executionMode: executionModeRef.current,
-        thinkingLevel: selectedThinkingLevelRef.current,
-        effortLevel:
-          useAdaptiveThinkingRef.current || isCodexBackendRef.current
-            ? selectedEffortLevelRef.current
-            : undefined,
-        mcpConfig: buildMcpConfigJson(
-          mcpServersDataRef.current,
-          enabledMcpServersRef.current
-        ),
-        queuedAt: Date.now(),
-      }
-
-      // Check if currently sending - queue if so, otherwise send immediately
-      const { isSending: checkIsSendingNow, enqueueMessage } =
-        useChatStore.getState()
-      if (checkIsSendingNow(activeSessionId)) {
-        enqueueMessage(activeSessionId, queuedMessage)
-      } else {
-        sendMessageNow(queuedMessage)
-      }
-    },
-    [activeSessionId, activeWorktreeId, activeWorktreePath, sendMessageNow]
-  )
-
-  // Handle removing a pending file (@ mention)
-  const handleRemovePendingFile = useCallback(
-    (fileId: string) => {
-      if (!activeSessionId) return
-      const { removePendingFile, getPendingFiles, inputDrafts } =
-        useChatStore.getState()
-
-      // Find the file to get its filename before removing
-      const files = getPendingFiles(activeSessionId)
-      const file = files.find(f => f.id === fileId)
-      if (file) {
-        // Remove @filename from the input text
-        const filename = getFilename(file.relativePath)
-        const currentInput = inputDrafts[activeSessionId] ?? ''
-        // Match @filename followed by space, newline, or end of string
-        const pattern = new RegExp(
-          `@${filename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\\s|$)`,
-          'g'
-        )
-        const newInput = currentInput
-          .replace(pattern, '')
-          .replace(/\s+/g, ' ')
-          .trim()
-        setInputDraft(activeSessionId, newInput)
-      }
-
-      removePendingFile(activeSessionId, fileId)
-    },
-    [activeSessionId, setInputDraft]
-  )
+  // Pending attachment removal, slash command execution, queue management
+  const {
+    handleRemovePendingImage,
+    handleRemovePendingTextFile,
+    handleRemovePendingSkill,
+    handleRemovePendingFile,
+    handleCommandExecute,
+    handleRemoveQueuedMessage,
+    handleForceSendQueued,
+  } = usePendingAttachments({
+    activeSessionId,
+    activeWorktreeId,
+    activeWorktreePath,
+    selectedModelRef,
+    selectedProviderRef,
+    executionModeRef,
+    selectedThinkingLevelRef,
+    selectedEffortLevelRef,
+    useAdaptiveThinkingRef,
+    isCodexBackendRef,
+    mcpServersDataRef,
+    enabledMcpServersRef,
+    setInputDraft,
+    sendMessageNow,
+  })
 
   // Pre-calculate last plan message index for approve button logic
   const lastPlanMessageIndex = useMemo(() => {
@@ -2315,6 +1338,7 @@ export function ChatWindow({
                                 areQuestionsSkipped={areQuestionsSkipped}
                                 isFindingFixed={isFindingFixed}
                                 onCopyToInput={handleCopyToInput}
+                                hideApproveButtons={isCodexBackend}
                                 shouldScrollToBottom={isAtBottom}
                                 onScrollToBottomHandled={
                                   handleScrollToBottomHandled
@@ -2347,6 +1371,7 @@ export function ChatWindow({
                                 onStreamingPlanApprovalYolo={
                                   handleStreamingPlanApprovalYolo
                                 }
+                                hideApproveButtons={isCodexBackend}
                               />
                             )}
 
@@ -2385,6 +1410,7 @@ export function ChatWindow({
                         showFindingsButton={!areFindingsVisible}
                         isAtBottom={isAtBottom}
                         approveShortcut={approveShortcut}
+                        hideApproveButtons={isCodexBackend}
                         onStreamingPlanApproval={handleStreamingPlanApproval}
                         onPendingPlanApproval={
                           handlePendingPlanApprovalCallback
@@ -2742,6 +1768,7 @@ export function ChatWindow({
               }
               onApprove={handlePlanDialogApprove}
               onApproveYolo={handlePlanDialogApproveYolo}
+              hideApproveButtons={isCodexBackend}
             />
           ) : latestPlanFilePath ? (
             <PlanDialog
@@ -2761,6 +1788,7 @@ export function ChatWindow({
               }
               onApprove={handlePlanDialogApprove}
               onApproveYolo={handlePlanDialogApproveYolo}
+              hideApproveButtons={isCodexBackend}
             />
           ) : null)}
 

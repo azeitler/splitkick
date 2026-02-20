@@ -100,6 +100,8 @@ interface MessageItemProps {
   isFindingFixed: (sessionId: string, key: string) => boolean
   /** Callback to copy a user message back to the input field */
   onCopyToInput?: (message: ChatMessage) => void
+  /** Hide approve buttons (e.g. for Codex which has no native approval flow) */
+  hideApproveButtons?: boolean
 }
 
 /**
@@ -131,6 +133,7 @@ export const MessageItem = memo(function MessageItem({
   areQuestionsSkipped,
   isFindingFixed,
   onCopyToInput,
+  hideApproveButtons,
 }: MessageItemProps) {
   // Only show Approve button for the last message with ExitPlanMode
   const isLatestPlanRequest = messageIndex === lastPlanMessageIndex
@@ -421,6 +424,7 @@ export const MessageItem = memo(function MessageItem({
             buttonRef={isLatestPlanRequest ? approveButtonRef : undefined}
             shortcut={approveShortcut}
             shortcutYolo={approveShortcutYolo}
+            hideApproveButtons={hideApproveButtons}
           />
         </>
       ) : (

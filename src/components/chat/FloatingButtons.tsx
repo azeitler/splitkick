@@ -21,6 +21,8 @@ interface FloatingButtonsProps {
   onScrollToFindings: () => void
   /** Callback to scroll to bottom */
   onScrollToBottom: () => void
+  /** Hide approve buttons (e.g. for Codex which has no native approval flow) */
+  hideApproveButtons?: boolean
 }
 
 /**
@@ -37,9 +39,10 @@ export const FloatingButtons = memo(function FloatingButtons({
   onPendingPlanApproval,
   onScrollToFindings,
   onScrollToBottom,
+  hideApproveButtons,
 }: FloatingButtonsProps) {
   // Show floating approve button when user scrolls up (same as "Go to bottom" button)
-  const showApproveButton = (hasPendingPlan || hasStreamingPlan) && !isAtBottom
+  const showApproveButton = !hideApproveButtons && (hasPendingPlan || hasStreamingPlan) && !isAtBottom
 
   const handleApprove = useCallback(() => {
     if (hasStreamingPlan) {

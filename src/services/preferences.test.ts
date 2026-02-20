@@ -137,6 +137,7 @@ describe('preferences service', () => {
         default_codex_reasoning_effort: 'high',
         codex_multi_agent_enabled: false,
         codex_max_agent_threads: 3,
+        restore_last_session: false,
       }
       vi.mocked(invoke).mockResolvedValueOnce(mockPreferences)
 
@@ -241,6 +242,7 @@ describe('preferences service', () => {
         default_codex_reasoning_effort: 'high',
         codex_multi_agent_enabled: false,
         codex_max_agent_threads: 3,
+        restore_last_session: false,
       }
       vi.mocked(invoke).mockResolvedValueOnce(prefsWithOldBinding)
 
@@ -321,6 +323,7 @@ describe('preferences service', () => {
         default_codex_reasoning_effort: 'high',
         codex_multi_agent_enabled: false,
         codex_max_agent_threads: 3,
+        restore_last_session: false,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -400,6 +403,7 @@ describe('preferences service', () => {
         default_codex_reasoning_effort: 'high',
         codex_multi_agent_enabled: false,
         codex_max_agent_threads: 3,
+        restore_last_session: false,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -479,6 +483,7 @@ describe('preferences service', () => {
         default_codex_reasoning_effort: 'high',
         codex_multi_agent_enabled: false,
         codex_max_agent_threads: 3,
+        restore_last_session: false,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -556,6 +561,7 @@ describe('preferences service', () => {
         default_codex_reasoning_effort: 'high',
         codex_multi_agent_enabled: false,
         codex_max_agent_threads: 3,
+        restore_last_session: false,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {

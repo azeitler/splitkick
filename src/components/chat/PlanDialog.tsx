@@ -34,6 +34,8 @@ interface PlanDialogBaseProps {
   approvalContext?: ApprovalContext
   onApprove?: (updatedPlan: string) => void
   onApproveYolo?: (updatedPlan: string) => void
+  /** Hide approve buttons (e.g. for Codex which has no native approval flow) */
+  hideApproveButtons?: boolean
 }
 
 interface PlanDialogFileProps extends PlanDialogBaseProps {
@@ -58,6 +60,7 @@ export function PlanDialog({
   approvalContext: _approvalContext,
   onApprove,
   onApproveYolo,
+  hideApproveButtons,
 }: PlanDialogProps) {
   const filename = filePath ? getFilename(filePath) : null
   const queryClient = useQueryClient()
@@ -97,7 +100,7 @@ export function PlanDialog({
 
   const hasChanges = editedContent !== originalContent
   // Enable approve buttons when callbacks are provided and not disabled (session still running)
-  const canApprove = !!onApprove && !!onApproveYolo && !disabled
+  const canApprove = !hideApproveButtons && !!onApprove && !!onApproveYolo && !disabled
 
   // Auto-save plan file with debounce when content changes
   useEffect(() => {

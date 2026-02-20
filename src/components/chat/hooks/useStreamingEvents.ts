@@ -10,7 +10,7 @@ import { isTauri, saveWorktreePr, projectsQueryKeys } from '@/services/projects'
 import { preferencesQueryKeys } from '@/services/preferences'
 import type { AppPreferences, NotificationSound } from '@/types/preferences'
 import { triggerImmediateGitPoll } from '@/services/git-status'
-import { isAskUserQuestion, isExitPlanMode, type ToolCall } from '@/types/chat'
+import { isAskUserQuestion, isExitPlanMode } from '@/types/chat'
 import { playNotificationSound } from '@/lib/sounds'
 import { findPlanFilePath } from '@/components/chat/tool-call-utils'
 import { generateId } from '@/lib/uuid'
@@ -248,31 +248,10 @@ export default function useStreamingEvents({
       const toolCalls = activeToolCalls[sessionId]
       const contentBlocks = streamingContentBlocks[sessionId]
 
-      // Codex plan mode: inject synthetic ExitPlanMode tool call so existing plan UI works
-      const { selectedBackends, executingModes } = useChatStore.getState()
-      const isCodexPlanCompletion =
-        selectedBackends[sessionId] === 'codex' &&
-        executingModes[sessionId] === 'plan' &&
-        content &&
-        content.length > 0
-      let effectiveToolCalls = toolCalls
-      let effectiveContentBlocks = contentBlocks
-      if (isCodexPlanCompletion) {
-        const syntheticId = `codex-plan-${sessionId}-${Date.now()}`
-        const syntheticTool: ToolCall = {
-          id: syntheticId,
-          name: 'ExitPlanMode',
-          input: {},
-        }
-        effectiveToolCalls = [...(toolCalls ?? []), syntheticTool]
-        effectiveContentBlocks = [
-          ...(contentBlocks ?? []),
-          { type: 'tool_use' as const, tool_call_id: syntheticId },
-        ]
-        // Also add to store so rendering components see it
-        useChatStore.getState().addToolCall(sessionId, syntheticTool)
-        useChatStore.getState().addToolBlock(sessionId, syntheticId)
-      }
+      // Codex has no native plan approval flow — skip synthetic ExitPlanMode injection.
+      // Codex plan completions fall through to the "no blocking tools" path → status = "review".
+      const effectiveToolCalls = toolCalls
+      const effectiveContentBlocks = contentBlocks
 
       // Check for unanswered blocking tools BEFORE clearing state
       // This determines whether to show "waiting" status in the UI

@@ -20,6 +20,8 @@ interface ExitPlanModeButtonProps {
   shortcut?: string
   /** Keyboard shortcut to display on the yolo button */
   shortcutYolo?: string
+  /** Hide approve buttons (e.g. for Codex which has no native approval flow) */
+  hideApproveButtons?: boolean
 }
 
 /**
@@ -40,6 +42,7 @@ export function ExitPlanModeButton({
   buttonRef,
   shortcut,
   shortcutYolo,
+  hideApproveButtons,
 }: ExitPlanModeButtonProps) {
   if (!toolCalls) return null
 
@@ -53,8 +56,8 @@ export function ExitPlanModeButton({
   const hasQuestions = toolCalls.some(isAskUserQuestion)
   if (hasQuestions && !isApproved) return null
 
-  // Don't show button if already approved, not latest, or has follow-up
-  if (isApproved || !isLatestPlanRequest || hasFollowUpMessage) return null
+  // Don't show button if already approved, not latest, has follow-up, or hidden (Codex)
+  if (isApproved || !isLatestPlanRequest || hasFollowUpMessage || hideApproveButtons) return null
 
   // Only render the approve button (plan is shown inline in timeline)
   return (

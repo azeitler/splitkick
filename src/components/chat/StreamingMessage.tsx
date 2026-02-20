@@ -64,6 +64,8 @@ interface StreamingMessageProps {
   onStreamingPlanApproval: () => void
   /** Callback when user approves streaming plan with yolo mode */
   onStreamingPlanApprovalYolo?: () => void
+  /** Hide approve buttons (e.g. for Codex which has no native approval flow) */
+  hideApproveButtons?: boolean
 }
 
 /**
@@ -88,6 +90,7 @@ export const StreamingMessage = memo(function StreamingMessage({
   isStreamingPlanApproved,
   onStreamingPlanApproval,
   onStreamingPlanApprovalYolo,
+  hideApproveButtons,
 }: StreamingMessageProps) {
   return (
     <div className="text-muted-foreground">
@@ -241,6 +244,7 @@ export const StreamingMessage = memo(function StreamingMessage({
                                   }
                                   shortcut={approveShortcut}
                                   shortcutYolo={approveShortcutYolo}
+                                  hideApproveButtons={hideApproveButtons}
                                 />
                               </div>
                             )

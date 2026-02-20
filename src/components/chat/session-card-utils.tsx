@@ -191,23 +191,8 @@ export function computeSessionCardData(
       }
     }
 
-    // Codex plan mode fallback: entire message content is the plan
-    // (Codex has no ExitPlanMode tool - the synthetic one only exists in streaming state)
-    if (
-      session.backend === 'codex' &&
-      !hasPendingExitPlan &&
-      session.pending_plan_message_id &&
-      !approvedPlanIds.has(session.pending_plan_message_id)
-    ) {
-      const planMsg = messages.find(
-        m => m.id === session.pending_plan_message_id
-      )
-      if (planMsg?.role === 'assistant' && !planMsg.plan_approved) {
-        hasPendingExitPlan = true
-        pendingPlanMessageId = planMsg.id
-        planContent = planMsg.content || null
-      }
-    }
+    // Codex has no native plan approval flow — no fallback needed.
+    // Codex plan completions go straight to "review" status.
   }
 
   // Also check for plan file/content in streaming tool calls
@@ -245,13 +230,13 @@ export function computeSessionCardData(
   const hasExitPlanMode = sessionSending
     ? hasStreamingExitPlan || hasPendingExitPlan
     : hasStreamingExitPlan ||
-      hasPendingExitPlan ||
-      (persistedWaitingForInput && inferredWaitingType === 'plan')
+    hasPendingExitPlan ||
+    (persistedWaitingForInput && inferredWaitingType === 'plan')
   const hasQuestion = sessionSending
     ? hasStreamingQuestion || hasPendingQuestion
     : hasStreamingQuestion ||
-      hasPendingQuestion ||
-      (persistedWaitingForInput && inferredWaitingType === 'question')
+    hasPendingQuestion ||
+    (persistedWaitingForInput && inferredWaitingType === 'question')
 
   // Check for pending permission denials
   const sessionDenials = pendingPermissionDenials[session.id] ?? []
@@ -336,15 +321,15 @@ const STATUS_GROUP_ORDER: {
   title: string
   statuses: SessionStatus[]
 }[] = [
-  { key: 'idle', title: 'Idle', statuses: ['idle'] },
-  { key: 'review', title: 'Review', statuses: ['review', 'completed'] },
-  { key: 'waiting', title: 'Waiting', statuses: ['waiting', 'permission'] },
-  {
-    key: 'inProgress',
-    title: 'In Progress',
-    statuses: ['planning', 'vibing', 'yoloing'],
-  },
-]
+    { key: 'idle', title: 'Idle', statuses: ['idle'] },
+    { key: 'review', title: 'Review', statuses: ['review', 'completed'] },
+    { key: 'waiting', title: 'Waiting', statuses: ['waiting', 'permission'] },
+    {
+      key: 'inProgress',
+      title: 'In Progress',
+      statuses: ['planning', 'vibing', 'yoloing'],
+    },
+  ]
 
 /** Group cards by status. Returns only non-empty groups.
  * - inProgress group: reversed so newest appears first

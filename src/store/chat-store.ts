@@ -41,6 +41,9 @@ interface ChatUIState {
   // Last active worktree (survives clearActiveWorktree, used by dashboard to restore selection)
   lastActiveWorktreeId: string | null
 
+  // Last opened worktree+session per project (for restoring on project switch)
+  lastOpenedPerProject: Record<string, { worktreeId: string; sessionId: string }>
+
   // Active session ID per worktree (for tab selection)
   activeSessionIds: Record<string, string>
 
@@ -248,6 +251,7 @@ interface ChatUIState {
   setActiveWorktree: (id: string | null, path: string | null) => void
   clearActiveWorktree: () => void
   setLastActiveWorktreeId: (id: string) => void
+  setLastOpenedForProject: (projectId: string, worktreeId: string, sessionId: string) => void
   registerWorktreePath: (worktreeId: string, path: string) => void
   getWorktreePath: (worktreeId: string) => string | undefined
 
@@ -498,6 +502,7 @@ export const useChatStore = create<ChatUIState>()(
       activeWorktreeId: null,
       activeWorktreePath: null,
       lastActiveWorktreeId: null,
+      lastOpenedPerProject: {},
       activeSessionIds: {},
       reviewResults: {},
       reviewSidebarVisible: false,
@@ -773,6 +778,22 @@ export const useChatStore = create<ChatUIState>()(
 
       setLastActiveWorktreeId: id =>
         set({ lastActiveWorktreeId: id }, undefined, 'setLastActiveWorktreeId'),
+
+      setLastOpenedForProject: (projectId, worktreeId, sessionId) =>
+        set(
+          state => {
+            const existing = state.lastOpenedPerProject[projectId]
+            if (existing?.worktreeId === worktreeId && existing?.sessionId === sessionId) return state
+            return {
+              lastOpenedPerProject: {
+                ...state.lastOpenedPerProject,
+                [projectId]: { worktreeId, sessionId },
+              },
+            }
+          },
+          undefined,
+          'setLastOpenedForProject'
+        ),
 
       registerWorktreePath: (worktreeId, path) =>
         set(

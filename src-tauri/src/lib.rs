@@ -186,6 +186,8 @@ pub struct AppPreferences {
     pub codex_multi_agent_enabled: bool, // Enable multi-agent collaboration (experimental)
     #[serde(default = "default_codex_max_agent_threads")]
     pub codex_max_agent_threads: u32, // Max concurrent agent threads (1-8)
+    #[serde(default)]
+    pub restore_last_session: bool, // Restore last session when switching projects (default: false)
 }
 
 fn default_true() -> Option<bool> {
@@ -829,6 +831,7 @@ impl Default for AppPreferences {
             default_codex_reasoning_effort: default_codex_reasoning_effort(),
             codex_multi_agent_enabled: false,
             codex_max_agent_threads: default_codex_max_agent_threads(),
+            restore_last_session: false,
         }
     }
 }
@@ -901,6 +904,10 @@ pub struct UIState {
     #[serde(default)]
     pub dashboard_worktree_collapse_overrides: std::collections::HashMap<String, bool>,
 
+    /// Last opened worktree+session per project: projectId → { worktree_id, session_id }
+    #[serde(default)]
+    pub last_opened_per_project: std::collections::HashMap<String, LastOpenedEntry>,
+
     /// Version for future migration support
     #[serde(default = "default_ui_state_version")]
     pub version: u32,
@@ -908,6 +915,12 @@ pub struct UIState {
 
 fn default_ui_state_version() -> u32 {
     1
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LastOpenedEntry {
+    pub worktree_id: String,
+    pub session_id: String,
 }
 
 impl Default for UIState {
@@ -928,6 +941,7 @@ impl Default for UIState {
             modal_terminal_width: None,
             project_access_timestamps: std::collections::HashMap::new(),
             dashboard_worktree_collapse_overrides: std::collections::HashMap::new(),
+            last_opened_per_project: std::collections::HashMap::new(),
             version: default_ui_state_version(),
         }
     }

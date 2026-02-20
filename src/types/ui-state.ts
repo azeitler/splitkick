@@ -32,6 +32,8 @@ export interface UIState {
   project_access_timestamps?: Record<string, number>
   /** Dashboard worktree collapse overrides: worktreeId → collapsed (true/false) */
   dashboard_worktree_collapse_overrides?: Record<string, boolean>
+  /** Last opened worktree+session per project: projectId → { worktree_id, session_id } */
+  last_opened_per_project?: Record<string, { worktree_id: string; session_id: string }>
   version: number
 }
 
