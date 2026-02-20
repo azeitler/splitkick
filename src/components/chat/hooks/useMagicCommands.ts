@@ -17,7 +17,7 @@ interface MagicCommandHandlers {
   handlePull: () => void
   handlePush: () => void
   handleOpenPr: () => void
-  handleReview: (existingSessionId?: string) => void
+  handleReview: () => void
   handleMerge: () => void
   handleResolveConflicts: () => void
   handleInvestigateWorkflowRun: (detail: WorkflowRunDetail) => void
@@ -132,7 +132,7 @@ export function useMagicCommands({
           handlers.handleOpenPr()
           break
         case 'review':
-          handlers.handleReview(sessionId)
+          handlers.handleReview()
           break
         case 'merge':
           handlers.handleMerge()

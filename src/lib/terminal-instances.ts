@@ -113,9 +113,9 @@ export function getOrCreateTerminal(
       const inst = instances.get(terminalId)
       inst?.onStopped?.(exitCode)
 
-      // Auto-close terminal tab after process exits (deferred to avoid
-      // disposing inside the listener that's currently executing)
-      if (inst) {
+      // Auto-close terminal tab only on successful exit — keep open on
+      // failure so the user can read error output
+      if (inst && exitCode === 0) {
         const wId = inst.worktreeId
         setTimeout(() => {
           if (!instances.has(terminalId)) return // Already disposed

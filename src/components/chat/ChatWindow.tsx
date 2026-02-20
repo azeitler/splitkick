@@ -37,13 +37,11 @@ import {
   useCreateSession,
   cancelChatMessage,
   chatQueryKeys,
-  markPlanApproved as markPlanApprovedService,
 } from '@/services/chat'
 import {
   useWorktree,
   useProjects,
   useRunScript,
-  projectsQueryKeys,
 } from '@/services/projects'
 import {
   useLoadedIssueContexts,
@@ -59,15 +57,9 @@ import {
 import { usePreferences, useSavePreferences } from '@/services/preferences'
 import { getLabelTextColor } from '@/lib/label-colors'
 import {
-  DEFAULT_INVESTIGATE_ISSUE_PROMPT,
-  DEFAULT_INVESTIGATE_PR_PROMPT,
-  DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT,
   DEFAULT_PARALLEL_EXECUTION_PROMPT,
   PREDEFINED_CLI_PROFILES,
-  resolveMagicPromptProvider,
-  isCodexModel,
 } from '@/types/preferences'
-import type { Project, Worktree } from '@/types/projects'
 import type {
   ChatMessage,
   ToolCall,
@@ -127,10 +119,7 @@ import {
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
 import {
-  useMcpServers,
   buildMcpConfigJson,
-  invalidateMcpServers,
-  getNewServersToAutoEnable,
 } from '@/services/mcp'
 import type { McpServerInfo } from '@/types/chat'
 import { useGitStatus } from '@/services/git-status'
@@ -175,11 +164,12 @@ import {
   useMessageHandlers,
   GIT_ALLOWED_TOOLS,
 } from './hooks/useMessageHandlers'
-import {
-  useMagicCommands,
-  type WorkflowRunDetail,
-} from './hooks/useMagicCommands'
+import { useMagicCommands } from './hooks/useMagicCommands'
 import { useDragAndDropImages } from './hooks/useDragAndDropImages'
+import { usePlanDialogApproval } from './hooks/usePlanDialogApproval'
+import { useChatWindowEvents } from './hooks/useChatWindowEvents'
+import { useInvestigateHandlers } from './hooks/useInvestigateHandlers'
+import { useMcpServerResolution } from './hooks/useMcpServerResolution'
 
 // PERFORMANCE: Stable empty array references to prevent infinite render loops
 // When Zustand selectors return [], a new reference is created each time
@@ -522,53 +512,14 @@ export function ChatWindow({
   const selectedEffortLevel: EffortLevel =
     sessionEffortLevel ?? defaultEffortLevel
 
-  // MCP servers: fetch available servers and get per-session enabled state
-  const { data: mcpServersData } = useMcpServers(activeWorktreePath)
-  const availableMcpServers = useMemo(
-    () => mcpServersData ?? [],
-    [mcpServersData]
-  )
-
-  // Re-read MCP config when switching worktrees
-  useEffect(() => {
-    if (activeWorktreePath) invalidateMcpServers(activeWorktreePath)
-  }, [activeWorktreePath])
-  const sessionEnabledMcpServers = useChatStore(state =>
-    deferredSessionId ? state.enabledMcpServers[deferredSessionId] : undefined
-  )
-  // Resolve enabled servers from session → project → global defaults,
-  // then auto-include any newly discovered (non-disabled) servers.
-  // project.enabled_mcp_servers is null/undefined when unconfigured (inherit global),
-  // or an array (possibly empty) when explicitly set by the user.
-  const baseEnabledMcpServers = useMemo(() => {
-    if (sessionEnabledMcpServers !== undefined) return sessionEnabledMcpServers
-    if (project?.enabled_mcp_servers != null) return project.enabled_mcp_servers
-    return preferences?.default_enabled_mcp_servers ?? []
-  }, [
-    sessionEnabledMcpServers,
-    project?.enabled_mcp_servers,
-    preferences?.default_enabled_mcp_servers,
-  ])
-  const knownMcpServers = useMemo(
-    () => project?.known_mcp_servers ?? preferences?.known_mcp_servers ?? [],
-    [project?.known_mcp_servers, preferences?.known_mcp_servers]
-  )
-  const newAutoEnabled = useMemo(
-    () =>
-      getNewServersToAutoEnable(
-        availableMcpServers,
-        baseEnabledMcpServers,
-        knownMcpServers
-      ),
-    [availableMcpServers, baseEnabledMcpServers, knownMcpServers]
-  )
-  const enabledMcpServers = useMemo(
-    () =>
-      newAutoEnabled.length > 0
-        ? [...baseEnabledMcpServers, ...newAutoEnabled]
-        : baseEnabledMcpServers,
-    [baseEnabledMcpServers, newAutoEnabled]
-  )
+  // MCP servers: resolve enabled servers cascade (session → project → global)
+  const { availableMcpServers, enabledMcpServers } =
+    useMcpServerResolution({
+      activeWorktreePath,
+      deferredSessionId,
+      project,
+      preferences,
+    })
 
   // CLI version for adaptive thinking feature detection
   const { data: cliStatus } = useClaudeCliStatus()
@@ -999,6 +950,23 @@ export function ChatWindow({
     useState<SessionDigest | null>(null)
   const [isGeneratingRecap, setIsGeneratingRecap] = useState(false)
 
+  // Plan dialog approval handlers (DRYs 4x-duplicated onApprove/onApproveYolo callbacks)
+  const { handlePlanDialogApprove, handlePlanDialogApproveYolo } =
+    usePlanDialogApproval({
+      activeSessionId,
+      activeWorktreeId,
+      activeWorktreePath,
+      pendingPlanMessage,
+      selectedModelRef,
+      selectedProviderRef,
+      selectedThinkingLevelRef,
+      selectedEffortLevelRef,
+      useAdaptiveThinkingRef,
+      isCodexBackendRef,
+      mcpServersDataRef,
+      enabledMcpServersRef,
+    })
+
   // Manage dismissal state based on streaming and message ID changes
   useEffect(() => {
     // When streaming produces NEW todos, clear any previous dismissal
@@ -1021,260 +989,6 @@ export function ChatWindow({
     todoSourceMessageId,
     dismissedTodoMessageId,
   ])
-
-  // Focus input on mount, when session changes, or when worktree changes
-  useEffect(() => {
-    inputRef.current?.focus()
-  }, [activeSessionId, activeWorktreeId])
-
-  // Scroll to bottom when switching worktrees (sidebar click doesn't change session, so auto-scroll doesn't trigger)
-  useEffect(() => {
-    scrollToBottom(true)
-  }, [activeWorktreeId, scrollToBottom])
-
-  // Auto-scroll to bottom when new messages arrive, streaming content updates, or sending starts
-  useEffect(() => {
-    if (isAtBottom) {
-      scrollToBottom()
-    }
-  }, [
-    session?.messages.length,
-    streamingContent,
-    currentStreamingContentBlocks.length,
-    isSending,
-    isAtBottom,
-    scrollToBottom,
-    currentQueuedMessages.length,
-  ])
-
-  // Listen for global focus request from keybinding (CMD+L by default)
-  useEffect(() => {
-    const handleFocusRequest = () => {
-      inputRef.current?.focus()
-    }
-
-    window.addEventListener('focus-chat-input', handleFocusRequest)
-    return () =>
-      window.removeEventListener('focus-chat-input', handleFocusRequest)
-  }, [])
-
-  // Listen for global open-plan request from keybinding (p key)
-  // Skip when on canvas view - CanvasGrid handles it there
-  useEffect(() => {
-    if (isViewingCanvasTab) return
-
-    const handleOpenPlan = () => {
-      if (latestPlanContent) {
-        setPlanDialogContent(latestPlanContent)
-        setIsPlanDialogOpen(true)
-      } else if (latestPlanFilePath) {
-        setIsPlanDialogOpen(true)
-      } else {
-        toast.info('No plan available for this session')
-      }
-    }
-
-    window.addEventListener('open-plan', handleOpenPlan)
-    return () => window.removeEventListener('open-plan', handleOpenPlan)
-  }, [latestPlanContent, latestPlanFilePath, isViewingCanvasTab])
-
-  // Listen for global open-recap request from keybinding (R key) or tab bar button
-  // Skip when on canvas view - CanvasGrid handles it there
-  // Modal ChatWindow always listens (it always shows a session, never canvas)
-  useEffect(() => {
-    if (isViewingCanvasTab && !isModal) return
-
-    const handleOpenRecap = async () => {
-      if (!activeSessionId) return
-
-      // If recap dialog is already open, treat as regenerate
-      if (isRecapDialogOpen) {
-        const currentCount = session?.messages.length ?? 0
-        const digestCount = recapDialogDigest?.message_count ?? 0
-        if (currentCount <= digestCount) {
-          toast.info('No new messages since last recap')
-          return
-        }
-        // Fall through to regenerate
-      }
-
-      // Check for existing digest (Zustand cache → persisted)
-      const cachedDigest = useChatStore
-        .getState()
-        .getSessionDigest(activeSessionId)
-      const existingDigest = cachedDigest ?? session?.digest ?? null
-
-      if (existingDigest && !isRecapDialogOpen) {
-        setRecapDialogDigest(existingDigest)
-        setIsRecapDialogOpen(true)
-        return
-      }
-
-      // Need at least 2 messages
-      const messageCount = session?.messages.length ?? 0
-      if (messageCount < 2) {
-        toast.info('Not enough messages to generate a recap')
-        return
-      }
-
-      // Generate on-demand
-      setRecapDialogDigest(null)
-      setIsRecapDialogOpen(true)
-      setIsGeneratingRecap(true)
-
-      try {
-        const digest = await invoke<SessionDigest>('generate_session_digest', {
-          sessionId: activeSessionId,
-        })
-
-        useChatStore.getState().markSessionNeedsDigest(activeSessionId)
-        useChatStore.getState().setSessionDigest(activeSessionId, digest)
-
-        // Persist to disk (fire and forget)
-        invoke('update_session_digest', {
-          sessionId: activeSessionId,
-          digest,
-        }).catch(err => {
-          console.error('[ChatWindow] Failed to persist digest:', err)
-        })
-
-        setRecapDialogDigest(digest)
-      } catch (error) {
-        setRecapDialogDigest(null)
-        setIsRecapDialogOpen(false)
-        toast.error(`Failed to generate recap: ${error}`)
-      } finally {
-        setIsGeneratingRecap(false)
-      }
-    }
-
-    window.addEventListener('open-recap', handleOpenRecap)
-    return () => window.removeEventListener('open-recap', handleOpenRecap)
-  }, [
-    isViewingCanvasTab,
-    isModal,
-    activeSessionId,
-    session,
-    isRecapDialogOpen,
-    recapDialogDigest,
-  ])
-
-  // Listen for global create-new-session event from keybinding (CMD+T)
-  useEffect(() => {
-    const handleCreateNewSession = () => {
-      if (!activeWorktreeId || !activeWorktreePath) return
-      createSession.mutate(
-        { worktreeId: activeWorktreeId, worktreePath: activeWorktreePath },
-        {
-          onSuccess: session => {
-            useChatStore
-              .getState()
-              .setActiveSession(activeWorktreeId, session.id)
-            // Always open new session in modal (canvas is always the base view)
-            window.dispatchEvent(
-              new CustomEvent('open-session-modal', {
-                detail: { sessionId: session.id },
-              })
-            )
-          },
-        }
-      )
-    }
-
-    window.addEventListener('create-new-session', handleCreateNewSession)
-    return () =>
-      window.removeEventListener('create-new-session', handleCreateNewSession)
-  }, [activeWorktreeId, activeWorktreePath, createSession])
-
-  // Listen for cycle-execution-mode event from keybinding (SHIFT+TAB)
-  useEffect(() => {
-    if (!activeSessionId) return
-
-    const handleCycleExecutionMode = () => {
-      useChatStore.getState().cycleExecutionMode(activeSessionId)
-    }
-
-    window.addEventListener('cycle-execution-mode', handleCycleExecutionMode)
-    return () =>
-      window.removeEventListener(
-        'cycle-execution-mode',
-        handleCycleExecutionMode
-      )
-  }, [activeSessionId])
-
-  // Listen for global git diff request from keybinding (CMD+G by default)
-  // If modal is closed, open with 'uncommitted'. If already open, toggle between types.
-  useEffect(() => {
-    // Avoid duplicate listeners when modal ChatWindow is open over canvas ChatWindow.
-    if (!isModal && isViewingCanvasTab && sessionModalOpen) {
-      return
-    }
-
-    const handleOpenGitDiff = () => {
-      if (!activeWorktreePath) return
-      const baseBranch = gitStatus?.base_branch ?? 'main'
-
-      setDiffRequest(prev => {
-        if (prev) {
-          // Already open — toggle type
-          return {
-            ...prev,
-            type: prev.type === 'uncommitted' ? 'branch' : 'uncommitted',
-          }
-        }
-        return {
-          type: 'uncommitted',
-          worktreePath: activeWorktreePath,
-          baseBranch,
-        }
-      })
-    }
-
-    window.addEventListener('open-git-diff', handleOpenGitDiff)
-    return () => window.removeEventListener('open-git-diff', handleOpenGitDiff)
-  }, [
-    isModal,
-    isViewingCanvasTab,
-    sessionModalOpen,
-    activeWorktreePath,
-    gitStatus?.base_branch,
-  ])
-
-  // Keep refs for the cancel-prompt handler so it always has the effective
-  // worktreeId/sessionId (which may come from props in modal mode, not the store)
-  const cancelContextRef = useRef({ activeWorktreeId, activeSessionId })
-  cancelContextRef.current = { activeWorktreeId, activeSessionId }
-
-  // Listen for cancel-prompt keybinding event (dispatched by centralized keybinding system)
-  useEffect(() => {
-    const handleCancelPrompt = () => {
-      const state = useChatStore.getState()
-      // Use ref values (which respect prop overrides in modal mode)
-      // instead of store's activeWorktreeId which may be null on project canvas
-      const wtId = cancelContextRef.current.activeWorktreeId
-      if (!wtId) return
-
-      const isCanvas = state.viewingCanvasTab[wtId] ?? true
-      const canvasSession = state.canvasSelectedSessionIds[wtId] ?? null
-      const activeSession =
-        cancelContextRef.current.activeSessionId ??
-        state.activeSessionIds[wtId] ??
-        null
-
-      const sessionToCancel =
-        isCanvas && canvasSession ? canvasSession : activeSession
-
-      if (!sessionToCancel) return
-
-      const isSendingTarget = state.sendingSessionIds[sessionToCancel] ?? false
-      if (!isSendingTarget) return
-
-      cancelChatMessage(sessionToCancel, wtId)
-    }
-
-    window.addEventListener('cancel-prompt', handleCancelPrompt)
-    return () => window.removeEventListener('cancel-prompt', handleCancelPrompt)
-  }, [])
 
   // Note: Streaming event listeners are in App.tsx, not here
   // This ensures they stay active even when ChatWindow is unmounted (e.g., session board view)
@@ -1652,6 +1366,9 @@ export function ChatWindow({
         queuedAt: Date.now(),
       }
 
+      // Scroll to bottom when user sends a new message (even if scrolled up)
+      scrollToBottom(true)
+
       // If currently sending, add to queue instead
       if (checkIsSendingNow(activeSessionId)) {
         enqueueMessage(activeSessionId, queuedMessage)
@@ -1666,6 +1383,7 @@ export function ChatWindow({
       activeWorktreeId,
       activeWorktreePath,
       clearInputDraft,
+      scrollToBottom,
       sendMessageNow,
       sessionsData,
     ]
@@ -1752,6 +1470,41 @@ export function ChatWindow({
     worktree,
     queryClient,
     preferences,
+  })
+
+  // Window event listeners (focus, plan, recap, git-diff, cancel, create-session, etc.)
+  useChatWindowEvents({
+    inputRef,
+    activeSessionId,
+    activeWorktreeId,
+    activeWorktreePath,
+    isModal,
+    isViewingCanvasTab,
+    latestPlanContent,
+    latestPlanFilePath,
+    setPlanDialogContent,
+    setIsPlanDialogOpen,
+    session,
+    isRecapDialogOpen,
+    recapDialogDigest,
+    setRecapDialogDigest,
+    setIsRecapDialogOpen,
+    setIsGeneratingRecap,
+    gitStatus,
+    sessionModalOpen,
+    setDiffRequest,
+    isAtBottom,
+    scrollToBottom,
+    streamingContent,
+    currentStreamingContentBlocks,
+    isSending,
+    currentQueuedMessages,
+    createSession,
+    preferences,
+    savePreferences,
+    handleSaveContext,
+    handleLoadContext,
+    runScript,
   })
 
   // PERFORMANCE: Stable callbacks for ChatToolbar to prevent re-renders
@@ -1931,451 +1684,30 @@ export function ChatWindow({
     [setLoadContextModalOpen]
   )
 
-  // Handle investigate workflow run - sends investigation prompt for a failed GitHub Actions run
-  const handleInvestigate = useCallback(
-    async (type: 'issue' | 'pr') => {
-      if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
-
-      const modelKey =
-        type === 'issue' ? 'investigate_issue_model' : 'investigate_pr_model'
-      const providerKey =
-        type === 'issue'
-          ? 'investigate_issue_provider'
-          : 'investigate_pr_provider'
-      const investigateModel =
-        preferences?.magic_prompt_models?.[modelKey] ?? selectedModelRef.current
-      const investigateProvider = resolveMagicPromptProvider(
-        preferences?.magic_prompt_providers,
-        providerKey,
-        preferences?.default_provider
-      )
-      const { customProfileName: resolvedInvestigateProfile } =
-        resolveCustomProfile(investigateModel, investigateProvider)
-
-      let prompt: string
-
-      if (type === 'issue') {
-        // Query by worktree ID — during auto-investigate, contexts are registered
-        // under worktree ID (not session ID) by the backend create_worktree command
-        const contexts = await queryClient.fetchQuery({
-          queryKey: ['investigate-contexts', 'issue', activeWorktreeId],
-          queryFn: () =>
-            invoke<{ number: number }[]>('list_loaded_issue_contexts', {
-              sessionId: activeWorktreeId,
-            }),
-          staleTime: 0,
-        })
-        const refs = (contexts ?? []).map(c => `#${c.number}`).join(', ')
-        const word = (contexts ?? []).length === 1 ? 'issue' : 'issues'
-        const customPrompt = preferences?.magic_prompts?.investigate_issue
-        const template =
-          customPrompt && customPrompt.trim()
-            ? customPrompt
-            : DEFAULT_INVESTIGATE_ISSUE_PROMPT
-        prompt = template
-          .replace(/\{issueWord\}/g, word)
-          .replace(/\{issueRefs\}/g, refs)
-      } else {
-        const contexts = await queryClient.fetchQuery({
-          queryKey: ['investigate-contexts', 'pr', activeWorktreeId],
-          queryFn: () =>
-            invoke<{ number: number }[]>('list_loaded_pr_contexts', {
-              sessionId: activeWorktreeId,
-            }),
-          staleTime: 0,
-        })
-        const refs = (contexts ?? []).map(c => `#${c.number}`).join(', ')
-        const word = (contexts ?? []).length === 1 ? 'PR' : 'PRs'
-        const customPrompt = preferences?.magic_prompts?.investigate_pr
-        const template =
-          customPrompt && customPrompt.trim()
-            ? customPrompt
-            : DEFAULT_INVESTIGATE_PR_PROMPT
-        prompt = template
-          .replace(/\{prWord\}/g, word)
-          .replace(/\{prRefs\}/g, refs)
-      }
-
-      const {
-        addSendingSession,
-        setLastSentMessage,
-        setError,
-        setSelectedModel,
-        setSelectedProvider,
-        setExecutingMode,
-      } = useChatStore.getState()
-
-      setLastSentMessage(activeSessionId, prompt)
-      setError(activeSessionId, null)
-      addSendingSession(activeSessionId)
-      setSelectedModel(activeSessionId, investigateModel)
-      setSelectedProvider(activeSessionId, investigateProvider)
-      setExecutingMode(activeSessionId, executionModeRef.current)
-
-      // Persist the provider to backend so subsequent messages use the same one
-      setSessionProvider.mutate({
-        sessionId: activeSessionId,
-        worktreeId: activeWorktreeId,
-        worktreePath: activeWorktreePath,
-        provider: investigateProvider,
-      })
-
-      // Compute adaptive thinking for the resolved provider (not the stale ref)
-      const investigateIsCustom = Boolean(
-        investigateProvider && investigateProvider !== '__anthropic__'
-      )
-      const investigateUseAdaptive =
-        !investigateIsCustom &&
-        supportsAdaptiveThinking(investigateModel, cliStatus?.version ?? null)
-
-      // Update session backend + model to match magic prompt config
-      const investigateBackend = isCodexModel(investigateModel)
-        ? 'codex'
-        : ('claude' as const)
-
-      // Persist to Rust backend
-      setSessionBackend.mutate({
-        sessionId: activeSessionId,
-        worktreeId: activeWorktreeId,
-        worktreePath: activeWorktreePath,
-        backend: investigateBackend,
-      })
-      setSessionModel.mutate({
-        sessionId: activeSessionId,
-        worktreeId: activeWorktreeId,
-        worktreePath: activeWorktreePath,
-        model: investigateModel,
-      })
-
-      // Update Zustand + query cache so UI reflects immediately
-      {
-        const { setSelectedBackend: setZustandBackend, setSelectedModel: setZustandModel } =
-          useChatStore.getState()
-        setZustandBackend(activeSessionId, investigateBackend)
-        setZustandModel(activeSessionId, investigateModel)
-      }
-      queryClient.setQueryData(
-        chatQueryKeys.session(activeSessionId),
-        (old: Session | null | undefined) =>
-          old
-            ? {
-                ...old,
-                backend: investigateBackend,
-                selected_model: investigateModel,
-              }
-            : old
-      )
-
-      sendMessage.mutate(
-        {
-          sessionId: activeSessionId,
-          worktreeId: activeWorktreeId,
-          worktreePath: activeWorktreePath,
-          message: prompt,
-          model: investigateModel,
-          executionMode: executionModeRef.current,
-          thinkingLevel: selectedThinkingLevelRef.current,
-          effortLevel: investigateUseAdaptive
-            ? selectedEffortLevelRef.current
-            : undefined,
-          mcpConfig: buildMcpConfigJson(
-            mcpServersDataRef.current,
-            enabledMcpServersRef.current
-          ),
-          customProfileName: resolvedInvestigateProfile,
-          parallelExecutionPrompt:
-            preferences?.parallel_execution_prompt_enabled
-              ? (preferences.magic_prompts?.parallel_execution ??
-                DEFAULT_PARALLEL_EXECUTION_PROMPT)
-              : undefined,
-          chromeEnabled: preferences?.chrome_enabled ?? false,
-          aiLanguage: preferences?.ai_language,
-          backend: investigateBackend,
-        },
-        { onSettled: () => inputRef.current?.focus() }
-      )
-    },
-    [
+  // Investigate issue/PR and workflow run handlers
+  const { handleInvestigate, handleInvestigateWorkflowRun } =
+    useInvestigateHandlers({
       activeSessionId,
       activeWorktreeId,
       activeWorktreePath,
+      inputRef,
+      preferences,
+      selectedModelRef,
+      selectedThinkingLevelRef,
+      selectedEffortLevelRef,
+      executionModeRef,
+      mcpServersDataRef,
+      enabledMcpServersRef,
+      activeWorktreeIdRef,
+      activeWorktreePathRef,
       sendMessage,
-      queryClient,
-      preferences?.magic_prompts?.investigate_issue,
-      preferences?.magic_prompts?.investigate_pr,
-      preferences?.default_provider,
-      preferences?.parallel_execution_prompt_enabled,
-      preferences?.magic_prompts?.parallel_execution,
-      preferences?.magic_prompt_models,
-      preferences?.magic_prompt_providers,
-      preferences?.chrome_enabled,
-      preferences?.ai_language,
       setSessionProvider,
       setSessionBackend,
       setSessionModel,
-      resolveCustomProfile,
-      cliStatus?.version,
-    ]
-  )
-
-  const handleInvestigateWorkflowRun = useCallback(
-    async (detail: WorkflowRunDetail) => {
-      const customPrompt = preferences?.magic_prompts?.investigate_workflow_run
-      const template =
-        customPrompt && customPrompt.trim()
-          ? customPrompt
-          : DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT
-
-      const prompt = template
-        .replace(/\{workflowName\}/g, detail.workflowName)
-        .replace(/\{runUrl\}/g, detail.runUrl)
-        .replace(/\{runId\}/g, detail.runId)
-        .replace(/\{branch\}/g, detail.branch)
-        .replace(/\{displayTitle\}/g, detail.displayTitle)
-
-      const investigateModel =
-        preferences?.magic_prompt_models?.investigate_workflow_run_model ??
-        selectedModelRef.current
-      const investigateProvider = resolveMagicPromptProvider(
-        preferences?.magic_prompt_providers,
-        'investigate_workflow_run_provider',
-        preferences?.default_provider
-      )
-      const { customProfileName: resolvedInvestigateProfile } =
-        resolveCustomProfile(investigateModel, investigateProvider)
-
-      // Find the right worktree for this branch
-      let targetWorktreeId: string | null = null
-      let targetWorktreePath: string | null = null
-
-      if (detail.projectPath) {
-        // Use fetchQuery to ensure data is loaded (not just cached)
-        const projects = await queryClient.fetchQuery({
-          queryKey: projectsQueryKeys.list(),
-          queryFn: () => invoke<Project[]>('list_projects'),
-          staleTime: 1000 * 60,
-        })
-        const project = projects?.find(p => p.path === detail.projectPath)
-
-        if (project) {
-          let worktrees: Worktree[] = []
-          try {
-            worktrees = await queryClient.fetchQuery({
-              queryKey: projectsQueryKeys.worktrees(project.id),
-              queryFn: () =>
-                invoke<Worktree[]>('list_worktrees', {
-                  projectId: project.id,
-                }),
-              staleTime: 1000 * 60,
-            })
-          } catch (err) {
-            console.error('[INVESTIGATE-WF] Failed to fetch worktrees:', err)
-          }
-
-          // status is optional — undefined or 'ready' both mean usable
-          const isUsable = (w: Worktree) => !w.status || w.status === 'ready'
-
-          if (worktrees.length > 0) {
-            // Find worktree matching the run's branch
-            const matching = worktrees.find(
-              w => w.branch === detail.branch && isUsable(w)
-            )
-            if (matching) {
-              targetWorktreeId = matching.id
-              targetWorktreePath = matching.path
-            } else {
-              // Fall back to the base worktree (first usable one)
-              const base = worktrees.find(w => isUsable(w))
-              if (base) {
-                targetWorktreeId = base.id
-                targetWorktreePath = base.path
-              }
-            }
-          }
-
-          // No usable worktrees — create the base session first
-          if (!targetWorktreeId) {
-            try {
-              const baseSession = await invoke<Worktree>(
-                'create_base_session',
-                { projectId: project.id }
-              )
-              queryClient.invalidateQueries({
-                queryKey: projectsQueryKeys.worktrees(project.id),
-              })
-              targetWorktreeId = baseSession.id
-              targetWorktreePath = baseSession.path
-            } catch (error) {
-              console.error(
-                '[INVESTIGATE-WF] Failed to create base session:',
-                error
-              )
-              toast.error(`Failed to open base session: ${error}`)
-              return
-            }
-          }
-        }
-      }
-
-      // Final fallback: use active worktree
-      if (!targetWorktreeId || !targetWorktreePath) {
-        targetWorktreeId = activeWorktreeIdRef.current
-        targetWorktreePath = activeWorktreePathRef.current
-      }
-
-      if (!targetWorktreeId || !targetWorktreePath) {
-        console.error('[INVESTIGATE-WF] No worktree found at all, aborting')
-        toast.error('No worktree found for this branch')
-        return
-      }
-
-      // Capture for closure stability
-      const worktreeId = targetWorktreeId
-      const worktreePath = targetWorktreePath
-
-      // Compute adaptive thinking for the resolved provider (not the stale ref)
-      const investigateIsCustom = Boolean(
-        investigateProvider && investigateProvider !== '__anthropic__'
-      )
-      const investigateUseAdaptive =
-        !investigateIsCustom &&
-        supportsAdaptiveThinking(investigateModel, cliStatus?.version ?? null)
-
-      const investigateBackend = isCodexModel(investigateModel)
-        ? 'codex'
-        : 'claude'
-
-      const sendInvestigateMessage = (targetSessionId: string) => {
-        const {
-          addSendingSession,
-          setLastSentMessage,
-          setError,
-          setSelectedModel,
-          setSelectedProvider,
-          setExecutingMode,
-        } = useChatStore.getState()
-
-        setLastSentMessage(targetSessionId, prompt)
-        setError(targetSessionId, null)
-        addSendingSession(targetSessionId)
-        setSelectedModel(targetSessionId, investigateModel)
-        setSelectedProvider(targetSessionId, investigateProvider)
-        setExecutingMode(targetSessionId, executionModeRef.current)
-
-        // Persist backend + provider + model so subsequent messages use the same ones
-        setSessionBackend.mutate({
-          sessionId: targetSessionId,
-          worktreeId,
-          worktreePath,
-          backend: investigateBackend,
-        })
-        setSessionModel.mutate({
-          sessionId: targetSessionId,
-          worktreeId,
-          worktreePath,
-          model: investigateModel,
-        })
-        setSessionProvider.mutate({
-          sessionId: targetSessionId,
-          worktreeId,
-          worktreePath,
-          provider: investigateProvider,
-        })
-        // Update Zustand + query cache so UI reflects immediately
-        {
-          const { setSelectedBackend: setZustandBackend, setSelectedModel: setZustandModel } =
-            useChatStore.getState()
-          setZustandBackend(targetSessionId, investigateBackend)
-          setZustandModel(targetSessionId, investigateModel)
-        }
-        queryClient.setQueryData(
-          chatQueryKeys.session(targetSessionId),
-          (old: Session | null | undefined) =>
-            old
-              ? {
-                  ...old,
-                  backend: investigateBackend,
-                  selected_model: investigateModel,
-                }
-              : old
-        )
-
-        sendMessage.mutate(
-          {
-            sessionId: targetSessionId,
-            worktreeId,
-            worktreePath,
-            message: prompt,
-            model: investigateModel,
-            executionMode: executionModeRef.current,
-            thinkingLevel: selectedThinkingLevelRef.current,
-            effortLevel: investigateUseAdaptive
-              ? selectedEffortLevelRef.current
-              : undefined,
-            mcpConfig: buildMcpConfigJson(
-              mcpServersDataRef.current,
-              enabledMcpServersRef.current
-            ),
-            customProfileName: resolvedInvestigateProfile,
-            parallelExecutionPrompt:
-              preferences?.parallel_execution_prompt_enabled
-                ? (preferences.magic_prompts?.parallel_execution ??
-                  DEFAULT_PARALLEL_EXECUTION_PROMPT)
-                : undefined,
-            chromeEnabled: preferences?.chrome_enabled ?? false,
-            aiLanguage: preferences?.ai_language,
-            backend: investigateBackend,
-          },
-          { onSettled: () => inputRef.current?.focus() }
-        )
-      }
-
-      // Switch to the target worktree, create a new session, then send the prompt
-      const { setActiveWorktree, setActiveSession } = useChatStore.getState()
-      const { selectWorktree, expandProject } = useProjectsStore.getState()
-      setActiveWorktree(worktreeId, worktreePath)
-      selectWorktree(worktreeId)
-
-      // Expand the project in sidebar so user can see the worktree
-      const projects = queryClient.getQueryData<Project[]>(
-        projectsQueryKeys.list()
-      )
-      const project = projects?.find(p => p.path === detail.projectPath)
-      if (project) expandProject(project.id)
-
-      createSession.mutate(
-        { worktreeId, worktreePath },
-        {
-          onSuccess: session => {
-            setActiveSession(worktreeId, session.id)
-            sendInvestigateMessage(session.id)
-          },
-          onError: error => {
-            console.error('[INVESTIGATE-WF] Failed to create session:', error)
-            toast.error(`Failed to create session: ${error}`)
-          },
-        }
-      )
-    },
-    [
-      sendMessage,
       createSession,
-      queryClient,
-      preferences?.magic_prompts?.investigate_workflow_run,
-      preferences?.magic_prompt_models?.investigate_workflow_run_model,
-      preferences?.default_provider,
-      preferences?.parallel_execution_prompt_enabled,
-      preferences?.magic_prompts?.parallel_execution,
-      preferences?.magic_prompt_providers,
-      preferences?.chrome_enabled,
-      preferences?.ai_language,
-      setSessionProvider,
-      setSessionBackend,
-      setSessionModel,
       resolveCustomProfile,
-      cliStatus?.version,
-    ]
-  )
+      cliVersion: cliStatus?.version ?? null,
+    })
 
   // Listen for magic-command events from MagicModal
   // Pass isModal and isViewingCanvasTab to prevent duplicate listeners when modal is open over canvas
@@ -2406,68 +1738,6 @@ export function ChatWindow({
       handleInvestigate(type)
     }
   }, [activeSessionId, activeWorktreeId, activeWorktreePath, handleInvestigate])
-
-  // Listen for command palette context events
-  useEffect(() => {
-    const handleSaveContextEvent = () => handleSaveContext()
-    const handleLoadContextEvent = () => handleLoadContext()
-    const handleRunScriptEvent = () => {
-      if (!isNativeApp() || !activeWorktreeId || !runScript) return
-      useTerminalStore.getState().startRun(activeWorktreeId, runScript)
-    }
-
-    window.addEventListener('command:save-context', handleSaveContextEvent)
-    window.addEventListener('command:load-context', handleLoadContextEvent)
-    window.addEventListener('command:run-script', handleRunScriptEvent)
-    return () => {
-      window.removeEventListener('command:save-context', handleSaveContextEvent)
-      window.removeEventListener('command:load-context', handleLoadContextEvent)
-      window.removeEventListener('command:run-script', handleRunScriptEvent)
-    }
-  }, [handleSaveContext, handleLoadContext, activeWorktreeId, runScript])
-
-  // Listen for toggle-debug-mode command
-  useEffect(() => {
-    const handleToggleDebugMode = () => {
-      if (!preferences) return
-      savePreferences.mutate({
-        ...preferences,
-        debug_mode_enabled: !preferences.debug_mode_enabled,
-      })
-    }
-
-    window.addEventListener('command:toggle-debug-mode', handleToggleDebugMode)
-    return () => {
-      window.removeEventListener(
-        'command:toggle-debug-mode',
-        handleToggleDebugMode
-      )
-    }
-  }, [preferences, savePreferences])
-
-  // Listen for set-chat-input events (used by conflict resolution flow)
-  useEffect(() => {
-    const handleSetChatInput = (e: CustomEvent<{ text: string }>) => {
-      const { text } = e.detail
-      const sessionId = activeSessionIdRef.current
-      if (sessionId && text) {
-        const { setInputDraft } = useChatStore.getState()
-        setInputDraft(sessionId, text)
-        // Focus the input
-        inputRef.current?.focus()
-      }
-    }
-
-    window.addEventListener(
-      'set-chat-input',
-      handleSetChatInput as EventListener
-    )
-    return () =>
-      window.removeEventListener(
-        'set-chat-input',
-        handleSetChatInput as EventListener
-      )
-  }, [])
 
   // Message handlers hook - handles questions, plan approval, permission approval, finding fixes
   const {
@@ -3288,9 +2558,7 @@ export function ChatWindow({
                               onCommit={handleCommit}
                               onCommitAndPush={handleCommitAndPushWithPicker}
                               onOpenPr={handleOpenPr}
-                              onReview={() =>
-                                handleReview(activeSessionId ?? undefined)
-                              }
+                              onReview={() => handleReview()}
                               onMerge={handleMerge}
                               onResolvePrConflicts={handleResolvePrConflicts}
                               onResolveConflicts={handleResolveConflicts}
@@ -3472,148 +2740,8 @@ export function ChatWindow({
                     }
                   : undefined
               }
-              onApprove={updatedPlan => {
-                if (
-                  !activeSessionId ||
-                  !activeWorktreeId ||
-                  !activeWorktreePath
-                )
-                  return
-
-                // Mark plan as approved if there's a pending plan message
-                if (pendingPlanMessage) {
-                  markPlanApprovedService(
-                    activeWorktreeId,
-                    activeWorktreePath,
-                    activeSessionId,
-                    pendingPlanMessage.id
-                  )
-                  // Optimistically update query cache
-                  queryClient.setQueryData<Session>(
-                    chatQueryKeys.session(activeSessionId),
-                    old => {
-                      if (!old) return old
-                      return {
-                        ...old,
-                        approved_plan_message_ids: [
-                          ...(old.approved_plan_message_ids ?? []),
-                          pendingPlanMessage.id,
-                        ],
-                        messages: old.messages.map(msg =>
-                          msg.id === pendingPlanMessage.id
-                            ? { ...msg, plan_approved: true }
-                            : msg
-                        ),
-                      }
-                    }
-                  )
-                }
-
-                // Build approval message
-                const message = updatedPlan
-                  ? `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
-                  : 'Approved'
-
-                // Queue instead of immediate execution
-                const { enqueueMessage, setExecutionMode } =
-                  useChatStore.getState()
-                setExecutionMode(activeSessionId, 'build')
-
-                const queuedMessage: QueuedMessage = {
-                  id: generateId(),
-                  message,
-                  pendingImages: [],
-                  pendingFiles: [],
-                  pendingSkills: [],
-                  pendingTextFiles: [],
-                  model: selectedModelRef.current,
-                  provider: selectedProviderRef.current,
-                  executionMode: 'build',
-                  thinkingLevel: selectedThinkingLevelRef.current,
-                  effortLevel:
-                    useAdaptiveThinkingRef.current || isCodexBackendRef.current
-                      ? selectedEffortLevelRef.current
-                      : undefined,
-                  mcpConfig: buildMcpConfigJson(
-                    mcpServersDataRef.current,
-                    enabledMcpServersRef.current
-                  ),
-                  queuedAt: Date.now(),
-                }
-
-                enqueueMessage(activeSessionId, queuedMessage)
-              }}
-              onApproveYolo={updatedPlan => {
-                if (
-                  !activeSessionId ||
-                  !activeWorktreeId ||
-                  !activeWorktreePath
-                )
-                  return
-
-                // Mark plan as approved if there's a pending plan message
-                if (pendingPlanMessage) {
-                  markPlanApprovedService(
-                    activeWorktreeId,
-                    activeWorktreePath,
-                    activeSessionId,
-                    pendingPlanMessage.id
-                  )
-                  // Optimistically update query cache
-                  queryClient.setQueryData<Session>(
-                    chatQueryKeys.session(activeSessionId),
-                    old => {
-                      if (!old) return old
-                      return {
-                        ...old,
-                        approved_plan_message_ids: [
-                          ...(old.approved_plan_message_ids ?? []),
-                          pendingPlanMessage.id,
-                        ],
-                        messages: old.messages.map(msg =>
-                          msg.id === pendingPlanMessage.id
-                            ? { ...msg, plan_approved: true }
-                            : msg
-                        ),
-                      }
-                    }
-                  )
-                }
-
-                // Build approval message
-                const message = updatedPlan
-                  ? `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
-                  : 'Approved - yolo'
-
-                // Queue instead of immediate execution
-                const { enqueueMessage, setExecutionMode } =
-                  useChatStore.getState()
-                setExecutionMode(activeSessionId, 'yolo')
-
-                const queuedMessage: QueuedMessage = {
-                  id: generateId(),
-                  message,
-                  pendingImages: [],
-                  pendingFiles: [],
-                  pendingSkills: [],
-                  pendingTextFiles: [],
-                  model: selectedModelRef.current,
-                  provider: selectedProviderRef.current,
-                  executionMode: 'yolo',
-                  thinkingLevel: selectedThinkingLevelRef.current,
-                  effortLevel:
-                    useAdaptiveThinkingRef.current || isCodexBackendRef.current
-                      ? selectedEffortLevelRef.current
-                      : undefined,
-                  mcpConfig: buildMcpConfigJson(
-                    mcpServersDataRef.current,
-                    enabledMcpServersRef.current
-                  ),
-                  queuedAt: Date.now(),
-                }
-
-                enqueueMessage(activeSessionId, queuedMessage)
-              }}
+              onApprove={handlePlanDialogApprove}
+              onApproveYolo={handlePlanDialogApproveYolo}
             />
           ) : latestPlanFilePath ? (
             <PlanDialog
@@ -3631,148 +2759,8 @@ export function ChatWindow({
                     }
                   : undefined
               }
-              onApprove={updatedPlan => {
-                if (
-                  !activeSessionId ||
-                  !activeWorktreeId ||
-                  !activeWorktreePath
-                )
-                  return
-
-                // Mark plan as approved if there's a pending plan message
-                if (pendingPlanMessage) {
-                  markPlanApprovedService(
-                    activeWorktreeId,
-                    activeWorktreePath,
-                    activeSessionId,
-                    pendingPlanMessage.id
-                  )
-                  // Optimistically update query cache
-                  queryClient.setQueryData<Session>(
-                    chatQueryKeys.session(activeSessionId),
-                    old => {
-                      if (!old) return old
-                      return {
-                        ...old,
-                        approved_plan_message_ids: [
-                          ...(old.approved_plan_message_ids ?? []),
-                          pendingPlanMessage.id,
-                        ],
-                        messages: old.messages.map(msg =>
-                          msg.id === pendingPlanMessage.id
-                            ? { ...msg, plan_approved: true }
-                            : msg
-                        ),
-                      }
-                    }
-                  )
-                }
-
-                // Build approval message
-                const message = updatedPlan
-                  ? `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
-                  : 'Approved'
-
-                // Queue instead of immediate execution
-                const { enqueueMessage, setExecutionMode } =
-                  useChatStore.getState()
-                setExecutionMode(activeSessionId, 'build')
-
-                const queuedMessage: QueuedMessage = {
-                  id: generateId(),
-                  message,
-                  pendingImages: [],
-                  pendingFiles: [],
-                  pendingSkills: [],
-                  pendingTextFiles: [],
-                  model: selectedModelRef.current,
-                  provider: selectedProviderRef.current,
-                  executionMode: 'build',
-                  thinkingLevel: selectedThinkingLevelRef.current,
-                  effortLevel:
-                    useAdaptiveThinkingRef.current || isCodexBackendRef.current
-                      ? selectedEffortLevelRef.current
-                      : undefined,
-                  mcpConfig: buildMcpConfigJson(
-                    mcpServersDataRef.current,
-                    enabledMcpServersRef.current
-                  ),
-                  queuedAt: Date.now(),
-                }
-
-                enqueueMessage(activeSessionId, queuedMessage)
-              }}
-              onApproveYolo={updatedPlan => {
-                if (
-                  !activeSessionId ||
-                  !activeWorktreeId ||
-                  !activeWorktreePath
-                )
-                  return
-
-                // Mark plan as approved if there's a pending plan message
-                if (pendingPlanMessage) {
-                  markPlanApprovedService(
-                    activeWorktreeId,
-                    activeWorktreePath,
-                    activeSessionId,
-                    pendingPlanMessage.id
-                  )
-                  // Optimistically update query cache
-                  queryClient.setQueryData<Session>(
-                    chatQueryKeys.session(activeSessionId),
-                    old => {
-                      if (!old) return old
-                      return {
-                        ...old,
-                        approved_plan_message_ids: [
-                          ...(old.approved_plan_message_ids ?? []),
-                          pendingPlanMessage.id,
-                        ],
-                        messages: old.messages.map(msg =>
-                          msg.id === pendingPlanMessage.id
-                            ? { ...msg, plan_approved: true }
-                            : msg
-                        ),
-                      }
-                    }
-                  )
-                }
-
-                // Build approval message
-                const message = updatedPlan
-                  ? `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
-                  : 'Approved - yolo'
-
-                // Queue instead of immediate execution
-                const { enqueueMessage, setExecutionMode } =
-                  useChatStore.getState()
-                setExecutionMode(activeSessionId, 'yolo')
-
-                const queuedMessage: QueuedMessage = {
-                  id: generateId(),
-                  message,
-                  pendingImages: [],
-                  pendingFiles: [],
-                  pendingSkills: [],
-                  pendingTextFiles: [],
-                  model: selectedModelRef.current,
-                  provider: selectedProviderRef.current,
-                  executionMode: 'yolo',
-                  thinkingLevel: selectedThinkingLevelRef.current,
-                  effortLevel:
-                    useAdaptiveThinkingRef.current || isCodexBackendRef.current
-                      ? selectedEffortLevelRef.current
-                      : undefined,
-                  mcpConfig: buildMcpConfigJson(
-                    mcpServersDataRef.current,
-                    enabledMcpServersRef.current
-                  ),
-                  queuedAt: Date.now(),
-                }
-
-                enqueueMessage(activeSessionId, queuedMessage)
-              }}
+              onApprove={handlePlanDialogApprove}
+              onApproveYolo={handlePlanDialogApproveYolo}
             />
           ) : null)}
 

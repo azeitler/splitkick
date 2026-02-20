@@ -327,9 +327,8 @@ export function useGitOperations({
 
   // Handle Review - runs AI code review in background
   // If existingSessionId is provided, stores results on that session (in-place review from ChatWindow)
-  // Otherwise creates a new session for the results
-  const handleReview = useCallback(
-    async (existingSessionId?: string) => {
+  // Creates a new session and stores review results in it
+  const handleReview = useCallback(async () => {
       if (!activeWorktreeId || !activeWorktreePath) return
 
       const { setWorktreeLoading, clearWorktreeLoading } =
@@ -381,23 +380,33 @@ export function useGitOperations({
           reviewRunId,
         })
 
-        let targetSessionId: string
-
-        if (existingSessionId) {
-          // Reuse existing session (triggered from ChatWindow/SessionChatModal)
-          targetSessionId = existingSessionId
-        } else {
-          // Create a new session for the review
-          const newSession = await invoke<Session>('create_session', {
-            worktreeId: activeWorktreeId,
-            worktreePath: activeWorktreePath,
-            name: 'Code Review',
-          })
-          targetSessionId = newSession.id
-        }
+        // Always create a new session for the review
+        const newSession = await invoke<Session>('create_session', {
+          worktreeId: activeWorktreeId,
+          worktreePath: activeWorktreePath,
+          name: 'Code Review',
+        })
+        const targetSessionId = newSession.id
 
         // Store review results in Zustand (session-scoped, auto-opens sidebar)
-        useChatStore.getState().setReviewResults(targetSessionId, result)
+        const {
+          setReviewResults,
+          setActiveSession,
+          setActiveWorktree,
+          setViewingCanvasTab,
+          registerWorktreePath,
+        } = useChatStore.getState()
+        setReviewResults(targetSessionId, result)
+
+        // Switch to the new review session
+        setActiveSession(activeWorktreeId, targetSessionId)
+        useProjectsStore.getState().selectWorktree(activeWorktreeId)
+        registerWorktreePath(activeWorktreeId, activeWorktreePath)
+        setActiveWorktree(activeWorktreeId, activeWorktreePath)
+        setViewingCanvasTab(activeWorktreeId, true)
+        useUIStore
+          .getState()
+          .markWorktreeForAutoOpenSession(activeWorktreeId, targetSessionId)
 
         // Persist review results to session file
         invoke('update_session_state', {

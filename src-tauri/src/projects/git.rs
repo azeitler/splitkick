@@ -268,6 +268,8 @@ pub fn get_github_remotes(repo_path: &str) -> Result<Vec<GitHubRemote>, String> 
         }
     }
 
+    result.sort_by_key(|r| if r.name == "origin" { 0 } else { 1 });
+
     Ok(result)
 }
 
