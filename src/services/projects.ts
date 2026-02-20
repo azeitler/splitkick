@@ -109,7 +109,11 @@ export function useWorktrees(projectId: string | null) {
  */
 export function useWorktree(worktreeId: string | null) {
   const queryClient = useQueryClient()
-  const queryKey = [...projectsQueryKeys.all, 'worktree', worktreeId ?? ''] as const
+  const queryKey = [
+    ...projectsQueryKeys.all,
+    'worktree',
+    worktreeId ?? '',
+  ] as const
 
   // Skip backend fetch while worktree is pending — it's not in projects.json yet
   const cachedData = queryClient.getQueryData<Worktree>(queryKey)
@@ -683,16 +687,19 @@ function handleWorktreeReady(
   }
 
   // Register worktree path
-  const { setActiveWorktree, registerWorktreePath } =
-    useChatStore.getState()
+  const { setActiveWorktree, registerWorktreePath } = useChatStore.getState()
   registerWorktreePath(worktree.id, worktree.path)
 
   if (!isBackground) {
-    // Mark for auto-open BEFORE navigation (critical ordering)
+    // Mark for auto-open so whichever canvas is currently active can open the new session.
     useUIStore.getState().markWorktreeForAutoOpenSession(worktree.id)
 
-    // Always navigate to the new worktree view
-    setActiveWorktree(worktree.id, worktree.path)
+    // Only switch to worktree view if user is already in a worktree canvas.
+    // If user is on project canvas (activeWorktreePath is null), keep them there.
+    const { activeWorktreePath } = useChatStore.getState()
+    if (activeWorktreePath) {
+      setActiveWorktree(worktree.id, worktree.path)
+    }
   }
 }
 

@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  lazy,
+  Suspense,
+} from 'react'
 import { useQueries } from '@tanstack/react-query'
 import { invoke } from '@/lib/transport'
 import { cn } from '@/lib/utils'
@@ -10,6 +18,9 @@ import {
   FileJson,
   LayoutGrid,
   List,
+  Clock3,
+  GitBranch,
+  MessageSquare,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -128,20 +139,69 @@ function getActiveStatus(cards: SessionCardData[]): ActiveStatus {
   return null
 }
 
+function formatRelativeTime(timestamp?: number): string | null {
+  if (!timestamp) return null
+  // Some timestamps are stored in seconds; normalize to milliseconds.
+  const normalizedTimestamp =
+    timestamp > 0 && timestamp < 1_000_000_000_000
+      ? timestamp * 1000
+      : timestamp
+  const diffMs = Date.now() - normalizedTimestamp
+  if (diffMs < 0) return 'just now'
+  const minuteMs = 60_000
+  const hourMs = 60 * minuteMs
+  const dayMs = 24 * hourMs
+  if (diffMs < hourMs) {
+    const minutes = Math.max(1, Math.floor(diffMs / minuteMs))
+    return `${minutes}m ago`
+  }
+  if (diffMs < dayMs) {
+    const hours = Math.floor(diffMs / hourMs)
+    return `${hours}h ago`
+  }
+  const days = Math.floor(diffMs / dayMs)
+  return `${days}d ago`
+}
+
+function getSessionMetrics(cards: SessionCardData[]) {
+  const waitingCount = cards.filter(
+    c => c.status === 'waiting' || c.status === 'permission'
+  ).length
+  const reviewCount = cards.filter(
+    c => c.status === 'review' || c.status === 'completed'
+  ).length
+  const activeCount = cards.filter(
+    c =>
+      c.status === 'planning' || c.status === 'vibing' || c.status === 'yoloing'
+  ).length
+  const latestCreatedAt = cards.reduce(
+    (latest, card) => Math.max(latest, card.session.created_at),
+    0
+  )
+
+  return {
+    totalCount: cards.length,
+    waitingCount,
+    reviewCount,
+    activeCount,
+    latestCreatedAt,
+  }
+}
+
 function WorktreeSectionHeader({
   worktree,
   projectId,
   defaultBranch,
-  sessionSummary,
-  activeStatus,
+  cards,
+  showDetails = false,
   isSelected,
   onRowClick,
 }: {
   worktree: Worktree
   projectId: string
   defaultBranch: string
-  sessionSummary?: string
-  activeStatus?: ActiveStatus
+  cards?: SessionCardData[]
+  showDetails?: boolean
   isSelected?: boolean
   onRowClick?: () => void
 }) {
@@ -211,66 +271,125 @@ function WorktreeSectionHeader({
     })
   }, [isBase, worktree.path, defaultBranch])
 
+  const sessionMetrics = useMemo(
+    () => (cards && cards.length > 0 ? getSessionMetrics(cards) : null),
+    [cards]
+  )
+
+  const lastActivity = formatRelativeTime(sessionMetrics?.latestCreatedAt)
+
   return (
     <>
       <div
         className={cn(
-          'mb-0.5 flex items-center gap-2 border border-transparent transition-colors',
-          onRowClick && 'cursor-pointer px-2 -mx-2 py-1 hover:bg-muted/50',
-          isSelected && onRowClick && 'bg-primary/5 border-primary/50'
+          'group relative border border-transparent transition-colors',
+          showDetails
+            ? 'mb-1 rounded-md px-3 py-2'
+            : 'mb-0.5 flex items-center gap-2',
+          onRowClick &&
+            (showDetails
+              ? 'cursor-pointer hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60'
+              : 'cursor-pointer px-2 -mx-2 py-1 hover:bg-muted/50'),
+          isSelected && onRowClick && 'border-border/40 bg-muted/35'
         )}
         onClick={onRowClick}
+        onKeyDown={e => {
+          if (!onRowClick) return
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onRowClick()
+          }
+        }}
         role={onRowClick ? 'button' : undefined}
+        tabIndex={onRowClick ? 0 : undefined}
+        aria-label={
+          onRowClick
+            ? `Open ${isBase ? 'Base Session' : worktree.name}`
+            : undefined
+        }
       >
-        {hasRunningTerminal && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="shrink-0 block h-3 w-3 square-spinner" />
-            </TooltipTrigger>
-            <TooltipContent>
-              Dev server running in terminal. Press ⌘R to open
-            </TooltipContent>
-          </Tooltip>
+        {showDetails && isSelected && onRowClick && (
+          <span className="absolute top-2 bottom-2 left-0 w-0.5 rounded-full bg-primary" />
         )}
-        <span className="inline-flex items-center gap-1.5 font-medium">
-          {isBase ? 'Base Session' : worktree.name}
-          {(() => {
-            const displayBranch = gitStatus?.current_branch ?? worktree.branch
-            const displayName = isBase ? 'Base Session' : worktree.name
-            return displayBranch && displayBranch !== displayName ? (
-              <span className="text-xs leading-none font-normal text-muted-foreground">
-                · {displayBranch}
-              </span>
-            ) : null
-          })()}
-          <span
-            className="inline-flex items-center font-normal"
-            onClick={e => e.stopPropagation()}
-          >
-            <GitStatusBadges
-              behindCount={behindCount}
-              unpushedCount={unpushedCount}
-              diffAdded={diffAdded}
-              diffRemoved={diffRemoved}
-              onPull={handlePull}
-              onPush={handlePush}
-              onDiffClick={handleDiffClick}
-            />
-          </span>
-        </span>
-        {sessionSummary && (
-          <span
-            className={cn(
-              'ml-auto text-xs font-medium px-1.5 text-muted-foreground py-0.5 rounded',
-              activeStatus === 'waiting' && 'bg-yellow-400 text-black',
-              (activeStatus === 'planning' || activeStatus === 'vibing' || activeStatus === 'review' || activeStatus === 'yoloing') && 'bg-green-600 text-white',
 
+        <div className={cn(showDetails ? 'flex flex-col gap-1.5' : 'contents')}>
+          <div className="flex min-w-0 items-center gap-2">
+            {hasRunningTerminal && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="shrink-0 block h-3 w-3 square-spinner" />
+                </TooltipTrigger>
+                <TooltipContent>
+                  Dev server running in terminal. Press ⌘R to open
+                </TooltipContent>
+              </Tooltip>
             )}
-          >
-            {sessionSummary}
-          </span>
-        )}
-      </div >
+            <span className="inline-flex min-w-0 items-center gap-1.5 font-medium">
+              <span className="truncate">
+                {isBase ? 'Base Session' : worktree.name}
+              </span>
+              {(() => {
+                const displayBranch =
+                  gitStatus?.current_branch ?? worktree.branch
+                return displayBranch ? (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-border/50 px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground">
+                    <GitBranch className="h-2.5 w-2.5" />
+                    <span className="max-w-40 truncate">{displayBranch}</span>
+                  </span>
+                ) : null
+              })()}
+              <span
+                className="inline-flex items-center font-normal"
+                onClick={e => e.stopPropagation()}
+              >
+                <GitStatusBadges
+                  behindCount={behindCount}
+                  unpushedCount={unpushedCount}
+                  diffAdded={diffAdded}
+                  diffRemoved={diffRemoved}
+                  onPull={handlePull}
+                  onPush={handlePush}
+                  onDiffClick={handleDiffClick}
+                />
+              </span>
+            </span>
+          </div>
+          {showDetails && sessionMetrics && (
+            <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5">
+                <MessageSquare className="h-3 w-3" />
+                {sessionMetrics.totalCount} sessions
+              </span>
+              {sessionMetrics.reviewCount > 0 && (
+                <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-emerald-600">
+                  {sessionMetrics.reviewCount} review
+                </span>
+              )}
+              {sessionMetrics.waitingCount > 0 && (
+                <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-600">
+                  {sessionMetrics.waitingCount} waiting
+                </span>
+              )}
+              {sessionMetrics.activeCount > 0 && (
+                <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-sky-600">
+                  {sessionMetrics.activeCount} active
+                </span>
+              )}
+              {lastActivity && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5">
+                  <Clock3 className="h-3 w-3" />
+                  Last activity {lastActivity}
+                </span>
+              )}
+              {onRowClick && (
+                <span className="ml-auto text-[11px] opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                  Press Enter to open
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
       <Suspense fallback={null}>
         <GitDiffModal
           diffRequest={diffRequest}
@@ -400,17 +519,17 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       const filteredSessions =
         searchQuery.trim() && !isBase
           ? sessions.filter(
-            session =>
-              session.name
-                .toLowerCase()
-                .includes(searchQuery.toLowerCase()) ||
-              worktree.name
-                .toLowerCase()
-                .includes(searchQuery.toLowerCase()) ||
-              worktree.branch
-                .toLowerCase()
-                .includes(searchQuery.toLowerCase())
-          )
+              session =>
+                session.name
+                  .toLowerCase()
+                  .includes(searchQuery.toLowerCase()) ||
+                worktree.name
+                  .toLowerCase()
+                  .includes(searchQuery.toLowerCase()) ||
+                worktree.branch
+                  .toLowerCase()
+                  .includes(searchQuery.toLowerCase())
+            )
           : sessions
 
       // Compute card data for each session
@@ -444,14 +563,27 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     searchQuery,
   ])
 
-  // Compute session summary for worktree rows (list view)
-  const getSessionSummary = useCallback((cards: SessionCardData[]): string => {
-    const groups = groupCardsByStatus(cards)
-    return groups
-      .map(g => `${g.cards.length} ${g.title.toLowerCase()}`)
-      .join(' · ')
-
-  }, [])
+  const projectSummary = useMemo(() => {
+    let reviewCount = 0
+    let waitingCount = 0
+    let activeCount = 0
+    let totalReady = 0
+    for (const section of worktreeSections) {
+      if (section.isPending) continue
+      totalReady++
+      const status = getActiveStatus(section.cards)
+      if (status === 'review') reviewCount++
+      if (status === 'waiting') waitingCount++
+      if (
+        status === 'planning' ||
+        status === 'vibing' ||
+        status === 'yoloing'
+      ) {
+        activeCount++
+      }
+    }
+    return { totalReady, reviewCount, waitingCount, activeCount }
+  }, [worktreeSections])
 
   // Build flat array of all cards for keyboard navigation
   const flatCards: FlatCard[] = useMemo(() => {
@@ -588,8 +720,10 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   }, [selectedWorktreeModal])
 
   // Record last opened worktree+session per project for restoration on project switch
-  const activeSessionIdForModal = useChatStore(
-    state => selectedWorktreeModal ? state.activeSessionIds[selectedWorktreeModal.worktreeId] : undefined
+  const activeSessionIdForModal = useChatStore(state =>
+    selectedWorktreeModal
+      ? state.activeSessionIds[selectedWorktreeModal.worktreeId]
+      : undefined
   )
   useEffect(() => {
     if (!selectedWorktreeModal || !activeSessionIdForModal) return
@@ -626,16 +760,46 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     const cardIndex = isListLayout
       ? flatCards.findIndex(fc => fc.worktreeId === highlighted.worktreeId)
       : flatCards.findIndex(
-        fc =>
-          fc.worktreeId === highlighted.worktreeId &&
-          ('sessionId' in highlighted
-            ? fc.card?.session.id === highlighted.sessionId
-            : true)
-      )
+          fc =>
+            fc.worktreeId === highlighted.worktreeId &&
+            ('sessionId' in highlighted
+              ? fc.card?.session.id === highlighted.sessionId
+              : true)
+        )
     if (cardIndex !== -1 && cardIndex !== selectedIndex) {
       setSelectedIndex(cardIndex)
     }
   }, [selectedWorktreeModal, flatCards, selectedIndex, isListLayout])
+
+  // Keep a valid selection when the selected item disappears (archive/delete/close).
+  // In list layout this prefers the previous row, matching expected canvas behavior.
+  useEffect(() => {
+    if (selectedIndex === null) return
+    if (flatCards.length === 0) {
+      setSelectedIndex(null)
+      highlightedCardRef.current = null
+      return
+    }
+
+    const selectedItem = flatCards[selectedIndex]
+    if (selectedItem) return
+
+    const fallbackIndex = Math.max(
+      0,
+      Math.min(selectedIndex - 1, flatCards.length - 1)
+    )
+    const fallbackItem = flatCards[fallbackIndex]
+    setSelectedIndex(fallbackIndex)
+
+    if (fallbackItem?.card) {
+      highlightedCardRef.current = {
+        worktreeId: fallbackItem.worktreeId,
+        sessionId: fallbackItem.card.session.id,
+      }
+    } else {
+      highlightedCardRef.current = null
+    }
+  }, [flatCards, selectedIndex])
 
   // Auto-open session modal for newly created worktrees
   useEffect(() => {
@@ -692,7 +856,8 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     if (selectedIndex !== null || selectedWorktreeModal) return
     if (flatCards.length === 0) return
 
-    const { activeSessionIds, lastActiveWorktreeId, lastOpenedPerProject } = useChatStore.getState()
+    const { activeSessionIds, lastActiveWorktreeId, lastOpenedPerProject } =
+      useChatStore.getState()
     let targetIndex = -1
     let shouldAutoOpenModal = false
 
@@ -779,14 +944,20 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
         })
       }
     }
-  }, [flatCards, selectedIndex, selectedWorktreeModal, projectId, preferences?.restore_last_session])
+  }, [
+    flatCards,
+    selectedIndex,
+    selectedWorktreeModal,
+    projectId,
+    preferences?.restore_last_session,
+  ])
 
   // Sync selection to store for cancel shortcut - updates when user navigates with arrow keys
   useEffect(() => {
     if (selectedWorktreeModal?.worktreeId) {
       const activeSessionId =
         useChatStore.getState().activeSessionIds[
-        selectedWorktreeModal.worktreeId
+          selectedWorktreeModal.worktreeId
         ]
       if (activeSessionId) {
         useChatStore
@@ -1175,8 +1346,21 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       <div className="flex-1 flex flex-col overflow-auto">
         {/* Header with Search - sticky over content */}
         <div className="sticky top-0 z-10 flex items-center justify-between gap-4 bg-background/60 backdrop-blur-md px-4 py-3 border-b border-border/30 min-h-[61px]">
-          <div className="flex items-center gap-1 shrink-0">
-            <h2 className="text-lg font-semibold">{project.name}</h2>
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="min-w-0">
+              <h2 className="truncate text-lg font-semibold">{project.name}</h2>
+              {projectSummary.totalReady > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {projectSummary.totalReady} worktrees
+                  {projectSummary.reviewCount > 0 &&
+                    ` · ${projectSummary.reviewCount} review`}
+                  {projectSummary.waitingCount > 0 &&
+                    ` · ${projectSummary.waitingCount} waiting`}
+                  {projectSummary.activeCount > 0 &&
+                    ` · ${projectSummary.activeCount} active`}
+                </p>
+              )}
+            </div>
             <NewIssuesBadge projectPath={project.path} projectId={projectId} />
             <OpenPRsBadge projectPath={project.path} projectId={projectId} />
             <FailedRunsBadge projectPath={project.path} />
@@ -1186,6 +1370,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                   variant="ghost"
                   size="icon"
                   className="h-7 w-7 text-muted-foreground"
+                  aria-label="Project actions"
                 >
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
@@ -1221,6 +1406,8 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                     placeholder="Search worktrees and sessions..."
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
+                    aria-label="Search worktrees and sessions"
+                    name="worktree-search"
                     className="pl-9 bg-transparent border-border/30"
                   />
                 </div>
@@ -1271,7 +1458,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
             )
           ) : isListLayout ? (
             /* List view: one compact row per worktree */
-            <div className="flex flex-col">
+            <div className="flex flex-col gap-1">
               {worktreeSections.map(section => {
                 const currentIndex = cardIndex++
                 return section.isPending ? (
@@ -1296,8 +1483,8 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                       worktree={section.worktree}
                       projectId={projectId}
                       defaultBranch={project.default_branch}
-                      sessionSummary={getSessionSummary(section.cards)}
-                      activeStatus={getActiveStatus(section.cards)}
+                      cards={section.cards}
+                      showDetails={true}
                       isSelected={selectedIndex === currentIndex}
                       onRowClick={() => {
                         setSelectedIndex(currentIndex)
@@ -1320,7 +1507,6 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                     worktree={section.worktree}
                     projectId={projectId}
                     defaultBranch={project.default_branch}
-                    activeStatus={getActiveStatus(section.cards)}
                   />
 
                   {section.isPending ? (
