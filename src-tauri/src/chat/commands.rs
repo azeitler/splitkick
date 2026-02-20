@@ -1210,11 +1210,10 @@ pub async fn send_chat_message(
                     generate_session_name: generate_session,
                     generate_branch_name: generate_branch,
                     custom_session_prompt,
-                    custom_profile_name: prefs
-                        .magic_prompt_providers
-                        .session_naming_provider
-                        .clone()
-                        .or_else(|| prefs.default_provider.clone()),
+                    // Keep provider semantics consistent with manual regeneration:
+                    // session_naming_provider = None means Anthropic (no custom profile),
+                    // not fallback to global default_provider.
+                    custom_profile_name: prefs.magic_prompt_providers.session_naming_provider.clone(),
                 };
 
                 // Spawn in background - does not block chat
