@@ -378,7 +378,8 @@ function OnboardingDialogContent() {
 
   // Build CLI login command from binary path
   const claudeLoginCommand = claudeSetup.status?.path
-    ? `'${claudeSetup.status.path.replace(/'/g, "'\\''")}'`
+    ? `'${claudeSetup.status.path.replace(/'/g, "'\\''")}'` +
+      (claudeSetup.status.supports_auth_command ? ' auth login' : '')
     : ''
   const ghLoginCommand = ghSetup.status?.path
     ? `'${ghSetup.status.path.replace(/'/g, "'\\''")}' auth login`
