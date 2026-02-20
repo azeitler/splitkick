@@ -48,6 +48,32 @@ CLI usage remains only for:
 1. launching/stopping server process
 2. status checks and diagnostics
 
+## Installation and Authentication Requirements
+
+OpenCode must have the same user-facing setup quality as existing CLI providers in Jean.
+
+Required capabilities:
+
+1. Installation flow in Settings (status, available versions, install/reinstall, progress events).
+2. Binary resolution pattern consistent with existing providers:
+   - embedded Jean-managed binary path first
+   - fallback to PATH binary when available
+3. Authentication flow in Settings:
+   - detect auth status
+   - provide login command/action guidance
+   - re-check auth after login
+4. Clear error states for:
+   - not installed
+   - installed but not authenticated
+   - server launch failed
+5. Block OpenCode chat execution when prerequisites are not met, with actionable UI error messaging.
+
+Likely additions:
+
+- Rust module for install/auth commands (parallel to existing provider CLI management modules)
+- Frontend service hooks for status/auth/install/progress
+- Preferences/UI wiring for OpenCode setup modals and status indicators
+
 ## Planned Backend Changes
 
 ### New Modules
@@ -120,9 +146,10 @@ Initial behavior:
 ### Phase 1: Core Backend Plumbing
 
 1. Add backend enum/state/types (`opencode`, `opencode_session_id`)
-2. Implement OpenCode server lifecycle manager
-3. Implement minimal OpenCode HTTP client from OpenAPI
-4. Add status/health/model-list commands
+2. Implement OpenCode install/auth/status commands (same class as existing providers)
+3. Implement OpenCode server lifecycle manager
+4. Implement minimal OpenCode HTTP client from OpenAPI
+5. Add status/health/model-list commands
 
 ### Phase 2: Chat Path Integration
 
@@ -133,8 +160,9 @@ Initial behavior:
 ### Phase 3: Frontend Wiring
 
 1. Add provider switch + dynamic model list
-2. Add setup/status UI for server readiness/errors
-3. Keep existing chat UI contract unchanged
+2. Add OpenCode install/auth setup UI and hooks (consistent with existing providers)
+3. Add setup/status UI for server readiness/errors
+4. Keep existing chat UI contract unchanged
 
 ### Phase 4: Hardening
 
@@ -150,10 +178,12 @@ Initial behavior:
 2. Integration tests:
    - start server -> send message -> receive stream -> complete
    - server down -> auto-start/recover path
+   - install/auth prerequisite checks enforced before chat send
 3. Manual tests:
    - Native mode chat with OpenCode
    - Jean HTTP/web mode chat with OpenCode (remote browser)
    - model listing and provider switch
+   - install OpenCode from Settings, authenticate, then run chat
 
 ## Final Decisions Captured
 
