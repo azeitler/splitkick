@@ -1,28 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { getModifierSymbol } from '@/lib/platform'
-import { invoke } from '@/lib/transport'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-  Bookmark,
-  FolderOpen,
-  Loader2,
-  Trash2,
-  Search,
-  MessageSquare,
-  Pencil,
-  CircleDot,
-  RefreshCw,
-  X,
-  AlertCircle,
-  GitPullRequest,
-  Eye,
-} from 'lucide-react'
+import { Bookmark, CircleDot, FolderOpen, GitPullRequest } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { toast } from 'sonner'
-import { isGhAuthError } from '@/services/github'
-import { IssuePreviewModal } from '@/components/worktree/IssuePreviewModal'
-import { useGhLogin } from '@/hooks/useGhLogin'
-import { GhAuthError } from '@/components/shared/GhAuthError'
 import {
   Dialog,
   DialogContent,
@@ -30,53 +10,17 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Input } from '@/components/ui/input'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Markdown } from '@/components/ui/markdown'
-import {
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-} from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { useAllSessions } from '@/services/chat'
-import type {
-  AllSessionsEntry,
-  SavedContext,
-  SavedContextsResponse,
-  SaveContextResponse,
-  Session,
-} from '@/types/chat'
 import { usePreferences } from '@/services/preferences'
-import { resolveMagicPromptProvider } from '@/types/preferences'
-import {
-  useGitHubIssues,
-  useGitHubPRs,
-  useSearchGitHubIssues,
-  useSearchGitHubPRs,
-  useLoadedIssueContexts,
-  useLoadedPRContexts,
-  useAttachedSavedContexts,
-  filterIssues,
-  filterPRs,
-  mergeWithSearchResults,
-  githubQueryKeys,
-  loadIssueContext,
-  removeIssueContext,
-  loadPRContext,
-  removePRContext,
-  attachSavedContext,
-  removeSavedContext,
-  getSavedContextContent,
-} from '@/services/github'
-import { useDebouncedValue } from '@/hooks/useDebouncedValue'
-import type {
-  GitHubIssue,
-  GitHubPullRequest,
-  LoadedIssueContext,
-  LoadedPullRequestContext,
-  AttachedSavedContext,
-} from '@/types/github'
+import { useGhLogin } from '@/hooks/useGhLogin'
+import { IssuePreviewModal } from '@/components/worktree/IssuePreviewModal'
+import { githubQueryKeys } from '@/services/github'
+import { GitHubItemsTab } from './GitHubItemsTab'
+import { ContextsTab } from './ContextsTab'
+import { useLoadContextData } from './hooks/useLoadContextData'
+import { useLoadContextHandlers } from './hooks/useLoadContextHandlers'
+import { useLoadContextKeyboard } from './hooks/useLoadContextKeyboard'
 
 type TabId = 'issues' | 'prs' | 'contexts'
 
@@ -96,25 +40,9 @@ const TABS: Tab[] = [
 interface LoadContextModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  // Props for session context generation
   worktreeId: string | null
   worktreePath: string | null
   activeSessionId: string | null
-  projectName: string // For current session context generation
-}
-
-/** Format file size to human-readable string */
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-/** Session with worktree context for the click handler */
-interface SessionWithContext {
-  session: Session
-  worktreeId: string
-  worktreePath: string
   projectName: string
 }
 
@@ -130,196 +58,55 @@ export function LoadContextModal({
   const { triggerLogin: triggerGhLogin, isGhInstalled } = useGhLogin()
   const { data: preferences } = usePreferences()
 
-  // Tab state
+  // Navigation state
   const [activeTab, setActiveTab] = useState<TabId>('issues')
-
-  // Shared state
   const [searchQuery, setSearchQuery] = useState('')
   const [includeClosed, setIncludeClosed] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(0)
-
-  // Loading/removing state - use Sets to track multiple concurrent operations
-  const [loadingNumbers, setLoadingNumbers] = useState<Set<number>>(new Set())
-  const [removingNumbers, setRemovingNumbers] = useState<Set<number>>(new Set())
-
-  // Context tab state
-  const [generatingSessionId, setGeneratingSessionId] = useState<string | null>(
-    null
-  )
-  const [editingFilename, setEditingFilename] = useState<string | null>(null)
-  const [editValue, setEditValue] = useState('')
-  const editInputRef = useRef<HTMLInputElement>(null)
-
-  // Context viewer state
-  const [viewingContext, setViewingContext] = useState<{
-    type: 'issue' | 'pr' | 'saved'
-    number?: number
-    slug?: string
-    title: string
-    content: string
-  } | null>(null)
-
-  // Loading/removing state for saved contexts - use Sets to track concurrent operations
-  const [loadingSlugs, setLoadingSlugs] = useState<Set<string>>(new Set())
-  const [removingSlugs, setRemovingSlugs] = useState<Set<string>>(new Set())
-
   const searchInputRef = useRef<HTMLInputElement>(null)
 
-  // Issue contexts for this session
-  const {
-    data: loadedIssueContexts,
-    isLoading: isLoadingIssueContexts,
-    refetch: refetchIssueContexts,
-  } = useLoadedIssueContexts(activeSessionId)
-
-  // PR contexts for this session
-  const {
-    data: loadedPRContexts,
-    isLoading: isLoadingPRContexts,
-    refetch: refetchPRContexts,
-  } = useLoadedPRContexts(activeSessionId)
-
-  // Attached saved contexts for this session
-  const {
-    data: attachedSavedContexts,
-    isLoading: isLoadingAttachedContexts,
-    refetch: refetchAttachedContexts,
-  } = useAttachedSavedContexts(activeSessionId)
-
-  // GitHub issues query
-  const issueState = includeClosed ? 'all' : 'open'
-  const {
-    data: issueResult,
-    isLoading: isLoadingIssues,
-    isFetching: isRefetchingIssues,
-    error: issuesError,
-    refetch: refetchIssues,
-  } = useGitHubIssues(worktreePath, issueState)
-  const issues = issueResult?.issues
-
-  // GitHub PRs query
-  const prState = includeClosed ? 'all' : 'open'
-  const {
-    data: prs,
-    isLoading: isLoadingPRs,
-    isFetching: isRefetchingPRs,
-    error: prsError,
-    refetch: refetchPRs,
-  } = useGitHubPRs(worktreePath, prState)
-
-  // Fetch saved contexts
-  const {
-    data: contextsData,
-    isLoading: isLoadingContexts,
-    error: contextsError,
-    refetch: refetchContexts,
-  } = useQuery({
-    queryKey: ['session-context'],
-    queryFn: () => invoke<SavedContextsResponse>('list_saved_contexts'),
-    enabled: open,
-    staleTime: 1000 * 60 * 5, // 5 minutes - contexts don't change frequently
+  // Data layer
+  const data = useLoadContextData({
+    open,
+    worktreePath,
+    activeSessionId,
+    searchQuery,
+    includeClosed,
   })
 
-  // Fetch all sessions across all worktrees
-  const { data: allSessionsData, isLoading: isLoadingSessions } =
-    useAllSessions(open)
+  // Stable callback for handlers to reset search/selection
+  const onClearSearch = useCallback(() => {
+    setSearchQuery('')
+    setSelectedIndex(0)
+  }, [])
 
-  // Debounced search query for GitHub API search
-  const debouncedSearchQuery = useDebouncedValue(searchQuery, 300)
-
-  // GitHub search queries (triggered when local filter may miss results)
-  const { data: searchedIssues, isFetching: isSearchingIssues } =
-    useSearchGitHubIssues(worktreePath, debouncedSearchQuery)
-
-  const { data: searchedPRs, isFetching: isSearchingPRs } = useSearchGitHubPRs(
+  // Handlers layer
+  const handlers = useLoadContextHandlers({
+    activeSessionId,
     worktreePath,
-    debouncedSearchQuery
-  )
+    refetchIssueContexts: data.refetchIssueContexts,
+    refetchPRContexts: data.refetchPRContexts,
+    refetchAttachedContexts: data.refetchAttachedContexts,
+    refetchContexts: data.refetchContexts,
+    renameMutation: data.renameMutation,
+    preferences,
+    onClearSearch,
+  })
 
-  // Filter issues locally, merge with search results, exclude already loaded ones
-  const filteredIssues = useMemo(() => {
-    const loadedNumbers = new Set(loadedIssueContexts?.map(c => c.number) ?? [])
-    const localFiltered = filterIssues(issues ?? [], searchQuery)
-    const merged = mergeWithSearchResults(localFiltered, searchedIssues)
-    return merged.filter(issue => !loadedNumbers.has(issue.number))
-  }, [issues, searchQuery, searchedIssues, loadedIssueContexts])
-
-  // Filter PRs locally, merge with search results, exclude already loaded ones
-  const filteredPRs = useMemo(() => {
-    const loadedNumbers = new Set(loadedPRContexts?.map(c => c.number) ?? [])
-    const localFiltered = filterPRs(prs ?? [], searchQuery)
-    const merged = mergeWithSearchResults(localFiltered, searchedPRs)
-    return merged.filter(pr => !loadedNumbers.has(pr.number))
-  }, [prs, searchQuery, searchedPRs, loadedPRContexts])
-
-  // Filter contexts by search query (includes custom name), excluding already attached ones
-  const filteredContexts = useMemo(() => {
-    if (!contextsData?.contexts) return []
-
-    // Build set of attached slugs to exclude
-    const attachedSlugs = new Set(attachedSavedContexts?.map(c => c.slug) ?? [])
-
-    // Filter out already-attached contexts
-    const filtered = contextsData.contexts.filter(
-      ctx => !attachedSlugs.has(ctx.slug)
-    )
-
-    if (!searchQuery) return filtered
-
-    const query = searchQuery.toLowerCase()
-    return filtered.filter(
-      ctx =>
-        ctx.slug.toLowerCase().includes(query) ||
-        ctx.project_name.toLowerCase().includes(query) ||
-        (ctx.name && ctx.name.toLowerCase().includes(query))
-    )
-  }, [contextsData, searchQuery, attachedSavedContexts])
-
-  // Filter sessions (exclude current session, apply search, group by project/worktree)
-  const filteredEntries = useMemo(() => {
-    if (!allSessionsData?.entries) return []
-
-    return allSessionsData.entries
-      .map(entry => {
-        // Filter sessions within each entry
-        const filteredSessions = entry.sessions
-          .filter(s => s.id !== activeSessionId) // Exclude current session
-          .filter(s => {
-            if (!searchQuery) return true
-            const query = searchQuery.toLowerCase()
-            return (
-              s.name.toLowerCase().includes(query) ||
-              entry.project_name.toLowerCase().includes(query) ||
-              entry.worktree_name.toLowerCase().includes(query) ||
-              s.messages.some(m => m.content.toLowerCase().includes(query))
-            )
-          })
-
-        return {
-          ...entry,
-          sessions: filteredSessions,
-        }
-      })
-      .filter(entry => entry.sessions.length > 0) // Only keep entries with sessions
-  }, [allSessionsData, searchQuery, activeSessionId])
-
-  // Mutation for renaming contexts
-  const renameMutation = useMutation({
-    mutationFn: async ({
-      filename,
-      newName,
-    }: {
-      filename: string
-      newName: string
-    }) => {
-      await invoke('rename_saved_context', { filename, newName })
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['session-context'] })
-    },
-    onError: error => {
-      toast.error(`Failed to rename context: ${error}`)
-    },
+  // Keyboard navigation
+  const { handleKeyDown } = useLoadContextKeyboard({
+    activeTab,
+    filteredIssues: data.filteredIssues,
+    filteredPRs: data.filteredPRs,
+    filteredContexts: data.filteredContexts,
+    filteredEntries: data.filteredEntries,
+    selectedIndex,
+    setSelectedIndex,
+    onSelectIssue: handlers.handleSelectIssue,
+    onSelectPR: handlers.handleSelectPR,
+    onAttachContext: handlers.handleAttachContext,
+    onSessionClick: handlers.handleSessionClick,
+    onTabChange: setActiveTab,
   })
 
   // Track the previous open state to detect when modal opens
@@ -327,28 +114,20 @@ export function LoadContextModal({
 
   // Determine default tab and reset state when modal opens
   useEffect(() => {
-    // Only run when modal transitions from closed to open
     if (open && !prevOpenRef.current) {
       // Dynamic default tab based on loaded data
-      if ((loadedIssueContexts?.length ?? 0) > 0) {
+      if (data.hasLoadedIssueContexts) {
         setActiveTab('issues')
-      } else if ((loadedPRContexts?.length ?? 0) > 0) {
+      } else if (data.hasLoadedPRContexts) {
         setActiveTab('prs')
       } else {
         setActiveTab('contexts')
       }
 
-      // Reset other state
       setSearchQuery('')
       setIncludeClosed(false)
       setSelectedIndex(0)
-      setLoadingNumbers(new Set())
-      setRemovingNumbers(new Set())
-      setLoadingSlugs(new Set())
-      setRemovingSlugs(new Set())
-      setGeneratingSessionId(null)
-      setEditingFilename(null)
-      setEditValue('')
+      handlers.resetState()
 
       // Invalidate caches to fetch fresh data
       if (worktreePath) {
@@ -376,7 +155,6 @@ export function LoadContextModal({
           queryKey: githubQueryKeys.attachedContexts(activeSessionId),
         })
       }
-      // Invalidate saved contexts list (not session-specific)
       queryClient.invalidateQueries({ queryKey: ['session-context'] })
     }
     prevOpenRef.current = open
@@ -385,9 +163,10 @@ export function LoadContextModal({
     worktreePath,
     activeSessionId,
     queryClient,
-    loadedIssueContexts?.length,
-    loadedPRContexts?.length,
-    attachedSavedContexts?.length,
+    data.hasLoadedIssueContexts,
+    data.hasLoadedPRContexts,
+    data.hasAttachedContexts,
+    handlers.resetState,
   ])
 
   // Focus search input when tab changes
@@ -405,547 +184,18 @@ export function LoadContextModal({
 
   // Focus edit input when editing starts
   useEffect(() => {
-    if (editingFilename && editInputRef.current) {
-      editInputRef.current.focus()
-      editInputRef.current.select()
+    if (handlers.editingFilename && handlers.editInputRef.current) {
+      handlers.editInputRef.current.focus()
+      handlers.editInputRef.current.select()
     }
-  }, [editingFilename])
+  }, [handlers.editingFilename])
 
   // Clear editing state when modal closes
   useEffect(() => {
     if (!open) {
-      setEditingFilename(null)
-      setEditValue('')
+      handlers.resetState()
     }
-  }, [open])
-
-  // Handle loading/refreshing an issue
-  const handleLoadIssue = useCallback(
-    async (issueNumber: number, isRefresh = false) => {
-      if (!activeSessionId || !worktreePath) {
-        toast.error('No active session')
-        return
-      }
-
-      setLoadingNumbers(prev => new Set(prev).add(issueNumber))
-      const toastId = toast.loading(
-        isRefresh
-          ? `Refreshing issue #${issueNumber}...`
-          : `Loading issue #${issueNumber}...`
-      )
-
-      try {
-        const result = await loadIssueContext(
-          activeSessionId,
-          issueNumber,
-          worktreePath
-        )
-
-        // Refresh loaded contexts list
-        await refetchIssueContexts()
-
-        toast.success(
-          `Issue #${result.number}: ${result.title}${result.commentCount > 0 ? ` (${result.commentCount} comments)` : ''}`,
-          { id: toastId }
-        )
-      } catch (error) {
-        toast.error(`${error}`, { id: toastId })
-      } finally {
-        setLoadingNumbers(prev => {
-          const next = new Set(prev)
-          next.delete(issueNumber)
-          return next
-        })
-      }
-    },
-    [activeSessionId, worktreePath, refetchIssueContexts]
-  )
-
-  // Handle loading/refreshing a PR
-  const handleLoadPR = useCallback(
-    async (prNumber: number, isRefresh = false) => {
-      if (!activeSessionId || !worktreePath) {
-        toast.error('No active session')
-        return
-      }
-
-      setLoadingNumbers(prev => new Set(prev).add(prNumber))
-      const toastId = toast.loading(
-        isRefresh
-          ? `Refreshing PR #${prNumber}...`
-          : `Loading PR #${prNumber}...`
-      )
-
-      try {
-        const result = await loadPRContext(
-          activeSessionId,
-          prNumber,
-          worktreePath
-        )
-
-        // Refresh loaded contexts list
-        await refetchPRContexts()
-
-        toast.success(
-          `PR #${result.number}: ${result.title}${result.commentCount > 0 ? ` (${result.commentCount} comments)` : ''}${result.reviewCount > 0 ? `, ${result.reviewCount} reviews` : ''}`,
-          { id: toastId }
-        )
-      } catch (error) {
-        toast.error(`${error}`, { id: toastId })
-      } finally {
-        setLoadingNumbers(prev => {
-          const next = new Set(prev)
-          next.delete(prNumber)
-          return next
-        })
-      }
-    },
-    [activeSessionId, worktreePath, refetchPRContexts]
-  )
-
-  // Handle removing a loaded issue
-  const handleRemoveIssue = useCallback(
-    async (issueNumber: number) => {
-      if (!activeSessionId || !worktreePath) return
-
-      setRemovingNumbers(prev => new Set(prev).add(issueNumber))
-
-      try {
-        await removeIssueContext(activeSessionId, issueNumber, worktreePath)
-        await refetchIssueContexts()
-        toast.success(`Removed issue #${issueNumber} from context`)
-      } catch (error) {
-        toast.error(`Failed to remove issue: ${error}`)
-      } finally {
-        setRemovingNumbers(prev => {
-          const next = new Set(prev)
-          next.delete(issueNumber)
-          return next
-        })
-      }
-    },
-    [activeSessionId, worktreePath, refetchIssueContexts]
-  )
-
-  // Handle removing a loaded PR
-  const handleRemovePR = useCallback(
-    async (prNumber: number) => {
-      if (!activeSessionId || !worktreePath) return
-
-      setRemovingNumbers(prev => new Set(prev).add(prNumber))
-
-      try {
-        await removePRContext(activeSessionId, prNumber, worktreePath)
-        await refetchPRContexts()
-        toast.success(`Removed PR #${prNumber} from context`)
-      } catch (error) {
-        toast.error(`Failed to remove PR: ${error}`)
-      } finally {
-        setRemovingNumbers(prev => {
-          const next = new Set(prev)
-          next.delete(prNumber)
-          return next
-        })
-      }
-    },
-    [activeSessionId, worktreePath, refetchPRContexts]
-  )
-
-  // Handle viewing an issue context
-  const handleViewIssue = useCallback((ctx: LoadedIssueContext) => {
-    setViewingContext({
-      type: 'issue',
-      number: ctx.number,
-      title: ctx.title,
-      content: '',
-    })
-  }, [])
-
-  // Handle viewing a PR context
-  const handleViewPR = useCallback((ctx: LoadedPullRequestContext) => {
-    setViewingContext({
-      type: 'pr',
-      number: ctx.number,
-      title: ctx.title,
-      content: '',
-    })
-  }, [])
-
-  // Handle previewing an issue from the search list
-  const handlePreviewIssue = useCallback((issue: GitHubIssue) => {
-    setViewingContext({
-      type: 'issue',
-      number: issue.number,
-      title: issue.title,
-      content: '',
-    })
-  }, [])
-
-  // Handle previewing a PR from the search list
-  const handlePreviewPR = useCallback((pr: GitHubPullRequest) => {
-    setViewingContext({
-      type: 'pr',
-      number: pr.number,
-      title: pr.title,
-      content: '',
-    })
-  }, [])
-
-  // Handle selecting an issue from the search list
-  const handleSelectIssue = useCallback(
-    (issue: GitHubIssue) => {
-      handleLoadIssue(issue.number, false)
-      setSearchQuery('')
-      setSelectedIndex(0)
-    },
-    [handleLoadIssue]
-  )
-
-  // Handle selecting a PR from the search list
-  const handleSelectPR = useCallback(
-    (pr: GitHubPullRequest) => {
-      handleLoadPR(pr.number, false)
-      setSearchQuery('')
-      setSelectedIndex(0)
-    },
-    [handleLoadPR]
-  )
-
-  // Context tab handlers
-  const handleDeleteContext = useCallback(
-    async (e: React.MouseEvent, context: SavedContext) => {
-      e.stopPropagation()
-      try {
-        await invoke('delete_context_file', { path: context.path })
-        refetchContexts()
-      } catch (err) {
-        console.error('Failed to delete context:', err)
-      }
-    },
-    [refetchContexts]
-  )
-
-  // Handle attaching a saved context from the "Available Contexts" list
-  const handleAttachContext = useCallback(
-    async (context: SavedContext) => {
-      if (!activeSessionId) {
-        toast.error('No active session')
-        return
-      }
-
-      setLoadingSlugs(prev => new Set(prev).add(context.slug))
-      const toastId = toast.loading(
-        `Attaching context "${context.name || context.slug}"...`
-      )
-
-      try {
-        await attachSavedContext(activeSessionId, context.path, context.slug)
-
-        // Refresh attached contexts list
-        await refetchAttachedContexts()
-
-        toast.success(`Context "${context.name || context.slug}" attached`, {
-          id: toastId,
-        })
-        setSearchQuery('')
-        setSelectedIndex(0)
-      } catch (error) {
-        toast.error(`${error}`, { id: toastId })
-      } finally {
-        setLoadingSlugs(prev => {
-          const next = new Set(prev)
-          next.delete(context.slug)
-          return next
-        })
-      }
-    },
-    [activeSessionId, refetchAttachedContexts]
-  )
-
-  // Handle removing an attached saved context
-  const handleRemoveAttachedContext = useCallback(
-    async (slug: string) => {
-      if (!activeSessionId) return
-
-      setRemovingSlugs(prev => new Set(prev).add(slug))
-
-      try {
-        await removeSavedContext(activeSessionId, slug)
-        await refetchAttachedContexts()
-        toast.success(`Removed context "${slug}"`)
-      } catch (error) {
-        toast.error(`Failed to remove context: ${error}`)
-      } finally {
-        setRemovingSlugs(prev => {
-          const next = new Set(prev)
-          next.delete(slug)
-          return next
-        })
-      }
-    },
-    [activeSessionId, refetchAttachedContexts]
-  )
-
-  // Handle viewing an attached saved context
-  const handleViewAttachedContext = useCallback(
-    async (ctx: AttachedSavedContext) => {
-      if (!activeSessionId) return
-
-      try {
-        const content = await getSavedContextContent(activeSessionId, ctx.slug)
-        setViewingContext({
-          type: 'saved',
-          slug: ctx.slug,
-          title: ctx.name || ctx.slug,
-          content,
-        })
-      } catch (error) {
-        toast.error(`Failed to load context: ${error}`)
-      }
-    },
-    [activeSessionId]
-  )
-
-  const handleStartEdit = useCallback(
-    (e: React.MouseEvent, context: SavedContext) => {
-      e.stopPropagation()
-      setEditingFilename(context.filename)
-      setEditValue(context.name || context.slug)
-    },
-    []
-  )
-
-  const handleRenameSubmit = useCallback(
-    (filename: string) => {
-      const newName = editValue.trim()
-      renameMutation.mutate({ filename, newName })
-      setEditingFilename(null)
-    },
-    [editValue, renameMutation]
-  )
-
-  const handleRenameKeyDown = useCallback(
-    (e: React.KeyboardEvent, filename: string) => {
-      if (e.key === 'Enter') {
-        e.preventDefault()
-        handleRenameSubmit(filename)
-      } else if (e.key === 'Escape') {
-        setEditingFilename(null)
-      } else if (e.key === ' ') {
-        // Prevent space from triggering parent button click
-        e.stopPropagation()
-      }
-    },
-    [handleRenameSubmit]
-  )
-
-  const handleSessionClick = useCallback(
-    async (sessionWithContext: SessionWithContext) => {
-      const {
-        session,
-        worktreeId: sessionWorktreeId,
-        worktreePath: sessionWorktreePath,
-        projectName: sessionProjectName,
-      } = sessionWithContext
-
-      if (!activeSessionId) {
-        toast.error('No active session')
-        return
-      }
-
-      setGeneratingSessionId(session.id)
-      try {
-        // Call background summarization command with the session's worktree info
-        const result = await invoke<SaveContextResponse>(
-          'generate_context_from_session',
-          {
-            worktreePath: sessionWorktreePath,
-            worktreeId: sessionWorktreeId,
-            sourceSessionId: session.id,
-            projectName: sessionProjectName,
-            customPrompt: preferences?.magic_prompts?.context_summary,
-            model: preferences?.magic_prompt_models?.context_summary_model,
-            customProfileName: resolveMagicPromptProvider(
-              preferences?.magic_prompt_providers,
-              'context_summary_provider',
-              preferences?.default_provider
-            ),
-          }
-        )
-
-        // Refetch saved contexts so the new one appears immediately
-        refetchContexts()
-
-        // Extract slug from filename and attach to current session
-        const slug = result.filename
-          .split('-')
-          .slice(2)
-          .join('-')
-          .replace('.md', '')
-
-        await attachSavedContext(activeSessionId, result.path, slug)
-
-        // Refresh attached contexts list
-        await refetchAttachedContexts()
-
-        toast.success(`Context created and attached: ${result.filename}`)
-        setSearchQuery('')
-        setSelectedIndex(0)
-      } catch (err) {
-        console.error('Failed to generate context:', err)
-        toast.error(`Failed to generate context: ${err}`)
-      } finally {
-        setGeneratingSessionId(null)
-      }
-    },
-    [
-      activeSessionId,
-      refetchContexts,
-      refetchAttachedContexts,
-      preferences?.magic_prompts?.context_summary,
-      preferences?.magic_prompt_models?.context_summary_model,
-      preferences?.magic_prompt_providers,
-      preferences?.default_provider,
-    ]
-  )
-
-  // Keyboard navigation
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      const key = e.key.toLowerCase()
-
-      // Tab shortcuts (Cmd+key, works even when input is focused)
-      if (e.metaKey || e.ctrlKey) {
-        if (key === '1') {
-          e.preventDefault()
-          setActiveTab('contexts')
-          return
-        }
-        if (key === '2') {
-          e.preventDefault()
-          setActiveTab('issues')
-          return
-        }
-        if (key === '3') {
-          e.preventDefault()
-          setActiveTab('prs')
-          return
-        }
-      }
-
-      // List navigation for issues tab
-      if (activeTab === 'issues' && filteredIssues.length > 0) {
-        if (key === 'arrowdown') {
-          e.preventDefault()
-          setSelectedIndex(prev =>
-            Math.min(prev + 1, filteredIssues.length - 1)
-          )
-          return
-        }
-        if (key === 'arrowup') {
-          e.preventDefault()
-          setSelectedIndex(prev => Math.max(prev - 1, 0))
-          return
-        }
-        if (key === 'enter' && filteredIssues[selectedIndex]) {
-          e.preventDefault()
-          handleSelectIssue(filteredIssues[selectedIndex])
-          return
-        }
-      }
-
-      // List navigation for PRs tab
-      if (activeTab === 'prs' && filteredPRs.length > 0) {
-        if (key === 'arrowdown') {
-          e.preventDefault()
-          setSelectedIndex(prev => Math.min(prev + 1, filteredPRs.length - 1))
-          return
-        }
-        if (key === 'arrowup') {
-          e.preventDefault()
-          setSelectedIndex(prev => Math.max(prev - 1, 0))
-          return
-        }
-        if (key === 'enter' && filteredPRs[selectedIndex]) {
-          e.preventDefault()
-          handleSelectPR(filteredPRs[selectedIndex])
-          return
-        }
-      }
-
-      // List navigation for contexts tab (saved contexts + sessions)
-      if (activeTab === 'contexts') {
-        const totalItems =
-          filteredContexts.length +
-          filteredEntries.reduce((acc, e) => acc + e.sessions.length, 0)
-        if (totalItems > 0) {
-          if (key === 'arrowdown') {
-            e.preventDefault()
-            setSelectedIndex(prev => Math.min(prev + 1, totalItems - 1))
-            return
-          }
-          if (key === 'arrowup') {
-            e.preventDefault()
-            setSelectedIndex(prev => Math.max(prev - 1, 0))
-            return
-          }
-          if (key === 'enter') {
-            e.preventDefault()
-            // Determine which item is selected
-            if (selectedIndex < filteredContexts.length) {
-              const context = filteredContexts[selectedIndex]
-              if (context) handleAttachContext(context)
-            } else {
-              // Find the session at this index
-              let idx = selectedIndex - filteredContexts.length
-              for (const entry of filteredEntries) {
-                if (idx < entry.sessions.length) {
-                  const session = entry.sessions[idx]
-                  if (session) {
-                    handleSessionClick({
-                      session,
-                      worktreeId: entry.worktree_id,
-                      worktreePath: entry.worktree_path,
-                      projectName: entry.project_name,
-                    })
-                  }
-                  break
-                }
-                idx -= entry.sessions.length
-              }
-            }
-            return
-          }
-        }
-      }
-    },
-    [
-      activeTab,
-      filteredIssues,
-      filteredPRs,
-      filteredContexts,
-      filteredEntries,
-      selectedIndex,
-      handleSelectIssue,
-      handleSelectPR,
-      handleAttachContext,
-      handleSessionClick,
-    ]
-  )
-
-  // Scroll selected item into view
-  useEffect(() => {
-    const selectedElement = document.querySelector(
-      `[data-load-item-index="${selectedIndex}"]`
-    )
-    selectedElement?.scrollIntoView({ block: 'nearest' })
-  }, [selectedIndex])
-
-  const hasLoadedIssueContexts = (loadedIssueContexts?.length ?? 0) > 0
-  const hasLoadedPRContexts = (loadedPRContexts?.length ?? 0) > 0
-  const hasAttachedContexts = (attachedSavedContexts?.length ?? 0) > 0
-  const hasContexts = filteredContexts.length > 0
-  const hasSessions = filteredEntries.length > 0
+  }, [open, handlers.resetState])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -993,64 +243,66 @@ export function LoadContextModal({
         {/* Tab content */}
         <div className="flex flex-col flex-1 min-h-0">
           {activeTab === 'issues' && (
-            <IssuesTab
+            <GitHubItemsTab
+              config={{
+                kind: 'issues',
+                loadedContexts: data.loadedIssueContexts ?? [],
+                filteredItems: data.filteredIssues,
+                onSelectItem: handlers.handleSelectIssue,
+                onViewItem: handlers.handleViewIssue,
+                onPreviewItem: handlers.handlePreviewIssue,
+                onRemoveItem: handlers.handleRemoveIssue,
+                onLoadItem: (num, refresh) => handlers.handleLoadIssue(num, refresh),
+              }}
               searchQuery={searchQuery}
               setSearchQuery={setSearchQuery}
               includeClosed={includeClosed}
               setIncludeClosed={setIncludeClosed}
               searchInputRef={searchInputRef}
-              loadedContexts={loadedIssueContexts ?? []}
-              isLoadingContexts={isLoadingIssueContexts}
-              filteredItems={filteredIssues}
-              isLoading={isLoadingIssues}
-              isRefetching={isRefetchingIssues}
-              isSearching={isSearchingIssues}
-              error={issuesError}
-              onRefresh={() => refetchIssues()}
+              isLoadingContexts={data.isLoadingIssueContexts}
+              isLoading={data.isLoadingIssues}
+              isRefetching={data.isRefetchingIssues}
+              isSearching={data.isSearchingIssues}
+              error={data.issuesError}
+              onRefresh={() => data.refetchIssues()}
               selectedIndex={selectedIndex}
               setSelectedIndex={setSelectedIndex}
-              onSelectItem={handleSelectIssue}
-              loadingNumbers={loadingNumbers}
-              removingNumbers={removingNumbers}
-              onLoadItem={(num: number, refresh: boolean) =>
-                handleLoadIssue(num, refresh)
-              }
-              onRemoveItem={handleRemoveIssue}
-              onViewItem={handleViewIssue}
-              onPreviewItem={handlePreviewIssue}
-              hasLoadedContexts={hasLoadedIssueContexts}
+              loadingNumbers={handlers.loadingNumbers}
+              removingNumbers={handlers.removingNumbers}
+              hasLoadedContexts={data.hasLoadedIssueContexts}
               onGhLogin={triggerGhLogin}
               isGhInstalled={isGhInstalled}
             />
           )}
 
           {activeTab === 'prs' && (
-            <PullRequestsTab
+            <GitHubItemsTab
+              config={{
+                kind: 'prs',
+                loadedContexts: data.loadedPRContexts ?? [],
+                filteredItems: data.filteredPRs,
+                onSelectItem: handlers.handleSelectPR,
+                onViewItem: handlers.handleViewPR,
+                onPreviewItem: handlers.handlePreviewPR,
+                onRemoveItem: handlers.handleRemovePR,
+                onLoadItem: (num, refresh) => handlers.handleLoadPR(num, refresh),
+              }}
               searchQuery={searchQuery}
               setSearchQuery={setSearchQuery}
               includeClosed={includeClosed}
               setIncludeClosed={setIncludeClosed}
               searchInputRef={searchInputRef}
-              loadedContexts={loadedPRContexts ?? []}
-              isLoadingContexts={isLoadingPRContexts}
-              filteredItems={filteredPRs}
-              isLoading={isLoadingPRs}
-              isRefetching={isRefetchingPRs}
-              isSearching={isSearchingPRs}
-              error={prsError}
-              onRefresh={() => refetchPRs()}
+              isLoadingContexts={data.isLoadingPRContexts}
+              isLoading={data.isLoadingPRs}
+              isRefetching={data.isRefetchingPRs}
+              isSearching={data.isSearchingPRs}
+              error={data.prsError}
+              onRefresh={() => data.refetchPRs()}
               selectedIndex={selectedIndex}
               setSelectedIndex={setSelectedIndex}
-              onSelectItem={handleSelectPR}
-              loadingNumbers={loadingNumbers}
-              removingNumbers={removingNumbers}
-              onLoadItem={(num: number, refresh: boolean) =>
-                handleLoadPR(num, refresh)
-              }
-              onRemoveItem={handleRemovePR}
-              onViewItem={handleViewPR}
-              onPreviewItem={handlePreviewPR}
-              hasLoadedContexts={hasLoadedPRContexts}
+              loadingNumbers={handlers.loadingNumbers}
+              removingNumbers={handlers.removingNumbers}
+              hasLoadedContexts={data.hasLoadedPRContexts}
               onGhLogin={triggerGhLogin}
               isGhInstalled={isGhInstalled}
             />
@@ -1061,1380 +313,75 @@ export function LoadContextModal({
               searchQuery={searchQuery}
               setSearchQuery={setSearchQuery}
               searchInputRef={searchInputRef}
-              // Attached contexts (loaded into this worktree)
-              attachedContexts={attachedSavedContexts ?? []}
-              isLoadingAttachedContexts={isLoadingAttachedContexts}
-              hasAttachedContexts={hasAttachedContexts}
-              loadingSlugs={loadingSlugs}
-              removingSlugs={removingSlugs}
-              onViewAttachedContext={handleViewAttachedContext}
-              onRemoveAttachedContext={handleRemoveAttachedContext}
-              // Available contexts (not yet attached)
-              filteredContexts={filteredContexts}
-              filteredEntries={filteredEntries}
-              isLoading={isLoadingContexts || isLoadingSessions}
-              error={contextsError}
-              hasContexts={hasContexts}
-              hasSessions={hasSessions}
+              attachedContexts={data.attachedSavedContexts ?? []}
+              isLoadingAttachedContexts={data.isLoadingAttachedContexts}
+              hasAttachedContexts={data.hasAttachedContexts}
+              loadingSlugs={handlers.loadingSlugs}
+              removingSlugs={handlers.removingSlugs}
+              onViewAttachedContext={handlers.handleViewAttachedContext}
+              onRemoveAttachedContext={handlers.handleRemoveAttachedContext}
+              filteredContexts={data.filteredContexts}
+              filteredEntries={data.filteredEntries}
+              isLoading={data.isLoadingContexts || data.isLoadingSessions}
+              error={data.contextsError}
+              hasContexts={data.hasContexts}
+              hasSessions={data.hasSessions}
               selectedIndex={selectedIndex}
               setSelectedIndex={setSelectedIndex}
-              editingFilename={editingFilename}
-              editValue={editValue}
-              setEditValue={setEditValue}
-              editInputRef={editInputRef}
-              generatingSessionId={generatingSessionId}
-              onAttachContext={handleAttachContext}
-              onStartEdit={handleStartEdit}
-              onRenameSubmit={handleRenameSubmit}
-              onRenameKeyDown={handleRenameKeyDown}
-              onDeleteContext={handleDeleteContext}
-              onSessionClick={handleSessionClick}
+              editingFilename={handlers.editingFilename}
+              editValue={handlers.editValue}
+              setEditValue={handlers.setEditValue}
+              editInputRef={handlers.editInputRef}
+              generatingSessionId={handlers.generatingSessionId}
+              onAttachContext={handlers.handleAttachContext}
+              onStartEdit={handlers.handleStartEdit}
+              onRenameSubmit={handlers.handleRenameSubmit}
+              onRenameKeyDown={handlers.handleRenameKeyDown}
+              onDeleteContext={handlers.handleDeleteContext}
+              onSessionClick={handlers.handleSessionClick}
             />
           )}
         </div>
 
         {/* GitHub issue/PR preview modal */}
-        {viewingContext &&
-          viewingContext.type !== 'saved' &&
-          viewingContext.number &&
+        {handlers.viewingContext &&
+          handlers.viewingContext.type !== 'saved' &&
+          handlers.viewingContext.number &&
           worktreePath && (
             <IssuePreviewModal
               open={true}
               onOpenChange={open => {
-                if (!open) setViewingContext(null)
+                if (!open) handlers.setViewingContext(null)
               }}
               projectPath={worktreePath}
-              type={viewingContext.type}
-              number={viewingContext.number}
+              type={handlers.viewingContext.type}
+              number={handlers.viewingContext.number}
             />
           )}
 
         {/* Saved context viewer modal */}
-        {viewingContext && viewingContext.type === 'saved' && (
-          <Dialog open={true} onOpenChange={() => setViewingContext(null)}>
+        {handlers.viewingContext && handlers.viewingContext.type === 'saved' && (
+          <Dialog
+            open={true}
+            onOpenChange={() => handlers.setViewingContext(null)}
+          >
             <DialogContent className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none sm:!w-[calc(100vw-8rem)] sm:!max-w-[calc(100vw-8rem)] sm:!h-[calc(100vh-8rem)] sm:!rounded-lg flex flex-col">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
                   <FolderOpen className="h-4 w-4 text-blue-500" />
-                  {viewingContext.title}
+                  {handlers.viewingContext.title}
                 </DialogTitle>
               </DialogHeader>
               <ScrollArea className="flex-1 min-h-0">
-                <Markdown className="p-4">{viewingContext.content}</Markdown>
+                <Markdown className="p-4">
+                  {handlers.viewingContext.content}
+                </Markdown>
               </ScrollArea>
             </DialogContent>
           </Dialog>
         )}
       </DialogContent>
     </Dialog>
-  )
-}
-
-// =============================================================================
-// Issues Tab
-// =============================================================================
-
-interface IssuesTabProps {
-  searchQuery: string
-  setSearchQuery: (query: string) => void
-  includeClosed: boolean
-  setIncludeClosed: (include: boolean) => void
-  searchInputRef: React.RefObject<HTMLInputElement | null>
-  loadedContexts: LoadedIssueContext[]
-  isLoadingContexts: boolean
-  filteredItems: GitHubIssue[]
-  isLoading: boolean
-  isRefetching: boolean
-  isSearching: boolean
-  error: Error | null
-  onRefresh: () => void
-  selectedIndex: number
-  setSelectedIndex: (index: number) => void
-  onSelectItem: (issue: GitHubIssue) => void
-  loadingNumbers: Set<number>
-  removingNumbers: Set<number>
-  onLoadItem: (num: number, refresh: boolean) => void
-  onRemoveItem: (num: number) => void
-  onViewItem: (ctx: LoadedIssueContext) => void
-  onPreviewItem: (issue: GitHubIssue) => void
-  hasLoadedContexts: boolean
-  onGhLogin: () => void
-  isGhInstalled: boolean
-}
-
-function IssuesTab({
-  searchQuery,
-  setSearchQuery,
-  includeClosed,
-  setIncludeClosed,
-  searchInputRef,
-  loadedContexts,
-  isLoadingContexts,
-  filteredItems,
-  isLoading,
-  isRefetching,
-  isSearching,
-  error,
-  onRefresh,
-  selectedIndex,
-  setSelectedIndex,
-  onSelectItem,
-  loadingNumbers,
-  removingNumbers,
-  onLoadItem,
-  onRemoveItem,
-  onViewItem,
-  onPreviewItem,
-  hasLoadedContexts,
-  onGhLogin,
-  isGhInstalled,
-}: IssuesTabProps) {
-  return (
-    <div className="flex flex-col flex-1 min-h-0">
-      {/* Loaded issues section */}
-      {isLoadingContexts ? (
-        <div className="px-4 py-3 border-b border-border">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Loading...
-          </div>
-        </div>
-      ) : hasLoadedContexts ? (
-        <div className="border-b border-border">
-          <div className="px-4 py-2 text-xs font-medium text-muted-foreground bg-muted/30">
-            Loaded Issues
-          </div>
-          <div className="max-h-[150px] overflow-y-auto">
-            {loadedContexts.map(ctx => (
-              <LoadedIssueItem
-                key={ctx.number}
-                context={ctx}
-                isLoading={loadingNumbers.has(ctx.number)}
-                isRemoving={removingNumbers.has(ctx.number)}
-                onRefresh={() => onLoadItem(ctx.number, true)}
-                onRemove={() => onRemoveItem(ctx.number)}
-                onView={() => onViewItem(ctx)}
-              />
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      {/* Search section */}
-      <div className="p-3 space-y-2 border-b border-border">
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              ref={searchInputRef}
-              type="text"
-              placeholder="Search issues by #number, title, or description..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="pl-9 h-8 text-sm"
-            />
-          </div>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={onRefresh}
-                disabled={isRefetching}
-                className={cn(
-                  'flex items-center justify-center h-8 w-8 rounded-md border border-border',
-                  'hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring',
-                  'transition-colors',
-                  isRefetching && 'opacity-50 cursor-not-allowed'
-                )}
-              >
-                <RefreshCw
-                  className={cn(
-                    'h-4 w-4 text-muted-foreground',
-                    isRefetching && 'animate-spin'
-                  )}
-                />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Refresh issues</TooltipContent>
-          </Tooltip>
-        </div>
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id="load-include-closed-issues"
-            checked={includeClosed}
-            onCheckedChange={checked => setIncludeClosed(checked === true)}
-          />
-          <label
-            htmlFor="load-include-closed-issues"
-            className="text-xs text-muted-foreground cursor-pointer"
-          >
-            Include closed issues
-          </label>
-        </div>
-      </div>
-
-      {/* Issues list */}
-      <ScrollArea className="flex-1 min-h-0">
-        {isLoading && (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-            <span className="ml-2 text-sm text-muted-foreground">
-              Loading issues...
-            </span>
-          </div>
-        )}
-
-        {error &&
-          (isGhAuthError(error) ? (
-            <GhAuthError onLogin={onGhLogin} isGhInstalled={isGhInstalled} />
-          ) : (
-            <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
-              <AlertCircle className="h-5 w-5 text-destructive mb-2" />
-              <span className="text-sm text-muted-foreground">
-                {error.message || 'Failed to load issues'}
-              </span>
-            </div>
-          ))}
-
-        {!isLoading && !error && filteredItems.length === 0 && !isSearching && (
-          <div className="flex items-center justify-center py-8">
-            <span className="text-sm text-muted-foreground">
-              {searchQuery
-                ? 'No issues match your search'
-                : hasLoadedContexts
-                  ? 'All open issues already loaded'
-                  : 'No open issues found'}
-            </span>
-          </div>
-        )}
-
-        {!isLoading && !error && filteredItems.length === 0 && isSearching && (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-            <span className="ml-2 text-sm text-muted-foreground">
-              Searching GitHub...
-            </span>
-          </div>
-        )}
-
-        {!isLoading && !error && filteredItems.length > 0 && (
-          <div className="py-1">
-            {filteredItems.map((issue, index) => (
-              <IssueItem
-                key={issue.number}
-                issue={issue}
-                index={index}
-                isSelected={index === selectedIndex}
-                isLoading={loadingNumbers.has(issue.number)}
-                onMouseEnter={() => setSelectedIndex(index)}
-                onClick={() => onSelectItem(issue)}
-                onPreview={() => onPreviewItem(issue)}
-              />
-            ))}
-            {isSearching && (
-              <div className="flex items-center justify-center py-2">
-                <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-                <span className="ml-1.5 text-xs text-muted-foreground">
-                  Searching GitHub for more results...
-                </span>
-              </div>
-            )}
-          </div>
-        )}
-      </ScrollArea>
-    </div>
-  )
-}
-
-// =============================================================================
-// Pull Requests Tab
-// =============================================================================
-
-interface PullRequestsTabProps {
-  searchQuery: string
-  setSearchQuery: (query: string) => void
-  includeClosed: boolean
-  setIncludeClosed: (include: boolean) => void
-  searchInputRef: React.RefObject<HTMLInputElement | null>
-  loadedContexts: LoadedPullRequestContext[]
-  isLoadingContexts: boolean
-  filteredItems: GitHubPullRequest[]
-  isLoading: boolean
-  isRefetching: boolean
-  isSearching: boolean
-  error: Error | null
-  onRefresh: () => void
-  selectedIndex: number
-  setSelectedIndex: (index: number) => void
-  onSelectItem: (pr: GitHubPullRequest) => void
-  loadingNumbers: Set<number>
-  removingNumbers: Set<number>
-  onLoadItem: (num: number, refresh: boolean) => void
-  onRemoveItem: (num: number) => void
-  onViewItem: (ctx: LoadedPullRequestContext) => void
-  onPreviewItem: (pr: GitHubPullRequest) => void
-  hasLoadedContexts: boolean
-  onGhLogin: () => void
-  isGhInstalled: boolean
-}
-
-function PullRequestsTab({
-  searchQuery,
-  setSearchQuery,
-  includeClosed,
-  setIncludeClosed,
-  searchInputRef,
-  loadedContexts,
-  isLoadingContexts,
-  filteredItems,
-  isLoading,
-  isRefetching,
-  isSearching,
-  error,
-  onRefresh,
-  selectedIndex,
-  setSelectedIndex,
-  onSelectItem,
-  loadingNumbers,
-  removingNumbers,
-  onLoadItem,
-  onRemoveItem,
-  onViewItem,
-  onPreviewItem,
-  hasLoadedContexts,
-  onGhLogin,
-  isGhInstalled,
-}: PullRequestsTabProps) {
-  return (
-    <div className="flex flex-col flex-1 min-h-0">
-      {/* Loaded PRs section */}
-      {isLoadingContexts ? (
-        <div className="px-4 py-3 border-b border-border">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Loading...
-          </div>
-        </div>
-      ) : hasLoadedContexts ? (
-        <div className="border-b border-border">
-          <div className="px-4 py-2 text-xs font-medium text-muted-foreground bg-muted/30">
-            Loaded Pull Requests
-          </div>
-          <div className="max-h-[150px] overflow-y-auto">
-            {loadedContexts.map(ctx => (
-              <LoadedPRItem
-                key={ctx.number}
-                context={ctx}
-                isLoading={loadingNumbers.has(ctx.number)}
-                isRemoving={removingNumbers.has(ctx.number)}
-                onRefresh={() => onLoadItem(ctx.number, true)}
-                onRemove={() => onRemoveItem(ctx.number)}
-                onView={() => onViewItem(ctx)}
-              />
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      {/* Search section */}
-      <div className="p-3 space-y-2 border-b border-border">
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              ref={searchInputRef}
-              type="text"
-              placeholder="Search PRs by #number, title, branch, or description..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="pl-9 h-8 text-sm"
-            />
-          </div>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={onRefresh}
-                disabled={isRefetching}
-                className={cn(
-                  'flex items-center justify-center h-8 w-8 rounded-md border border-border',
-                  'hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring',
-                  'transition-colors',
-                  isRefetching && 'opacity-50 cursor-not-allowed'
-                )}
-              >
-                <RefreshCw
-                  className={cn(
-                    'h-4 w-4 text-muted-foreground',
-                    isRefetching && 'animate-spin'
-                  )}
-                />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Refresh pull requests</TooltipContent>
-          </Tooltip>
-        </div>
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id="load-include-closed-prs"
-            checked={includeClosed}
-            onCheckedChange={checked => setIncludeClosed(checked === true)}
-          />
-          <label
-            htmlFor="load-include-closed-prs"
-            className="text-xs text-muted-foreground cursor-pointer"
-          >
-            Include closed/merged PRs
-          </label>
-        </div>
-      </div>
-
-      {/* PRs list */}
-      <ScrollArea className="flex-1 min-h-0">
-        {isLoading && (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-            <span className="ml-2 text-sm text-muted-foreground">
-              Loading pull requests...
-            </span>
-          </div>
-        )}
-
-        {error &&
-          (isGhAuthError(error) ? (
-            <GhAuthError onLogin={onGhLogin} isGhInstalled={isGhInstalled} />
-          ) : (
-            <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
-              <AlertCircle className="h-5 w-5 text-destructive mb-2" />
-              <span className="text-sm text-muted-foreground">
-                {error.message || 'Failed to load pull requests'}
-              </span>
-            </div>
-          ))}
-
-        {!isLoading && !error && filteredItems.length === 0 && !isSearching && (
-          <div className="flex items-center justify-center py-8">
-            <span className="text-sm text-muted-foreground">
-              {searchQuery
-                ? 'No PRs match your search'
-                : hasLoadedContexts
-                  ? 'All open PRs already loaded'
-                  : 'No open pull requests found'}
-            </span>
-          </div>
-        )}
-
-        {!isLoading && !error && filteredItems.length === 0 && isSearching && (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-            <span className="ml-2 text-sm text-muted-foreground">
-              Searching GitHub...
-            </span>
-          </div>
-        )}
-
-        {!isLoading && !error && filteredItems.length > 0 && (
-          <div className="py-1">
-            {filteredItems.map((pr, index) => (
-              <PRItem
-                key={pr.number}
-                pr={pr}
-                index={index}
-                isSelected={index === selectedIndex}
-                isLoading={loadingNumbers.has(pr.number)}
-                onMouseEnter={() => setSelectedIndex(index)}
-                onClick={() => onSelectItem(pr)}
-                onPreview={() => onPreviewItem(pr)}
-              />
-            ))}
-            {isSearching && (
-              <div className="flex items-center justify-center py-2">
-                <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-                <span className="ml-1.5 text-xs text-muted-foreground">
-                  Searching GitHub for more results...
-                </span>
-              </div>
-            )}
-          </div>
-        )}
-      </ScrollArea>
-    </div>
-  )
-}
-
-// =============================================================================
-// Contexts Tab
-// =============================================================================
-
-interface ContextsTabProps {
-  searchQuery: string
-  setSearchQuery: (query: string) => void
-  searchInputRef: React.RefObject<HTMLInputElement | null>
-  // Attached contexts (loaded into this worktree)
-  attachedContexts: AttachedSavedContext[]
-  isLoadingAttachedContexts: boolean
-  hasAttachedContexts: boolean
-  loadingSlugs: Set<string>
-  removingSlugs: Set<string>
-  onViewAttachedContext: (ctx: AttachedSavedContext) => void
-  onRemoveAttachedContext: (slug: string) => void
-  // Available contexts (not yet attached)
-  filteredContexts: SavedContext[]
-  filteredEntries: AllSessionsEntry[]
-  isLoading: boolean
-  error: Error | null
-  hasContexts: boolean
-  hasSessions: boolean
-  selectedIndex: number
-  setSelectedIndex: (index: number) => void
-  editingFilename: string | null
-  editValue: string
-  setEditValue: (value: string) => void
-  editInputRef: React.RefObject<HTMLInputElement | null>
-  generatingSessionId: string | null
-  onAttachContext: (context: SavedContext) => void
-  onStartEdit: (e: React.MouseEvent, context: SavedContext) => void
-  onRenameSubmit: (filename: string) => void
-  onRenameKeyDown: (e: React.KeyboardEvent, filename: string) => void
-  onDeleteContext: (e: React.MouseEvent, context: SavedContext) => void
-  onSessionClick: (sessionWithContext: SessionWithContext) => void
-}
-
-function ContextsTab({
-  searchQuery,
-  setSearchQuery,
-  searchInputRef,
-  // Attached contexts
-  attachedContexts,
-  isLoadingAttachedContexts,
-  hasAttachedContexts,
-  loadingSlugs,
-  removingSlugs,
-  onViewAttachedContext,
-  onRemoveAttachedContext,
-  // Available contexts
-  filteredContexts,
-  filteredEntries,
-  isLoading,
-  error,
-  hasContexts,
-  hasSessions,
-  selectedIndex,
-  setSelectedIndex,
-  editingFilename,
-  editValue,
-  setEditValue,
-  editInputRef,
-  generatingSessionId,
-  onAttachContext,
-  onStartEdit,
-  onRenameSubmit,
-  onRenameKeyDown,
-  onDeleteContext,
-  onSessionClick,
-}: ContextsTabProps) {
-  const isEmpty =
-    !hasContexts && !hasSessions && !hasAttachedContexts && !isLoading && !error
-
-  // Calculate flat index for sessions
-  let sessionStartIndex = filteredContexts.length
-
-  return (
-    <div className="flex flex-col flex-1 min-h-0">
-      {/* Attached Contexts section (like loaded issues/PRs) */}
-      {isLoadingAttachedContexts ? (
-        <div className="px-4 py-3 border-b border-border">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Loading...
-          </div>
-        </div>
-      ) : hasAttachedContexts ? (
-        <div className="border-b border-border">
-          <div className="px-4 py-2 text-xs font-medium text-muted-foreground bg-muted/30">
-            Attached Contexts
-          </div>
-          <div className="max-h-[150px] overflow-y-auto">
-            {attachedContexts.map(ctx => (
-              <AttachedContextItem
-                key={ctx.slug}
-                context={ctx}
-                isRemoving={removingSlugs.has(ctx.slug)}
-                onView={() => onViewAttachedContext(ctx)}
-                onRemove={() => onRemoveAttachedContext(ctx.slug)}
-              />
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      {/* Search section */}
-      <div className="p-3 border-b border-border">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            ref={searchInputRef}
-            type="text"
-            placeholder="Search contexts and sessions..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className="pl-9 h-8 text-sm"
-          />
-        </div>
-      </div>
-
-      <ScrollArea className="flex-1 min-h-0">
-        {isLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          </div>
-        ) : error ? (
-          <div className="text-center py-8 text-destructive">
-            Failed to load saved contexts
-          </div>
-        ) : isEmpty ? (
-          <div className="text-center py-8 text-muted-foreground">
-            No saved contexts or sessions available.
-            <br />
-            <span className="text-sm">
-              Use &quot;Save Context&quot; to save a conversation summary.
-            </span>
-          </div>
-        ) : (
-          <div className="py-1">
-            {/* Available Contexts - narrow list style like PRs */}
-            {hasContexts && (
-              <>
-                <div className="px-3 py-2 text-xs font-medium text-muted-foreground bg-muted/30">
-                  Available Contexts
-                </div>
-                {filteredContexts.map((context, index) => (
-                  <ContextItem
-                    key={context.id}
-                    context={context}
-                    index={index}
-                    isSelected={index === selectedIndex}
-                    isLoading={loadingSlugs.has(context.slug)}
-                    isEditing={editingFilename === context.filename}
-                    editValue={editValue}
-                    setEditValue={setEditValue}
-                    editInputRef={editInputRef}
-                    onMouseEnter={() => setSelectedIndex(index)}
-                    onClick={() => onAttachContext(context)}
-                    onStartEdit={e => onStartEdit(e, context)}
-                    onRenameSubmit={() => onRenameSubmit(context.filename)}
-                    onRenameKeyDown={e => onRenameKeyDown(e, context.filename)}
-                    onDelete={e => onDeleteContext(e, context)}
-                  />
-                ))}
-              </>
-            )}
-
-            {/* Sessions Section - narrow list style */}
-            {hasSessions && (
-              <>
-                <div className="px-3 py-2 text-xs font-medium text-muted-foreground bg-muted/30 mt-2">
-                  Generate from Session
-                </div>
-                {filteredEntries.map(entry => {
-                  const entryElement = (
-                    <SessionGroup
-                      key={entry.worktree_id}
-                      entry={entry}
-                      generatingSessionId={generatingSessionId}
-                      onSessionClick={onSessionClick}
-                      selectedIndex={selectedIndex}
-                      sessionStartIndex={sessionStartIndex}
-                      setSelectedIndex={setSelectedIndex}
-                    />
-                  )
-                  // eslint-disable-next-line react-hooks/immutability
-                  sessionStartIndex += entry.sessions.length
-                  return entryElement
-                })}
-              </>
-            )}
-          </div>
-        )}
-      </ScrollArea>
-    </div>
-  )
-}
-
-// =============================================================================
-// Shared Components
-// =============================================================================
-
-/** Component for a group of sessions from a single project/worktree */
-function SessionGroup({
-  entry,
-  generatingSessionId,
-  onSessionClick,
-  selectedIndex,
-  sessionStartIndex,
-  setSelectedIndex,
-}: {
-  entry: AllSessionsEntry
-  generatingSessionId: string | null
-  onSessionClick: (sessionWithContext: SessionWithContext) => void
-  selectedIndex: number
-  sessionStartIndex: number
-  setSelectedIndex: (index: number) => void
-}) {
-  return (
-    <div className="space-y-1">
-      {/* Project/Worktree header */}
-      <div className="text-xs text-muted-foreground px-1 flex items-center gap-1">
-        <span className="font-medium">{entry.project_name}</span>
-        <span>/</span>
-        <span>{entry.worktree_name}</span>
-      </div>
-
-      {/* Sessions in this group */}
-      <div className="space-y-1">
-        {entry.sessions.map((session, idx) => {
-          const hasMessages = session.messages.length > 0
-          const isDisabled = !hasMessages || generatingSessionId !== null
-          const isGenerating = generatingSessionId === session.id
-          const flatIndex = sessionStartIndex + idx
-
-          return (
-            <button
-              key={session.id}
-              data-load-item-index={flatIndex}
-              className={cn(
-                'w-full flex items-start gap-3 px-3 py-2 text-left transition-colors',
-                'hover:bg-accent focus:outline-none',
-                flatIndex === selectedIndex && 'bg-accent',
-                isDisabled && 'opacity-50 cursor-not-allowed'
-              )}
-              onClick={() =>
-                onSessionClick({
-                  session,
-                  worktreeId: entry.worktree_id,
-                  worktreePath: entry.worktree_path,
-                  projectName: entry.project_name,
-                })
-              }
-              onMouseEnter={() => setSelectedIndex(flatIndex)}
-              disabled={isDisabled}
-            >
-              {isGenerating ? (
-                <Loader2 className="h-4 w-4 mt-0.5 animate-spin text-muted-foreground flex-shrink-0" />
-              ) : (
-                <MessageSquare className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
-              )}
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium truncate">
-                  {session.name}
-                </div>
-                <div className="text-xs text-muted-foreground mt-0.5">
-                  {hasMessages
-                    ? `${session.messages.length} messages`
-                    : 'No messages'}
-                </div>
-              </div>
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-interface LoadedIssueItemProps {
-  context: LoadedIssueContext
-  isLoading: boolean
-  isRemoving: boolean
-  onRefresh: () => void
-  onRemove: () => void
-  onView: () => void
-}
-
-function LoadedIssueItem({
-  context,
-  isLoading,
-  isRemoving,
-  onRefresh,
-  onRemove,
-  onView,
-}: LoadedIssueItemProps) {
-  const isDisabled = isLoading || isRemoving
-
-  return (
-    <div
-      className={cn(
-        'flex items-center gap-2 px-4 py-2 hover:bg-accent/50 transition-colors',
-        isDisabled && 'opacity-50'
-      )}
-    >
-      <CircleDot className="h-4 w-4 text-green-500 flex-shrink-0" />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">
-            #{context.number}
-          </span>
-          <span className="text-sm truncate">{context.title}</span>
-          {context.commentCount > 0 && (
-            <span className="text-xs text-muted-foreground">
-              ({context.commentCount} comments)
-            </span>
-          )}
-        </div>
-      </div>
-      <div className="flex items-center gap-1 flex-shrink-0">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              onClick={onView}
-              disabled={isDisabled}
-              className={cn(
-                'p-1 rounded hover:bg-accent focus:outline-none focus:ring-1 focus:ring-ring',
-                'transition-colors'
-              )}
-            >
-              <Eye className="h-3.5 w-3.5 text-muted-foreground" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>View context</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              onClick={onRefresh}
-              disabled={isDisabled}
-              className={cn(
-                'p-1 rounded hover:bg-accent focus:outline-none focus:ring-1 focus:ring-ring',
-                'transition-colors'
-              )}
-            >
-              {isLoading ? (
-                <Loader2 className="h-3.5 w-3.5 text-muted-foreground animate-spin" />
-              ) : (
-                <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />
-              )}
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Refresh issue</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              onClick={onRemove}
-              disabled={isDisabled}
-              className={cn(
-                'p-1 rounded hover:bg-destructive/10 focus:outline-none focus:ring-1 focus:ring-ring',
-                'transition-colors'
-              )}
-            >
-              {isRemoving ? (
-                <Loader2 className="h-3.5 w-3.5 text-muted-foreground animate-spin" />
-              ) : (
-                <X className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
-              )}
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Remove from context</TooltipContent>
-        </Tooltip>
-      </div>
-    </div>
-  )
-}
-
-interface LoadedPRItemProps {
-  context: LoadedPullRequestContext
-  isLoading: boolean
-  isRemoving: boolean
-  onRefresh: () => void
-  onRemove: () => void
-  onView: () => void
-}
-
-function LoadedPRItem({
-  context,
-  isLoading,
-  isRemoving,
-  onRefresh,
-  onRemove,
-  onView,
-}: LoadedPRItemProps) {
-  const isDisabled = isLoading || isRemoving
-
-  return (
-    <div
-      className={cn(
-        'flex items-center gap-2 px-4 py-2 hover:bg-accent/50 transition-colors',
-        isDisabled && 'opacity-50'
-      )}
-    >
-      <GitPullRequest className="h-4 w-4 text-green-500 flex-shrink-0" />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">
-            #{context.number}
-          </span>
-          <span className="text-sm truncate">{context.title}</span>
-          {(context.commentCount > 0 || context.reviewCount > 0) && (
-            <span className="text-xs text-muted-foreground">
-              ({context.commentCount} comments, {context.reviewCount} reviews)
-            </span>
-          )}
-        </div>
-      </div>
-      <div className="flex items-center gap-1 flex-shrink-0">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              onClick={onView}
-              disabled={isDisabled}
-              className={cn(
-                'p-1 rounded hover:bg-accent focus:outline-none focus:ring-1 focus:ring-ring',
-                'transition-colors'
-              )}
-            >
-              <Eye className="h-3.5 w-3.5 text-muted-foreground" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>View context</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              onClick={onRefresh}
-              disabled={isDisabled}
-              className={cn(
-                'p-1 rounded hover:bg-accent focus:outline-none focus:ring-1 focus:ring-ring',
-                'transition-colors'
-              )}
-            >
-              {isLoading ? (
-                <Loader2 className="h-3.5 w-3.5 text-muted-foreground animate-spin" />
-              ) : (
-                <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />
-              )}
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Refresh PR</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              onClick={onRemove}
-              disabled={isDisabled}
-              className={cn(
-                'p-1 rounded hover:bg-destructive/10 focus:outline-none focus:ring-1 focus:ring-ring',
-                'transition-colors'
-              )}
-            >
-              {isRemoving ? (
-                <Loader2 className="h-3.5 w-3.5 text-muted-foreground animate-spin" />
-              ) : (
-                <X className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
-              )}
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Remove from context</TooltipContent>
-        </Tooltip>
-      </div>
-    </div>
-  )
-}
-
-interface IssueItemProps {
-  issue: GitHubIssue
-  index: number
-  isSelected: boolean
-  isLoading: boolean
-  onMouseEnter: () => void
-  onClick: () => void
-  onPreview: () => void
-}
-
-function IssueItem({
-  issue,
-  index,
-  isSelected,
-  isLoading,
-  onMouseEnter,
-  onClick,
-  onPreview,
-}: IssueItemProps) {
-  return (
-    <div
-      data-load-item-index={index}
-      onMouseEnter={onMouseEnter}
-      className={cn(
-        'w-full flex items-start gap-3 px-3 py-2 text-left transition-colors',
-        'hover:bg-accent',
-        isSelected && 'bg-accent',
-        isLoading && 'opacity-50'
-      )}
-    >
-      <button
-        onClick={onClick}
-        disabled={isLoading}
-        className="flex items-start gap-3 flex-1 min-w-0 focus:outline-none"
-      >
-        {isLoading ? (
-          <Loader2 className="h-4 w-4 mt-0.5 animate-spin text-muted-foreground flex-shrink-0" />
-        ) : (
-          <CircleDot
-            className={cn(
-              'h-4 w-4 mt-0.5 flex-shrink-0',
-              issue.state === 'OPEN' ? 'text-green-500' : 'text-purple-500'
-            )}
-          />
-        )}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">
-              #{issue.number}
-            </span>
-            <span className="text-sm font-medium truncate">{issue.title}</span>
-          </div>
-          {issue.labels.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-1">
-              {issue.labels.slice(0, 3).map(label => (
-                <span
-                  key={label.name}
-                  className="px-1.5 py-0.5 text-xs rounded-full"
-                  style={{
-                    backgroundColor: `#${label.color}20`,
-                    color: `#${label.color}`,
-                    border: `1px solid #${label.color}40`,
-                  }}
-                >
-                  {label.name}
-                </span>
-              ))}
-              {issue.labels.length > 3 && (
-                <span className="text-xs text-muted-foreground">
-                  +{issue.labels.length - 3}
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-      </button>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            onClick={e => {
-              e.stopPropagation()
-              onPreview()
-            }}
-            className="p-1 rounded hover:bg-accent focus:outline-none focus:ring-1 focus:ring-ring transition-colors mt-0.5 flex-shrink-0"
-          >
-            <Eye className="h-3.5 w-3.5 text-muted-foreground" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent>Preview issue</TooltipContent>
-      </Tooltip>
-    </div>
-  )
-}
-
-interface PRItemProps {
-  pr: GitHubPullRequest
-  index: number
-  isSelected: boolean
-  isLoading: boolean
-  onMouseEnter: () => void
-  onClick: () => void
-  onPreview: () => void
-}
-
-function PRItem({
-  pr,
-  index,
-  isSelected,
-  isLoading,
-  onMouseEnter,
-  onClick,
-  onPreview,
-}: PRItemProps) {
-  return (
-    <div
-      data-load-item-index={index}
-      onMouseEnter={onMouseEnter}
-      className={cn(
-        'w-full flex items-start gap-3 px-3 py-2 text-left transition-colors',
-        'hover:bg-accent',
-        isSelected && 'bg-accent',
-        isLoading && 'opacity-50'
-      )}
-    >
-      <button
-        onClick={onClick}
-        disabled={isLoading}
-        className="flex items-start gap-3 flex-1 min-w-0 focus:outline-none"
-      >
-        {isLoading ? (
-          <Loader2 className="h-4 w-4 mt-0.5 animate-spin text-muted-foreground flex-shrink-0" />
-        ) : (
-          <GitPullRequest
-            className={cn(
-              'h-4 w-4 mt-0.5 flex-shrink-0',
-              pr.state === 'OPEN'
-                ? 'text-green-500'
-                : pr.state === 'MERGED'
-                  ? 'text-purple-500'
-                  : 'text-red-500'
-            )}
-          />
-        )}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">#{pr.number}</span>
-            <span className="text-sm font-medium truncate">{pr.title}</span>
-            {pr.isDraft && (
-              <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                Draft
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2 mt-0.5">
-            <span className="text-xs text-muted-foreground truncate">
-              {pr.headRefName} → {pr.baseRefName}
-            </span>
-          </div>
-          {pr.labels.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-1">
-              {pr.labels.slice(0, 3).map(label => (
-                <span
-                  key={label.name}
-                  className="px-1.5 py-0.5 text-xs rounded-full"
-                  style={{
-                    backgroundColor: `#${label.color}20`,
-                    color: `#${label.color}`,
-                    border: `1px solid #${label.color}40`,
-                  }}
-                >
-                  {label.name}
-                </span>
-              ))}
-              {pr.labels.length > 3 && (
-                <span className="text-xs text-muted-foreground">
-                  +{pr.labels.length - 3}
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-      </button>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            onClick={e => {
-              e.stopPropagation()
-              onPreview()
-            }}
-            className="p-1 rounded hover:bg-accent focus:outline-none focus:ring-1 focus:ring-ring transition-colors mt-0.5 flex-shrink-0"
-          >
-            <Eye className="h-3.5 w-3.5 text-muted-foreground" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent>Preview PR</TooltipContent>
-      </Tooltip>
-    </div>
-  )
-}
-
-// =============================================================================
-// Context Item (for the "Available Contexts" list - narrow style like PRs)
-// =============================================================================
-
-interface ContextItemProps {
-  context: SavedContext
-  index: number
-  isSelected: boolean
-  isLoading: boolean
-  isEditing: boolean
-  editValue: string
-  setEditValue: (value: string) => void
-  editInputRef: React.RefObject<HTMLInputElement | null>
-  onMouseEnter: () => void
-  onClick: () => void
-  onStartEdit: (e: React.MouseEvent) => void
-  onRenameSubmit: () => void
-  onRenameKeyDown: (e: React.KeyboardEvent) => void
-  onDelete: (e: React.MouseEvent) => void
-}
-
-function ContextItem({
-  context,
-  index,
-  isSelected,
-  isLoading,
-  isEditing,
-  editValue,
-  setEditValue,
-  editInputRef,
-  onMouseEnter,
-  onClick,
-  onStartEdit,
-  onRenameSubmit,
-  onRenameKeyDown,
-  onDelete,
-}: ContextItemProps) {
-  if (isEditing) {
-    return (
-      <div
-        data-load-item-index={index}
-        className="w-full flex items-start gap-3 px-3 py-2 bg-accent"
-      >
-        <FolderOpen className="h-4 w-4 mt-0.5 text-blue-500 flex-shrink-0" />
-        <div className="flex-1 min-w-0">
-          <input
-            ref={editInputRef}
-            type="text"
-            value={editValue}
-            onChange={e => setEditValue(e.target.value)}
-            onBlur={onRenameSubmit}
-            onKeyDown={onRenameKeyDown}
-            className="w-full text-sm font-medium bg-transparent border-b border-primary outline-none"
-          />
-          <div className="flex items-center gap-2 mt-0.5">
-            <span className="text-xs text-muted-foreground truncate">
-              {context.project_name}
-            </span>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <button
-      data-load-item-index={index}
-      onClick={onClick}
-      onMouseEnter={onMouseEnter}
-      disabled={isLoading}
-      className={cn(
-        'w-full flex items-start gap-3 px-3 py-2 text-left transition-colors group',
-        'hover:bg-accent focus:outline-none',
-        isSelected && 'bg-accent',
-        isLoading && 'opacity-50 cursor-not-allowed'
-      )}
-    >
-      {isLoading ? (
-        <Loader2 className="h-4 w-4 mt-0.5 animate-spin text-muted-foreground flex-shrink-0" />
-      ) : (
-        <FolderOpen className="h-4 w-4 mt-0.5 text-blue-500 flex-shrink-0" />
-      )}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium truncate">
-            {context.name || context.slug || 'Untitled'}
-          </span>
-        </div>
-        <div className="flex items-center gap-2 mt-0.5">
-          <span className="text-xs text-muted-foreground truncate">
-            {context.project_name}
-          </span>
-          <span className="text-xs text-muted-foreground">
-            {formatSize(context.size)}
-          </span>
-        </div>
-      </div>
-      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              onClick={onStartEdit}
-              className="p-1 rounded hover:bg-muted focus:outline-none"
-            >
-              <Pencil className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Rename</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              onClick={onDelete}
-              className="p-1 rounded hover:bg-destructive/10 focus:outline-none"
-            >
-              <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Delete</TooltipContent>
-        </Tooltip>
-      </div>
-    </button>
-  )
-}
-
-// =============================================================================
-// Attached Context Item (for the "Attached Contexts" section in Contexts tab)
-// =============================================================================
-
-interface AttachedContextItemProps {
-  context: AttachedSavedContext
-  isRemoving: boolean
-  onView: () => void
-  onRemove: () => void
-}
-
-function AttachedContextItem({
-  context,
-  isRemoving,
-  onView,
-  onRemove,
-}: AttachedContextItemProps) {
-  return (
-    <div
-      className={cn(
-        'flex items-center gap-2 px-4 py-2 hover:bg-accent/50 transition-colors',
-        isRemoving && 'opacity-50'
-      )}
-    >
-      <FolderOpen className="h-4 w-4 text-blue-500 flex-shrink-0" />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-sm truncate">
-            {context.name || context.slug}
-          </span>
-          <span className="text-xs text-muted-foreground">
-            {formatSize(context.size)}
-          </span>
-        </div>
-      </div>
-      <div className="flex items-center gap-1 flex-shrink-0">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              onClick={onView}
-              disabled={isRemoving}
-              className={cn(
-                'p-1 rounded hover:bg-accent focus:outline-none focus:ring-1 focus:ring-ring',
-                'transition-colors'
-              )}
-            >
-              <Eye className="h-3.5 w-3.5 text-muted-foreground" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>View context</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              onClick={onRemove}
-              disabled={isRemoving}
-              className={cn(
-                'p-1 rounded hover:bg-destructive/10 focus:outline-none focus:ring-1 focus:ring-ring',
-                'transition-colors'
-              )}
-            >
-              {isRemoving ? (
-                <Loader2 className="h-3.5 w-3.5 text-muted-foreground animate-spin" />
-              ) : (
-                <X className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
-              )}
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Remove from context</TooltipContent>
-        </Tooltip>
-      </div>
-    </div>
   )
 }
 
