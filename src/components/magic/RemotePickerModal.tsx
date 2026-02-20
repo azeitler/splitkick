@@ -7,9 +7,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { useUIStore } from '@/store/ui-store'
-import { invoke } from '@/lib/transport'
 import { useQuery } from '@tanstack/react-query'
-import type { GitRemote } from '@/services/git-status'
+import { getGitRemotes } from '@/services/git-status'
 import { cn } from '@/lib/utils'
 
 export function RemotePickerModal() {
@@ -26,14 +25,7 @@ export function RemotePickerModal() {
     queryKey: ['git-remotes', remotePickerRepoPath],
     queryFn: async () => {
       if (!remotePickerRepoPath) return []
-      const result = await invoke<GitRemote[]>('get_git_remotes', {
-        repoPath: remotePickerRepoPath,
-      })
-      const origin = result.find(remote => remote.name === 'origin')
-      const orderedRemotes = origin
-        ? [origin, ...result.filter(remote => remote.name !== 'origin')]
-        : result
-
+      const orderedRemotes = await getGitRemotes(remotePickerRepoPath)
       setSelectedIndex(0)
       return orderedRemotes
     },

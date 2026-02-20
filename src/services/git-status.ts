@@ -315,11 +315,18 @@ export interface GitRemote {
   name: string
 }
 
+function sortRemotesOriginFirst(remotes: GitRemote[]): GitRemote[] {
+  const origin = remotes.find(remote => remote.name === 'origin')
+  if (!origin) return remotes
+  return [origin, ...remotes.filter(remote => remote.name !== 'origin')]
+}
+
 /**
  * Get all git remotes for a repository.
  */
 export async function getGitRemotes(repoPath: string): Promise<GitRemote[]> {
-  return invoke<GitRemote[]>('get_git_remotes', { repoPath })
+  const remotes = await invoke<GitRemote[]>('get_git_remotes', { repoPath })
+  return sortRemotesOriginFirst(remotes)
 }
 
 /**
