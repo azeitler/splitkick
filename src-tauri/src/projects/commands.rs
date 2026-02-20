@@ -534,7 +534,9 @@ pub async fn create_worktree(
             issue_branch
         }
     } else {
-        generate_unique_workspace_name(|n| data.worktree_name_exists(&project_id, n))
+        generate_unique_workspace_name(|n| {
+            data.worktree_name_exists(&project_id, n) || git::branch_exists(&project.path, n)
+        })
     };
 
     // Build worktree path: ~/jean/<project-name>/<workspace-name>
