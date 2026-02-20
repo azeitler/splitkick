@@ -11,6 +11,7 @@ import { invoke } from '@/lib/transport'
 import { useQueryClient } from '@tanstack/react-query'
 import { ghCliQueryKeys } from '@/services/gh-cli'
 import { codexCliQueryKeys } from '@/services/codex-cli'
+import { opencodeCliQueryKeys } from '@/services/opencode-cli'
 import { githubQueryKeys } from '@/services/github'
 import {
   Dialog,
@@ -47,7 +48,7 @@ export function CliLoginModal() {
 }
 
 interface CliLoginModalContentProps {
-  cliType: 'claude' | 'gh' | 'codex' | null
+  cliType: 'claude' | 'gh' | 'codex' | 'opencode' | null
   command: string
   onClose: () => void
 }
@@ -65,7 +66,9 @@ function CliLoginModalContent({
       ? 'Claude CLI'
       : cliType === 'codex'
         ? 'Codex CLI'
-        : 'GitHub CLI'
+        : cliType === 'opencode'
+          ? 'OpenCode CLI'
+          : 'GitHub CLI'
 
   // Generate unique terminal ID for this login session
   const terminalId = useMemo(() => {
@@ -145,6 +148,10 @@ function CliLoginModalContent({
           queryClient.invalidateQueries({ queryKey: githubQueryKeys.all })
         } else if (cliType === 'codex') {
           queryClient.invalidateQueries({ queryKey: codexCliQueryKeys.auth() })
+        } else if (cliType === 'opencode') {
+          queryClient.invalidateQueries({
+            queryKey: opencodeCliQueryKeys.auth(),
+          })
         }
 
         onClose()

@@ -39,14 +39,16 @@ export type GroupedToolCall =
   | { type: 'standalone'; tool: ToolCall }
 
 /**
- * Check if a tool call is a special interactive tool that should be rendered separately
- * (AskUserQuestion, ExitPlanMode, and TodoWrite have their own UI components)
+ * Check if a tool call is a special tool that should not render in the timeline.
+ * AskUserQuestion and ExitPlanMode have dedicated inline render paths.
+ * TodoWrite and CodexTodoList are shown via dedicated todo UI.
  */
 function isSpecialTool(toolCall: ToolCall): boolean {
   return (
     toolCall.name === 'AskUserQuestion' ||
     toolCall.name === 'ExitPlanMode' ||
-    toolCall.name === 'TodoWrite'
+    toolCall.name === 'TodoWrite' ||
+    toolCall.name === 'CodexTodoList'
   )
 }
 
@@ -307,6 +309,10 @@ export function buildTimeline(
       }
       if (isTodoWrite(toolCall)) {
         // TodoWrite is handled separately (shown above textarea)
+        continue
+      }
+      if (toolCall.name === 'CodexTodoList') {
+        // Codex todo list is handled separately (shown above textarea)
         continue
       }
       if (isCollabToolCall(toolCall)) {

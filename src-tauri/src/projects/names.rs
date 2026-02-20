@@ -9,11 +9,11 @@ const ADJECTIVES: &[&str] = &[
     "loyal", "mighty", "neat", "open", "prime", "royal", "solid", "tidy", "ultra", "vital",
     "amber", "azure", "brisk", "coral", "crisp", "dusty", "elfin", "fiery", "fleet", "frosty",
     "gleam", "gusty", "hazy", "icy", "ivory", "jasper", "lunar", "maple", "misty", "mossy",
-    "oaken", "opal", "peach", "plush", "polar", "rosy", "rusty", "sage", "sandy", "silky",
-    "smoky", "spry", "stark", "steel", "stony", "stormy", "tawny", "terra", "vast", "velvet",
-    "wild", "windy", "woody", "ashen", "cedar", "chalk", "dawn", "dusk", "ember", "frost",
-    "gilt", "hazel", "honey", "indigo", "lemon", "lilac", "mint", "onyx", "pearl", "plum",
-    "quartz", "ruby", "slate", "stone", "thorn", "topaz", "tulip", "umber", "zinc", "birch",
+    "oaken", "opal", "peach", "plush", "polar", "rosy", "rusty", "sage", "sandy", "silky", "smoky",
+    "spry", "stark", "steel", "stony", "stormy", "tawny", "terra", "vast", "velvet", "wild",
+    "windy", "woody", "ashen", "cedar", "chalk", "dawn", "dusk", "ember", "frost", "gilt", "hazel",
+    "honey", "indigo", "lemon", "lilac", "mint", "onyx", "pearl", "plum", "quartz", "ruby",
+    "slate", "stone", "thorn", "topaz", "tulip", "umber", "zinc", "birch",
 ];
 
 /// List of animals for workspace names (~120 entries for ~14,400 combinations)
@@ -24,12 +24,12 @@ const ANIMALS: &[&str] = &[
     "python", "salmon", "trout", "bass", "perch", "carp", "tuna", "squid", "crab", "seal",
     "walrus", "orca", "dolphin", "pelican", "parrot", "toucan", "condor", "osprey", "badger",
     "alpaca", "bobcat", "camel", "cheetah", "clam", "corgi", "coyote", "dingo", "dove", "drake",
-    "egret", "elk", "ferret", "flamingo", "gannet", "gazelle", "gibbon", "goose", "grouse",
-    "gull", "ibis", "iguana", "impala", "jackal", "jaguar", "kite", "lark", "linnet", "llama",
-    "locust", "lynx", "macaw", "marten", "mink", "moth", "myna", "newt", "okapi", "oriole",
-    "panther", "pigeon", "puffin", "quail", "rabbit", "raccoon", "ram", "shrike", "skunk",
-    "snipe", "spider", "stork", "swift", "tern", "thrush", "toad", "turtle", "urchin", "wasp",
-    "weasel", "yak", "zebra", "beetle", "mantis", "mole", "pika", "rook", "wombat", "starling",
+    "egret", "elk", "ferret", "flamingo", "gannet", "gazelle", "gibbon", "goose", "grouse", "gull",
+    "ibis", "iguana", "impala", "jackal", "jaguar", "kite", "lark", "linnet", "llama", "locust",
+    "lynx", "macaw", "marten", "mink", "moth", "myna", "newt", "okapi", "oriole", "panther",
+    "pigeon", "puffin", "quail", "rabbit", "raccoon", "ram", "shrike", "skunk", "snipe", "spider",
+    "stork", "swift", "tern", "thrush", "toad", "turtle", "urchin", "wasp", "weasel", "yak",
+    "zebra", "beetle", "mantis", "mole", "pika", "rook", "wombat", "starling",
 ];
 
 /// Generate a random workspace name in the format "adjective-animal"

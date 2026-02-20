@@ -860,10 +860,20 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       useChatStore.getState()
     let targetIndex = -1
     let shouldAutoOpenModal = false
+    let resolvedLastOpenedSessionId: string | null = null
 
     // First: check lastOpenedPerProject for this project
     const lastOpened = lastOpenedPerProject[projectId]
     if (lastOpened) {
+      const worktreeSessions =
+        sessionsByWorktreeId.get(lastOpened.worktreeId)?.sessions ?? []
+      const hasSavedSession = worktreeSessions.some(
+        session => session.id === lastOpened.sessionId
+      )
+      resolvedLastOpenedSessionId = hasSavedSession
+        ? lastOpened.sessionId
+        : (worktreeSessions[0]?.id ?? null)
+
       for (const fc of flatCards) {
         if (!fc.card || fc.isPending) continue
         if (
@@ -876,6 +886,23 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
             shouldAutoOpenModal = true
           }
           break
+        }
+      }
+
+      // In list layout (or reordered cards), there may be only one card per worktree,
+      // so exact session match can fail even when the worktree exists.
+      if (targetIndex === -1) {
+        const worktreeCard = flatCards.find(
+          fc =>
+            !fc.isPending &&
+            fc.card !== null &&
+            fc.worktreeId === lastOpened.worktreeId
+        )
+        if (worktreeCard) {
+          targetIndex = worktreeCard.globalIndex
+          if (preferences?.restore_last_session) {
+            shouldAutoOpenModal = true
+          }
         }
       }
     }
@@ -935,9 +962,14 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
 
       // Auto-open SessionChatModal if restore_last_session is enabled
       if (shouldAutoOpenModal) {
+        const sessionIdToOpen =
+          lastOpened && targetCard.worktreeId === lastOpened.worktreeId
+            ? (resolvedLastOpenedSessionId ?? targetCard.card.session.id)
+            : targetCard.card.session.id
+
         useChatStore
           .getState()
-          .setActiveSession(targetCard.worktreeId, targetCard.card.session.id)
+          .setActiveSession(targetCard.worktreeId, sessionIdToOpen)
         setSelectedWorktreeModal({
           worktreeId: targetCard.worktreeId,
           worktreePath: targetCard.worktreePath,
@@ -950,6 +982,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     selectedWorktreeModal,
     projectId,
     preferences?.restore_last_session,
+    sessionsByWorktreeId,
   ])
 
   // Sync selection to store for cancel shortcut - updates when user navigates with arrow keys
@@ -977,8 +1010,23 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   const handleWorktreeClick = useCallback(
     (worktreeId: string, worktreePath: string) => {
       setSelectedWorktreeModal({ worktreeId, worktreePath })
+
+      // Persist last-opened project context immediately on open so project switch
+      // restore does not depend on a subsequent tab change event.
+      const { activeSessionIds, setActiveSession, setLastOpenedForProject } =
+        useChatStore.getState()
+      const existingSessionId = activeSessionIds[worktreeId]
+      const firstSessionId = sessionsByWorktreeId.get(worktreeId)?.sessions[0]?.id
+      const targetSessionId = existingSessionId ?? firstSessionId
+
+      if (targetSessionId) {
+        if (!existingSessionId) {
+          setActiveSession(worktreeId, targetSessionId)
+        }
+        setLastOpenedForProject(projectId, worktreeId, targetSessionId)
+      }
     },
-    []
+    [projectId, sessionsByWorktreeId]
   )
 
   // Handle selection from keyboard nav
@@ -1345,22 +1393,9 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     <div className="relative flex h-full flex-col">
       <div className="flex-1 flex flex-col overflow-auto">
         {/* Header with Search - sticky over content */}
-        <div className="sticky top-0 z-10 flex items-center justify-between gap-4 bg-background/60 backdrop-blur-md px-4 py-3 border-b border-border/30 min-h-[61px]">
+        <div className="sticky top-0 z-10 flex items-center gap-4 bg-background/60 backdrop-blur-md px-4 py-3 border-b border-border/30 min-h-[61px]">
           <div className="flex items-center gap-2 shrink-0">
-            <div className="min-w-0">
-              <h2 className="truncate text-lg font-semibold">{project.name}</h2>
-              {projectSummary.totalReady > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  {projectSummary.totalReady} worktrees
-                  {projectSummary.reviewCount > 0 &&
-                    ` · ${projectSummary.reviewCount} review`}
-                  {projectSummary.waitingCount > 0 &&
-                    ` · ${projectSummary.waitingCount} waiting`}
-                  {projectSummary.activeCount > 0 &&
-                    ` · ${projectSummary.activeCount} active`}
-                </p>
-              )}
-            </div>
+            <h2 className="truncate text-lg font-semibold">{project.name}</h2>
             <NewIssuesBadge projectPath={project.path} projectId={projectId} />
             <OpenPRsBadge projectPath={project.path} projectId={projectId} />
             <FailedRunsBadge projectPath={project.path} />
@@ -1395,6 +1430,17 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            {projectSummary.totalReady > 0 && (
+              <p className="text-xs text-muted-foreground whitespace-nowrap">
+                {projectSummary.totalReady} worktrees
+                {projectSummary.reviewCount > 0 &&
+                  ` · ${projectSummary.reviewCount} review`}
+                {projectSummary.waitingCount > 0 &&
+                  ` · ${projectSummary.waitingCount} waiting`}
+                {projectSummary.activeCount > 0 &&
+                  ` · ${projectSummary.activeCount} active`}
+              </p>
+            )}
           </div>
           {(worktreeSections.length > 0 || searchQuery) && (
             <>

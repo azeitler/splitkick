@@ -341,6 +341,11 @@ fn generate_names(app: &AppHandle, request: &NamingRequest) -> Result<NamingOutp
         (false, false, false) => base_prompt,
     };
 
+    // Route OpenCode models through OpenCode HTTP API.
+    if request.model.starts_with("opencode/") {
+        return generate_names_opencode(app, &prompt, &request.model, request);
+    }
+
     // Route to Codex CLI if model is a Codex model
     if crate::is_codex_model(&request.model) {
         return generate_names_codex(app, &prompt, &request.model, request);
@@ -522,6 +527,208 @@ fn generate_names_codex(
     log::trace!("Codex generated naming response: {json_str}");
     serde_json::from_str(&json_str)
         .map_err(|e| format!("Failed to parse Codex naming JSON: {e}, raw: {json_str}"))
+}
+
+fn choose_opencode_model(all_providers: &serde_json::Value) -> Option<(String, String)> {
+    let connected = all_providers
+        .get("connected")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    let providers = all_providers
+        .get("all")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    for provider_id in connected.iter().filter_map(|v| v.as_str()) {
+        for provider in &providers {
+            if provider.get("id").and_then(|v| v.as_str()) != Some(provider_id) {
+                continue;
+            }
+            if let Some(models) = provider.get("models").and_then(|v| v.as_object()) {
+                if let Some((model_id, _)) = models.iter().next() {
+                    return Some((provider_id.to_string(), model_id.to_string()));
+                }
+            }
+        }
+    }
+
+    for provider in providers {
+        let provider_id = match provider.get("id").and_then(|v| v.as_str()) {
+            Some(v) => v,
+            None => continue,
+        };
+        let model_id = provider
+            .get("models")
+            .and_then(|v| v.as_object())
+            .and_then(|o| o.keys().next())
+            .cloned();
+        if let Some(model_id) = model_id {
+            return Some((provider_id.to_string(), model_id));
+        }
+    }
+
+    None
+}
+
+fn parse_opencode_provider_model(model: Option<&str>) -> Option<(String, String)> {
+    let raw = model?.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    let (provider, model_id) = raw.split_once('/')?;
+    let provider = provider.trim();
+    let model_id = model_id.trim();
+    if provider.is_empty() || model_id.is_empty() {
+        return None;
+    }
+    Some((provider.to_string(), model_id.to_string()))
+}
+
+fn extract_text_from_opencode_parts(response_json: &serde_json::Value) -> String {
+    response_json
+        .get("parts")
+        .and_then(|v| v.as_array())
+        .map(|parts| {
+            parts
+                .iter()
+                .filter(|part| part.get("type").and_then(|v| v.as_str()) == Some("text"))
+                .filter_map(|part| part.get("text").and_then(|v| v.as_str()))
+                .collect::<Vec<_>>()
+                .join("")
+        })
+        .unwrap_or_default()
+}
+
+/// Generate names using OpenCode HTTP API.
+/// This path does not emit chat:* events, so it won't mutate active streaming UI.
+fn generate_names_opencode(
+    app: &tauri::AppHandle,
+    prompt: &str,
+    model: &str,
+    request: &NamingRequest,
+) -> Result<NamingOutput, String> {
+    let base_url = crate::opencode_server::ensure_running(app)?;
+
+    struct ManagedServerGuard;
+    impl Drop for ManagedServerGuard {
+        fn drop(&mut self) {
+            if let Err(e) = crate::opencode_server::shutdown_managed_server() {
+                log::warn!("Failed to stop managed OpenCode server after naming: {e}");
+            }
+        }
+    }
+    let _managed_server_guard = ManagedServerGuard;
+
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(300))
+        .build()
+        .map_err(|e| format!("Failed to build OpenCode HTTP client: {e}"))?;
+
+    let query = [(
+        "directory",
+        request.worktree_path.to_string_lossy().to_string(),
+    )];
+
+    let create_url = format!("{base_url}/session");
+    let create_payload = serde_json::json!({
+        "title": format!("Jean naming {}", request.session_id),
+    });
+    let create_resp = client
+        .post(&create_url)
+        .query(&query)
+        .json(&create_payload)
+        .send()
+        .map_err(|e| format!("Failed to create OpenCode naming session: {e}"))?;
+    if !create_resp.status().is_success() {
+        let status = create_resp.status();
+        let body = create_resp.text().unwrap_or_default();
+        return Err(format!(
+            "OpenCode naming session create failed: status={status}, body={body}"
+        ));
+    }
+    let created: serde_json::Value = create_resp
+        .json()
+        .map_err(|e| format!("Failed to parse OpenCode naming session response: {e}"))?;
+    let opencode_session_id = created
+        .get("id")
+        .and_then(|v| v.as_str())
+        .ok_or("OpenCode naming session create response missing id")?
+        .to_string();
+
+    let selected_model = if let Some(pm) = parse_opencode_provider_model(Some(model)) {
+        pm
+    } else {
+        let providers_url = format!("{base_url}/provider");
+        let providers_resp = client
+            .get(&providers_url)
+            .query(&query)
+            .send()
+            .map_err(|e| format!("Failed to query OpenCode providers: {e}"))?;
+        if !providers_resp.status().is_success() {
+            let status = providers_resp.status();
+            let body = providers_resp.text().unwrap_or_default();
+            return Err(format!(
+                "OpenCode provider query failed: status={status}, body={body}"
+            ));
+        }
+        let providers: serde_json::Value = providers_resp
+            .json()
+            .map_err(|e| format!("Failed to parse OpenCode providers response: {e}"))?;
+        choose_opencode_model(&providers)
+            .ok_or("No OpenCode models available. Authenticate a provider first.")?
+    };
+
+    let msg_url = format!("{base_url}/session/{opencode_session_id}/message");
+    let payload = serde_json::json!({
+        "agent": "plan",
+        "model": {
+            "providerID": selected_model.0,
+            "modelID": selected_model.1,
+        },
+        "parts": [
+            {
+                "type": "text",
+                "text": prompt,
+            }
+        ],
+    });
+
+    let response = client
+        .post(msg_url)
+        .query(&query)
+        .json(&payload)
+        .send()
+        .map_err(|e| format!("Failed to send OpenCode naming request: {e}"))?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().unwrap_or_default();
+        return Err(format!(
+            "OpenCode naming message failed: status={status}, body={body}"
+        ));
+    }
+
+    let response_json: serde_json::Value = response
+        .json()
+        .map_err(|e| format!("Failed to parse OpenCode naming response: {e}"))?;
+    let text = extract_text_from_opencode_parts(&response_json);
+    log::trace!("OpenCode generated naming response: {text}");
+
+    let json_text = text
+        .trim()
+        .strip_prefix("```json")
+        .or_else(|| text.trim().strip_prefix("```"))
+        .unwrap_or(&text)
+        .trim()
+        .strip_suffix("```")
+        .unwrap_or(&text)
+        .trim();
+    let json_text = extract_json_object(json_text).unwrap_or(json_text);
+
+    serde_json::from_str(json_text)
+        .map_err(|e| format!("Failed to parse OpenCode naming JSON: {e}, raw: {json_text}"))
 }
 
 /// Validate and sanitize a session name

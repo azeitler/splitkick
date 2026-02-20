@@ -24,6 +24,7 @@ import { Button } from '@/components/ui/button'
 import { useClaudeCliSetup } from '@/services/claude-cli'
 import { useGhCliSetup } from '@/services/gh-cli'
 import { useCodexCliSetup } from '@/services/codex-cli'
+import { useOpenCodeCliSetup } from '@/services/opencode-cli'
 import { logger } from '@/lib/logger'
 import {
   SetupState,
@@ -123,11 +124,34 @@ function CodexCliReinstallModalContent({ open, onOpenChange }: ModalProps) {
 }
 
 /**
+ * OpenCode CLI specific modal - calls ONLY useOpenCodeCliSetup
+ * This ensures only one event listener is active
+ */
+export function OpenCodeCliReinstallModal({ open, onOpenChange }: ModalProps) {
+  if (!open) return null
+  return (
+    <OpenCodeCliReinstallModalContent open={open} onOpenChange={onOpenChange} />
+  )
+}
+
+function OpenCodeCliReinstallModalContent({ open, onOpenChange }: ModalProps) {
+  const setup = useOpenCodeCliSetup()
+  return (
+    <CliReinstallModalUI
+      setup={setup}
+      cliType="opencode"
+      open={open}
+      onOpenChange={onOpenChange}
+    />
+  )
+}
+
+/**
  * Shared UI component - receives setup as prop, no hooks here
  */
 interface CliReinstallModalUIProps {
   setup: CliSetupInterface
-  cliType: 'claude' | 'gh' | 'codex'
+  cliType: 'claude' | 'gh' | 'codex' | 'opencode'
   open: boolean
   onOpenChange: (open: boolean) => void
 }
@@ -143,7 +167,9 @@ function CliReinstallModalUI({
       ? 'Claude CLI'
       : cliType === 'codex'
         ? 'Codex CLI'
-        : 'GitHub CLI'
+        : cliType === 'opencode'
+          ? 'OpenCode CLI'
+          : 'GitHub CLI'
 
   // Store setup in ref for stable callback reference
   const setupRef = useRef(setup)
@@ -255,7 +281,7 @@ function CliReinstallModalUI({
               ? `${cliName} has been successfully installed.`
               : isReinstall
                 ? 'Select a version to install. This will replace the current installation.'
-                : `${cliName} is required for ${cliType === 'claude' ? 'AI chat functionality' : cliType === 'codex' ? 'Codex AI sessions' : 'GitHub integration'}.`}
+                : `${cliName} is required for ${cliType === 'claude' ? 'AI chat functionality' : cliType === 'codex' ? 'Codex AI sessions' : cliType === 'opencode' ? 'OpenCode AI sessions' : 'GitHub integration'}.`}
           </DialogDescription>
         </DialogHeader>
 

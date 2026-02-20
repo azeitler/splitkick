@@ -3,12 +3,14 @@ import type { ClaudeModel, CustomCliProfile } from '@/types/preferences'
 import {
   CODEX_MODEL_OPTIONS,
   MODEL_OPTIONS,
+  OPENCODE_MODEL_OPTIONS,
 } from '@/components/chat/toolbar/toolbar-options'
 
 interface UseToolbarDerivedStateArgs {
-  selectedBackend: 'claude' | 'codex'
+  selectedBackend: 'claude' | 'codex' | 'opencode'
   selectedProvider: string | null
   selectedModel: string
+  opencodeModelOptions?: { value: string; label: string }[]
   customCliProfiles: CustomCliProfile[]
   availableMcpServers: { name: string; disabled?: boolean }[]
   enabledMcpServers: string[]
@@ -18,11 +20,13 @@ export function useToolbarDerivedState({
   selectedBackend,
   selectedProvider,
   selectedModel,
+  opencodeModelOptions,
   customCliProfiles,
   availableMcpServers,
   enabledMcpServers,
 }: UseToolbarDerivedStateArgs) {
   const isCodex = selectedBackend === 'codex'
+  const isOpencode = selectedBackend === 'opencode'
 
   const activeMcpCount = useMemo(() => {
     const availableNames = new Set(
@@ -34,6 +38,7 @@ export function useToolbarDerivedState({
   const filteredModelOptions = useMemo(() => {
     if (isCodex)
       return CODEX_MODEL_OPTIONS as { value: string; label: string }[]
+    if (isOpencode) return opencodeModelOptions ?? OPENCODE_MODEL_OPTIONS
     if (!selectedProvider || selectedProvider === '__anthropic__') {
       return MODEL_OPTIONS
     }
@@ -63,7 +68,13 @@ export function useToolbarDerivedState({
       { value: 'sonnet' as ClaudeModel, label: `Sonnet${suffix(sonnetModel)}` },
       { value: 'haiku' as ClaudeModel, label: `Haiku${suffix(haikuModel)}` },
     ]
-  }, [selectedProvider, customCliProfiles, isCodex])
+  }, [
+    selectedProvider,
+    customCliProfiles,
+    isCodex,
+    isOpencode,
+    opencodeModelOptions,
+  ])
 
   const selectedModelLabel =
     filteredModelOptions.find(o => o.value === selectedModel)?.label ??
@@ -71,6 +82,7 @@ export function useToolbarDerivedState({
 
   return {
     isCodex,
+    isOpencode,
     activeMcpCount,
     filteredModelOptions,
     selectedModelLabel,

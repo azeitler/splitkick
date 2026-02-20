@@ -48,7 +48,7 @@ interface MobileToolbarMenuProps {
   hasOpenPr: boolean
   sessionHasMessages?: boolean
   providerLocked?: boolean
-  selectedBackend: 'claude' | 'codex'
+  selectedBackend: 'claude' | 'codex' | 'opencode'
   selectedProvider: string | null
   selectedModel: string
   selectedEffortLevel: EffortLevel
@@ -78,7 +78,7 @@ interface MobileToolbarMenuProps {
   onReview: () => void
   onMerge: () => void
   onResolveConflicts: () => void
-  onBackendChange: (backend: 'claude' | 'codex') => void
+  onBackendChange: (backend: 'claude' | 'codex' | 'opencode') => void
   onSetExecutionMode: (mode: ExecutionMode) => void
 
   handlePullClick: () => void
@@ -282,7 +282,9 @@ export function MobileToolbarMenu({
               href={prUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className={cn(displayStatus ? getPrStatusDisplay(displayStatus).className : '')}
+              className={cn(
+                displayStatus ? getPrStatusDisplay(displayStatus).className : ''
+              )}
             >
               {displayStatus === 'merged' ? (
                 <GitMerge className="h-4 w-4" />
@@ -312,11 +314,21 @@ export function MobileToolbarMenu({
             <DropdownMenuSubContent>
               <DropdownMenuRadioGroup
                 value={selectedBackend}
-                onValueChange={v => onBackendChange(v as 'claude' | 'codex')}
+                onValueChange={v =>
+                  onBackendChange(v as 'claude' | 'codex' | 'opencode')
+                }
               >
-                <DropdownMenuRadioItem value="claude">Claude</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="claude">
+                  Claude
+                </DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="codex">
                   Codex{' '}
+                  <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">
+                    BETA
+                  </span>
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="opencode">
+                  OpenCode{' '}
                   <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">
                     BETA
                   </span>
@@ -326,40 +338,45 @@ export function MobileToolbarMenu({
           </DropdownMenuSub>
         )}
 
-        {customCliProfiles.length > 0 && !providerLocked && (
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger>
-              <Sparkles className="mr-2 h-4 w-4" />
-              <span>Provider</span>
-              <span className="ml-auto text-xs text-muted-foreground">
-                {providerDisplayName}
-              </span>
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent>
-              <DropdownMenuRadioGroup
-                value={selectedProvider ?? '__anthropic__'}
-                onValueChange={handleProviderChange}
-              >
-                <DropdownMenuRadioItem value="__anthropic__">
-                  Anthropic
-                </DropdownMenuRadioItem>
-                {customCliProfiles.length > 0 && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuLabel className="text-xs text-muted-foreground">
-                      Custom Providers
-                    </DropdownMenuLabel>
-                    {customCliProfiles.map(profile => (
-                      <DropdownMenuRadioItem key={profile.name} value={profile.name}>
-                        {profile.name}
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </>
-                )}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-        )}
+        {customCliProfiles.length > 0 &&
+          !providerLocked &&
+          selectedBackend === 'claude' && (
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Sparkles className="mr-2 h-4 w-4" />
+                <span>Provider</span>
+                <span className="ml-auto text-xs text-muted-foreground">
+                  {providerDisplayName}
+                </span>
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                <DropdownMenuRadioGroup
+                  value={selectedProvider ?? '__anthropic__'}
+                  onValueChange={handleProviderChange}
+                >
+                  <DropdownMenuRadioItem value="__anthropic__">
+                    Anthropic
+                  </DropdownMenuRadioItem>
+                  {customCliProfiles.length > 0 && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuLabel className="text-xs text-muted-foreground">
+                        Custom Providers
+                      </DropdownMenuLabel>
+                      {customCliProfiles.map(profile => (
+                        <DropdownMenuRadioItem
+                          key={profile.name}
+                          value={profile.name}
+                        >
+                          {profile.name}
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </>
+                  )}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          )}
 
         <DropdownMenuSub>
           <DropdownMenuSubTrigger>
@@ -378,7 +395,10 @@ export function MobileToolbarMenu({
                 <DropdownMenuSeparator />
               </>
             )}
-            <DropdownMenuRadioGroup value={selectedModel} onValueChange={handleModelChange}>
+            <DropdownMenuRadioGroup
+              value={selectedModel}
+              onValueChange={handleModelChange}
+            >
               {filteredModelOptions.map(option => (
                 <DropdownMenuRadioItem key={option.value} value={option.value}>
                   {option.label}
@@ -394,7 +414,11 @@ export function MobileToolbarMenu({
               <Brain className="mr-2 h-4 w-4" />
               <span>Effort</span>
               <span className="ml-auto text-xs text-muted-foreground">
-                {EFFORT_LEVEL_OPTIONS.find(o => o.value === selectedEffortLevel)?.label}
+                {
+                  EFFORT_LEVEL_OPTIONS.find(
+                    o => o.value === selectedEffortLevel
+                  )?.label
+                }
               </span>
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent>
@@ -403,7 +427,10 @@ export function MobileToolbarMenu({
                 onValueChange={handleEffortLevelChange}
               >
                 {EFFORT_LEVEL_OPTIONS.map(option => (
-                  <DropdownMenuRadioItem key={option.value} value={option.value}>
+                  <DropdownMenuRadioItem
+                    key={option.value}
+                    value={option.value}
+                  >
                     {option.label}
                     <span className="ml-auto pl-4 text-xs text-muted-foreground">
                       {option.description}
@@ -419,7 +446,11 @@ export function MobileToolbarMenu({
               <Brain className="mr-2 h-4 w-4" />
               <span>Thinking</span>
               <span className="ml-auto text-xs text-muted-foreground">
-                {THINKING_LEVEL_OPTIONS.find(o => o.value === selectedThinkingLevel)?.label}
+                {
+                  THINKING_LEVEL_OPTIONS.find(
+                    o => o.value === selectedThinkingLevel
+                  )?.label
+                }
               </span>
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent>
@@ -428,7 +459,10 @@ export function MobileToolbarMenu({
                 onValueChange={handleThinkingLevelChange}
               >
                 {THINKING_LEVEL_OPTIONS.map(option => (
-                  <DropdownMenuRadioItem key={option.value} value={option.value}>
+                  <DropdownMenuRadioItem
+                    key={option.value}
+                    value={option.value}
+                  >
                     {option.label}
                     <span className="ml-auto pl-4 text-xs text-muted-foreground">
                       {option.tokens}
@@ -442,7 +476,9 @@ export function MobileToolbarMenu({
 
         <DropdownMenuSub>
           <DropdownMenuSubTrigger>
-            {executionMode === 'plan' && <ClipboardList className="mr-2 h-4 w-4" />}
+            {executionMode === 'plan' && (
+              <ClipboardList className="mr-2 h-4 w-4" />
+            )}
             {executionMode === 'build' && <Hammer className="mr-2 h-4 w-4" />}
             {executionMode === 'yolo' && <Zap className="mr-2 h-4 w-4" />}
             <span>Mode</span>

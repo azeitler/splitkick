@@ -5,6 +5,7 @@ import { useChatStore } from '@/store/chat-store'
 import { useTerminalStore } from '@/store/terminal-store'
 import { cancelChatMessage } from '@/services/chat'
 import { isNativeApp } from '@/lib/environment'
+import { logger } from '@/lib/logger'
 import type {
   ContentBlock,
   QueuedMessage,
@@ -299,7 +300,14 @@ export function useChatWindowEvents({
     const handler = () => {
       const state = useChatStore.getState()
       const wtId = cancelContextRef.current.activeWorktreeId
-      if (!wtId) return
+      logger.debug('cancel-prompt event received', {
+        wtId,
+        activeSessionId: cancelContextRef.current.activeSessionId,
+      })
+      if (!wtId) {
+        logger.debug('cancel-prompt: no worktreeId, aborting')
+        return
+      }
 
       const isCanvas = state.viewingCanvasTab[wtId] ?? true
       const canvasSession = state.canvasSelectedSessionIds[wtId] ?? null
@@ -310,11 +318,25 @@ export function useChatWindowEvents({
 
       const sessionToCancel =
         isCanvas && canvasSession ? canvasSession : activeSession
-      if (!sessionToCancel) return
+      if (!sessionToCancel) {
+        logger.debug('cancel-prompt: no sessionToCancel', {
+          isCanvas,
+          canvasSession,
+          activeSession,
+        })
+        return
+      }
 
       const isSendingTarget = state.sendingSessionIds[sessionToCancel] ?? false
-      if (!isSendingTarget) return
+      if (!isSendingTarget) {
+        logger.debug('cancel-prompt: session not sending', {
+          sessionToCancel,
+          sendingSessionIds: state.sendingSessionIds,
+        })
+        return
+      }
 
+      logger.debug('cancel-prompt: cancelling', { sessionToCancel, wtId })
       cancelChatMessage(sessionToCancel, wtId)
     }
     window.addEventListener('cancel-prompt', handler)

@@ -31,6 +31,7 @@ import {
   DEFAULT_MAGIC_PROMPT_MODELS,
   DEFAULT_MAGIC_PROMPT_PROVIDERS,
   CODEX_DEFAULT_MAGIC_PROMPT_MODELS,
+  OPENCODE_DEFAULT_MAGIC_PROMPT_MODELS,
   codexModelOptions,
   isCodexModel,
   type MagicPrompts,
@@ -333,6 +334,10 @@ const CLAUDE_MODEL_OPTIONS: { value: MagicPromptModel; label: string }[] = [
 const CODEX_MODEL_OPTIONS: { value: MagicPromptModel; label: string }[] =
   codexModelOptions.map(o => ({ value: o.value, label: o.label }))
 
+const OPENCODE_MODEL_OPTIONS: { value: MagicPromptModel; label: string }[] = [
+  { value: 'opencode/gpt-5.2-codex', label: 'GPT-5.2 Codex (OpenCode)' },
+]
+
 export const MagicPromptsPane: React.FC = () => {
   const { data: preferences } = usePreferences()
   const savePreferences = useSavePreferences()
@@ -361,8 +366,13 @@ export const MagicPromptsPane: React.FC = () => {
     ? (currentProviders[selectedConfig.providerKey] ?? null)
     : undefined
   const currentModelIsCodex = currentModel ? isCodexModel(currentModel) : false
+  const currentModelIsOpenCode = currentModel
+    ? currentModel.startsWith('opencode/')
+    : false
   const filteredClaudeOptions = useMemo(() => {
-    if (!currentProvider || currentModelIsCodex) return CLAUDE_MODEL_OPTIONS
+    if (!currentProvider || currentModelIsCodex || currentModelIsOpenCode) {
+      return CLAUDE_MODEL_OPTIONS
+    }
     const profile = profiles.find(p => p.name === currentProvider)
     if (!profile?.settings_json) return CLAUDE_MODEL_OPTIONS
     try {
@@ -387,7 +397,7 @@ export const MagicPromptsPane: React.FC = () => {
     } catch {
       return CLAUDE_MODEL_OPTIONS
     }
-  }, [currentProvider, currentModelIsCodex, profiles])
+  }, [currentProvider, currentModelIsCodex, currentModelIsOpenCode, profiles])
 
   const isModified = currentPrompts[selectedKey] !== null
 
@@ -522,6 +532,14 @@ export const MagicPromptsPane: React.FC = () => {
     })
   }, [preferences, savePreferences])
 
+  const handleApplyOpenCodeDefaults = useCallback(() => {
+    if (!preferences) return
+    savePreferences.mutate({
+      ...preferences,
+      magic_prompt_models: OPENCODE_DEFAULT_MAGIC_PROMPT_MODELS,
+    })
+  }, [preferences, savePreferences])
+
   return (
     <div className="flex flex-col min-h-0 flex-1">
       {/* Preset buttons */}
@@ -542,6 +560,14 @@ export const MagicPromptsPane: React.FC = () => {
           className="h-7 text-xs"
         >
           Codex Defaults
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleApplyOpenCodeDefaults}
+          className="h-7 text-xs"
+        >
+          OpenCode Defaults
         </Button>
       </div>
 
@@ -622,7 +648,8 @@ export const MagicPromptsPane: React.FC = () => {
           <div className="flex items-center gap-2 mt-2">
             {currentProvider !== undefined &&
               profiles.length > 0 &&
-              !currentModelIsCodex && (
+              !currentModelIsCodex &&
+              !currentModelIsOpenCode && (
                 <>
                   <span className="text-xs text-muted-foreground">
                     Provider
@@ -670,6 +697,15 @@ export const MagicPromptsPane: React.FC = () => {
                     <SelectGroup>
                       <SelectLabel>Codex <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">BETA</span></SelectLabel>
                       {CODEX_MODEL_OPTIONS.map(opt => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                    <SelectSeparator />
+                    <SelectGroup>
+                      <SelectLabel>OpenCode</SelectLabel>
+                      {OPENCODE_MODEL_OPTIONS.map(opt => (
                         <SelectItem key={opt.value} value={opt.value}>
                           {opt.label}
                         </SelectItem>

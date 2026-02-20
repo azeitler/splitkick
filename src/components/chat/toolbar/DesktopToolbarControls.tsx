@@ -14,8 +14,14 @@ import {
   Wand2,
   Zap,
 } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Input } from '@/components/ui/input'
 import { Kbd } from '@/components/ui/kbd'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -39,11 +45,18 @@ import type {
   LoadedIssueContext,
   LoadedPullRequestContext,
 } from '@/types/github'
-import type { CheckStatus, MergeableStatus, PrDisplayStatus } from '@/types/pr-status'
+import type {
+  CheckStatus,
+  MergeableStatus,
+  PrDisplayStatus,
+} from '@/types/pr-status'
 import { openExternal } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 import { CheckStatusButton } from '@/components/chat/toolbar/CheckStatusButton'
-import { McpStatusDot, mcpStatusHint } from '@/components/chat/toolbar/McpStatusDot'
+import {
+  McpStatusDot,
+  mcpStatusHint,
+} from '@/components/chat/toolbar/McpStatusDot'
 import {
   EFFORT_LEVEL_OPTIONS,
   THINKING_LEVEL_OPTIONS,
@@ -55,7 +68,7 @@ import {
 
 interface DesktopToolbarControlsProps {
   hasPendingQuestions: boolean
-  selectedBackend: 'claude' | 'codex'
+  selectedBackend: 'claude' | 'codex' | 'opencode'
   selectedModel: string
   selectedProvider: string | null
   selectedThinkingLevel: ThinkingLevel
@@ -100,7 +113,7 @@ interface DesktopToolbarControlsProps {
   onOpenProjectSettings?: () => void
   onResolvePrConflicts: () => void
   onLoadContext: () => void
-  onBackendChange: (backend: 'claude' | 'codex') => void
+  onBackendChange: (backend: 'claude' | 'codex' | 'opencode') => void
   onSetExecutionMode: (mode: ExecutionMode) => void
   onToggleMcpServer: (name: string) => void
 
@@ -170,6 +183,25 @@ export function DesktopToolbarControls({
   const loadedPRCount = loadedPRContexts.length
   const loadedContextCount = attachedSavedContexts.length
   const providerDisplayName = getProviderDisplayName(selectedProvider)
+  const [modelSearchQuery, setModelSearchQuery] = useState('')
+  const modelSearchInputRef = useRef<HTMLInputElement>(null)
+  const visibleModelOptions = useMemo(() => {
+    const query = modelSearchQuery.trim().toLowerCase()
+    if (!query) return filteredModelOptions
+    return filteredModelOptions.filter(
+      option =>
+        option.label.toLowerCase().includes(query) ||
+        option.value.toLowerCase().includes(query)
+    )
+  }, [filteredModelOptions, modelSearchQuery])
+
+  useEffect(() => {
+    if (!modelDropdownOpen) return
+    requestAnimationFrame(() => {
+      modelSearchInputRef.current?.focus()
+      modelSearchInputRef.current?.select()
+    })
+  }, [modelDropdownOpen])
 
   return (
     <>
@@ -186,7 +218,10 @@ export function DesktopToolbarControls({
 
       <div className="hidden @xl:block h-4 w-px bg-border/50" />
 
-      <DropdownMenu open={mcpDropdownOpen} onOpenChange={onMcpDropdownOpenChange}>
+      <DropdownMenu
+        open={mcpDropdownOpen}
+        onOpenChange={onMcpDropdownOpenChange}
+      >
         <Tooltip>
           <TooltipTrigger asChild>
             <DropdownMenuTrigger asChild>
@@ -198,7 +233,8 @@ export function DesktopToolbarControls({
                 <Plug
                   className={cn(
                     'h-3.5 w-3.5',
-                    activeMcpCount > 0 && 'text-emerald-600 dark:text-emerald-400'
+                    activeMcpCount > 0 &&
+                      'text-emerald-600 dark:text-emerald-400'
                   )}
                 />
                 {activeMcpCount > 0 && <span>{activeMcpCount}</span>}
@@ -227,7 +263,9 @@ export function DesktopToolbarControls({
               const item = (
                 <DropdownMenuCheckboxItem
                   key={server.name}
-                  checked={!server.disabled && enabledMcpServers.includes(server.name)}
+                  checked={
+                    !server.disabled && enabledMcpServers.includes(server.name)
+                  }
                   onCheckedChange={() => onToggleMcpServer(server.name)}
                   disabled={server.disabled}
                   className={server.disabled ? 'opacity-50' : undefined}
@@ -269,7 +307,9 @@ export function DesktopToolbarControls({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {(loadedIssueCount > 0 || loadedPRCount > 0 || loadedContextCount > 0) && (
+      {(loadedIssueCount > 0 ||
+        loadedPRCount > 0 ||
+        loadedContextCount > 0) && (
         <>
           <div className="hidden @xl:block h-4 w-px bg-border/50" />
           <DropdownMenu>
@@ -436,7 +476,9 @@ export function DesktopToolbarControls({
                 <span>Conflicts</span>
               </button>
             </TooltipTrigger>
-            <TooltipContent>PR has merge conflicts — click to resolve</TooltipContent>
+            <TooltipContent>
+              PR has merge conflicts — click to resolve
+            </TooltipContent>
           </Tooltip>
         </>
       )}
@@ -444,55 +486,7 @@ export function DesktopToolbarControls({
       {!sessionHasMessages && (
         <>
           <div className="hidden @xl:block h-4 w-px bg-border/50" />
-          <div className="hidden @xl:flex items-center gap-0.5 rounded-md bg-muted/50 p-0.5">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={() => onBackendChange('claude')}
-                  className={cn(
-                    'h-7 rounded px-2.5 text-xs font-medium transition-colors',
-                    selectedBackend === 'claude'
-                      ? 'bg-background text-foreground shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground'
-                  )}
-                >
-                  Claude
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>Switch backend (Tab)</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={() => onBackendChange('codex')}
-                  className={cn(
-                    'h-7 rounded px-2.5 text-xs font-medium transition-colors',
-                    selectedBackend === 'codex'
-                      ? 'bg-background text-foreground shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground'
-                  )}
-                >
-                  Codex
-                  <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">
-                    BETA
-                  </span>
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>Switch backend (Tab)</TooltipContent>
-            </Tooltip>
-          </div>
-        </>
-      )}
-
-      {customCliProfiles.length > 0 && !providerLocked && !isCodex && (
-        <>
-          <div className="hidden @xl:block h-4 w-px bg-border/50" />
-          <DropdownMenu
-            open={providerDropdownOpen}
-            onOpenChange={setProviderDropdownOpen}
-          >
+          <DropdownMenu>
             <Tooltip>
               <TooltipTrigger asChild>
                 <DropdownMenuTrigger asChild>
@@ -501,48 +495,123 @@ export function DesktopToolbarControls({
                     disabled={hasPendingQuestions}
                     className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
                   >
-                    <span>{providerDisplayName}</span>
+                    <span>
+                      {selectedBackend === 'claude'
+                        ? 'Claude'
+                        : selectedBackend === 'codex'
+                          ? 'Codex'
+                          : 'OpenCode'}
+                    </span>
+                    {(selectedBackend === 'codex' ||
+                      selectedBackend === 'opencode') && (
+                      <span className="rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">
+                        BETA
+                      </span>
+                    )}
                     <ChevronDown className="h-3 w-3 opacity-50" />
                   </button>
                 </DropdownMenuTrigger>
               </TooltipTrigger>
-              <TooltipContent>Provider (⌥P)</TooltipContent>
+              <TooltipContent>Switch backend (Tab)</TooltipContent>
             </Tooltip>
             <DropdownMenuContent align="start" className="min-w-40">
               <DropdownMenuRadioGroup
-                value={selectedProvider ?? '__anthropic__'}
-                onValueChange={handleProviderChange}
+                value={selectedBackend}
+                onValueChange={v =>
+                  onBackendChange(v as 'claude' | 'codex' | 'opencode')
+                }
               >
-                <DropdownMenuRadioItem value="__anthropic__">
-                  Anthropic
-                  <Kbd className="ml-auto text-[10px]">1</Kbd>
+                <DropdownMenuRadioItem value="claude">
+                  Claude
                 </DropdownMenuRadioItem>
-                {customCliProfiles.length > 0 && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuLabel className="text-xs text-muted-foreground flex items-center gap-1.5">
-                      Custom Providers
-                      <span className="rounded bg-muted px-1 py-0.5 text-[10px] font-medium leading-none">
-                        cc
-                      </span>
-                    </DropdownMenuLabel>
-                    {customCliProfiles.map((profile, i) => (
-                      <DropdownMenuRadioItem key={profile.name} value={profile.name}>
-                        {profile.name}
-                        <Kbd className="ml-auto text-[10px]">{i + 2}</Kbd>
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </>
-                )}
+                <DropdownMenuRadioItem value="codex">
+                  Codex
+                  <span className="ml-auto rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">
+                    BETA
+                  </span>
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="opencode">
+                  OpenCode
+                  <span className="ml-auto rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">
+                    BETA
+                  </span>
+                </DropdownMenuRadioItem>
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
           </DropdownMenu>
         </>
       )}
 
+      {customCliProfiles.length > 0 &&
+        !providerLocked &&
+        selectedBackend === 'claude' && (
+          <>
+            <div className="hidden @xl:block h-4 w-px bg-border/50" />
+            <DropdownMenu
+              open={providerDropdownOpen}
+              onOpenChange={setProviderDropdownOpen}
+            >
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      disabled={hasPendingQuestions}
+                      className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+                    >
+                      <span>{providerDisplayName}</span>
+                      <ChevronDown className="h-3 w-3 opacity-50" />
+                    </button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent>Provider (⌥P)</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="start" className="min-w-40">
+                <DropdownMenuRadioGroup
+                  value={selectedProvider ?? '__anthropic__'}
+                  onValueChange={handleProviderChange}
+                >
+                  <DropdownMenuRadioItem value="__anthropic__">
+                    Anthropic
+                    <Kbd className="ml-auto text-[10px]">1</Kbd>
+                  </DropdownMenuRadioItem>
+                  {customCliProfiles.length > 0 && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuLabel className="text-xs text-muted-foreground flex items-center gap-1.5">
+                        Custom Providers
+                        <span className="rounded bg-muted px-1 py-0.5 text-[10px] font-medium leading-none">
+                          cc
+                        </span>
+                      </DropdownMenuLabel>
+                      {customCliProfiles.map((profile, i) => (
+                        <DropdownMenuRadioItem
+                          key={profile.name}
+                          value={profile.name}
+                        >
+                          {profile.name}
+                          <Kbd className="ml-auto text-[10px]">{i + 2}</Kbd>
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </>
+                  )}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        )}
+
       <div className="hidden @xl:block h-4 w-px bg-border/50" />
 
-      <DropdownMenu open={modelDropdownOpen} onOpenChange={setModelDropdownOpen}>
+      <DropdownMenu
+        open={modelDropdownOpen}
+        onOpenChange={open => {
+          setModelDropdownOpen(open)
+          if (!open) {
+            setModelSearchQuery('')
+          }
+        }}
+      >
         <Tooltip>
           <TooltipTrigger asChild>
             <DropdownMenuTrigger asChild>
@@ -559,7 +628,11 @@ export function DesktopToolbarControls({
           </TooltipTrigger>
           <TooltipContent>Model (⌥M)</TooltipContent>
         </Tooltip>
-        <DropdownMenuContent align="start" className="min-w-40">
+        <DropdownMenuContent
+          align="start"
+          className="min-w-40"
+          enableNumberSelection={false}
+        >
           {providerLocked && customCliProfiles.length > 0 && (
             <>
               <DropdownMenuLabel className="text-xs text-muted-foreground">
@@ -568,18 +641,38 @@ export function DesktopToolbarControls({
               <DropdownMenuSeparator />
             </>
           )}
-          <DropdownMenuRadioGroup value={selectedModel} onValueChange={handleModelChange}>
-            {filteredModelOptions.map((option, i) => (
-              <DropdownMenuRadioItem key={option.value} value={option.value}>
-                {option.label}
-                <Kbd className="ml-auto text-[10px]">{i + 1}</Kbd>
-              </DropdownMenuRadioItem>
-            ))}
+          <div className="p-1">
+            <Input
+              ref={modelSearchInputRef}
+              value={modelSearchQuery}
+              onChange={event => setModelSearchQuery(event.target.value)}
+              onKeyDown={event => event.stopPropagation()}
+              placeholder="Search models..."
+              className="h-8 text-xs"
+            />
+          </div>
+          <DropdownMenuSeparator />
+          <DropdownMenuRadioGroup
+            className="max-h-[19rem] overflow-y-auto"
+            value={selectedModel}
+            onValueChange={handleModelChange}
+          >
+            {visibleModelOptions.length > 0 ? (
+              visibleModelOptions.map(option => (
+                <DropdownMenuRadioItem key={option.value} value={option.value}>
+                  {option.label}
+                </DropdownMenuRadioItem>
+              ))
+            ) : (
+              <DropdownMenuItem disabled>No models found</DropdownMenuItem>
+            )}
           </DropdownMenuRadioGroup>
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {!hideThinkingLevel && <div className="hidden @xl:block h-4 w-px bg-border/50" />}
+      {!hideThinkingLevel && (
+        <div className="hidden @xl:block h-4 w-px bg-border/50" />
+      )}
 
       {hideThinkingLevel ? null : useAdaptiveThinking || isCodex ? (
         <DropdownMenu
@@ -596,7 +689,11 @@ export function DesktopToolbarControls({
                 >
                   <Brain className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
                   <span>
-                    {EFFORT_LEVEL_OPTIONS.find(o => o.value === selectedEffortLevel)?.label}
+                    {
+                      EFFORT_LEVEL_OPTIONS.find(
+                        o => o.value === selectedEffortLevel
+                      )?.label
+                    }
                   </span>
                   <ChevronDown className="h-3 w-3 opacity-50" />
                 </button>
@@ -645,7 +742,11 @@ export function DesktopToolbarControls({
                     )}
                   />
                   <span>
-                    {THINKING_LEVEL_OPTIONS.find(o => o.value === selectedThinkingLevel)?.label}
+                    {
+                      THINKING_LEVEL_OPTIONS.find(
+                        o => o.value === selectedThinkingLevel
+                      )?.label
+                    }
                   </span>
                   <ChevronDown className="h-3 w-3 opacity-50" />
                 </button>
@@ -689,7 +790,9 @@ export function DesktopToolbarControls({
                 {executionMode === 'plan' && (
                   <ClipboardList className="h-3.5 w-3.5 text-yellow-600 dark:text-yellow-400" />
                 )}
-                {executionMode === 'build' && <Hammer className="h-3.5 w-3.5" />}
+                {executionMode === 'build' && (
+                  <Hammer className="h-3.5 w-3.5" />
+                )}
                 {executionMode === 'yolo' && (
                   <Zap className="h-3.5 w-3.5 text-red-500 dark:text-red-400" />
                 )}
@@ -709,12 +812,16 @@ export function DesktopToolbarControls({
             <DropdownMenuRadioItem value="plan">
               <ClipboardList className="mr-2 h-4 w-4" />
               Plan
-              <span className="ml-auto pl-4 text-xs text-muted-foreground">Read-only</span>
+              <span className="ml-auto pl-4 text-xs text-muted-foreground">
+                Read-only
+              </span>
             </DropdownMenuRadioItem>
             <DropdownMenuRadioItem value="build">
               <Hammer className="mr-2 h-4 w-4" />
               Build
-              <span className="ml-auto pl-4 text-xs text-muted-foreground">Auto-edits</span>
+              <span className="ml-auto pl-4 text-xs text-muted-foreground">
+                Auto-edits
+              </span>
             </DropdownMenuRadioItem>
             <DropdownMenuSeparator />
             <DropdownMenuRadioItem

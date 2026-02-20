@@ -235,6 +235,7 @@ export function GeneralPane({
                   variant="outline"
                   role="combobox"
                   aria-expanded={branchPopoverOpen}
+                  aria-controls="default-branch-selector"
                   className="w-full justify-between"
                 >
                   <span className="flex items-center gap-2 truncate">
@@ -245,6 +246,7 @@ export function GeneralPane({
                 </Button>
               </PopoverTrigger>
               <PopoverContent
+                id="default-branch-selector"
                 align="start"
                 className="!w-[var(--radix-popover-trigger-width)] p-0"
               >
@@ -320,7 +322,18 @@ export function GeneralPane({
             <SelectContent>
               <SelectItem value="global-default">Use global default</SelectItem>
               <SelectItem value="claude">Claude</SelectItem>
-              <SelectItem value="codex">Codex <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">BETA</span></SelectItem>
+              <SelectItem value="codex">
+                Codex{' '}
+                <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">
+                  BETA
+                </span>
+              </SelectItem>
+              <SelectItem value="opencode">
+                OpenCode{' '}
+                <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">
+                  BETA
+                </span>
+              </SelectItem>
             </SelectContent>
           </Select>
         </InlineField>

@@ -34,14 +34,18 @@ function DropdownMenuTrigger({
 function DropdownMenuContent({
   className,
   sideOffset = 4,
+  enableNumberSelection = true,
   onKeyDown,
   ...props
-}: React.ComponentProps<typeof DropdownMenuPrimitive.Content>) {
+}: React.ComponentProps<typeof DropdownMenuPrimitive.Content> & {
+  enableNumberSelection?: boolean
+}) {
   const handleKeyDown = React.useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
       // Number keys 1-9 select the nth selectable item
       const digit = e.key.charCodeAt(0) - 48
       if (
+        enableNumberSelection &&
         digit >= 1 &&
         digit <= 9 &&
         e.key.length === 1 &&
@@ -61,7 +65,7 @@ function DropdownMenuContent({
       }
       onKeyDown?.(e)
     },
-    [onKeyDown]
+    [enableNumberSelection, onKeyDown]
   )
 
   return (

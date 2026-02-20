@@ -244,8 +244,7 @@ pub async fn dispatch_command(
             let model: Option<String> = from_field_opt(&args, "model")?;
             let custom_profile_name: Option<String> =
                 field_opt(&args, "customProfileName", "custom_profile_name")?;
-            let review_run_id: Option<String> =
-                field_opt(&args, "reviewRunId", "review_run_id")?;
+            let review_run_id: Option<String> = field_opt(&args, "reviewRunId", "review_run_id")?;
             let result = crate::projects::run_review_with_ai(
                 app.clone(),
                 worktree_path,
@@ -580,6 +579,7 @@ pub async fn dispatch_command(
             let chrome_enabled: Option<bool> = field_opt(&args, "chromeEnabled", "chrome_enabled")?;
             let custom_profile_name: Option<String> =
                 field_opt(&args, "customProfileName", "custom_profile_name")?;
+            let backend: Option<String> = field_opt(&args, "backend", "backend")?;
             let result = crate::chat::send_chat_message(
                 app.clone(),
                 session_id,
@@ -596,7 +596,7 @@ pub async fn dispatch_command(
                 mcp_config,
                 chrome_enabled,
                 custom_profile_name,
-                None, // backend
+                backend,
             )
             .await?;
             to_value(result)
@@ -1407,6 +1407,27 @@ pub async fn dispatch_command(
             crate::claude_cli::install_claude_cli(app.clone(), version).await?;
             Ok(Value::Null)
         }
+        "check_opencode_cli_installed" => {
+            let result = crate::opencode_cli::check_opencode_cli_installed(app.clone()).await?;
+            to_value(result)
+        }
+        "check_opencode_cli_auth" => {
+            let result = crate::opencode_cli::check_opencode_cli_auth(app.clone()).await?;
+            to_value(result)
+        }
+        "get_available_opencode_versions" => {
+            let result = crate::opencode_cli::get_available_opencode_versions().await?;
+            to_value(result)
+        }
+        "install_opencode_cli" => {
+            let version: Option<String> = from_field_opt(&args, "version")?;
+            crate::opencode_cli::install_opencode_cli(app.clone(), version).await?;
+            Ok(Value::Null)
+        }
+        "list_opencode_models" => {
+            let result = crate::opencode_cli::list_opencode_models(app.clone()).await?;
+            to_value(result)
+        }
         "check_gh_cli_installed" => {
             let result = crate::gh_cli::check_gh_cli_installed(app.clone()).await?;
             to_value(result)
@@ -1439,6 +1460,18 @@ pub async fn dispatch_command(
         }
         "regenerate_http_token" => {
             let result = crate::regenerate_http_token(app.clone()).await?;
+            to_value(result)
+        }
+        "start_opencode_server" => {
+            let result = crate::opencode_server::start_opencode_server(app.clone()).await?;
+            to_value(result)
+        }
+        "stop_opencode_server" => {
+            crate::opencode_server::stop_opencode_server().await?;
+            Ok(Value::Null)
+        }
+        "get_opencode_server_status" => {
+            let result = crate::opencode_server::get_opencode_server_status().await?;
             to_value(result)
         }
 

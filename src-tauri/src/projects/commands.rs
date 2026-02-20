@@ -81,7 +81,10 @@ fn register_review_process(review_run_id: &str, pid: u32) {
 }
 
 fn take_review_process_pid(review_run_id: &str) -> Option<u32> {
-    REVIEW_PROCESS_REGISTRY.lock().unwrap().remove(review_run_id)
+    REVIEW_PROCESS_REGISTRY
+        .lock()
+        .unwrap()
+        .remove(review_run_id)
 }
 
 /// List all projects
@@ -4150,6 +4153,22 @@ fn generate_pr_content(
 
     let model_str = model.unwrap_or("haiku");
 
+    // Route to OpenCode if model is an OpenCode model
+    if crate::is_opencode_model(model_str) {
+        log::trace!("Generating PR content with OpenCode");
+        let json_str = crate::chat::opencode::execute_one_shot_opencode(
+            app,
+            &prompt,
+            model_str,
+            Some(PR_CONTENT_SCHEMA),
+            Some(std::path::Path::new(repo_path)),
+        )?;
+        return serde_json::from_str(&json_str).map_err(|e| {
+            log::error!("Failed to parse OpenCode PR content JSON: {e}, content: {json_str}");
+            format!("Failed to parse PR content: {e}")
+        });
+    }
+
     // Route to Codex CLI if model is a Codex model
     if crate::is_codex_model(model_str) {
         log::trace!("Generating PR content with Codex CLI (output-schema)");
@@ -4414,7 +4433,9 @@ pub async fn create_pr_with_ai_content(
 
             if let Ok(view_out) = view_output {
                 if view_out.status.success() {
-                    if let Ok(view_json) = serde_json::from_slice::<serde_json::Value>(&view_out.stdout) {
+                    if let Ok(view_json) =
+                        serde_json::from_slice::<serde_json::Value>(&view_out.stdout)
+                    {
                         let pr_number = view_json["number"].as_u64().unwrap_or(0) as u32;
                         let pr_url = view_json["url"].as_str().unwrap_or("").to_string();
                         let title = view_json["title"].as_str().unwrap_or("").to_string();
@@ -4422,7 +4443,9 @@ pub async fn create_pr_with_ai_content(
                         if pr_number > 0 && !pr_url.is_empty() {
                             // Save PR info to worktree
                             if let Ok(mut data) = load_projects_data(&app) {
-                                if let Some(wt) = data.worktrees.iter_mut().find(|w| w.path == worktree_path) {
+                                if let Some(wt) =
+                                    data.worktrees.iter_mut().find(|w| w.path == worktree_path)
+                                {
                                     wt.pr_number = Some(pr_number);
                                     wt.pr_url = Some(pr_url.clone());
                                     let _ = save_projects_data(&app, &data);
@@ -4731,6 +4754,22 @@ fn generate_commit_message(
     working_dir: Option<&std::path::Path>,
 ) -> Result<CommitMessageResponse, String> {
     let model_str = model.unwrap_or("haiku");
+
+    // Route to OpenCode if model is an OpenCode model
+    if crate::is_opencode_model(model_str) {
+        log::trace!("Generating commit message with OpenCode");
+        let json_str = crate::chat::opencode::execute_one_shot_opencode(
+            app,
+            prompt,
+            model_str,
+            Some(COMMIT_MESSAGE_SCHEMA),
+            working_dir,
+        )?;
+        return serde_json::from_str(&json_str).map_err(|e| {
+            log::error!("Failed to parse OpenCode commit message JSON: {e}, content: {json_str}");
+            format!("Failed to parse commit message: {e}")
+        });
+    }
 
     // Route to Codex CLI if model is a Codex model
     if crate::is_codex_model(model_str) {
@@ -5047,8 +5086,10 @@ fn execute_codex_review(
         return Err("Codex CLI not installed".to_string());
     }
 
-    let schema_file =
-        std::env::temp_dir().join(format!("jean-codex-review-schema-{}.json", std::process::id()));
+    let schema_file = std::env::temp_dir().join(format!(
+        "jean-codex-review-schema-{}.json",
+        std::process::id()
+    ));
     std::fs::write(&schema_file, REVIEW_SCHEMA)
         .map_err(|e| format!("Failed to write schema file: {e}"))?;
 
@@ -5139,6 +5180,22 @@ fn generate_review(
     review_run_id: Option<&str>,
 ) -> Result<ReviewResponse, String> {
     let model_str = model.unwrap_or("haiku");
+
+    // Route to OpenCode if model is an OpenCode model
+    if crate::is_opencode_model(model_str) {
+        log::trace!("Running code review with OpenCode");
+        let json_str = crate::chat::opencode::execute_one_shot_opencode(
+            app,
+            prompt,
+            model_str,
+            Some(REVIEW_SCHEMA),
+            working_dir,
+        )?;
+        return serde_json::from_str(&json_str).map_err(|e| {
+            log::error!("Failed to parse OpenCode review JSON: {e}, content: {json_str}");
+            format!("Failed to parse review: {e}")
+        });
+    }
 
     // Route to Codex CLI if model is a Codex model
     if crate::is_codex_model(model_str) {
@@ -5599,6 +5656,22 @@ fn generate_release_notes_content(
         .replace("{commits}", &commits);
 
     let model_str = model.unwrap_or("haiku");
+
+    // Route to OpenCode if model is an OpenCode model
+    if crate::is_opencode_model(model_str) {
+        log::trace!("Generating release notes with OpenCode");
+        let json_str = crate::chat::opencode::execute_one_shot_opencode(
+            app,
+            &prompt,
+            model_str,
+            Some(RELEASE_NOTES_SCHEMA),
+            Some(std::path::Path::new(project_path)),
+        )?;
+        return serde_json::from_str(&json_str).map_err(|e| {
+            log::error!("Failed to parse OpenCode release notes JSON: {e}, content: {json_str}");
+            format!("Failed to parse release notes: {e}")
+        });
+    }
 
     // Route to Codex CLI if model is a Codex model
     if crate::is_codex_model(model_str) {

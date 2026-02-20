@@ -2,12 +2,25 @@ import React, { useState, useCallback, type FC } from 'react'
 import { invoke } from '@/lib/transport'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Loader2, ChevronDown } from 'lucide-react'
+import { Loader2, ChevronDown, Check, ChevronsUpDown } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import {
   useClaudeCliStatus,
   useClaudeCliAuth,
@@ -19,10 +32,17 @@ import {
   useCodexCliAuth,
   codexCliQueryKeys,
 } from '@/services/codex-cli'
+import {
+  useOpenCodeCliStatus,
+  useOpenCodeCliAuth,
+  useAvailableOpencodeModels,
+  opencodeCliQueryKeys,
+} from '@/services/opencode-cli'
 import { useUIStore } from '@/store/ui-store'
 import type { ClaudeAuthStatus } from '@/types/claude-cli'
 import type { GhAuthStatus } from '@/types/gh-cli'
 import type { CodexAuthStatus } from '@/types/codex-cli'
+import type { OpenCodeAuthStatus } from '@/types/opencode-cli'
 import {
   Select,
   SelectContent,
@@ -72,9 +92,12 @@ import {
   openInDefaultOptions,
   type OpenInDefault,
 } from '@/types/preferences'
+import { OPENCODE_MODEL_OPTIONS } from '@/components/chat/toolbar/toolbar-options'
+import { formatOpencodeModelLabel } from '@/components/chat/toolbar/toolbar-utils'
 import { playNotificationSound } from '@/lib/sounds'
 import type { ThinkingLevel, EffortLevel } from '@/types/chat'
 import { isNativeApp } from '@/lib/environment'
+import { cn } from '@/lib/utils'
 import {
   setGitPollInterval,
   setRemotePollInterval,
@@ -131,6 +154,8 @@ export const GeneralPane: React.FC = () => {
   const { data: cliStatus, isLoading: isCliLoading } = useClaudeCliStatus()
   const { data: ghStatus, isLoading: isGhLoading } = useGhCliStatus()
   const { data: codexStatus, isLoading: isCodexLoading } = useCodexCliStatus()
+  const { data: opencodeStatus, isLoading: isOpenCodeLoading } =
+    useOpenCodeCliStatus()
 
   // Auth status queries - only enabled when CLI is installed
   const { data: claudeAuth, isLoading: isClaudeAuthLoading } = useClaudeCliAuth(
@@ -144,11 +169,21 @@ export const GeneralPane: React.FC = () => {
   const { data: codexAuth, isLoading: isCodexAuthLoading } = useCodexCliAuth({
     enabled: !!codexStatus?.installed,
   })
+  const { data: opencodeAuth, isLoading: isOpenCodeAuthLoading } =
+    useOpenCodeCliAuth({
+      enabled: !!opencodeStatus?.installed,
+    })
+  const { data: availableOpencodeModels } = useAvailableOpencodeModels({
+    enabled: !!opencodeStatus?.installed,
+  })
 
   // Track which auth check is in progress (for manual refresh)
   const [checkingClaudeAuth, setCheckingClaudeAuth] = useState(false)
   const [checkingGhAuth, setCheckingGhAuth] = useState(false)
   const [checkingCodexAuth, setCheckingCodexAuth] = useState(false)
+  const [checkingOpenCodeAuth, setCheckingOpenCodeAuth] = useState(false)
+  const [openCodeModelPopoverOpen, setOpenCodeModelPopoverOpen] =
+    useState(false)
 
   // Use global ui-store for CLI modals
   const openCliUpdateModal = useUIStore(state => state.openCliUpdateModal)
@@ -228,6 +263,32 @@ export const GeneralPane: React.FC = () => {
       })
     }
   }
+
+  const handleOpenCodeModelChange = (value: string) => {
+    if (preferences) {
+      savePreferences.mutate({ ...preferences, selected_opencode_model: value })
+    }
+  }
+
+  const selectedOpenCodeModel =
+    preferences?.selected_opencode_model ?? 'opencode/gpt-5'
+  const formatOpenCodeModelLabelForSettings = (value: string) => {
+    const formatted = formatOpencodeModelLabel(value)
+    return value.startsWith('opencode/')
+      ? formatted.replace(/\s+\(OpenCode\)$/, '')
+      : formatted
+  }
+  const openCodeModelOptions = (
+    availableOpencodeModels?.length
+      ? availableOpencodeModels
+      : OPENCODE_MODEL_OPTIONS.map(option => option.value)
+  ).map(value => ({
+    value,
+    label: formatOpenCodeModelLabelForSettings(value),
+  }))
+  const selectedOpenCodeModelLabel =
+    openCodeModelOptions.find(option => option.value === selectedOpenCodeModel)
+      ?.label ?? formatOpenCodeModelLabelForSettings(selectedOpenCodeModel)
 
   const handleCodexMultiAgentToggle = (enabled: boolean) => {
     if (preferences) {
@@ -349,9 +410,16 @@ export const GeneralPane: React.FC = () => {
       : `'${cliStatus.path.replace(/'/g, "'\\''")}'`
     openCliLoginModal(
       'claude',
-      cliStatus.supports_auth_command ? escapedPath + ' auth login' : escapedPath
+      cliStatus.supports_auth_command
+        ? escapedPath + ' auth login'
+        : escapedPath
     )
-  }, [cliStatus?.path, cliStatus?.supports_auth_command, openCliLoginModal, queryClient])
+  }, [
+    cliStatus?.path,
+    cliStatus?.supports_auth_command,
+    openCliLoginModal,
+    queryClient,
+  ])
 
   const handleGhLogin = useCallback(async () => {
     if (!ghStatus?.path) return
@@ -409,6 +477,33 @@ export const GeneralPane: React.FC = () => {
       : `'${codexStatus.path.replace(/'/g, "'\\''")}'` + ' login'
     openCliLoginModal('codex', escapedPath)
   }, [codexStatus?.path, openCliLoginModal, queryClient])
+
+  const handleOpenCodeLogin = useCallback(async () => {
+    if (!opencodeStatus?.path) return
+
+    setCheckingOpenCodeAuth(true)
+    try {
+      await queryClient.invalidateQueries({
+        queryKey: opencodeCliQueryKeys.auth(),
+      })
+      const result = await queryClient.fetchQuery<OpenCodeAuthStatus>({
+        queryKey: opencodeCliQueryKeys.auth(),
+      })
+
+      if (result?.authenticated) {
+        toast.success('OpenCode CLI is already authenticated')
+        return
+      }
+    } finally {
+      setCheckingOpenCodeAuth(false)
+    }
+
+    const isWindows = navigator.userAgent.includes('Windows')
+    const escapedPath = isWindows
+      ? `& "${opencodeStatus.path}" auth login`
+      : `'${opencodeStatus.path.replace(/'/g, "'\\''")}'` + ' auth login'
+    openCliLoginModal('opencode', escapedPath)
+  }, [opencodeStatus?.path, openCliLoginModal, queryClient])
 
   const claudeStatusDescription = cliStatus?.installed
     ? cliStatus.path
@@ -566,7 +661,14 @@ export const GeneralPane: React.FC = () => {
 
       {isNativeApp() && (
         <SettingsSection
-          title={<>Codex CLI <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">BETA</span></>}
+          title={
+            <>
+              Codex CLI{' '}
+              <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">
+                BETA
+              </span>
+            </>
+          }
           actions={
             codexStatus?.installed ? (
               checkingCodexAuth || isCodexAuthLoading ? (
@@ -624,6 +726,86 @@ export const GeneralPane: React.FC = () => {
                 <Button
                   className="w-40"
                   onClick={() => openCliUpdateModal('codex')}
+                >
+                  Install
+                </Button>
+              )}
+            </InlineField>
+          </div>
+        </SettingsSection>
+      )}
+
+      {isNativeApp() && (
+        <SettingsSection
+          title={
+            <>
+              OpenCode CLI{' '}
+              <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">
+                BETA
+              </span>
+            </>
+          }
+          actions={
+            opencodeStatus?.installed ? (
+              checkingOpenCodeAuth || isOpenCodeAuthLoading ? (
+                <span className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Loader2 className="size-3 animate-spin" />
+                  Checking...
+                </span>
+              ) : opencodeAuth?.authenticated ? (
+                <span className="text-sm text-muted-foreground">Logged in</span>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleOpenCodeLogin}
+                >
+                  Login
+                </Button>
+              )
+            ) : (
+              <span className="text-sm text-muted-foreground">
+                Not installed
+              </span>
+            )
+          }
+        >
+          <div className="space-y-4">
+            <InlineField
+              label={opencodeStatus?.installed ? 'Version' : 'Status'}
+              description={
+                opencodeStatus?.installed ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => handleCopyPath(opencodeStatus.path)}
+                        className="text-left hover:underline cursor-pointer"
+                      >
+                        {opencodeStatus.path ?? 'Unknown path'}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Click to copy path</TooltipContent>
+                  </Tooltip>
+                ) : (
+                  'Optional — enables OpenCode AI sessions'
+                )
+              }
+            >
+              {isOpenCodeLoading ? (
+                <Loader2 className="size-4 animate-spin text-muted-foreground" />
+              ) : opencodeStatus?.installed ? (
+                <Button
+                  variant="outline"
+                  className="w-40 justify-between"
+                  onClick={() => openCliUpdateModal('opencode')}
+                >
+                  {opencodeStatus.version ?? 'Installed'}
+                  <ChevronDown className="size-3" />
+                </Button>
+              ) : (
+                <Button
+                  className="w-40"
+                  onClick={() => openCliUpdateModal('opencode')}
                 >
                   Install
                 </Button>
@@ -746,7 +928,10 @@ export const GeneralPane: React.FC = () => {
           {/* Codex subsection */}
           <div className="pt-2">
             <div className="text-sm font-semibold text-foreground/80 mb-3">
-              Codex <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">BETA</span>
+              Codex{' '}
+              <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">
+                BETA
+              </span>
             </div>
           </div>
 
@@ -817,6 +1002,76 @@ export const GeneralPane: React.FC = () => {
               />
             </InlineField>
           )}
+
+          {/* OpenCode subsection */}
+          <div className="pt-2">
+            <div className="text-sm font-semibold text-foreground/80 mb-3">
+              OpenCode{' '}
+              <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">
+                BETA
+              </span>
+            </div>
+          </div>
+
+          <InlineField
+            label="Model"
+            description="OpenCode model for AI assistance"
+          >
+            <Popover
+              open={openCodeModelPopoverOpen}
+              onOpenChange={setOpenCodeModelPopoverOpen}
+            >
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={openCodeModelPopoverOpen}
+                  aria-label="Select OpenCode model"
+                  className="w-80 max-w-full justify-between"
+                >
+                  <span className="max-w-[16rem] truncate text-left">
+                    {selectedOpenCodeModelLabel}
+                  </span>
+                  <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="start"
+                className="w-[var(--radix-popover-trigger-width)] p-0"
+              >
+                <Command>
+                  <CommandInput placeholder="Search models..." />
+                  <CommandList>
+                    <CommandEmpty>No models found.</CommandEmpty>
+                    <CommandGroup>
+                      {openCodeModelOptions.map(option => (
+                        <CommandItem
+                          key={option.value}
+                          value={`${option.label} ${option.value}`}
+                          onSelect={() => {
+                            handleOpenCodeModelChange(option.value)
+                            setOpenCodeModelPopoverOpen(false)
+                          }}
+                        >
+                          <span className="max-w-[18rem] truncate">
+                            {option.label}
+                          </span>
+                          <Check
+                            className={cn(
+                              'ml-auto h-4 w-4',
+                              selectedOpenCodeModel === option.value
+                                ? 'opacity-100'
+                                : 'opacity-0'
+                            )}
+                          />
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </InlineField>
 
           {/* Shared settings */}
           <div className="pt-2">

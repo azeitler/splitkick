@@ -622,6 +622,7 @@ fn tail_codex_attached(
     let mut content_blocks: Vec<ContentBlock> = Vec::new();
     let mut completed = false;
     let mut cancelled = false;
+    let mut error_emitted = false;
     let mut usage: Option<UsageData> = None;
     let mut pending_tool_ids: HashMap<String, String> = HashMap::new();
 
@@ -1218,22 +1219,9 @@ fn tail_codex_attached(
             }
 
             "turn.failed" => {
-                let error_msg = msg
-                    .get("error")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Unknown error");
-                let user_error = if error_msg.contains("refresh_token_invalidated")
-                    || error_msg.contains("refresh token has been invalidated")
-                {
-                    "Your Codex login session has expired. Please sign in again in Settings > General.".to_string()
-                } else if error_msg.contains("401 Unauthorized")
-                    || error_msg.contains("invalidated oauth token")
-                {
-                    "Codex authentication failed. Please sign in again in Settings > General."
-                        .to_string()
-                } else {
-                    format!("Codex error: {error_msg}")
-                };
+                let error_msg = extract_codex_error_message(&msg)
+                    .unwrap_or_else(|| "Unknown error".to_string());
+                let user_error = format_codex_user_error(&error_msg);
                 let _ = app.emit_all(
                     "chat:error",
                     &ErrorEvent {
@@ -1243,9 +1231,26 @@ fn tail_codex_attached(
                     },
                 );
                 completed = true;
+                error_emitted = true;
             }
 
-            _ => {}
+            _ => {
+                // Check for unrecognized JSON with error fields (e.g., API error responses)
+                if let Some(error_msg) = extract_codex_error_message(&msg) {
+                    let user_error = format_codex_user_error(&error_msg);
+                    log::error!("Codex error (unrecognized event) for session {session_id}: {error_msg}");
+                    let _ = app.emit_all(
+                        "chat:error",
+                        &ErrorEvent {
+                            session_id: session_id.to_string(),
+                            worktree_id: worktree_id.to_string(),
+                            error: user_error,
+                        },
+                    );
+                    completed = true;
+                    error_emitted = true;
+                }
+            }
         }
 
         if completed {
@@ -1253,7 +1258,23 @@ fn tail_codex_attached(
         }
     }
 
-    if !cancelled {
+    // Fallback: process exited with no content and no error was emitted
+    if !error_emitted && !completed && full_content.is_empty() && cancelled {
+        log::warn!("Attached Codex process died silently for session {session_id} with no output");
+        let _ = app.emit_all(
+            "chat:error",
+            &ErrorEvent {
+                session_id: session_id.to_string(),
+                worktree_id: worktree_id.to_string(),
+                error: "Codex CLI exited unexpectedly without producing output. Check your API key and usage limits.".to_string(),
+            },
+        );
+        error_emitted = true;
+    }
+
+    // Don't emit chat:done if an error was emitted — the frontend chat:done
+    // handler clears errors, which would hide the error message from the user
+    if !cancelled && !error_emitted {
         let _ = app.emit_all(
             "chat:done",
             &DoneEvent {
@@ -1279,6 +1300,40 @@ fn tail_codex_attached(
     })
 }
 
+/// Extract an error message from a Codex JSON value, handling both formats:
+/// - String format: `{"error": "message"}`
+/// - Object format: `{"error": {"message": "..."}}`
+fn extract_codex_error_message(msg: &serde_json::Value) -> Option<String> {
+    let error = msg.get("error")?;
+    // Try string format first
+    if let Some(s) = error.as_str() {
+        return Some(s.to_string());
+    }
+    // Try object format: {"error": {"message": "..."}}
+    if let Some(s) = error.get("message").and_then(|v| v.as_str()) {
+        return Some(s.to_string());
+    }
+    // Error field exists but in unknown format — stringify it
+    Some(error.to_string())
+}
+
+/// Format a raw Codex error message into a user-friendly string.
+/// Handles auth/session errors with specific guidance.
+fn format_codex_user_error(error_msg: &str) -> String {
+    if error_msg.contains("refresh_token_invalidated")
+        || error_msg.contains("refresh token has been invalidated")
+    {
+        "Your Codex login session has expired. Please sign in again in Settings > General."
+            .to_string()
+    } else if error_msg.contains("401 Unauthorized")
+        || error_msg.contains("invalidated oauth token")
+    {
+        "Codex authentication failed. Please sign in again in Settings > General.".to_string()
+    } else {
+        format!("Codex error: {error_msg}")
+    }
+}
+
 /// Process a single Codex JSONL event. Shared between attached and detached tailers.
 #[allow(clippy::too_many_arguments)]
 fn process_codex_event(
@@ -1294,6 +1349,7 @@ fn process_codex_event(
     pending_tool_ids: &mut HashMap<String, String>,
     completed: &mut bool,
     usage: &mut Option<UsageData>,
+    error_emitted: &mut bool,
 ) {
     match event_type {
         "thread.started" => {
@@ -1754,24 +1810,9 @@ fn process_codex_event(
             log::trace!("Codex turn completed for session: {session_id}");
         }
         "turn.failed" => {
-            let error_msg = msg
-                .get("error")
-                .and_then(|e| e.get("message"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("Unknown Codex error");
-            let user_error = if error_msg.contains("refresh_token_invalidated")
-                || error_msg.contains("refresh token has been invalidated")
-            {
-                "Your Codex login session has expired. Please sign in again in Settings > General."
-                    .to_string()
-            } else if error_msg.contains("401 Unauthorized")
-                || error_msg.contains("invalidated oauth token")
-            {
-                "Codex authentication failed. Please sign in again in Settings > General."
-                    .to_string()
-            } else {
-                error_msg.to_string()
-            };
+            let error_msg = extract_codex_error_message(msg)
+                .unwrap_or_else(|| "Unknown Codex error".to_string());
+            let user_error = format_codex_user_error(&error_msg);
             let _ = app.emit_all(
                 "chat:error",
                 &ErrorEvent {
@@ -1781,10 +1822,27 @@ fn process_codex_event(
                 },
             );
             *completed = true;
+            *error_emitted = true;
             log::error!("Codex turn failed for session {session_id}: {error_msg}");
         }
         _ => {
-            log::trace!("Unknown Codex event type: {event_type}");
+            // Check for unrecognized JSON with error fields (e.g., API error responses)
+            if let Some(error_msg) = extract_codex_error_message(msg) {
+                let user_error = format_codex_user_error(&error_msg);
+                log::error!("Codex error (unrecognized event) for session {session_id}: {error_msg}");
+                let _ = app.emit_all(
+                    "chat:error",
+                    &ErrorEvent {
+                        session_id: session_id.to_string(),
+                        worktree_id: worktree_id.to_string(),
+                        error: user_error,
+                    },
+                );
+                *completed = true;
+                *error_emitted = true;
+            } else {
+                log::trace!("Unknown Codex event type: {event_type}");
+            }
         }
     }
 }
@@ -1818,6 +1876,7 @@ pub fn tail_codex_output(
     let mut content_blocks: Vec<ContentBlock> = Vec::new();
     let mut completed = false;
     let mut cancelled = false;
+    let mut error_emitted = false;
     let mut usage: Option<UsageData> = None;
     let mut error_lines: Vec<String> = Vec::new();
 
@@ -1880,6 +1939,7 @@ pub fn tail_codex_output(
                 &mut pending_tool_ids,
                 &mut completed,
                 &mut usage,
+                &mut error_emitted,
             );
         }
 
@@ -1944,23 +2004,11 @@ pub fn tail_codex_output(
         }
     }
 
-    if !error_lines.is_empty() && full_content.is_empty() {
+    if !error_emitted && !error_lines.is_empty() && full_content.is_empty() {
         let error_text = error_lines.join("\n");
         log::warn!("Codex CLI error output for session {session_id}: {error_text}");
 
-        let user_error = if error_text.contains("refresh_token_invalidated")
-            || error_text.contains("refresh token has been invalidated")
-        {
-            "Your Codex login session has expired. Please sign in again in Settings > General."
-                .to_string()
-        } else if error_text.contains("401 Unauthorized")
-            || error_text.contains("invalidated oauth token")
-        {
-            "Codex authentication failed. Please sign in again in Settings > General.".to_string()
-        } else {
-            format!("Codex CLI failed: {error_text}")
-        };
-
+        let user_error = format_codex_user_error(&error_text);
         let _ = app.emit_all(
             "chat:error",
             &ErrorEvent {
@@ -1969,10 +2017,26 @@ pub fn tail_codex_output(
                 error: user_error,
             },
         );
+        error_emitted = true;
     }
 
-    // Emit done event only if not cancelled
-    if !cancelled {
+    // Fallback: process died silently with no content and no error emitted
+    if !error_emitted && !completed && full_content.is_empty() && cancelled {
+        log::warn!("Codex process died silently for session {session_id} with no output");
+        let _ = app.emit_all(
+            "chat:error",
+            &ErrorEvent {
+                session_id: session_id.to_string(),
+                worktree_id: worktree_id.to_string(),
+                error: "Codex CLI exited unexpectedly without producing output. Check your API key and usage limits.".to_string(),
+            },
+        );
+        error_emitted = true;
+    }
+
+    // Don't emit chat:done if an error was emitted — the frontend chat:done
+    // handler clears errors, which would hide the error message from the user
+    if !cancelled && !error_emitted {
         let _ = app.emit_all(
             "chat:done",
             &DoneEvent {

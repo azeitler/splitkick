@@ -20,7 +20,9 @@ import MainWindow from './components/layout/MainWindow'
 import { ThemeProvider } from './components/ThemeProvider'
 import ErrorBoundary from './components/ErrorBoundary'
 import { useClaudeCliStatus, useClaudeCliAuth } from './services/claude-cli'
+import { useCodexCliStatus, useCodexCliAuth } from './services/codex-cli'
 import { useGhCliStatus, useGhCliAuth } from './services/gh-cli'
+import { useOpencodeCliStatus, useOpencodeCliAuth } from './services/opencode-cli'
 import { useUIStore } from './store/ui-store'
 import type { AppPreferences } from './types/preferences'
 import { useChatStore } from './store/chat-store'
@@ -346,38 +348,59 @@ function App() {
   // Check CLI installation status
   const { data: claudeStatus, isLoading: isClaudeStatusLoading } =
     useClaudeCliStatus()
+  const { data: codexStatus, isLoading: isCodexStatusLoading } =
+    useCodexCliStatus()
+  const { data: opencodeStatus, isLoading: isOpencodeStatusLoading } =
+    useOpencodeCliStatus()
   const { data: ghStatus, isLoading: isGhStatusLoading } = useGhCliStatus()
 
   // Check CLI authentication status (only when installed)
   const { data: claudeAuth, isLoading: isClaudeAuthLoading } = useClaudeCliAuth(
     { enabled: !!claudeStatus?.installed }
   )
+  const { data: codexAuth, isLoading: isCodexAuthLoading } = useCodexCliAuth({
+    enabled: !!codexStatus?.installed,
+  })
+  const { data: opencodeAuth, isLoading: isOpencodeAuthLoading } =
+    useOpencodeCliAuth({
+      enabled: !!opencodeStatus?.installed,
+    })
   const { data: ghAuth, isLoading: isGhAuthLoading } = useGhCliAuth({
     enabled: !!ghStatus?.installed,
   })
 
-  // Show onboarding if either CLI is not installed or not authenticated
+  // Show onboarding if GitHub CLI is not ready, or no AI backend is ready.
   // Only in native app - web view uses the desktop's CLIs via WebSocket
   useEffect(() => {
     if (!isNativeApp()) return
 
     const isLoading =
       isClaudeStatusLoading ||
+      isCodexStatusLoading ||
+      isOpencodeStatusLoading ||
       isGhStatusLoading ||
       (claudeStatus?.installed && isClaudeAuthLoading) ||
+      (codexStatus?.installed && isCodexAuthLoading) ||
+      (opencodeStatus?.installed && isOpencodeAuthLoading) ||
       (ghStatus?.installed && isGhAuthLoading)
     if (isLoading) return
 
-    const needsInstall = !claudeStatus?.installed || !ghStatus?.installed
-    const needsAuth =
-      (claudeStatus?.installed && !claudeAuth?.authenticated) ||
-      (ghStatus?.installed && !ghAuth?.authenticated)
+    const ghReady = !!ghStatus?.installed && !!ghAuth?.authenticated
+    const claudeReady = !!claudeStatus?.installed && !!claudeAuth?.authenticated
+    const codexReady = !!codexStatus?.installed && !!codexAuth?.authenticated
+    const opencodeReady =
+      !!opencodeStatus?.installed && !!opencodeAuth?.authenticated
+    const hasAiBackendReady = claudeReady || codexReady || opencodeReady
 
-    if (needsInstall || needsAuth) {
+    if (!ghReady || !hasAiBackendReady) {
       logger.info('CLI setup needed, showing onboarding', {
         claudeInstalled: claudeStatus?.installed,
+        codexInstalled: codexStatus?.installed,
+        opencodeInstalled: opencodeStatus?.installed,
         ghInstalled: ghStatus?.installed,
         claudeAuth: claudeAuth?.authenticated,
+        codexAuth: codexAuth?.authenticated,
+        opencodeAuth: opencodeAuth?.authenticated,
         ghAuth: ghAuth?.authenticated,
       })
       useUIStore.getState().setOnboardingOpen(true)
@@ -390,12 +413,20 @@ function App() {
     }
   }, [
     claudeStatus,
+    codexStatus,
+    opencodeStatus,
     ghStatus,
     claudeAuth,
+    codexAuth,
+    opencodeAuth,
     ghAuth,
     isClaudeStatusLoading,
+    isCodexStatusLoading,
+    isOpencodeStatusLoading,
     isGhStatusLoading,
     isClaudeAuthLoading,
+    isCodexAuthLoading,
+    isOpencodeAuthLoading,
     isGhAuthLoading,
     queryClient,
   ])

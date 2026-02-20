@@ -27,7 +27,7 @@ export interface ChatToolbarProps {
   hasPendingAttachments: boolean
   hasInputValue: boolean
   executionMode: ExecutionMode
-  selectedBackend: 'claude' | 'codex'
+  selectedBackend: 'claude' | 'codex' | 'opencode'
   selectedModel: string
   selectedProvider: string | null
   selectedThinkingLevel: ThinkingLevel
@@ -70,7 +70,7 @@ export interface ChatToolbarProps {
   onResolveConflicts: () => void
   hasOpenPr: boolean
   onSetDiffRequest: (request: DiffRequest) => void
-  onBackendChange: (backend: 'claude' | 'codex') => void
+  onBackendChange: (backend: 'claude' | 'codex' | 'opencode') => void
   onModelChange: (model: ClaudeModel) => void
   onProviderChange: (provider: string | null) => void
   customCliProfiles: CustomCliProfile[]

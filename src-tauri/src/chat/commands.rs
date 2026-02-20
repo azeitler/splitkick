@@ -40,6 +40,7 @@ pub(crate) fn resolve_default_backend(app: &AppHandle, worktree_id: Option<&str>
 
     let mut resolved = match prefs_backend.as_str() {
         "codex" => Backend::Codex,
+        "opencode" => Backend::Opencode,
         _ => Backend::Claude,
     };
 
@@ -56,6 +57,7 @@ pub(crate) fn resolve_default_backend(app: &AppHandle, worktree_id: Option<&str>
                 if let Some(ref pb) = project.default_backend {
                     resolved = match pb.as_str() {
                         "codex" => Backend::Codex,
+                        "opencode" => Backend::Opencode,
                         "claude" => Backend::Claude,
                         _ => resolved,
                     };
@@ -264,6 +266,7 @@ pub async fn create_session(
     // Resolve backend: explicit param → project default → global preference → Claude
     let backend_enum = match backend.as_deref() {
         Some("codex") => Backend::Codex,
+        Some("opencode") => Backend::Opencode,
         Some("claude") => Backend::Claude,
         _ => {
             // No explicit backend — check project default, then global preference
@@ -271,6 +274,8 @@ pub async fn create_session(
             if let Ok(prefs) = crate::load_preferences(app.clone()).await {
                 if prefs.default_backend == "codex" {
                     resolved = Backend::Codex;
+                } else if prefs.default_backend == "opencode" {
+                    resolved = Backend::Opencode;
                 }
             }
             // Check project-level override
@@ -287,6 +292,7 @@ pub async fn create_session(
                     if let Some(ref pb) = project.default_backend {
                         resolved = match pb.as_str() {
                             "codex" => Backend::Codex,
+                            "opencode" => Backend::Opencode,
                             "claude" => Backend::Claude,
                             _ => resolved,
                         };
@@ -1213,7 +1219,10 @@ pub async fn send_chat_message(
                     // Keep provider semantics consistent with manual regeneration:
                     // session_naming_provider = None means Anthropic (no custom profile),
                     // not fallback to global default_provider.
-                    custom_profile_name: prefs.magic_prompt_providers.session_naming_provider.clone(),
+                    custom_profile_name: prefs
+                        .magic_prompt_providers
+                        .session_naming_provider
+                        .clone(),
                 };
 
                 // Spawn in background - does not block chat
@@ -1292,6 +1301,7 @@ pub async fn send_chat_message(
         .unwrap_or_default();
     let effective_backend = match backend.as_deref() {
         Some("codex") => Backend::Codex,
+        Some("opencode") => Backend::Opencode,
         Some("claude") => Backend::Claude,
         _ => session_backend,
     };
@@ -1306,6 +1316,9 @@ pub async fn send_chat_message(
     let codex_thread_id = sessions
         .find_session(&session_id)
         .and_then(|s| s.codex_thread_id.clone());
+    let opencode_session_id = sessions
+        .find_session(&session_id)
+        .and_then(|s| s.opencode_session_id.clone());
 
     // Start NDJSON run log for crash recovery
     let mut run_log_writer = run_log::start_run(
@@ -1360,6 +1373,7 @@ pub async fn send_chat_message(
                     Backend::Codex => {
                         codex_search_enabled = true;
                     }
+                    Backend::Opencode => {}
                 }
             }
         }
@@ -1402,6 +1416,7 @@ pub async fn send_chat_message(
     let thread_working_dir = context.worktree_path.clone();
     let thread_claude_session_id = claude_session_id.clone();
     let thread_codex_thread_id = codex_thread_id.clone();
+    let thread_opencode_session_id = opencode_session_id.clone();
     let thread_model = model.clone();
     let thread_execution_mode = execution_mode.clone();
     let thread_thinking_level = thinking_level.clone();
@@ -1849,6 +1864,66 @@ pub async fn send_chat_message(
                     }
                 }
             }
+            Backend::Opencode => {
+                log::trace!("About to call execute_opencode...");
+                let opencode_reasoning_effort: Option<String> =
+                    thread_effort_level.as_ref().and_then(|e| match e {
+                        super::types::EffortLevel::Low => Some("low".to_string()),
+                        super::types::EffortLevel::Medium => Some("medium".to_string()),
+                        super::types::EffortLevel::High => Some("high".to_string()),
+                        super::types::EffortLevel::Max => Some("xhigh".to_string()),
+                        super::types::EffortLevel::Off => None,
+                    });
+
+                let mut system_prompt_parts: Vec<String> = Vec::new();
+                if let Some(lang) = &thread_ai_language {
+                    let lang = lang.trim();
+                    if !lang.is_empty() {
+                        system_prompt_parts.push(format!("Respond to the user in {lang}."));
+                    }
+                }
+                if let Some(prompt) = &thread_parallel_prompt {
+                    let prompt = prompt.trim();
+                    if !prompt.is_empty() {
+                        system_prompt_parts.push(prompt.to_string());
+                    }
+                }
+                let system_prompt = if system_prompt_parts.is_empty() {
+                    None
+                } else {
+                    Some(system_prompt_parts.join("\n"))
+                };
+
+                match super::opencode::execute_opencode_http(
+                    &thread_app,
+                    &thread_session_id,
+                    &thread_worktree_id,
+                    std::path::Path::new(&thread_working_dir),
+                    thread_opencode_session_id.as_deref(),
+                    thread_model.as_deref(),
+                    thread_execution_mode.as_deref(),
+                    opencode_reasoning_effort.as_deref(),
+                    &thread_message,
+                    system_prompt.as_deref(),
+                ) {
+                    Ok(response) => Ok((
+                        std::process::id(),
+                        UnifiedResponse {
+                            content: response.content,
+                            resume_id: response.session_id,
+                            tool_calls: response.tool_calls,
+                            content_blocks: response.content_blocks,
+                            cancelled: response.cancelled,
+                            usage: response.usage,
+                            backend: Backend::Opencode,
+                        },
+                    )),
+                    Err(e) => {
+                        log::error!("execute_opencode FAILED: {e}");
+                        Err(e)
+                    }
+                }
+            }
         };
         let _ = tx.send(result);
     });
@@ -1857,8 +1932,28 @@ pub async fn send_chat_message(
         "CLI execution thread closed unexpectedly (possible crash or panic)".to_string()
     })??;
 
-    // Store the PID in the run log for recovery
-    run_log_writer.set_pid(pid)?;
+    // Store PID only for detached CLI runs (Claude/Codex). OpenCode is HTTP-based.
+    if unified_response.backend != Backend::Opencode {
+        run_log_writer.set_pid(pid)?;
+    }
+
+    // OpenCode runs are HTTP-based (no detached JSONL stream).
+    // Write a synthetic assistant line so history reload can reconstruct content.
+    if unified_response.backend == Backend::Opencode {
+        if let Ok(mut file) = std::fs::OpenOptions::new().append(true).open(&output_file) {
+            let synthetic = serde_json::json!({
+                "type": "assistant",
+                "message": {
+                    "content": [{
+                        "type": "text",
+                        "text": unified_response.content
+                    }]
+                }
+            });
+            let _ = writeln!(file, "{synthetic}");
+            let _ = file.flush();
+        }
+    }
 
     // Clean up input file (no longer needed)
     if let Err(e) = run_log::delete_input_file(&app, &session_id, &run_id) {
@@ -1947,7 +2042,7 @@ pub async fn send_chat_message(
             log::warn!("Failed to cancel run log: {e}");
         }
     } else {
-        let resume_sid = if resume_id_for_log.is_empty() {
+        let resume_sid = if response_backend != Backend::Claude || resume_id_for_log.is_empty() {
             None
         } else {
             Some(resume_id_for_log.as_str())
@@ -1972,6 +2067,9 @@ pub async fn send_chat_message(
                     Backend::Codex => {
                         session.codex_thread_id = Some(resume_id_for_log.clone());
                     }
+                    Backend::Opencode => {
+                        session.opencode_session_id = Some(resume_id_for_log.clone());
+                    }
                 }
             }
         }
@@ -1979,7 +2077,7 @@ pub async fn send_chat_message(
     })?;
 
     // For Codex plan mode: persist waiting state so frontend shows plan approval UI
-    if response_backend == Backend::Codex
+    if (response_backend == Backend::Codex || response_backend == Backend::Opencode)
         && execution_mode.as_deref() == Some("plan")
         && !unified_response.cancelled
         && has_content
@@ -2030,6 +2128,7 @@ pub async fn clear_session_history(
             session.messages.clear();
             session.claude_session_id = None;
             session.codex_thread_id = None;
+            session.opencode_session_id = None;
             session.selected_model = selected_model;
             session.selected_thinking_level = selected_thinking_level;
             session.selected_provider = selected_provider;
@@ -2123,6 +2222,7 @@ pub async fn set_session_backend(
         if let Some(session) = sessions.find_session_mut(&session_id) {
             session.backend = match backend.as_str() {
                 "codex" => super::types::Backend::Codex,
+                "opencode" => super::types::Backend::Opencode,
                 _ => super::types::Backend::Claude,
             };
             log::trace!("Backend selection saved");
@@ -3279,6 +3379,22 @@ fn execute_summarization_claude(
 ) -> Result<ContextSummaryResponse, String> {
     let model_str = model.unwrap_or("opus");
 
+    // Route to OpenCode if model is an OpenCode model
+    if crate::is_opencode_model(model_str) {
+        log::trace!("Executing one-shot OpenCode summarization");
+        let json_str = super::opencode::execute_one_shot_opencode(
+            app,
+            prompt,
+            model_str,
+            Some(CONTEXT_SUMMARY_SCHEMA),
+            working_dir,
+        )?;
+        return serde_json::from_str(&json_str).map_err(|e| {
+            log::error!("Failed to parse OpenCode summarization JSON: {e}, content: {json_str}");
+            format!("Failed to parse summarization response: {e}")
+        });
+    }
+
     // Route to Codex CLI if model is a Codex model
     if crate::is_codex_model(model_str) {
         log::trace!("Executing one-shot Codex summarization with output-schema");
@@ -3854,6 +3970,22 @@ fn execute_digest_claude(
     custom_profile_name: Option<&str>,
     working_dir: Option<&std::path::Path>,
 ) -> Result<SessionDigestResponse, String> {
+    // Route to OpenCode if model is an OpenCode model
+    if crate::is_opencode_model(model) {
+        log::trace!("Executing one-shot OpenCode digest");
+        let json_str = super::opencode::execute_one_shot_opencode(
+            app,
+            prompt,
+            model,
+            Some(SESSION_DIGEST_SCHEMA),
+            working_dir,
+        )?;
+        return serde_json::from_str(&json_str).map_err(|e| {
+            log::error!("Failed to parse OpenCode digest JSON: {e}, content: {json_str}");
+            format!("Failed to parse digest response: {e}")
+        });
+    }
+
     // Route to Codex CLI if model is a Codex model
     if crate::is_codex_model(model) {
         log::trace!("Executing one-shot Codex digest with output-schema");
@@ -3998,7 +4130,7 @@ pub async fn generate_session_digest(
         .unwrap_or(SESSION_DIGEST_PROMPT);
     let prompt = prompt_template.replace("{conversation}", &conversation_history);
 
-    // Use magic prompt model/provider if available, fall back to legacy session_recap_model
+    // Use magic prompt model/provider
     let model = &prefs.magic_prompt_models.session_recap_model;
     let provider = prefs
         .magic_prompt_providers

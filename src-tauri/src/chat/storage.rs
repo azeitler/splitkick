@@ -436,6 +436,7 @@ pub fn load_sessions(
                 backend: super::commands::resolve_default_backend(app, Some(worktree_id)),
                 claude_session_id: None,
                 codex_thread_id: None,
+                opencode_session_id: None,
                 selected_model: None,
                 selected_thinking_level: None,
                 selected_provider: None,

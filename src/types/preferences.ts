@@ -435,6 +435,21 @@ export const CODEX_DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
   session_recap_model: 'gpt-5.1-codex-mini',
 }
 
+/** OpenCode preset for all magic prompts */
+export const OPENCODE_DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
+  investigate_issue_model: 'opencode/gpt-5.2-codex',
+  investigate_pr_model: 'opencode/gpt-5.2-codex',
+  investigate_workflow_run_model: 'opencode/gpt-5.2-codex',
+  pr_content_model: 'opencode/gpt-5.2-codex',
+  commit_message_model: 'opencode/gpt-5.2-codex',
+  code_review_model: 'opencode/gpt-5.2-codex',
+  context_summary_model: 'opencode/gpt-5.2-codex',
+  resolve_conflicts_model: 'opencode/gpt-5.2-codex',
+  release_notes_model: 'opencode/gpt-5.2-codex',
+  session_naming_model: 'opencode/gpt-5.2-codex',
+  session_recap_model: 'opencode/gpt-5.2-codex',
+}
+
 /**
  * Per-prompt provider overrides. null = use global default_provider.
  * Field names use snake_case to match Rust struct exactly.
@@ -516,7 +531,6 @@ export interface AppPreferences {
   syntax_theme_dark: SyntaxTheme // Syntax highlighting theme for dark mode
   syntax_theme_light: SyntaxTheme // Syntax highlighting theme for light mode
   session_recap_enabled: boolean // Show session recap when returning to unfocused sessions
-  session_recap_model: ClaudeModel // Model for generating session recaps
   parallel_execution_prompt_enabled: boolean // Add system prompt to encourage parallel sub-agent execution
   magic_prompts: MagicPrompts // Customizable prompts for AI-powered features
   magic_prompt_models: MagicPromptModels // Per-prompt model overrides
@@ -547,8 +561,9 @@ export interface AppPreferences {
   default_provider: string | null // Default provider profile name (null = Anthropic direct)
   canvas_layout: CanvasLayout // Canvas display mode: grid (cards) or list (compact rows)
   confirm_session_close: boolean // Show confirmation dialog before closing sessions/worktrees
-  default_backend: CliBackend // Default CLI backend for new sessions: 'claude' or 'codex'
+  default_backend: CliBackend // Default CLI backend for new sessions: 'claude', 'codex', or 'opencode'
   selected_codex_model: CodexModel // Default Codex model
+  selected_opencode_model: string // Default OpenCode model (provider/model)
   default_codex_reasoning_effort: CodexReasoningEffort // Default reasoning effort for Codex: 'low' | 'medium' | 'high' | 'xhigh'
   codex_multi_agent_enabled: boolean // Enable Codex multi-agent collaboration (experimental)
   codex_max_agent_threads: number // Max concurrent agent threads (1-8) when multi-agent is enabled
@@ -703,7 +718,8 @@ export type CodexReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh'
 // Magic Prompt Model (unified type for both Claude and Codex)
 // =============================================================================
 
-export type MagicPromptModel = ClaudeModel | CodexModel
+export type OpenCodeModel = `opencode/${string}`
+export type MagicPromptModel = ClaudeModel | CodexModel | OpenCodeModel
 
 /** Check if a model string identifies a Codex model */
 export function isCodexModel(model: string): model is CodexModel {
@@ -726,11 +742,12 @@ export const codexReasoningOptions: {
 // CLI Backend
 // =============================================================================
 
-export type CliBackend = 'claude' | 'codex'
+export type CliBackend = 'claude' | 'codex' | 'opencode'
 
 export const backendOptions: { value: CliBackend; label: string }[] = [
   { value: 'claude', label: 'Claude' },
   { value: 'codex', label: 'Codex' },
+  { value: 'opencode', label: 'OpenCode' },
 ]
 
 export type TerminalApp =
@@ -992,7 +1009,6 @@ export const defaultPreferences: AppPreferences = {
   syntax_theme_dark: 'vitesse-black',
   syntax_theme_light: 'github-light',
   session_recap_enabled: false, // Default: disabled (experimental)
-  session_recap_model: 'haiku', // Default: haiku for fast recaps
   parallel_execution_prompt_enabled: false, // Default: disabled (experimental)
   magic_prompts: DEFAULT_MAGIC_PROMPTS,
   magic_prompt_models: DEFAULT_MAGIC_PROMPT_MODELS,
@@ -1025,6 +1041,7 @@ export const defaultPreferences: AppPreferences = {
   confirm_session_close: true, // Default: enabled (show confirmation)
   default_backend: 'claude', // Default: Claude
   selected_codex_model: 'gpt-5.3-codex', // Default: latest Codex model
+  selected_opencode_model: 'opencode/gpt-5.2-codex', // Default OpenCode model
   default_codex_reasoning_effort: 'high', // Default: high reasoning
   codex_multi_agent_enabled: false, // Default: disabled
   codex_max_agent_threads: 3, // Default: 3 threads

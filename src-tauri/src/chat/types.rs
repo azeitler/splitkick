@@ -93,13 +93,14 @@ pub struct UsageData {
 // Message Types
 // ============================================================================
 
-/// Backend for a chat session (Claude CLI or Codex CLI)
+/// Backend for a chat session (Claude CLI, Codex CLI, or OpenCode)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Backend {
     #[default]
     Claude,
     Codex,
+    Opencode,
 }
 
 /// Role of a chat message sender
@@ -363,7 +364,7 @@ pub struct Session {
     /// Message count (populated separately for efficiency when full messages not needed)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub message_count: Option<u32>,
-    /// Backend for this session (claude or codex)
+    /// Backend for this session (claude, codex, or opencode)
     #[serde(default)]
     pub backend: Backend,
     /// Claude CLI session ID for resuming conversations
@@ -372,6 +373,9 @@ pub struct Session {
     /// Codex CLI thread ID for resuming conversations
     #[serde(default)]
     pub codex_thread_id: Option<String>,
+    /// OpenCode session ID for resuming conversations
+    #[serde(default)]
+    pub opencode_session_id: Option<String>,
     /// Selected model for this session
     #[serde(default)]
     pub selected_model: Option<String>,
@@ -469,6 +473,7 @@ impl Session {
             backend,
             claude_session_id: None,
             codex_thread_id: None,
+            opencode_session_id: None,
             selected_model: None,
             selected_thinking_level: None,
             selected_provider: None,
@@ -626,6 +631,7 @@ impl SessionMetadata {
             backend: self.backend.clone(),
             claude_session_id: self.claude_session_id.clone(),
             codex_thread_id: self.codex_thread_id.clone(),
+            opencode_session_id: self.opencode_session_id.clone(),
             selected_model: self.selected_model.clone(),
             selected_thinking_level: self.selected_thinking_level.clone(),
             selected_provider: self.selected_provider.clone(),
@@ -659,6 +665,7 @@ impl SessionMetadata {
         self.backend = session.backend.clone();
         self.claude_session_id = session.claude_session_id.clone();
         self.codex_thread_id = session.codex_thread_id.clone();
+        self.opencode_session_id = session.opencode_session_id.clone();
         self.selected_model = session.selected_model.clone();
         self.selected_thinking_level = session.selected_thinking_level.clone();
         self.selected_provider = session.selected_provider.clone();
@@ -897,7 +904,7 @@ pub struct SessionMetadata {
     pub order: u32,
     /// Unix timestamp when session was created
     pub created_at: u64,
-    /// Backend for this session (claude or codex)
+    /// Backend for this session (claude, codex, or opencode)
     #[serde(default)]
     pub backend: Backend,
     /// Claude CLI session ID for resuming conversations
@@ -906,6 +913,9 @@ pub struct SessionMetadata {
     /// Codex CLI thread ID for resuming conversations
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub codex_thread_id: Option<String>,
+    /// OpenCode session ID for resuming conversations
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opencode_session_id: Option<String>,
     /// Selected model for this session
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selected_model: Option<String>,
@@ -1043,6 +1053,7 @@ impl SessionMetadata {
             backend: Backend::default(),
             claude_session_id: None,
             codex_thread_id: None,
+            opencode_session_id: None,
             selected_model: None,
             selected_thinking_level: None,
             selected_provider: None,

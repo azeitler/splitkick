@@ -20,14 +20,23 @@ import {
   CODEX_MODEL_OPTIONS,
   EFFORT_LEVEL_OPTIONS,
   MODEL_OPTIONS,
+  OPENCODE_MODEL_OPTIONS,
   THINKING_LEVEL_OPTIONS,
 } from '@/components/chat/toolbar/toolbar-options'
 import { useToolbarDropdownShortcuts } from '@/components/chat/toolbar/useToolbarDropdownShortcuts'
 import { useToolbarDerivedState } from '@/components/chat/toolbar/useToolbarDerivedState'
 import { useContextViewer } from '@/components/chat/toolbar/useContextViewer'
+import { formatOpencodeModelLabel } from '@/components/chat/toolbar/toolbar-utils'
+import { useAvailableOpencodeModels } from '@/services/opencode-cli'
 
 // eslint-disable-next-line react-refresh/only-export-components
-export { MODEL_OPTIONS, CODEX_MODEL_OPTIONS, THINKING_LEVEL_OPTIONS, EFFORT_LEVEL_OPTIONS }
+export {
+  MODEL_OPTIONS,
+  CODEX_MODEL_OPTIONS,
+  OPENCODE_MODEL_OPTIONS,
+  THINKING_LEVEL_OPTIONS,
+  EFFORT_LEVEL_OPTIONS,
+}
 export type { ChatToolbarProps }
 
 export const ChatToolbar = memo(function ChatToolbar({
@@ -117,11 +126,21 @@ export const ChatToolbar = memo(function ChatToolbar({
     setThinkingDropdownOpen,
   })
 
+  const { data: availableOpencodeModels } = useAvailableOpencodeModels({
+    enabled: selectedBackend === 'opencode',
+  })
+  const opencodeModelOptions =
+    availableOpencodeModels?.map(model => ({
+      value: model,
+      label: formatOpencodeModelLabel(model),
+    })) ?? OPENCODE_MODEL_OPTIONS
+
   const { isCodex, activeMcpCount, filteredModelOptions, selectedModelLabel } =
     useToolbarDerivedState({
       selectedBackend,
       selectedProvider,
       selectedModel,
+      opencodeModelOptions,
       customCliProfiles,
       availableMcpServers,
       enabledMcpServers,
@@ -191,7 +210,8 @@ export const ChatToolbar = memo(function ChatToolbar({
   const handlePushClick = useCallback(() => {
     if (!activeWorktreePath || !worktreeId) return
     pickRemoteOrRun(async remote => {
-      const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
+      const { setWorktreeLoading, clearWorktreeLoading } =
+        useChatStore.getState()
       setWorktreeLoading(worktreeId, 'push')
       const toastId = toast.loading('Pushing changes...')
       try {

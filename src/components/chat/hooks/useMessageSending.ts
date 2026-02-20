@@ -4,9 +4,7 @@ import { toast } from 'sonner'
 import { useChatStore } from '@/store/chat-store'
 import { chatQueryKeys, cancelChatMessage } from '@/services/chat'
 import { buildMcpConfigJson } from '@/services/mcp'
-import {
-  DEFAULT_PARALLEL_EXECUTION_PROMPT,
-} from '@/types/preferences'
+import { DEFAULT_PARALLEL_EXECUTION_PROMPT } from '@/types/preferences'
 import type {
   QueuedMessage,
   ExecutionMode,
@@ -31,15 +29,17 @@ interface UseMessageSendingParams {
   isCodexBackendRef: RefObject<boolean>
   mcpServersDataRef: RefObject<McpServerInfo[] | undefined>
   enabledMcpServersRef: RefObject<string[]>
-  selectedBackendRef: RefObject<'claude' | 'codex'>
+  selectedBackendRef: RefObject<'claude' | 'codex' | 'opencode'>
   activeWorktreeIdRef: RefObject<string | null | undefined>
-  preferences: {
-    custom_cli_profiles?: { name: string }[]
-    parallel_execution_prompt_enabled?: boolean
-    magic_prompts?: { parallel_execution?: string | null }
-    chrome_enabled?: boolean
-    ai_language?: string
-  } | undefined
+  preferences:
+    | {
+        custom_cli_profiles?: { name: string }[]
+        parallel_execution_prompt_enabled?: boolean
+        magic_prompts?: { parallel_execution?: string | null }
+        chrome_enabled?: boolean
+        ai_language?: string
+      }
+    | undefined
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sendMessage: { mutate: (args: any, opts?: any) => void }
   queryClient: QueryClient
@@ -357,7 +357,9 @@ export function useMessageSending({
 
       if (
         sessionsData &&
-        !sessionsData.sessions.some((s: { id: string }) => s.id === activeSessionId)
+        !sessionsData.sessions.some(
+          (s: { id: string }) => s.id === activeSessionId
+        )
       ) {
         toast.error(
           'Session not found. Please refresh or create a new session.'
@@ -460,7 +462,13 @@ export function useMessageSending({
     const handleReviewFixMessage = (e: CustomEvent) => {
       if (isModal) return
 
-      const { sessionId, worktreeId, worktreePath, message, executionMode: fixExecutionMode } = e.detail
+      const {
+        sessionId,
+        worktreeId,
+        worktreePath,
+        message,
+        executionMode: fixExecutionMode,
+      } = e.detail
       if (!sessionId || !worktreeId || !worktreePath || !message) return
       const fixMode = fixExecutionMode ?? 'plan'
       if (worktreeId !== activeWorktreeIdRef.current) return

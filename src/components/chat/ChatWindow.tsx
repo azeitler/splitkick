@@ -34,11 +34,7 @@ import {
   useSetSessionProvider,
   useCreateSession,
 } from '@/services/chat'
-import {
-  useWorktree,
-  useProjects,
-  useRunScript,
-} from '@/services/projects'
+import { useWorktree, useProjects, useRunScript } from '@/services/projects'
 import {
   useLoadedIssueContexts,
   useLoadedPRContexts,
@@ -52,9 +48,7 @@ import {
 } from '@/store/chat-store'
 import { usePreferences, useSavePreferences } from '@/services/preferences'
 import { getLabelTextColor } from '@/lib/label-colors'
-import {
-  PREDEFINED_CLI_PROFILES,
-} from '@/types/preferences'
+import { PREDEFINED_CLI_PROFILES } from '@/types/preferences'
 import type {
   ChatMessage,
   ToolCall,
@@ -74,9 +68,7 @@ import { PermissionApproval } from './PermissionApproval'
 import { SetupScriptOutput } from './SetupScriptOutput'
 import { TodoWidget } from './TodoWidget'
 import { AgentWidget } from './AgentWidget'
-import {
-  normalizeTodosForDisplay,
-} from './tool-call-utils'
+import { normalizeTodosForDisplay } from './tool-call-utils'
 import { ImagePreview } from './ImagePreview'
 import { TextFilePreview } from './TextFilePreview'
 import { SkillBadge } from './SkillBadge'
@@ -109,9 +101,7 @@ import {
   stripAllMarkers,
 } from './message-content-utils'
 import { useUIStore } from '@/store/ui-store'
-import {
-  buildMcpConfigJson,
-} from '@/services/mcp'
+import { buildMcpConfigJson } from '@/services/mcp'
 import type { McpServerInfo } from '@/types/chat'
 import { useGitStatus } from '@/services/git-status'
 import { useRemotePicker } from '@/hooks/useRemotePicker'
@@ -120,10 +110,7 @@ import { supportsAdaptiveThinking } from '@/lib/model-utils'
 import { useClaudeCliStatus } from '@/services/claude-cli'
 import { usePrStatus, usePrStatusEvents } from '@/services/pr-status'
 import type { PrDisplayStatus, CheckStatus } from '@/types/pr-status'
-import type {
-  QueuedMessage,
-  SessionDigest,
-} from '@/types/chat'
+import type { QueuedMessage, SessionDigest } from '@/types/chat'
 import type { DiffRequest } from '@/types/git-diff'
 import { FileDiffModal } from './FileDiffModal'
 
@@ -504,13 +491,12 @@ export function ChatWindow({
     sessionEffortLevel ?? defaultEffortLevel
 
   // MCP servers: resolve enabled servers cascade (session → project → global)
-  const { availableMcpServers, enabledMcpServers } =
-    useMcpServerResolution({
-      activeWorktreePath,
-      deferredSessionId,
-      project,
-      preferences,
-    })
+  const { availableMcpServers, enabledMcpServers } = useMcpServerResolution({
+    activeWorktreePath,
+    deferredSessionId,
+    project,
+    preferences,
+  })
 
   // CLI version for adaptive thinking feature detection
   const { data: cliStatus } = useClaudeCliStatus()
@@ -756,14 +742,18 @@ export function ChatWindow({
   })
 
   // Plan state: pending plan message, streaming plan, content, file path
-  const { pendingPlanMessage, hasStreamingPlan, latestPlanContent, latestPlanFilePath } =
-    usePlanState({
-      sessionMessages: session?.messages,
-      currentToolCalls,
-      isSending,
-      activeSessionId,
-      isStreamingPlanApproved,
-    })
+  const {
+    pendingPlanMessage,
+    hasStreamingPlan,
+    latestPlanContent,
+    latestPlanFilePath,
+  } = usePlanState({
+    sessionMessages: session?.messages,
+    currentToolCalls,
+    isSending,
+    activeSessionId,
+    isStreamingPlanApproved,
+  })
 
   // State for plan dialog
   const [isPlanDialogOpen, setIsPlanDialogOpen] = useState(false)
@@ -1308,7 +1298,7 @@ export function ChatWindow({
                               </div>
                             ) : !session || session.messages.length === 0 ? (
                               <div className="text-muted-foreground">
-                                No messages yet. Start a conversation!
+                                No messages yet. Image something useful!
                               </div>
                             ) : (
                               // Virtualized message list - only renders visible messages for performance
@@ -1524,7 +1514,7 @@ export function ChatWindow({
                                 activeSessionId={activeSessionId}
                                 activeWorktreePath={activeWorktreePath}
                                 isSending={isSending}
-                                executionMode={isSending && executingMode ? executingMode : executionMode}
+                                executionMode={executionMode}
                                 canSwitchBackendWithTab={
                                   (session?.messages?.length ?? 0) === 0
                                 }
@@ -1545,7 +1535,7 @@ export function ChatWindow({
                               hasPendingQuestions={hasPendingQuestions}
                               hasPendingAttachments={hasPendingAttachments}
                               hasInputValue={hasInputValue}
-                              executionMode={isSending && executingMode ? executingMode : executionMode}
+                              executionMode={executionMode}
                               selectedBackend={selectedBackend}
                               sessionHasMessages={
                                 (session?.messages?.length ?? 0) > 0

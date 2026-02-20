@@ -107,7 +107,7 @@ export function useMagicCommands({
         { command: string; sessionId?: string } & Partial<WorkflowRunDetail>
       >
     ) => {
-      const { command, sessionId, ...rest } = e.detail
+      const { command, ...rest } = e.detail
       const handlers = handlersRef.current
       switch (command) {
         case 'save-context':

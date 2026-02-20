@@ -14,6 +14,8 @@ mod claude_cli;
 mod codex_cli;
 mod gh_cli;
 pub mod http_server;
+mod opencode_cli;
+mod opencode_server;
 mod platform;
 mod projects;
 mod terminal;
@@ -116,8 +118,6 @@ pub struct AppPreferences {
     pub syntax_theme_light: String, // Syntax highlighting theme for light mode
     #[serde(default = "default_session_recap_enabled")]
     pub session_recap_enabled: bool, // Show session recap when returning to unfocused sessions
-    #[serde(default = "default_session_recap_model")]
-    pub session_recap_model: String, // Model for generating session recaps: haiku, sonnet, opus
     #[serde(default = "default_parallel_execution_prompt_enabled")]
     pub parallel_execution_prompt_enabled: bool, // Add system prompt to encourage parallel sub-agent execution
     #[serde(default)]
@@ -177,9 +177,11 @@ pub struct AppPreferences {
     #[serde(default = "default_confirm_session_close")]
     pub confirm_session_close: bool, // Show confirmation dialog before closing sessions/worktrees
     #[serde(default = "default_backend")]
-    pub default_backend: String, // Default CLI backend: "claude" or "codex"
+    pub default_backend: String, // Default CLI backend: "claude", "codex", or "opencode"
     #[serde(default = "default_codex_model")]
     pub selected_codex_model: String, // Default Codex model
+    #[serde(default = "default_opencode_model")]
+    pub selected_opencode_model: String, // Default OpenCode model (provider/model)
     #[serde(default = "default_codex_reasoning_effort")]
     pub default_codex_reasoning_effort: String, // Codex reasoning effort: low, medium, high, xhigh
     #[serde(default)]
@@ -324,10 +326,6 @@ fn default_session_recap_enabled() -> bool {
     false // Disabled by default (experimental)
 }
 
-fn default_session_recap_model() -> String {
-    "haiku".to_string() // Use Haiku by default for fast, cheap session recap generation
-}
-
 fn default_parallel_execution_prompt_enabled() -> bool {
     false // Disabled by default (experimental)
 }
@@ -350,6 +348,10 @@ fn default_backend() -> String {
 
 fn default_codex_model() -> String {
     "gpt-5.3-codex".to_string()
+}
+
+fn default_opencode_model() -> String {
+    "opencode/gpt-5.2-codex".to_string()
 }
 
 fn default_codex_reasoning_effort() -> String {
@@ -699,10 +701,16 @@ impl Default for MagicPromptModels {
     }
 }
 
+/// Returns true if the given model string identifies an OpenCode model.
+/// OpenCode model IDs are prefixed with "opencode/" (e.g. "opencode/gpt-5.2-codex").
+pub fn is_opencode_model(model: &str) -> bool {
+    model.starts_with("opencode/")
+}
+
 /// Returns true if the given model string identifies a Codex model.
-/// Codex model IDs contain "codex" or start with "gpt-".
+/// Codex model IDs contain "codex" or start with "gpt-", but NOT OpenCode models.
 pub fn is_codex_model(model: &str) -> bool {
-    model.contains("codex") || model.starts_with("gpt-")
+    !is_opencode_model(model) && (model.contains("codex") || model.starts_with("gpt-"))
 }
 
 /// Per-prompt provider overrides for magic prompts (None = use global default_provider)
@@ -795,7 +803,6 @@ impl Default for AppPreferences {
             syntax_theme_dark: default_syntax_theme_dark(),
             syntax_theme_light: default_syntax_theme_light(),
             session_recap_enabled: default_session_recap_enabled(),
-            session_recap_model: default_session_recap_model(),
             parallel_execution_prompt_enabled: default_parallel_execution_prompt_enabled(),
             magic_prompts: MagicPrompts::default(),
             magic_prompt_models: MagicPromptModels::default(),
@@ -828,6 +835,7 @@ impl Default for AppPreferences {
             confirm_session_close: default_confirm_session_close(),
             default_backend: default_backend(),
             selected_codex_model: default_codex_model(),
+            selected_opencode_model: default_opencode_model(),
             default_codex_reasoning_effort: default_codex_reasoning_effort(),
             codex_multi_agent_enabled: false,
             codex_max_agent_threads: default_codex_max_agent_threads(),
@@ -2166,6 +2174,12 @@ pub fn run() {
             codex_cli::check_codex_cli_auth,
             codex_cli::get_available_codex_versions,
             codex_cli::install_codex_cli,
+            // OpenCode CLI management commands
+            opencode_cli::check_opencode_cli_installed,
+            opencode_cli::check_opencode_cli_auth,
+            opencode_cli::get_available_opencode_versions,
+            opencode_cli::install_opencode_cli,
+            opencode_cli::list_opencode_models,
             // GitHub CLI management commands
             gh_cli::check_gh_cli_installed,
             gh_cli::check_gh_cli_auth,
@@ -2187,6 +2201,10 @@ pub fn run() {
             stop_http_server,
             get_http_server_status,
             regenerate_http_token,
+            // OpenCode server commands
+            opencode_server::start_opencode_server,
+            opencode_server::stop_opencode_server,
+            opencode_server::get_opencode_server_status,
         ])
         .build(tauri::generate_context!())
         .expect("error building tauri application")
@@ -2195,6 +2213,11 @@ pub fn run() {
                 eprintln!("[TERMINAL CLEANUP] RunEvent::Exit received");
                 let killed = terminal::cleanup_all_terminals();
                 eprintln!("[TERMINAL CLEANUP] Killed {killed} terminal(s)");
+                match opencode_server::shutdown_managed_server() {
+                    Ok(true) => eprintln!("[OPENCODE CLEANUP] Stopped managed OpenCode server"),
+                    Ok(false) => {}
+                    Err(e) => eprintln!("[OPENCODE CLEANUP] Failed during Exit: {e}"),
+                }
             }
             tauri::RunEvent::ExitRequested { api, .. } => {
                 // In headless mode, prevent exit when window closes
@@ -2205,6 +2228,15 @@ pub fn run() {
                 eprintln!("[TERMINAL CLEANUP] RunEvent::ExitRequested received");
                 let killed = terminal::cleanup_all_terminals();
                 eprintln!("[TERMINAL CLEANUP] Killed {killed} terminal(s) on ExitRequested");
+                match opencode_server::shutdown_managed_server() {
+                    Ok(true) => eprintln!(
+                        "[OPENCODE CLEANUP] Stopped managed OpenCode server on ExitRequested"
+                    ),
+                    Ok(false) => {}
+                    Err(e) => {
+                        eprintln!("[OPENCODE CLEANUP] Failed during ExitRequested: {e}")
+                    }
+                }
             }
             tauri::RunEvent::WindowEvent { label, event, .. } => {
                 if let tauri::WindowEvent::CloseRequested { .. } = event {
@@ -2215,6 +2247,15 @@ pub fn run() {
                     eprintln!("[TERMINAL CLEANUP] Window {label} close requested");
                     let killed = terminal::cleanup_all_terminals();
                     eprintln!("[TERMINAL CLEANUP] Killed {killed} terminal(s) on CloseRequested");
+                    match opencode_server::shutdown_managed_server() {
+                        Ok(true) => eprintln!(
+                            "[OPENCODE CLEANUP] Stopped managed OpenCode server on CloseRequested"
+                        ),
+                        Ok(false) => {}
+                        Err(e) => {
+                            eprintln!("[OPENCODE CLEANUP] Failed during CloseRequested: {e}")
+                        }
+                    }
                 }
                 if let tauri::WindowEvent::Destroyed = event {
                     eprintln!("[TERMINAL CLEANUP] Window {label} destroyed");

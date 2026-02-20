@@ -26,3 +26,78 @@ export function getProviderDisplayName(selectedProvider: string | null): string 
     ? 'Anthropic'
     : selectedProvider
 }
+
+function formatProviderName(provider: string): string {
+  const knownProviders: Record<string, string> = {
+    anthropic: 'Anthropic',
+    opencode: 'OpenCode',
+    openai: 'OpenAI',
+    google: 'Google',
+    moonshotai: 'Moonshot AI',
+    minimax: 'MiniMax',
+    xai: 'xAI',
+  }
+  return (
+    knownProviders[provider.toLowerCase()] ??
+    provider.charAt(0).toUpperCase() + provider.slice(1)
+  )
+}
+
+function formatModelToken(token: string): string {
+  const knownTokens: Record<string, string> = {
+    claude: 'Claude',
+    gpt: 'GPT',
+    glm: 'GLM',
+    kimi: 'Kimi',
+    codex: 'Codex',
+    sonnet: 'Sonnet',
+    haiku: 'Haiku',
+    opus: 'Opus',
+    minimax: 'MiniMax',
+    trinity: 'Trinity',
+    latest: 'Latest',
+    preview: 'Preview',
+    turbo: 'Turbo',
+    thinking: 'Thinking',
+    flash: 'Flash',
+    nano: 'Nano',
+    mini: 'Mini',
+    max: 'Max',
+    large: 'Large',
+    free: 'Free',
+    pro: 'Pro',
+  }
+
+  const lower = token.toLowerCase()
+  if (knownTokens[lower]) return knownTokens[lower]
+  if (/^\d+(\.\d+)*$/.test(token)) return token
+  if (/^[a-z]{1,3}$/i.test(token)) return token.toUpperCase()
+  return token.charAt(0).toUpperCase() + token.slice(1)
+}
+
+export function formatOpencodeModelLabel(raw: string): string {
+  const [provider, model] = raw.split('/')
+  if (!provider || !model) return raw
+
+  const rawTokens = model.split('-').filter(Boolean)
+  const mergedTokens: string[] = []
+  for (let i = 0; i < rawTokens.length; i++) {
+    const current = rawTokens[i]
+    if (!current) continue
+    const next = rawTokens[i + 1]
+    // Render version pairs like 4-5 -> 4.5, 3-7 -> 3.7
+    if (/^\d$/.test(current) && /^\d$/.test(next ?? '')) {
+      mergedTokens.push(`${current}.${next}`)
+      i++
+      continue
+    }
+    mergedTokens.push(current)
+  }
+
+  const modelLabel = mergedTokens
+    .filter(Boolean)
+    .map(formatModelToken)
+    .join(' ')
+
+  return `${modelLabel} (${formatProviderName(provider)})`
+}

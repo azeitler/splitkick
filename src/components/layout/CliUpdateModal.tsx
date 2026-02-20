@@ -13,6 +13,7 @@ import {
   ClaudeCliReinstallModal,
   GhCliReinstallModal,
   CodexCliReinstallModal,
+  OpenCodeCliReinstallModal,
 } from '@/components/preferences/CliReinstallModal'
 
 export function CliUpdateModal() {
@@ -40,6 +41,10 @@ export function CliUpdateModal() {
       />
       <CodexCliReinstallModal
         open={cliUpdateModalOpen && cliUpdateModalType === 'codex'}
+        onOpenChange={handleOpenChange}
+      />
+      <OpenCodeCliReinstallModal
+        open={cliUpdateModalOpen && cliUpdateModalType === 'opencode'}
         onOpenChange={handleOpenChange}
       />
     </>

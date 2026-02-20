@@ -27,9 +27,9 @@ export type ThinkingLevel = 'off' | 'think' | 'megathink' | 'ultrathink'
 export type EffortLevel = 'low' | 'medium' | 'high' | 'max'
 
 /**
- * Backend for a chat session (Claude CLI or Codex CLI)
+ * Backend for a chat session (Claude CLI, Codex CLI, or OpenCode)
  */
-export type Backend = 'claude' | 'codex'
+export type Backend = 'claude' | 'codex' | 'opencode'
 
 /**
  * Execution mode for Claude CLI permission handling
@@ -132,12 +132,14 @@ export interface Session {
   messages: ChatMessage[]
   /** Message count (populated separately for efficiency when full messages not needed) */
   message_count?: number
-  /** Backend for this session (claude or codex) */
+  /** Backend for this session (claude, codex, or opencode) */
   backend?: Backend
   /** Claude CLI session ID for resuming conversations */
   claude_session_id?: string
   /** Codex CLI thread ID for resuming conversations */
   codex_thread_id?: string
+  /** OpenCode session ID for resuming conversations */
+  opencode_session_id?: string
   /** Selected model for this session */
   selected_model?: string
   /** Selected thinking level for this session */

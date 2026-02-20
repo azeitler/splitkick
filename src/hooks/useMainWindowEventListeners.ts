@@ -237,15 +237,6 @@ function executeKeybindingAction(
       window.dispatchEvent(new CustomEvent('create-new-worktree'))
       break
     case 'cycle_execution_mode': {
-      // Only cycle execution mode when inside a session (modal open or not in canvas view)
-      const chatStore = useChatStore.getState()
-      const activeWorktreeId = chatStore.activeWorktreeId
-      const isViewingCanvas = activeWorktreeId
-        ? chatStore.isViewingCanvasTab(activeWorktreeId)
-        : false
-      const sessionModalOpen = useUIStore.getState().sessionChatModalOpen
-      // Skip if viewing canvas without modal open (no session context)
-      if (isViewingCanvas && !sessionModalOpen) break
       logger.debug('Keybinding: cycle_execution_mode')
       window.dispatchEvent(new CustomEvent('cycle-execution-mode'))
       break
@@ -358,6 +349,7 @@ export function useMainWindowEventListeners() {
 
       // Cancel prompt should work even when modals are open
       if (shortcut === keybindingsRef.current.cancel_prompt) {
+        logger.debug('Cancel prompt shortcut matched', { shortcut })
         e.preventDefault()
         e.stopPropagation()
         executeKeybindingAction('cancel_prompt', commandContext, queryClient)

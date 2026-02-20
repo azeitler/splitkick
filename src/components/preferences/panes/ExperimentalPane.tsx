@@ -94,12 +94,15 @@ export const ExperimentalPane: React.FC = () => {
             description="Claude model for automatic and on-demand session recaps"
           >
             <Select
-              value={preferences?.session_recap_model ?? 'haiku'}
+              value={preferences?.magic_prompt_models.session_recap_model ?? 'haiku'}
               onValueChange={(value: ClaudeModel) => {
                 if (preferences) {
                   savePreferences.mutate({
                     ...preferences,
-                    session_recap_model: value,
+                    magic_prompt_models: {
+                      ...preferences.magic_prompt_models,
+                      session_recap_model: value,
+                    },
                   })
                 }
               }}

@@ -222,9 +222,6 @@ export function useAddProject() {
       expandProject(project.id)
       selectProject(project.id)
 
-      // Auto-open the base session so the user lands in chat
-      openBaseSessionForProject(project.id, queryClient)
-
       // Show jean.json wizard if not seen yet
       maybeShowJeanConfigWizard(project.id, queryClient)
     },
@@ -277,9 +274,6 @@ export function useInitProject() {
       }
       expandProject(project.id)
       selectProject(project.id)
-
-      // Auto-open the base session so the user lands in chat
-      openBaseSessionForProject(project.id, queryClient)
 
       // Show jean.json wizard if not seen yet
       maybeShowJeanConfigWizard(project.id, queryClient)

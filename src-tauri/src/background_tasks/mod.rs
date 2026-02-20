@@ -560,7 +560,6 @@ impl BackgroundTaskManager {
         log::trace!("Triggering immediate remote poll");
         self.immediate_remote_poll.store(true, Ordering::Relaxed);
     }
-
 }
 
 /// Emit a git status event to the frontend

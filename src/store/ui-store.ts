@@ -13,9 +13,9 @@ export type PreferencePane =
 
 export type OnboardingStartStep = 'claude' | 'gh' | null
 
-export type CliUpdateModalType = 'claude' | 'gh' | 'codex' | null
+export type CliUpdateModalType = 'claude' | 'gh' | 'codex' | 'opencode' | null
 
-export type CliLoginModalType = 'claude' | 'gh' | 'codex' | null
+export type CliLoginModalType = 'claude' | 'gh' | 'codex' | 'opencode' | null
 
 interface UIState {
   leftSidebarVisible: boolean
@@ -106,9 +106,12 @@ interface UIState {
     projectPath?: string | null,
     branch?: string | null
   ) => void
-  openCliUpdateModal: (type: 'claude' | 'gh' | 'codex') => void
+  openCliUpdateModal: (type: 'claude' | 'gh' | 'codex' | 'opencode') => void
   closeCliUpdateModal: () => void
-  openCliLoginModal: (type: 'claude' | 'gh' | 'codex', command: string) => void
+  openCliLoginModal: (
+    type: 'claude' | 'gh' | 'codex' | 'opencode',
+    command: string
+  ) => void
   closeCliLoginModal: () => void
   incrementPendingBackgroundCreations: () => void
   consumePendingBackgroundCreation: () => boolean

@@ -42,7 +42,10 @@ interface ChatUIState {
   lastActiveWorktreeId: string | null
 
   // Last opened worktree+session per project (for restoring on project switch)
-  lastOpenedPerProject: Record<string, { worktreeId: string; sessionId: string }>
+  lastOpenedPerProject: Record<
+    string,
+    { worktreeId: string; sessionId: string }
+  >
 
   // Active session ID per worktree (for tab selection)
   activeSessionIds: Record<string, string>
@@ -96,8 +99,8 @@ interface ChatUIState {
   // Effort level per session (for Opus 4.6 adaptive thinking)
   effortLevels: Record<string, EffortLevel>
 
-  // Selected backend per session (claude or codex)
-  selectedBackends: Record<string, 'claude' | 'codex'>
+  // Selected backend per session (claude, codex, or opencode)
+  selectedBackends: Record<string, 'claude' | 'codex' | 'opencode'>
 
   // Selected model per session (for tracking what model was used)
   selectedModels: Record<string, string>
@@ -251,7 +254,11 @@ interface ChatUIState {
   setActiveWorktree: (id: string | null, path: string | null) => void
   clearActiveWorktree: () => void
   setLastActiveWorktreeId: (id: string) => void
-  setLastOpenedForProject: (projectId: string, worktreeId: string, sessionId: string) => void
+  setLastOpenedForProject: (
+    projectId: string,
+    worktreeId: string,
+    sessionId: string
+  ) => void
   registerWorktreePath: (worktreeId: string, path: string) => void
   getWorktreePath: (worktreeId: string) => string | undefined
 
@@ -311,7 +318,10 @@ interface ChatUIState {
   getEffortLevel: (sessionId: string) => EffortLevel
 
   // Actions - Selected backend (session-based)
-  setSelectedBackend: (sessionId: string, backend: 'claude' | 'codex') => void
+  setSelectedBackend: (
+    sessionId: string,
+    backend: 'claude' | 'codex' | 'opencode'
+  ) => void
 
   // Actions - Selected model (session-based)
   setSelectedModel: (sessionId: string, model: string) => void
@@ -783,7 +793,11 @@ export const useChatStore = create<ChatUIState>()(
         set(
           state => {
             const existing = state.lastOpenedPerProject[projectId]
-            if (existing?.worktreeId === worktreeId && existing?.sessionId === sessionId) return state
+            if (
+              existing?.worktreeId === worktreeId &&
+              existing?.sessionId === sessionId
+            )
+              return state
             return {
               lastOpenedPerProject: {
                 ...state.lastOpenedPerProject,
