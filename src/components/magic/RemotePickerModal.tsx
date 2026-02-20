@@ -29,10 +29,13 @@ export function RemotePickerModal() {
       const result = await invoke<GitRemote[]>('get_git_remotes', {
         repoPath: remotePickerRepoPath,
       })
-      // Default-select "origin" if it exists
-      const originIndex = result.findIndex(r => r.name === 'origin')
-      setSelectedIndex(originIndex >= 0 ? originIndex : 0)
-      return result
+      const origin = result.find(remote => remote.name === 'origin')
+      const orderedRemotes = origin
+        ? [origin, ...result.filter(remote => remote.name !== 'origin')]
+        : result
+
+      setSelectedIndex(0)
+      return orderedRemotes
     },
     enabled: remotePickerOpen && remotePickerRepoPath !== null,
     staleTime: 10_000,
