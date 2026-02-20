@@ -347,8 +347,11 @@ export const GeneralPane: React.FC = () => {
     const escapedPath = isWindows
       ? `& "${cliStatus.path}"`
       : `'${cliStatus.path.replace(/'/g, "'\\''")}'`
-    openCliLoginModal('claude', escapedPath)
-  }, [cliStatus?.path, openCliLoginModal, queryClient])
+    openCliLoginModal(
+      'claude',
+      cliStatus.supports_auth_command ? escapedPath + ' auth login' : escapedPath
+    )
+  }, [cliStatus?.path, cliStatus?.supports_auth_command, openCliLoginModal, queryClient])
 
   const handleGhLogin = useCallback(async () => {
     if (!ghStatus?.path) return

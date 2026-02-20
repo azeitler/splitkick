@@ -43,6 +43,9 @@ pub struct ClaudeCliStatus {
     pub version: Option<String>,
     /// Path to the CLI binary (if installed)
     pub path: Option<String>,
+    /// Whether the CLI supports the `auth` subcommand (older CLIs lack it)
+    #[serde(default)]
+    pub supports_auth_command: bool,
 }
 
 /// Information about a Claude CLI release from GitHub
@@ -82,6 +85,7 @@ pub async fn check_claude_cli_installed(app: AppHandle) -> Result<ClaudeCliStatu
             installed: false,
             version: None,
             path: None,
+            supports_auth_command: false,
         });
     }
 
@@ -108,10 +112,19 @@ pub async fn check_claude_cli_installed(app: AppHandle) -> Result<ClaudeCliStatu
         }
     };
 
+    // Check if the CLI supports the `auth` subcommand (older versions lack it)
+    let supports_auth_command = silent_command(&binary_path)
+        .args(["auth", "--help"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    log::trace!("Claude CLI supports auth command: {supports_auth_command}");
+
     Ok(ClaudeCliStatus {
         installed: true,
         version,
         path: Some(binary_path.to_string_lossy().to_string()),
+        supports_auth_command,
     })
 }
 

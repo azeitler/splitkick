@@ -39,7 +39,7 @@ export function useClaudeCliStatus() {
     queryFn: async (): Promise<ClaudeCliStatus> => {
       if (!isTauri()) {
         logger.debug('Not in Tauri context, returning mock CLI status')
-        return { installed: false, version: null, path: null }
+        return { installed: false, version: null, path: null, supports_auth_command: false }
       }
 
       try {
@@ -51,7 +51,7 @@ export function useClaudeCliStatus() {
         return status
       } catch (error) {
         logger.error('Failed to check Claude CLI status', { error })
-        return { installed: false, version: null, path: null }
+        return { installed: false, version: null, path: null, supports_auth_command: false }
       }
     },
     staleTime: 1000 * 60 * 5, // 5 minutes
