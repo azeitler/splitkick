@@ -14,6 +14,7 @@ import { isBaseSession } from '@/types/projects'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { useWorktrees, useAppDataDir } from '@/services/projects'
 import {
   useFetchWorktreesStatus,
@@ -38,6 +39,7 @@ interface ProjectTreeItemProps {
 }
 
 export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
+  const isMobile = useIsMobile()
   const {
     expandedProjectIds,
     selectedProjectId,
@@ -97,7 +99,11 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
     selectProject(project.id)
     // Clear active worktree so ChatWindow shows Session Board view
     clearActiveWorktree()
-  }, [project.id, selectProject, clearActiveWorktree])
+    // Close sidebar on mobile after navigation
+    if (isMobile) {
+      useUIStore.getState().setLeftSidebarVisible(false)
+    }
+  }, [isMobile, project.id, selectProject, clearActiveWorktree])
 
   const handleChevronClick = useCallback(
     (e: React.MouseEvent) => {
