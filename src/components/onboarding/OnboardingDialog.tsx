@@ -6,7 +6,6 @@
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { CheckCircle2 } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -19,7 +18,10 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { useUIStore } from '@/store/ui-store'
 import { useClaudeCliSetup, useClaudeCliAuth } from '@/services/claude-cli'
 import { useCodexCliSetup, useCodexCliAuth } from '@/services/codex-cli'
-import { useOpenCodeCliSetup, useOpenCodeCliAuth } from '@/services/opencode-cli'
+import {
+  useOpenCodeCliSetup,
+  useOpenCodeCliAuth,
+} from '@/services/opencode-cli'
 import { useGhCliSetup, useGhCliAuth } from '@/services/gh-cli'
 import {
   SetupState,
@@ -125,9 +127,13 @@ function OnboardingDialogContent() {
   const opencodeSetup = useOpenCodeCliSetup()
   const ghSetup = useGhCliSetup()
 
-  const claudeAuth = useClaudeCliAuth({ enabled: !!claudeSetup.status?.installed })
+  const claudeAuth = useClaudeCliAuth({
+    enabled: !!claudeSetup.status?.installed,
+  })
   const codexAuth = useCodexCliAuth({ enabled: !!codexSetup.status?.installed })
-  const opencodeAuth = useOpenCodeCliAuth({ enabled: !!opencodeSetup.status?.installed })
+  const opencodeAuth = useOpenCodeCliAuth({
+    enabled: !!opencodeSetup.status?.installed,
+  })
   const ghAuth = useGhCliAuth({ enabled: !!ghSetup.status?.installed })
 
   const [step, setStep] = useState<OnboardingStep>('backend-select')
@@ -170,7 +176,9 @@ function OnboardingDialogContent() {
 
   const stableClaudeVersions = claudeSetup.versions.filter(v => !v.prerelease)
   const stableCodexVersions = codexSetup.versions.filter(v => !v.prerelease)
-  const stableOpencodeVersions = opencodeSetup.versions.filter(v => !v.prerelease)
+  const stableOpencodeVersions = opencodeSetup.versions.filter(
+    v => !v.prerelease
+  )
   const stableGhVersions = ghSetup.versions.filter(v => !v.prerelease)
 
   useEffect(() => {
@@ -183,7 +191,9 @@ function OnboardingDialogContent() {
 
   useEffect(() => {
     if (!codexVersion && stableCodexVersions.length > 0) {
-      queueMicrotask(() => setCodexVersion(stableCodexVersions[0]?.version ?? null))
+      queueMicrotask(() =>
+        setCodexVersion(stableCodexVersions[0]?.version ?? null)
+      )
     }
   }, [codexVersion, stableCodexVersions])
 
@@ -204,7 +214,9 @@ function OnboardingDialogContent() {
   const isBackendReady = useCallback(
     (backend: AIBackend) => {
       if (backend === 'claude') {
-        return !!claudeSetup.status?.installed && !!claudeAuth.data?.authenticated
+        return (
+          !!claudeSetup.status?.installed && !!claudeAuth.data?.authenticated
+        )
       }
       if (backend === 'codex') {
         return !!codexSetup.status?.installed && !!codexAuth.data?.authenticated
@@ -280,8 +292,10 @@ function OnboardingDialogContent() {
     codexSetup.isStatusLoading ||
     opencodeSetup.isStatusLoading ||
     ghSetup.isStatusLoading ||
-    (claudeSetup.status?.installed && (claudeAuth.isLoading || claudeAuth.isFetching)) ||
-    (codexSetup.status?.installed && (codexAuth.isLoading || codexAuth.isFetching)) ||
+    (claudeSetup.status?.installed &&
+      (claudeAuth.isLoading || claudeAuth.isFetching)) ||
+    (codexSetup.status?.installed &&
+      (codexAuth.isLoading || codexAuth.isFetching)) ||
     (opencodeSetup.status?.installed &&
       (opencodeAuth.isLoading || opencodeAuth.isFetching)) ||
     (ghSetup.status?.installed && (ghAuth.isLoading || ghAuth.isFetching))
@@ -414,15 +428,18 @@ function OnboardingDialogContent() {
     }
   }, [step, ghAuth.isLoading, ghAuth.isFetching, ghAuth.data?.authenticated])
 
-  const handleBackendToggle = useCallback((backend: AIBackend, checked: boolean) => {
-    setSelectedBackends(prev => {
-      if (checked) {
-        if (prev.includes(backend)) return prev
-        return [...prev, backend]
-      }
-      return prev.filter(b => b !== backend)
-    })
-  }, [])
+  const handleBackendToggle = useCallback(
+    (backend: AIBackend, checked: boolean) => {
+      setSelectedBackends(prev => {
+        if (checked) {
+          if (prev.includes(backend)) return prev
+          return [...prev, backend]
+        }
+        return prev.filter(b => b !== backend)
+      })
+    },
+    []
+  )
 
   const handleBackendSelectionContinue = useCallback(() => {
     if (selectedBackends.length === 0) {
@@ -634,8 +651,10 @@ function OnboardingDialogContent() {
 
   const cliData = getCliSetupData()
 
-  const isClaudeReinstall = claudeSetup.status?.installed && step === 'claude-setup'
-  const isCodexReinstall = codexSetup.status?.installed && step === 'codex-setup'
+  const isClaudeReinstall =
+    claudeSetup.status?.installed && step === 'claude-setup'
+  const isCodexReinstall =
+    codexSetup.status?.installed && step === 'codex-setup'
   const isOpencodeReinstall =
     opencodeSetup.status?.installed && step === 'opencode-setup'
   const isGhReinstall = ghSetup.status?.installed && step === 'gh-setup'
@@ -676,7 +695,9 @@ function OnboardingDialogContent() {
 
     if (step === 'gh-setup' || step === 'gh-installing') {
       return {
-        title: isGhReinstall ? 'Change GitHub CLI Version' : 'Install GitHub CLI',
+        title: isGhReinstall
+          ? 'Change GitHub CLI Version'
+          : 'Install GitHub CLI',
         description: isGhReinstall
           ? 'Select a version to install. This will replace the current installation.'
           : 'GitHub CLI is required for GitHub integration.',
@@ -691,7 +712,9 @@ function OnboardingDialogContent() {
     }
 
     const currentBackend = stepToBackend(step)
-    const backendName = currentBackend ? backendLabel[currentBackend] : 'AI Backend'
+    const backendName = currentBackend
+      ? backendLabel[currentBackend]
+      : 'AI Backend'
 
     if (
       step === 'claude-setup' ||
@@ -707,7 +730,9 @@ function OnboardingDialogContent() {
         (currentBackend === 'opencode' && isOpencodeReinstall)
 
       return {
-        title: isReinstall ? `Change ${backendName} Version` : `Install ${backendName}`,
+        title: isReinstall
+          ? `Change ${backendName} Version`
+          : `Install ${backendName}`,
         description: isReinstall
           ? 'Select a version to install. This will replace the current installation.'
           : `Install ${backendName} to enable this AI backend.`,
@@ -755,11 +780,7 @@ function OnboardingDialogContent() {
                 : 'bg-muted text-muted-foreground'
           }`}
         >
-          {backendComplete ? (
-            <CheckCircle2 className="size-3" />
-          ) : (
-            <span className="font-medium">1</span>
-          )}
+          <span className="font-medium">1</span>
           <span>AI Backend(s)</span>
         </div>
         <div className="w-4 h-px bg-border" />
@@ -772,11 +793,7 @@ function OnboardingDialogContent() {
                 : 'bg-muted text-muted-foreground'
           }`}
         >
-          {ghComplete ? (
-            <CheckCircle2 className="size-3" />
-          ) : (
-            <span className="font-medium">2</span>
-          )}
+          <span className="font-medium">2</span>
           <span>GitHub CLI</span>
         </div>
         <div className="w-4 h-px bg-border" />
@@ -787,11 +804,7 @@ function OnboardingDialogContent() {
               : 'bg-muted text-muted-foreground'
           }`}
         >
-          {step === 'complete' ? (
-            <CheckCircle2 className="size-3" />
-          ) : (
-            <span className="font-medium">3</span>
-          )}
+          <span className="font-medium">3</span>
           <span>Done</span>
         </div>
       </div>
@@ -816,15 +829,16 @@ function OnboardingDialogContent() {
 
   return (
     <Dialog open={onboardingOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-[calc(100vw-4rem)] h-[calc(100vh-4rem)] flex flex-col">
+      <DialogContent className="sm:max-w-lg flex flex-col">
         <DialogHeader>
           <DialogTitle className="text-xl">{dialogContent.title}</DialogTitle>
           <DialogDescription>{dialogContent.description}</DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto py-4">
+        <div className="overflow-y-auto py-4 flex flex-col">
           {renderStepIndicator()}
 
+          <div className="w-full">
           {step === 'backend-select' ? (
             <BackendSelectionState
               selectedBackends={selectedBackends}
@@ -844,7 +858,10 @@ function OnboardingDialogContent() {
           ) : step === 'codex-installing' && cliData ? (
             <InstallingState cliName="Codex CLI" progress={cliData.progress} />
           ) : step === 'opencode-installing' && cliData ? (
-            <InstallingState cliName="OpenCode CLI" progress={cliData.progress} />
+            <InstallingState
+              cliName="OpenCode CLI"
+              progress={cliData.progress}
+            />
           ) : step === 'gh-installing' && cliData ? (
             <InstallingState cliName="GitHub CLI" progress={cliData.progress} />
           ) : step === 'claude-auth-checking' ? (
@@ -947,12 +964,7 @@ function OnboardingDialogContent() {
               onContinue={handleBackendSelectionContinue}
             />
           )}
-
-          {currentBackend && step !== 'backend-select' && step !== 'complete' && (
-            <p className="mt-4 text-center text-xs text-muted-foreground">
-              Current AI backend: {backendLabel[currentBackend]}
-            </p>
-          )}
+          </div>
         </div>
       </DialogContent>
     </Dialog>
@@ -1033,20 +1045,18 @@ function SuccessState({
 }: SuccessStateProps) {
   return (
     <div className="space-y-6">
-      <div className="flex flex-col items-center gap-4">
-        <CheckCircle2 className="size-10 text-green-500" />
-        <div className="text-center">
-          <p className="font-medium">All Tools Ready</p>
-          <div className="text-sm text-muted-foreground mt-2 space-y-1">
+      <div className="text-center">
+        <p className="font-medium">All Tools Ready</p>
+        <div className="text-sm text-muted-foreground mt-2 space-y-1">
             {claudeVersion && <p>Claude CLI: v{claudeVersion}</p>}
             {codexVersion && <p>Codex CLI: v{codexVersion}</p>}
             {opencodeVersion && <p>OpenCode CLI: v{opencodeVersion}</p>}
             {ghVersion && <p>GitHub CLI: v{ghVersion}</p>}
-            {!claudeVersion && !codexVersion && !opencodeVersion && !ghVersion && (
-              <p>Setup complete</p>
-            )}
+            {!claudeVersion &&
+              !codexVersion &&
+              !opencodeVersion &&
+              !ghVersion && <p>Setup complete</p>}
           </div>
-        </div>
       </div>
 
       <Button onClick={onContinue} className="w-full" size="lg">

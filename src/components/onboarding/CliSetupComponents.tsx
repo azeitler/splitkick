@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import { Download, CheckCircle2, Loader2, AlertCircle } from 'lucide-react'
+import { Download, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -48,7 +48,6 @@ export function SetupState({
     <div className="space-y-6">
       {currentVersion && (
         <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
-          <CheckCircle2 className="size-4 text-green-500" />
           <span className="text-sm">
             Currently installed:{' '}
             <span className="font-medium">v{currentVersion}</span>
@@ -123,14 +122,11 @@ export function InstallingState({ cliName, progress }: InstallingStateProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col items-center gap-4">
-        <Loader2 className="size-10 animate-spin text-primary" />
-        <div className="text-center">
-          <p className="font-medium">{message}</p>
-          <p className="text-sm text-muted-foreground mt-1">
-            Please wait while {cliName} is being installed...
-          </p>
-        </div>
+      <div className="text-center">
+        <p className="font-medium">{message}</p>
+        <p className="text-sm text-muted-foreground mt-1">
+          Please wait while {cliName} is being installed...
+        </p>
       </div>
 
       {/* Progress bar */}
@@ -161,12 +157,9 @@ export function ErrorState({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col items-center gap-4">
-        <AlertCircle className="size-10 text-destructive" />
-        <div className="text-center">
-          <p className="font-medium text-destructive">Installation Failed</p>
-          <p className="text-sm text-muted-foreground mt-1">{errorMessage}</p>
-        </div>
+      <div className="text-center">
+        <p className="font-medium text-destructive">Installation Failed</p>
+        <p className="text-sm text-muted-foreground mt-1">{errorMessage}</p>
       </div>
 
       <div className="flex flex-col gap-2">
@@ -195,14 +188,11 @@ export interface AuthCheckingStateProps {
 export function AuthCheckingState({ cliName }: AuthCheckingStateProps) {
   return (
     <div className="space-y-6">
-      <div className="flex flex-col items-center gap-4">
-        <Loader2 className="size-10 animate-spin text-primary" />
-        <div className="text-center">
-          <p className="font-medium">Checking Authentication</p>
-          <p className="text-sm text-muted-foreground mt-1">
-            Verifying {cliName} login status...
-          </p>
-        </div>
+      <div className="text-center">
+        <p className="font-medium">Checking Authentication</p>
+        <p className="text-sm text-muted-foreground mt-1">
+          Verifying {cliName} login status...
+        </p>
       </div>
     </div>
   )
