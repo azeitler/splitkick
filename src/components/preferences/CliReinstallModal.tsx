@@ -267,7 +267,7 @@ function CliReinstallModalUI({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[450px]">
+      <DialogContent className="sm:max-w-[450px]" preventClose>
         <DialogHeader>
           <DialogTitle>
             {step === 'complete'

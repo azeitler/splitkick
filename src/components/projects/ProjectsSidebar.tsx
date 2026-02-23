@@ -11,12 +11,15 @@ import { useProjects, useCreateFolder } from '@/services/projects'
 import { fetchWorktreesStatus } from '@/services/git-status'
 import { useProjectsStore } from '@/store/projects-store'
 import { ProjectTree } from './ProjectTree'
+import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 
 export function ProjectsSidebar() {
   const { data: projects = [], isLoading } = useProjects()
   const { setAddProjectDialogOpen } = useProjectsStore()
   const createFolder = useCreateFolder()
   const sidebarWidth = useSidebarWidth()
+  const { installedBackends } = useInstalledBackends()
+  const setupIncomplete = installedBackends.length === 0
 
   // Responsive layout threshold
   const isNarrow = sidebarWidth < 180
@@ -117,7 +120,10 @@ export function ProjectsSidebar() {
               <Folder className="mr-2 size-3.5" />
               Folder
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setAddProjectDialogOpen(true)}>
+            <DropdownMenuItem
+              onClick={() => setAddProjectDialogOpen(true)}
+              disabled={setupIncomplete}
+            >
               <Briefcase className="mr-2 size-3.5" />
               Project
             </DropdownMenuItem>

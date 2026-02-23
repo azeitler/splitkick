@@ -14,6 +14,7 @@ import { resolveMagicPromptProvider } from '@/types/preferences'
 import type { ThinkingLevel, ExecutionMode } from '@/types/chat'
 import type { Project, ReviewResponse } from '@/types/projects'
 import { useQueryClient } from '@tanstack/react-query'
+import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { chatQueryKeys } from '@/services/chat'
 import { projectsQueryKeys } from '@/services/projects'
 import { triggerImmediateGitPoll, performGitPull } from '@/services/git-status'
@@ -29,6 +30,7 @@ export function useCommandContext(
 
   const queryClient = useQueryClient()
   const themeContext = useContext(ThemeProviderContext)
+  const { installedBackends } = useInstalledBackends()
 
   // Preferences
   const openPreferences = useCallback(() => {
@@ -459,6 +461,11 @@ export function useCommandContext(
     return !!selectedProjectId
   }, [])
 
+  const hasInstalledBackend = useCallback(
+    () => installedBackends.length > 0,
+    [installedBackends]
+  )
+
   const hasMultipleSessions = useCallback(() => {
     // This would need access to sessions data - return true as default
     // Actual implementation would check query cache
@@ -821,6 +828,7 @@ export function useCommandContext(
       hasActiveSession,
       hasActiveWorktree,
       hasSelectedProject,
+      hasInstalledBackend,
       hasMultipleSessions,
       hasMultipleWorktrees,
       hasRunScript,
@@ -878,6 +886,7 @@ export function useCommandContext(
       hasActiveSession,
       hasActiveWorktree,
       hasSelectedProject,
+      hasInstalledBackend,
       hasMultipleSessions,
       hasMultipleWorktrees,
       hasRunScript,

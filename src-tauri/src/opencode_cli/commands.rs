@@ -288,32 +288,41 @@ fn get_platform_asset() -> Result<PlatformAsset, String> {
 /// Get available OpenCode versions from GitHub releases.
 #[tauri::command]
 pub async fn get_available_opencode_versions() -> Result<Vec<OpenCodeReleaseInfo>, String> {
-    log::trace!("Fetching available OpenCode versions from GitHub releases");
+    let url = format!("https://api.github.com/repos/{GITHUB_REPO}/releases");
+    log::info!("Fetching available OpenCode versions from {url}");
 
     let client = reqwest::Client::new();
     let response = client
-        .get(format!(
-            "https://api.github.com/repos/{GITHUB_REPO}/releases"
-        ))
+        .get(&url)
         .header("User-Agent", "jean-desktop")
         .query(&[("per_page", "20")])
         .send()
         .await
-        .map_err(|e| format!("Failed to fetch GitHub releases: {e}"))?;
+        .map_err(|e| {
+            log::error!("OpenCode versions fetch failed: {e}");
+            format!("Failed to fetch GitHub releases: {e}")
+        })?;
 
-    if !response.status().is_success() {
-        return Err(format!(
-            "GitHub API returned status: {}",
-            response.status()
-        ));
+    let status = response.status();
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+        log::error!("OpenCode versions API returned {status}: {body}");
+        return Err(format!("GitHub API returned status: {status}"));
     }
 
-    let releases: Vec<GitHubRelease> = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse GitHub releases: {e}"))?;
+    let body = response.text().await.map_err(|e| {
+        log::error!("OpenCode versions: failed to read response body: {e}");
+        format!("Failed to read response: {e}")
+    })?;
 
-    let result = releases
+    let releases: Vec<GitHubRelease> = serde_json::from_str(&body).map_err(|e| {
+        log::error!("OpenCode versions: failed to parse JSON: {e}, body: {}", &body[..body.len().min(500)]);
+        format!("Failed to parse GitHub releases: {e}")
+    })?;
+
+    log::info!("OpenCode versions: got {} releases", releases.len());
+
+    let result: Vec<OpenCodeReleaseInfo> = releases
         .into_iter()
         .map(|r| {
             let version = r.tag_name.trim_start_matches('v').to_string();
@@ -326,6 +335,7 @@ pub async fn get_available_opencode_versions() -> Result<Vec<OpenCodeReleaseInfo
         })
         .collect();
 
+    log::info!("OpenCode versions: returning {} versions", result.len());
     Ok(result)
 }
 

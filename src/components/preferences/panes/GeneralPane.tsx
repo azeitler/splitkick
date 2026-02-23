@@ -1,4 +1,4 @@
-import React, { useState, useCallback, type FC } from 'react'
+import React, { useState, useCallback, useMemo, type FC } from 'react'
 import { invoke } from '@/lib/transport'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -248,6 +248,22 @@ export const GeneralPane: React.FC = () => {
       savePreferences.mutate({ ...preferences, default_backend: value })
     }
   }
+
+  // If stored default_backend isn't installed, fall back to the first installed one
+  const stored = preferences?.default_backend ?? 'claude'
+  const claudeInstalled = cliStatus?.installed
+  const codexInstalled = codexStatus?.installed
+  const opencodeInstalled = opencodeStatus?.installed
+  const effectiveBackend = useMemo(() => {
+    const installed: Record<string, boolean | undefined> = {
+      claude: claudeInstalled,
+      codex: codexInstalled,
+      opencode: opencodeInstalled,
+    }
+    if (installed[stored]) return stored
+    const first = backendOptions.find(o => installed[o.value])
+    return first?.value ?? stored
+  }, [stored, claudeInstalled, codexInstalled, opencodeInstalled])
 
   const handleCodexModelChange = (value: CodexModel) => {
     if (preferences) {
@@ -562,7 +578,7 @@ export const GeneralPane: React.FC = () => {
                     <TooltipContent>Click to copy path</TooltipContent>
                   </Tooltip>
                 ) : (
-                  'Required'
+                  'Optional — enables Claude AI sessions'
                 )
               }
             >
@@ -822,18 +838,26 @@ export const GeneralPane: React.FC = () => {
             description="CLI to use for new sessions"
           >
             <Select
-              value={preferences?.default_backend ?? 'claude'}
+              value={effectiveBackend}
               onValueChange={handleBackendChange}
             >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {backendOptions.map(option => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
+                {backendOptions
+                  .filter(option =>
+                    option.value === 'claude'
+                      ? cliStatus?.installed
+                      : option.value === 'codex'
+                        ? codexStatus?.installed
+                        : opencodeStatus?.installed
+                  )
+                  .map(option => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
               </SelectContent>
             </Select>
           </InlineField>
@@ -979,7 +1003,7 @@ export const GeneralPane: React.FC = () => {
 
           <InlineField
             label="Multi-Agent"
-            description="Allow Codex to spawn parallel sub-agents (experimental)"
+            description="Allow Codex to spawn parallel subagents (experimental)"
           >
             <Switch
               checked={preferences?.codex_multi_agent_enabled ?? false}
@@ -990,7 +1014,7 @@ export const GeneralPane: React.FC = () => {
           {preferences?.codex_multi_agent_enabled && (
             <InlineField
               label="Max agent threads"
-              description="Maximum concurrent sub-agents (1–8)"
+              description="Maximum concurrent subagents (1–8)"
             >
               <Input
                 type="number"

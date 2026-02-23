@@ -113,6 +113,7 @@ interface DesktopToolbarControlsProps {
   onOpenProjectSettings?: () => void
   onResolvePrConflicts: () => void
   onLoadContext: () => void
+  installedBackends: ('claude' | 'codex' | 'opencode')[]
   onBackendChange: (backend: 'claude' | 'codex' | 'opencode') => void
   onSetExecutionMode: (mode: ExecutionMode) => void
   onToggleMcpServer: (name: string) => void
@@ -168,6 +169,7 @@ export function DesktopToolbarControls({
   onOpenProjectSettings,
   onResolvePrConflicts,
   onLoadContext,
+  installedBackends,
   onBackendChange,
   onSetExecutionMode,
   onToggleMcpServer,
@@ -521,21 +523,27 @@ export function DesktopToolbarControls({
                   onBackendChange(v as 'claude' | 'codex' | 'opencode')
                 }
               >
-                <DropdownMenuRadioItem value="claude">
-                  Claude
-                </DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="codex">
-                  Codex
-                  <span className="ml-auto rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">
-                    BETA
-                  </span>
-                </DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="opencode">
-                  OpenCode
-                  <span className="ml-auto rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">
-                    BETA
-                  </span>
-                </DropdownMenuRadioItem>
+                {installedBackends.includes('claude') && (
+                  <DropdownMenuRadioItem value="claude">
+                    Claude
+                  </DropdownMenuRadioItem>
+                )}
+                {installedBackends.includes('codex') && (
+                  <DropdownMenuRadioItem value="codex">
+                    Codex
+                    <span className="ml-auto rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">
+                      BETA
+                    </span>
+                  </DropdownMenuRadioItem>
+                )}
+                {installedBackends.includes('opencode') && (
+                  <DropdownMenuRadioItem value="opencode">
+                    OpenCode
+                    <span className="ml-auto rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">
+                      BETA
+                    </span>
+                  </DropdownMenuRadioItem>
+                )}
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
           </DropdownMenu>

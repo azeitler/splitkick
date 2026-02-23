@@ -141,7 +141,7 @@ export function WorktreeCanvasView({
   // Preferences for keybinding hints and layout
   const { data: preferences } = usePreferences()
   const savePreferences = useSavePreferences()
-  const canvasLayout = preferences?.canvas_layout ?? 'grid'
+  const canvasLayout = preferences?.canvas_layout ?? 'list'
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('')

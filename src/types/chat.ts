@@ -128,6 +128,8 @@ export interface Session {
   order: number
   /** Unix timestamp when session was created */
   created_at: number
+  /** Unix timestamp of last activity (latest run end/start, or created_at) */
+  updated_at: number
   /** Chat messages for this session */
   messages: ChatMessage[]
   /** Message count (populated separately for efficiency when full messages not needed) */

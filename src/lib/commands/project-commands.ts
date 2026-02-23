@@ -20,6 +20,8 @@ export const projectCommands: AppCommand[] = [
     group: 'projects',
     keywords: ['project', 'add', 'import', 'repository', 'git'],
 
+    isAvailable: context => context.hasInstalledBackend(),
+
     execute: context => {
       context.addProject()
     },
@@ -32,6 +34,8 @@ export const projectCommands: AppCommand[] = [
     icon: FolderGit,
     group: 'projects',
     keywords: ['project', 'init', 'new', 'create', 'initialize'],
+
+    isAvailable: context => context.hasInstalledBackend(),
 
     execute: context => {
       context.initProject()
@@ -76,20 +80,28 @@ export const projectCommands: AppCommand[] = [
   {
     id: 'help.feature-tour',
     label: 'Show Boarding Flow',
-    description: 'Learn essential keyboard shortcuts',
+    description: 'Run CLI setup and learn keyboard shortcuts',
     icon: Keyboard,
     group: 'help',
     keywords: [
       'tour',
+      'boarding',
       'onboarding',
       'shortcuts',
       'keybindings',
       'help',
       'keyboard',
+      'install',
+      'cli',
+      'setup',
     ],
 
     execute: () => {
-      useUIStore.getState().setFeatureTourOpen(true)
+      useUIStore.setState({
+        onboardingManuallyTriggered: true,
+        onboardingDismissed: false,
+        onboardingOpen: true,
+      })
     },
   },
 

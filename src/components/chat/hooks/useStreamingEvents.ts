@@ -579,7 +579,34 @@ export default function useStreamingEvents({
       if (lastMessage) {
         setInputDraft(session_id, lastMessage)
         clearLastSentMessage(session_id)
+
+        // Remove the optimistic user message from query cache
+        queryClient.setQueryData<Session>(
+          chatQueryKeys.session(session_id),
+          old => {
+            if (!old?.messages?.length) return old
+            // Find last user message matching the failed content
+            let lastUserIdx = -1
+            for (let i = old.messages.length - 1; i >= 0; i--) {
+              if (
+                old.messages[i]?.role === 'user' &&
+                old.messages[i]?.content === lastMessage
+              ) {
+                lastUserIdx = i
+                break
+              }
+            }
+            if (lastUserIdx === -1) return old
+            const newMessages = [...old.messages]
+            newMessages.splice(lastUserIdx, 1)
+            return { ...old, messages: newMessages }
+          }
+        )
+
       }
+
+      // Restore attachments that were cleared on send
+      useChatStore.getState().restoreAttachments(session_id)
 
       // Clear streaming state for this session
       clearStreamingContent(session_id)

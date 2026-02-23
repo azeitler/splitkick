@@ -184,8 +184,9 @@ pub async fn get_available_codex_versions() -> Result<Vec<CodexReleaseInfo>, Str
 
     let client = build_github_client()?;
 
+    // Fetch enough releases to find stable ones buried behind prereleases
     let response = client
-        .get(CODEX_RELEASES_API)
+        .get(format!("{CODEX_RELEASES_API}?per_page=100"))
         .send()
         .await
         .map_err(|e| format!("Failed to fetch releases: {e}"))?;
@@ -201,16 +202,13 @@ pub async fn get_available_codex_versions() -> Result<Vec<CodexReleaseInfo>, Str
 
     let versions: Vec<CodexReleaseInfo> = releases
         .into_iter()
-        .filter(|r| !r.assets.is_empty())
+        .filter(|r| !r.prerelease && !r.assets.is_empty())
         .take(5)
-        .map(|r| {
-            let version = extract_version_from_tag(&r.tag_name);
-            CodexReleaseInfo {
-                version,
-                tag_name: r.tag_name,
-                published_at: r.published_at,
-                prerelease: r.prerelease,
-            }
+        .map(|r| CodexReleaseInfo {
+            version: extract_version_from_tag(&r.tag_name),
+            tag_name: r.tag_name,
+            published_at: r.published_at,
+            prerelease: r.prerelease,
         })
         .collect();
 

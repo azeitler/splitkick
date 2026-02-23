@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import { Download, Loader2 } from 'lucide-react'
+import { Download, Loader2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -31,6 +31,8 @@ export interface SetupStateProps {
   selectedVersion: string | null
   currentVersion?: string | null
   isLoading: boolean
+  isError?: boolean
+  onRetry?: () => void
   onVersionChange: (version: string) => void
   onInstall: () => void
 }
@@ -41,6 +43,8 @@ export function SetupState({
   selectedVersion,
   currentVersion,
   isLoading,
+  isError,
+  onRetry,
   onVersionChange,
   onInstall,
 }: SetupStateProps) {
@@ -56,13 +60,38 @@ export function SetupState({
       )}
 
       <div className="space-y-2">
-        <label className="text-sm font-medium text-foreground">
-          Select Version
-        </label>
+        <div className="flex items-center justify-between">
+          <label className="text-sm font-medium text-foreground">
+            Select Version
+          </label>
+          {!isLoading && !isError && versions.length > 0 && onRetry && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-xs text-muted-foreground"
+              onClick={() => onRetry()}
+            >
+              <RefreshCw className="size-3" />
+              Refresh
+            </Button>
+          )}
+        </div>
         {isLoading ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" />
             Loading versions...
+          </div>
+        ) : isError || (!isLoading && versions.length === 0) ? (
+          <div className="flex items-center justify-between gap-2 p-3 rounded-lg border border-destructive/30 bg-destructive/5">
+            <span className="text-sm text-muted-foreground">
+              Failed to load versions. This may be due to GitHub API rate limiting.
+            </span>
+            {onRetry && (
+              <Button variant="ghost" size="sm" onClick={() => onRetry()}>
+                <RefreshCw className="size-3.5" />
+                Retry
+              </Button>
+            )}
           </div>
         ) : (
           <Select

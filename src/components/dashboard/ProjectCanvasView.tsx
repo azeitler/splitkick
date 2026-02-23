@@ -174,8 +174,8 @@ function getSessionMetrics(cards: SessionCardData[]) {
     c =>
       c.status === 'planning' || c.status === 'vibing' || c.status === 'yoloing'
   ).length
-  const latestCreatedAt = cards.reduce(
-    (latest, card) => Math.max(latest, card.session.created_at),
+  const latestUpdatedAt = cards.reduce(
+    (latest, card) => Math.max(latest, card.session.updated_at ?? card.session.created_at),
     0
   )
 
@@ -184,7 +184,7 @@ function getSessionMetrics(cards: SessionCardData[]) {
     waitingCount,
     reviewCount,
     activeCount,
-    latestCreatedAt,
+    latestUpdatedAt,
   }
 }
 
@@ -276,7 +276,7 @@ function WorktreeSectionHeader({
     [cards]
   )
 
-  const lastActivity = formatRelativeTime(sessionMetrics?.latestCreatedAt)
+  const lastActivity = formatRelativeTime(sessionMetrics?.latestUpdatedAt)
 
   return (
     <>
@@ -409,7 +409,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   // Preferences for keybinding hints and layout
   const { data: preferences } = usePreferences()
   const savePreferences = useSavePreferences()
-  const canvasLayout = preferences?.canvas_layout ?? 'grid'
+  const canvasLayout = preferences?.canvas_layout ?? 'list'
   const isListLayout = canvasLayout === 'list'
 
   const [searchQuery, setSearchQuery] = useState('')
@@ -1394,42 +1394,44 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       <div className="flex-1 flex flex-col overflow-auto">
         {/* Header with Search - sticky over content */}
         <div className="sticky top-0 z-10 flex items-center gap-4 bg-background/60 backdrop-blur-md px-4 py-3 border-b border-border/30 min-h-[61px]">
-          <div className="flex items-center gap-2 shrink-0">
-            <h2 className="truncate text-lg font-semibold">{project.name}</h2>
-            <NewIssuesBadge projectPath={project.path} projectId={projectId} />
-            <OpenPRsBadge projectPath={project.path} projectId={projectId} />
-            <FailedRunsBadge projectPath={project.path} />
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-muted-foreground"
-                  aria-label="Project actions"
-                >
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                <DropdownMenuItem
-                  onSelect={() =>
-                    window.dispatchEvent(new CustomEvent('create-new-worktree'))
-                  }
-                >
-                  <Plus className="h-4 w-4" />
-                  New Worktree
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onSelect={() =>
-                    useProjectsStore.getState().openProjectSettings(projectId)
-                  }
-                >
-                  <Settings className="h-4 w-4" />
-                  Project Settings
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+          <div className="flex flex-col shrink-0">
+            <div className="flex items-center gap-2">
+              <h2 className="truncate text-lg font-semibold">{project.name}</h2>
+              <NewIssuesBadge projectPath={project.path} projectId={projectId} />
+              <OpenPRsBadge projectPath={project.path} projectId={projectId} />
+              <FailedRunsBadge projectPath={project.path} />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground"
+                    aria-label="Project actions"
+                  >
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      window.dispatchEvent(new CustomEvent('create-new-worktree'))
+                    }
+                  >
+                    <Plus className="h-4 w-4" />
+                    New Worktree
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      useProjectsStore.getState().openProjectSettings(projectId)
+                    }
+                  >
+                    <Settings className="h-4 w-4" />
+                    Project Settings
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
             {projectSummary.totalReady > 0 && (
               <p className="text-xs text-muted-foreground whitespace-nowrap">
                 {projectSummary.totalReady} worktrees

@@ -97,14 +97,11 @@ function formatArrowKeys(shortcut: string): string {
 }
 
 export function FeatureTourDialog() {
-  const featureTourOpen = useUIStore(state => state.featureTourOpen)
-
-  if (!featureTourOpen) return null
-
   return <FeatureTourDialogContent />
 }
 
 function FeatureTourDialogContent() {
+  const featureTourOpen = useUIStore(state => state.featureTourOpen)
   const [stepIndex, setStepIndex] = useState(0)
   const { setFeatureTourOpen } = useUIStore.getState()
   const { data: preferences } = usePreferences()
@@ -134,6 +131,7 @@ function FeatureTourDialogContent() {
 
   // Keyboard navigation: arrows, Enter, S
   useEffect(() => {
+    if (!featureTourOpen) return
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'ArrowRight') {
         e.preventDefault()
@@ -151,13 +149,13 @@ function FeatureTourDialogContent() {
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [handleNext, handleClose])
+  }, [featureTourOpen, handleNext, handleClose])
 
   const step = steps[stepIndex] as (typeof steps)[number]
   const isLastStep = stepIndex === steps.length - 1
 
   return (
-    <Dialog open onOpenChange={open => !open && handleClose()}>
+    <Dialog open={featureTourOpen} onOpenChange={open => !open && handleClose()}>
       <DialogContent className="sm:max-w-md" showCloseButton>
         <DialogHeader>
           {/* Step dots */}

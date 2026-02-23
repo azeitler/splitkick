@@ -137,6 +137,8 @@ pub struct AppPreferences {
     #[serde(default = "default_review_sound")]
     pub review_sound: String, // Sound when session finishes reviewing: none, ding, chime, pop, choochoo
     #[serde(default)]
+    pub http_server_enabled: bool, // Whether HTTP server is enabled
+    #[serde(default)]
     pub http_server_auto_start: bool, // Auto-start HTTP server on app launch
     #[serde(default = "default_http_server_port")]
     pub http_server_port: u16, // HTTP server port (default: 3456)
@@ -335,7 +337,7 @@ fn default_chrome_enabled() -> bool {
 }
 
 fn default_canvas_layout() -> String {
-    "grid".to_string()
+    "list".to_string()
 }
 
 fn default_confirm_session_close() -> bool {
@@ -642,9 +644,9 @@ fn default_investigate_workflow_run_prompt() -> String {
 }
 
 fn default_parallel_execution_prompt() -> String {
-    r#"In plan mode, structure plans so sub-agents can work simultaneously. In build/execute mode, use sub-agents in parallel for faster implementation.
+    r#"In plan mode, structure plans so subagents can work simultaneously. In build/execute mode, use subagents in parallel for faster implementation.
 
-When launching multiple Task sub-agents, prefer sending them in a single message rather than sequentially. Group independent work items (e.g., editing separate files, researching unrelated questions) into parallel Task calls. Only sequence Tasks when one depends on another's output.
+When launching multiple Task subagents, prefer sending them in a single message rather than sequentially. Group independent work items (e.g., editing separate files, researching unrelated questions) into parallel Task calls. Only sequence Tasks when one depends on another's output.
 
 Instruct each sub-agent to briefly outline its approach before implementing, so it can course-correct early without formal plan mode overhead.
 
@@ -812,6 +814,7 @@ impl Default for AppPreferences {
             allow_web_tools_in_plan_mode: default_allow_web_tools_in_plan_mode(),
             waiting_sound: default_waiting_sound(),
             review_sound: default_review_sound(),
+            http_server_enabled: false,
             http_server_auto_start: false,
             http_server_port: default_http_server_port(),
             http_server_token: None,

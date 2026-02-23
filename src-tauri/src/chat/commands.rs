@@ -1401,6 +1401,8 @@ pub async fn send_chat_message(
         tool_calls: Vec<super::types::ToolCall>,
         content_blocks: Vec<super::types::ContentBlock>,
         cancelled: bool,
+        /// Whether a chat:error event was emitted during execution
+        error_emitted: bool,
         usage: Option<super::types::UsageData>,
         backend: Backend,
     }
@@ -1494,6 +1496,7 @@ pub async fn send_chat_message(
                                     tool_calls: response.tool_calls,
                                     content_blocks: response.content_blocks,
                                     cancelled: response.cancelled,
+                                    error_emitted: false,
                                     usage: response.usage,
                                     backend: Backend::Claude,
                                 },
@@ -1604,7 +1607,7 @@ pub async fn send_chat_message(
 ## Not Plan Mode\n\
 \n\
 - After each finished task, please write a few bullet points on how to test the changes.\n\
-- When multiple independent operations are needed, batch them into parallel tool calls. Launch independent Task sub-agents simultaneously rather than sequentially.\n\
+- When multiple independent operations are needed, batch them into parallel tool calls. Launch independent Task subagents simultaneously rather than sequentially.\n\
 - When specifying subagent_type for Task tool calls, always use the fully qualified name exactly as listed in the system prompt (e.g., \"code-simplifier:code-simplifier\", not just \"code-simplifier\"). If the agent type contains a colon, include the full namespace:name string.";
 
                     let mut system_prompt_parts: Vec<String> = Vec::new();
@@ -1854,6 +1857,7 @@ pub async fn send_chat_message(
                             tool_calls: response.tool_calls,
                             content_blocks: response.content_blocks,
                             cancelled: response.cancelled,
+                            error_emitted: response.error_emitted,
                             usage: response.usage,
                             backend: Backend::Codex,
                         },
@@ -1914,6 +1918,7 @@ pub async fn send_chat_message(
                             tool_calls: response.tool_calls,
                             content_blocks: response.content_blocks,
                             cancelled: response.cancelled,
+                            error_emitted: false,
                             usage: response.usage,
                             backend: Backend::Opencode,
                         },
@@ -1966,6 +1971,32 @@ pub async fn send_chat_message(
     let has_tool_calls = !unified_response.tool_calls.is_empty();
     let resume_id_for_log = unified_response.resume_id.clone();
     let response_backend = unified_response.backend.clone();
+
+    // Handle error_emitted: backend emitted chat:error during execution (e.g., Codex usage limit).
+    // Treat like undo_send so the user message doesn't persist in history.
+    if unified_response.error_emitted {
+        if let Err(e) = run_log_writer.cancel(None) {
+            log::warn!("Failed to cancel run log after error: {e}");
+        }
+        log::trace!("Run cancelled after chat:error for session: {session_id}");
+        return Ok(ChatMessage {
+            id: Uuid::new_v4().to_string(),
+            session_id: session_id.clone(),
+            role: MessageRole::Assistant,
+            content: String::new(),
+            timestamp: now(),
+            tool_calls: vec![],
+            content_blocks: vec![],
+            cancelled: true,
+            plan_approved: false,
+            model: None,
+            execution_mode: None,
+            thinking_level: None,
+            effort_level: None,
+            recovered: false,
+            usage: None,
+        });
+    }
 
     if unified_response.cancelled && !has_meaningful_content && !has_tool_calls {
         // Instant cancellation with no content

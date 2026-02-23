@@ -94,6 +94,7 @@ const createMockContext = (): CommandContext => ({
   hasActiveSession: vi.fn().mockReturnValue(true),
   hasActiveWorktree: vi.fn().mockReturnValue(true),
   hasSelectedProject: vi.fn().mockReturnValue(true),
+  hasInstalledBackend: vi.fn().mockReturnValue(true),
   hasMultipleSessions: vi.fn().mockReturnValue(true),
   hasMultipleWorktrees: vi.fn().mockReturnValue(true),
   hasRunScript: vi.fn().mockReturnValue(true),

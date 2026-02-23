@@ -423,14 +423,16 @@ pub fn load_sessions(
         } else {
             // No metadata found - create minimal session from index entry
             // Use resolved backend from preferences instead of hardcoded Claude
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
             Session {
                 id: entry.id.clone(),
                 name: entry.name.clone(),
                 order: entry.order,
-                created_at: std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs(),
+                created_at: now,
+                updated_at: now,
                 messages: vec![],
                 message_count: Some(entry.message_count),
                 backend: super::commands::resolve_default_backend(app, Some(worktree_id)),

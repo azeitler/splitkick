@@ -162,10 +162,10 @@ async function openBaseSessionForProject(
     queryClient.invalidateQueries({
       queryKey: projectsQueryKeys.worktrees(projectId),
     })
-    const { selectWorktree } = useProjectsStore.getState()
-    selectWorktree(session.id)
-    const { setActiveWorktree } = useChatStore.getState()
-    setActiveWorktree(session.id, session.path)
+    // Select worktree in sidebar but stay on ProjectCanvasView (don't set activeWorktreePath)
+    useProjectsStore.getState().selectWorktree(session.id)
+    // Mark for auto-open so ProjectCanvasView opens the chat modal when it renders
+    useUIStore.getState().markWorktreeForAutoOpenSession(session.id)
   } catch (error) {
     logger.error('Failed to auto-open base session', { error })
   }
@@ -224,6 +224,9 @@ export function useAddProject() {
 
       // Show jean.json wizard if not seen yet
       maybeShowJeanConfigWizard(project.id, queryClient)
+
+      // Auto-create and open the base session for immediate use
+      openBaseSessionForProject(project.id, queryClient)
     },
     onError: error => {
       // Tauri invoke errors are thrown as strings, not Error objects
@@ -277,6 +280,9 @@ export function useInitProject() {
 
       // Show jean.json wizard if not seen yet
       maybeShowJeanConfigWizard(project.id, queryClient)
+
+      // Auto-create and open the base session for immediate use
+      openBaseSessionForProject(project.id, queryClient)
     },
     onError: error => {
       const message =
@@ -336,8 +342,15 @@ export function useRemoveProject() {
       await invoke('remove_project', { projectId })
       logger.info('Project removed successfully')
     },
-    onSuccess: () => {
+    onSuccess: (_data, projectId) => {
       queryClient.invalidateQueries({ queryKey: projectsQueryKeys.list() })
+
+      // Clear selection if the removed project was selected
+      const { selectedProjectId, selectProject } = useProjectsStore.getState()
+      if (selectedProjectId === projectId) {
+        selectProject(null)
+      }
+
       toast.success('Project removed')
     },
     onError: error => {

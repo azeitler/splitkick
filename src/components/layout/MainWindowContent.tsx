@@ -8,8 +8,9 @@ import { useProjects } from '@/services/projects'
 import { useUIStore } from '@/store/ui-store'
 import { Button } from '@/components/ui/button'
 import { Kbd } from '@/components/ui/kbd'
-import { Plus, FolderOpen } from 'lucide-react'
+import { Plus, FolderOpen, Loader2 } from 'lucide-react'
 import { isFolder } from '@/types/projects'
+import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 
 interface MainWindowContentProps {
   children?: React.ReactNode
@@ -26,10 +27,12 @@ export function MainWindowContent({
     state => state.setAddProjectDialogOpen
   )
   const { data: projects = [] } = useProjects()
+  const { installedBackends, isLoading: backendsLoading } = useInstalledBackends()
   const realProjects = projects.filter(p => !isFolder(p))
+  const setupIncomplete = !backendsLoading && installedBackends.length === 0
 
   const showWelcome = !activeWorktreePath && !selectedProjectId && !children
-  const showAddButton = showWelcome && projects.length === 0
+  const showAddButton = showWelcome && projects.length === 0 && !setupIncomplete
 
   const handleProjectClick = useCallback((projectId: string) => {
     const { selectProject, expandProject } = useProjectsStore.getState()
@@ -92,6 +95,30 @@ export function MainWindowContent({
                     <span className="truncate">{project.name}</span>
                   </button>
                 ))}
+              </div>
+            ) : backendsLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Calling Jean…</span>
+              </div>
+            ) : setupIncomplete ? (
+              <div className="flex flex-col items-center gap-3">
+                <p className="text-sm text-muted-foreground">
+                  Complete setup to start adding projects.
+                </p>
+                <Button
+                  variant="outline"
+                  size="lg"
+                  onClick={() =>
+                    useUIStore.setState({
+                      onboardingManuallyTriggered: true,
+                      onboardingDismissed: false,
+                      onboardingOpen: true,
+                    })
+                  }
+                >
+                  Complete Setup
+                </Button>
               </div>
             ) : (
               <Button

@@ -83,6 +83,7 @@ export const ChatToolbar = memo(function ChatToolbar({
   onResolveConflicts,
   hasOpenPr,
   onSetDiffRequest,
+  installedBackends,
   onBackendChange,
   onModelChange,
   onProviderChange,
@@ -282,6 +283,7 @@ export const ChatToolbar = memo(function ChatToolbar({
           onReview={onReview}
           onMerge={onMerge}
           onResolveConflicts={onResolveConflicts}
+          installedBackends={installedBackends}
           onBackendChange={onBackendChange}
           onSetExecutionMode={onSetExecutionMode}
           handlePullClick={handlePullClick}
@@ -336,6 +338,7 @@ export const ChatToolbar = memo(function ChatToolbar({
           onOpenProjectSettings={onOpenProjectSettings}
           onResolvePrConflicts={onResolvePrConflicts}
           onLoadContext={onLoadContext}
+          installedBackends={installedBackends}
           onBackendChange={onBackendChange}
           onSetExecutionMode={onSetExecutionMode}
           onToggleMcpServer={onToggleMcpServer}

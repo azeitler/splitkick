@@ -113,9 +113,8 @@ export function useAvailableCodexVersions() {
         throw error
       }
     },
-    staleTime: 1000 * 60 * 15,
+    staleTime: 1000 * 60 * 15, // Cache for 15 minutes to avoid rate limiting
     gcTime: 1000 * 60 * 30,
-    refetchInterval: 1000 * 60 * 60,
   })
 }
 
@@ -246,7 +245,9 @@ export function useCodexCliSetup() {
     status: status.data,
     isStatusLoading: status.isLoading,
     versions: versions.data ?? [],
-    isVersionsLoading: versions.isLoading,
+    isVersionsLoading: versions.isFetching,
+    isVersionsError: versions.isError,
+    refetchVersions: versions.refetch,
     needsSetup,
     isInstalling: installMutation.isPending,
     installError: installMutation.error,

@@ -31,6 +31,7 @@ import {
   AuthLoginState,
 } from './CliSetupComponents'
 import { toast } from 'sonner'
+import { usePreferences, useSavePreferences } from '@/services/preferences'
 
 type AIBackend = 'claude' | 'codex' | 'opencode'
 type CliType = AIBackend | 'gh'
@@ -72,6 +73,8 @@ interface CliSetupData {
   description: string
   versions: VersionOption[]
   isVersionsLoading: boolean
+  isVersionsError: boolean
+  onRetryVersions: () => void
   isInstalling: boolean
   installError: Error | null
   progress: { stage: string; message: string; percent: number } | null
@@ -97,16 +100,10 @@ function stepToBackend(step: OnboardingStep): AIBackend | null {
 }
 
 /**
- * Wrapper that only renders content when open.
- * Prevents duplicate event listeners when dialog is closed.
+ * Always mounted so Radix Dialog can properly clean up its portal/overlay
+ * when closing. Unmounting while open leaves a stale overlay that blocks clicks.
  */
 export function OnboardingDialog() {
-  const onboardingOpen = useUIStore(state => state.onboardingOpen)
-
-  if (!onboardingOpen) {
-    return null
-  }
-
   return <OnboardingDialogContent />
 }
 
@@ -120,7 +117,11 @@ function OnboardingDialogContent() {
     setOnboardingOpen,
     onboardingStartStep,
     setOnboardingStartStep,
+    onboardingManuallyTriggered,
   } = useUIStore()
+
+  const { data: preferences } = usePreferences()
+  const savePreferences = useSavePreferences()
 
   const claudeSetup = useClaudeCliSetup()
   const codexSetup = useCodexCliSetup()
@@ -138,7 +139,7 @@ function OnboardingDialogContent() {
 
   const [step, setStep] = useState<OnboardingStep>('backend-select')
   const [selectedBackends, setSelectedBackends] = useState<AIBackend[]>([])
-  const [activeBackendIndex, setActiveBackendIndex] = useState(0)
+  const [, setActiveBackendIndex] = useState(0)
 
   const [claudeVersion, setClaudeVersion] = useState<string | null>(null)
   const [codexVersion, setCodexVersion] = useState<string | null>(null)
@@ -340,6 +341,20 @@ function OnboardingDialogContent() {
     const readyBackends = AI_BACKENDS.filter(isBackendReady)
     const ghReady = !!ghSetup.status?.installed && !!ghAuth.data?.authenticated
 
+    // When manually triggered, start at backend-select so users can
+    // install additional CLIs (e.g. Codex) even if minimum requirements are met.
+    // But if ALL backends are already installed, skip to GH or complete.
+    if (onboardingManuallyTriggered) {
+      const uninstalledBackends = AI_BACKENDS.filter(b => !isBackendReady(b))
+      if (uninstalledBackends.length > 0) {
+        queueMicrotask(() => setStep('backend-select'))
+        return
+      }
+      // All backends installed — skip to GH check or complete
+      queueMicrotask(() => setStep(getNextStepAfterBackends()))
+      return
+    }
+
     if (ghReady && readyBackends.length > 0) {
       queueMicrotask(() => setStep('complete'))
       return
@@ -358,6 +373,7 @@ function OnboardingDialogContent() {
     onboardingOpen,
     onboardingStartStep,
     setOnboardingStartStep,
+    onboardingManuallyTriggered,
     loadingInitialState,
     isBackendReady,
     ghSetup.status?.installed,
@@ -442,7 +458,7 @@ function OnboardingDialogContent() {
   )
 
   const handleBackendSelectionContinue = useCallback(() => {
-    if (selectedBackends.length === 0) {
+    if (selectedBackends.length === 0 && !onboardingManuallyTriggered) {
       toast.warning('Select at least one AI backend to continue.')
       return
     }
@@ -459,7 +475,7 @@ function OnboardingDialogContent() {
     }
 
     setStep(getNextStepAfterBackends())
-  }, [selectedBackends, getNextStepForBackend, getNextStepAfterBackends])
+  }, [selectedBackends, onboardingManuallyTriggered, getNextStepForBackend, getNextStepAfterBackends])
 
   const handleClaudeInstall = useCallback(() => {
     if (!claudeVersion) return
@@ -546,6 +562,11 @@ function OnboardingDialogContent() {
     codexSetup.refetchStatus()
     opencodeSetup.refetchStatus()
     ghSetup.refetchStatus()
+    // Set the first selected backend as the default so the preference
+    // isn't left pointing at an uninstalled backend (e.g. 'claude').
+    if (selectedBackends.length > 0 && preferences) {
+      savePreferences.mutate({ ...preferences, default_backend: selectedBackends[0]! })
+    }
     setOnboardingOpen(false)
     setOnboardingStartStep(null)
   }, [
@@ -553,37 +574,29 @@ function OnboardingDialogContent() {
     codexSetup,
     opencodeSetup,
     ghSetup,
+    selectedBackends,
+    preferences,
+    savePreferences,
     setOnboardingOpen,
     setOnboardingStartStep,
   ])
 
   const handleAbort = useCallback(() => {
-    const ghReady = !!ghSetup.status?.installed && !!ghAuth.data?.authenticated
-    const hasBackendReady =
-      !!(claudeSetup.status?.installed && claudeAuth.data?.authenticated) ||
-      !!(codexSetup.status?.installed && codexAuth.data?.authenticated) ||
-      !!(opencodeSetup.status?.installed && opencodeAuth.data?.authenticated)
-
-    setOnboardingOpen(false)
-    setOnboardingStartStep(null)
-
-    if (!ghReady || !hasBackendReady) {
-      toast.warning(
-        'Setup incomplete. Jean requires GitHub CLI and at least one AI backend CLI.'
-      )
-    }
-  }, [
-    ghSetup.status?.installed,
-    ghAuth.data?.authenticated,
-    claudeSetup.status?.installed,
-    claudeAuth.data?.authenticated,
-    codexSetup.status?.installed,
-    codexAuth.data?.authenticated,
-    opencodeSetup.status?.installed,
-    opencodeAuth.data?.authenticated,
-    setOnboardingOpen,
-    setOnboardingStartStep,
-  ])
+    // Atomic update: onboardingDismissed must be true BEFORE onboardingOpen
+    // becomes false, otherwise the App.tsx subscriber sees dismissed=false
+    // and incorrectly opens the feature tour dialog.
+    useUIStore.setState({
+      onboardingOpen: false,
+      onboardingStartStep: null,
+      onboardingDismissed: true,
+    })
+    // Safety: Radix Dialog sometimes fails to restore pointer-events on <body>
+    setTimeout(() => {
+      if (document.body.style.pointerEvents === 'none') {
+        document.body.style.removeProperty('pointer-events')
+      }
+    }, 500)
+  }, [])
 
   const getCliSetupData = (): CliSetupData | null => {
     if (step === 'claude-setup' || step === 'claude-installing') {
@@ -593,6 +606,8 @@ function OnboardingDialogContent() {
         description: 'Claude CLI enables Anthropic-backed AI sessions.',
         versions: stableClaudeVersions,
         isVersionsLoading: claudeSetup.isVersionsLoading,
+        isVersionsError: claudeSetup.isVersionsError,
+        onRetryVersions: claudeSetup.refetchVersions,
         isInstalling: claudeSetup.isInstalling,
         installError: claudeInstallFailed ? claudeSetup.installError : null,
         progress: claudeSetup.progress,
@@ -608,6 +623,8 @@ function OnboardingDialogContent() {
         description: 'Codex CLI enables OpenAI-backed AI sessions.',
         versions: stableCodexVersions,
         isVersionsLoading: codexSetup.isVersionsLoading,
+        isVersionsError: codexSetup.isVersionsError,
+        onRetryVersions: codexSetup.refetchVersions,
         isInstalling: codexSetup.isInstalling,
         installError: codexInstallFailed ? codexSetup.installError : null,
         progress: codexSetup.progress,
@@ -623,6 +640,8 @@ function OnboardingDialogContent() {
         description: 'OpenCode CLI enables OpenCode-backed AI sessions.',
         versions: stableOpencodeVersions,
         isVersionsLoading: opencodeSetup.isVersionsLoading,
+        isVersionsError: opencodeSetup.isVersionsError,
+        onRetryVersions: opencodeSetup.refetchVersions,
         isInstalling: opencodeSetup.isInstalling,
         installError: opencodeInstallFailed ? opencodeSetup.installError : null,
         progress: opencodeSetup.progress,
@@ -638,6 +657,8 @@ function OnboardingDialogContent() {
         description: 'GitHub CLI is required for GitHub integration.',
         versions: stableGhVersions,
         isVersionsLoading: ghSetup.isVersionsLoading,
+        isVersionsError: ghSetup.isVersionsError,
+        onRetryVersions: ghSetup.refetchVersions,
         isInstalling: ghSetup.isInstalling,
         installError: ghInstallFailed ? ghSetup.installError : null,
         progress: ghSetup.progress,
@@ -679,9 +700,10 @@ function OnboardingDialogContent() {
   const getDialogContent = () => {
     if (step === 'backend-select') {
       return {
-        title: 'Welcome to Jean',
-        description:
-          'Select at least one AI backend to install. GitHub CLI setup is required next.',
+        title: onboardingManuallyTriggered ? 'Install AI Backends' : 'Welcome to Jean',
+        description: onboardingManuallyTriggered
+          ? 'Select additional AI backends to install.'
+          : 'Select at least one AI backend to install. GitHub CLI setup is required next.',
       }
     }
 
@@ -735,7 +757,7 @@ function OnboardingDialogContent() {
           : `Install ${backendName}`,
         description: isReinstall
           ? 'Select a version to install. This will replace the current installation.'
-          : `Install ${backendName} to enable this AI backend.`,
+          : `Select a version to install.`,
       }
     }
 
@@ -824,12 +846,9 @@ function OnboardingDialogContent() {
     [step, handleComplete, handleAbort]
   )
 
-  const currentBackend =
-    selectedBackends[activeBackendIndex] ?? selectedBackends[0] ?? null
-
   return (
     <Dialog open={onboardingOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-lg flex flex-col">
+      <DialogContent className="sm:max-w-lg flex flex-col" preventClose>
         <DialogHeader>
           <DialogTitle className="text-xl">{dialogContent.title}</DialogTitle>
           <DialogDescription>{dialogContent.description}</DialogDescription>
@@ -844,6 +863,7 @@ function OnboardingDialogContent() {
               selectedBackends={selectedBackends}
               onToggle={handleBackendToggle}
               onContinue={handleBackendSelectionContinue}
+              readyBackends={onboardingManuallyTriggered ? AI_BACKENDS.filter(isBackendReady) : []}
             />
           ) : step === 'complete' ? (
             <SuccessState
@@ -937,6 +957,8 @@ function OnboardingDialogContent() {
                     : null
                 }
                 isLoading={cliData.isVersionsLoading}
+                isError={cliData.isVersionsError}
+                onRetry={cliData.onRetryVersions}
                 onVersionChange={
                   cliData.type === 'claude'
                     ? setClaudeVersion
@@ -975,51 +997,67 @@ interface BackendSelectionStateProps {
   selectedBackends: AIBackend[]
   onToggle: (backend: AIBackend, checked: boolean) => void
   onContinue: () => void
+  readyBackends?: AIBackend[]
 }
 
 function BackendSelectionState({
   selectedBackends,
   onToggle,
   onContinue,
+  readyBackends = [],
 }: BackendSelectionStateProps) {
+  const availableBackends = AI_BACKENDS.filter(b => !readyBackends.includes(b))
+
   return (
     <div className="space-y-6">
-      <div className="space-y-3">
-        {AI_BACKENDS.map(backend => {
-          const id = `backend-${backend}`
-          const checked = selectedBackends.includes(backend)
-          const label = backendLabel[backend]
+      {availableBackends.length === 0 ? (
+        <div className="text-center py-4">
+          <p className="font-medium">All AI backends are installed</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            You can manage versions in Settings.
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="space-y-3">
+            {availableBackends.map(backend => {
+              const id = `backend-${backend}`
+              const checked = selectedBackends.includes(backend)
+              const label = backendLabel[backend]
 
-          return (
-            <label
-              key={backend}
-              htmlFor={id}
-              className="flex items-center gap-3 rounded-lg border border-border p-3 cursor-pointer hover:bg-accent/40"
-            >
-              <Checkbox
-                id={id}
-                checked={checked}
-                onCheckedChange={value => onToggle(backend, value === true)}
-              />
-              <div>
-                <p className="text-sm font-medium">{label}</p>
-                <p className="text-xs text-muted-foreground">
-                  Install and authenticate {label}.
-                </p>
-              </div>
-            </label>
-          )
-        })}
-      </div>
+              return (
+                <label
+                  key={backend}
+                  htmlFor={id}
+                  className="flex items-center gap-3 rounded-lg border border-border p-3 cursor-pointer hover:bg-accent/40"
+                >
+                  <Checkbox
+                    id={id}
+                    checked={checked}
+                    onCheckedChange={value => onToggle(backend, value === true)}
+                  />
+                  <div>
+                    <p className="text-sm font-medium">{label}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Install and authenticate {label}.
+                    </p>
+                  </div>
+                </label>
+              )
+            })}
+          </div>
 
-      <p className="text-xs text-muted-foreground">
-        You must install at least one AI backend. You can install more later in
-        Settings.
-      </p>
-      <p className="text-xs text-muted-foreground">
-        Jean installs its own copies of each CLI and won't use or modify your
-        global installations.
-      </p>
+          <p className="text-xs text-muted-foreground">
+            {readyBackends.length > 0
+              ? 'Select the backends you want to add.'
+              : 'You must install at least one AI backend. You can install more later in Settings.'}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Jean installs its own copies of each CLI and won't use or modify your
+            global installations.
+          </p>
+        </>
+      )}
 
       <Button onClick={onContinue} className="w-full" size="lg">
         Continue

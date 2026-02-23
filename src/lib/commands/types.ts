@@ -108,6 +108,7 @@ export interface CommandContext {
   hasActiveSession: () => boolean
   hasActiveWorktree: () => boolean
   hasSelectedProject: () => boolean
+  hasInstalledBackend: () => boolean
   hasMultipleSessions: () => boolean
   hasMultipleWorktrees: () => boolean
   hasRunScript: () => boolean

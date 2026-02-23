@@ -48,7 +48,7 @@ import {
 } from '@/store/chat-store'
 import { usePreferences, useSavePreferences } from '@/services/preferences'
 import { getLabelTextColor } from '@/lib/label-colors'
-import { PREDEFINED_CLI_PROFILES } from '@/types/preferences'
+import { PREDEFINED_CLI_PROFILES, type CliBackend } from '@/types/preferences'
 import type {
   ChatMessage,
   ToolCall,
@@ -143,6 +143,7 @@ import { usePlanDialogApproval } from './hooks/usePlanDialogApproval'
 import { useChatWindowEvents } from './hooks/useChatWindowEvents'
 import { useInvestigateHandlers } from './hooks/useInvestigateHandlers'
 import { useMcpServerResolution } from './hooks/useMcpServerResolution'
+import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { useToolbarHandlers } from './hooks/useToolbarHandlers'
 import { useMessageSending } from './hooks/useMessageSending'
 import { usePlanState } from './hooks/usePlanState'
@@ -437,28 +438,34 @@ export function ChatWindow({
     selectedProvider && selectedProvider !== '__anthropic__'
   )
 
+  // Installed backends (only these should be selectable)
+  const { installedBackends } = useInstalledBackends()
+
   // Per-session backend selection: session → zustand → project default → global default
   const zustandBackend = useChatStore(state =>
     deferredSessionId ? state.selectedBackends[deferredSessionId] : undefined
   )
-  const projectDefaultBackend = (project?.default_backend ?? null) as
-    | 'claude'
-    | 'codex'
-    | null
-  const globalDefaultBackend = (preferences?.default_backend ?? 'claude') as
-    | 'claude'
-    | 'codex'
-  const selectedBackend: 'claude' | 'codex' =
-    (session?.backend as 'claude' | 'codex') ??
+  const projectDefaultBackend = (project?.default_backend ?? null) as CliBackend | null
+  const globalDefaultBackend = (preferences?.default_backend ?? 'claude') as CliBackend
+  const resolvedBackend: CliBackend =
+    (session?.backend as CliBackend) ??
     zustandBackend ??
     projectDefaultBackend ??
     globalDefaultBackend
+  // Clamp to installed backends — prevents showing "Claude" when only Codex is installed
+  const selectedBackend: CliBackend =
+    installedBackends.length > 0 && !installedBackends.includes(resolvedBackend)
+      ? (installedBackends[0] as CliBackend)
+      : resolvedBackend
   const isCodexBackend = selectedBackend === 'codex'
+  const isOpencodeBackend = selectedBackend === 'opencode'
 
   // Per-session model selection, falls back to preferences default (backend-aware)
   const defaultModel: string = isCodexBackend
     ? (preferences?.selected_codex_model ?? 'gpt-5.3-codex')
-    : ((preferences?.selected_model as ClaudeModel) ?? DEFAULT_MODEL)
+    : isOpencodeBackend
+      ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.2-codex')
+      : ((preferences?.selected_model as ClaudeModel) ?? DEFAULT_MODEL)
   const selectedModel: string = session?.selected_model ?? defaultModel
 
   // Per-session thinking level, falls back to preferences default
@@ -928,6 +935,7 @@ export function ChatWindow({
     activeWorktreePathRef,
     enabledMcpServersRef,
     selectedBackend,
+    installedBackends,
     session,
     preferences,
     queryClient,
@@ -1580,6 +1588,7 @@ export function ChatWindow({
                               onResolveConflicts={handleResolveConflicts}
                               hasOpenPr={Boolean(worktree?.pr_url)}
                               onSetDiffRequest={setDiffRequest}
+                              installedBackends={installedBackends}
                               onBackendChange={handleToolbarBackendChange}
                               onModelChange={handleToolbarModelChange}
                               onProviderChange={handleToolbarProviderChange}

@@ -26,6 +26,8 @@ interface UIState {
   preferencesPane: PreferencePane | null
   commitModalOpen: boolean
   onboardingOpen: boolean
+  onboardingDismissed: boolean
+  onboardingManuallyTriggered: boolean
   onboardingStartStep: OnboardingStartStep
   openInModalOpen: boolean
   remotePickerOpen: boolean
@@ -86,6 +88,7 @@ interface UIState {
   openPreferencesPane: (pane: PreferencePane) => void
   setCommitModalOpen: (open: boolean) => void
   setOnboardingOpen: (open: boolean) => void
+  setOnboardingManuallyTriggered: (triggered: boolean) => void
   setOnboardingStartStep: (step: OnboardingStartStep) => void
   setOpenInModalOpen: (open: boolean) => void
   openRemotePicker: (
@@ -150,6 +153,8 @@ export const useUIStore = create<UIState>()(
       preferencesPane: null,
       commitModalOpen: false,
       onboardingOpen: false,
+      onboardingDismissed: false,
+      onboardingManuallyTriggered: false,
       onboardingStartStep: null,
       openInModalOpen: false,
       remotePickerOpen: false,
@@ -251,6 +256,9 @@ export const useUIStore = create<UIState>()(
 
       setOnboardingOpen: open =>
         set({ onboardingOpen: open }, undefined, 'setOnboardingOpen'),
+
+      setOnboardingManuallyTriggered: triggered =>
+        set({ onboardingManuallyTriggered: triggered }, undefined, 'setOnboardingManuallyTriggered'),
 
       setOnboardingStartStep: step =>
         set({ onboardingStartStep: step }, undefined, 'setOnboardingStartStep'),

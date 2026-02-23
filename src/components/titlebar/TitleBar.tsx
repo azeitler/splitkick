@@ -25,6 +25,7 @@ import { usePreferences } from '@/services/preferences'
 import { formatShortcutDisplay, DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 import { isNativeApp } from '@/lib/environment'
 import { useProjectsStore } from '@/store/projects-store'
+import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 
 interface TitleBarProps {
   className?: string
@@ -43,6 +44,8 @@ export function TitleBar({
   )
   const commandContext = useCommandContext()
   const { data: preferences } = usePreferences()
+  const { installedBackends } = useInstalledBackends()
+  const setupIncomplete = installedBackends.length === 0
 
   const sidebarShortcut = formatShortcutDisplay(
     (preferences?.keybindings?.toggle_left_sidebar ||
@@ -160,6 +163,7 @@ export function TitleBar({
                 variant="ghost"
                 size="icon"
                 className="h-6 w-6 text-foreground/70 hover:text-foreground"
+                disabled={setupIncomplete}
               >
                 <Plus className="h-3 w-3" />
               </Button>

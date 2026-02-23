@@ -1,6 +1,7 @@
 use once_cell::sync::Lazy;
 use serde::Serialize;
 use std::process::{Child, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 use tauri::AppHandle;
@@ -10,6 +11,10 @@ use crate::platform::silent_command;
 
 const DEFAULT_PORT: u16 = 4096;
 const DEFAULT_HOSTNAME: &str = "127.0.0.1";
+
+/// Number of active consumers (prompts) using the managed server.
+/// Server is shut down only when this drops to 0.
+static USAGE_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Debug)]
 struct OpenCodeServerProcess {
@@ -129,6 +134,31 @@ pub fn ensure_running(app: &AppHandle) -> Result<String, String> {
     }
 
     Ok(url)
+}
+
+/// Increment usage count and ensure the server is running. Returns the base URL.
+/// Each `acquire` must be paired with a `release` when the caller is done.
+pub fn acquire(app: &AppHandle) -> Result<String, String> {
+    USAGE_COUNT.fetch_add(1, Ordering::SeqCst);
+    match ensure_running(app) {
+        Ok(url) => Ok(url),
+        Err(e) => {
+            // Roll back on failure so we don't leave a phantom user.
+            USAGE_COUNT.fetch_sub(1, Ordering::SeqCst);
+            Err(e)
+        }
+    }
+}
+
+/// Decrement usage count. If this was the last user, shut down the managed server.
+pub fn release() {
+    let prev = USAGE_COUNT.fetch_sub(1, Ordering::SeqCst);
+    if prev == 1 {
+        // We were the last consumer — stop the server.
+        if let Err(e) = stop_managed_server_inner() {
+            log::warn!("Failed to stop managed OpenCode server on last release: {e}");
+        }
+    }
 }
 
 fn stop_managed_server_inner() -> Result<bool, String> {

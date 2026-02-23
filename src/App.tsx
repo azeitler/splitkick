@@ -392,6 +392,8 @@ function App() {
       !!opencodeStatus?.installed && !!opencodeAuth?.authenticated
     const hasAiBackendReady = claudeReady || codexReady || opencodeReady
 
+    if (useUIStore.getState().onboardingDismissed) return
+
     if (!ghReady || !hasAiBackendReady) {
       logger.info('CLI setup needed, showing onboarding', {
         claudeInstalled: claudeStatus?.installed,
@@ -431,17 +433,25 @@ function App() {
     queryClient,
   ])
 
-  // Show feature tour after CLI onboarding completes (first launch only)
+  // Show feature tour after CLI onboarding completes (first launch or manual trigger)
   useEffect(() => {
     let wasOpen = useUIStore.getState().onboardingOpen
     const unsub = useUIStore.subscribe(state => {
       const isOpen = state.onboardingOpen
       if (wasOpen && !isOpen) {
-        const prefs = queryClient.getQueryData<AppPreferences>(['preferences'])
-        if (prefs && !prefs.has_seen_feature_tour) {
-          setTimeout(() => {
-            useUIStore.getState().setFeatureTourOpen(true)
-          }, 300)
+        const store = useUIStore.getState()
+        // Don't show feature tour if user dismissed onboarding without completing setup
+        if (store.onboardingDismissed) {
+          store.setOnboardingManuallyTriggered(false)
+        } else {
+          const manuallyTriggered = store.onboardingManuallyTriggered
+          const prefs = queryClient.getQueryData<AppPreferences>(['preferences'])
+          if (manuallyTriggered || (prefs && !prefs.has_seen_feature_tour)) {
+            store.setOnboardingManuallyTriggered(false)
+            setTimeout(() => {
+              useUIStore.getState().setFeatureTourOpen(true)
+            }, 300)
+          }
         }
       }
       wasOpen = isOpen

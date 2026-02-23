@@ -155,17 +155,17 @@ pub fn execute_opencode_http(
     prompt: &str,
     system_prompt: Option<&str>,
 ) -> Result<OpenCodeResponse, String> {
-    let base_url = crate::opencode_server::ensure_running(app)?;
+    let base_url = crate::opencode_server::acquire(app)?;
 
-    struct ManagedServerGuard;
-    impl Drop for ManagedServerGuard {
+    // RAII guard: decrements the server usage count when this function exits.
+    // The server only shuts down when the last consumer releases.
+    struct ServerReleaseGuard;
+    impl Drop for ServerReleaseGuard {
         fn drop(&mut self) {
-            if let Err(e) = crate::opencode_server::shutdown_managed_server() {
-                log::warn!("Failed to stop managed OpenCode server after prompt: {e}");
-            }
+            crate::opencode_server::release();
         }
     }
-    let _managed_server_guard = ManagedServerGuard;
+    let _server_guard = ServerReleaseGuard;
 
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(300))
@@ -472,12 +472,10 @@ pub fn execute_one_shot_opencode(
     // on a dedicated OS thread to avoid panicking reqwest::blocking inside
     // the Tokio async runtime that Tauri async commands use.
     let handle = std::thread::spawn(move || {
-        let base_url = crate::opencode_server::ensure_running(&app)?;
+        let base_url = crate::opencode_server::acquire(&app)?;
         let result =
             one_shot_opencode_blocking(&base_url, &prompt, &model, schema_value.as_ref(), &dir);
-        if let Err(e) = crate::opencode_server::shutdown_managed_server() {
-            log::warn!("Failed to stop managed OpenCode server after one-shot: {e}");
-        }
+        crate::opencode_server::release();
         result
     });
 

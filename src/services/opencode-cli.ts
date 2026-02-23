@@ -80,7 +80,7 @@ export function useAvailableOpencodeVersions() {
         'get_available_opencode_versions'
       )
     },
-    staleTime: 1000 * 60 * 15,
+    staleTime: 1000 * 60 * 15, // Cache for 15 minutes to avoid rate limiting
     gcTime: 1000 * 60 * 30,
   })
 }
@@ -174,7 +174,9 @@ export function useOpencodeCliSetup() {
     status: status.data,
     isStatusLoading: status.isLoading,
     versions: versions.data ?? [],
-    isVersionsLoading: versions.isLoading,
+    isVersionsLoading: versions.isFetching,
+    isVersionsError: versions.isError,
+    refetchVersions: versions.refetch,
     needsSetup: !status.isLoading && !status.data?.installed,
     isInstalling: installMutation.isPending,
     installError: installMutation.error,

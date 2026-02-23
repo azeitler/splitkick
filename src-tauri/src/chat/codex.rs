@@ -107,6 +107,8 @@ pub struct CodexResponse {
     pub content_blocks: Vec<ContentBlock>,
     /// Whether the response was cancelled by the user
     pub cancelled: bool,
+    /// Whether a chat:error event was emitted during execution
+    pub error_emitted: bool,
     /// Token usage for this response
     pub usage: Option<UsageData>,
 }
@@ -1296,6 +1298,7 @@ fn tail_codex_attached(
         tool_calls,
         content_blocks,
         cancelled,
+        error_emitted,
         usage,
     })
 }
@@ -2058,6 +2061,7 @@ pub fn tail_codex_output(
         tool_calls,
         content_blocks,
         cancelled,
+        error_emitted,
         usage,
     })
 }
