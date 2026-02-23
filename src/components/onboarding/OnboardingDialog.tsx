@@ -564,8 +564,9 @@ function OnboardingDialogContent() {
     ghSetup.refetchStatus()
     // Set the first selected backend as the default so the preference
     // isn't left pointing at an uninstalled backend (e.g. 'claude').
-    if (selectedBackends.length > 0 && preferences) {
-      savePreferences.mutate({ ...preferences, default_backend: selectedBackends[0]! })
+    const [firstBackend] = selectedBackends
+    if (firstBackend && preferences) {
+      savePreferences.mutate({ ...preferences, default_backend: firstBackend })
     }
     setOnboardingOpen(false)
     setOnboardingStartStep(null)
@@ -1053,7 +1054,7 @@ function BackendSelectionState({
               : 'You must install at least one AI backend. You can install more later in Settings.'}
           </p>
           <p className="text-xs text-muted-foreground">
-            Jean installs its own copies of each CLI and won't use or modify your
+            Jean installs its own copies of each CLI and won&apos;t use or modify your
             global installations.
           </p>
         </>
