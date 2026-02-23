@@ -10,6 +10,8 @@ import { cn } from '@/lib/utils'
 import { isBaseSession, type Worktree } from '@/types/projects'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
+import { useUIStore } from '@/store/ui-store'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { WorktreeContextMenu } from './WorktreeContextMenu'
 import { useRenameWorktree } from '@/services/projects'
 import { useSessions } from '@/services/chat'
@@ -48,6 +50,7 @@ export function WorktreeItem({
   projectPath,
   defaultBranch,
 }: WorktreeItemProps) {
+  const isMobile = useIsMobile()
   const {
     selectedWorktreeId,
     selectWorktree,
@@ -390,7 +393,13 @@ export function WorktreeItem({
       prNumber: worktree.pr_number,
       prUrl: worktree.pr_url,
     })
+
+    // Close sidebar on mobile after navigation
+    if (isMobile) {
+      useUIStore.getState().setLeftSidebarVisible(false)
+    }
   }, [
+    isMobile,
     projectId,
     worktree.id,
     worktree.path,
