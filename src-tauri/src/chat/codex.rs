@@ -303,6 +303,7 @@ pub fn execute_codex_detached(
     instructions_file: Option<&std::path::Path>,
     multi_agent_enabled: bool,
     max_agent_threads: Option<u32>,
+    pid_callback: Option<Box<dyn FnOnce(u32) + Send>>,
 ) -> Result<(u32, CodexResponse), String> {
     use crate::codex_cli::resolve_cli_binary;
 
@@ -373,6 +374,7 @@ pub fn execute_codex_detached(
             &env_vars,
             working_dir,
             prompt,
+            pid_callback,
         )
     }
 }
@@ -389,6 +391,7 @@ fn execute_codex_detached_inner(
     env_vars: &[(String, String)],
     working_dir: &std::path::Path,
     prompt: Option<&str>,
+    pid_callback: Option<Box<dyn FnOnce(u32) + Send>>,
 ) -> Result<(u32, CodexResponse), String> {
     use super::detached::spawn_detached_codex;
 
@@ -415,6 +418,11 @@ fn execute_codex_detached_inner(
         })?;
 
     log::trace!("Detached Codex CLI spawned with PID: {pid}");
+
+    // Persist PID to metadata immediately (before tailing) for crash recovery
+    if let Some(cb) = pid_callback {
+        cb(pid);
+    }
 
     super::registry::register_process(session_id.to_string(), pid);
 

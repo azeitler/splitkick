@@ -1382,6 +1382,21 @@ export function ChatWindow({
                               />
                             )}
 
+                            {/* Restored session status - shown when session was running but app restarted */}
+                            {!isSending &&
+                              session?.last_run_status === 'running' && (
+                                <div className="text-sm text-muted-foreground/60 mt-4">
+                                  <span className="animate-dots">
+                                    {session.last_run_execution_mode === 'plan'
+                                      ? 'Planning'
+                                      : session.last_run_execution_mode ===
+                                          'yolo'
+                                        ? 'Yoloing'
+                                        : 'Vibing'}
+                                  </span>
+                                </div>
+                              )}
+
                             {/* Permission approval UI - shown when tools require approval (never in yolo mode) */}
                             {pendingDenials.length > 0 &&
                               activeSessionId &&

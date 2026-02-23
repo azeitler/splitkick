@@ -355,12 +355,26 @@ pub fn execute_opencode_http(
         payload["system"] = serde_json::Value::String(system.to_string());
     }
 
-    let response = client
-        .post(msg_url)
+    // Retry once on connection-level errors (server temporarily unreachable).
+    let response = match client
+        .post(&msg_url)
         .query(&query)
         .json(&payload)
         .send()
-        .map_err(|e| format!("Failed to send OpenCode message: {e}"))?;
+    {
+        Ok(resp) => resp,
+        Err(e) if e.is_connect() || e.is_request() => {
+            log::warn!("OpenCode message connection error, retrying in 2s: {e}");
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            client
+                .post(&msg_url)
+                .query(&query)
+                .json(&payload)
+                .send()
+                .map_err(|e| format!("Failed to send OpenCode message: {e}"))?
+        }
+        Err(e) => return Err(format!("Failed to send OpenCode message: {e}")),
+    };
 
     if !response.status().is_success() {
         let status = response.status();
@@ -668,12 +682,26 @@ fn one_shot_opencode_blocking(
         });
     }
 
-    let response = client
+    // Retry once on connection-level errors (server temporarily unreachable).
+    let response = match client
         .post(&msg_url)
         .query(&query)
         .json(&payload)
         .send()
-        .map_err(|e| format!("Failed to send OpenCode message: {e}"))?;
+    {
+        Ok(resp) => resp,
+        Err(e) if e.is_connect() || e.is_request() => {
+            log::warn!("OpenCode one-shot connection error, retrying in 2s: {e}");
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            client
+                .post(&msg_url)
+                .query(&query)
+                .json(&payload)
+                .send()
+                .map_err(|e| format!("Failed to send OpenCode message: {e}"))?
+        }
+        Err(e) => return Err(format!("Failed to send OpenCode message: {e}")),
+    };
 
     if !response.status().is_success() {
         let status = response.status();

@@ -702,6 +702,7 @@ pub fn execute_claude_detached(
     mcp_config: Option<&str>,
     chrome_enabled: bool,
     custom_profile_name: Option<&str>,
+    pid_callback: Option<Box<dyn FnOnce(u32) + Send>>,
 ) -> Result<(u32, ClaudeResponse), String> {
     use super::detached::spawn_detached_claude;
     use crate::claude_cli::resolve_cli_binary;
@@ -789,6 +790,11 @@ pub fn execute_claude_detached(
     })?;
 
     log::trace!("Detached Claude CLI spawned with PID: {pid}");
+
+    // Persist PID to metadata immediately (before tailing) for crash recovery
+    if let Some(cb) = pid_callback {
+        cb(pid);
+    }
 
     // Register the process for cancellation
     super::registry::register_process(session_id.to_string(), pid);
