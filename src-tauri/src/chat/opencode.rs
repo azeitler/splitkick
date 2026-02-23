@@ -2,6 +2,8 @@
 
 use super::types::{ContentBlock, ToolCall, UsageData};
 use crate::http_server::EmitExt;
+use base64::{engine::general_purpose::STANDARD, Engine};
+use regex::Regex;
 
 #[derive(serde::Serialize, Clone)]
 struct ChunkEvent {
@@ -142,6 +144,110 @@ fn variant_for_effort(reasoning_effort: Option<&str>) -> Option<&'static str> {
     }
 }
 
+/// Build the OpenCode `parts` array by resolving file annotations in the prompt.
+///
+/// - Image annotations → base64-encoded file parts
+/// - Skill annotations → inlined text content
+/// - Pasted text annotations → inlined text content
+fn prepare_opencode_parts(prompt: &str) -> serde_json::Value {
+    let mut cleaned = prompt.to_string();
+    let mut image_parts: Vec<serde_json::Value> = Vec::new();
+
+    // Images: extract paths, read binary, base64-encode as file parts
+    let image_re =
+        Regex::new(r"\[Image attached: (.+?) - Use the Read tool to view this image\]")
+            .expect("Invalid regex");
+    for cap in image_re.captures_iter(prompt) {
+        let path_str = &cap[1];
+        let annotation = &cap[0];
+        cleaned = cleaned.replace(annotation, "");
+
+        let file_path = std::path::Path::new(path_str);
+        match std::fs::read(file_path) {
+            Ok(data) => {
+                let mime = match file_path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("")
+                    .to_lowercase()
+                    .as_str()
+                {
+                    "jpg" | "jpeg" => "image/jpeg",
+                    "gif" => "image/gif",
+                    "webp" => "image/webp",
+                    _ => "image/png",
+                };
+                let b64 = STANDARD.encode(&data);
+                let filename = file_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("image.png");
+                image_parts.push(serde_json::json!({
+                    "type": "file",
+                    "mime": mime,
+                    "url": format!("data:{mime};base64,{b64}"),
+                    "filename": filename,
+                }));
+            }
+            Err(e) => {
+                log::warn!("OpenCode: failed to read image {path_str}: {e}");
+                cleaned.push_str(&format!("\n[Image could not be loaded: {path_str}]"));
+            }
+        }
+    }
+
+    // Skills: read text content and inline
+    let skill_re =
+        Regex::new(r"\[Skill: (.+?) - Read and use this skill to guide your response\]")
+            .expect("Invalid regex");
+    for cap in skill_re.captures_iter(prompt) {
+        let path_str = &cap[1];
+        let annotation = cap[0].to_string();
+        let replacement = match std::fs::read_to_string(path_str) {
+            Ok(content) => {
+                let name = std::path::Path::new(path_str)
+                    .file_stem()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("skill");
+                format!("<skill name=\"{name}\">\n{content}\n</skill>")
+            }
+            Err(e) => {
+                log::warn!("OpenCode: failed to read skill {path_str}: {e}");
+                format!("[Skill could not be loaded: {path_str}]")
+            }
+        };
+        cleaned = cleaned.replace(&annotation, &replacement);
+    }
+
+    // Pasted text files: read text content and inline
+    let text_re =
+        Regex::new(r"\[Text file attached: (.+?) - Use the Read tool to view this file\]")
+            .expect("Invalid regex");
+    for cap in text_re.captures_iter(prompt) {
+        let path_str = &cap[1];
+        let annotation = cap[0].to_string();
+        let replacement = match std::fs::read_to_string(path_str) {
+            Ok(content) => {
+                let name = std::path::Path::new(path_str)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("pasted-text");
+                format!("<pasted-text name=\"{name}\">\n{content}\n</pasted-text>")
+            }
+            Err(e) => {
+                log::warn!("OpenCode: failed to read text file {path_str}: {e}");
+                format!("[Text file could not be loaded: {path_str}]")
+            }
+        };
+        cleaned = cleaned.replace(&annotation, &replacement);
+    }
+
+    let cleaned = cleaned.trim().to_string();
+    let mut parts = vec![serde_json::json!({ "type": "text", "text": cleaned })];
+    parts.extend(image_parts);
+    serde_json::Value::Array(parts)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn execute_opencode_http(
     app: &tauri::AppHandle,
@@ -239,12 +345,7 @@ pub fn execute_opencode_http(
             "providerID": selected_model.0,
             "modelID": selected_model.1,
         },
-        "parts": [
-            {
-                "type": "text",
-                "text": prompt,
-            }
-        ],
+        "parts": prepare_opencode_parts(prompt),
     });
 
     if let Some(v) = variant_for_effort(reasoning_effort) {
@@ -556,7 +657,7 @@ fn one_shot_opencode_blocking(
             "providerID": selected_model.0,
             "modelID": selected_model.1,
         },
-        "parts": [{ "type": "text", "text": prompt }],
+        "parts": prepare_opencode_parts(prompt),
     });
 
     // Use OpenCode's native structured output support via the `format` field
