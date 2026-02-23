@@ -575,6 +575,19 @@ impl Default for WorktreeIndex {
 }
 
 impl WorktreeIndex {
+    /// Create an empty WorktreeIndex with no default session.
+    /// Use this for programmatically-created worktrees where sessions are added explicitly.
+    /// Sets `branch_naming_completed = true` to prevent auto-renaming.
+    pub fn new_empty(worktree_id: String) -> Self {
+        Self {
+            worktree_id,
+            active_session_id: None,
+            sessions: vec![],
+            version: 1,
+            branch_naming_completed: true,
+        }
+    }
+
     /// Create new WorktreeIndex for a worktree with one default session
     pub fn new(worktree_id: String) -> Self {
         let session_id = uuid::Uuid::new_v4().to_string();

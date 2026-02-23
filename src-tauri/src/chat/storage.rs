@@ -197,6 +197,15 @@ fn save_index_internal(app: &AppHandle, index: &WorktreeIndex) -> Result<(), Str
     Ok(())
 }
 
+/// Save an empty worktree index (no default session, auto-naming disabled).
+/// Use this to pre-initialize a worktree created programmatically from the backend.
+pub fn save_empty_index(app: &AppHandle, worktree_id: &str) -> Result<(), String> {
+    let lock = get_index_lock(worktree_id);
+    let _guard = lock.lock().unwrap();
+    let index = WorktreeIndex::new_empty(worktree_id.to_string());
+    save_index_internal(app, &index)
+}
+
 /// Load a worktree index (with locking for thread safety)
 pub fn load_index(app: &AppHandle, worktree_id: &str) -> Result<WorktreeIndex, String> {
     let lock = get_index_lock(worktree_id);
