@@ -1432,17 +1432,21 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
-            {projectSummary.totalReady > 0 && (
-              <p className="text-xs text-muted-foreground whitespace-nowrap">
-                {projectSummary.totalReady} worktrees
-                {projectSummary.reviewCount > 0 &&
-                  ` · ${projectSummary.reviewCount} review`}
-                {projectSummary.waitingCount > 0 &&
-                  ` · ${projectSummary.waitingCount} waiting`}
-                {projectSummary.activeCount > 0 &&
-                  ` · ${projectSummary.activeCount} active`}
-              </p>
-            )}
+            <p className="text-xs text-muted-foreground whitespace-nowrap">
+              {projectSummary.totalReady > 0 ? (
+                <>
+                  {projectSummary.totalReady} worktrees
+                  {projectSummary.reviewCount > 0 &&
+                    ` · ${projectSummary.reviewCount} review`}
+                  {projectSummary.waitingCount > 0 &&
+                    ` · ${projectSummary.waitingCount} waiting`}
+                  {projectSummary.activeCount > 0 &&
+                    ` · ${projectSummary.activeCount} active`}
+                </>
+              ) : (
+                <span className="invisible">0 worktrees</span>
+              )}
+            </p>
           </div>
           {(worktreeSections.length > 0 || searchQuery) && (
             <>

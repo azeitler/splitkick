@@ -1305,6 +1305,18 @@ pub async fn send_chat_message(
         Some("claude") => Backend::Claude,
         _ => session_backend,
     };
+    // Override backend based on model string (safety net: model always wins)
+    let effective_backend = if let Some(ref m) = model {
+        if crate::is_opencode_model(m) {
+            Backend::Opencode
+        } else if crate::is_codex_model(m) {
+            Backend::Codex
+        } else {
+            effective_backend
+        }
+    } else {
+        effective_backend
+    };
 
     // Build context for Claude
     let context = ClaudeContext::new(worktree_path.clone());
@@ -1879,23 +1891,194 @@ pub async fn send_chat_message(
                         super::types::EffortLevel::Off => None,
                     });
 
-                let mut system_prompt_parts: Vec<String> = Vec::new();
-                if let Some(lang) = &thread_ai_language {
-                    let lang = lang.trim();
-                    if !lang.is_empty() {
-                        system_prompt_parts.push(format!("Respond to the user in {lang}."));
+                let system_prompt = {
+                    use crate::projects::github_issues::{
+                        get_github_contexts_dir, get_session_issue_refs, get_session_pr_refs,
+                    };
+                    use crate::projects::storage::load_projects_data;
+
+                    let mut system_prompt_parts: Vec<String> = Vec::new();
+
+                    // AI language preference
+                    if let Some(lang) = &thread_ai_language {
+                        let lang = lang.trim();
+                        if !lang.is_empty() {
+                            system_prompt_parts.push(format!("Respond to the user in {lang}."));
+                        }
                     }
-                }
-                if let Some(prompt) = &thread_parallel_prompt {
-                    let prompt = prompt.trim();
-                    if !prompt.is_empty() {
-                        system_prompt_parts.push(prompt.to_string());
+
+                    // Global system prompt from preferences
+                    if let Ok(prefs_path) = crate::get_preferences_path(&thread_app) {
+                        if let Ok(contents) = std::fs::read_to_string(&prefs_path) {
+                            if let Ok(prefs) =
+                                serde_json::from_str::<crate::AppPreferences>(&contents)
+                            {
+                                if let Some(prompt) = prefs
+                                    .magic_prompts
+                                    .global_system_prompt
+                                    .as_deref()
+                                    .map(|s| s.trim())
+                                    .filter(|s| !s.is_empty())
+                                {
+                                    system_prompt_parts.push(prompt.to_string());
+                                }
+                            }
+                        }
                     }
-                }
-                let system_prompt = if system_prompt_parts.is_empty() {
-                    None
-                } else {
-                    Some(system_prompt_parts.join("\n"))
+
+                    // Parallel execution prompt
+                    if let Some(prompt) = &thread_parallel_prompt {
+                        let prompt = prompt.trim();
+                        if !prompt.is_empty() {
+                            system_prompt_parts.push(prompt.to_string());
+                        }
+                    }
+
+                    // Per-project custom system prompt
+                    if let Ok(data) = load_projects_data(&thread_app) {
+                        if let Some(worktree) = data.find_worktree(&thread_worktree_id) {
+                            if let Some(project) = data.find_project(&worktree.project_id) {
+                                if let Some(prompt) = &project.custom_system_prompt {
+                                    let prompt = prompt.trim();
+                                    if !prompt.is_empty() {
+                                        system_prompt_parts.push(prompt.to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Embedded binary path hints
+                    let gh_binary = crate::gh_cli::config::resolve_gh_binary(&thread_app);
+                    if gh_binary != std::path::PathBuf::from("gh") {
+                        system_prompt_parts.push(format!(
+                            "When running GitHub CLI commands, use the full path to the embedded binary: {}\n\
+                             Do NOT use bare `gh` — always use the full path above.",
+                            gh_binary.display()
+                        ));
+                    }
+                    if let Ok(claude_binary) = crate::claude_cli::get_cli_binary_path(&thread_app) {
+                        if claude_binary.exists() {
+                            system_prompt_parts.push(format!(
+                                "When running Claude CLI commands, use the full path to the embedded binary: {}\n\
+                                 Do NOT use bare `claude` — always use the full path above.",
+                                claude_binary.display()
+                            ));
+                        }
+                    }
+                    if let Ok(codex_binary) = crate::codex_cli::get_cli_binary_path(&thread_app) {
+                        if codex_binary.exists() {
+                            system_prompt_parts.push(format!(
+                                "When running Codex CLI commands, use the full path to the embedded binary: {}\n\
+                                 Do NOT use bare `codex` — always use the full path above.",
+                                codex_binary.display()
+                            ));
+                        }
+                    }
+
+                    // Collect and inline context files (issues, PRs, saved contexts)
+                    let mut context_content = String::new();
+
+                    let mut issue_keys =
+                        get_session_issue_refs(&thread_app, &thread_session_id).unwrap_or_default();
+                    if let Ok(wt_keys) = get_session_issue_refs(&thread_app, &thread_worktree_id) {
+                        for key in wt_keys {
+                            if !issue_keys.contains(&key) {
+                                issue_keys.push(key);
+                            }
+                        }
+                    }
+                    if !issue_keys.is_empty() {
+                        if let Ok(contexts_dir) = get_github_contexts_dir(&thread_app) {
+                            for key in &issue_keys {
+                                let parts: Vec<&str> = key.rsplitn(2, '-').collect();
+                                if parts.len() == 2 {
+                                    let number = parts[0];
+                                    let repo_key = parts[1];
+                                    let file_path =
+                                        contexts_dir.join(format!("{repo_key}-issue-{number}.md"));
+                                    if let Ok(content) = std::fs::read_to_string(&file_path) {
+                                        context_content.push_str(&content);
+                                        context_content.push_str("\n\n---\n\n");
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    let mut pr_keys =
+                        get_session_pr_refs(&thread_app, &thread_session_id).unwrap_or_default();
+                    if let Ok(wt_keys) = get_session_pr_refs(&thread_app, &thread_worktree_id) {
+                        for key in wt_keys {
+                            if !pr_keys.contains(&key) {
+                                pr_keys.push(key);
+                            }
+                        }
+                    }
+                    if !pr_keys.is_empty() {
+                        if let Ok(contexts_dir) = get_github_contexts_dir(&thread_app) {
+                            for key in &pr_keys {
+                                let parts: Vec<&str> = key.rsplitn(2, '-').collect();
+                                if parts.len() == 2 {
+                                    let number = parts[0];
+                                    let repo_key = parts[1];
+                                    let file_path =
+                                        contexts_dir.join(format!("{repo_key}-pr-{number}.md"));
+                                    if let Ok(content) = std::fs::read_to_string(&file_path) {
+                                        context_content.push_str(&content);
+                                        context_content.push_str("\n\n---\n\n");
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Saved context files
+                    if let Ok(app_data_dir) = thread_app.path().app_data_dir() {
+                        let saved_contexts_dir = app_data_dir.join("session-context");
+                        if saved_contexts_dir.exists() {
+                            let prefix = format!("{}-context-", thread_session_id);
+                            if let Ok(entries) = std::fs::read_dir(&saved_contexts_dir) {
+                                let mut context_files: Vec<_> = entries
+                                    .flatten()
+                                    .filter(|entry| {
+                                        let name = entry.file_name().to_string_lossy().to_string();
+                                        name.starts_with(&prefix) && name.ends_with(".md")
+                                    })
+                                    .collect();
+                                context_files.sort_by_key(|e| e.file_name());
+                                for entry in context_files {
+                                    if let Ok(content) = std::fs::read_to_string(entry.path()) {
+                                        context_content.push_str(&content);
+                                        context_content.push_str("\n\n---\n\n");
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Build final system prompt
+                    let mut final_prompt = String::new();
+                    if !system_prompt_parts.is_empty() {
+                        final_prompt.push_str(&system_prompt_parts.join("\n\n"));
+                    }
+                    if !context_content.is_empty() {
+                        if !final_prompt.is_empty() {
+                            final_prompt.push_str("\n\n---\n\n");
+                        }
+                        final_prompt.push_str("# Loaded Context\n\n");
+                        final_prompt.push_str(
+                            "The following context has been loaded. \
+                             You should be aware of this when working on this task.\n\n---\n\n",
+                        );
+                        final_prompt.push_str(&context_content);
+                    }
+
+                    if final_prompt.is_empty() {
+                        None
+                    } else {
+                        Some(final_prompt)
+                    }
                 };
 
                 match super::opencode::execute_opencode_http(

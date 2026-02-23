@@ -37,9 +37,11 @@ export interface WorkflowRunDetail {
   projectPath?: string | null
 }
 
-// Check if model is a codex model
-function isCodexModel(model: string): boolean {
-  return model.startsWith('codex') || model.includes('codex')
+// Resolve backend from model string
+function resolveBackend(model: string): 'claude' | 'codex' | 'opencode' {
+  if (model.startsWith('opencode/')) return 'opencode'
+  if (model.startsWith('codex') || model.includes('codex')) return 'codex'
+  return 'claude'
 }
 
 interface UseInvestigateHandlersParams {
@@ -190,9 +192,7 @@ export function useInvestigateHandlers({
         !investigateIsCustom &&
         supportsAdaptiveThinking(investigateModel, cliVersion)
 
-      const investigateBackend = isCodexModel(investigateModel)
-        ? 'codex'
-        : ('claude' as const)
+      const investigateBackend = resolveBackend(investigateModel)
 
       setSessionBackend.mutate({
         sessionId: activeSessionId,
@@ -400,9 +400,7 @@ export function useInvestigateHandlers({
         !investigateIsCustom &&
         supportsAdaptiveThinking(investigateModel, cliVersion)
 
-      const investigateBackend = isCodexModel(investigateModel)
-        ? 'codex'
-        : 'claude'
+      const investigateBackend = resolveBackend(investigateModel)
 
       const sendInvestigateMessage = (targetSessionId: string) => {
         const {

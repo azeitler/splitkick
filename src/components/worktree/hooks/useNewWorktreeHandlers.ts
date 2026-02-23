@@ -252,15 +252,15 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
             })),
         }
 
-        useUIStore.getState().setPendingInvestigateType('issue')
         if (background)
           useUIStore.getState().incrementPendingBackgroundCreations()
 
-        await createWorktree.mutateAsync({
+        const worktree = await createWorktree.mutateAsync({
           projectId: selectedProjectId,
           issueContext,
           background,
         })
+        useUIStore.getState().markWorktreeForAutoInvestigate(worktree.id)
 
         if (background) {
           setCreatingFromNumber(null)
@@ -402,15 +402,15 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
             })),
         }
 
-        useUIStore.getState().setPendingInvestigateType('pr')
         if (background)
           useUIStore.getState().incrementPendingBackgroundCreations()
 
-        await createWorktree.mutateAsync({
+        const worktree = await createWorktree.mutateAsync({
           projectId: selectedProjectId,
           prContext,
           background,
         })
+        useUIStore.getState().markWorktreeForAutoInvestigatePR(worktree.id)
 
         if (background) {
           setCreatingFromNumber(null)

@@ -73,9 +73,6 @@ interface UIState {
   pendingUpdateVersion: string | null
   /** When non-null, shows the update available modal */
   updateModalVersion: string | null
-  /** Pending auto-investigate type — ChatWindow picks this up when it mounts */
-  pendingInvestigateType: 'issue' | 'pr' | null
-
   toggleLeftSidebar: () => void
   setLeftSidebarVisible: (visible: boolean) => void
   setLeftSidebarSize: (size: number) => void
@@ -138,8 +135,6 @@ interface UIState {
   setUIStateInitialized: (initialized: boolean) => void
   setPendingUpdateVersion: (version: string | null) => void
   setUpdateModalVersion: (version: string | null) => void
-  setPendingInvestigateType: (type: 'issue' | 'pr' | null) => void
-  consumePendingInvestigateType: () => 'issue' | 'pr' | null
 }
 
 export const useUIStore = create<UIState>()(
@@ -187,8 +182,6 @@ export const useUIStore = create<UIState>()(
       uiStateInitialized: false,
       pendingUpdateVersion: null,
       updateModalVersion: null,
-      pendingInvestigateType: null,
-
       toggleLeftSidebar: () =>
         set(
           state => ({ leftSidebarVisible: !state.leftSidebarVisible }),
@@ -409,8 +402,7 @@ export const useUIStore = create<UIState>()(
         ),
 
       consumeAutoInvestigate: worktreeId => {
-        const state = useUIStore.getState()
-        if (state.autoInvestigateWorktreeIds.has(worktreeId)) {
+        if (get().autoInvestigateWorktreeIds.has(worktreeId)) {
           set(
             state => {
               const newSet = new Set(state.autoInvestigateWorktreeIds)
@@ -438,8 +430,7 @@ export const useUIStore = create<UIState>()(
         ),
 
       consumeAutoInvestigatePR: worktreeId => {
-        const state = useUIStore.getState()
-        if (state.autoInvestigatePRWorktreeIds.has(worktreeId)) {
+        if (get().autoInvestigatePRWorktreeIds.has(worktreeId)) {
           set(
             state => {
               const newSet = new Set(state.autoInvestigatePRWorktreeIds)
@@ -542,23 +533,6 @@ export const useUIStore = create<UIState>()(
           undefined,
           'setUpdateModalVersion'
         ),
-      setPendingInvestigateType: (type: 'issue' | 'pr' | null) =>
-        set(
-          { pendingInvestigateType: type },
-          undefined,
-          'setPendingInvestigateType'
-        ),
-      consumePendingInvestigateType: () => {
-        const current = get().pendingInvestigateType
-        if (current) {
-          set(
-            { pendingInvestigateType: null },
-            undefined,
-            'consumePendingInvestigateType'
-          )
-        }
-        return current
-      },
     }),
     {
       name: 'ui-store',

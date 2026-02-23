@@ -993,13 +993,16 @@ export function ChatWindow({
     sessionModalOpen,
   })
 
-  // Pick up pending investigate type from UI store (set by projects.ts when
-  // worktree is created/unarchived with auto-investigate flag)
+  // Pick up per-worktree auto-investigate flags (set by useNewWorktreeHandlers
+  // when worktree is created with auto-investigate). Uses per-worktree Sets so
+  // multiple concurrent worktree creations each get their own investigation.
   useEffect(() => {
     if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
-    const type = useUIStore.getState().consumePendingInvestigateType()
-    if (type) {
-      handleInvestigate(type)
+    const uiStore = useUIStore.getState()
+    if (uiStore.consumeAutoInvestigate(activeWorktreeId)) {
+      handleInvestigate('issue')
+    } else if (uiStore.consumeAutoInvestigatePR(activeWorktreeId)) {
+      handleInvestigate('pr')
     }
   }, [activeSessionId, activeWorktreeId, activeWorktreePath, handleInvestigate])
 

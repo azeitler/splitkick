@@ -4370,12 +4370,40 @@ pub async fn create_pr_with_ai_content(
         }
     }
 
-    // Gather issue/PR context for this session
+    // Gather issue/PR context for this session AND worktree.
+    // References may be stored under the session ID (manually loaded issues) or
+    // the worktree ID (issues attached at worktree creation time), so we look up both.
     let effective_session_id = session_id.as_deref().unwrap_or("");
-    let context_content =
-        get_session_context_content(&app, effective_session_id, &project.path).unwrap_or_default();
-    let (issue_nums, pr_nums) =
+    let worktree_id = &worktree.id;
+
+    let (mut issue_nums, mut pr_nums) =
         get_session_context_numbers(&app, effective_session_id).unwrap_or_default();
+    let mut context_content =
+        get_session_context_content(&app, effective_session_id, &project.path).unwrap_or_default();
+
+    if worktree_id != effective_session_id {
+        let (wt_issue_nums, wt_pr_nums) =
+            get_session_context_numbers(&app, worktree_id).unwrap_or_default();
+        for n in wt_issue_nums {
+            if !issue_nums.contains(&n) {
+                issue_nums.push(n);
+            }
+        }
+        for n in wt_pr_nums {
+            if !pr_nums.contains(&n) {
+                pr_nums.push(n);
+            }
+        }
+        let wt_content =
+            get_session_context_content(&app, worktree_id, &project.path).unwrap_or_default();
+        if !wt_content.is_empty() {
+            if context_content.is_empty() {
+                context_content = wt_content;
+            } else {
+                context_content = format!("{context_content}\n\n{wt_content}");
+            }
+        }
+    }
 
     // Generate PR content using Claude CLI
     log::trace!("Generating PR content with AI");
@@ -4393,7 +4421,7 @@ pub async fn create_pr_with_ai_content(
     // Append unconditional issue/PR references to the body
     let mut refs: Vec<String> = Vec::new();
     for num in &issue_nums {
-        refs.push(format!("Closes #{num}"));
+        refs.push(format!("Fixes #{num}"));
     }
     for num in &pr_nums {
         refs.push(format!("Related to #{num}"));
@@ -4520,12 +4548,38 @@ pub async fn generate_pr_update_content(
     let target_branch = &project.default_branch;
     let current_branch = git::get_current_branch(&worktree_path)?;
 
-    // Gather issue/PR context for this session
+    // Gather issue/PR context for this session AND worktree (same logic as create_pr_with_ai_content)
     let effective_session_id = session_id.as_deref().unwrap_or("");
-    let context_content =
-        get_session_context_content(&app, effective_session_id, &project.path).unwrap_or_default();
-    let (issue_nums, pr_nums) =
+    let worktree_id = &worktree.id;
+
+    let (mut issue_nums, mut pr_nums) =
         get_session_context_numbers(&app, effective_session_id).unwrap_or_default();
+    let mut context_content =
+        get_session_context_content(&app, effective_session_id, &project.path).unwrap_or_default();
+
+    if worktree_id != effective_session_id {
+        let (wt_issue_nums, wt_pr_nums) =
+            get_session_context_numbers(&app, worktree_id).unwrap_or_default();
+        for n in wt_issue_nums {
+            if !issue_nums.contains(&n) {
+                issue_nums.push(n);
+            }
+        }
+        for n in wt_pr_nums {
+            if !pr_nums.contains(&n) {
+                pr_nums.push(n);
+            }
+        }
+        let wt_content =
+            get_session_context_content(&app, worktree_id, &project.path).unwrap_or_default();
+        if !wt_content.is_empty() {
+            if context_content.is_empty() {
+                context_content = wt_content;
+            } else {
+                context_content = format!("{context_content}\n\n{wt_content}");
+            }
+        }
+    }
 
     // Generate PR content using Claude CLI
     let mut pr_content = generate_pr_content(
@@ -4542,7 +4596,7 @@ pub async fn generate_pr_update_content(
     // Append unconditional issue/PR references to the body
     let mut refs: Vec<String> = Vec::new();
     for num in &issue_nums {
-        refs.push(format!("Closes #{num}"));
+        refs.push(format!("Fixes #{num}"));
     }
     for num in &pr_nums {
         refs.push(format!("Related to #{num}"));

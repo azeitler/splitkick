@@ -764,6 +764,11 @@ export type CodexReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh'
 export type OpenCodeModel = `opencode/${string}`
 export type MagicPromptModel = ClaudeModel | CodexModel | OpenCodeModel
 
+/** Check if a model string identifies an OpenCode model */
+export function isOpenCodeModel(model: string): model is OpenCodeModel {
+  return model.startsWith('opencode/')
+}
+
 /** Check if a model string identifies a Codex model */
 export function isCodexModel(model: string): model is CodexModel {
   return (codexModelOptions as { value: string }[]).some(
