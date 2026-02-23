@@ -55,6 +55,10 @@ export const githubQueryKeys = {
     [...githubQueryKeys.all, 'issue-search', projectPath, query] as const,
   prSearch: (projectPath: string, query: string) =>
     [...githubQueryKeys.all, 'pr-search', projectPath, query] as const,
+  issueByNumber: (projectPath: string, number: number) =>
+    [...githubQueryKeys.all, 'issue-by-number', projectPath, number] as const,
+  prByNumber: (projectPath: string, number: number) =>
+    [...githubQueryKeys.all, 'pr-by-number', projectPath, number] as const,
   workflowRuns: (projectPath: string, branch?: string) =>
     [
       ...githubQueryKeys.all,
@@ -597,6 +601,87 @@ export function mergeWithSearchResults<T extends { number: number }>(
 
   if (remoteOnly.length === 0) return localResults
   return [...localResults, ...remoteOnly]
+}
+
+/**
+ * Parse a search query as a GitHub item number.
+ * Accepts "123" or "#123", returns the number or null.
+ */
+export function parseItemNumber(query: string): number | null {
+  const trimmed = query.trim().replace(/^#/, '')
+  if (!trimmed || !/^\d+$/.test(trimmed)) return null
+  const num = parseInt(trimmed, 10)
+  return num > 0 ? num : null
+}
+
+/**
+ * Prepend an exact-match item to an array, deduplicating by number.
+ */
+export function prependExactMatch<T extends { number: number }>(
+  items: T[],
+  exactMatch: T | undefined | null
+): T[] {
+  if (!exactMatch) return items
+  const filtered = items.filter(item => item.number !== exactMatch.number)
+  return [exactMatch, ...filtered]
+}
+
+/**
+ * Hook to fetch a single GitHub issue by exact number.
+ * Returns the same GitHubIssue type as list_github_issues.
+ */
+export function useGetGitHubIssueByNumber(
+  projectPath: string | null,
+  query: string
+) {
+  const itemNumber = parseItemNumber(query)
+  return useQuery({
+    queryKey: githubQueryKeys.issueByNumber(projectPath ?? '', itemNumber ?? 0),
+    queryFn: async (): Promise<GitHubIssue | null> => {
+      if (!isTauri() || !projectPath || !itemNumber) return null
+      try {
+        return await invoke<GitHubIssue>('get_github_issue_by_number', {
+          projectPath,
+          issueNumber: itemNumber,
+        })
+      } catch {
+        return null
+      }
+    },
+    enabled: !!projectPath && itemNumber !== null,
+    staleTime: 1000 * 30,
+    gcTime: 1000 * 60 * 5,
+    retry: 0,
+  })
+}
+
+/**
+ * Hook to fetch a single GitHub PR by exact number.
+ * Returns the same GitHubPullRequest type as list_github_prs.
+ */
+export function useGetGitHubPRByNumber(
+  projectPath: string | null,
+  query: string
+) {
+  const itemNumber = parseItemNumber(query)
+  return useQuery({
+    queryKey: githubQueryKeys.prByNumber(projectPath ?? '', itemNumber ?? 0),
+    queryFn: async (): Promise<GitHubPullRequest | null> => {
+      if (!isTauri() || !projectPath || !itemNumber) return null
+      try {
+        return await invoke<GitHubPullRequest>('get_github_pr_by_number', {
+          projectPath,
+          prNumber: itemNumber,
+        })
+      } catch {
+        return null
+      }
+    },
+    enabled: !!projectPath && itemNumber !== null,
+    staleTime: 1000 * 30,
+    gcTime: 1000 * 60 * 5,
+    retry: 0,
+  })
 }
 
 // =============================================================================

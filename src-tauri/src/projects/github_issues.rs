@@ -226,6 +226,50 @@ pub async fn search_github_issues(
     Ok(issues)
 }
 
+/// Get a GitHub issue by number, returning the same type as list_github_issues.
+///
+/// Uses `gh issue view` to fetch a single issue by exact number.
+/// This finds any issue regardless of age or state.
+#[tauri::command]
+pub async fn get_github_issue_by_number(
+    app: AppHandle,
+    project_path: String,
+    issue_number: u32,
+) -> Result<GitHubIssue, String> {
+    log::trace!("Getting GitHub issue #{issue_number} by number for {project_path}");
+
+    let gh = resolve_gh_binary(&app);
+    let output = silent_command(&gh)
+        .args([
+            "issue",
+            "view",
+            &issue_number.to_string(),
+            "--json",
+            "number,title,body,state,labels,createdAt,author",
+        ])
+        .current_dir(&project_path)
+        .output()
+        .map_err(|e| format!("Failed to run gh issue view: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("gh auth login") || stderr.contains("authentication") {
+            return Err("GitHub CLI not authenticated. Run 'gh auth login' first.".to_string());
+        }
+        if stderr.contains("Could not resolve") || stderr.contains("not found") {
+            return Err(format!("Issue #{issue_number} not found"));
+        }
+        return Err(format!("gh issue view failed: {stderr}"));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let issue: GitHubIssue =
+        serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse gh response: {e}"))?;
+
+    log::trace!("Got issue #{}: {}", issue.number, issue.title);
+    Ok(issue)
+}
+
 /// Get detailed information about a specific GitHub issue
 ///
 /// Uses `gh issue view` to fetch the issue with comments.
@@ -1124,6 +1168,50 @@ pub async fn search_github_prs(
 
     log::trace!("Search found {} PRs", prs.len());
     Ok(prs)
+}
+
+/// Get a GitHub PR by number, returning the same type as list_github_prs.
+///
+/// Uses `gh pr view` to fetch a single PR by exact number.
+/// This finds any PR regardless of age or state.
+#[tauri::command]
+pub async fn get_github_pr_by_number(
+    app: AppHandle,
+    project_path: String,
+    pr_number: u32,
+) -> Result<GitHubPullRequest, String> {
+    log::trace!("Getting GitHub PR #{pr_number} by number for {project_path}");
+
+    let gh = resolve_gh_binary(&app);
+    let output = silent_command(&gh)
+        .args([
+            "pr",
+            "view",
+            &pr_number.to_string(),
+            "--json",
+            "number,title,body,state,headRefName,baseRefName,isDraft,createdAt,author,labels",
+        ])
+        .current_dir(&project_path)
+        .output()
+        .map_err(|e| format!("Failed to run gh pr view: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("gh auth login") || stderr.contains("authentication") {
+            return Err("GitHub CLI not authenticated. Run 'gh auth login' first.".to_string());
+        }
+        if stderr.contains("Could not resolve") || stderr.contains("not found") {
+            return Err(format!("PR #{pr_number} not found"));
+        }
+        return Err(format!("gh pr view failed: {stderr}"));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let pr: GitHubPullRequest =
+        serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse gh response: {e}"))?;
+
+    log::trace!("Got PR #{}: {}", pr.number, pr.title);
+    Ok(pr)
 }
 
 /// Get detailed information about a specific GitHub PR

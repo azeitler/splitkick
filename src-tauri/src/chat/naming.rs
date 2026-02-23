@@ -610,17 +610,15 @@ fn generate_names_opencode(
     model: &str,
     request: &NamingRequest,
 ) -> Result<NamingOutput, String> {
-    let base_url = crate::opencode_server::ensure_running(app)?;
+    let base_url = crate::opencode_server::acquire(app)?;
 
-    struct ManagedServerGuard;
-    impl Drop for ManagedServerGuard {
+    struct ServerReleaseGuard;
+    impl Drop for ServerReleaseGuard {
         fn drop(&mut self) {
-            if let Err(e) = crate::opencode_server::shutdown_managed_server() {
-                log::warn!("Failed to stop managed OpenCode server after naming: {e}");
-            }
+            crate::opencode_server::release();
         }
     }
-    let _managed_server_guard = ManagedServerGuard;
+    let _server_guard = ServerReleaseGuard;
 
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(300))

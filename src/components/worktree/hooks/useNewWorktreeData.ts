@@ -6,9 +6,12 @@ import {
   useGitHubPRs,
   useSearchGitHubIssues,
   useSearchGitHubPRs,
+  useGetGitHubIssueByNumber,
+  useGetGitHubPRByNumber,
   filterIssues,
   filterPRs,
   mergeWithSearchResults,
+  prependExactMatch,
 } from '@/services/github'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import {
@@ -79,21 +82,37 @@ export function useNewWorktreeData(
     debouncedSearchQuery
   )
 
+  // Exact number lookups (finds any issue/PR regardless of age or state)
+  const { data: exactIssue } = useGetGitHubIssueByNumber(
+    selectedProject?.path ?? null,
+    debouncedSearchQuery
+  )
+  const { data: exactPR } = useGetGitHubPRByNumber(
+    selectedProject?.path ?? null,
+    debouncedSearchQuery
+  )
+
   // Filtered issues
   const filteredIssues = useMemo(
     () =>
-      mergeWithSearchResults(
-        filterIssues(issues ?? [], searchQuery),
-        searchedIssues
+      prependExactMatch(
+        mergeWithSearchResults(
+          filterIssues(issues ?? [], searchQuery),
+          searchedIssues
+        ),
+        exactIssue
       ),
-    [issues, searchQuery, searchedIssues]
+    [issues, searchQuery, searchedIssues, exactIssue]
   )
 
   // Filtered PRs
   const filteredPRs = useMemo(
     () =>
-      mergeWithSearchResults(filterPRs(prs ?? [], searchQuery), searchedPRs),
-    [prs, searchQuery, searchedPRs]
+      prependExactMatch(
+        mergeWithSearchResults(filterPRs(prs ?? [], searchQuery), searchedPRs),
+        exactPR
+      ),
+    [prs, searchQuery, searchedPRs, exactPR]
   )
 
   // Branches
