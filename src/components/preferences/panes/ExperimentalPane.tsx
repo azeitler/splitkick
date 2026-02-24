@@ -44,7 +44,6 @@ const InlineField: React.FC<{
 export const ExperimentalPane: React.FC = () => {
   const { data: preferences } = usePreferences()
   const savePreferences = useSavePreferences()
-
   return (
     <div className="space-y-6">
       <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 p-4">
@@ -95,12 +94,15 @@ export const ExperimentalPane: React.FC = () => {
             description="Claude model for automatic and on-demand session recaps"
           >
             <Select
-              value={preferences?.session_recap_model ?? 'haiku'}
+              value={preferences?.magic_prompt_models.session_recap_model ?? 'haiku'}
               onValueChange={(value: ClaudeModel) => {
                 if (preferences) {
                   savePreferences.mutate({
                     ...preferences,
-                    session_recap_model: value,
+                    magic_prompt_models: {
+                      ...preferences.magic_prompt_models,
+                      session_recap_model: value,
+                    },
                   })
                 }
               }}
@@ -137,7 +139,9 @@ export const ExperimentalPane: React.FC = () => {
             }}
           />
         </InlineField>
+
       </SettingsSection>
+
     </div>
   )
 }

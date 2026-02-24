@@ -4,6 +4,9 @@ export * from '../../hooks/use-command-context'
 import { appearanceCommands } from './appearance-commands'
 import { notificationCommands } from './notification-commands'
 import { projectCommands } from './project-commands'
+import { githubCommands } from './github-commands'
+import { maintenanceCommands } from './maintenance-commands'
+import { windowCommands } from './window-commands'
 import { registerCommands } from './registry'
 
 /**
@@ -14,10 +17,16 @@ export function initializeCommandSystem(): void {
   registerCommands(appearanceCommands)
   registerCommands(notificationCommands)
   registerCommands(projectCommands)
-
-  if (import.meta.env.DEV) {
-    console.log('Command system initialized')
-  }
+  registerCommands(githubCommands)
+  registerCommands(maintenanceCommands)
+  registerCommands(windowCommands)
 }
 
-export { appearanceCommands, notificationCommands, projectCommands }
+export {
+  appearanceCommands,
+  notificationCommands,
+  projectCommands,
+  githubCommands,
+  maintenanceCommands,
+  windowCommands,
+}

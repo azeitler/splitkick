@@ -17,7 +17,12 @@ import {
   ExternalLink,
 } from 'lucide-react'
 import { invoke, convertFileSrc } from '@/lib/transport'
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import { Markdown } from '@/components/ui/markdown'
@@ -302,6 +307,9 @@ export function FileContentModal({ filePath, onClose }: FileContentModalProps) {
             </span>
           )}
         </DialogTitle>
+        <DialogDescription className="sr-only">
+          View or edit the contents of {filename ?? 'the selected file'}.
+        </DialogDescription>
 
         {/* CodeEditor renders outside ScrollArea since it has its own scroll */}
         {isEditing && fileEditMode === 'inline' && content !== null ? (

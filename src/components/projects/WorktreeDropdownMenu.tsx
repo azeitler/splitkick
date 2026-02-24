@@ -6,6 +6,7 @@ import {
   MoreHorizontal,
   Play,
   Plus,
+  Settings,
   Sparkles,
   Terminal,
   Trash2,
@@ -32,6 +33,7 @@ import { Button } from '@/components/ui/button'
 import type { Worktree } from '@/types/projects'
 import { getEditorLabel, getTerminalLabel } from '@/types/preferences'
 import { isNativeApp } from '@/lib/environment'
+import { useProjectsStore } from '@/store/projects-store'
 import { useWorktreeMenuActions } from './useWorktreeMenuActions'
 
 interface WorktreeDropdownMenuProps {
@@ -90,12 +92,19 @@ export function WorktreeDropdownMenu({
             </DropdownMenuItem>
           )}
 
-          {isNativeApp() && (
-            <DropdownMenuItem onClick={handleOpenJeanConfig}>
-              <FileJson className="mr-2 h-4 w-4" />
-              Edit jean.json
-            </DropdownMenuItem>
-          )}
+          <DropdownMenuItem onClick={handleOpenJeanConfig}>
+            <FileJson className="mr-2 h-4 w-4" />
+            Edit jean.json
+          </DropdownMenuItem>
+
+          <DropdownMenuItem
+            onClick={() =>
+              useProjectsStore.getState().openProjectSettings(projectId)
+            }
+          >
+            <Settings className="mr-2 h-4 w-4" />
+            Project Settings
+          </DropdownMenuItem>
 
           {hasMessages && (
             <DropdownMenuItem onClick={handleGenerateRecap}>
@@ -153,7 +162,16 @@ export function WorktreeDropdownMenu({
       </DropdownMenu>
 
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <AlertDialogContent>
+        <AlertDialogContent
+          onKeyDown={e => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              e.stopPropagation()
+              handleDelete()
+              setShowDeleteConfirm(false)
+            }
+          }}
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Worktree</AlertDialogTitle>
             <AlertDialogDescription>
@@ -164,10 +182,12 @@ export function WorktreeDropdownMenu({
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
+              autoFocus
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Delete
+              <kbd className="ml-1.5 text-xs opacity-70">↵</kbd>
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

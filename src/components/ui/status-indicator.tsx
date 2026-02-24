@@ -1,6 +1,11 @@
 import { cn } from '@/lib/utils'
 
-export type IndicatorStatus = 'idle' | 'running' | 'waiting' | 'review' | 'completed'
+export type IndicatorStatus =
+  | 'idle'
+  | 'running'
+  | 'waiting'
+  | 'review'
+  | 'completed'
 export type IndicatorVariant = 'default' | 'destructive' | 'loading'
 export type IndicatorShape = 'circle' | 'square'
 

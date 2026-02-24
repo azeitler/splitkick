@@ -43,9 +43,7 @@ pub async fn list_workflow_runs(
     project_path: String,
     branch: Option<String>,
 ) -> Result<WorkflowRunsResult, String> {
-    log::trace!(
-        "Listing workflow runs for {project_path} with branch: {branch:?}"
-    );
+    log::trace!("Listing workflow runs for {project_path} with branch: {branch:?}");
 
     let gh = resolve_gh_binary(&app);
 
@@ -79,9 +77,7 @@ pub async fn list_workflow_runs(
             return Err("Not a git repository".to_string());
         }
         if stderr.contains("Could not resolve") {
-            return Err(
-                "Could not resolve repository. Is this a GitHub repository?".to_string(),
-            );
+            return Err("Could not resolve repository. Is this a GitHub repository?".to_string());
         }
         return Err(format!("gh run list failed: {stderr}"));
     }
@@ -96,20 +92,17 @@ pub async fn list_workflow_runs(
     let mut seen_workflows = std::collections::HashSet::new();
     let mut failed_count: u32 = 0;
     for run in &runs {
-        if seen_workflows.insert(&run.workflow_name) {
-            if matches!(
+        if seen_workflows.insert(&run.workflow_name)
+            && matches!(
                 run.conclusion.as_deref(),
                 Some("failure") | Some("startup_failure")
-            ) {
-                failed_count += 1;
-            }
+            )
+        {
+            failed_count += 1;
         }
     }
 
-    log::trace!(
-        "Found {} workflow runs ({failed_count} failed)",
-        runs.len()
-    );
+    log::trace!("Found {} workflow runs ({failed_count} failed)", runs.len());
 
     Ok(WorkflowRunsResult { runs, failed_count })
 }
@@ -159,13 +152,13 @@ mod tests {
         let mut seen = std::collections::HashSet::new();
         let mut count: u32 = 0;
         for run in runs {
-            if seen.insert(&run.workflow_name) {
-                if matches!(
+            if seen.insert(&run.workflow_name)
+                && matches!(
                     run.conclusion.as_deref(),
                     Some("failure") | Some("startup_failure")
-                ) {
-                    count += 1;
-                }
+                )
+            {
+                count += 1;
             }
         }
         count
@@ -198,10 +191,7 @@ mod tests {
     #[test]
     fn test_failed_count_in_progress_not_counted() {
         // CI: latest=in_progress (no conclusion) → should NOT count
-        let runs = vec![
-            make_run(2, "CI", None),
-            make_run(1, "CI", Some("failure")),
-        ];
+        let runs = vec![make_run(2, "CI", None), make_run(1, "CI", Some("failure"))];
         assert_eq!(count_failed(&runs), 0);
     }
 

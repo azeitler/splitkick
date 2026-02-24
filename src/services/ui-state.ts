@@ -18,7 +18,7 @@ export function useUIState() {
   return useQuery({
     queryKey: uiStateQueryKeys.state(),
     queryFn: async (): Promise<UIState> => {
-      // Return defaults when running outside Tauri (e.g., npm run dev in browser)
+      // Return defaults when running outside Tauri (e.g., bun run dev in browser)
       if (!isTauri()) {
         logger.debug('Not in Tauri context, using default UI state')
         return defaultUIState
@@ -45,7 +45,7 @@ export function useSaveUIState() {
 
   return useMutation({
     mutationFn: async (uiState: UIState) => {
-      // Skip persistence when running outside Tauri (e.g., npm run dev in browser)
+      // Skip persistence when running outside Tauri (e.g., bun run dev in browser)
       if (!isTauri()) {
         logger.debug('Not in Tauri context, UI state not persisted to disk', {
           uiState,

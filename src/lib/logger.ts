@@ -2,11 +2,7 @@
  * Environment-aware logging utility
  * - debug/info: only log in development
  * - warn/error: always log (even in production)
- * - In dev mode, console.* calls are forwarded to Tauri's log plugin (→ log file)
- *   via the console overrides in main.tsx — no need to call the plugin directly here.
  */
-
-const isDev = import.meta.env.DEV
 
 type LogArgs = unknown[]
 
@@ -27,21 +23,14 @@ function createLogger(tagName?: string): Logger {
   }
 
   return {
-    debug: (...args: LogArgs) => {
-      if (isDev) {
-        console.debug(...formatArgs('DEBUG', args))
-      }
-    },
+    // eslint-disable-next-line @typescript-eslint/no-empty-function
+    debug: () => {},
 
-    info: (...args: LogArgs) => {
-      if (isDev) {
-        console.info(...formatArgs('INFO', args))
-      }
-    },
+    // eslint-disable-next-line @typescript-eslint/no-empty-function
+    info: () => {},
 
-    warn: (...args: LogArgs) => {
-      console.warn(...formatArgs('WARN', args))
-    },
+    // eslint-disable-next-line @typescript-eslint/no-empty-function
+    warn: () => {},
 
     error: (...args: LogArgs) => {
       console.error(...formatArgs('ERROR', args))

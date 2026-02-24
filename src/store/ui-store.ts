@@ -7,74 +7,15 @@ export type PreferencePane =
   | 'keybindings'
   | 'magic-prompts'
   | 'mcp-servers'
+  | 'providers'
   | 'experimental'
   | 'web-access'
 
 export type OnboardingStartStep = 'claude' | 'gh' | null
 
-export type CliUpdateModalType = 'claude' | 'gh' | null
+export type CliUpdateModalType = 'claude' | 'gh' | 'codex' | 'opencode' | null
 
-export type CliLoginModalType = 'claude' | 'gh' | null
-
-/** Data for the path conflict modal when worktree creation finds an existing directory */
-export interface PathConflictData {
-  projectId: string
-  path: string
-  suggestedName: string
-  /** If the path matches an archived worktree, its ID */
-  archivedWorktreeId?: string
-  /** Name of the archived worktree */
-  archivedWorktreeName?: string
-  /** Issue context to pass when creating a new worktree */
-  issueContext?: {
-    number: number
-    title: string
-    body?: string
-    comments: {
-      author: { login: string }
-      body: string
-      createdAt: string
-    }[]
-  }
-}
-
-/** Data for the branch conflict modal when worktree creation finds an existing branch */
-export interface BranchConflictData {
-  projectId: string
-  branch: string
-  suggestedName: string
-  /** Issue context to pass when creating a new worktree */
-  issueContext?: {
-    number: number
-    title: string
-    body?: string
-    comments: {
-      author: { login: string }
-      body: string
-      createdAt: string
-    }[]
-  }
-  /** PR context to pass when creating a new worktree */
-  prContext?: {
-    number: number
-    title: string
-    body?: string
-    headRefName: string
-    baseRefName: string
-    comments: {
-      author: { login: string }
-      body: string
-      createdAt: string
-    }[]
-    reviews: {
-      author: { login: string }
-      body: string
-      state: string
-      submittedAt: string
-    }[]
-    diff?: string
-  }
-}
+export type CliLoginModalType = 'claude' | 'gh' | 'codex' | 'opencode' | null
 
 interface UIState {
   leftSidebarVisible: boolean
@@ -85,12 +26,19 @@ interface UIState {
   preferencesPane: PreferencePane | null
   commitModalOpen: boolean
   onboardingOpen: boolean
+  onboardingDismissed: boolean
+  onboardingManuallyTriggered: boolean
   onboardingStartStep: OnboardingStartStep
   openInModalOpen: boolean
+  remotePickerOpen: boolean
+  remotePickerRepoPath: string | null
+  remotePickerCallback: ((remote: string) => void) | null
+  loadContextModalOpen: boolean
   magicModalOpen: boolean
   newWorktreeModalOpen: boolean
   newWorktreeModalDefaultTab: 'quick' | 'issues' | 'prs' | null
-  checkoutPRModalOpen: boolean
+  releaseNotesModalOpen: boolean
+  updatePrModalOpen: boolean
   workflowRunsModalOpen: boolean
   workflowRunsModalProjectPath: string | null
   workflowRunsModalBranch: string | null
@@ -99,16 +47,16 @@ interface UIState {
   cliLoginModalOpen: boolean
   cliLoginModalType: CliLoginModalType
   cliLoginModalCommand: string | null
-  /** Data for the path conflict modal */
-  pathConflictData: PathConflictData | null
-  /** Data for the branch conflict modal */
-  branchConflictData: BranchConflictData | null
   /** Worktree IDs that should auto-trigger investigate-issue when created */
   autoInvestigateWorktreeIds: Set<string>
   /** Worktree IDs that should auto-trigger investigate-pr when created */
   autoInvestigatePRWorktreeIds: Set<string>
+  /** Counter for background worktree creations (CMD+Click) — skip auto-navigation */
+  pendingBackgroundCreations: number
   /** Worktree IDs that should auto-open first session modal when canvas mounts */
   autoOpenSessionWorktreeIds: Set<string>
+  /** Specific session ID to auto-open per worktree (overrides first-session default) */
+  pendingAutoOpenSessionIds: Record<string, string>
   /** Project ID for the Session Board modal (null = closed) */
   sessionBoardProjectId: string | null
   /** Whether a session chat modal is open (for magic command keybinding checks) */
@@ -121,7 +69,10 @@ interface UIState {
   featureTourOpen: boolean
   /** Whether UI state has been restored from persisted storage */
   uiStateInitialized: boolean
-
+  /** Pending app update that user skipped — shown as indicator in title bar */
+  pendingUpdateVersion: string | null
+  /** When non-null, shows the update available modal */
+  updateModalVersion: string | null
   toggleLeftSidebar: () => void
   setLeftSidebarVisible: (visible: boolean) => void
   setLeftSidebarSize: (size: number) => void
@@ -134,44 +85,61 @@ interface UIState {
   openPreferencesPane: (pane: PreferencePane) => void
   setCommitModalOpen: (open: boolean) => void
   setOnboardingOpen: (open: boolean) => void
+  setOnboardingManuallyTriggered: (triggered: boolean) => void
   setOnboardingStartStep: (step: OnboardingStartStep) => void
   setOpenInModalOpen: (open: boolean) => void
+  openRemotePicker: (
+    repoPath: string,
+    callback: (remote: string) => void
+  ) => void
+  closeRemotePicker: () => void
+  setLoadContextModalOpen: (open: boolean) => void
   setMagicModalOpen: (open: boolean) => void
   setNewWorktreeModalOpen: (open: boolean) => void
   setNewWorktreeModalDefaultTab: (
     tab: 'quick' | 'issues' | 'prs' | null
   ) => void
-  setCheckoutPRModalOpen: (open: boolean) => void
+  setReleaseNotesModalOpen: (open: boolean) => void
+  setUpdatePrModalOpen: (open: boolean) => void
   setWorkflowRunsModalOpen: (
     open: boolean,
     projectPath?: string | null,
     branch?: string | null
   ) => void
-  openCliUpdateModal: (type: 'claude' | 'gh') => void
+  openCliUpdateModal: (type: 'claude' | 'gh' | 'codex' | 'opencode') => void
   closeCliUpdateModal: () => void
-  openCliLoginModal: (type: 'claude' | 'gh', command: string) => void
+  openCliLoginModal: (
+    type: 'claude' | 'gh' | 'codex' | 'opencode',
+    command: string
+  ) => void
   closeCliLoginModal: () => void
-  openPathConflictModal: (data: PathConflictData) => void
-  closePathConflictModal: () => void
-  openBranchConflictModal: (data: BranchConflictData) => void
-  closeBranchConflictModal: () => void
+  incrementPendingBackgroundCreations: () => void
+  consumePendingBackgroundCreation: () => boolean
   markWorktreeForAutoInvestigate: (worktreeId: string) => void
   consumeAutoInvestigate: (worktreeId: string) => boolean
   markWorktreeForAutoInvestigatePR: (worktreeId: string) => void
   consumeAutoInvestigatePR: (worktreeId: string) => boolean
-  markWorktreeForAutoOpenSession: (worktreeId: string) => void
-  consumeAutoOpenSession: (worktreeId: string) => boolean
+  markWorktreeForAutoOpenSession: (
+    worktreeId: string,
+    sessionId?: string
+  ) => void
+  consumeAutoOpenSession: (worktreeId: string) => {
+    shouldOpen: boolean
+    sessionId?: string
+  }
   openSessionBoardModal: (projectId: string) => void
   closeSessionBoardModal: () => void
   setSessionChatModalOpen: (open: boolean, worktreeId?: string | null) => void
   setPlanDialogOpen: (open: boolean) => void
   setFeatureTourOpen: (open: boolean) => void
   setUIStateInitialized: (initialized: boolean) => void
+  setPendingUpdateVersion: (version: string | null) => void
+  setUpdateModalVersion: (version: string | null) => void
 }
 
 export const useUIStore = create<UIState>()(
   devtools(
-    set => ({
+    (set, get) => ({
       leftSidebarVisible: false,
       leftSidebarSize: 250, // Default width in pixels
       rightSidebarVisible: false,
@@ -180,12 +148,19 @@ export const useUIStore = create<UIState>()(
       preferencesPane: null,
       commitModalOpen: false,
       onboardingOpen: false,
+      onboardingDismissed: false,
+      onboardingManuallyTriggered: false,
       onboardingStartStep: null,
       openInModalOpen: false,
+      remotePickerOpen: false,
+      remotePickerRepoPath: null,
+      remotePickerCallback: null,
+      loadContextModalOpen: false,
       magicModalOpen: false,
       newWorktreeModalOpen: false,
       newWorktreeModalDefaultTab: null,
-      checkoutPRModalOpen: false,
+      releaseNotesModalOpen: false,
+      updatePrModalOpen: false,
       workflowRunsModalOpen: false,
       workflowRunsModalProjectPath: null,
       workflowRunsModalBranch: null,
@@ -194,18 +169,19 @@ export const useUIStore = create<UIState>()(
       cliLoginModalOpen: false,
       cliLoginModalType: null,
       cliLoginModalCommand: null,
-      pathConflictData: null,
-      branchConflictData: null,
       autoInvestigateWorktreeIds: new Set(),
       autoInvestigatePRWorktreeIds: new Set(),
+      pendingBackgroundCreations: 0,
       autoOpenSessionWorktreeIds: new Set(),
+      pendingAutoOpenSessionIds: {},
       sessionBoardProjectId: null,
       sessionChatModalOpen: false,
       sessionChatModalWorktreeId: null,
       planDialogOpen: false,
       featureTourOpen: false,
       uiStateInitialized: false,
-
+      pendingUpdateVersion: null,
+      updateModalVersion: null,
       toggleLeftSidebar: () =>
         set(
           state => ({ leftSidebarVisible: !state.leftSidebarVisible }),
@@ -274,11 +250,43 @@ export const useUIStore = create<UIState>()(
       setOnboardingOpen: open =>
         set({ onboardingOpen: open }, undefined, 'setOnboardingOpen'),
 
+      setOnboardingManuallyTriggered: triggered =>
+        set({ onboardingManuallyTriggered: triggered }, undefined, 'setOnboardingManuallyTriggered'),
+
       setOnboardingStartStep: step =>
         set({ onboardingStartStep: step }, undefined, 'setOnboardingStartStep'),
 
       setOpenInModalOpen: open =>
         set({ openInModalOpen: open }, undefined, 'setOpenInModalOpen'),
+
+      openRemotePicker: (repoPath, callback) =>
+        set(
+          {
+            remotePickerOpen: true,
+            remotePickerRepoPath: repoPath,
+            remotePickerCallback: callback,
+          },
+          undefined,
+          'openRemotePicker'
+        ),
+
+      closeRemotePicker: () =>
+        set(
+          {
+            remotePickerOpen: false,
+            remotePickerRepoPath: null,
+            remotePickerCallback: null,
+          },
+          undefined,
+          'closeRemotePicker'
+        ),
+
+      setLoadContextModalOpen: open =>
+        set(
+          { loadContextModalOpen: open },
+          undefined,
+          'setLoadContextModalOpen'
+        ),
 
       setMagicModalOpen: open =>
         set({ magicModalOpen: open }, undefined, 'setMagicModalOpen'),
@@ -300,8 +308,15 @@ export const useUIStore = create<UIState>()(
           'setNewWorktreeModalDefaultTab'
         ),
 
-      setCheckoutPRModalOpen: open =>
-        set({ checkoutPRModalOpen: open }, undefined, 'setCheckoutPRModalOpen'),
+      setReleaseNotesModalOpen: open =>
+        set(
+          { releaseNotesModalOpen: open },
+          undefined,
+          'setReleaseNotesModalOpen'
+        ),
+
+      setUpdatePrModalOpen: open =>
+        set({ updatePrModalOpen: open }, undefined, 'setUpdatePrModalOpen'),
 
       setWorkflowRunsModalOpen: (open, projectPath, branch) =>
         set(
@@ -350,21 +365,29 @@ export const useUIStore = create<UIState>()(
           'closeCliLoginModal'
         ),
 
-      openPathConflictModal: data =>
-        set({ pathConflictData: data }, undefined, 'openPathConflictModal'),
-
-      closePathConflictModal: () =>
-        set({ pathConflictData: null }, undefined, 'closePathConflictModal'),
-
-      openBranchConflictModal: data =>
-        set({ branchConflictData: data }, undefined, 'openBranchConflictModal'),
-
-      closeBranchConflictModal: () =>
+      incrementPendingBackgroundCreations: () =>
         set(
-          { branchConflictData: null },
+          state => ({
+            pendingBackgroundCreations: state.pendingBackgroundCreations + 1,
+          }),
           undefined,
-          'closeBranchConflictModal'
+          'incrementPendingBackgroundCreations'
         ),
+
+      consumePendingBackgroundCreation: () => {
+        const state = useUIStore.getState()
+        if (state.pendingBackgroundCreations > 0) {
+          set(
+            state => ({
+              pendingBackgroundCreations: state.pendingBackgroundCreations - 1,
+            }),
+            undefined,
+            'consumePendingBackgroundCreation'
+          )
+          return true
+        }
+        return false
+      },
 
       markWorktreeForAutoInvestigate: worktreeId =>
         set(
@@ -379,8 +402,7 @@ export const useUIStore = create<UIState>()(
         ),
 
       consumeAutoInvestigate: worktreeId => {
-        const state = useUIStore.getState()
-        if (state.autoInvestigateWorktreeIds.has(worktreeId)) {
+        if (get().autoInvestigateWorktreeIds.has(worktreeId)) {
           set(
             state => {
               const newSet = new Set(state.autoInvestigateWorktreeIds)
@@ -408,8 +430,7 @@ export const useUIStore = create<UIState>()(
         ),
 
       consumeAutoInvestigatePR: worktreeId => {
-        const state = useUIStore.getState()
-        if (state.autoInvestigatePRWorktreeIds.has(worktreeId)) {
+        if (get().autoInvestigatePRWorktreeIds.has(worktreeId)) {
           set(
             state => {
               const newSet = new Set(state.autoInvestigatePRWorktreeIds)
@@ -424,13 +445,16 @@ export const useUIStore = create<UIState>()(
         return false
       },
 
-      markWorktreeForAutoOpenSession: worktreeId =>
+      markWorktreeForAutoOpenSession: (worktreeId, sessionId) =>
         set(
           state => ({
             autoOpenSessionWorktreeIds: new Set([
               ...state.autoOpenSessionWorktreeIds,
               worktreeId,
             ]),
+            pendingAutoOpenSessionIds: sessionId
+              ? { ...state.pendingAutoOpenSessionIds, [worktreeId]: sessionId }
+              : state.pendingAutoOpenSessionIds,
           }),
           undefined,
           'markWorktreeForAutoOpenSession'
@@ -439,21 +463,27 @@ export const useUIStore = create<UIState>()(
       consumeAutoOpenSession: worktreeId => {
         const state = useUIStore.getState()
         if (state.autoOpenSessionWorktreeIds.has(worktreeId)) {
+          const sessionId = state.pendingAutoOpenSessionIds[worktreeId]
           set(
             state => {
               const newSet = new Set(state.autoOpenSessionWorktreeIds)
               newSet.delete(worktreeId)
-              return { autoOpenSessionWorktreeIds: newSet }
+              const { [worktreeId]: _, ...restPending } =
+                state.pendingAutoOpenSessionIds
+              return {
+                autoOpenSessionWorktreeIds: newSet,
+                pendingAutoOpenSessionIds: restPending,
+              }
             },
             undefined,
             'consumeAutoOpenSession'
           )
-          return true
+          return { shouldOpen: true, sessionId }
         }
-        return false
+        return { shouldOpen: false }
       },
 
-      openSessionBoardModal: projectId =>
+      openSessionBoardModal: (projectId: string) =>
         set(
           { sessionBoardProjectId: projectId },
           undefined,
@@ -467,7 +497,7 @@ export const useUIStore = create<UIState>()(
           'closeSessionBoardModal'
         ),
 
-      setSessionChatModalOpen: (open, worktreeId) =>
+      setSessionChatModalOpen: (open: boolean, worktreeId?: string | null) =>
         set(
           {
             sessionChatModalOpen: open,
@@ -477,14 +507,32 @@ export const useUIStore = create<UIState>()(
           'setSessionChatModalOpen'
         ),
 
-      setPlanDialogOpen: open =>
+      setPlanDialogOpen: (open: boolean) =>
         set({ planDialogOpen: open }, undefined, 'setPlanDialogOpen'),
 
-      setFeatureTourOpen: open =>
+      setFeatureTourOpen: (open: boolean) =>
         set({ featureTourOpen: open }, undefined, 'setFeatureTourOpen'),
 
-      setUIStateInitialized: initialized =>
-        set({ uiStateInitialized: initialized }, undefined, 'setUIStateInitialized'),
+      setUIStateInitialized: (initialized: boolean) =>
+        set(
+          { uiStateInitialized: initialized },
+          undefined,
+          'setUIStateInitialized'
+        ),
+
+      setPendingUpdateVersion: (version: string | null) =>
+        set(
+          { pendingUpdateVersion: version },
+          undefined,
+          'setPendingUpdateVersion'
+        ),
+
+      setUpdateModalVersion: (version: string | null) =>
+        set(
+          { updateModalVersion: version },
+          undefined,
+          'setUpdateModalVersion'
+        ),
     }),
     {
       name: 'ui-store',

@@ -27,15 +27,6 @@ export function isGhAuthError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error)
   const lower = message.toLowerCase()
 
-  if (import.meta.env.DEV) {
-    console.log(
-      '[isGhAuthError] error type:',
-      typeof error,
-      'message:',
-      message
-    )
-  }
-
   return (
     lower.includes('not authenticated') ||
     lower.includes('gh auth login') ||
@@ -50,22 +41,31 @@ export const githubQueryKeys = {
     [...githubQueryKeys.all, 'issues', projectPath, state] as const,
   issue: (projectPath: string, issueNumber: number) =>
     [...githubQueryKeys.all, 'issue', projectPath, issueNumber] as const,
-  loadedContexts: (worktreeId: string) =>
-    [...githubQueryKeys.all, 'loaded-contexts', worktreeId] as const,
+  loadedContexts: (sessionId: string) =>
+    [...githubQueryKeys.all, 'loaded-contexts', sessionId] as const,
   prs: (projectPath: string, state: string) =>
     [...githubQueryKeys.all, 'prs', projectPath, state] as const,
   pr: (projectPath: string, prNumber: number) =>
     [...githubQueryKeys.all, 'pr', projectPath, prNumber] as const,
-  loadedPrContexts: (worktreeId: string) =>
-    [...githubQueryKeys.all, 'loaded-pr-contexts', worktreeId] as const,
-  attachedContexts: (worktreeId: string) =>
-    [...githubQueryKeys.all, 'attached-contexts', worktreeId] as const,
+  loadedPrContexts: (sessionId: string) =>
+    [...githubQueryKeys.all, 'loaded-pr-contexts', sessionId] as const,
+  attachedContexts: (sessionId: string) =>
+    [...githubQueryKeys.all, 'attached-contexts', sessionId] as const,
   issueSearch: (projectPath: string, query: string) =>
     [...githubQueryKeys.all, 'issue-search', projectPath, query] as const,
   prSearch: (projectPath: string, query: string) =>
     [...githubQueryKeys.all, 'pr-search', projectPath, query] as const,
+  issueByNumber: (projectPath: string, number: number) =>
+    [...githubQueryKeys.all, 'issue-by-number', projectPath, number] as const,
+  prByNumber: (projectPath: string, number: number) =>
+    [...githubQueryKeys.all, 'pr-by-number', projectPath, number] as const,
   workflowRuns: (projectPath: string, branch?: string) =>
-    [...githubQueryKeys.all, 'workflow-runs', projectPath, branch ?? ''] as const,
+    [
+      ...githubQueryKeys.all,
+      'workflow-runs',
+      projectPath,
+      branch ?? '',
+    ] as const,
 }
 
 /**
@@ -88,11 +88,17 @@ export function useGitHubIssues(
 
       try {
         logger.debug('Fetching GitHub issues', { projectPath, state })
-        const result = await invoke<GitHubIssueListResult>('list_github_issues', {
-          projectPath,
-          state,
+        const result = await invoke<GitHubIssueListResult>(
+          'list_github_issues',
+          {
+            projectPath,
+            state,
+          }
+        )
+        logger.info('GitHub issues loaded', {
+          count: result.issues.length,
+          totalCount: result.totalCount,
         })
-        logger.info('GitHub issues loaded', { count: result.issues.length, totalCount: result.totalCount })
         return result
       } catch (error) {
         logger.error('Failed to load GitHub issues', { error, projectPath })
@@ -249,64 +255,68 @@ export function useSearchGitHubIssues(
 }
 
 /**
- * Hook to list loaded issue contexts for a worktree
+ * Hook to list loaded issue contexts for a session
  *
- * @param worktreeId - The worktree ID
+ * @param sessionId - The session ID
  */
-export function useLoadedIssueContexts(worktreeId: string | null) {
+export function useLoadedIssueContexts(
+  sessionId: string | null,
+  worktreeId?: string | null
+) {
   return useQuery({
-    queryKey: githubQueryKeys.loadedContexts(worktreeId ?? ''),
+    queryKey: githubQueryKeys.loadedContexts(sessionId ?? ''),
     queryFn: async (): Promise<LoadedIssueContext[]> => {
-      if (!isTauri() || !worktreeId) {
+      if (!isTauri() || !sessionId) {
         return []
       }
 
       try {
-        logger.debug('Fetching loaded issue contexts', { worktreeId })
+        logger.debug('Fetching loaded issue contexts', { sessionId })
         const contexts = await invoke<LoadedIssueContext[]>(
           'list_loaded_issue_contexts',
           {
-            worktreeId,
+            sessionId,
+            worktreeId: worktreeId ?? undefined,
           }
         )
         logger.info('Loaded issue contexts fetched', { count: contexts.length })
         return contexts
       } catch (error) {
-        logger.error('Failed to load issue contexts', { error, worktreeId })
+        logger.error('Failed to load issue contexts', { error, sessionId })
         throw error
       }
     },
-    enabled: !!worktreeId,
+    enabled: !!sessionId,
     staleTime: 1000 * 60, // 1 minute
     gcTime: 1000 * 60 * 5, // 5 minutes
   })
 }
 
 /**
- * Load issue context for a worktree (fetch from GitHub and save)
+ * Load issue context for a session (fetch from GitHub and save)
  */
 export async function loadIssueContext(
-  worktreeId: string,
+  sessionId: string,
   issueNumber: number,
   projectPath: string
 ): Promise<LoadedIssueContext> {
   return invoke<LoadedIssueContext>('load_issue_context', {
-    worktreeId,
+    sessionId,
     issueNumber,
     projectPath,
   })
 }
 
 /**
- * Remove a loaded issue context from a worktree
+ * Remove a loaded issue context from a session
  */
 export async function removeIssueContext(
-  worktreeId: string,
+  sessionId: string,
   issueNumber: number,
   projectPath: string
 ): Promise<void> {
   return invoke('remove_issue_context', {
-    worktreeId,
+    sessionId,
     issueNumber,
     projectPath,
   })
@@ -395,64 +405,68 @@ export function useGitHubPR(
 }
 
 /**
- * Hook to list loaded PR contexts for a worktree
+ * Hook to list loaded PR contexts for a session
  *
- * @param worktreeId - The worktree ID
+ * @param sessionId - The session ID
  */
-export function useLoadedPRContexts(worktreeId: string | null) {
+export function useLoadedPRContexts(
+  sessionId: string | null,
+  worktreeId?: string | null
+) {
   return useQuery({
-    queryKey: githubQueryKeys.loadedPrContexts(worktreeId ?? ''),
+    queryKey: githubQueryKeys.loadedPrContexts(sessionId ?? ''),
     queryFn: async (): Promise<LoadedPullRequestContext[]> => {
-      if (!isTauri() || !worktreeId) {
+      if (!isTauri() || !sessionId) {
         return []
       }
 
       try {
-        logger.debug('Fetching loaded PR contexts', { worktreeId })
+        logger.debug('Fetching loaded PR contexts', { sessionId })
         const contexts = await invoke<LoadedPullRequestContext[]>(
           'list_loaded_pr_contexts',
           {
-            worktreeId,
+            sessionId,
+            worktreeId: worktreeId ?? undefined,
           }
         )
         logger.info('Loaded PR contexts fetched', { count: contexts.length })
         return contexts
       } catch (error) {
-        logger.error('Failed to load PR contexts', { error, worktreeId })
+        logger.error('Failed to load PR contexts', { error, sessionId })
         throw error
       }
     },
-    enabled: !!worktreeId,
+    enabled: !!sessionId,
     staleTime: 1000 * 60, // 1 minute
     gcTime: 1000 * 60 * 5, // 5 minutes
   })
 }
 
 /**
- * Load PR context for a worktree (fetch from GitHub and save)
+ * Load PR context for a session (fetch from GitHub and save)
  */
 export async function loadPRContext(
-  worktreeId: string,
+  sessionId: string,
   prNumber: number,
   projectPath: string
 ): Promise<LoadedPullRequestContext> {
   return invoke<LoadedPullRequestContext>('load_pr_context', {
-    worktreeId,
+    sessionId,
     prNumber,
     projectPath,
   })
 }
 
 /**
- * Remove a loaded PR context from a worktree
+ * Remove a loaded PR context from a session
  */
 export async function removePRContext(
-  worktreeId: string,
+  sessionId: string,
   prNumber: number,
   projectPath: string
 ): Promise<void> {
   return invoke('remove_pr_context', {
-    worktreeId,
+    sessionId,
     prNumber,
     projectPath,
   })
@@ -462,12 +476,12 @@ export async function removePRContext(
  * Get the content of a loaded issue context file
  */
 export async function getIssueContextContent(
-  worktreeId: string,
+  sessionId: string,
   issueNumber: number,
   projectPath: string
 ): Promise<string> {
   return invoke<string>('get_issue_context_content', {
-    worktreeId,
+    sessionId,
     issueNumber,
     projectPath,
   })
@@ -477,12 +491,12 @@ export async function getIssueContextContent(
  * Get the content of a loaded PR context file
  */
 export async function getPRContextContent(
-  worktreeId: string,
+  sessionId: string,
   prNumber: number,
   projectPath: string
 ): Promise<string> {
   return invoke<string>('get_pr_context_content', {
-    worktreeId,
+    sessionId,
     prNumber,
     projectPath,
   })
@@ -589,6 +603,87 @@ export function mergeWithSearchResults<T extends { number: number }>(
   return [...localResults, ...remoteOnly]
 }
 
+/**
+ * Parse a search query as a GitHub item number.
+ * Accepts "123" or "#123", returns the number or null.
+ */
+export function parseItemNumber(query: string): number | null {
+  const trimmed = query.trim().replace(/^#/, '')
+  if (!trimmed || !/^\d+$/.test(trimmed)) return null
+  const num = parseInt(trimmed, 10)
+  return num > 0 ? num : null
+}
+
+/**
+ * Prepend an exact-match item to an array, deduplicating by number.
+ */
+export function prependExactMatch<T extends { number: number }>(
+  items: T[],
+  exactMatch: T | undefined | null
+): T[] {
+  if (!exactMatch) return items
+  const filtered = items.filter(item => item.number !== exactMatch.number)
+  return [exactMatch, ...filtered]
+}
+
+/**
+ * Hook to fetch a single GitHub issue by exact number.
+ * Returns the same GitHubIssue type as list_github_issues.
+ */
+export function useGetGitHubIssueByNumber(
+  projectPath: string | null,
+  query: string
+) {
+  const itemNumber = parseItemNumber(query)
+  return useQuery({
+    queryKey: githubQueryKeys.issueByNumber(projectPath ?? '', itemNumber ?? 0),
+    queryFn: async (): Promise<GitHubIssue | null> => {
+      if (!isTauri() || !projectPath || !itemNumber) return null
+      try {
+        return await invoke<GitHubIssue>('get_github_issue_by_number', {
+          projectPath,
+          issueNumber: itemNumber,
+        })
+      } catch {
+        return null
+      }
+    },
+    enabled: !!projectPath && itemNumber !== null,
+    staleTime: 1000 * 30,
+    gcTime: 1000 * 60 * 5,
+    retry: 0,
+  })
+}
+
+/**
+ * Hook to fetch a single GitHub PR by exact number.
+ * Returns the same GitHubPullRequest type as list_github_prs.
+ */
+export function useGetGitHubPRByNumber(
+  projectPath: string | null,
+  query: string
+) {
+  const itemNumber = parseItemNumber(query)
+  return useQuery({
+    queryKey: githubQueryKeys.prByNumber(projectPath ?? '', itemNumber ?? 0),
+    queryFn: async (): Promise<GitHubPullRequest | null> => {
+      if (!isTauri() || !projectPath || !itemNumber) return null
+      try {
+        return await invoke<GitHubPullRequest>('get_github_pr_by_number', {
+          projectPath,
+          prNumber: itemNumber,
+        })
+      } catch {
+        return null
+      }
+    },
+    enabled: !!projectPath && itemNumber !== null,
+    staleTime: 1000 * 30,
+    gcTime: 1000 * 60 * 5,
+    retry: 0,
+  })
+}
+
 // =============================================================================
 // GitHub Actions Workflow Runs
 // =============================================================================
@@ -639,24 +734,24 @@ export function useWorkflowRuns(
 // =============================================================================
 
 /**
- * Hook to list attached saved contexts for a worktree
+ * Hook to list attached saved contexts for a session
  *
- * @param worktreeId - The worktree ID
+ * @param sessionId - The session ID
  */
-export function useAttachedSavedContexts(worktreeId: string | null) {
+export function useAttachedSavedContexts(sessionId: string | null) {
   return useQuery({
-    queryKey: githubQueryKeys.attachedContexts(worktreeId ?? ''),
+    queryKey: githubQueryKeys.attachedContexts(sessionId ?? ''),
     queryFn: async (): Promise<AttachedSavedContext[]> => {
-      if (!isTauri() || !worktreeId) {
+      if (!isTauri() || !sessionId) {
         return []
       }
 
       try {
-        logger.debug('Fetching attached saved contexts', { worktreeId })
+        logger.debug('Fetching attached saved contexts', { sessionId })
         const contexts = await invoke<AttachedSavedContext[]>(
           'list_attached_saved_contexts',
           {
-            worktreeId,
+            sessionId,
           }
         )
         logger.info('Attached saved contexts fetched', {
@@ -666,41 +761,41 @@ export function useAttachedSavedContexts(worktreeId: string | null) {
       } catch (error) {
         logger.error('Failed to load attached saved contexts', {
           error,
-          worktreeId,
+          sessionId,
         })
         throw error
       }
     },
-    enabled: !!worktreeId,
+    enabled: !!sessionId,
     staleTime: 1000 * 60, // 1 minute
     gcTime: 1000 * 60 * 5, // 5 minutes
   })
 }
 
 /**
- * Attach a saved context to a worktree (copy file to worktree-specific location)
+ * Attach a saved context to a session (copy file to session-specific location)
  */
 export async function attachSavedContext(
-  worktreeId: string,
+  sessionId: string,
   sourcePath: string,
   slug: string
 ): Promise<AttachedSavedContext> {
   return invoke<AttachedSavedContext>('attach_saved_context', {
-    worktreeId,
+    sessionId,
     sourcePath,
     slug,
   })
 }
 
 /**
- * Remove an attached saved context from a worktree
+ * Remove an attached saved context from a session
  */
 export async function removeSavedContext(
-  worktreeId: string,
+  sessionId: string,
   slug: string
 ): Promise<void> {
   return invoke('remove_saved_context', {
-    worktreeId,
+    sessionId,
     slug,
   })
 }
@@ -709,11 +804,11 @@ export async function removeSavedContext(
  * Get the content of an attached saved context file
  */
 export async function getSavedContextContent(
-  worktreeId: string,
+  sessionId: string,
   slug: string
 ): Promise<string> {
   return invoke<string>('get_saved_context_content', {
-    worktreeId,
+    sessionId,
     slug,
   })
 }

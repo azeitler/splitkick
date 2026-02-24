@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   invoke,
@@ -13,13 +13,16 @@ import { chatQueryKeys } from '@/services/chat'
 import type { WorktreeSessions } from '@/types/chat'
 import { initializeCommandSystem } from './lib/commands'
 import { logger } from './lib/logger'
+import { toast } from 'sonner'
 import { cleanupOldFiles } from './lib/recovery'
 import './App.css'
 import MainWindow from './components/layout/MainWindow'
 import { ThemeProvider } from './components/ThemeProvider'
 import ErrorBoundary from './components/ErrorBoundary'
 import { useClaudeCliStatus, useClaudeCliAuth } from './services/claude-cli'
+import { useCodexCliStatus, useCodexCliAuth } from './services/codex-cli'
 import { useGhCliStatus, useGhCliAuth } from './services/gh-cli'
+import { useOpencodeCliStatus, useOpencodeCliAuth } from './services/opencode-cli'
 import { useUIStore } from './store/ui-store'
 import type { AppPreferences } from './types/preferences'
 import { useChatStore } from './store/chat-store'
@@ -28,6 +31,7 @@ import { useZoom } from './hooks/use-zoom'
 import { useImmediateSessionStateSave } from './hooks/useImmediateSessionStateSave'
 import { useCliVersionCheck } from './hooks/useCliVersionCheck'
 import { useQueueProcessor } from './hooks/useQueueProcessor'
+import { useBackgroundInvestigation } from './hooks/useBackgroundInvestigation'
 import { useAutoArchiveOnMerge } from './hooks/useAutoArchiveOnMerge'
 import useStreamingEvents from './components/chat/hooks/useStreamingEvents'
 import { preloadAllSounds } from './lib/sounds'
@@ -89,6 +93,77 @@ function App() {
   // Track preloading state for web view
   const [isPreloading, setIsPreloading] = useState(!isNativeApp())
   const queryClient = useQueryClient()
+
+  // Holds the update object so the title bar indicator can trigger install later
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pendingUpdateRef = useRef<any>(null)
+
+  const installAppUpdate = useCallback(
+    async (update: {
+      version: string
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      downloadAndInstall: (cb: (event: any) => void) => Promise<void>
+    }) => {
+      let totalBytes = 0
+      let downloadedBytes = 0
+      const toastId = toast.loading(`Downloading update ${update.version}...`)
+
+      // Clear the pending indicator since we're installing now
+      useUIStore.getState().setPendingUpdateVersion(null)
+      pendingUpdateRef.current = null
+
+      try {
+        await update.downloadAndInstall(event => {
+          switch (event.event) {
+            case 'Started':
+              totalBytes = event.data.contentLength ?? 0
+              logger.info(`Downloading ${totalBytes} bytes`)
+              break
+            case 'Progress':
+              downloadedBytes += event.data.chunkLength
+              if (totalBytes > 0) {
+                const percent = Math.round((downloadedBytes / totalBytes) * 100)
+                toast.loading(`Downloading update... ${percent}%`, {
+                  id: toastId,
+                })
+              }
+              break
+            case 'Finished':
+              logger.info('Download complete, installing...')
+              toast.loading('Installing update...', { id: toastId })
+              break
+          }
+        })
+
+        toast.success(`Update ${update.version} installed!`, {
+          id: toastId,
+          duration: Infinity,
+          action: {
+            label: 'Restart',
+            onClick: async () => {
+              const { relaunch } = await import('@tauri-apps/plugin-process')
+              await relaunch()
+            },
+          },
+        })
+      } catch (updateError) {
+        const errorStr = String(updateError)
+        logger.error(`Update installation failed: ${errorStr}`)
+        if (errorStr.includes('invalid updater binary format')) {
+          toast.error(
+            `Auto-update not supported for this installation type. Please update manually.`,
+            { id: toastId, duration: 8000 }
+          )
+        } else {
+          toast.error(`Update failed: ${errorStr}`, {
+            id: toastId,
+            duration: 8000,
+          })
+        }
+      }
+    },
+    []
+  )
 
   // Preload initial data via HTTP for web view (faster than waiting for WebSocket)
   useEffect(() => {
@@ -239,6 +314,10 @@ function App() {
   // even when the worktree is not focused (ChatWindow unmounted)
   useQueueProcessor()
 
+  // Headless background investigation - starts investigations on background
+  // worktrees (CMD+Click) without opening the session modal
+  useBackgroundInvestigation()
+
   // Auto-archive worktrees when their PR is merged (if enabled in preferences)
   useAutoArchiveOnMerge()
 
@@ -274,38 +353,61 @@ function App() {
   // Check CLI installation status
   const { data: claudeStatus, isLoading: isClaudeStatusLoading } =
     useClaudeCliStatus()
+  const { data: codexStatus, isLoading: isCodexStatusLoading } =
+    useCodexCliStatus()
+  const { data: opencodeStatus, isLoading: isOpencodeStatusLoading } =
+    useOpencodeCliStatus()
   const { data: ghStatus, isLoading: isGhStatusLoading } = useGhCliStatus()
 
   // Check CLI authentication status (only when installed)
   const { data: claudeAuth, isLoading: isClaudeAuthLoading } = useClaudeCliAuth(
     { enabled: !!claudeStatus?.installed }
   )
+  const { data: codexAuth, isLoading: isCodexAuthLoading } = useCodexCliAuth({
+    enabled: !!codexStatus?.installed,
+  })
+  const { data: opencodeAuth, isLoading: isOpencodeAuthLoading } =
+    useOpencodeCliAuth({
+      enabled: !!opencodeStatus?.installed,
+    })
   const { data: ghAuth, isLoading: isGhAuthLoading } = useGhCliAuth({
     enabled: !!ghStatus?.installed,
   })
 
-  // Show onboarding if either CLI is not installed or not authenticated
+  // Show onboarding if GitHub CLI is not ready, or no AI backend is ready.
   // Only in native app - web view uses the desktop's CLIs via WebSocket
   useEffect(() => {
     if (!isNativeApp()) return
 
     const isLoading =
       isClaudeStatusLoading ||
+      isCodexStatusLoading ||
+      isOpencodeStatusLoading ||
       isGhStatusLoading ||
       (claudeStatus?.installed && isClaudeAuthLoading) ||
+      (codexStatus?.installed && isCodexAuthLoading) ||
+      (opencodeStatus?.installed && isOpencodeAuthLoading) ||
       (ghStatus?.installed && isGhAuthLoading)
     if (isLoading) return
 
-    const needsInstall = !claudeStatus?.installed || !ghStatus?.installed
-    const needsAuth =
-      (claudeStatus?.installed && !claudeAuth?.authenticated) ||
-      (ghStatus?.installed && !ghAuth?.authenticated)
+    const ghReady = !!ghStatus?.installed && !!ghAuth?.authenticated
+    const claudeReady = !!claudeStatus?.installed && !!claudeAuth?.authenticated
+    const codexReady = !!codexStatus?.installed && !!codexAuth?.authenticated
+    const opencodeReady =
+      !!opencodeStatus?.installed && !!opencodeAuth?.authenticated
+    const hasAiBackendReady = claudeReady || codexReady || opencodeReady
 
-    if (needsInstall || needsAuth) {
+    if (useUIStore.getState().onboardingDismissed) return
+
+    if (!ghReady || !hasAiBackendReady) {
       logger.info('CLI setup needed, showing onboarding', {
         claudeInstalled: claudeStatus?.installed,
+        codexInstalled: codexStatus?.installed,
+        opencodeInstalled: opencodeStatus?.installed,
         ghInstalled: ghStatus?.installed,
         claudeAuth: claudeAuth?.authenticated,
+        codexAuth: codexAuth?.authenticated,
+        opencodeAuth: opencodeAuth?.authenticated,
         ghAuth: ghAuth?.authenticated,
       })
       useUIStore.getState().setOnboardingOpen(true)
@@ -318,27 +420,43 @@ function App() {
     }
   }, [
     claudeStatus,
+    codexStatus,
+    opencodeStatus,
     ghStatus,
     claudeAuth,
+    codexAuth,
+    opencodeAuth,
     ghAuth,
     isClaudeStatusLoading,
+    isCodexStatusLoading,
+    isOpencodeStatusLoading,
     isGhStatusLoading,
     isClaudeAuthLoading,
+    isCodexAuthLoading,
+    isOpencodeAuthLoading,
     isGhAuthLoading,
     queryClient,
   ])
 
-  // Show feature tour after CLI onboarding completes (first launch only)
+  // Show feature tour after CLI onboarding completes (first launch or manual trigger)
   useEffect(() => {
     let wasOpen = useUIStore.getState().onboardingOpen
     const unsub = useUIStore.subscribe(state => {
       const isOpen = state.onboardingOpen
       if (wasOpen && !isOpen) {
-        const prefs = queryClient.getQueryData<AppPreferences>(['preferences'])
-        if (prefs && !prefs.has_seen_feature_tour) {
-          setTimeout(() => {
-            useUIStore.getState().setFeatureTourOpen(true)
-          }, 300)
+        const store = useUIStore.getState()
+        // Don't show feature tour if user dismissed onboarding without completing setup
+        if (store.onboardingDismissed) {
+          store.setOnboardingManuallyTriggered(false)
+        } else {
+          const manuallyTriggered = store.onboardingManuallyTriggered
+          const prefs = queryClient.getQueryData<AppPreferences>(['preferences'])
+          if (manuallyTriggered || (prefs && !prefs.has_seen_feature_tour)) {
+            store.setOnboardingManuallyTriggered(false)
+            setTimeout(() => {
+              useUIStore.getState().setFeatureTourOpen(true)
+            }, 300)
+          }
         }
       }
       wasOpen = isOpen
@@ -395,19 +513,43 @@ function App() {
       run_id: string
       user_message: string
       resumable: boolean
+      execution_mode: string | null
     }
     invoke<ResumableSession[]>('check_resumable_sessions')
       .then(resumable => {
+        // Always invalidate — recovery may have changed Running → Crashed/Completed
+        // even when no sessions are resumable
+        queryClient.invalidateQueries({ queryKey: chatQueryKeys.all })
+
+        // Clear any stale sending states from a previous app session.
+        // On fresh startup sendingSessionIds should be empty, but if the store
+        // was somehow persisted or restored, ensure only truly resumable sessions
+        // are marked as sending.
+        const { sendingSessionIds, removeSendingSession } = useChatStore.getState()
+        const resumableIds = new Set(resumable.map(r => r.session_id))
+        for (const sessionId of Object.keys(sendingSessionIds)) {
+          if (!resumableIds.has(sessionId)) {
+            removeSendingSession(sessionId)
+          }
+        }
+
         if (resumable.length > 0) {
           logger.info('Found resumable sessions', { count: resumable.length })
+
           // Resume each session
           for (const session of resumable) {
             logger.info('Resuming session', {
               session_id: session.session_id,
               worktree_id: session.worktree_id,
             })
-            // Mark session as sending to show streaming UI
+            // Mark session as sending and restore execution mode for streaming UI
             useChatStore.getState().addSendingSession(session.session_id)
+            if (session.execution_mode) {
+              useChatStore.getState().setExecutingMode(
+                session.session_id,
+                session.execution_mode as 'plan' | 'build' | 'yolo'
+              )
+            }
             // Resume the session (this will start tailing the output file)
             invoke('resume_session', {
               sessionId: session.session_id,
@@ -435,64 +577,17 @@ function App() {
     // Auto-updater logic - check for updates 5 seconds after app loads
     const checkForUpdates = async () => {
       if (!isNativeApp()) return
+      // Don't re-show modal if user already dismissed an update
+      if (useUIStore.getState().pendingUpdateVersion) return
 
       try {
         const { check } = await import('@tauri-apps/plugin-updater')
-        const { ask, message } = await import('@tauri-apps/plugin-dialog')
 
         const update = await check()
         if (update) {
           logger.info(`Update available: ${update.version}`)
-
-          // Show confirmation dialog
-          const shouldUpdate = await ask(
-            `Update available: ${update.version}\n\nWould you like to install this update now?`,
-            { title: 'Update Available', kind: 'info' }
-          )
-
-          if (shouldUpdate) {
-            try {
-              // Download and install with progress logging
-              await update.downloadAndInstall(event => {
-                switch (event.event) {
-                  case 'Started':
-                    logger.info(`Downloading ${event.data.contentLength} bytes`)
-                    break
-                  case 'Progress':
-                    logger.info(`Downloaded: ${event.data.chunkLength} bytes`)
-                    break
-                  case 'Finished':
-                    logger.info('Download complete, installing...')
-                    break
-                }
-              })
-
-              // Ask if user wants to restart now
-              const shouldRestart = await ask(
-                'Update completed successfully!\n\nWould you like to restart the app now to use the new version?',
-                { title: 'Update Complete', kind: 'info' }
-              )
-
-              if (shouldRestart) {
-                const { relaunch } = await import('@tauri-apps/plugin-process')
-                await relaunch()
-              }
-            } catch (updateError) {
-              const errorStr = String(updateError)
-              logger.error(`Update installation failed: ${errorStr}`)
-              if (errorStr.includes('invalid updater binary format')) {
-                await message(
-                  `A new version (${update.version}) is available, but auto-update is not supported for this installation type.\n\nPlease update manually from the GitHub releases page or your package manager.`,
-                  { title: 'Update Available', kind: 'info' }
-                )
-              } else {
-                await message(
-                  `Update failed: There was a problem with the automatic download.\n\n${errorStr}`,
-                  { title: 'Update Failed', kind: 'error' }
-                )
-              }
-            }
-          }
+          pendingUpdateRef.current = update
+          useUIStore.getState().setUpdateModalVersion(update.version)
         }
       } catch (checkError) {
         logger.error(`Update check failed: ${String(checkError)}`)
@@ -500,12 +595,30 @@ function App() {
       }
     }
 
-    // Check for updates 5 seconds after app loads
+    // Listen for install trigger from title bar indicator
+    const handleInstallPending = () => {
+      if (pendingUpdateRef.current) {
+        installAppUpdate(pendingUpdateRef.current)
+      }
+    }
+    window.addEventListener('install-pending-update', handleInstallPending)
+
+    // Listen for update object from manual "Check for Updates" menu
+    const handleUpdateAvailable = (e: Event) => {
+      pendingUpdateRef.current = (e as CustomEvent).detail
+    }
+    window.addEventListener('update-available', handleUpdateAvailable)
+
+    // Check for updates 5 seconds after app loads, then every 30 minutes
     const updateTimer = setTimeout(checkForUpdates, 5000)
+    const updateInterval = setInterval(checkForUpdates, 30 * 60 * 1000)
     return () => {
       clearTimeout(updateTimer)
+      clearInterval(updateInterval)
+      window.removeEventListener('install-pending-update', handleInstallPending)
+      window.removeEventListener('update-available', handleUpdateAvailable)
     }
-  }, [])
+  }, [installAppUpdate])
 
   // Show loading screen while preloading initial data (web view only)
   if (isPreloading) {

@@ -64,12 +64,21 @@ pub struct Project {
     /// Path to custom avatar image (relative to app data dir, e.g., "avatars/abc123.png")
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub avatar_path: Option<String>,
-    /// MCP server names enabled by default for this project
+    /// MCP server names enabled by default for this project (None = inherit from global)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled_mcp_servers: Option<Vec<String>>,
+    /// All MCP server names ever seen for this project (prevents re-enabling user-disabled servers)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub enabled_mcp_servers: Vec<String>,
+    pub known_mcp_servers: Vec<String>,
     /// Custom system prompt appended to every session execution
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_system_prompt: Option<String>,
+    /// Default provider profile name for sessions in this project (None = use global default)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_provider: Option<String>,
+    /// Default CLI backend for sessions in this project (None = use global default)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_backend: Option<String>,
 }
 
 /// A git worktree created for a project
@@ -102,6 +111,9 @@ pub struct Worktree {
     /// GitHub PR URL (if a PR has been created)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pr_url: Option<String>,
+    /// GitHub issue number (if created from an issue)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issue_number: Option<u32>,
     /// Cached PR display status (draft, open, review, merged, closed)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cached_pr_status: Option<String>,
@@ -359,6 +371,10 @@ pub struct WorktreeCreatingEvent {
     pub path: String,
     /// The branch name
     pub branch: String,
+    /// PR number (if created from a PR)
+    pub pr_number: Option<u64>,
+    /// Issue number (if created from an issue)
+    pub issue_number: Option<u64>,
 }
 
 /// Event emitted when worktree creation completes successfully

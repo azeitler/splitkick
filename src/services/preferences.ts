@@ -46,7 +46,7 @@ export function usePreferences() {
   return useQuery({
     queryKey: preferencesQueryKeys.preferences(),
     queryFn: async (): Promise<AppPreferences> => {
-      // Return defaults when running outside Tauri (e.g., npm run dev in browser)
+      // Return defaults when running outside Tauri (e.g., bun run dev in browser)
       if (!isTauri()) {
         logger.debug('Not in Tauri context, using default preferences')
         return defaultPreferences
@@ -81,7 +81,7 @@ export function useSavePreferences() {
 
   return useMutation({
     mutationFn: async (preferences: AppPreferences) => {
-      // Skip persistence when running outside Tauri (e.g., npm run dev in browser)
+      // Skip persistence when running outside Tauri (e.g., bun run dev in browser)
       if (!isTauri()) {
         logger.debug(
           'Not in Tauri context, preferences not persisted to disk',
@@ -107,10 +107,12 @@ export function useSavePreferences() {
       }
     },
     onSuccess: (_, preferences) => {
-      // Update the cache with the new preferences
+      // Optimistically update cache, then refetch to get backend-populated fields (e.g., file_path)
       queryClient.setQueryData(preferencesQueryKeys.preferences(), preferences)
+      queryClient.invalidateQueries({
+        queryKey: preferencesQueryKeys.preferences(),
+      })
       logger.info('Preferences cache updated')
-      toast.success('Preferences saved')
     },
   })
 }

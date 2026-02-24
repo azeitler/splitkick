@@ -1,4 +1,13 @@
-import { FolderPlus, FolderGit, Bug, Keyboard } from 'lucide-react'
+import {
+  FolderPlus,
+  FolderGit,
+  Bug,
+  Keyboard,
+  Archive,
+  ArchiveRestore,
+  Settings,
+  RefreshCw,
+} from 'lucide-react'
 import type { AppCommand } from './types'
 import { useUIStore } from '@/store/ui-store'
 
@@ -10,6 +19,8 @@ export const projectCommands: AppCommand[] = [
     icon: FolderPlus,
     group: 'projects',
     keywords: ['project', 'add', 'import', 'repository', 'git'],
+
+    isAvailable: context => context.hasInstalledBackend(),
 
     execute: context => {
       context.addProject()
@@ -24,8 +35,32 @@ export const projectCommands: AppCommand[] = [
     group: 'projects',
     keywords: ['project', 'init', 'new', 'create', 'initialize'],
 
+    isAvailable: context => context.hasInstalledBackend(),
+
     execute: context => {
       context.initProject()
+    },
+  },
+
+  {
+    id: 'project-settings',
+    label: 'Project Settings',
+    description: 'Configure settings for the current project',
+    icon: Settings,
+    group: 'projects',
+    keywords: [
+      'project',
+      'settings',
+      'configure',
+      'mcp',
+      'branch',
+      'jean.json',
+    ],
+
+    isAvailable: context => context.hasSelectedProject(),
+
+    execute: context => {
+      context.openProjectSettings()
     },
   },
 
@@ -44,21 +79,68 @@ export const projectCommands: AppCommand[] = [
 
   {
     id: 'help.feature-tour',
-    label: 'Show Feature Tour',
-    description: 'Learn essential keyboard shortcuts',
+    label: 'Show Boarding Flow',
+    description: 'Run CLI setup and learn keyboard shortcuts',
     icon: Keyboard,
     group: 'help',
     keywords: [
       'tour',
+      'boarding',
       'onboarding',
       'shortcuts',
       'keybindings',
       'help',
       'keyboard',
+      'install',
+      'cli',
+      'setup',
     ],
 
     execute: () => {
-      useUIStore.getState().setFeatureTourOpen(true)
+      useUIStore.setState({
+        onboardingManuallyTriggered: true,
+        onboardingDismissed: false,
+        onboardingOpen: true,
+      })
+    },
+  },
+
+  {
+    id: 'open-archive',
+    label: 'Open Archive',
+    description: 'View archived worktrees and sessions',
+    icon: Archive,
+    group: 'projects',
+    keywords: ['archive', 'archived', 'trash', 'deleted', 'removed'],
+
+    execute: context => {
+      context.openArchivedModal()
+    },
+  },
+
+  {
+    id: 'restore-last-archived',
+    label: 'Restore Last Archived',
+    description: 'Restore the most recently archived item',
+    icon: ArchiveRestore,
+    group: 'projects',
+    keywords: ['archive', 'restore', 'undo', 'unarchive', 'recover'],
+
+    execute: context => {
+      context.restoreLastArchived()
+    },
+  },
+
+  {
+    id: 'regenerate-session-title',
+    label: 'Regenerate Session Title',
+    description: 'Use AI to generate a new title for the current session',
+    icon: RefreshCw,
+    group: 'sessions',
+    keywords: ['session', 'title', 'name', 'regenerate', 'rename', 'ai'],
+
+    execute: context => {
+      context.regenerateSessionName()
     },
   },
 ]

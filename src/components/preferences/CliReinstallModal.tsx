@@ -23,6 +23,8 @@ import {
 import { Button } from '@/components/ui/button'
 import { useClaudeCliSetup } from '@/services/claude-cli'
 import { useGhCliSetup } from '@/services/gh-cli'
+import { useCodexCliSetup } from '@/services/codex-cli'
+import { useOpenCodeCliSetup } from '@/services/opencode-cli'
 import { logger } from '@/lib/logger'
 import {
   SetupState,
@@ -99,11 +101,57 @@ function GhCliReinstallModalContent({ open, onOpenChange }: ModalProps) {
 }
 
 /**
+ * Codex CLI specific modal - calls ONLY useCodexCliSetup
+ * This ensures only one event listener is active
+ */
+export function CodexCliReinstallModal({ open, onOpenChange }: ModalProps) {
+  if (!open) return null
+  return (
+    <CodexCliReinstallModalContent open={open} onOpenChange={onOpenChange} />
+  )
+}
+
+function CodexCliReinstallModalContent({ open, onOpenChange }: ModalProps) {
+  const setup = useCodexCliSetup()
+  return (
+    <CliReinstallModalUI
+      setup={setup}
+      cliType="codex"
+      open={open}
+      onOpenChange={onOpenChange}
+    />
+  )
+}
+
+/**
+ * OpenCode CLI specific modal - calls ONLY useOpenCodeCliSetup
+ * This ensures only one event listener is active
+ */
+export function OpenCodeCliReinstallModal({ open, onOpenChange }: ModalProps) {
+  if (!open) return null
+  return (
+    <OpenCodeCliReinstallModalContent open={open} onOpenChange={onOpenChange} />
+  )
+}
+
+function OpenCodeCliReinstallModalContent({ open, onOpenChange }: ModalProps) {
+  const setup = useOpenCodeCliSetup()
+  return (
+    <CliReinstallModalUI
+      setup={setup}
+      cliType="opencode"
+      open={open}
+      onOpenChange={onOpenChange}
+    />
+  )
+}
+
+/**
  * Shared UI component - receives setup as prop, no hooks here
  */
 interface CliReinstallModalUIProps {
   setup: CliSetupInterface
-  cliType: 'claude' | 'gh'
+  cliType: 'claude' | 'gh' | 'codex' | 'opencode'
   open: boolean
   onOpenChange: (open: boolean) => void
 }
@@ -114,7 +162,14 @@ function CliReinstallModalUI({
   open,
   onOpenChange,
 }: CliReinstallModalUIProps) {
-  const cliName = cliType === 'claude' ? 'Claude CLI' : 'GitHub CLI'
+  const cliName =
+    cliType === 'claude'
+      ? 'Claude CLI'
+      : cliType === 'codex'
+        ? 'Codex CLI'
+        : cliType === 'opencode'
+          ? 'OpenCode CLI'
+          : 'GitHub CLI'
 
   // Store setup in ref for stable callback reference
   const setupRef = useRef(setup)
@@ -212,7 +267,7 @@ function CliReinstallModalUI({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[450px]">
+      <DialogContent className="sm:max-w-[450px]" preventClose>
         <DialogHeader>
           <DialogTitle>
             {step === 'complete'
@@ -226,7 +281,7 @@ function CliReinstallModalUI({
               ? `${cliName} has been successfully installed.`
               : isReinstall
                 ? 'Select a version to install. This will replace the current installation.'
-                : `${cliName} is required for ${cliType === 'claude' ? 'AI chat functionality' : 'GitHub integration'}.`}
+                : `${cliName} is required for ${cliType === 'claude' ? 'AI chat functionality' : cliType === 'codex' ? 'Codex AI sessions' : cliType === 'opencode' ? 'OpenCode AI sessions' : 'GitHub integration'}.`}
           </DialogDescription>
         </DialogHeader>
 

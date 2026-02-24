@@ -99,6 +99,11 @@ impl NdjsonTailer {
     pub fn has_incomplete_data(&self) -> bool {
         !self.buffer.is_empty()
     }
+
+    /// Drain and return any buffered incomplete data.
+    pub fn drain_buffer(&mut self) -> String {
+        std::mem::take(&mut self.buffer)
+    }
 }
 
 #[cfg(test)]
@@ -294,7 +299,7 @@ mod tests {
         let mut tailer = NdjsonTailer::new_from_start(&path).unwrap();
 
         // Write with CRLF line endings (Windows-style)
-        write!(file, "{}\r\n", r#"{"type": "crlf"}"#).unwrap();
+        write!(file, "{{\"type\": \"crlf\"}}\r\n").unwrap();
         file.flush().unwrap();
 
         let lines = tailer.poll().unwrap();

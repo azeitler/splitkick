@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 
 // ============================================================================
@@ -18,6 +18,42 @@ pub struct SessionDigest {
     /// Number of messages in the session when this digest was generated
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub message_count: Option<usize>,
+}
+
+// ============================================================================
+// Label Types
+// ============================================================================
+
+const DEFAULT_LABEL_COLOR: &str = "#eab308";
+
+/// User-assigned label with color for session cards
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LabelData {
+    /// Label name (e.g. "Needs testing")
+    pub name: String,
+    /// Background color hex value (e.g. "#eab308")
+    pub color: String,
+}
+
+/// Deserializes label from either a plain string (old format) or a LabelData object (new format).
+fn deserialize_label_compat<'de, D>(deserializer: D) -> Result<Option<LabelData>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value: Option<serde_json::Value> = Option::deserialize(deserializer)?;
+    match value {
+        None => Ok(None),
+        Some(serde_json::Value::String(s)) => Ok(Some(LabelData {
+            name: s,
+            color: DEFAULT_LABEL_COLOR.to_string(),
+        })),
+        Some(serde_json::Value::Object(_)) => {
+            let label: LabelData =
+                serde_json::from_value(value.unwrap()).map_err(serde::de::Error::custom)?;
+            Ok(Some(label))
+        }
+        Some(_) => Ok(None),
+    }
 }
 
 // ============================================================================
@@ -56,6 +92,16 @@ pub struct UsageData {
 // ============================================================================
 // Message Types
 // ============================================================================
+
+/// Backend for a chat session (Claude CLI, Codex CLI, or OpenCode)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Backend {
+    #[default]
+    Claude,
+    Codex,
+    Opencode,
+}
 
 /// Role of a chat message sender
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -139,15 +185,26 @@ pub struct ToolCall {
     pub parent_tool_use_id: Option<String>,
 }
 
-/// A permission denial from Claude CLI when a tool requires approval
+/// A permission denial when a tool requires approval
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PermissionDenial {
     /// Name of the denied tool (e.g., "Bash")
     pub tool_name: String,
-    /// Tool use ID from Claude
+    /// Tool use ID
     pub tool_use_id: String,
     /// Input parameters that were denied
     pub tool_input: serde_json::Value,
+    /// JSON-RPC request ID (Codex only — used to respond to approval requests)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rpc_id: Option<u64>,
+}
+
+/// Payload for permission denied events sent to frontend
+#[derive(Debug, Clone, Serialize)]
+pub struct PermissionDeniedEvent {
+    pub session_id: String,
+    pub worktree_id: String,
+    pub denials: Vec<PermissionDenial>,
 }
 
 /// Context for a denied message that can be re-sent after permission approval
@@ -301,21 +358,35 @@ pub struct Session {
     pub order: u32,
     /// Unix timestamp when session was created
     pub created_at: u64,
+    /// Unix timestamp of last activity (latest run's ended_at/started_at, or created_at)
+    pub updated_at: u64,
     /// Chat messages for this session
     #[serde(default)]
     pub messages: Vec<ChatMessage>,
     /// Message count (populated separately for efficiency when full messages not needed)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub message_count: Option<u32>,
+    /// Backend for this session (claude, codex, or opencode)
+    #[serde(default)]
+    pub backend: Backend,
     /// Claude CLI session ID for resuming conversations
     #[serde(default)]
     pub claude_session_id: Option<String>,
+    /// Codex CLI thread ID for resuming conversations
+    #[serde(default)]
+    pub codex_thread_id: Option<String>,
+    /// OpenCode session ID for resuming conversations
+    #[serde(default)]
+    pub opencode_session_id: Option<String>,
     /// Selected model for this session
     #[serde(default)]
     pub selected_model: Option<String>,
     /// Selected thinking level for this session
     #[serde(default)]
     pub selected_thinking_level: Option<ThinkingLevel>,
+    /// Selected provider (custom CLI profile name) for this session
+    #[serde(default)]
+    pub selected_provider: Option<String>,
     /// Whether session naming has been attempted for this session
     /// Prevents re-triggering on app restart
     #[serde(default)]
@@ -336,6 +407,9 @@ pub struct Session {
     /// Finding keys that have been marked as fixed
     #[serde(default)]
     pub fixed_findings: Vec<String>,
+    /// AI code review results for this session
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_results: Option<serde_json::Value>,
     /// Pending permission denials awaiting user approval
     #[serde(default)]
     pub pending_permission_denials: Vec<PermissionDenial>,
@@ -360,6 +434,9 @@ pub struct Session {
     /// Message ID of the pending plan awaiting approval (for Canvas view)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pending_plan_message_id: Option<String>,
+    /// Per-session MCP server override (None = inherit from project/global)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled_mcp_servers: Option<Vec<String>>,
     /// Persisted session digest (recap summary)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub digest: Option<SessionDigest>,
@@ -373,11 +450,18 @@ pub struct Session {
     /// Execution mode of the last run (plan/build/yolo)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_run_execution_mode: Option<String>,
+    /// User-assigned label with color (e.g. "Needs testing")
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_label_compat"
+    )]
+    pub label: Option<LabelData>,
 }
 
 impl Session {
-    /// Create a new session with the given name
-    pub fn new(name: String, order: u32) -> Self {
+    /// Create a new session with the given name and backend
+    pub fn new(name: String, order: u32, backend: Backend) -> Self {
         Self {
             id: uuid::Uuid::new_v4().to_string(),
             name,
@@ -386,17 +470,26 @@ impl Session {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs(),
+            updated_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
             messages: vec![],
             message_count: None,
+            backend,
             claude_session_id: None,
+            codex_thread_id: None,
+            opencode_session_id: None,
             selected_model: None,
             selected_thinking_level: None,
+            selected_provider: None,
             session_naming_completed: false,
             archived_at: None,
             // Session-specific UI state
             answered_questions: vec![],
             submitted_answers: HashMap::new(),
             fixed_findings: vec![],
+            review_results: None,
             pending_permission_denials: vec![],
             denied_message_context: None,
             is_reviewing: false,
@@ -405,15 +498,22 @@ impl Session {
             approved_plan_message_ids: vec![],
             plan_file_path: None,
             pending_plan_message_id: None,
+            enabled_mcp_servers: None,
             digest: None,
             last_run_status: None,
             last_run_execution_mode: None,
+            label: None,
         }
     }
 
     /// Create a default "Session 1" session
     pub fn default_session() -> Self {
-        Self::new("Session 1".to_string(), 0)
+        Self::new("Session 1".to_string(), 0, Backend::default())
+    }
+
+    /// Create a default "Session 1" session with a specific backend
+    pub fn default_session_with_backend(backend: Backend) -> Self {
+        Self::new("Session 1".to_string(), 0, backend)
     }
 }
 
@@ -475,6 +575,19 @@ impl Default for WorktreeIndex {
 }
 
 impl WorktreeIndex {
+    /// Create an empty WorktreeIndex with no default session.
+    /// Use this for programmatically-created worktrees where sessions are added explicitly.
+    /// Sets `branch_naming_completed = true` to prevent auto-renaming.
+    pub fn new_empty(worktree_id: String) -> Self {
+        Self {
+            worktree_id,
+            active_session_id: None,
+            sessions: vec![],
+            version: 1,
+            branch_naming_completed: true,
+        }
+    }
+
     /// Create new WorktreeIndex for a worktree with one default session
     pub fn new(worktree_id: String) -> Self {
         let session_id = uuid::Uuid::new_v4().to_string();
@@ -527,21 +640,32 @@ impl SessionMetadata {
             last_run.map(|r| &r.status),
             last_run.and_then(|r| r.execution_mode.as_ref())
         );
+        let updated_at = self
+            .runs
+            .last()
+            .map(|r| r.ended_at.unwrap_or(r.started_at))
+            .unwrap_or(self.created_at);
         Session {
             id: self.id.clone(),
             name: self.name.clone(),
             order: self.order,
             created_at: self.created_at,
+            updated_at,
             messages: vec![], // Loaded separately from JSONL files
             message_count: Some(self.to_index_entry().message_count),
+            backend: self.backend.clone(),
             claude_session_id: self.claude_session_id.clone(),
+            codex_thread_id: self.codex_thread_id.clone(),
+            opencode_session_id: self.opencode_session_id.clone(),
             selected_model: self.selected_model.clone(),
             selected_thinking_level: self.selected_thinking_level.clone(),
+            selected_provider: self.selected_provider.clone(),
             session_naming_completed: self.session_naming_completed,
             archived_at: self.archived_at,
             answered_questions: self.answered_questions.clone(),
             submitted_answers: self.submitted_answers.clone(),
             fixed_findings: self.fixed_findings.clone(),
+            review_results: self.review_results.clone(),
             pending_permission_denials: self.pending_permission_denials.clone(),
             denied_message_context: self.denied_message_context.clone(),
             is_reviewing: self.is_reviewing,
@@ -550,10 +674,12 @@ impl SessionMetadata {
             approved_plan_message_ids: self.approved_plan_message_ids.clone(),
             plan_file_path: self.plan_file_path.clone(),
             pending_plan_message_id: self.pending_plan_message_id.clone(),
+            enabled_mcp_servers: self.enabled_mcp_servers.clone(),
             digest: self.digest.clone(),
             // Populate from last run for status recovery on app restart
             last_run_status: last_run.map(|r| r.status.clone()),
             last_run_execution_mode: last_run.and_then(|r| r.execution_mode.clone()),
+            label: self.label.clone(),
         }
     }
 
@@ -561,14 +687,19 @@ impl SessionMetadata {
     pub fn update_from_session(&mut self, session: &Session) {
         self.name = session.name.clone();
         self.order = session.order;
+        self.backend = session.backend.clone();
         self.claude_session_id = session.claude_session_id.clone();
+        self.codex_thread_id = session.codex_thread_id.clone();
+        self.opencode_session_id = session.opencode_session_id.clone();
         self.selected_model = session.selected_model.clone();
         self.selected_thinking_level = session.selected_thinking_level.clone();
+        self.selected_provider = session.selected_provider.clone();
         self.session_naming_completed = session.session_naming_completed;
         self.archived_at = session.archived_at;
         self.answered_questions = session.answered_questions.clone();
         self.submitted_answers = session.submitted_answers.clone();
         self.fixed_findings = session.fixed_findings.clone();
+        self.review_results = session.review_results.clone();
         self.pending_permission_denials = session.pending_permission_denials.clone();
         self.denied_message_context = session.denied_message_context.clone();
         self.is_reviewing = session.is_reviewing;
@@ -577,6 +708,8 @@ impl SessionMetadata {
         self.approved_plan_message_ids = session.approved_plan_message_ids.clone();
         self.plan_file_path = session.plan_file_path.clone();
         self.pending_plan_message_id = session.pending_plan_message_id.clone();
+        self.enabled_mcp_servers = session.enabled_mcp_servers.clone();
+        self.label = session.label.clone();
     }
 }
 
@@ -796,15 +929,27 @@ pub struct SessionMetadata {
     pub order: u32,
     /// Unix timestamp when session was created
     pub created_at: u64,
+    /// Backend for this session (claude, codex, or opencode)
+    #[serde(default)]
+    pub backend: Backend,
     /// Claude CLI session ID for resuming conversations
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub claude_session_id: Option<String>,
+    /// Codex CLI thread ID for resuming conversations
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_thread_id: Option<String>,
+    /// OpenCode session ID for resuming conversations
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opencode_session_id: Option<String>,
     /// Selected model for this session
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selected_model: Option<String>,
     /// Selected thinking level for this session
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selected_thinking_level: Option<ThinkingLevel>,
+    /// Selected provider (custom CLI profile name) for this session
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_provider: Option<String>,
     /// Whether session naming has been attempted
     #[serde(default)]
     pub session_naming_completed: bool,
@@ -822,6 +967,9 @@ pub struct SessionMetadata {
     /// Finding keys that have been marked as fixed
     #[serde(default)]
     pub fixed_findings: Vec<String>,
+    /// AI code review results for this session
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_results: Option<serde_json::Value>,
     /// Pending permission denials awaiting user approval
     #[serde(default)]
     pub pending_permission_denials: Vec<PermissionDenial>,
@@ -846,9 +994,19 @@ pub struct SessionMetadata {
     /// Message ID of the pending plan awaiting approval (for Canvas view)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pending_plan_message_id: Option<String>,
+    /// Per-session MCP server override (None = inherit from project/global)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled_mcp_servers: Option<Vec<String>>,
     /// Persisted session digest (recap summary)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub digest: Option<SessionDigest>,
+    /// User-assigned label with color (e.g. "Needs testing")
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_label_compat"
+    )]
+    pub label: Option<LabelData>,
 
     /// Run history - each entry corresponds to one Claude CLI execution
     #[serde(default)]
@@ -917,14 +1075,19 @@ impl SessionMetadata {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs(),
+            backend: Backend::default(),
             claude_session_id: None,
+            codex_thread_id: None,
+            opencode_session_id: None,
             selected_model: None,
             selected_thinking_level: None,
+            selected_provider: None,
             session_naming_completed: false,
             archived_at: None,
             answered_questions: vec![],
             submitted_answers: HashMap::new(),
             fixed_findings: vec![],
+            review_results: None,
             pending_permission_denials: vec![],
             denied_message_context: None,
             is_reviewing: false,
@@ -933,7 +1096,9 @@ impl SessionMetadata {
             approved_plan_message_ids: vec![],
             plan_file_path: None,
             pending_plan_message_id: None,
+            enabled_mcp_servers: None,
             digest: None,
+            label: None,
             runs: vec![],
             version: 1,
         }
@@ -1232,7 +1397,7 @@ mod tests {
 
     #[test]
     fn test_session_new() {
-        let session = Session::new("Test Session".to_string(), 5);
+        let session = Session::new("Test Session".to_string(), 5, Backend::default());
         assert!(!session.id.is_empty()); // UUID should be generated
         assert_eq!(session.name, "Test Session");
         assert_eq!(session.order, 5);

@@ -1,189 +1,193 @@
-# OpenCode CLI Integration
+# OpenCode Integration (HTTP Server Mode)
 
-## Overview
+## Agreed Direction
 
-Add OpenCode CLI as an alternative provider alongside existing Claude CLI. Uses parallel module approach (not provider trait abstraction) to minimize risk to existing functionality.
+Jean will integrate OpenCode through `opencode serve` (HTTP mode), not via direct frontend SDK calls and not as a primary `opencode run` CLI integration.
 
-## CLI Command Reference
+Key rule: the Jean frontend never talks directly to OpenCode. All OpenCode communication happens in Jean's Rust backend.
 
-```bash
-# Basic invocation
-opencode run --format json --model "opencode/grok-code" --agent build "message"
+## Why This Approach
 
-# Continue session
-opencode run --format json --model "..." --session <id> "message"
+1. Matches Jean's existing architecture: frontend -> Jean transport (`invoke`/WS) -> Rust backend.
+2. Works in Jean HTTP/web mode: browser clients may be remote, but Jean backend can still talk to `127.0.0.1:<opencode-port>`.
+3. Avoids localhost/CORS/network exposure problems from browser-direct provider calls.
+4. Keeps provider implementation details out of UI code and preserves existing event contracts (`chat:chunk`, `chat:done`, etc).
 
-# List available models
-opencode models
-```
+## OpenCode Interface Strategy
 
-## Key Mappings
+Use simple Rust `reqwest` calls against OpenCode HTTP endpoints, with request/response types based on OpenAPI spec:
 
-| Jean Mode | OpenCode Flag   | Claude Flag                           |
-| --------- | --------------- | ------------------------------------- |
-| plan      | `--agent plan`  | `--permission-mode plan`              |
-| build     | `--agent build` | `--permission-mode acceptEdits`       |
-| yolo      | `--agent build` | `--permission-mode bypassPermissions` |
+- Spec URL: `https://raw.githubusercontent.com/anomalyco/opencode/refs/heads/dev/packages/sdk/openapi.json`
 
-| Jean Thinking | OpenCode Variant (Anthropic) |
-| ------------- | ---------------------------- |
-| Off           | (none)                       |
-| Think         | `--variant high`             |
-| Megathink     | `--variant high`             |
-| Ultrathink    | `--variant max`              |
+Do not rely on OpenCode JS SDK in frontend. A Rust-native HTTP client is simpler and aligns with current backend-owned provider pattern.
 
-## OpenCode NDJSON Events → Jean Events
+## High-Level Architecture
 
-| OpenCode Event             | Jean Event                           | Notes                            |
-| -------------------------- | ------------------------------------ | -------------------------------- |
-| `step_start`               | (internal)                           | Track step beginning             |
-| `text`                     | `chat:chunk`                         | `part.text` → content            |
-| `tool_use`                 | `chat:tool_use` + `chat:tool_result` | Split single event               |
-| `step_finish` (stop)       | `chat:done`                          | Extract usage from `part.tokens` |
-| `step_finish` (tool-calls) | (internal)                           | More steps coming                |
+1. Jean starts/manages `opencode serve` as a local child process.
+2. Jean stores OpenCode server runtime config (port/auth/host policy) in app preferences.
+3. Chat requests for `backend=opencode` go through `send_chat_message` backend branch.
+4. Jean backend translates OpenCode streaming/events into Jean's existing chat events.
+5. Session continuation uses persisted `opencode_session_id` in Jean metadata.
 
-## File Changes
+## Security/Networking Constraints
 
-### New Files
+1. OpenCode server bind host should be localhost only (`127.0.0.1`) by default.
+2. If OpenCode auth is enabled, Jean backend includes required auth headers/credentials.
+3. No direct browser -> OpenCode traffic.
+4. Jean HTTP mode remains the single external entrypoint.
 
-1. **`src-tauri/src/chat/opencode.rs`** (~400 lines)
-   - `build_opencode_args()` - Build CLI arguments
-   - `execute_opencode_detached()` - Spawn detached process
-   - `tail_opencode_output()` - Parse NDJSON, emit events
-   - `thinking_level_to_variant()` - Map ThinkingLevel to variant
+## Scope Changes vs Previous Plan
 
-2. **`src-tauri/src/opencode_cli/mod.rs`** + **`config.rs`** + **`commands.rs`**
-   - `get_opencode_binary_path()` - Find binary via `which opencode`
-   - `check_opencode_installed()` - Verify installation
-   - `get_opencode_version()` - Get version string
+This task replaces the prior "OpenCode CLI run-mode integration" approach.
 
-### Modified Files
+- Previous direction: parse `opencode run --format json` output.
+- New direction: call `opencode serve` HTTP API using OpenAPI-based Rust models.
 
-3. **`src-tauri/src/chat/types.rs`**
-   - Add to `SessionMetadata`:
+CLI usage remains only for:
 
-     ```rust
-     #[serde(default = "default_provider")]
-     pub provider: String,  // "claude" | "opencode"
+1. launching/stopping server process
+2. status checks and diagnostics
 
-     #[serde(default, skip_serializing_if = "Option::is_none")]
-     pub opencode_session_id: Option<String>,
-     ```
+## Installation and Authentication Requirements
 
-4. **`src-tauri/src/chat/mod.rs`**
+OpenCode must have the same user-facing setup quality as existing CLI providers in Jean.
+
+Required capabilities:
+
+1. Installation flow in Settings (status, available versions, install/reinstall, progress events).
+2. Binary resolution pattern consistent with existing providers:
+   - embedded Jean-managed binary path first
+   - fallback to PATH binary when available
+3. Authentication flow in Settings:
+   - detect auth status
+   - provide login command/action guidance
+   - re-check auth after login
+4. Clear error states for:
+   - not installed
+   - installed but not authenticated
+   - server launch failed
+5. Block OpenCode chat execution when prerequisites are not met, with actionable UI error messaging.
+
+Likely additions:
+
+- Rust module for install/auth commands (parallel to existing provider CLI management modules)
+- Frontend service hooks for status/auth/install/progress
+- Preferences/UI wiring for OpenCode setup modals and status indicators
+
+## Planned Backend Changes
+
+### New Modules
+
+1. `src-tauri/src/opencode_server/`
+   - Process lifecycle manager:
+   - `start_opencode_server()`
+   - `stop_opencode_server()`
+   - `get_opencode_server_status()`
+   - health checks and restart policy
+
+2. `src-tauri/src/opencode_client/`
+   - Typed HTTP client (OpenAPI-based):
+   - endpoint constants
+   - request/response structs
+   - streaming/event parsing adapters
+
+3. `src-tauri/src/chat/opencode.rs`
+   - OpenCode chat execution bridge for Jean:
+   - send message / continue session
+   - map provider stream events -> Jean events
+   - return unified response payload for `send_chat_message`
+
+### Modified Rust Files
+
+4. `src-tauri/src/chat/types.rs`
+   - Add `Backend::Opencode`
+   - Add persisted `opencode_session_id` on session/session metadata
+
+5. `src-tauri/src/chat/mod.rs`
    - Add `mod opencode;`
 
-5. **`src-tauri/src/chat/commands.rs`**
-   - Add `list_opencode_models` command
-   - Modify `send_chat_message` to:
-     - Accept `provider: Option<String>` parameter
-     - Branch on provider to call `opencode.rs` or `claude.rs`
-     - Store `opencode_session_id` when provider is "opencode"
+6. `src-tauri/src/chat/commands.rs`
+   - Extend `send_chat_message` backend branch for OpenCode
+   - persist `opencode_session_id`
+   - keep unified response and existing UI event contract
 
-6. **`src-tauri/src/lib.rs`**
-   - Register new commands: `list_opencode_models`, `check_opencode_installed`
-   - Add `mod opencode_cli;`
+7. `src-tauri/src/lib.rs`
+   - register OpenCode server/client management commands
+   - wire new modules
 
-7. **`src/types/chat.ts`**
-   - Add to `Session` interface:
-     ```typescript
-     provider?: 'claude' | 'opencode'
-     opencode_session_id?: string
-     ```
+8. `src-tauri/src/http_server/dispatch.rs`
+   - expose any new OpenCode management commands for web mode parity
 
-8. **`src/store/chat-store.ts`**
-   - Add `selectedProviders: Record<string, 'claude' | 'opencode'>`
-   - Add `setProvider(sessionId, provider)` action
+## Planned Frontend Changes
 
-9. **`src/components/chat/ChatToolbar.tsx`**
-   - Add provider toggle (Claude CLI / OpenCode dropdown)
-   - Make model selector dynamic based on provider
-   - Fetch OpenCode models when provider = "opencode"
+1. Add OpenCode to backend selector:
+   - `claude | codex | opencode`
+2. Keep UI transport unchanged (`src/lib/transport.ts` pattern).
+3. Use existing chat streaming/tool rendering paths.
+4. Add OpenCode model discovery/status hooks that call Jean backend commands.
 
-10. **`src/components/chat/ChatWindow.tsx`**
-    - Pass `provider` to `send_chat_message` invoke
+Likely files:
 
-## Implementation Order
+- `src/types/chat.ts`
+- `src/store/chat-store.ts`
+- `src/types/preferences.ts`
+- `src/components/chat/ChatToolbar.tsx`
+- `src/services/*` (new OpenCode service hooks)
 
-### Phase 1: Backend Core
+## Execution Mode Notes
 
-1. Create `src-tauri/src/opencode_cli/` module with path detection
-2. Add types to `types.rs` (provider, opencode_session_id)
-3. Create `opencode.rs` with `build_opencode_args()`
-4. Add `list_opencode_models` command
+Initial behavior:
 
-### Phase 2: Event Parsing
+1. plan/build supported first
+2. yolo support deferred until mapped safely to OpenCode semantics
 
-1. Implement `tail_opencode_output()` with event parsing
-2. Handle combined tool_use events (split into tool_use + tool_result)
-3. Extract usage from step_finish events
+## Implementation Phases
 
-### Phase 3: Integration
+### Phase 1: Core Backend Plumbing
 
-1. Modify `send_chat_message` to branch on provider
-2. Store `opencode_session_id` in session metadata
-3. Handle session resumption with `--session` flag
+1. Add backend enum/state/types (`opencode`, `opencode_session_id`)
+2. Implement OpenCode install/auth/status commands (same class as existing providers)
+3. Implement OpenCode server lifecycle manager
+4. Implement minimal OpenCode HTTP client from OpenAPI
+5. Add status/health/model-list commands
 
-### Phase 4: Frontend
+### Phase 2: Chat Path Integration
 
-1. Add TypeScript types for provider
-2. Add provider state to Zustand store
-3. Add provider toggle to ChatToolbar
-4. Make model selector dynamic
+1. Add `Backend::Opencode` branch to `send_chat_message`
+2. Implement stream/event translation to Jean events
+3. Persist and resume with `opencode_session_id`
 
-## Token Usage Mapping
+### Phase 3: Frontend Wiring
 
-```rust
-// OpenCode format
-{"tokens": {"input": 11421, "output": 45, "reasoning": 83, "cache": {"read": 2176, "write": 0}}}
+1. Add provider switch + dynamic model list
+2. Add OpenCode install/auth setup UI and hooks (consistent with existing providers)
+3. Add setup/status UI for server readiness/errors
+4. Keep existing chat UI contract unchanged
 
-// Map to Jean's UsageData
-UsageData {
-    input_tokens: tokens.input,
-    output_tokens: tokens.output,
-    cache_read_input_tokens: tokens.cache.read,
-    cache_creation_input_tokens: tokens.cache.write,
-}
-// Note: reasoning tokens not currently tracked in Jean
-```
+### Phase 4: Hardening
 
-## Verification
+1. Retry and reconnect behavior for OpenCode server
+2. Better diagnostics/logging
+3. Optional auth and config controls
 
-1. **Unit test**: Parse sample OpenCode NDJSON events
-2. **Manual test**:
-   - Toggle to OpenCode provider
-   - Send message with `opencode/grok-code` model
-   - Verify streaming text appears
-   - Verify tool calls render correctly
-   - Verify token usage displayed
-3. **Session resumption**:
-   - Send message, close app, reopen
-   - Send follow-up, verify context preserved
-4. **Model discovery**:
-   - Verify `opencode models` output populates dropdown
+## Verification Plan
 
-## Decisions
+1. Unit tests:
+   - OpenCode event -> Jean event mapping
+   - session resume ID persistence
+2. Integration tests:
+   - start server -> send message -> receive stream -> complete
+   - server down -> auto-start/recover path
+   - install/auth prerequisite checks enforced before chat send
+3. Manual tests:
+   - Native mode chat with OpenCode
+   - Jean HTTP/web mode chat with OpenCode (remote browser)
+   - model listing and provider switch
+   - install OpenCode from Settings, authenticate, then run chat
 
-1. **Default provider**: Remember last used (stored in preferences)
-2. **Yolo mode**: Hide yolo option when OpenCode is selected (only show plan/build)
-3. **Installation management**: Jean manages OpenCode CLI installation (like Claude CLI)
+## Final Decisions Captured
 
-## Additional Files for Installation Management
-
-11. **`src-tauri/src/opencode_cli/commands.rs`**
-    - `check_opencode_status` - Check if installed, get version
-    - `install_opencode_cli` - Download and install binary
-    - `get_opencode_versions` - Fetch available releases from GitHub
-
-12. **`src/services/opencode-cli.ts`**
-    - TanStack Query hooks mirroring `claude-cli.ts`:
-      - `useOpenCodeStatus()`
-      - `useOpenCodeAuth()` (if applicable)
-      - `useAvailableOpenCodeVersions()`
-      - `useInstallOpenCode()`
-
-13. **`src/types/preferences.ts`**
-    - Add `last_used_provider: 'claude' | 'opencode'`
-
-14. **`src/components/chat/ExecutionModeSelector.tsx`** (or toolbar)
-    - Conditionally hide yolo option based on provider
+1. Chosen path: `opencode serve` HTTP mode.
+2. Communication: Rust backend HTTP calls based on OpenAPI.
+3. Frontend does not call OpenCode directly.
+4. Jean remains the only client-facing transport in both native and HTTP/web modes.

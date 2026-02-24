@@ -37,10 +37,16 @@ export interface Project {
   is_folder?: boolean
   /** Path to custom avatar image (relative to app data dir, e.g., "avatars/abc123.png") */
   avatar_path?: string
-  /** MCP server names enabled by default for this project */
-  enabled_mcp_servers?: string[]
+  /** MCP server names enabled by default for this project (null/undefined = inherit from global) */
+  enabled_mcp_servers?: string[] | null
+  /** All MCP server names ever seen for this project (prevents re-enabling user-disabled servers) */
+  known_mcp_servers?: string[]
   /** Custom system prompt appended to every session execution */
   custom_system_prompt?: string
+  /** Default provider profile name for sessions in this project (undefined = use global default) */
+  default_provider?: string | null
+  /** Default CLI backend for sessions in this project (undefined = use global default) */
+  default_backend?: string | null
 }
 
 /**
@@ -78,6 +84,8 @@ export interface Worktree {
   pr_number?: number
   /** GitHub PR URL (if a PR has been created) */
   pr_url?: string
+  /** GitHub issue number (if created from an issue) */
+  issue_number?: number
   /** Cached PR display status (draft, open, review, merged, closed) */
   cached_pr_status?: string
   /** Cached CI check status (success, failure, pending, error) */
@@ -121,6 +129,8 @@ export interface WorktreeCreatingEvent {
   name: string
   path: string
   branch: string
+  pr_number?: number
+  issue_number?: number
 }
 
 /** Event payload when worktree creation completes */
@@ -261,6 +271,8 @@ export interface CreatePrResponse {
   pr_url: string
   /** AI-generated PR title */
   title: string
+  /** Whether this PR already existed (was linked, not newly created) */
+  existing: boolean
 }
 
 // =============================================================================
@@ -305,6 +317,26 @@ export interface ReviewResponse {
   findings: ReviewFinding[]
   /** Overall review verdict */
   approval_status: 'approved' | 'changes_requested' | 'needs_discussion'
+}
+
+// =============================================================================
+// Release Notes
+// =============================================================================
+
+/** A GitHub release from gh release list */
+export interface GitHubRelease {
+  tagName: string
+  name: string
+  publishedAt: string
+  isLatest: boolean
+  isDraft: boolean
+  isPrerelease: boolean
+}
+
+/** Response from generate_release_notes command */
+export interface ReleaseNotesResponse {
+  title: string
+  body: string
 }
 
 // =============================================================================

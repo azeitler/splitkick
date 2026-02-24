@@ -1,5 +1,6 @@
 import { useCallback } from 'react'
 import { useGhCliStatus } from '@/services/gh-cli'
+import { escapeCliCommand } from '@/lib/shell-escape'
 import { useUIStore } from '@/store/ui-store'
 
 /**
@@ -14,11 +15,7 @@ export function useGhLogin() {
   const triggerLogin = useCallback(() => {
     if (!ghStatus?.path) return
 
-    const isWindows = navigator.userAgent.includes('Windows')
-    const escapedPath = isWindows
-      ? `& "${ghStatus.path}" auth login`
-      : `'${ghStatus.path.replace(/'/g, "'\\''")}'` + ' auth login'
-    openCliLoginModal('gh', escapedPath)
+    openCliLoginModal('gh', escapeCliCommand(ghStatus.path, 'auth login'))
   }, [ghStatus?.path, openCliLoginModal])
 
   return { triggerLogin, isGhInstalled: !!ghStatus?.installed }

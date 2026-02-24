@@ -20,6 +20,7 @@ import type {
 import type { ReviewFinding } from '@/types/chat'
 import { formatAnswersAsNaturalLanguage } from '@/services/chat'
 import { parseReviewFindings, getFindingKey } from '../review-finding-utils'
+import { generateId } from '@/lib/uuid'
 
 /** Git commands to auto-approve for magic prompts (no permission prompts needed) */
 export const GIT_ALLOWED_TOOLS = [
@@ -40,8 +41,8 @@ interface SendMessageMutation {
       thinkingLevel?: ThinkingLevel
       effortLevel?: string
       allowedTools?: string[]
-      disableThinkingForMode?: boolean
       mcpConfig?: string
+      customProfileName?: string
     },
     options?: {
       onSettled?: () => void
@@ -56,6 +57,7 @@ interface UseMessageHandlersParams {
   activeWorktreePathRef: RefObject<string | null | undefined>
   // Refs for settings (stable across re-renders)
   selectedModelRef: RefObject<string>
+  getCustomProfileName: () => string | undefined
   executionModeRef: RefObject<ExecutionMode>
   selectedThinkingLevelRef: RefObject<ThinkingLevel>
   selectedEffortLevelRef: RefObject<EffortLevel>
@@ -66,7 +68,7 @@ interface UseMessageHandlersParams {
   sendMessage: SendMessageMutation
   queryClient: QueryClient
   // Callbacks
-  scrollToBottom: () => void
+  scrollToBottom: (instant?: boolean) => void
   inputRef: RefObject<HTMLTextAreaElement | null>
   // For pending plan approval callback
   pendingPlanMessage: ChatMessage | null | undefined
@@ -112,6 +114,7 @@ export function useMessageHandlers({
   activeWorktreeIdRef,
   activeWorktreePathRef,
   selectedModelRef,
+  getCustomProfileName,
   executionModeRef,
   selectedThinkingLevelRef,
   selectedEffortLevelRef,
@@ -167,8 +170,12 @@ export function useMessageHandlers({
         )
       })
 
-      // Scroll to bottom to compensate for the question form collapsing
-      scrollToBottom()
+      // Scroll to bottom after DOM updates from collapsing the question form
+      // rAF ensures React has processed state changes before we read scrollHeight.
+      // Using instant scroll so stale scrollHeight during animation isn't a concern.
+      requestAnimationFrame(() => {
+        scrollToBottom(true)
+      })
 
       // Format answers as natural language
       const message = formatAnswersAsNaturalLanguage(questions, answers)
@@ -192,6 +199,7 @@ export function useMessageHandlers({
             ? selectedEffortLevelRef.current
             : undefined,
           mcpConfig: getMcpConfig(),
+          customProfileName: getCustomProfileName(),
         },
         {
           onSettled: () => {
@@ -210,6 +218,7 @@ export function useMessageHandlers({
       selectedEffortLevelRef,
       useAdaptiveThinkingRef,
       getMcpConfig,
+      getCustomProfileName,
       sendMessage,
       scrollToBottom,
       inputRef,
@@ -328,16 +337,21 @@ export function useMessageHandlers({
       setSessionReviewing(sessionId, false)
       setWaitingForInput(sessionId, false)
 
+      // Scroll to bottom after DOM updates from collapsing the plan approval UI
+      requestAnimationFrame(() => {
+        scrollToBottom(true)
+      })
+
       // Format approval message - include updated plan if provided
+      // For Codex: use explicit execution instruction since it resumes a thread
+      const isCodex =
+        useChatStore.getState().selectedBackends[sessionId] === 'codex'
       const message = updatedPlan
         ? `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
-        : 'Approved'
-      console.log(
-        '[useMessageHandlers] handlePlanApproval - message:',
-        message.substring(0, 100)
-      )
-
-      // Send approval message to Claude so it continues with execution
+        : isCodex
+          ? 'Execute the plan you created. Implement all changes described.'
+          : 'Approved'
+      // Send approval message so the backend continues with execution
       // NOTE: setLastSentMessage is critical for permission denial flow - without it,
       // the denied message context won't be set and approval UI won't work
       setLastSentMessage(sessionId, message)
@@ -358,8 +372,8 @@ export function useMessageHandlers({
           effortLevel: useAdaptiveThinkingRef.current
             ? selectedEffortLevelRef.current
             : undefined,
-          disableThinkingForMode: true, // Always disable thinking when executing approved plan
           mcpConfig: getMcpConfig(),
+          customProfileName: getCustomProfileName(),
         },
         {
           onSettled: () => {
@@ -377,6 +391,8 @@ export function useMessageHandlers({
       selectedEffortLevelRef,
       useAdaptiveThinkingRef,
       getMcpConfig,
+      getCustomProfileName,
+      scrollToBottom,
       sendMessage,
       queryClient,
       inputRef,
@@ -439,16 +455,20 @@ export function useMessageHandlers({
       setSessionReviewing(sessionId, false)
       setWaitingForInput(sessionId, false)
 
+      // Scroll to bottom after DOM updates from collapsing the plan approval UI
+      requestAnimationFrame(() => {
+        scrollToBottom(true)
+      })
+
       // Format approval message - include updated plan if provided
+      const isCodexYolo =
+        useChatStore.getState().selectedBackends[sessionId] === 'codex'
       const message = updatedPlan
         ? `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
-        : 'Approved - yolo'
-      console.log(
-        '[useMessageHandlers] handlePlanApprovalYolo - message:',
-        message.substring(0, 100)
-      )
-
-      // Send approval message to Claude so it continues with execution
+        : isCodexYolo
+          ? 'Execute the plan you created. Implement all changes described.'
+          : 'Approved - yolo'
+      // Send approval message so the backend continues with execution
       setLastSentMessage(sessionId, message)
       setError(sessionId, null)
       addSendingSession(sessionId)
@@ -467,8 +487,8 @@ export function useMessageHandlers({
           effortLevel: useAdaptiveThinkingRef.current
             ? selectedEffortLevelRef.current
             : undefined,
-          disableThinkingForMode: true, // Always disable thinking when executing approved plan
           mcpConfig: getMcpConfig(),
+          customProfileName: getCustomProfileName(),
         },
         {
           onSettled: () => {
@@ -486,6 +506,8 @@ export function useMessageHandlers({
       selectedEffortLevelRef,
       useAdaptiveThinkingRef,
       getMcpConfig,
+      getCustomProfileName,
+      scrollToBottom,
       sendMessage,
       queryClient,
       inputRef,
@@ -529,6 +551,11 @@ export function useMessageHandlers({
     setSessionReviewing(sessionId, false)
     setWaitingForInput(sessionId, false)
 
+    // Scroll to bottom after DOM updates from collapsing the plan approval UI
+    requestAnimationFrame(() => {
+      scrollToBottom(true)
+    })
+
     // Explicitly set to build mode (not toggle, to avoid switching back to plan if already in build)
     setMode(sessionId, 'build')
     setSelectedModel(sessionId, selectedModelRef.current)
@@ -553,8 +580,8 @@ export function useMessageHandlers({
         effortLevel: useAdaptiveThinkingRef.current
           ? selectedEffortLevelRef.current
           : undefined,
-        disableThinkingForMode: true, // Always disable thinking when executing approved plan
         mcpConfig: getMcpConfig(),
+        customProfileName: getCustomProfileName(),
       },
       {
         onSettled: () => {
@@ -571,6 +598,8 @@ export function useMessageHandlers({
     selectedEffortLevelRef,
     useAdaptiveThinkingRef,
     getMcpConfig,
+    getCustomProfileName,
+    scrollToBottom,
     sendMessage,
     inputRef,
   ])
@@ -605,6 +634,11 @@ export function useMessageHandlers({
     setSessionReviewing(sessionId, false)
     setWaitingForInput(sessionId, false)
 
+    // Scroll to bottom after DOM updates from collapsing the plan approval UI
+    requestAnimationFrame(() => {
+      scrollToBottom(true)
+    })
+
     // Set to yolo mode for auto-approval of all future tools
     setMode(sessionId, 'yolo')
     setSelectedModel(sessionId, selectedModelRef.current)
@@ -627,8 +661,8 @@ export function useMessageHandlers({
         effortLevel: useAdaptiveThinkingRef.current
           ? selectedEffortLevelRef.current
           : undefined,
-        disableThinkingForMode: true, // Always disable thinking when executing approved plan
         mcpConfig: getMcpConfig(),
+        customProfileName: getCustomProfileName(),
       },
       {
         onSettled: () => {
@@ -645,6 +679,8 @@ export function useMessageHandlers({
     selectedEffortLevelRef,
     useAdaptiveThinkingRef,
     getMcpConfig,
+    getCustomProfileName,
+    scrollToBottom,
     sendMessage,
     inputRef,
   ])
@@ -663,23 +699,55 @@ export function useMessageHandlers({
         getDeniedMessageContext,
         clearDeniedMessageContext,
         getApprovedTools,
+        getPendingDenials,
         addSendingSession,
         setLastSentMessage,
         setError,
         setSelectedModel,
         setExecutingMode,
         setWaitingForInput,
+        selectedBackends,
       } = useChatStore.getState()
 
-      // Add approved patterns to session store
+      const backend = selectedBackends[sessionId] ?? 'claude'
+
+      // Codex path: send approval response via JSON-RPC (process is still running)
+      if (backend === 'codex') {
+        const denials = getPendingDenials(sessionId)
+        clearPendingDenials(sessionId)
+        clearDeniedMessageContext(sessionId)
+        setWaitingForInput(sessionId, false)
+
+        requestAnimationFrame(() => {
+          scrollToBottom(true)
+        })
+
+        // Send accept for each denial that has an rpc_id
+        for (const denial of denials) {
+          if (denial.rpc_id != null) {
+            invoke('approve_codex_command', {
+              sessionId,
+              rpcId: denial.rpc_id,
+              decision: 'accept',
+            }).catch(err => {
+              console.error(
+                '[ChatWindow] Failed to approve Codex command:',
+                err
+              )
+              toast.error(`Failed to approve command: ${err}`)
+            })
+          }
+        }
+        return
+      }
+
+      // Claude path: re-send message with approved tools
       for (const pattern of approvedPatterns) {
         addApprovedTool(sessionId, pattern)
       }
 
-      // Get all approved tools for this session (including previously approved)
       const allApprovedTools = getApprovedTools(sessionId)
 
-      // Get the original message context
       const context = getDeniedMessageContext(sessionId)
       if (!context) {
         console.error(
@@ -689,13 +757,14 @@ export function useMessageHandlers({
         return
       }
 
-      // Clear pending state
       clearPendingDenials(sessionId)
       clearDeniedMessageContext(sessionId)
       setWaitingForInput(sessionId, false)
 
-      // Build explicit continuation message that tells Claude exactly what to run
-      // Extract commands from Bash(command) patterns for a more direct instruction
+      requestAnimationFrame(() => {
+        scrollToBottom(true)
+      })
+
       const bashCommands: string[] = []
       const otherPatterns: string[] = []
       for (const pattern of approvedPatterns) {
@@ -707,24 +776,19 @@ export function useMessageHandlers({
         }
       }
 
-      // Build a message that explicitly asks Claude to run the commands
       let continuationMessage: string
       if (bashCommands.length > 0 && otherPatterns.length === 0) {
-        // Only Bash commands - be very explicit
         if (bashCommands.length === 1) {
           continuationMessage = `I approved the command. Run it now: \`${bashCommands[0]}\``
         } else {
           continuationMessage = `I approved these commands. Run them now:\n${bashCommands.map(cmd => `- \`${cmd}\``).join('\n')}`
         }
       } else if (bashCommands.length > 0) {
-        // Mix of Bash and other tools
         continuationMessage = `I approved: ${approvedPatterns.join(', ')}. Execute them now.`
       } else {
-        // Only non-Bash tools
         continuationMessage = `I approved ${approvedPatterns.join(', ')}. Continue with the task.`
       }
 
-      // Send continuation with approved tools
       const modelToUse = context.model ?? selectedModelRef.current
       const modeToUse = context.executionMode ?? executionModeRef.current
       setLastSentMessage(sessionId, continuationMessage)
@@ -748,6 +812,7 @@ export function useMessageHandlers({
             : undefined,
           allowedTools: [...GIT_ALLOWED_TOOLS, ...allApprovedTools],
           mcpConfig: getMcpConfig(),
+          customProfileName: getCustomProfileName(),
         },
         {
           onSettled: () => {
@@ -765,6 +830,8 @@ export function useMessageHandlers({
       selectedEffortLevelRef,
       useAdaptiveThinkingRef,
       getMcpConfig,
+      getCustomProfileName,
+      scrollToBottom,
       sendMessage,
       inputRef,
     ]
@@ -783,6 +850,7 @@ export function useMessageHandlers({
         clearPendingDenials,
         getDeniedMessageContext,
         clearDeniedMessageContext,
+        getPendingDenials,
         addSendingSession,
         setLastSentMessage,
         setError,
@@ -790,14 +858,45 @@ export function useMessageHandlers({
         setExecutingMode,
         setExecutionMode: setMode,
         setWaitingForInput,
+        selectedBackends,
       } = useChatStore.getState()
 
-      // Add approved patterns to session store
+      const backend = selectedBackends[sessionId] ?? 'claude'
+
+      // Codex path: accept current denial and switch to yolo for future messages
+      if (backend === 'codex') {
+        const denials = getPendingDenials(sessionId)
+        clearPendingDenials(sessionId)
+        clearDeniedMessageContext(sessionId)
+        setWaitingForInput(sessionId, false)
+        setMode(sessionId, 'yolo')
+
+        requestAnimationFrame(() => {
+          scrollToBottom(true)
+        })
+
+        for (const denial of denials) {
+          if (denial.rpc_id != null) {
+            invoke('approve_codex_command', {
+              sessionId,
+              rpcId: denial.rpc_id,
+              decision: 'accept',
+            }).catch(err => {
+              console.error(
+                '[ChatWindow] Failed to approve Codex command:',
+                err
+              )
+            })
+          }
+        }
+        return
+      }
+
+      // Claude path
       for (const pattern of approvedPatterns) {
         addApprovedTool(sessionId, pattern)
       }
 
-      // Get the original message context
       const context = getDeniedMessageContext(sessionId)
       if (!context) {
         console.error(
@@ -807,10 +906,14 @@ export function useMessageHandlers({
         return
       }
 
-      // Clear pending state
       clearPendingDenials(sessionId)
       clearDeniedMessageContext(sessionId)
       setWaitingForInput(sessionId, false)
+
+      // Scroll to bottom after DOM updates from collapsing the permission approval UI
+      requestAnimationFrame(() => {
+        scrollToBottom(true)
+      })
 
       // Build explicit continuation message that tells Claude exactly what to run
       // Extract commands from Bash(command) patterns for a more direct instruction
@@ -867,6 +970,7 @@ export function useMessageHandlers({
             ? selectedEffortLevelRef.current
             : undefined,
           mcpConfig: getMcpConfig(),
+          customProfileName: getCustomProfileName(),
         },
         {
           onSettled: () => {
@@ -883,6 +987,8 @@ export function useMessageHandlers({
       selectedEffortLevelRef,
       useAdaptiveThinkingRef,
       getMcpConfig,
+      getCustomProfileName,
+      scrollToBottom,
       sendMessage,
       inputRef,
     ]
@@ -893,9 +999,30 @@ export function useMessageHandlers({
     const {
       clearPendingDenials,
       clearDeniedMessageContext,
+      getPendingDenials,
       setWaitingForInput,
       removeSendingSession,
+      selectedBackends,
     } = useChatStore.getState()
+
+    const backend = selectedBackends[sessionId] ?? 'claude'
+
+    // For Codex: send decline response to unblock the attached process
+    if (backend === 'codex') {
+      const denials = getPendingDenials(sessionId)
+      for (const denial of denials) {
+        if (denial.rpc_id != null) {
+          invoke('approve_codex_command', {
+            sessionId,
+            rpcId: denial.rpc_id,
+            decision: 'decline',
+          }).catch(err => {
+            console.error('[ChatWindow] Failed to decline Codex command:', err)
+          })
+        }
+      }
+    }
+
     clearPendingDenials(sessionId)
     clearDeniedMessageContext(sessionId)
     setWaitingForInput(sessionId, false)
@@ -941,12 +1068,9 @@ Please apply this fix to the file.`
         setSelectedModel,
         setExecutingMode,
         markFindingFixed,
+        isSending,
+        enqueueMessage,
       } = useChatStore.getState()
-      setLastSentMessage(sessionId, message)
-      setError(sessionId, null)
-      addSendingSession(sessionId)
-      setSelectedModel(sessionId, selectedModelRef.current)
-      setExecutingMode(sessionId, 'build') // Fixes are always in build mode
 
       // Mark this finding as fixed (we don't have the index here, so we generate a key based on file+line)
       // The finding key format is: file:line:index - we'll match on file:line prefix
@@ -971,6 +1095,35 @@ Please apply this fix to the file.`
         markFindingFixed(sessionId, getFindingKey(finding, findingIndex))
       }
 
+      // If session is already busy, queue the fix message
+      if (isSending(sessionId)) {
+        enqueueMessage(sessionId, {
+          id: generateId(),
+          message,
+          pendingImages: [],
+          pendingFiles: [],
+          pendingSkills: [],
+          pendingTextFiles: [],
+          model: selectedModelRef.current,
+          provider: getCustomProfileName() ?? null,
+          executionMode: 'build',
+          thinkingLevel: selectedThinkingLevelRef.current,
+          effortLevel: useAdaptiveThinkingRef.current
+            ? selectedEffortLevelRef.current
+            : undefined,
+          mcpConfig: getMcpConfig(),
+          queuedAt: Date.now(),
+        })
+        toast.info('Fix queued — will start when current task completes')
+        return
+      }
+
+      setLastSentMessage(sessionId, message)
+      setError(sessionId, null)
+      addSendingSession(sessionId)
+      setSelectedModel(sessionId, selectedModelRef.current)
+      setExecutingMode(sessionId, 'build') // Fixes are always in build mode
+
       sendMessage.mutate(
         {
           sessionId,
@@ -984,6 +1137,7 @@ Please apply this fix to the file.`
             ? selectedEffortLevelRef.current
             : undefined,
           mcpConfig: getMcpConfig(),
+          customProfileName: getCustomProfileName(),
         },
         {
           onSettled: () => {
@@ -1001,6 +1155,7 @@ Please apply this fix to the file.`
       selectedEffortLevelRef,
       useAdaptiveThinkingRef,
       getMcpConfig,
+      getCustomProfileName,
       sendMessage,
       queryClient,
       inputRef,
@@ -1049,12 +1204,9 @@ Please apply all these fixes to the respective files.`
         setSelectedModel,
         setExecutingMode,
         markFindingFixed,
+        isSending,
+        enqueueMessage,
       } = useChatStore.getState()
-      setLastSentMessage(sessionId, message)
-      setError(sessionId, null)
-      addSendingSession(sessionId)
-      setSelectedModel(sessionId, selectedModelRef.current)
-      setExecutingMode(sessionId, 'build') // Fixes are always in build mode
 
       // Mark all findings as fixed
       // Get sessions data from query cache instead of closure for stable callback
@@ -1081,6 +1233,35 @@ Please apply all these fixes to the respective files.`
         }
       }
 
+      // If session is already busy, queue the fix message
+      if (isSending(sessionId)) {
+        enqueueMessage(sessionId, {
+          id: generateId(),
+          message,
+          pendingImages: [],
+          pendingFiles: [],
+          pendingSkills: [],
+          pendingTextFiles: [],
+          model: selectedModelRef.current,
+          provider: getCustomProfileName() ?? null,
+          executionMode: 'build',
+          thinkingLevel: selectedThinkingLevelRef.current,
+          effortLevel: useAdaptiveThinkingRef.current
+            ? selectedEffortLevelRef.current
+            : undefined,
+          mcpConfig: getMcpConfig(),
+          queuedAt: Date.now(),
+        })
+        toast.info('Fix queued — will start when current task completes')
+        return
+      }
+
+      setLastSentMessage(sessionId, message)
+      setError(sessionId, null)
+      addSendingSession(sessionId)
+      setSelectedModel(sessionId, selectedModelRef.current)
+      setExecutingMode(sessionId, 'build') // Fixes are always in build mode
+
       sendMessage.mutate(
         {
           sessionId,
@@ -1094,6 +1275,7 @@ Please apply all these fixes to the respective files.`
             ? selectedEffortLevelRef.current
             : undefined,
           mcpConfig: getMcpConfig(),
+          customProfileName: getCustomProfileName(),
         },
         {
           onSettled: () => {
@@ -1111,6 +1293,7 @@ Please apply all these fixes to the respective files.`
       selectedEffortLevelRef,
       useAdaptiveThinkingRef,
       getMcpConfig,
+      getCustomProfileName,
       sendMessage,
       queryClient,
       inputRef,

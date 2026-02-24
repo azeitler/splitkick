@@ -10,12 +10,14 @@ import { notify } from '@/lib/notifications'
 import { logger } from '@/lib/logger'
 import type { CommandContext } from '@/lib/commands/types'
 import type { AppPreferences, ClaudeModel } from '@/types/preferences'
+import { resolveMagicPromptProvider } from '@/types/preferences'
 import type { ThinkingLevel, ExecutionMode } from '@/types/chat'
 import type { Project, ReviewResponse } from '@/types/projects'
 import { useQueryClient } from '@tanstack/react-query'
+import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { chatQueryKeys } from '@/services/chat'
 import { projectsQueryKeys } from '@/services/projects'
-import { gitPull, triggerImmediateGitPoll } from '@/services/git-status'
+import { triggerImmediateGitPoll, performGitPull } from '@/services/git-status'
 
 /**
  * Command context hook - provides essential actions for commands
@@ -28,6 +30,7 @@ export function useCommandContext(
 
   const queryClient = useQueryClient()
   const themeContext = useContext(ThemeProviderContext)
+  const { installedBackends } = useInstalledBackends()
 
   // Preferences
   const openPreferences = useCallback(() => {
@@ -176,7 +179,7 @@ export function useCommandContext(
     }
   }, [queryClient])
 
-  // Sessions - Rename session (triggers edit mode in SessionTabBar)
+  // Sessions - Rename session
   const renameSession = useCallback(() => {
     const { activeWorktreeId, getActiveSession } = useChatStore.getState()
     if (!activeWorktreeId) {
@@ -431,6 +434,16 @@ export function useCommandContext(
     )
   }, [])
 
+  // Projects - Open project settings
+  const openProjectSettings = useCallback(() => {
+    const { selectedProjectId } = useProjectsStore.getState()
+    if (!selectedProjectId) {
+      notify('No project selected', undefined, { type: 'error' })
+      return
+    }
+    useProjectsStore.getState().openProjectSettings(selectedProjectId)
+  }, [])
+
   // State getters
   const hasActiveSession = useCallback(() => {
     const { activeWorktreeId, getActiveSession } = useChatStore.getState()
@@ -447,6 +460,11 @@ export function useCommandContext(
     const { selectedProjectId } = useProjectsStore.getState()
     return !!selectedProjectId
   }, [])
+
+  const hasInstalledBackend = useCallback(
+    () => installedBackends.length > 0,
+    [installedBackends]
+  )
 
   const hasMultipleSessions = useCallback(() => {
     // This would need access to sessions data - return true as default
@@ -521,15 +539,12 @@ export function useCommandContext(
       }
     }
 
-    const toastId = toast.loading(`Pulling from ${baseBranch}...`)
-    try {
-      const result = await gitPull(worktreePath, baseBranch)
-      triggerImmediateGitPoll()
-      toast.success(result || 'Already up to date', { id: toastId })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      toast.error(`Pull failed: ${message}`, { id: toastId })
-    }
+    const { activeWorktreeId } = useChatStore.getState()
+    await performGitPull({
+      worktreeId: activeWorktreeId ?? '',
+      worktreePath,
+      baseBranch,
+    })
   }, [getTargetPath, queryClient])
 
   // Git - Refresh git status immediately
@@ -553,6 +568,11 @@ export function useCommandContext(
         worktreePath: activeWorktreePath,
         customPrompt: preferences?.magic_prompts?.code_review,
         model: preferences?.magic_prompt_models?.code_review_model,
+        customProfileName: resolveMagicPromptProvider(
+          preferences?.magic_prompt_providers,
+          'code_review_provider',
+          preferences?.default_provider
+        ),
       })
 
       // Store review results in Zustand (also activates review tab)
@@ -577,6 +597,8 @@ export function useCommandContext(
   }, [
     preferences?.magic_prompts?.code_review,
     preferences?.magic_prompt_models?.code_review_model,
+    preferences?.magic_prompt_providers,
+    preferences?.default_provider,
   ])
 
   // Terminal - Open terminal panel
@@ -660,6 +682,58 @@ export function useCommandContext(
     }
   }, [])
 
+  // Session - Regenerate session name using AI
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
+  const regenerateSessionName = useCallback(async () => {
+    const chatState = useChatStore.getState()
+    const worktreeId =
+      chatState.activeWorktreeId ??
+      useProjectsStore.getState().selectedWorktreeId
+    if (!worktreeId) {
+      notify('No worktree selected', undefined, { type: 'error' })
+      return
+    }
+
+    const sessionId =
+      chatState.getActiveSession(worktreeId) ??
+      chatState.getCanvasSelectedSession(worktreeId)
+    if (!sessionId) {
+      notify('No session selected', undefined, { type: 'error' })
+      return
+    }
+
+    const worktreePath = chatState.getWorktreePath(worktreeId)
+    if (!worktreePath) {
+      notify('No worktree path found', undefined, { type: 'error' })
+      return
+    }
+
+    const toastId = toast.loading('Regenerating session title...')
+    try {
+      await invoke('regenerate_session_name', {
+        worktreeId,
+        worktreePath,
+        sessionId,
+        customPrompt: preferences?.magic_prompts?.session_naming ?? null,
+        model: preferences?.magic_prompt_models?.session_naming_model ?? null,
+        customProfileName: resolveMagicPromptProvider(
+          preferences?.magic_prompt_providers,
+          'session_naming_provider',
+          preferences?.default_provider
+        ),
+      })
+      toast.success('Session title will update shortly', { id: toastId })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      toast.error(`Failed to regenerate: ${message}`, { id: toastId })
+    }
+  }, [
+    preferences?.magic_prompts?.session_naming,
+    preferences?.magic_prompt_models?.session_naming_model,
+    preferences?.magic_prompt_providers,
+    preferences?.default_provider,
+  ])
+
   // State getter - Check if run script is available
   const hasRunScript = useCallback(() => {
     // This needs to check if jean.json has a run script
@@ -696,6 +770,7 @@ export function useCommandContext(
       clearSessionHistory,
       renameSession,
       resumeSession,
+      regenerateSessionName,
 
       // Worktrees
       createWorktree,
@@ -729,6 +804,7 @@ export function useCommandContext(
       addProject,
       initProject,
       removeProject,
+      openProjectSettings,
 
       // AI
       runAIReview,
@@ -752,6 +828,7 @@ export function useCommandContext(
       hasActiveSession,
       hasActiveWorktree,
       hasSelectedProject,
+      hasInstalledBackend,
       hasMultipleSessions,
       hasMultipleWorktrees,
       hasRunScript,
@@ -777,6 +854,7 @@ export function useCommandContext(
       clearSessionHistory,
       renameSession,
       resumeSession,
+      regenerateSessionName,
       createWorktree,
       nextWorktree,
       previousWorktree,
@@ -796,6 +874,7 @@ export function useCommandContext(
       addProject,
       initProject,
       removeProject,
+      openProjectSettings,
       runAIReview,
       openTerminalPanel,
       runScript,
@@ -807,6 +886,7 @@ export function useCommandContext(
       hasActiveSession,
       hasActiveWorktree,
       hasSelectedProject,
+      hasInstalledBackend,
       hasMultipleSessions,
       hasMultipleWorktrees,
       hasRunScript,

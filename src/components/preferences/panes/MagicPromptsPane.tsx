@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react'
-import { RotateCcw } from 'lucide-react'
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react'
+import { Check, ChevronsUpDown, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -9,7 +9,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
 import { usePreferences, useSavePreferences } from '@/services/preferences'
+import { useAvailableOpencodeModels } from '@/services/opencode-cli'
+import { formatOpencodeModelLabel } from '@/components/chat/toolbar/toolbar-utils'
+import { OPENCODE_MODEL_OPTIONS as OPENCODE_FALLBACK_OPTIONS } from '@/components/chat/toolbar/toolbar-options'
 import {
   DEFAULT_INVESTIGATE_ISSUE_PROMPT,
   DEFAULT_INVESTIGATE_PR_PROMPT,
@@ -19,11 +35,22 @@ import {
   DEFAULT_CONTEXT_SUMMARY_PROMPT,
   DEFAULT_RESOLVE_CONFLICTS_PROMPT,
   DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT,
+  DEFAULT_RELEASE_NOTES_PROMPT,
+  DEFAULT_SESSION_NAMING_PROMPT,
+  DEFAULT_SESSION_RECAP_PROMPT,
+  DEFAULT_PARALLEL_EXECUTION_PROMPT,
+  DEFAULT_GLOBAL_SYSTEM_PROMPT,
   DEFAULT_MAGIC_PROMPTS,
   DEFAULT_MAGIC_PROMPT_MODELS,
+  DEFAULT_MAGIC_PROMPT_PROVIDERS,
+  CODEX_DEFAULT_MAGIC_PROMPT_MODELS,
+  OPENCODE_DEFAULT_MAGIC_PROMPT_MODELS,
+  codexModelOptions,
+  isCodexModel,
   type MagicPrompts,
   type MagicPromptModels,
-  type ClaudeModel,
+  type MagicPromptProviders,
+  type MagicPromptModel,
 } from '@/types/preferences'
 import { cn } from '@/lib/utils'
 
@@ -34,12 +61,13 @@ interface VariableInfo {
 
 interface PromptConfig {
   key: keyof MagicPrompts
-  modelKey: keyof MagicPromptModels
+  modelKey?: keyof MagicPromptModels
+  providerKey?: keyof MagicPromptProviders
   label: string
   description: string
   variables: VariableInfo[]
   defaultValue: string
-  defaultModel: ClaudeModel
+  defaultModel?: MagicPromptModel
 }
 
 interface PromptSection {
@@ -53,7 +81,8 @@ const PROMPT_SECTIONS: PromptSection[] = [
     configs: [
       {
         key: 'investigate_issue',
-        modelKey: 'investigate_model',
+        modelKey: 'investigate_issue_model',
+        providerKey: 'investigate_issue_provider',
         label: 'Investigate Issue',
         description:
           'Prompt for analyzing GitHub issues loaded into the context.',
@@ -72,7 +101,8 @@ const PROMPT_SECTIONS: PromptSection[] = [
       },
       {
         key: 'investigate_pr',
-        modelKey: 'investigate_model',
+        modelKey: 'investigate_pr_model',
+        providerKey: 'investigate_pr_provider',
         label: 'Investigate PR',
         description:
           'Prompt for analyzing GitHub pull requests loaded into the context.',
@@ -91,7 +121,8 @@ const PROMPT_SECTIONS: PromptSection[] = [
       },
       {
         key: 'investigate_workflow_run',
-        modelKey: 'investigate_model',
+        modelKey: 'investigate_workflow_run_model',
+        providerKey: 'investigate_workflow_run_provider',
         label: 'Investigate Workflow Run',
         description:
           'Prompt for investigating failed GitHub Actions workflow runs.',
@@ -122,6 +153,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
       {
         key: 'code_review',
         modelKey: 'code_review_model',
+        providerKey: 'code_review_provider',
         label: 'Code Review',
         description: 'Prompt for AI-powered code review of your changes.',
         variables: [
@@ -142,6 +174,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
       {
         key: 'commit_message',
         modelKey: 'commit_message_model',
+        providerKey: 'commit_message_provider',
         label: 'Commit Message',
         description:
           'Prompt for generating commit messages from staged changes.',
@@ -160,6 +193,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
       {
         key: 'pr_content',
         modelKey: 'pr_content_model',
+        providerKey: 'pr_content_provider',
         label: 'PR Description',
         description:
           'Prompt for generating pull request titles and descriptions.',
@@ -185,11 +219,36 @@ const PROMPT_SECTIONS: PromptSection[] = [
       {
         key: 'resolve_conflicts',
         modelKey: 'resolve_conflicts_model',
+        providerKey: 'resolve_conflicts_provider',
         label: 'Resolve Conflicts',
         description: 'Instructions appended to conflict resolution prompts.',
         variables: [],
         defaultValue: DEFAULT_RESOLVE_CONFLICTS_PROMPT,
         defaultModel: 'opus',
+      },
+      {
+        key: 'release_notes',
+        modelKey: 'release_notes_model',
+        providerKey: 'release_notes_provider',
+        label: 'Release Notes',
+        description:
+          'Prompt for generating release notes from changes since a prior release.',
+        variables: [
+          {
+            name: '{tag}',
+            description: 'Tag of the selected release',
+          },
+          {
+            name: '{previous_release_name}',
+            description: 'Name of the selected release',
+          },
+          {
+            name: '{commits}',
+            description: 'Commit messages since the selected release',
+          },
+        ],
+        defaultValue: DEFAULT_RELEASE_NOTES_PROMPT,
+        defaultModel: 'haiku',
       },
     ],
   },
@@ -199,6 +258,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
       {
         key: 'context_summary',
         modelKey: 'context_summary_model',
+        providerKey: 'context_summary_provider',
         label: 'Context Summary',
         description:
           'Prompt for summarizing conversations when saving context.',
@@ -216,6 +276,59 @@ const PROMPT_SECTIONS: PromptSection[] = [
         defaultValue: DEFAULT_CONTEXT_SUMMARY_PROMPT,
         defaultModel: 'haiku',
       },
+      {
+        key: 'session_naming',
+        modelKey: 'session_naming_model',
+        providerKey: 'session_naming_provider',
+        label: 'Session Naming',
+        description:
+          'Prompt for generating session titles from the first message. Used for both auto-naming and manual regeneration.',
+        variables: [
+          {
+            name: '{message}',
+            description: "The user's first message in the session",
+          },
+        ],
+        defaultValue: DEFAULT_SESSION_NAMING_PROMPT,
+        defaultModel: 'haiku',
+      },
+      {
+        key: 'session_recap',
+        modelKey: 'session_recap_model',
+        providerKey: 'session_recap_provider',
+        label: 'Session Recap',
+        description:
+          'Prompt for generating session recaps (digests) when returning to unfocused sessions.',
+        variables: [
+          {
+            name: '{conversation}',
+            description: 'Full conversation transcript',
+          },
+        ],
+        defaultValue: DEFAULT_SESSION_RECAP_PROMPT,
+        defaultModel: 'haiku',
+      },
+    ],
+  },
+  {
+    label: 'System Prompts',
+    configs: [
+      {
+        key: 'global_system_prompt',
+        label: 'Global System Prompt',
+        description:
+          'Appended to every chat session. Works like ~/.claude/CLAUDE.md but managed in settings.',
+        variables: [],
+        defaultValue: DEFAULT_GLOBAL_SYSTEM_PROMPT,
+      },
+      {
+        key: 'parallel_execution',
+        label: 'Parallel Execution',
+        description:
+          'System prompt appended to every chat session when enabled in Experimental settings. Encourages sub-agent parallelization.',
+        variables: [],
+        defaultValue: DEFAULT_PARALLEL_EXECUTION_PROMPT,
+      },
     ],
   },
 ]
@@ -223,11 +336,16 @@ const PROMPT_SECTIONS: PromptSection[] = [
 // Flat list for lookups
 const PROMPT_CONFIGS = PROMPT_SECTIONS.flatMap(s => s.configs)
 
-const MODEL_OPTIONS: { value: ClaudeModel; label: string }[] = [
-  { value: 'opus', label: 'Opus' },
-  { value: 'sonnet', label: 'Sonnet' },
+const CLAUDE_MODEL_OPTIONS: { value: MagicPromptModel; label: string }[] = [
+  { value: 'opus', label: 'Opus 4.6' },
+  { value: 'opus-4.5', label: 'Opus 4.5' },
+  { value: 'sonnet', label: 'Sonnet 4.6' },
+  { value: 'sonnet-4.5', label: 'Sonnet 4.5' },
   { value: 'haiku', label: 'Haiku' },
 ]
+
+const CODEX_MODEL_OPTIONS: { value: MagicPromptModel; label: string }[] =
+  codexModelOptions.map(o => ({ value: o.value, label: o.label }))
 
 export const MagicPromptsPane: React.FC = () => {
   const { data: preferences } = usePreferences()
@@ -235,17 +353,81 @@ export const MagicPromptsPane: React.FC = () => {
   const [selectedKey, setSelectedKey] =
     useState<keyof MagicPrompts>('investigate_issue')
   const [localValue, setLocalValue] = useState('')
+  const [modelPopoverOpen, setModelPopoverOpen] = useState(false)
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  const { data: availableOpencodeModels } = useAvailableOpencodeModels()
+
+  const formatOpenCodeLabel = (value: string) => {
+    const formatted = formatOpencodeModelLabel(value)
+    return value.startsWith('opencode/')
+      ? formatted.replace(/\s+\(OpenCode\)$/, '')
+      : formatted
+  }
+
+  const opencodeModelOptions = useMemo(() => {
+    const models = availableOpencodeModels?.length
+      ? availableOpencodeModels
+      : OPENCODE_FALLBACK_OPTIONS.map(o => o.value)
+    return models.map(value => ({
+      value: value as MagicPromptModel,
+      label: formatOpenCodeLabel(value),
+    }))
+  }, [availableOpencodeModels])
 
   const currentPrompts = preferences?.magic_prompts ?? DEFAULT_MAGIC_PROMPTS
   const currentModels =
     preferences?.magic_prompt_models ?? DEFAULT_MAGIC_PROMPT_MODELS
+  const currentProviders =
+    preferences?.magic_prompt_providers ?? DEFAULT_MAGIC_PROMPT_PROVIDERS
+  const profiles = useMemo(
+    () => preferences?.custom_cli_profiles ?? [],
+    [preferences?.custom_cli_profiles]
+  )
   // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
   const selectedConfig = PROMPT_CONFIGS.find(c => c.key === selectedKey)!
   const currentValue =
     currentPrompts[selectedKey] ?? selectedConfig.defaultValue
-  const currentModel =
-    currentModels[selectedConfig.modelKey] ?? selectedConfig.defaultModel
+  const currentModel = selectedConfig.modelKey
+    ? (currentModels[selectedConfig.modelKey] ?? selectedConfig.defaultModel)
+    : undefined
+  const currentProvider = selectedConfig.providerKey
+    ? (currentProviders[selectedConfig.providerKey] ?? null)
+    : undefined
+  const currentModelIsCodex = currentModel ? isCodexModel(currentModel) : false
+  const currentModelIsOpenCode = currentModel
+    ? currentModel.startsWith('opencode/')
+    : false
+  const filteredClaudeOptions = useMemo(() => {
+    if (!currentProvider || currentModelIsCodex || currentModelIsOpenCode) {
+      return CLAUDE_MODEL_OPTIONS
+    }
+    const profile = profiles.find(p => p.name === currentProvider)
+    if (!profile?.settings_json) return CLAUDE_MODEL_OPTIONS
+    try {
+      const settings = JSON.parse(profile.settings_json)
+      const env = settings?.env
+      if (!env) return CLAUDE_MODEL_OPTIONS
+      const suffix = (m?: string) => (m ? ` (${m})` : '')
+      return [
+        {
+          value: 'opus' as const,
+          label: `Opus${suffix(env.ANTHROPIC_DEFAULT_OPUS_MODEL || env.ANTHROPIC_MODEL)}`,
+        },
+        {
+          value: 'sonnet' as const,
+          label: `Sonnet${suffix(env.ANTHROPIC_DEFAULT_SONNET_MODEL || env.ANTHROPIC_MODEL)}`,
+        },
+        {
+          value: 'haiku' as const,
+          label: `Haiku${suffix(env.ANTHROPIC_DEFAULT_HAIKU_MODEL || env.ANTHROPIC_MODEL)}`,
+        },
+      ] as { value: MagicPromptModel; label: string }[]
+    } catch {
+      return CLAUDE_MODEL_OPTIONS
+    }
+  }, [currentProvider, currentModelIsCodex, currentModelIsOpenCode, profiles])
+
   const isModified = currentPrompts[selectedKey] !== null
 
   // Sync local value when selection changes or external value updates
@@ -287,7 +469,13 @@ export const MagicPromptsPane: React.FC = () => {
         })
       }, 500)
     },
-    [preferences, savePreferences, currentPrompts, selectedKey, selectedConfig.defaultValue]
+    [
+      preferences,
+      savePreferences,
+      currentPrompts,
+      selectedKey,
+      selectedConfig.defaultValue,
+    ]
   )
 
   const handleBlur = useCallback(() => {
@@ -328,8 +516,8 @@ export const MagicPromptsPane: React.FC = () => {
   }, [preferences, savePreferences, currentPrompts, selectedKey])
 
   const handleModelChange = useCallback(
-    (model: ClaudeModel) => {
-      if (!preferences) return
+    (model: MagicPromptModel) => {
+      if (!preferences || !selectedConfig.modelKey) return
       savePreferences.mutate({
         ...preferences,
         magic_prompt_models: {
@@ -341,8 +529,77 @@ export const MagicPromptsPane: React.FC = () => {
     [preferences, savePreferences, currentModels, selectedConfig.modelKey]
   )
 
+  const handleProviderChange = useCallback(
+    (provider: string) => {
+      if (!preferences || !selectedConfig.providerKey) return
+      savePreferences.mutate({
+        ...preferences,
+        magic_prompt_providers: {
+          ...currentProviders,
+          [selectedConfig.providerKey]:
+            provider === 'anthropic' ? null : provider,
+        },
+      })
+    },
+    [preferences, savePreferences, currentProviders, selectedConfig.providerKey]
+  )
+
+  const handleApplyClaudeDefaults = useCallback(() => {
+    if (!preferences) return
+    savePreferences.mutate({
+      ...preferences,
+      magic_prompt_models: DEFAULT_MAGIC_PROMPT_MODELS,
+      magic_prompt_providers: DEFAULT_MAGIC_PROMPT_PROVIDERS,
+    })
+  }, [preferences, savePreferences])
+
+  const handleApplyCodexDefaults = useCallback(() => {
+    if (!preferences) return
+    savePreferences.mutate({
+      ...preferences,
+      magic_prompt_models: CODEX_DEFAULT_MAGIC_PROMPT_MODELS,
+    })
+  }, [preferences, savePreferences])
+
+  const handleApplyOpenCodeDefaults = useCallback(() => {
+    if (!preferences) return
+    savePreferences.mutate({
+      ...preferences,
+      magic_prompt_models: OPENCODE_DEFAULT_MAGIC_PROMPT_MODELS,
+    })
+  }, [preferences, savePreferences])
+
   return (
     <div className="flex flex-col min-h-0 flex-1">
+      {/* Preset buttons */}
+      <div className="flex items-center gap-2 mb-3 shrink-0">
+        <span className="text-xs text-muted-foreground">Presets:</span>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleApplyClaudeDefaults}
+          className="h-7 text-xs"
+        >
+          Claude Defaults
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleApplyCodexDefaults}
+          className="h-7 text-xs"
+        >
+          Codex Defaults
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleApplyOpenCodeDefaults}
+          className="h-7 text-xs"
+        >
+          OpenCode Defaults
+        </Button>
+      </div>
+
       {/* Prompt selector grid grouped by section */}
       <div className="mb-4 shrink-0 space-y-3">
         {PROMPT_SECTIONS.map(section => (
@@ -353,8 +610,12 @@ export const MagicPromptsPane: React.FC = () => {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
               {section.configs.map(config => {
                 const promptIsModified = currentPrompts[config.key] !== null
-                const promptModel =
-                  currentModels[config.modelKey] ?? config.defaultModel
+                const promptModel = config.modelKey
+                  ? (currentModels[config.modelKey] ?? config.defaultModel)
+                  : undefined
+                const promptProvider = config.providerKey
+                  ? (currentProviders[config.providerKey] ?? null)
+                  : undefined
                 return (
                   <button
                     key={config.key}
@@ -374,14 +635,28 @@ export const MagicPromptsPane: React.FC = () => {
                           <span className="text-muted-foreground ml-1">*</span>
                         )}
                       </span>
-                      <span
-                        className={cn(
-                          'text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0',
-                          'bg-muted text-muted-foreground'
+                      <div className="flex items-center gap-1 shrink-0">
+                        {promptProvider && (
+                          <span
+                            className={cn(
+                              'text-[10px] px-1.5 py-0.5 rounded font-medium',
+                              'bg-primary/10 text-primary'
+                            )}
+                          >
+                            {promptProvider}
+                          </span>
                         )}
-                      >
-                        {promptModel}
-                      </span>
+                        {promptModel && (
+                          <span
+                            className={cn(
+                              'text-[10px] px-1.5 py-0.5 rounded font-medium',
+                              'bg-muted text-muted-foreground'
+                            )}
+                          >
+                            {promptModel}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </button>
                 )
@@ -400,22 +675,148 @@ export const MagicPromptsPane: React.FC = () => {
             {selectedConfig.description}
           </p>
           <div className="flex items-center gap-2 mt-2">
-            <span className="text-xs text-muted-foreground">Used model</span>
-            <Select
-              value={currentModel}
-              onValueChange={(v: string) => handleModelChange(v as ClaudeModel)}
-            >
-              <SelectTrigger className="w-[110px] h-8 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {MODEL_OPTIONS.map(opt => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {currentProvider !== undefined &&
+              profiles.length > 0 &&
+              !currentModelIsCodex &&
+              !currentModelIsOpenCode && (
+                <>
+                  <span className="text-xs text-muted-foreground">
+                    Provider
+                  </span>
+                  <Select
+                    value={currentProvider ?? 'anthropic'}
+                    onValueChange={handleProviderChange}
+                  >
+                    <SelectTrigger className="w-[130px] h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="anthropic">Anthropic</SelectItem>
+                      {profiles.map(p => (
+                        <SelectItem key={p.name} value={p.name}>
+                          {p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </>
+              )}
+            {currentModel && (
+              <>
+                <span className="text-xs text-muted-foreground">Model</span>
+                <Popover
+                  open={modelPopoverOpen}
+                  onOpenChange={setModelPopoverOpen}
+                >
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={modelPopoverOpen}
+                      className="w-[220px] h-8 text-xs justify-between font-normal"
+                    >
+                      <span className="truncate">
+                        {(() => {
+                          const allOptions = [
+                            ...filteredClaudeOptions,
+                            ...CODEX_MODEL_OPTIONS,
+                            ...opencodeModelOptions,
+                          ]
+                          return (
+                            allOptions.find(o => o.value === currentModel)
+                              ?.label ??
+                            (currentModel.startsWith('opencode/')
+                              ? formatOpenCodeLabel(currentModel)
+                              : currentModel)
+                          )
+                        })()}
+                      </span>
+                      <ChevronsUpDown className="h-3 w-3 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    align="start"
+                    className="w-[var(--radix-popover-trigger-width)] p-0"
+                  >
+                    <Command>
+                      <CommandInput
+                        placeholder="Search models..."
+                        className="text-xs"
+                      />
+                      <CommandList>
+                        <CommandEmpty>No models found.</CommandEmpty>
+                        <CommandGroup heading="Claude">
+                          {filteredClaudeOptions.map(opt => (
+                            <CommandItem
+                              key={opt.value}
+                              value={`${opt.label} ${opt.value}`}
+                              onSelect={() => {
+                                handleModelChange(opt.value)
+                                setModelPopoverOpen(false)
+                              }}
+                            >
+                              <span className="text-xs">{opt.label}</span>
+                              <Check
+                                className={cn(
+                                  'ml-auto h-3 w-3',
+                                  currentModel === opt.value
+                                    ? 'opacity-100'
+                                    : 'opacity-0'
+                                )}
+                              />
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                        <CommandGroup heading="Codex">
+                          {CODEX_MODEL_OPTIONS.map(opt => (
+                            <CommandItem
+                              key={opt.value}
+                              value={`${opt.label} ${opt.value}`}
+                              onSelect={() => {
+                                handleModelChange(opt.value)
+                                setModelPopoverOpen(false)
+                              }}
+                            >
+                              <span className="text-xs">{opt.label}</span>
+                              <Check
+                                className={cn(
+                                  'ml-auto h-3 w-3',
+                                  currentModel === opt.value
+                                    ? 'opacity-100'
+                                    : 'opacity-0'
+                                )}
+                              />
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                        <CommandGroup heading="OpenCode">
+                          {opencodeModelOptions.map(opt => (
+                            <CommandItem
+                              key={opt.value}
+                              value={`${opt.label} ${opt.value}`}
+                              onSelect={() => {
+                                handleModelChange(opt.value)
+                                setModelPopoverOpen(false)
+                              }}
+                            >
+                              <span className="text-xs">{opt.label}</span>
+                              <Check
+                                className={cn(
+                                  'ml-auto h-3 w-3',
+                                  currentModel === opt.value
+                                    ? 'opacity-100'
+                                    : 'opacity-0'
+                                )}
+                              />
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              </>
+            )}
             <Button
               variant="outline"
               size="sm"

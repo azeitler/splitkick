@@ -124,9 +124,8 @@ export function useAvailableGhVersions() {
         throw error
       }
     },
-    staleTime: 1000 * 60 * 15, // 15 minutes
+    staleTime: 1000 * 60 * 15, // Cache for 15 minutes to avoid rate limiting
     gcTime: 1000 * 60 * 30, // 30 minutes
-    refetchInterval: 1000 * 60 * 60, // Re-check every hour
   })
 }
 
@@ -258,7 +257,9 @@ export function useGhCliSetup() {
     status: status.data,
     isStatusLoading: status.isLoading,
     versions: versions.data ?? [],
-    isVersionsLoading: versions.isLoading,
+    isVersionsLoading: versions.isFetching,
+    isVersionsError: versions.isError,
+    refetchVersions: versions.refetch,
     needsSetup,
     isInstalling: installMutation.isPending,
     installError: installMutation.error,

@@ -178,12 +178,40 @@ pub fn get_repo_name(path: &str) -> Result<String, String> {
         })
 }
 
-/// Get the GitHub URL for a repository
-///
-/// Converts git remote URLs to HTTPS GitHub URLs
-pub fn get_github_url(repo_path: &str) -> Result<String, String> {
+/// A git remote name
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitRemote {
+    pub name: String,
+}
+
+/// A GitHub remote with its name and resolved HTTPS URL
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubRemote {
+    pub name: String,
+    pub url: String,
+}
+
+/// Convert a raw git remote URL to a GitHub HTTPS URL, if possible
+fn normalize_github_url(remote_url: &str) -> Option<String> {
+    if remote_url.starts_with("git@github.com:") {
+        Some(
+            remote_url
+                .replace("git@github.com:", "https://github.com/")
+                .trim_end_matches(".git")
+                .to_string(),
+        )
+    } else if remote_url.starts_with("https://github.com/") {
+        Some(remote_url.trim_end_matches(".git").to_string())
+    } else {
+        None
+    }
+}
+
+/// Get the GitHub URL for a specific remote
+pub fn get_github_url_for_remote(repo_path: &str, remote: &str) -> Result<String, String> {
     let output = silent_command("git")
-        .args(["remote", "get-url", "origin"])
+        .args(["remote", "get-url", remote])
         .current_dir(repo_path)
         .output()
         .map_err(|e| format!("Failed to get remote URL: {e}"))?;
@@ -195,23 +223,77 @@ pub fn get_github_url(repo_path: &str) -> Result<String, String> {
 
     let remote_url = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
-    // Convert SSH URL to HTTPS URL if needed
-    // git@github.com:user/repo.git -> https://github.com/user/repo
-    // https://github.com/user/repo.git -> https://github.com/user/repo
-    let github_url = if remote_url.starts_with("git@github.com:") {
-        remote_url
-            .replace("git@github.com:", "https://github.com/")
-            .trim_end_matches(".git")
-            .to_string()
-    } else if remote_url.starts_with("https://github.com/") {
-        remote_url.trim_end_matches(".git").to_string()
-    } else {
-        return Err(format!(
-            "Remote URL is not a GitHub repository: {remote_url}"
-        ));
-    };
+    normalize_github_url(&remote_url)
+        .ok_or_else(|| format!("Remote URL is not a GitHub repository: {remote_url}"))
+}
 
-    Ok(github_url)
+/// Get the GitHub URL for a repository (uses "origin" remote)
+pub fn get_github_url(repo_path: &str) -> Result<String, String> {
+    get_github_url_for_remote(repo_path, "origin")
+}
+
+/// Get all GitHub remotes for a repository
+pub fn get_github_remotes(repo_path: &str) -> Result<Vec<GitHubRemote>, String> {
+    let output = silent_command("git")
+        .args(["remote"])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to list remotes: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to list remotes: {stderr}"));
+    }
+
+    let remote_names: Vec<String> = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+
+    let mut result = Vec::new();
+
+    for name in remote_names {
+        if let Ok(url_out) = silent_command("git")
+            .args(["remote", "get-url", &name])
+            .current_dir(repo_path)
+            .output()
+        {
+            if url_out.status.success() {
+                let raw = String::from_utf8_lossy(&url_out.stdout).trim().to_string();
+                if let Some(url) = normalize_github_url(&raw) {
+                    result.push(GitHubRemote { name, url });
+                }
+            }
+        }
+    }
+
+    result.sort_by_key(|r| if r.name == "origin" { 0 } else { 1 });
+
+    Ok(result)
+}
+
+/// Get all git remotes for a repository (not filtered to GitHub)
+pub fn get_git_remotes(repo_path: &str) -> Result<Vec<GitRemote>, String> {
+    let output = silent_command("git")
+        .args(["remote"])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to list remotes: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to list remotes: {stderr}"));
+    }
+
+    let remotes = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .map(|name| GitRemote { name })
+        .collect();
+
+    Ok(remotes)
 }
 
 /// Get the current branch name (HEAD) for a repository
@@ -402,26 +484,31 @@ pub fn get_branches(repo_path: &str) -> Result<Vec<String>, String> {
 }
 
 /// Pull changes from remote origin for the specified base branch
-pub fn git_pull(repo_path: &str, base_branch: &str) -> Result<String, String> {
-    log::trace!("Pulling from origin/{base_branch} in {repo_path}");
+pub fn git_pull(
+    repo_path: &str,
+    base_branch: &str,
+    remote: Option<&str>,
+) -> Result<String, String> {
+    let remote = remote.unwrap_or("origin");
+    log::trace!("Pulling from {remote}/{base_branch} in {repo_path}");
 
     // Use explicit fetch + merge instead of `git pull` to avoid
     // "Cannot rebase onto multiple branches" when pull.rebase=true
     // is set in git config (common in worktree contexts)
     let fetch = silent_command("git")
-        .args(["fetch", "origin", base_branch])
+        .args(["fetch", remote, base_branch])
         .current_dir(repo_path)
         .output()
         .map_err(|e| format!("Failed to run git fetch: {e}"))?;
 
     if !fetch.status.success() {
         let stderr = String::from_utf8_lossy(&fetch.stderr).to_string();
-        log::error!("Failed to fetch origin/{base_branch}: {stderr}");
+        log::error!("Failed to fetch {remote}/{base_branch}: {stderr}");
         return Err(stderr);
     }
 
     let merge = silent_command("git")
-        .args(["merge", &format!("origin/{base_branch}")])
+        .args(["merge", &format!("{remote}/{base_branch}")])
         .current_dir(repo_path)
         .output()
         .map_err(|e| format!("Failed to run git merge: {e}"))?;
@@ -461,12 +548,55 @@ pub fn git_pull(repo_path: &str, base_branch: &str) -> Result<String, String> {
     }
 }
 
-/// Push current branch to remote origin
-pub fn git_push(repo_path: &str) -> Result<String, String> {
-    log::trace!("Pushing to origin in {repo_path}");
+/// Stash all local changes including untracked files
+pub fn git_stash(repo_path: &str) -> Result<String, String> {
+    log::trace!("Stashing changes in {repo_path}");
 
     let output = silent_command("git")
-        .args(["push"])
+        .args(["stash", "--include-untracked"])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to run git stash: {e}"))?;
+
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        log::trace!("Stash result: {stdout}");
+        Ok(stdout)
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        log::error!("Failed to stash: {stderr}");
+        Err(stderr)
+    }
+}
+
+/// Pop the most recent stash
+pub fn git_stash_pop(repo_path: &str) -> Result<String, String> {
+    log::trace!("Popping stash in {repo_path}");
+
+    let output = silent_command("git")
+        .args(["stash", "pop"])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to run git stash pop: {e}"))?;
+
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        log::trace!("Stash pop result: {stdout}");
+        Ok(stdout)
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        log::error!("Failed to pop stash: {stderr}");
+        Err(stderr)
+    }
+}
+
+/// Push current branch to remote
+pub fn git_push(repo_path: &str, remote: Option<&str>) -> Result<String, String> {
+    let remote = remote.unwrap_or("origin");
+    log::trace!("Pushing to {remote} in {repo_path}");
+
+    let output = silent_command("git")
+        .args(["push", remote])
         .current_dir(repo_path)
         .output()
         .map_err(|e| format!("Failed to run git push: {e}"))?;
@@ -476,16 +606,16 @@ pub fn git_push(repo_path: &str) -> Result<String, String> {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         // Git push often outputs to stderr even on success
         let result = if stdout.is_empty() { stderr } else { stdout };
-        log::trace!("Successfully pushed to origin");
+        log::trace!("Successfully pushed to {remote}");
         Ok(result)
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
         // Check if branch doesn't have upstream yet (same pattern as rebase_feature_branch)
         if stderr.contains("has no upstream branch") {
-            log::trace!("No upstream branch, retrying with -u origin HEAD");
+            log::trace!("No upstream branch, retrying with -u {remote} HEAD");
             let push_u_output = silent_command("git")
-                .args(["push", "-u", "origin", "HEAD"])
+                .args(["push", "-u", remote, "HEAD"])
                 .current_dir(repo_path)
                 .output()
                 .map_err(|e| format!("Failed to run git push -u: {e}"))?;
@@ -503,7 +633,7 @@ pub fn git_push(repo_path: &str) -> Result<String, String> {
             }
         }
 
-        log::error!("Failed to push to origin: {stderr}");
+        log::error!("Failed to push to {remote}: {stderr}");
         Err(stderr)
     }
 }
@@ -538,7 +668,7 @@ pub fn git_push_to_pr(
     if !gh_output.status.success() {
         let stderr = String::from_utf8_lossy(&gh_output.stderr).to_string();
         log::warn!("gh pr view failed, falling back to regular push: {stderr}");
-        return git_push(repo_path);
+        return git_push(repo_path, None);
     }
 
     let pr_info: serde_json::Value = serde_json::from_slice(&gh_output.stdout)
@@ -754,6 +884,12 @@ pub fn create_worktree(
             .map_err(|e| format!("Failed to create parent directory: {e}"))?;
     }
 
+    // Prune stale worktree entries (folders deleted outside the app)
+    let _ = silent_command("git")
+        .args(["worktree", "prune"])
+        .current_dir(repo_path)
+        .output();
+
     // git worktree add -b <new_branch> <path> <base_branch>
     let output = silent_command("git")
         .args([
@@ -797,6 +933,12 @@ pub fn create_worktree_from_existing_branch(
             .map_err(|e| format!("Failed to create parent directory: {e}"))?;
     }
 
+    // Prune stale worktree entries (folders deleted outside the app)
+    let _ = silent_command("git")
+        .args(["worktree", "prune"])
+        .current_dir(repo_path)
+        .output();
+
     // git worktree add <path> <existing_branch> (no -b flag)
     let output = silent_command("git")
         .args(["worktree", "add", worktree_path, existing_branch])
@@ -822,6 +964,44 @@ pub fn create_worktree_from_existing_branch(
 /// - Setting up proper tracking
 /// - Checking out the actual PR branch
 ///
+/// Fetch a PR ref into a local branch name, bypassing gh cli.
+/// Used when the PR's head branch name collides with a locally checked-out branch.
+pub fn fetch_pr_to_branch(
+    repo_path: &str,
+    pr_number: u32,
+    local_branch: &str,
+) -> Result<(), String> {
+    let refspec = format!("pull/{pr_number}/head:{local_branch}");
+    let output = silent_command("git")
+        .args(["fetch", "origin", &refspec])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to fetch PR #{pr_number}: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "Failed to fetch PR #{pr_number} into {local_branch}: {stderr}"
+        ));
+    }
+    Ok(())
+}
+
+/// Checkout an existing branch in a worktree
+pub fn checkout_branch(worktree_path: &str, branch: &str) -> Result<(), String> {
+    let output = silent_command("git")
+        .args(["checkout", branch])
+        .current_dir(worktree_path)
+        .output()
+        .map_err(|e| format!("Failed to checkout branch {branch}: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to checkout branch {branch}: {stderr}"));
+    }
+    Ok(())
+}
+
 /// # Arguments
 /// * `worktree_path` - Path to the worktree where to checkout the PR
 /// * `pr_number` - The PR number to checkout
@@ -873,6 +1053,13 @@ pub fn gh_pr_checkout(
 /// * `worktree_path` - Path to the worktree to remove
 pub fn remove_worktree(repo_path: &str, worktree_path: &str) -> Result<(), String> {
     log::trace!("Removing worktree at {worktree_path}");
+
+    // Prune stale worktree entries (folders deleted outside the app)
+    let _ = silent_command("git")
+        .args(["worktree", "prune"])
+        .current_dir(repo_path)
+        .output();
+
     log::trace!("git worktree remove {worktree_path} --force (in {repo_path})");
 
     // git worktree remove <path>
@@ -950,6 +1137,62 @@ pub fn delete_branch(repo_path: &str, branch_name: &str) -> Result<(), String> {
 
     log::trace!("Successfully deleted branch {branch_name}");
     Ok(())
+}
+
+/// Find which worktree (if any) has a given branch checked out.
+/// Parses `git worktree list --porcelain` output. Returns the worktree path or None.
+pub fn find_worktree_for_branch(repo_path: &str, branch: &str) -> Option<String> {
+    let output = silent_command("git")
+        .args(["worktree", "list", "--porcelain"])
+        .current_dir(repo_path)
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let target_ref = format!("refs/heads/{branch}");
+    let mut current_path: Option<String> = None;
+
+    for line in stdout.lines() {
+        if let Some(path) = line.strip_prefix("worktree ") {
+            current_path = Some(path.to_string());
+        } else if let Some(branch_ref) = line.strip_prefix("branch ") {
+            if branch_ref == target_ref {
+                return current_path;
+            }
+        } else if line.is_empty() {
+            current_path = None;
+        }
+    }
+
+    None
+}
+
+/// Clean up a stale branch that may be checked out in a defunct worktree.
+/// Used before PR checkout to handle archived/deleted worktrees whose branch still exists.
+pub fn cleanup_stale_branch(repo_path: &str, branch: &str) {
+    log::trace!("Cleaning up stale branch '{branch}' in {repo_path}");
+
+    // Prune worktrees whose directories no longer exist
+    let _ = silent_command("git")
+        .args(["worktree", "prune"])
+        .current_dir(repo_path)
+        .output();
+
+    // If branch is checked out in a worktree, remove that worktree first
+    if let Some(wt_path) = find_worktree_for_branch(repo_path, branch) {
+        log::trace!("Branch '{branch}' is checked out at '{wt_path}', removing worktree");
+        let _ = remove_worktree(repo_path, &wt_path);
+    }
+
+    // Delete the branch
+    if branch_exists(repo_path, branch) {
+        log::trace!("Deleting stale branch '{branch}'");
+        let _ = delete_branch(repo_path, branch);
+    }
 }
 
 /// List existing worktrees for a repository

@@ -1,5 +1,13 @@
 import { useCallback, useState, useRef, useEffect, useMemo } from 'react'
-import { Code, Terminal, Folder, Settings, Github } from 'lucide-react'
+import {
+  Code,
+  Terminal,
+  Folder,
+  Settings,
+  Github,
+  GitPullRequest,
+  CircleDot,
+} from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -15,26 +23,47 @@ import {
   useOpenWorktreeInTerminal,
   useOpenWorktreeInEditor,
   useOpenBranchOnGitHub,
+  useGitHubRemotes,
   useProjects,
   useWorktree,
 } from '@/services/projects'
+import { useLoadedIssueContexts, useLoadedPRContexts } from '@/services/github'
 import { usePreferences } from '@/services/preferences'
 import { getEditorLabel, getTerminalLabel } from '@/types/preferences'
 import { notify } from '@/lib/notifications'
+import { openExternal } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 import { isNativeApp } from '@/lib/environment'
 
-type OpenOption = 'editor' | 'terminal' | 'finder' | 'github'
+interface ModalOption {
+  id: string
+  label: string
+  icon: typeof Code
+  key?: string
+  url?: string
+}
 
 export function OpenInModal() {
-  const { openInModalOpen, setOpenInModalOpen, openPreferencesPane } =
-    useUIStore()
-  const selectedWorktreeId = useProjectsStore(state => state.selectedWorktreeId)
+  const {
+    openInModalOpen,
+    setOpenInModalOpen,
+    openPreferencesPane,
+    sessionChatModalWorktreeId,
+  } = useUIStore()
+  const selectedWorktreeIdFromProjects = useProjectsStore(
+    state => state.selectedWorktreeId
+  )
+  const activeWorktreeId = useChatStore(state => state.activeWorktreeId)
+  const selectedWorktreeId =
+    selectedWorktreeIdFromProjects ??
+    activeWorktreeId ??
+    sessionChatModalWorktreeId
   const selectedProjectId = useProjectsStore(state => state.selectedProjectId)
   const { data: projects } = useProjects()
-  // Track whether we've initialized the selection for this open
+  const contentRef = useRef<HTMLDivElement>(null)
   const hasInitializedRef = useRef(false)
-  const [selectedOption, setSelectedOption] = useState<OpenOption>('editor')
+  const [selectedOption, setSelectedOption] = useState<string>('editor')
+  const [showingRemotes, setShowingRemotes] = useState(false)
 
   const { data: worktree } = useWorktree(selectedWorktreeId)
   const openInFinder = useOpenWorktreeInFinder()
@@ -42,65 +71,117 @@ export function OpenInModal() {
   const openInEditor = useOpenWorktreeInEditor()
   const openOnGitHub = useOpenBranchOnGitHub()
   const { data: preferences } = usePreferences()
+  const activeSessionId = useChatStore(state =>
+    selectedWorktreeId
+      ? (state.activeSessionIds[selectedWorktreeId] ?? null)
+      : null
+  )
+  const { data: loadedPRs } = useLoadedPRContexts(activeSessionId)
+  const { data: loadedIssues } = useLoadedIssueContexts(activeSessionId)
 
-  // Build options with dynamic labels based on preferences
-  // Native-only options (editor, terminal, finder) are hidden in web view
   const isNative = isNativeApp()
 
-  const options = useMemo(() => {
-    const allOptions: {
-      id: OpenOption
-      label: string
-      icon: typeof Code
-      key: string
-      nativeOnly: boolean
-    }[] = [
+  // Base options (Editor, Terminal, Finder, GitHub)
+  const baseOptions = useMemo(() => {
+    const allOptions: ModalOption[] = [
       {
         id: 'editor',
         label: getEditorLabel(preferences?.editor),
         icon: Code,
         key: 'E',
-        nativeOnly: true,
       },
       {
         id: 'terminal',
         label: getTerminalLabel(preferences?.terminal),
         icon: Terminal,
         key: 'T',
-        nativeOnly: true,
       },
       {
         id: 'finder',
         label: 'Finder',
         icon: Folder,
         key: 'F',
-        nativeOnly: true,
       },
       {
         id: 'github',
         label: 'GitHub',
         icon: Github,
         key: 'G',
-        nativeOnly: false,
       },
+      ...(worktree?.pr_url
+        ? [
+            {
+              id: 'open-pr',
+              label: `PR #${worktree.pr_number}`,
+              icon: GitPullRequest,
+              key: 'P',
+            },
+          ]
+        : []),
     ]
 
-    // Filter out native-only options in web view
-    return isNative ? allOptions : allOptions.filter(opt => !opt.nativeOnly)
-  }, [preferences?.editor, preferences?.terminal, isNative])
+    return isNative
+      ? allOptions
+      : allOptions.filter(opt => opt.id === 'github' || opt.id === 'open-pr')
+  }, [
+    preferences?.editor,
+    preferences?.terminal,
+    isNative,
+    worktree?.pr_url,
+    worktree?.pr_number,
+  ])
 
-  // Reset selection tracking when modal closes
+  // Context options (loaded PRs + issues, numbered 1-9)
+  const contextOptions = useMemo(() => {
+    const items: ModalOption[] = []
+    let keyIndex = 1
+
+    if (loadedPRs) {
+      for (const pr of loadedPRs) {
+        items.push({
+          id: `pr-${pr.number}`,
+          label: `PR #${pr.number}`,
+          icon: GitPullRequest,
+          key: keyIndex <= 9 ? String(keyIndex) : undefined,
+          url: `https://github.com/${pr.repoOwner}/${pr.repoName}/pull/${pr.number}`,
+        })
+        keyIndex++
+      }
+    }
+
+    if (loadedIssues) {
+      for (const issue of loadedIssues) {
+        items.push({
+          id: `issue-${issue.number}`,
+          label: `Issue #${issue.number}`,
+          icon: CircleDot,
+          key: keyIndex <= 9 ? String(keyIndex) : undefined,
+          url: `https://github.com/${issue.repoOwner}/${issue.repoName}/issues/${issue.number}`,
+        })
+        keyIndex++
+      }
+    }
+
+    return items
+  }, [loadedPRs, loadedIssues])
+
+  const allOptions = useMemo(
+    () => [...baseOptions, ...contextOptions],
+    [baseOptions, contextOptions]
+  )
+
+  const useWideLayout = contextOptions.length > 4
+
   useEffect(() => {
     if (!openInModalOpen) {
       hasInitializedRef.current = false
+      setShowingRemotes(false)
     }
   }, [openInModalOpen])
 
-  // Initialize selection when modal opens (via onOpenChange callback pattern)
   const handleOpenChange = useCallback(
     (open: boolean) => {
       if (open && !hasInitializedRef.current) {
-        // Default to first available option (editor in native, github in web)
         setSelectedOption(isNative ? 'editor' : 'github')
         hasInitializedRef.current = true
       }
@@ -109,30 +190,39 @@ export function OpenInModal() {
     [setOpenInModalOpen, isNative]
   )
 
-  const getTargetPath = useCallback(() => {
-    // Try worktree path first
+  const targetPath = useMemo(() => {
+    if (worktree?.path) return worktree.path
     if (selectedWorktreeId) {
       const path = useChatStore.getState().getWorktreePath(selectedWorktreeId)
       if (path) return path
     }
-    // Fall back to project path
     if (selectedProjectId && projects) {
       const project = projects.find(p => p.id === selectedProjectId)
       if (project) return project.path
     }
     return null
-  }, [selectedWorktreeId, selectedProjectId, projects])
+  }, [worktree?.path, selectedWorktreeId, selectedProjectId, projects])
+
+  const { data: githubRemotes } = useGitHubRemotes(targetPath, openInModalOpen)
+  const hasMultipleRemotes = (githubRemotes?.length ?? 0) > 1
 
   const executeAction = useCallback(
-    (option: OpenOption) => {
-      const targetPath = getTargetPath()
+    (optionId: string) => {
+      // Handle context options (PR/issue URLs)
+      const contextOpt = contextOptions.find(o => o.id === optionId)
+      if (contextOpt?.url) {
+        openExternal(contextOpt.url)
+        setOpenInModalOpen(false)
+        return
+      }
+
       if (!targetPath) {
         notify('No project or worktree selected', undefined, { type: 'error' })
         setOpenInModalOpen(false)
         return
       }
 
-      switch (option) {
+      switch (optionId) {
         case 'editor':
           openInEditor.mutate({
             worktreePath: targetPath,
@@ -148,10 +238,18 @@ export function OpenInModal() {
         case 'finder':
           openInFinder.mutate(targetPath)
           break
+        case 'open-pr':
+          if (worktree?.pr_url) {
+            openExternal(worktree.pr_url)
+          }
+          break
         case 'github': {
+          if (hasMultipleRemotes) {
+            setShowingRemotes(true)
+            return // don't close modal
+          }
           const branch = worktree?.branch
           if (!branch) {
-            // No worktree branch - open project GitHub page instead
             if (selectedProjectId) {
               invoke('open_project_on_github', { projectId: selectedProjectId })
             } else {
@@ -167,7 +265,9 @@ export function OpenInModal() {
       setOpenInModalOpen(false)
     },
     [
-      getTargetPath,
+      contextOptions,
+      targetPath,
+      hasMultipleRemotes,
       openInEditor,
       openInTerminal,
       openInFinder,
@@ -179,34 +279,84 @@ export function OpenInModal() {
     ]
   )
 
-  // Handle keyboard navigation
+  const openRemote = useCallback(
+    (remoteIndex: number) => {
+      if (!githubRemotes) return
+      const remote = githubRemotes[remoteIndex]
+      if (!remote) return
+      const branch = worktree?.branch
+      const url = branch ? `${remote.url}/tree/${branch}` : remote.url
+      openExternal(url)
+      setOpenInModalOpen(false)
+    },
+    [githubRemotes, worktree?.branch, setOpenInModalOpen]
+  )
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       const key = e.key.toLowerCase()
-      const optionIds = options.map(opt => opt.id)
 
-      // Quick select with shortcut keys (only for available options)
-      const matchedOption = options.find(opt => opt.key.toLowerCase() === key)
+      // Remote selection sub-state
+      if (showingRemotes && githubRemotes) {
+        if (key === 'escape') {
+          e.preventDefault()
+          e.stopPropagation()
+          e.nativeEvent.stopImmediatePropagation()
+          setShowingRemotes(false)
+          return
+        }
+        const remoteIndex = parseInt(e.key, 10)
+        if (
+          !isNaN(remoteIndex) &&
+          remoteIndex >= 1 &&
+          remoteIndex <= githubRemotes.length
+        ) {
+          e.preventDefault()
+          e.stopPropagation()
+          e.nativeEvent.stopImmediatePropagation()
+          openRemote(remoteIndex - 1)
+          return
+        }
+        // Any other key: collapse sub-state and fall through
+        setShowingRemotes(false)
+      }
+
+      const allIds = allOptions.map(opt => opt.id)
+
+      // Quick select with shortcut keys
+      const matchedOption = allOptions.find(
+        opt => opt.key && opt.key.toLowerCase() === key
+      )
       if (matchedOption) {
         e.preventDefault()
+        e.stopPropagation()
+        e.nativeEvent.stopImmediatePropagation()
         executeAction(matchedOption.id)
       } else if (key === 'enter') {
         e.preventDefault()
+        e.stopPropagation()
         executeAction(selectedOption)
       } else if (key === 'arrowdown' || key === 'arrowup') {
         e.preventDefault()
-        const currentIndex = optionIds.indexOf(selectedOption)
+        const currentIndex = allIds.indexOf(selectedOption)
         const newIndex =
           key === 'arrowdown'
-            ? (currentIndex + 1) % optionIds.length
-            : (currentIndex - 1 + optionIds.length) % optionIds.length
-        const newOptionId = optionIds[newIndex]
+            ? (currentIndex + 1) % allIds.length
+            : (currentIndex - 1 + allIds.length) % allIds.length
+        const newOptionId = allIds[newIndex]
         if (newOptionId) {
           setSelectedOption(newOptionId)
         }
       }
     },
-    [executeAction, selectedOption, options]
+    [
+      showingRemotes,
+      githubRemotes,
+      openRemote,
+      executeAction,
+      selectedOption,
+      allOptions,
+    ]
   )
 
   const handleOpenSettings = useCallback(() => {
@@ -214,40 +364,99 @@ export function OpenInModal() {
     openPreferencesPane('general')
   }, [setOpenInModalOpen, openPreferencesPane])
 
+  const renderOption = (option: ModalOption) => {
+    const Icon = option.icon
+    const isSelected = selectedOption === option.id
+
+    return (
+      <button
+        key={option.id}
+        onClick={() => executeAction(option.id)}
+        onMouseEnter={() => setSelectedOption(option.id)}
+        className={cn(
+          'w-full flex items-center justify-between px-4 py-2 text-sm transition-colors',
+          'hover:bg-accent focus:outline-none',
+          isSelected && 'bg-accent'
+        )}
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
+          <span className="truncate">{option.label}</span>
+        </div>
+        {option.key && (
+          <kbd className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded ml-2 shrink-0">
+            {option.key}
+          </kbd>
+        )}
+      </button>
+    )
+  }
+
   return (
     <Dialog open={openInModalOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-[280px] p-0" onKeyDown={handleKeyDown}>
-        <DialogHeader className="px-4 pt-4 pb-2">
+      <DialogContent
+        ref={contentRef}
+        tabIndex={-1}
+        className={cn(
+          'p-0 outline-none',
+          useWideLayout ? 'sm:max-w-[560px]' : 'sm:max-w-[280px]'
+        )}
+        onOpenAutoFocus={e => {
+          e.preventDefault()
+          contentRef.current?.focus()
+        }}
+        onKeyDown={handleKeyDown}
+      >
+        <DialogHeader className="px-4 pt-5 pb-2">
           <DialogTitle className="text-sm font-medium">Open in...</DialogTitle>
         </DialogHeader>
 
-        <div className="pb-2">
-          {options.map(option => {
-            const Icon = option.icon
-            const isSelected = selectedOption === option.id
+        <div className="pb-2">{baseOptions.map(renderOption)}</div>
 
-            return (
+        {showingRemotes && githubRemotes && githubRemotes.length > 0 && (
+          <div className="border-t pb-2">
+            <div className="px-4 pt-2 pb-1">
+              <span className="text-xs text-muted-foreground">
+                Pick a remote
+              </span>
+            </div>
+            {githubRemotes.map((remote, i) => (
               <button
-                key={option.id}
-                onClick={() => executeAction(option.id)}
-                onMouseEnter={() => setSelectedOption(option.id)}
+                key={remote.name}
+                onClick={() => openRemote(i)}
                 className={cn(
                   'w-full flex items-center justify-between px-4 py-2 text-sm transition-colors',
-                  'hover:bg-accent focus:outline-none',
-                  isSelected && 'bg-accent'
+                  'hover:bg-accent focus:outline-none'
                 )}
               >
-                <div className="flex items-center gap-3">
-                  <Icon className="h-4 w-4 text-muted-foreground" />
-                  <span>{option.label}</span>
+                <div className="flex items-center gap-3 min-w-0">
+                  <Github className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span className="truncate">{remote.name}</span>
                 </div>
-                <kbd className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                  {option.key}
-                </kbd>
+                {i < 9 && (
+                  <kbd className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded ml-2 shrink-0">
+                    {i + 1}
+                  </kbd>
+                )}
               </button>
-            )
-          })}
-        </div>
+            ))}
+          </div>
+        )}
+
+        {contextOptions.length > 0 && (
+          <div className="border-t pb-2">
+            <div className="px-4 pt-2 pb-1">
+              <span className="text-xs text-muted-foreground">Contexts</span>
+            </div>
+            {useWideLayout ? (
+              <div className="grid grid-cols-2">
+                {contextOptions.map(renderOption)}
+              </div>
+            ) : (
+              contextOptions.map(renderOption)
+            )}
+          </div>
+        )}
 
         <div className="border-t px-4 py-2">
           <button

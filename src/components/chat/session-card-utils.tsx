@@ -10,6 +10,7 @@ import {
   type ExecutionMode,
   type ToolCall,
   type PermissionDenial,
+  type LabelData,
 } from '@/types/chat'
 import { findPlanFilePath } from './tool-call-utils'
 
@@ -38,6 +39,7 @@ export interface SessionCardData {
   pendingPlanMessageId: string | null
   hasRecap: boolean
   recapDigest: SessionDigest | null
+  label: LabelData | null
 }
 
 export const statusConfig: Record<
@@ -93,6 +95,7 @@ export interface ChatStoreState {
   reviewingSessions: Record<string, boolean>
   pendingPermissionDenials: Record<string, PermissionDenial[]>
   sessionDigests: Record<string, SessionDigest>
+  sessionLabels: Record<string, LabelData>
 }
 
 export function computeSessionCardData(
@@ -109,19 +112,12 @@ export function computeSessionCardData(
     reviewingSessions,
     pendingPermissionDenials,
     sessionDigests,
+    sessionLabels,
   } = storeState
 
   const sessionSending = sendingSessionIds[session.id] ?? false
   const toolCalls = activeToolCalls[session.id] ?? []
   const answeredSet = answeredQuestions[session.id]
-
-  // Debug logging for session recovery
-  console.log('[session-card] computeSessionCardData:', {
-    sessionId: session.id,
-    sessionSending,
-    last_run_status: session.last_run_status,
-    last_run_execution_mode: session.last_run_execution_mode,
-  })
 
   // Check streaming tool calls for waiting state
   const hasStreamingQuestion = toolCalls.some(
@@ -194,6 +190,9 @@ export function computeSessionCardData(
         break // Only check the last assistant message
       }
     }
+
+    // Codex has no native plan approval flow — no fallback needed.
+    // Codex plan completions go straight to "review" status.
   }
 
   // Also check for plan file/content in streaming tool calls
@@ -231,13 +230,13 @@ export function computeSessionCardData(
   const hasExitPlanMode = sessionSending
     ? hasStreamingExitPlan || hasPendingExitPlan
     : hasStreamingExitPlan ||
-      hasPendingExitPlan ||
-      (persistedWaitingForInput && inferredWaitingType === 'plan')
+    hasPendingExitPlan ||
+    (persistedWaitingForInput && inferredWaitingType === 'plan')
   const hasQuestion = sessionSending
     ? hasStreamingQuestion || hasPendingQuestion
     : hasStreamingQuestion ||
-      hasPendingQuestion ||
-      (persistedWaitingForInput && inferredWaitingType === 'question')
+    hasPendingQuestion ||
+    (persistedWaitingForInput && inferredWaitingType === 'question')
 
   // Check for pending permission denials
   const sessionDenials = pendingPermissionDenials[session.id] ?? []
@@ -265,7 +264,7 @@ export function computeSessionCardData(
     status = 'vibing'
   } else if (sessionSending && executionMode === 'yolo') {
     status = 'yoloing'
-  } else if (reviewingSessions[session.id]) {
+  } else if (reviewingSessions[session.id] || session.review_results) {
     status = 'review'
   } else if (
     !sessionSending &&
@@ -287,6 +286,9 @@ export function computeSessionCardData(
   const recapDigest = sessionDigests[session.id] ?? session.digest ?? null
   const hasRecap = recapDigest !== null
 
+  // Label from Zustand store (populated from persisted data on load)
+  const label = sessionLabels[session.id] ?? null
+
   return {
     session,
     status,
@@ -302,5 +304,54 @@ export function computeSessionCardData(
     pendingPlanMessageId,
     hasRecap,
     recapDigest,
+    label,
   }
+}
+
+// --- Status grouping ---
+
+export interface StatusGroup {
+  key: 'inProgress' | 'waiting' | 'review' | 'idle'
+  title: string
+  cards: SessionCardData[]
+}
+
+const STATUS_GROUP_ORDER: {
+  key: StatusGroup['key']
+  title: string
+  statuses: SessionStatus[]
+}[] = [
+    { key: 'idle', title: 'Idle', statuses: ['idle'] },
+    { key: 'review', title: 'Review', statuses: ['review', 'completed'] },
+    { key: 'waiting', title: 'Waiting', statuses: ['waiting', 'permission'] },
+    {
+      key: 'inProgress',
+      title: 'In Progress',
+      statuses: ['planning', 'vibing', 'yoloing'],
+    },
+  ]
+
+/** Group cards by status. Returns only non-empty groups.
+ * - inProgress group: reversed so newest appears first
+ * - review group: sorted by created_at (oldest first) */
+export function groupCardsByStatus(cards: SessionCardData[]): StatusGroup[] {
+  return STATUS_GROUP_ORDER.map(({ key, title, statuses }) => {
+    let filteredCards = cards.filter(c => statuses.includes(c.status))
+    // Reverse inProgress group so newest (most recently started) is first
+    if (key === 'inProgress') {
+      filteredCards = [...filteredCards].reverse()
+    }
+    // Sort review group by created_at (oldest first)
+    if (key === 'review') {
+      filteredCards = [...filteredCards].sort(
+        (a, b) => a.session.created_at - b.session.created_at
+      )
+    }
+    return { key, title, cards: filteredCards }
+  }).filter(g => g.cards.length > 0)
+}
+
+/** Flatten grouped cards back into a single array (for keyboard nav indices). */
+export function flattenGroups(groups: StatusGroup[]): SessionCardData[] {
+  return groups.flatMap(g => g.cards)
 }

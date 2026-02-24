@@ -7,7 +7,8 @@ import {
   markPlanApproved,
   chatQueryKeys,
 } from '@/services/chat'
-import type { Session } from '@/types/chat'
+import { invoke } from '@/lib/transport'
+import type { Session, WorktreeSessions } from '@/types/chat'
 import type { SessionCardData } from '../session-card-utils'
 
 interface UsePlanApprovalParams {
@@ -62,13 +63,6 @@ export function usePlanApproval({
 
   const handlePlanApproval = useCallback(
     (card: SessionCardData, updatedPlan?: string) => {
-      console.log('[usePlanApproval] handlePlanApproval called')
-      console.log(
-        '[usePlanApproval] card.pendingPlanMessageId:',
-        card.pendingPlanMessageId
-      )
-      console.log('[usePlanApproval] updatedPlan length:', updatedPlan?.length)
-
       const sessionId = card.session.id
       const messageId = card.pendingPlanMessageId
       const originalPlan = card.planContent
@@ -94,7 +88,29 @@ export function usePlanApproval({
           }
         )
 
-        // Invalidate sessions list so canvas cards update
+        // Optimistically clear waiting_for_input in sessions cache to prevent
+        // stale "waiting" status during the refetch window
+        queryClient.setQueryData<WorktreeSessions>(
+          chatQueryKeys.sessions(worktreeId),
+          old => {
+            if (!old) return old
+            return {
+              ...old,
+              sessions: old.sessions.map(s =>
+                s.id === sessionId
+                  ? {
+                      ...s,
+                      waiting_for_input: false,
+                      pending_plan_message_id: undefined,
+                      waiting_for_input_type: undefined,
+                    }
+                  : s
+              ),
+            }
+          }
+        )
+
+        // Invalidate sessions list so canvas cards update (after optimistic update)
         queryClient.invalidateQueries({
           queryKey: chatQueryKeys.sessions(worktreeId),
         })
@@ -107,18 +123,29 @@ export function usePlanApproval({
       setWaitingForInput(sessionId, false)
       setPendingPlanMessageId(sessionId, null)
 
+      // Persist cleared waiting state to backend so refetch loads correct data
+      invoke('update_session_state', {
+        worktreeId,
+        worktreePath,
+        sessionId,
+        waitingForInput: false,
+        waitingForInputType: null,
+      }).catch(err => {
+        console.error('[usePlanApproval] Failed to clear waiting state:', err)
+      })
+
       const model = preferences?.selected_model ?? 'opus'
       const thinkingLevel = preferences?.thinking_level ?? 'off'
 
       // Format message - if no pending plan, always include the updated plan content
+      // For Codex: use explicit execution instruction since it resumes a thread
+      const isCodex = card.session.backend === 'codex'
+      const baseMsg = isCodex
+        ? 'Execute the plan you created. Implement all changes described.'
+        : 'Approved'
       const message = messageId
-        ? formatApprovalMessage('Approved', updatedPlan, originalPlan)
+        ? formatApprovalMessage(baseMsg, updatedPlan, originalPlan)
         : `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
-
-      console.log(
-        '[usePlanApproval] sending message:',
-        message.substring(0, 100)
-      )
 
       setLastSentMessage(sessionId, message)
       setError(sessionId, null)
@@ -134,7 +161,7 @@ export function usePlanApproval({
         model,
         executionMode: 'build',
         thinkingLevel,
-        disableThinkingForMode: true,
+        customProfileName: card.session.selected_provider ?? undefined,
       })
     },
     [
@@ -159,13 +186,6 @@ export function usePlanApproval({
 
   const handlePlanApprovalYolo = useCallback(
     (card: SessionCardData, updatedPlan?: string) => {
-      console.log('[usePlanApproval] handlePlanApprovalYolo called')
-      console.log(
-        '[usePlanApproval] card.pendingPlanMessageId:',
-        card.pendingPlanMessageId
-      )
-      console.log('[usePlanApproval] updatedPlan length:', updatedPlan?.length)
-
       const sessionId = card.session.id
       const messageId = card.pendingPlanMessageId
       const originalPlan = card.planContent
@@ -191,7 +211,29 @@ export function usePlanApproval({
           }
         )
 
-        // Invalidate sessions list so canvas cards update
+        // Optimistically clear waiting_for_input in sessions cache to prevent
+        // stale "waiting" status during the refetch window
+        queryClient.setQueryData<WorktreeSessions>(
+          chatQueryKeys.sessions(worktreeId),
+          old => {
+            if (!old) return old
+            return {
+              ...old,
+              sessions: old.sessions.map(s =>
+                s.id === sessionId
+                  ? {
+                      ...s,
+                      waiting_for_input: false,
+                      pending_plan_message_id: undefined,
+                      waiting_for_input_type: undefined,
+                    }
+                  : s
+              ),
+            }
+          }
+        )
+
+        // Invalidate sessions list so canvas cards update (after optimistic update)
         queryClient.invalidateQueries({
           queryKey: chatQueryKeys.sessions(worktreeId),
         })
@@ -204,18 +246,28 @@ export function usePlanApproval({
       setWaitingForInput(sessionId, false)
       setPendingPlanMessageId(sessionId, null)
 
+      // Persist cleared waiting state to backend so refetch loads correct data
+      invoke('update_session_state', {
+        worktreeId,
+        worktreePath,
+        sessionId,
+        waitingForInput: false,
+        waitingForInputType: null,
+      }).catch(err => {
+        console.error('[usePlanApproval] Failed to clear waiting state:', err)
+      })
+
       const model = preferences?.selected_model ?? 'opus'
       const thinkingLevel = preferences?.thinking_level ?? 'off'
 
       // Format message - if no pending plan, always include the updated plan content
+      const isCodexYolo = card.session.backend === 'codex'
+      const baseMsgYolo = isCodexYolo
+        ? 'Execute the plan you created. Implement all changes described.'
+        : 'Approved - yolo'
       const message = messageId
-        ? formatApprovalMessage('Approved - yolo', updatedPlan, originalPlan)
+        ? formatApprovalMessage(baseMsgYolo, updatedPlan, originalPlan)
         : `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
-
-      console.log(
-        '[usePlanApproval] sending message:',
-        message.substring(0, 100)
-      )
 
       setLastSentMessage(sessionId, message)
       setError(sessionId, null)
@@ -231,7 +283,7 @@ export function usePlanApproval({
         model,
         executionMode: 'yolo',
         thinkingLevel,
-        disableThinkingForMode: true,
+        customProfileName: card.session.selected_provider ?? undefined,
       })
     },
     [

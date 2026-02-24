@@ -1,6 +1,11 @@
 import { useState, useCallback } from 'react'
 import { convertFileSrc } from '@/lib/transport'
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden'
 
 interface ImageLightboxProps {
@@ -53,6 +58,7 @@ export function ImageLightbox({
         >
           <VisuallyHidden>
             <DialogTitle>Image Preview</DialogTitle>
+            <DialogDescription>Preview of image: {alt}</DialogDescription>
           </VisuallyHidden>
           <img
             src={assetSrc}

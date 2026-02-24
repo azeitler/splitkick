@@ -1,7 +1,6 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useMemo } from 'react'
 import { useChatStore } from '@/store/chat-store'
-import { useUpdateSessionState } from '@/services/chat'
-import { useSessions } from '@/services/chat'
+import { useUpdateSessionState, useSessions } from '@/services/chat'
 import { logger } from '@/lib/logger'
 import type { QuestionAnswer, PermissionDenial } from '@/types/chat'
 
@@ -60,6 +59,7 @@ interface SessionState {
   waitingForInput: boolean
   planFilePath: string | null
   pendingPlanMessageId: string | null
+  enabledMcpServers: string[] | null
 }
 
 /**
@@ -70,19 +70,42 @@ interface SessionState {
  * This hook should be used at the app level (e.g., in App.tsx)
  */
 export function useSessionStatePersistence() {
-  const activeWorktreeId = useChatStore(state => state.activeWorktreeId)
-  const activeWorktreePath = useChatStore(state => state.activeWorktreePath)
-  const activeSessionIds = useChatStore(state => state.activeSessionIds)
+  // Subscribe to primitive values to trigger re-renders only when context actually changes.
+  // Prefer full-view active session, fall back to canvas-modal selected session
+  // (canvas modals don't set activeWorktreeId).
+  const activeSessionId = useChatStore(state => {
+    if (state.activeWorktreeId) {
+      return state.activeSessionIds[state.activeWorktreeId] ?? null
+    }
+    return (
+      Object.values(state.canvasSelectedSessionIds).find(id => id != null) ??
+      null
+    )
+  })
 
-  // Get active session ID for current worktree
-  const activeSessionId = activeWorktreeId
-    ? (activeSessionIds[activeWorktreeId] ?? null)
-    : null
+  // Derive worktree context via getState() (non-reactive) keyed on the reactive activeSessionId
+  const { effectiveWorktreeId, effectiveWorktreePath } = useMemo(() => {
+    if (!activeSessionId)
+      return {
+        effectiveWorktreeId: null as string | null,
+        effectiveWorktreePath: null as string | null,
+      }
+    const {
+      activeWorktreeId,
+      activeWorktreePath,
+      sessionWorktreeMap,
+      worktreePaths,
+    } = useChatStore.getState()
+    const wtId = activeWorktreeId ?? sessionWorktreeMap[activeSessionId] ?? null
+    const wtPath =
+      activeWorktreePath ?? (wtId ? (worktreePaths[wtId] ?? null) : null)
+    return { effectiveWorktreeId: wtId, effectiveWorktreePath: wtPath }
+  }, [activeSessionId])
 
   // Load sessions to get session data
   const { data: sessionsData } = useSessions(
-    activeWorktreeId,
-    activeWorktreePath
+    effectiveWorktreeId,
+    effectiveWorktreePath
   )
 
   const { mutate: updateSessionState } = useUpdateSessionState()
@@ -110,6 +133,7 @@ export function useSessionStatePersistence() {
         waitingForInputSessionIds,
         planFilePaths,
         pendingPlanMessageIds,
+        enabledMcpServers,
       } = useChatStore.getState()
 
       const ctx = deniedMessageContext[sessionId]
@@ -132,6 +156,7 @@ export function useSessionStatePersistence() {
         waitingForInput: waitingForInputSessionIds[sessionId] ?? false,
         planFilePath: planFilePaths[sessionId] ?? null,
         pendingPlanMessageId: pendingPlanMessageIds[sessionId] ?? null,
+        enabledMcpServers: enabledMcpServers[sessionId] ?? null,
       }
     },
     []
@@ -139,18 +164,17 @@ export function useSessionStatePersistence() {
 
   // Initialize debounced save function when worktree/session changes
   useEffect(() => {
-    if (!activeWorktreeId || !activeWorktreePath || !activeSessionId) {
+    if (!effectiveWorktreeId || !effectiveWorktreePath || !activeSessionId) {
       return
     }
 
-    const worktreeId = activeWorktreeId
-    const worktreePath = activeWorktreePath
+    const worktreeId = effectiveWorktreeId
+    const worktreePath = effectiveWorktreePath
     const sessionId = activeSessionId
 
     debouncedSaveRef.current = debounce((state: SessionState) => {
       if (isLoadingRef.current) return
 
-      logger.debug('Saving session state (debounced)', { sessionId })
       updateSessionState({
         worktreeId,
         worktreePath,
@@ -164,6 +188,7 @@ export function useSessionStatePersistence() {
         waitingForInput: state.waitingForInput,
         planFilePath: state.planFilePath,
         pendingPlanMessageId: state.pendingPlanMessageId,
+        enabledMcpServers: state.enabledMcpServers,
       })
     }, 500)
 
@@ -171,8 +196,8 @@ export function useSessionStatePersistence() {
       debouncedSaveRef.current?.cancel()
     }
   }, [
-    activeWorktreeId,
-    activeWorktreePath,
+    effectiveWorktreeId,
+    effectiveWorktreePath,
     activeSessionId,
     updateSessionState,
   ])
@@ -262,15 +287,41 @@ export function useSessionStatePersistence() {
     }
 
     // Load reviewing status (handle both true and false to fix asymmetry bug)
-    updates.reviewingSessions = {
-      ...currentState.reviewingSessions,
-      [activeSessionId]: session.is_reviewing ?? false,
+    const isReviewing = session.is_reviewing ?? false
+    const currentReviewing =
+      currentState.reviewingSessions[activeSessionId] ?? false
+    if (currentReviewing !== isReviewing) {
+      updates.reviewingSessions = {
+        ...currentState.reviewingSessions,
+        [activeSessionId]: isReviewing,
+      }
+    }
+
+    // Load review results from session data into Zustand store
+    if (session.review_results) {
+      updates.reviewResults = {
+        ...currentState.reviewResults,
+        [activeSessionId]: session.review_results,
+      }
+    }
+
+    // Load fixed review findings from session data
+    if (session.fixed_findings && session.fixed_findings.length > 0) {
+      updates.fixedReviewFindings = {
+        ...currentState.fixedReviewFindings,
+        [activeSessionId]: new Set(session.fixed_findings),
+      }
     }
 
     // Load waiting for input status
-    updates.waitingForInputSessionIds = {
-      ...currentState.waitingForInputSessionIds,
-      [activeSessionId]: session.waiting_for_input ?? false,
+    const waitingForInput = session.waiting_for_input ?? false
+    const currentWaiting =
+      currentState.waitingForInputSessionIds[activeSessionId] ?? false
+    if (currentWaiting !== waitingForInput) {
+      updates.waitingForInputSessionIds = {
+        ...currentState.waitingForInputSessionIds,
+        [activeSessionId]: waitingForInput,
+      }
     }
 
     // Load plan file path
@@ -286,6 +337,14 @@ export function useSessionStatePersistence() {
       updates.pendingPlanMessageIds = {
         ...currentState.pendingPlanMessageIds,
         [activeSessionId]: session.pending_plan_message_id,
+      }
+    }
+
+    // Load enabled MCP servers override
+    if (session.enabled_mcp_servers) {
+      updates.enabledMcpServers = {
+        ...currentState.enabledMcpServers,
+        [activeSessionId]: session.enabled_mcp_servers,
       }
     }
 
@@ -307,7 +366,7 @@ export function useSessionStatePersistence() {
 
   // Subscribe to Zustand changes and save to session file
   useEffect(() => {
-    if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) {
+    if (!activeSessionId || !effectiveWorktreeId || !effectiveWorktreePath) {
       return
     }
 
@@ -329,6 +388,8 @@ export function useSessionStatePersistence() {
     let prevPlanFilePath = useChatStore.getState().planFilePaths[sessionId]
     let prevPendingPlanMessageId =
       useChatStore.getState().pendingPlanMessageIds[sessionId]
+    let prevEnabledMcpServers =
+      useChatStore.getState().enabledMcpServers[sessionId]
 
     const unsubscribe = useChatStore.subscribe(state => {
       if (isLoadingRef.current) return
@@ -342,6 +403,7 @@ export function useSessionStatePersistence() {
       const currentWaiting = state.waitingForInputSessionIds[sessionId]
       const currentPlanFilePath = state.planFilePaths[sessionId]
       const currentPendingPlanMessageId = state.pendingPlanMessageIds[sessionId]
+      const currentEnabledMcpServers = state.enabledMcpServers[sessionId]
 
       const hasChanges =
         currentAnswered !== prevAnsweredQuestions ||
@@ -352,7 +414,8 @@ export function useSessionStatePersistence() {
         currentReviewing !== prevReviewing ||
         currentWaiting !== prevWaiting ||
         currentPlanFilePath !== prevPlanFilePath ||
-        currentPendingPlanMessageId !== prevPendingPlanMessageId
+        currentPendingPlanMessageId !== prevPendingPlanMessageId ||
+        currentEnabledMcpServers !== prevEnabledMcpServers
 
       if (hasChanges) {
         prevAnsweredQuestions = currentAnswered
@@ -364,6 +427,7 @@ export function useSessionStatePersistence() {
         prevWaiting = currentWaiting
         prevPlanFilePath = currentPlanFilePath
         prevPendingPlanMessageId = currentPendingPlanMessageId
+        prevEnabledMcpServers = currentEnabledMcpServers
 
         const currentState = getCurrentSessionState(sessionId)
         debouncedSaveRef.current?.(currentState)
@@ -376,8 +440,8 @@ export function useSessionStatePersistence() {
     }
   }, [
     activeSessionId,
-    activeWorktreeId,
-    activeWorktreePath,
+    effectiveWorktreeId,
+    effectiveWorktreePath,
     getCurrentSessionState,
   ])
 }

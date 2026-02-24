@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from '@/lib/transport'
 import { isTauri } from '@/services/projects'
 import { queryClient } from '@/lib/query-client'
 import type { McpServerInfo, McpHealthResult } from '@/types/chat'
@@ -62,19 +62,25 @@ export function useMcpHealthCheck() {
 
 /**
  * Find newly discovered MCP servers that should be auto-enabled.
- * Returns server names that are: (1) not disabled in config, and
- * (2) not already in the current enabled list.
+ * Returns server names that are: (1) not disabled in config,
+ * (2) not already in the current enabled list, and
+ * (3) not in the known servers list (i.e., truly new, not user-disabled).
  *
  * This allows newly added MCP servers to be automatically activated
- * without requiring the user to manually enable each one.
+ * without requiring the user to manually enable each one, while
+ * respecting servers the user has explicitly disabled.
  */
 export function getNewServersToAutoEnable(
   allServers: McpServerInfo[],
-  currentEnabled: string[]
+  currentEnabled: string[],
+  knownServers: string[]
 ): string[] {
   const enabledSet = new Set(currentEnabled)
+  const knownSet = new Set(knownServers)
   return allServers
-    .filter(s => !s.disabled && !enabledSet.has(s.name))
+    .filter(
+      s => !s.disabled && !enabledSet.has(s.name) && !knownSet.has(s.name)
+    )
     .map(s => s.name)
 }
 

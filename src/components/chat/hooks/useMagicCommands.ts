@@ -20,9 +20,8 @@ interface MagicCommandHandlers {
   handleReview: () => void
   handleMerge: () => void
   handleResolveConflicts: () => void
-  handleInvestigate: () => void
-  handleCheckoutPR: () => void
   handleInvestigateWorkflowRun: (detail: WorkflowRunDetail) => void
+  handleInvestigate: (type: 'issue' | 'pr') => void
 }
 
 interface UseMagicCommandsOptions extends MagicCommandHandlers {
@@ -54,9 +53,8 @@ export function useMagicCommands({
   handleReview,
   handleMerge,
   handleResolveConflicts,
-  handleInvestigate,
-  handleCheckoutPR,
   handleInvestigateWorkflowRun,
+  handleInvestigate,
   isModal = false,
   isViewingCanvasTab = false,
   sessionModalOpen = false,
@@ -73,9 +71,8 @@ export function useMagicCommands({
     handleReview,
     handleMerge,
     handleResolveConflicts,
-    handleInvestigate,
-    handleCheckoutPR,
     handleInvestigateWorkflowRun,
+    handleInvestigate,
   })
 
   // Update refs in useLayoutEffect to avoid linter warning about ref updates during render
@@ -92,9 +89,8 @@ export function useMagicCommands({
       handleReview,
       handleMerge,
       handleResolveConflicts,
-      handleInvestigate,
-      handleCheckoutPR,
       handleInvestigateWorkflowRun,
+      handleInvestigate,
     }
   })
 
@@ -103,16 +99,15 @@ export function useMagicCommands({
     // don't register listener here — the modal ChatWindow will handle events instead.
     // When on canvas WITHOUT a modal, the main ChatWindow still listens (for canvas-allowed commands).
     if (!isModal && isViewingCanvasTab && sessionModalOpen) {
-      console.warn('[MAGIC-CMD] Skipping listener registration (main + canvas + modal open)')
       return
     }
-    console.warn('[MAGIC-CMD] Registering listener:', { isModal, isViewingCanvasTab, sessionModalOpen })
 
     const handleMagicCommand = (
-      e: CustomEvent<{ command: string } & Partial<WorkflowRunDetail>>
+      e: CustomEvent<
+        { command: string; sessionId?: string } & Partial<WorkflowRunDetail>
+      >
     ) => {
       const { command, ...rest } = e.detail
-      console.warn('[MAGIC-CMD] Received:', command, { isModal, isViewingCanvasTab, sessionModalOpen, rest })
       const handlers = handlersRef.current
       switch (command) {
         case 'save-context':
@@ -146,10 +141,9 @@ export function useMagicCommands({
           handlers.handleResolveConflicts()
           break
         case 'investigate':
-          handlers.handleInvestigate()
-          break
-        case 'checkout-pr':
-          handlers.handleCheckoutPR()
+          handlers.handleInvestigate(
+            (rest as { type: 'issue' | 'pr' }).type ?? 'issue'
+          )
           break
         case 'investigate-workflow-run':
           handlers.handleInvestigateWorkflowRun(rest as WorkflowRunDetail)

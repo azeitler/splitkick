@@ -12,11 +12,20 @@ import {
 } from '@/components/ui/tooltip'
 import { useUIStore } from '@/store/ui-store'
 import { useCommandContext } from '@/lib/commands'
-import { Heart, PanelLeft, PanelLeftClose, Plus, Settings } from 'lucide-react'
+import {
+  ArrowUpCircle,
+  Github,
+  Heart,
+  PanelLeft,
+  PanelLeftClose,
+  Plus,
+  Settings,
+} from 'lucide-react'
 import { usePreferences } from '@/services/preferences'
 import { formatShortcutDisplay, DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 import { isNativeApp } from '@/lib/environment'
 import { useProjectsStore } from '@/store/projects-store'
+import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 
 interface TitleBarProps {
   className?: string
@@ -35,6 +44,8 @@ export function TitleBar({
   )
   const commandContext = useCommandContext()
   const { data: preferences } = usePreferences()
+  const { installedBackends } = useInstalledBackends()
+  const setupIncomplete = installedBackends.length === 0
 
   const sidebarShortcut = formatShortcutDisplay(
     (preferences?.keybindings?.toggle_left_sidebar ||
@@ -56,7 +67,7 @@ export function TitleBar({
       {...(native ? { 'data-tauri-drag-region': true } : {})}
       className={cn(
         'relative flex h-8 w-full shrink-0 items-center justify-between bg-sidebar',
-        native && !isMacOS && 'z-[60]',
+        native && 'z-[60]',
         className
       )}
     >
@@ -120,22 +131,22 @@ export function TitleBar({
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
-                onClick={() => setAddProjectDialogOpen(true)}
+                onClick={() =>
+                  openExternal('https://github.com/coollabsio/jean')
+                }
                 variant="ghost"
                 size="icon"
                 className="h-6 w-6 text-foreground/70 hover:text-foreground"
               >
-                <Plus className="h-3 w-3" />
+                <Github className="h-3 w-3" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Add Project</TooltipContent>
+            <TooltipContent>GitHub</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
-                onClick={() =>
-                  openExternal('https://jean.build/sponsorships/')
-                }
+                onClick={() => openExternal('https://jean.build/sponsorships/')}
                 variant="ghost"
                 size="icon"
                 className="h-6 w-6 text-pink-500 hover:text-pink-400"
@@ -144,6 +155,20 @@ export function TitleBar({
               </Button>
             </TooltipTrigger>
             <TooltipContent>Sponsor</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                onClick={() => setAddProjectDialogOpen(true)}
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-foreground/70 hover:text-foreground"
+                disabled={setupIncomplete}
+              >
+                <Plus className="h-3 w-3" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Add Project</TooltipContent>
           </Tooltip>
         </div>
       </div>
@@ -158,15 +183,48 @@ export function TitleBar({
       )}
 
       {/* Right side - Version + Windows/Linux window controls */}
-      <div className="flex items-center">
+      <div
+        className="flex items-center"
+        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+      >
+        {appVersion && <UpdateIndicator />}
         {appVersion && (
-          <span className="pr-2 text-[0.625rem] text-foreground/40">
+          <button
+            onClick={() =>
+              openExternal(
+                `https://github.com/coollabsio/jean/releases/tag/v${appVersion}`
+              )
+            }
+            className="pr-2 text-[0.625rem] text-foreground/40 hover:text-foreground/60 transition-colors cursor-pointer"
+          >
             v{appVersion}
-          </span>
+          </button>
         )}
         {native && !isMacOS && <WindowsWindowControls />}
       </div>
     </div>
+  )
+}
+
+function UpdateIndicator() {
+  const pendingVersion = useUIStore(state => state.pendingUpdateVersion)
+  if (!pendingVersion) return null
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          onClick={() =>
+            window.dispatchEvent(new Event('install-pending-update'))
+          }
+          className="mr-1.5 flex items-center gap-1 rounded-md bg-primary/15 px-1.5 py-0.5 text-[0.625rem] font-medium text-primary hover:bg-primary/25 transition-colors cursor-pointer"
+        >
+          <ArrowUpCircle className="size-3" />
+          Update available
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">Update to v{pendingVersion}</TooltipContent>
+    </Tooltip>
   )
 }
 

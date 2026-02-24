@@ -76,13 +76,15 @@ export function useAutoArchiveOnMerge() {
               return
             }
 
-            // Archive the worktree
-            logger.info('Auto-archiving worktree (PR merged)', {
+            // Archive or delete the worktree based on removal_behavior preference
+            const shouldDelete = preferences?.removal_behavior === 'delete'
+            const action = shouldDelete ? 'Deleting' : 'Archiving'
+            logger.info(`Auto-${action.toLowerCase()} worktree (PR merged)`, {
               worktreeId: status.worktree_id,
               prNumber: status.pr_number,
             })
 
-            await invoke('archive_worktree', {
+            await invoke(shouldDelete ? 'delete_worktree' : 'archive_worktree', {
               worktreeId: status.worktree_id,
             })
 
@@ -92,8 +94,9 @@ export function useAutoArchiveOnMerge() {
             })
 
             // Show toast notification
+            const pastAction = shouldDelete ? 'Deleted' : 'Archived'
             toast.success(
-              `Archived "${worktree.name}" (PR #${status.pr_number} merged)`
+              `${pastAction} "${worktree.name}" (PR #${status.pr_number} merged)`
             )
 
             return
@@ -108,7 +111,7 @@ export function useAutoArchiveOnMerge() {
         processedWorktrees.current.delete(status.worktree_id)
       }
     },
-    [preferences?.auto_archive_on_pr_merged, queryClient]
+    [preferences?.auto_archive_on_pr_merged, preferences?.removal_behavior, queryClient]
   )
 
   // Listen for PR status updates

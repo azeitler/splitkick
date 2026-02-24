@@ -37,7 +37,7 @@ export function useWorktreeFiles(worktreePath: string | null) {
       }
     },
     enabled: !!worktreePath,
-    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+    staleTime: 0, // Always refetch in background so newly added files appear
     gcTime: 1000 * 60 * 10, // Keep in memory for 10 minutes
   })
 }

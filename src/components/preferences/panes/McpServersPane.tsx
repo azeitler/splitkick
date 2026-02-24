@@ -3,6 +3,11 @@ import { CheckCircle, Loader2, ShieldAlert, XCircle } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { usePreferences, useSavePreferences } from '@/services/preferences'
 import {
@@ -48,33 +53,43 @@ function HealthIndicator({
   switch (status) {
     case 'connected':
       return (
-        <span
-          className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400"
-          title="Server is connected and ready"
-        >
-          <CheckCircle className="size-3.5" />
-          connected
-        </span>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400">
+              <CheckCircle className="size-3.5" />
+              connected
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>Server is connected and ready</TooltipContent>
+        </Tooltip>
       )
     case 'needsAuthentication':
       return (
-        <span
-          className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400"
-          title="Run 'claude /mcp' in your terminal to authenticate"
-        >
-          <ShieldAlert className="size-3.5" />
-          needs auth
-        </span>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+              <ShieldAlert className="size-3.5" />
+              needs auth
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            {"Run 'claude /mcp' in your terminal to authenticate"}
+          </TooltipContent>
+        </Tooltip>
       )
     case 'couldNotConnect':
       return (
-        <span
-          className="flex items-center gap-1.5 text-xs text-red-600 dark:text-red-400"
-          title="Could not connect — check that the server is running"
-        >
-          <XCircle className="size-3.5" />
-          connection failed
-        </span>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="flex items-center gap-1.5 text-xs text-red-600 dark:text-red-400">
+              <XCircle className="size-3.5" />
+              connection failed
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            Could not connect -- check that the server is running
+          </TooltipContent>
+        </Tooltip>
       )
     case 'disabled':
       return null // Already shown via opacity + "disabled" label
@@ -105,15 +120,24 @@ export const McpServersPane: React.FC = () => {
   }, [checkHealth])
 
   const enabledServers = preferences?.default_enabled_mcp_servers ?? []
+  const knownServers = preferences?.known_mcp_servers ?? []
 
-  // Auto-enable newly discovered (non-disabled) servers
+  // Auto-enable newly discovered (non-disabled) servers, but not ones the user has previously disabled
   useEffect(() => {
     if (!preferences || !mcpServers) return
-    const newServers = getNewServersToAutoEnable(mcpServers, enabledServers)
-    if (newServers.length > 0) {
+    const allServerNames = mcpServers.filter(s => !s.disabled).map(s => s.name)
+    const newServers = getNewServersToAutoEnable(
+      mcpServers,
+      enabledServers,
+      knownServers
+    )
+    const updatedKnown = [...new Set([...knownServers, ...allServerNames])]
+    const knownChanged = updatedKnown.length !== knownServers.length
+    if (newServers.length > 0 || knownChanged) {
       savePreferences.mutate({
         ...preferences,
         default_enabled_mcp_servers: [...enabledServers, ...newServers],
+        known_mcp_servers: updatedKnown,
       })
     }
   }, [mcpServers]) // eslint-disable-line react-hooks/exhaustive-deps

@@ -5,7 +5,7 @@ import { usePreferences } from '@/services/preferences'
 import { useProjects, useAppDataDir } from '@/services/projects'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
-import { convertFileSrc } from '@tauri-apps/api/core'
+import { convertFileSrc } from '@/lib/transport'
 import { getAllCommands, executeCommand } from '@/lib/commands'
 import { formatShortcutDisplay } from '@/types/keybindings'
 import {
@@ -154,6 +154,7 @@ export function CommandPalette() {
       title="Command Palette"
       description="Type a command or search..."
       className="sm:max-w-2xl"
+      disablePointerSelection
     >
       <CommandInput
         placeholder="Type a command or search..."
@@ -203,7 +204,7 @@ export function CommandPalette() {
               {groupCommands.map(command => (
                 <CommandItem
                   key={command.id}
-                  value={command.id}
+                  value={`${command.id} ${command.label} ${command.description ?? ''} ${command.keywords?.join(' ') ?? ''}`}
                   onSelect={() => handleCommandSelect(command.id)}
                 >
                   {command.icon && <command.icon className="mr-2 h-4 w-4" />}
@@ -239,6 +240,10 @@ function getGroupLabel(groupName: string): string {
       return 'Window'
     case 'notification':
       return 'Notifications'
+    case 'github':
+      return 'GitHub'
+    case 'sessions':
+      return 'Sessions'
     case 'other':
       return 'Other'
     default:

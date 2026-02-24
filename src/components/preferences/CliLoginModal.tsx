@@ -10,6 +10,8 @@ import { useCallback, useEffect, useRef, useMemo } from 'react'
 import { invoke } from '@/lib/transport'
 import { useQueryClient } from '@tanstack/react-query'
 import { ghCliQueryKeys } from '@/services/gh-cli'
+import { codexCliQueryKeys } from '@/services/codex-cli'
+import { opencodeCliQueryKeys } from '@/services/opencode-cli'
 import { githubQueryKeys } from '@/services/github'
 import {
   Dialog,
@@ -19,14 +21,19 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { useUIStore } from '@/store/ui-store'
+import { useShallow } from 'zustand/react/shallow'
 import { useTerminal } from '@/hooks/useTerminal'
-import { disposeTerminal } from '@/lib/terminal-instances'
+import { disposeTerminal, setOnStopped } from '@/lib/terminal-instances'
 
 export function CliLoginModal() {
-  const isOpen = useUIStore(state => state.cliLoginModalOpen)
-  const cliType = useUIStore(state => state.cliLoginModalType)
-  const command = useUIStore(state => state.cliLoginModalCommand)
-  const closeModal = useUIStore(state => state.closeCliLoginModal)
+  const { isOpen, cliType, command, closeModal } = useUIStore(
+    useShallow(state => ({
+      isOpen: state.cliLoginModalOpen,
+      cliType: state.cliLoginModalType,
+      command: state.cliLoginModalCommand,
+      closeModal: state.closeCliLoginModal,
+    }))
+  )
 
   // Only render when open to avoid unnecessary terminal setup
   if (!isOpen || !command) return null
@@ -41,7 +48,7 @@ export function CliLoginModal() {
 }
 
 interface CliLoginModalContentProps {
-  cliType: 'claude' | 'gh' | null
+  cliType: 'claude' | 'gh' | 'codex' | 'opencode' | null
   command: string
   onClose: () => void
 }
@@ -54,22 +61,21 @@ function CliLoginModalContent({
   const queryClient = useQueryClient()
   const initialized = useRef(false)
   const observerRef = useRef<ResizeObserver | null>(null)
-  const cliName = cliType === 'claude' ? 'Claude CLI' : 'GitHub CLI'
+  const cliName =
+    cliType === 'claude'
+      ? 'Claude CLI'
+      : cliType === 'codex'
+        ? 'Codex CLI'
+        : cliType === 'opencode'
+          ? 'OpenCode CLI'
+          : 'GitHub CLI'
 
   // Generate unique terminal ID for this login session
   const terminalId = useMemo(() => {
     // eslint-disable-next-line react-hooks/purity
     const id = `cli-login-${Date.now()}`
-    console.log('[CliLoginModal] Generated terminalId:', id)
     return id
   }, [])
-
-  console.log(
-    '[CliLoginModal] Render - terminalId:',
-    terminalId,
-    'command:',
-    command
-  )
 
   // Use a synthetic worktreeId for CLI login (not associated with any real worktree)
   const { initTerminal, fit } = useTerminal({
@@ -82,13 +88,6 @@ function CliLoginModalContent({
   // Use callback ref to detect when container is mounted (Dialog uses portal)
   const containerCallbackRef = useCallback(
     (container: HTMLDivElement | null) => {
-      console.log(
-        '[CliLoginModal] containerCallbackRef called, container:',
-        !!container,
-        'initialized:',
-        initialized.current
-      )
-
       // Cleanup previous observer if any
       if (observerRef.current) {
         observerRef.current.disconnect()
@@ -99,24 +98,15 @@ function CliLoginModalContent({
 
       const observer = new ResizeObserver(entries => {
         const entry = entries[0]
-        console.log(
-          '[CliLoginModal] ResizeObserver fired, width:',
-          entry?.contentRect.width,
-          'initialized:',
-          initialized.current
-        )
 
         if (!entry || entry.contentRect.width === 0) {
-          console.log('[CliLoginModal] No entry or width=0, skipping')
           return
         }
 
         // Initialize on first valid size
         if (!initialized.current) {
-          console.log('[CliLoginModal] Initializing terminal...')
           initialized.current = true
           initTerminal(container)
-          console.log('[CliLoginModal] initTerminal called')
           return
         }
 
@@ -126,7 +116,6 @@ function CliLoginModalContent({
 
       observer.observe(container)
       observerRef.current = observer
-      console.log('[CliLoginModal] ResizeObserver attached via callback ref')
     },
     [initTerminal, fit]
   )
@@ -134,7 +123,6 @@ function CliLoginModalContent({
   // Cleanup observer on unmount
   useEffect(() => {
     return () => {
-      console.log('[CliLoginModal] Cleanup - disconnecting observer')
       if (observerRef.current) {
         observerRef.current.disconnect()
       }
@@ -158,6 +146,12 @@ function CliLoginModalContent({
         if (cliType === 'gh') {
           queryClient.invalidateQueries({ queryKey: ghCliQueryKeys.auth() })
           queryClient.invalidateQueries({ queryKey: githubQueryKeys.all })
+        } else if (cliType === 'codex') {
+          queryClient.invalidateQueries({ queryKey: codexCliQueryKeys.auth() })
+        } else if (cliType === 'opencode') {
+          queryClient.invalidateQueries({
+            queryKey: opencodeCliQueryKeys.auth(),
+          })
         }
 
         onClose()
@@ -165,6 +159,16 @@ function CliLoginModalContent({
     },
     [terminalId, onClose, cliType, queryClient]
   )
+
+  // Auto-close modal when auth process exits successfully
+  useEffect(() => {
+    setOnStopped(terminalId, exitCode => {
+      if (exitCode === 0) {
+        setTimeout(() => handleOpenChange(false), 1500)
+      }
+    })
+    return () => setOnStopped(terminalId, undefined)
+  }, [terminalId, handleOpenChange])
 
   return (
     <Dialog open={true} onOpenChange={handleOpenChange}>

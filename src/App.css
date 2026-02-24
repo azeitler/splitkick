@@ -178,6 +178,41 @@
   animation: border-spin 1s linear infinite;
 }
 
+/* Square spinner: rotating conic-gradient border */
+.square-spinner {
+  --spinner-color: oklch(0.795 0.184 86.047); /* yellow-500 */
+  position: relative;
+  background: color-mix(in srgb, var(--spinner-color) 10%, transparent);
+  border-radius: 2px;
+}
+.square-spinner::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 3px;
+  background: conic-gradient(
+    from var(--spinner-angle, 0deg),
+    transparent 60%,
+    var(--spinner-color) 100%
+  );
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  padding: 2px;
+  animation: square-spin 1s linear infinite;
+}
+@keyframes square-spin {
+  to {
+    --spinner-angle: 360deg;
+  }
+}
+@property --spinner-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
 /* Animated dots for loading indicator */
 @keyframes dots {
   0%,
@@ -300,6 +335,13 @@
   pointer-events: auto !important;
 }
 
+/* Ensures the title bar window controls (minimize, maximize, close) remain clickable
+   above Radix modal overlays (e.g. onboarding dialog). The title bar uses
+   data-tauri-drag-region and z-[60] to sit above the z-50 dialog overlay. */
+[data-tauri-drag-region] {
+  pointer-events: auto !important;
+}
+
 /* Font overrides - outside @layer to ensure higher specificity */
 body {
   font-family: var(--font-family-sans) !important;
@@ -364,4 +406,18 @@ kbd {
 }
 .font-mono .text-2xl {
   font-size: calc(var(--chat-font-size) * 1.5) !important;
+}
+
+/* Custom scrollbar styling to match Radix ScrollArea */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 10px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
 }

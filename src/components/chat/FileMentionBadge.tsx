@@ -1,12 +1,22 @@
 import { useState, useCallback } from 'react'
 import { FileIcon, Loader2 } from 'lucide-react'
 import { invoke } from '@/lib/transport'
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Markdown } from '@/components/ui/markdown'
 import { cn } from '@/lib/utils'
 import { getExtension, getExtensionColor } from '@/lib/file-colors'
 import { getFilename } from '@/lib/path-utils'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip'
 
 /** Check if file is markdown based on extension */
 function isMarkdownFile(filename: string): boolean {
@@ -60,19 +70,26 @@ export function FileMentionBadge({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={handleOpen}
-        className="flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-border/50 bg-muted/50 cursor-pointer hover:border-primary/50 transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-        title={path}
-      >
-        <FileIcon
-          className={cn('h-3.5 w-3.5 shrink-0', getExtensionColor(extension))}
-        />
-        <span className="text-xs font-medium truncate max-w-[120px]">
-          {filename}
-        </span>
-      </button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={handleOpen}
+            className="flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-border/50 bg-muted/50 cursor-pointer hover:border-primary/50 transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+          >
+            <FileIcon
+              className={cn(
+                'h-3.5 w-3.5 shrink-0',
+                getExtensionColor(extension)
+              )}
+            />
+            <span className="text-xs font-medium truncate max-w-[120px]">
+              {filename}
+            </span>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>{path}</TooltipContent>
+      </Tooltip>
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogContent className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none p-0 sm:!w-[calc(100vw-4rem)] sm:!max-w-[calc(100vw-4rem)] sm:!h-auto sm:max-h-[85vh] sm:!rounded-lg sm:p-4 bg-background/95 backdrop-blur-sm">
@@ -80,6 +97,9 @@ export function FileMentionBadge({
             <FileIcon className={cn('h-4 w-4', getExtensionColor(extension))} />
             {path}
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            Preview of file {path}.
+          </DialogDescription>
           <ScrollArea className="h-[calc(85vh-6rem)] mt-2">
             {isLoading ? (
               <div className="flex items-center justify-center py-8">

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { Plus, Folder, Archive, Briefcase } from 'lucide-react'
 import { useSidebarWidth } from '@/components/layout/SidebarWidthContext'
 import {
@@ -11,31 +11,18 @@ import { useProjects, useCreateFolder } from '@/services/projects'
 import { fetchWorktreesStatus } from '@/services/git-status'
 import { useProjectsStore } from '@/store/projects-store'
 import { ProjectTree } from './ProjectTree'
-import { ArchivedModal } from '@/components/archive/ArchivedModal'
+import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 
 export function ProjectsSidebar() {
   const { data: projects = [], isLoading } = useProjects()
   const { setAddProjectDialogOpen } = useProjectsStore()
-  const [archivedModalOpen, setArchivedModalOpen] = useState(false)
   const createFolder = useCreateFolder()
   const sidebarWidth = useSidebarWidth()
+  const { installedBackends } = useInstalledBackends()
+  const setupIncomplete = installedBackends.length === 0
 
   // Responsive layout threshold
   const isNarrow = sidebarWidth < 180
-
-  // Listen for command palette events
-  useEffect(() => {
-    const handleOpenArchivedModal = () => setArchivedModalOpen(true)
-    window.addEventListener(
-      'command:open-archived-modal',
-      handleOpenArchivedModal
-    )
-    return () =>
-      window.removeEventListener(
-        'command:open-archived-modal',
-        handleOpenArchivedModal
-      )
-  }, [])
 
   // Fetch worktree git status for all projects on startup
   // Priority: expanded projects first, then all others
@@ -64,24 +51,15 @@ export function ProjectsSidebar() {
     const fetchGitStatusBatch = async (batch: typeof actualProjects) => {
       await Promise.all(
         batch.map(p =>
-          fetchWorktreesStatus(p.id).catch(err =>
-            console.warn(
-              `[startup] Failed to fetch git status for ${p.name}:`,
-              err
-            )
-          )
+          fetchWorktreesStatus(p.id).catch(() => {
+            /* silent */
+          })
         )
       )
     }
 
     const fetchAll = async () => {
       const concurrencyLimit = 3
-
-      console.info(
-        '[startup] Fetching worktree git status: expanded=%d, collapsed=%d',
-        expandedProjects.length,
-        collapsedProjects.length
-      )
 
       // First: fetch expanded projects (user sees these immediately)
       for (let i = 0; i < expandedProjects.length; i += concurrencyLimit) {
@@ -94,10 +72,6 @@ export function ProjectsSidebar() {
         const batch = collapsedProjects.slice(i, i + concurrencyLimit)
         await fetchGitStatusBatch(batch)
       }
-
-      console.info(
-        '[startup] Done fetching worktree git status for all projects'
-      )
     }
 
     fetchAll()
@@ -106,7 +80,7 @@ export function ProjectsSidebar() {
   return (
     <div className="flex h-full flex-col">
       {/* Content */}
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
         {isLoading ? (
           <div className="flex items-center justify-center p-4">
             <span className="text-sm text-muted-foreground">Loading...</span>
@@ -146,7 +120,10 @@ export function ProjectsSidebar() {
               <Folder className="mr-2 size-3.5" />
               Folder
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setAddProjectDialogOpen(true)}>
+            <DropdownMenuItem
+              onClick={() => setAddProjectDialogOpen(true)}
+              disabled={setupIncomplete}
+            >
               <Briefcase className="mr-2 size-3.5" />
               Project
             </DropdownMenuItem>
@@ -155,18 +132,14 @@ export function ProjectsSidebar() {
         <button
           type="button"
           className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
-          onClick={() => setArchivedModalOpen(true)}
+          onClick={() =>
+            window.dispatchEvent(new CustomEvent('command:open-archived-modal'))
+          }
         >
           {!isNarrow && <Archive className="size-3.5" />}
           Archived
         </button>
       </div>
-
-      {/* Dialogs */}
-      <ArchivedModal
-        open={archivedModalOpen}
-        onOpenChange={setArchivedModalOpen}
-      />
     </div>
   )
 }

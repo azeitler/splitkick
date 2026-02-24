@@ -2,7 +2,12 @@ import { useState, useCallback } from 'react'
 import { FileText, Loader2, Copy } from 'lucide-react'
 import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Markdown } from '@/components/ui/markdown'
 import type { ReadTextResponse } from '@/types/chat'
@@ -95,6 +100,9 @@ export function TextFileLightbox({ path, size }: TextFileLightboxProps) {
               </span>
             )}
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            Preview of text file content for {filename}.
+          </DialogDescription>
           <ScrollArea className="h-[calc(85vh-8rem)] mt-2">
             {isLoading ? (
               <div className="flex items-center justify-center py-8">
@@ -105,11 +113,11 @@ export function TextFileLightbox({ path, size }: TextFileLightboxProps) {
                 Failed to load file: {error}
               </div>
             ) : isMarkdownFile(filename) ? (
-              <div className="p-3">
+              <div className="p-3 select-text cursor-text">
                 <Markdown className="text-sm">{content ?? ''}</Markdown>
               </div>
             ) : (
-              <pre className="text-xs font-mono whitespace-pre-wrap break-words p-3 bg-muted rounded-md">
+              <pre className="text-xs font-mono whitespace-pre-wrap break-words p-3 bg-muted rounded-md select-text cursor-text">
                 {content}
               </pre>
             )}

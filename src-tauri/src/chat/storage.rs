@@ -197,6 +197,15 @@ fn save_index_internal(app: &AppHandle, index: &WorktreeIndex) -> Result<(), Str
     Ok(())
 }
 
+/// Save an empty worktree index (no default session, auto-naming disabled).
+/// Use this to pre-initialize a worktree created programmatically from the backend.
+pub fn save_empty_index(app: &AppHandle, worktree_id: &str) -> Result<(), String> {
+    let lock = get_index_lock(worktree_id);
+    let _guard = lock.lock().unwrap();
+    let index = WorktreeIndex::new_empty(worktree_id.to_string());
+    save_index_internal(app, &index)
+}
+
 /// Load a worktree index (with locking for thread safety)
 pub fn load_index(app: &AppHandle, worktree_id: &str) -> Result<WorktreeIndex, String> {
     let lock = get_index_lock(worktree_id);
@@ -356,6 +365,52 @@ pub fn list_all_session_ids(app: &AppHandle) -> Result<Vec<String>, String> {
     Ok(session_ids)
 }
 
+/// Delete orphaned session data directories that are not referenced by any index file.
+/// Returns the number of orphaned directories deleted.
+pub fn cleanup_orphaned_session_data(app: &AppHandle) -> Result<u32, String> {
+    // Collect all session IDs referenced in index files
+    let index_dir = get_index_dir(app)?;
+    let mut referenced_ids = std::collections::HashSet::new();
+
+    if let Ok(entries) = fs::read_dir(&index_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().is_some_and(|ext| ext == "json") {
+                if let Ok(content) = fs::read_to_string(&path) {
+                    if let Ok(index) =
+                        serde_json::from_str::<crate::chat::types::WorktreeIndex>(&content)
+                    {
+                        for session in &index.sessions {
+                            referenced_ids.insert(session.id.clone());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Compare with what's on disk
+    let all_on_disk = list_all_session_ids(app)?;
+    let mut deleted = 0u32;
+
+    for session_id in all_on_disk {
+        if !referenced_ids.contains(&session_id) {
+            log::trace!("Deleting orphaned session data: {session_id}");
+            if let Err(e) = delete_session_data(app, &session_id) {
+                log::warn!("Failed to delete orphaned session data {session_id}: {e}");
+            } else {
+                deleted += 1;
+            }
+        }
+    }
+
+    if deleted > 0 {
+        log::debug!("Cleaned up {deleted} orphaned session data directories");
+    }
+
+    Ok(deleted)
+}
+
 // ============================================================================
 // High-Level Session API (Backward Compatibility)
 // ============================================================================
@@ -376,24 +431,32 @@ pub fn load_sessions(
             metadata.to_session()
         } else {
             // No metadata found - create minimal session from index entry
+            // Use resolved backend from preferences instead of hardcoded Claude
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
             Session {
                 id: entry.id.clone(),
                 name: entry.name.clone(),
                 order: entry.order,
-                created_at: std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs(),
+                created_at: now,
+                updated_at: now,
                 messages: vec![],
                 message_count: Some(entry.message_count),
+                backend: super::commands::resolve_default_backend(app, Some(worktree_id)),
                 claude_session_id: None,
+                codex_thread_id: None,
+                opencode_session_id: None,
                 selected_model: None,
                 selected_thinking_level: None,
+                selected_provider: None,
                 session_naming_completed: false,
                 archived_at: entry.archived_at,
                 answered_questions: vec![],
                 submitted_answers: std::collections::HashMap::new(),
                 fixed_findings: vec![],
+                review_results: None,
                 pending_permission_denials: vec![],
                 denied_message_context: None,
                 is_reviewing: false,
@@ -402,9 +465,11 @@ pub fn load_sessions(
                 approved_plan_message_ids: vec![],
                 plan_file_path: None,
                 pending_plan_message_id: None,
+                enabled_mcp_servers: None,
                 digest: None,
                 last_run_status: None,
                 last_run_execution_mode: None,
+                label: None,
             }
         };
         sessions.push(session);
@@ -710,6 +775,17 @@ mod tests {
         assert_eq!(index.sessions[0].name, "Session 1");
         assert_eq!(index.sessions[0].message_count, 0);
         assert_eq!(index.version, 1);
+    }
+
+    #[test]
+    fn test_worktree_index_new_empty() {
+        let index = WorktreeIndex::new_empty("test-worktree".to_string());
+
+        assert_eq!(index.worktree_id, "test-worktree");
+        assert_eq!(index.sessions.len(), 0);
+        assert!(index.active_session_id.is_none());
+        assert_eq!(index.version, 1);
+        assert!(index.branch_naming_completed);
     }
 
     #[test]

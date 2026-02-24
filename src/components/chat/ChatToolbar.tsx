@@ -1,302 +1,59 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react'
-import { getModifierSymbol, isMacOS } from '@/lib/platform'
+import { memo, useCallback, useState } from 'react'
 import { toast } from 'sonner'
 import {
-  gitPull,
   gitPush,
   triggerImmediateGitPoll,
   fetchWorktreesStatus,
+  performGitPull,
 } from '@/services/git-status'
 import { useChatStore } from '@/store/chat-store'
-import {
-  ArrowDownToLine,
-  ArrowUpToLine,
-  BookmarkPlus,
-  Brain,
-  CheckCircle,
-  ChevronDown,
-  CircleDot,
-  ClipboardList,
-  ExternalLink,
-  Eye,
-  FolderOpen,
-  GitBranch,
-  GitCommitHorizontal,
-  GitMerge,
-  GitPullRequest,
-  Hammer,
-  Loader2,
-  MoreHorizontal,
-  Pencil,
-  Plug,
-  Search,
-  Send,
-  ShieldAlert,
-  Sparkles,
-  Wand2,
-  XCircle,
-  Zap,
-} from 'lucide-react'
-import { openExternal } from '@/lib/platform'
-import { Kbd } from '@/components/ui/kbd'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuCheckboxItem,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Markdown } from '@/components/ui/markdown'
-import { cn } from '@/lib/utils'
-import type { ClaudeModel } from '@/store/chat-store'
+import { useRemotePicker } from '@/hooks/useRemotePicker'
 import { useMcpHealthCheck } from '@/services/mcp'
-import type { McpServerInfo, McpHealthStatus } from '@/types/chat'
-import type { ThinkingLevel, EffortLevel, ExecutionMode } from '@/types/chat'
-import type {
-  PrDisplayStatus,
-  CheckStatus,
-  MergeableStatus,
-} from '@/types/pr-status'
-import type { DiffRequest } from '@/types/git-diff'
-import type {
-  LoadedIssueContext,
-  LoadedPullRequestContext,
-  AttachedSavedContext,
-} from '@/types/github'
+import type { ClaudeModel } from '@/types/preferences'
+import type { EffortLevel, ThinkingLevel } from '@/types/chat'
+import type { ChatToolbarProps } from '@/components/chat/toolbar/types'
+import { MobileToolbarMenu } from '@/components/chat/toolbar/MobileToolbarMenu'
+import { DesktopToolbarControls } from '@/components/chat/toolbar/DesktopToolbarControls'
+import { SendCancelButton } from '@/components/chat/toolbar/SendCancelButton'
+import { ContextViewerDialog } from '@/components/chat/toolbar/ContextViewerDialog'
 import {
-  getIssueContextContent,
-  getPRContextContent,
-  getSavedContextContent,
-} from '@/services/github'
+  CODEX_MODEL_OPTIONS,
+  EFFORT_LEVEL_OPTIONS,
+  MODEL_OPTIONS,
+  OPENCODE_MODEL_OPTIONS,
+  THINKING_LEVEL_OPTIONS,
+} from '@/components/chat/toolbar/toolbar-options'
+import { useToolbarDropdownShortcuts } from '@/components/chat/toolbar/useToolbarDropdownShortcuts'
+import { useToolbarDerivedState } from '@/components/chat/toolbar/useToolbarDerivedState'
+import { useContextViewer } from '@/components/chat/toolbar/useContextViewer'
+import { formatOpencodeModelLabel } from '@/components/chat/toolbar/toolbar-utils'
+import { useAvailableOpencodeModels } from '@/services/opencode-cli'
 
-/** Model options with display labels */
-const MODEL_OPTIONS: { value: ClaudeModel; label: string }[] = [
-  { value: 'opus', label: 'Opus 4.6' },
-  { value: 'opus-4.5', label: 'Opus 4.5' },
-  { value: 'sonnet', label: 'Sonnet' },
-  { value: 'haiku', label: 'Haiku' },
-]
-
-/** Thinking level options with display labels and token counts */
-const THINKING_LEVEL_OPTIONS: {
-  value: ThinkingLevel
-  label: string
-  tokens: string
-}[] = [
-  { value: 'off', label: 'Off', tokens: 'Disabled' },
-  { value: 'think', label: 'Think', tokens: '4K' },
-  { value: 'megathink', label: 'Megathink', tokens: '10K' },
-  { value: 'ultrathink', label: 'Ultrathink', tokens: '32K' },
-]
-
-/** Effort level options for Opus 4.6 adaptive thinking */
-const EFFORT_LEVEL_OPTIONS: {
-  value: EffortLevel
-  label: string
-  description: string
-}[] = [
-  { value: 'low', label: 'Low', description: 'Minimal' },
-  { value: 'medium', label: 'Medium', description: 'Moderate' },
-  { value: 'high', label: 'High', description: 'Deep' },
-  { value: 'max', label: 'Max', description: 'No limits' },
-]
-
-/** Get display label and color for PR status */
-function getPrStatusDisplay(status: PrDisplayStatus): {
-  label: string
-  className: string
-} {
-  switch (status) {
-    case 'draft':
-      return { label: 'Draft', className: 'text-muted-foreground' }
-    case 'open':
-      return { label: 'Open', className: 'text-green-600 dark:text-green-500' }
-    case 'merged':
-      return {
-        label: 'Merged',
-        className: 'text-purple-600 dark:text-purple-400',
-      }
-    case 'closed':
-      return { label: 'Closed', className: 'text-red-600 dark:text-red-400' }
-    default:
-      return { label: 'Unknown', className: 'text-muted-foreground' }
-  }
+// eslint-disable-next-line react-refresh/only-export-components
+export {
+  MODEL_OPTIONS,
+  CODEX_MODEL_OPTIONS,
+  OPENCODE_MODEL_OPTIONS,
+  THINKING_LEVEL_OPTIONS,
+  EFFORT_LEVEL_OPTIONS,
 }
+export type { ChatToolbarProps }
 
-/** Check status icon component */
-function CheckStatusIcon({ status }: { status: CheckStatus | null }) {
-  if (!status) return null
-
-  switch (status) {
-    case 'success':
-      return null
-    case 'failure':
-    case 'error':
-      return (
-        <span
-          className="ml-1 h-2 w-2 rounded-full bg-red-500"
-          title="Checks failing"
-        />
-      )
-    case 'pending':
-      return (
-        <span
-          className="ml-1 h-2 w-2 rounded-full bg-yellow-500 animate-pulse"
-          title="Checks pending"
-        />
-      )
-    default:
-      return null
-  }
-}
-
-interface ChatToolbarProps {
-  // State
-  isSending: boolean
-  hasPendingQuestions: boolean
-  hasPendingAttachments: boolean
-  hasInputValue: boolean
-  executionMode: ExecutionMode
-  selectedModel: ClaudeModel
-  selectedThinkingLevel: ThinkingLevel
-  selectedEffortLevel: EffortLevel
-  thinkingOverrideActive: boolean // True when thinking is disabled in build/yolo due to preference
-  useAdaptiveThinking: boolean // True when model supports effort (Opus on CLI >= 2.1.32)
-
-  // Git state
-  baseBranch: string
-  uncommittedAdded: number
-  uncommittedRemoved: number
-  branchDiffAdded: number
-  branchDiffRemoved: number
-
-  // PR state
-  prUrl: string | undefined
-  prNumber: number | undefined
-  displayStatus: PrDisplayStatus | undefined
-  checkStatus: CheckStatus | undefined
-  mergeableStatus: MergeableStatus | undefined
-
-  // Shortcuts
-  magicModalShortcut: string
-
-  // Worktree info
-  activeWorktreePath: string | undefined
-  worktreeId: string | null
-  projectId: string | undefined
-
-  // Issue/PR/Saved context
-  loadedIssueContexts: LoadedIssueContext[]
-  loadedPRContexts: LoadedPullRequestContext[]
-  attachedSavedContexts: AttachedSavedContext[]
-
-  // Callbacks
-  onOpenMagicModal: () => void
-  onSaveContext: () => void
-  onLoadContext: () => void
-  onCommit: () => void
-  onCommitAndPush: () => void
-  onOpenPr: () => void
-  onReview: () => void
-  onCheckoutPr: () => void
-  onMerge: () => void
-  onResolvePrConflicts: () => void
-  onResolveConflicts: () => void
-  onInvestigate: () => void
-  hasOpenPr: boolean
-  onSetDiffRequest: (request: DiffRequest) => void
-  onModelChange: (model: ClaudeModel) => void
-  onThinkingLevelChange: (level: ThinkingLevel) => void
-  onEffortLevelChange: (level: EffortLevel) => void
-  onSetExecutionMode: (mode: ExecutionMode) => void
-  onCancel: () => void
-
-  // MCP servers
-  availableMcpServers: McpServerInfo[]
-  enabledMcpServers: string[]
-  onToggleMcpServer: (serverName: string) => void
-  onOpenProjectSettings?: () => void
-}
-
-/** Compact health status dot for the toolbar MCP dropdown */
-/** Hover hint for MCP server health status in the toolbar dropdown */
-function mcpStatusHint(status: McpHealthStatus | undefined): string | undefined {
-  switch (status) {
-    case 'needsAuthentication':
-      return "Needs authentication — run 'claude /mcp' to authenticate"
-    case 'couldNotConnect':
-      return 'Could not connect to server'
-    case 'connected':
-      return 'Connected'
-    default:
-      return undefined
-  }
-}
-
-/** Compact health status dot for the toolbar MCP dropdown */
-function McpStatusDot({ status }: { status: McpHealthStatus | undefined }) {
-  if (!status) return null
-
-  switch (status) {
-    case 'connected':
-      return (
-        <span title="Connected">
-          <CheckCircle className="size-3 text-green-600 dark:text-green-400" />
-        </span>
-      )
-    case 'needsAuthentication':
-      return (
-        <span title="Needs authentication — run 'claude /mcp' to authenticate">
-          <ShieldAlert className="size-3 text-amber-600 dark:text-amber-400" />
-        </span>
-      )
-    case 'couldNotConnect':
-      return (
-        <span title="Could not connect to server">
-          <XCircle className="size-3 text-red-600 dark:text-red-400" />
-        </span>
-      )
-    default:
-      return null
-  }
-}
-
-/**
- * Memoized toolbar component to prevent re-renders when parent state changes.
- * This component only re-renders when its props change.
- */
 export const ChatToolbar = memo(function ChatToolbar({
   isSending,
   hasPendingQuestions,
   hasPendingAttachments,
   hasInputValue,
   executionMode,
+  selectedBackend,
   selectedModel,
+  selectedProvider,
   selectedThinkingLevel,
   selectedEffortLevel,
-  thinkingOverrideActive,
   useAdaptiveThinking,
+  hideThinkingLevel,
+  sessionHasMessages,
+  providerLocked,
   baseBranch,
   uncommittedAdded,
   uncommittedRemoved,
@@ -307,9 +64,9 @@ export const ChatToolbar = memo(function ChatToolbar({
   displayStatus,
   checkStatus,
   mergeableStatus,
-  magicModalShortcut,
   activeWorktreePath,
   worktreeId,
+  activeSessionId,
   projectId,
   loadedIssueContexts,
   loadedPRContexts,
@@ -321,52 +78,103 @@ export const ChatToolbar = memo(function ChatToolbar({
   onCommitAndPush,
   onOpenPr,
   onReview,
-  onCheckoutPr,
   onMerge,
   onResolvePrConflicts,
   onResolveConflicts,
-  onInvestigate,
   hasOpenPr,
   onSetDiffRequest,
+  installedBackends,
+  onBackendChange,
   onModelChange,
+  onProviderChange,
+  customCliProfiles,
   onThinkingLevelChange,
   onEffortLevelChange,
   onSetExecutionMode,
   onCancel,
+  queuedMessageCount,
   availableMcpServers,
   enabledMcpServers,
   onToggleMcpServer,
   onOpenProjectSettings,
 }: ChatToolbarProps) {
-  // MCP health check — triggered when dropdown opens, shared cache with settings pane
   const {
     data: healthResult,
     isFetching: isHealthChecking,
     refetch: checkHealth,
   } = useMcpHealthCheck()
 
+  const [providerDropdownOpen, setProviderDropdownOpen] = useState(false)
+  const [modelDropdownOpen, setModelDropdownOpen] = useState(false)
+  const [thinkingDropdownOpen, setThinkingDropdownOpen] = useState(false)
   const [mcpDropdownOpen, setMcpDropdownOpen] = useState(false)
 
-  useEffect(() => {
-    if (mcpDropdownOpen) {
-      checkHealth()
-    }
-  }, [mcpDropdownOpen, checkHealth])
+  const pickRemoteOrRun = useRemotePicker(activeWorktreePath)
 
-  // Count only enabled servers that actually exist and aren't disabled
-  const activeMcpCount = useMemo(() => {
-    const availableNames = new Set(
-      availableMcpServers.filter(s => !s.disabled).map(s => s.name)
-    )
-    return enabledMcpServers.filter(name => availableNames.has(name)).length
-  }, [availableMcpServers, enabledMcpServers])
+  const handleMcpDropdownOpenChange = useCallback(
+    (open: boolean) => {
+      setMcpDropdownOpen(open)
+      if (open) {
+        checkHealth()
+      }
+    },
+    [checkHealth]
+  )
 
-  // Memoize callbacks to prevent Select re-renders
+  useToolbarDropdownShortcuts({
+    setProviderDropdownOpen,
+    setModelDropdownOpen,
+    setThinkingDropdownOpen,
+  })
+
+  const { data: availableOpencodeModels } = useAvailableOpencodeModels({
+    enabled: selectedBackend === 'opencode',
+  })
+  const opencodeModelOptions =
+    availableOpencodeModels?.map(model => ({
+      value: model,
+      label: formatOpencodeModelLabel(model),
+    })) ?? OPENCODE_MODEL_OPTIONS
+
+  const { isCodex, activeMcpCount, filteredModelOptions, selectedModelLabel } =
+    useToolbarDerivedState({
+      selectedBackend,
+      selectedProvider,
+      selectedModel,
+      opencodeModelOptions,
+      customCliProfiles,
+      availableMcpServers,
+      enabledMcpServers,
+    })
+
+  const {
+    viewingContext,
+    setViewingContext,
+    handleViewIssue,
+    handleViewPR,
+    handleViewSavedContext,
+  } = useContextViewer({ activeSessionId, activeWorktreePath })
+
   const handleModelChange = useCallback(
     (value: string) => {
       onModelChange(value as ClaudeModel)
     },
     [onModelChange]
+  )
+
+  const handleProviderChange = useCallback(
+    (value: string) => {
+      const provider = value === 'default' ? null : value
+      onProviderChange(provider)
+      if (
+        provider &&
+        provider !== '__anthropic__' &&
+        selectedModel === 'opus-4.5'
+      ) {
+        onModelChange('opus' as ClaudeModel)
+      }
+    },
+    [onProviderChange, onModelChange, selectedModel]
   )
 
   const handleThinkingLevelChange = useCallback(
@@ -385,28 +193,13 @@ export const ChatToolbar = memo(function ChatToolbar({
 
   const handlePullClick = useCallback(async () => {
     if (!activeWorktreePath || !worktreeId) return
-    const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
-    setWorktreeLoading(worktreeId, 'pull')
-    const toastId = toast.loading('Pulling changes...')
-    try {
-      await gitPull(activeWorktreePath, baseBranch)
-      triggerImmediateGitPoll()
-      if (projectId) fetchWorktreesStatus(projectId)
-      toast.success('Changes pulled', { id: toastId })
-    } catch (error) {
-      const errorStr = String(error)
-      if (errorStr.includes('Merge conflicts in:')) {
-        toast.warning('Pull resulted in conflicts', {
-          id: toastId,
-          description: 'Opening conflict resolution...',
-        })
-        onResolveConflicts()
-      } else {
-        toast.error(`Pull failed: ${errorStr}`, { id: toastId })
-      }
-    } finally {
-      clearWorktreeLoading(worktreeId)
-    }
+    await performGitPull({
+      worktreeId,
+      worktreePath: activeWorktreePath,
+      baseBranch,
+      projectId,
+      onMergeConflict: onResolveConflicts,
+    })
   }, [
     activeWorktreePath,
     baseBranch,
@@ -415,22 +208,25 @@ export const ChatToolbar = memo(function ChatToolbar({
     onResolveConflicts,
   ])
 
-  const handlePushClick = useCallback(async () => {
+  const handlePushClick = useCallback(() => {
     if (!activeWorktreePath || !worktreeId) return
-    const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
-    setWorktreeLoading(worktreeId, 'push')
-    const toastId = toast.loading('Pushing changes...')
-    try {
-      await gitPush(activeWorktreePath, prNumber)
-      triggerImmediateGitPoll()
-      if (projectId) fetchWorktreesStatus(projectId)
-      toast.success('Changes pushed', { id: toastId })
-    } catch (error) {
-      toast.error(`Push failed: ${error}`, { id: toastId })
-    } finally {
-      clearWorktreeLoading(worktreeId)
-    }
-  }, [activeWorktreePath, worktreeId, projectId, prNumber])
+    pickRemoteOrRun(async remote => {
+      const { setWorktreeLoading, clearWorktreeLoading } =
+        useChatStore.getState()
+      setWorktreeLoading(worktreeId, 'push')
+      const toastId = toast.loading('Pushing changes...')
+      try {
+        await gitPush(activeWorktreePath, prNumber, remote)
+        triggerImmediateGitPoll()
+        if (projectId) fetchWorktreesStatus(projectId)
+        toast.success('Changes pushed', { id: toastId })
+      } catch (error) {
+        toast.error(`Push failed: ${error}`, { id: toastId })
+      } finally {
+        clearWorktreeLoading(worktreeId)
+      }
+    })
+  }, [activeWorktreePath, worktreeId, projectId, prNumber, pickRemoteOrRun])
 
   const handleUncommittedDiffClick = useCallback(() => {
     onSetDiffRequest({
@@ -448,935 +244,128 @@ export const ChatToolbar = memo(function ChatToolbar({
     })
   }, [activeWorktreePath, baseBranch, onSetDiffRequest])
 
-  // Context viewer state
-  const [viewingContext, setViewingContext] = useState<{
-    type: 'issue' | 'pr' | 'saved'
-    number?: number
-    slug?: string
-    title: string
-    content: string
-  } | null>(null)
-
-  const handleViewIssue = useCallback(
-    async (ctx: LoadedIssueContext) => {
-      if (!worktreeId || !activeWorktreePath) return
-      try {
-        const content = await getIssueContextContent(
-          worktreeId,
-          ctx.number,
-          activeWorktreePath
-        )
-        setViewingContext({
-          type: 'issue',
-          number: ctx.number,
-          title: ctx.title,
-          content,
-        })
-      } catch (error) {
-        toast.error(`Failed to load context: ${error}`)
-      }
-    },
-    [worktreeId, activeWorktreePath]
-  )
-
-  const handleViewPR = useCallback(
-    async (ctx: LoadedPullRequestContext) => {
-      if (!worktreeId || !activeWorktreePath) return
-      try {
-        const content = await getPRContextContent(
-          worktreeId,
-          ctx.number,
-          activeWorktreePath
-        )
-        setViewingContext({
-          type: 'pr',
-          number: ctx.number,
-          title: ctx.title,
-          content,
-        })
-      } catch (error) {
-        toast.error(`Failed to load context: ${error}`)
-      }
-    },
-    [worktreeId, activeWorktreePath]
-  )
-
-  const handleViewSavedContext = useCallback(
-    async (ctx: AttachedSavedContext) => {
-      if (!worktreeId) return
-      try {
-        const content = await getSavedContextContent(worktreeId, ctx.slug)
-        setViewingContext({
-          type: 'saved',
-          slug: ctx.slug,
-          title: ctx.name || ctx.slug,
-          content,
-        })
-      } catch (error) {
-        toast.error(`Failed to load context: ${error}`)
-      }
-    },
-    [worktreeId]
-  )
-
-  // Compute counts from arrays
-  const loadedIssueCount = loadedIssueContexts.length
-  const loadedPRCount = loadedPRContexts.length
-  const loadedContextCount = attachedSavedContexts.length
-
-  const isDisabled = isSending || hasPendingQuestions
   const canSend = hasInputValue || hasPendingAttachments
+  const mcpStatuses = healthResult?.statuses
 
   return (
-    <div className="@container px-4 py-2 md:px-6">
-      {/* Controls - segmented button group */}
-      <div className="inline-flex items-center rounded-lg bg-muted/50">
-        {/* Mobile overflow menu - only visible on small screens */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              className="flex @md:hidden h-8 items-center gap-1 rounded-l-lg px-2 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-              disabled={isDisabled}
-            >
-              <MoreHorizontal className="h-4 w-4" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-56">
-            {/* Context section */}
-            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Context
-            </div>
-            <DropdownMenuItem onClick={onSaveContext}>
-              <BookmarkPlus className="h-4 w-4" />
-              Save Context
-              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                S
-              </span>
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onLoadContext}>
-              <FolderOpen className="h-4 w-4" />
-              Load Context
-              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                L
-              </span>
-            </DropdownMenuItem>
+    <div className="@container flex justify-start px-4 py-2 md:px-6">
+      <div className="inline-flex max-w-full flex-nowrap items-center overflow-hidden whitespace-nowrap rounded-lg bg-muted/50">
+        <MobileToolbarMenu
+          isDisabled={isSending || hasPendingQuestions}
+          hasOpenPr={hasOpenPr}
+          sessionHasMessages={sessionHasMessages}
+          providerLocked={providerLocked}
+          selectedBackend={selectedBackend}
+          selectedProvider={selectedProvider}
+          selectedModel={selectedModel}
+          selectedEffortLevel={selectedEffortLevel}
+          selectedThinkingLevel={selectedThinkingLevel}
+          hideThinkingLevel={hideThinkingLevel}
+          useAdaptiveThinking={useAdaptiveThinking}
+          isCodex={isCodex}
+          executionMode={executionMode}
+          customCliProfiles={customCliProfiles}
+          filteredModelOptions={filteredModelOptions}
+          uncommittedAdded={uncommittedAdded}
+          uncommittedRemoved={uncommittedRemoved}
+          branchDiffAdded={branchDiffAdded}
+          branchDiffRemoved={branchDiffRemoved}
+          prUrl={prUrl}
+          prNumber={prNumber}
+          displayStatus={displayStatus}
+          checkStatus={checkStatus}
+          activeWorktreePath={activeWorktreePath}
+          onSaveContext={onSaveContext}
+          onLoadContext={onLoadContext}
+          onCommit={onCommit}
+          onCommitAndPush={onCommitAndPush}
+          onOpenPr={onOpenPr}
+          onReview={onReview}
+          onMerge={onMerge}
+          onResolveConflicts={onResolveConflicts}
+          installedBackends={installedBackends}
+          onBackendChange={onBackendChange}
+          onSetExecutionMode={onSetExecutionMode}
+          handlePullClick={handlePullClick}
+          handlePushClick={handlePushClick}
+          handleUncommittedDiffClick={handleUncommittedDiffClick}
+          handleBranchDiffClick={handleBranchDiffClick}
+          handleProviderChange={handleProviderChange}
+          handleModelChange={handleModelChange}
+          handleEffortLevelChange={handleEffortLevelChange}
+          handleThinkingLevelChange={handleThinkingLevelChange}
+        />
 
-            <DropdownMenuSeparator />
+        <DesktopToolbarControls
+          hasPendingQuestions={hasPendingQuestions}
+          selectedBackend={selectedBackend}
+          selectedModel={selectedModel}
+          selectedProvider={selectedProvider}
+          selectedThinkingLevel={selectedThinkingLevel}
+          selectedEffortLevel={selectedEffortLevel}
+          executionMode={executionMode}
+          useAdaptiveThinking={useAdaptiveThinking}
+          hideThinkingLevel={hideThinkingLevel}
+          sessionHasMessages={sessionHasMessages}
+          providerLocked={providerLocked}
+          customCliProfiles={customCliProfiles}
+          filteredModelOptions={filteredModelOptions}
+          selectedModelLabel={selectedModelLabel}
+          isCodex={isCodex}
+          prUrl={prUrl}
+          prNumber={prNumber}
+          displayStatus={displayStatus}
+          checkStatus={checkStatus}
+          mergeableStatus={mergeableStatus}
+          activeWorktreePath={activeWorktreePath}
+          availableMcpServers={availableMcpServers}
+          enabledMcpServers={enabledMcpServers}
+          activeMcpCount={activeMcpCount}
+          isHealthChecking={isHealthChecking}
+          mcpStatuses={mcpStatuses}
+          loadedIssueContexts={loadedIssueContexts}
+          loadedPRContexts={loadedPRContexts}
+          attachedSavedContexts={attachedSavedContexts}
+          providerDropdownOpen={providerDropdownOpen}
+          modelDropdownOpen={modelDropdownOpen}
+          thinkingDropdownOpen={thinkingDropdownOpen}
+          mcpDropdownOpen={mcpDropdownOpen}
+          setProviderDropdownOpen={setProviderDropdownOpen}
+          setModelDropdownOpen={setModelDropdownOpen}
+          setThinkingDropdownOpen={setThinkingDropdownOpen}
+          onMcpDropdownOpenChange={handleMcpDropdownOpenChange}
+          onOpenMagicModal={onOpenMagicModal}
+          onOpenProjectSettings={onOpenProjectSettings}
+          onResolvePrConflicts={onResolvePrConflicts}
+          onLoadContext={onLoadContext}
+          installedBackends={installedBackends}
+          onBackendChange={onBackendChange}
+          onSetExecutionMode={onSetExecutionMode}
+          onToggleMcpServer={onToggleMcpServer}
+          handleModelChange={handleModelChange}
+          handleProviderChange={handleProviderChange}
+          handleThinkingLevelChange={handleThinkingLevelChange}
+          handleEffortLevelChange={handleEffortLevelChange}
+          handleViewIssue={handleViewIssue}
+          handleViewPR={handleViewPR}
+          handleViewSavedContext={handleViewSavedContext}
+        />
 
-            {/* Commit section */}
-            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Commit
-            </div>
-            <DropdownMenuItem onClick={onCommit}>
-              <GitCommitHorizontal className="h-4 w-4" />
-              Commit
-              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                C
-              </span>
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onCommitAndPush}>
-              <GitCommitHorizontal className="h-4 w-4" />
-              Commit & Push
-              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                P
-              </span>
-            </DropdownMenuItem>
-
-            <DropdownMenuSeparator />
-
-            {/* Sync section */}
-            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Sync
-            </div>
-            <DropdownMenuItem onClick={handlePullClick}>
-              <ArrowDownToLine className="h-4 w-4" />
-              Pull
-              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                D
-              </span>
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={handlePushClick}>
-              <ArrowUpToLine className="h-4 w-4" />
-              Push
-              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                U
-              </span>
-            </DropdownMenuItem>
-
-            <DropdownMenuSeparator />
-
-            {/* Pull Request section */}
-            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Pull Request
-            </div>
-            <DropdownMenuItem onClick={onOpenPr}>
-              <GitPullRequest className="h-4 w-4" />
-              {hasOpenPr ? 'Open' : 'Create'}
-              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                O
-              </span>
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onReview}>
-              <Eye className="h-4 w-4" />
-              Review
-              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                R
-              </span>
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onCheckoutPr}>
-              <GitBranch className="h-4 w-4" />
-              Checkout
-              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                K
-              </span>
-            </DropdownMenuItem>
-
-            <DropdownMenuSeparator />
-
-            {/* Branch section */}
-            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Branch
-            </div>
-            <DropdownMenuItem onClick={onMerge}>
-              <GitMerge className="h-4 w-4" />
-              Merge to Base
-              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                M
-              </span>
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onResolveConflicts}>
-              <GitMerge className="h-4 w-4" />
-              Resolve Conflicts
-              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                F
-              </span>
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onInvestigate}>
-              <Search className="h-4 w-4" />
-              Investigate Context
-              <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                I
-              </span>
-            </DropdownMenuItem>
-
-            {/* Git stats section - conditional */}
-            {(uncommittedAdded > 0 ||
-              uncommittedRemoved > 0 ||
-              branchDiffAdded > 0 ||
-              branchDiffRemoved > 0 ||
-              prUrl) && <DropdownMenuSeparator />}
-
-            {/* Uncommitted diff */}
-            {(uncommittedAdded > 0 || uncommittedRemoved > 0) && (
-              <DropdownMenuItem onClick={handleUncommittedDiffClick}>
-                <Pencil className="h-4 w-4" />
-                <span>Uncommitted</span>
-                <span className="ml-auto text-xs">
-                  <span className="text-green-500">+{uncommittedAdded}</span>
-                  {' / '}
-                  <span className="text-red-500">-{uncommittedRemoved}</span>
-                </span>
-              </DropdownMenuItem>
-            )}
-
-            {/* Branch diff */}
-            {(branchDiffAdded > 0 || branchDiffRemoved > 0) && (
-              <DropdownMenuItem onClick={handleBranchDiffClick}>
-                <GitBranch className="h-4 w-4" />
-                <span>Branch diff</span>
-                <span className="ml-auto text-xs">
-                  <span className="text-green-500">+{branchDiffAdded}</span>
-                  {' / '}
-                  <span className="text-red-500">-{branchDiffRemoved}</span>
-                </span>
-              </DropdownMenuItem>
-            )}
-
-            {/* PR link */}
-            {prUrl && prNumber && (
-              <DropdownMenuItem asChild>
-                <a
-                  href={prUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={cn(
-                    displayStatus
-                      ? getPrStatusDisplay(displayStatus).className
-                      : ''
-                  )}
-                >
-                  {displayStatus === 'merged' ? (
-                    <GitMerge className="h-4 w-4" />
-                  ) : (
-                    <GitPullRequest className="h-4 w-4" />
-                  )}
-                  <span>
-                    {displayStatus
-                      ? getPrStatusDisplay(displayStatus).label
-                      : 'Open'}{' '}
-                    #{prNumber}
-                  </span>
-                  <CheckStatusIcon status={checkStatus ?? null} />
-                </a>
-              </DropdownMenuItem>
-            )}
-
-            <DropdownMenuSeparator />
-
-            {/* Model selector as submenu */}
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                <Sparkles className="mr-2 h-4 w-4" />
-                <span>Model</span>
-                <span className="ml-auto text-xs text-muted-foreground">
-                  {MODEL_OPTIONS.find(o => o.value === selectedModel)?.label}
-                </span>
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                <DropdownMenuRadioGroup
-                  value={selectedModel}
-                  onValueChange={handleModelChange}
-                >
-                  {MODEL_OPTIONS.map(option => (
-                    <DropdownMenuRadioItem
-                      key={option.value}
-                      value={option.value}
-                    >
-                      {option.label}
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-
-            {/* Thinking/Effort level as submenu */}
-            {useAdaptiveThinking ? (
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger>
-                  <Brain className="mr-2 h-4 w-4" />
-                  <span>Effort</span>
-                  <span className="ml-auto text-xs text-muted-foreground">
-                    {thinkingOverrideActive
-                      ? 'Off'
-                      : EFFORT_LEVEL_OPTIONS.find(
-                          o => o.value === selectedEffortLevel
-                        )?.label}
-                  </span>
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent>
-                  <DropdownMenuRadioGroup
-                    value={thinkingOverrideActive ? '' : selectedEffortLevel}
-                    onValueChange={handleEffortLevelChange}
-                  >
-                    {EFFORT_LEVEL_OPTIONS.map(option => (
-                      <DropdownMenuRadioItem
-                        key={option.value}
-                        value={option.value}
-                      >
-                        {option.label}
-                        <span className="ml-auto pl-4 text-xs text-muted-foreground">
-                          {option.description}
-                        </span>
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-            ) : (
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger>
-                  <Brain className="mr-2 h-4 w-4" />
-                  <span>Thinking</span>
-                  <span className="ml-auto text-xs text-muted-foreground">
-                    {thinkingOverrideActive
-                      ? 'Off'
-                      : THINKING_LEVEL_OPTIONS.find(
-                          o => o.value === selectedThinkingLevel
-                        )?.label}
-                  </span>
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent>
-                  <DropdownMenuRadioGroup
-                    value={
-                      thinkingOverrideActive ? 'off' : selectedThinkingLevel
-                    }
-                    onValueChange={handleThinkingLevelChange}
-                  >
-                    {THINKING_LEVEL_OPTIONS.map(option => (
-                      <DropdownMenuRadioItem
-                        key={option.value}
-                        value={option.value}
-                      >
-                        {option.label}
-                        <span className="ml-auto pl-4 text-xs text-muted-foreground">
-                          {option.tokens}
-                        </span>
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-            )}
-
-            {/* Execution mode as submenu */}
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                {executionMode === 'plan' && (
-                  <ClipboardList className="mr-2 h-4 w-4" />
-                )}
-                {executionMode === 'build' && (
-                  <Hammer className="mr-2 h-4 w-4" />
-                )}
-                {executionMode === 'yolo' && <Zap className="mr-2 h-4 w-4" />}
-                <span>Mode</span>
-                <span className="ml-auto text-xs text-muted-foreground capitalize">
-                  {executionMode}
-                </span>
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                <DropdownMenuRadioGroup
-                  value={executionMode}
-                  onValueChange={v => onSetExecutionMode(v as ExecutionMode)}
-                >
-                  <DropdownMenuRadioItem value="plan">
-                    Plan
-                  </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="build">
-                    Build
-                  </DropdownMenuRadioItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuRadioItem
-                    value="yolo"
-                    className="text-red-600 focus:text-red-600 dark:text-red-400 dark:focus:text-red-400"
-                  >
-                    Yolo
-                  </DropdownMenuRadioItem>
-                </DropdownMenuRadioGroup>
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        {/* Divider after overflow menu - mobile only */}
-        <div className="block @md:hidden h-4 w-px bg-border/50" />
-
-        {/* Magic modal button - desktop only */}
-        <button
-          type="button"
-          className="hidden @md:flex h-8 items-center gap-1 rounded-l-lg px-2 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-          disabled={isDisabled}
-          onClick={onOpenMagicModal}
-        >
-          <Wand2 className="h-3.5 w-3.5" />
-          <Kbd className="ml-0.5 h-4 text-[10px] opacity-50">
-            {magicModalShortcut}
-          </Kbd>
-        </button>
-
-        {/* Issue/PR/Context dropdown - desktop only */}
-        {(loadedIssueCount > 0 ||
-          loadedPRCount > 0 ||
-          loadedContextCount > 0) && (
-          <>
-            <div className="hidden @md:block h-4 w-px bg-border/50" />
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  className="hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
-                >
-                  <CircleDot className="h-3.5 w-3.5" />
-                  <span>
-                    {loadedIssueCount > 0 &&
-                      `${loadedIssueCount} Issue${loadedIssueCount > 1 ? 's' : ''}`}
-                    {loadedIssueCount > 0 &&
-                      (loadedPRCount > 0 || loadedContextCount > 0) &&
-                      ', '}
-                    {loadedPRCount > 0 &&
-                      `${loadedPRCount} PR${loadedPRCount > 1 ? 's' : ''}`}
-                    {loadedPRCount > 0 && loadedContextCount > 0 && ', '}
-                    {loadedContextCount > 0 &&
-                      `${loadedContextCount} Context${loadedContextCount > 1 ? 's' : ''}`}
-                  </span>
-                  <ChevronDown className="h-3 w-3 opacity-50" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-64">
-                {/* Issues section */}
-                {loadedIssueContexts.length > 0 && (
-                  <>
-                    <DropdownMenuLabel className="text-xs text-muted-foreground">
-                      Issues
-                    </DropdownMenuLabel>
-                    {loadedIssueContexts.map(ctx => (
-                      <DropdownMenuItem
-                        key={ctx.number}
-                        onClick={() => handleViewIssue(ctx)}
-                      >
-                        <CircleDot className="h-4 w-4 text-green-500" />
-                        <span className="truncate">
-                          #{ctx.number} {ctx.title}
-                        </span>
-                        <button
-                          className="ml-auto shrink-0 rounded p-0.5 hover:bg-accent"
-                          onClick={e => {
-                            e.stopPropagation()
-                            openExternal(
-                              `https://github.com/${ctx.repoOwner}/${ctx.repoName}/issues/${ctx.number}`
-                            )
-                          }}
-                        >
-                          <ExternalLink className="h-3.5 w-3.5 opacity-60" />
-                        </button>
-                      </DropdownMenuItem>
-                    ))}
-                  </>
-                )}
-
-                {/* PRs section */}
-                {loadedPRContexts.length > 0 && (
-                  <>
-                    {loadedIssueContexts.length > 0 && (
-                      <DropdownMenuSeparator />
-                    )}
-                    <DropdownMenuLabel className="text-xs text-muted-foreground">
-                      Pull Requests
-                    </DropdownMenuLabel>
-                    {loadedPRContexts.map(ctx => (
-                      <DropdownMenuItem
-                        key={ctx.number}
-                        onClick={() => handleViewPR(ctx)}
-                      >
-                        <GitPullRequest className="h-4 w-4 text-green-500" />
-                        <span className="truncate">
-                          #{ctx.number} {ctx.title}
-                        </span>
-                        <button
-                          className="ml-auto shrink-0 rounded p-0.5 hover:bg-accent"
-                          onClick={e => {
-                            e.stopPropagation()
-                            openExternal(
-                              `https://github.com/${ctx.repoOwner}/${ctx.repoName}/pull/${ctx.number}`
-                            )
-                          }}
-                        >
-                          <ExternalLink className="h-3.5 w-3.5 opacity-60" />
-                        </button>
-                      </DropdownMenuItem>
-                    ))}
-                  </>
-                )}
-
-                {/* Saved contexts section */}
-                {attachedSavedContexts.length > 0 && (
-                  <>
-                    {(loadedIssueContexts.length > 0 ||
-                      loadedPRContexts.length > 0) && <DropdownMenuSeparator />}
-                    <DropdownMenuLabel className="text-xs text-muted-foreground">
-                      Contexts
-                    </DropdownMenuLabel>
-                    {attachedSavedContexts.map(ctx => (
-                      <DropdownMenuItem
-                        key={ctx.slug}
-                        onClick={() => handleViewSavedContext(ctx)}
-                      >
-                        <FolderOpen className="h-4 w-4 text-blue-500" />
-                        <span className="truncate">{ctx.name || ctx.slug}</span>
-                      </DropdownMenuItem>
-                    ))}
-                  </>
-                )}
-
-                {/* Manage button */}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={onLoadContext}>
-                  <FolderOpen className="h-4 w-4" />
-                  Manage Contexts...
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </>
-        )}
-
-        {/* PR link indicator - desktop only */}
-        {prUrl && prNumber && (
-          <>
-            <div className="hidden @md:block h-4 w-px bg-border/50" />
-            <a
-              href={prUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={cn(
-                'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm transition-colors select-none hover:bg-muted/80 hover:text-foreground',
-                displayStatus
-                  ? getPrStatusDisplay(displayStatus).className
-                  : 'text-muted-foreground'
-              )}
-              title={`Open PR #${prNumber} on GitHub`}
-            >
-              {displayStatus === 'merged' ? (
-                <GitMerge className="h-3.5 w-3.5" />
-              ) : (
-                <GitPullRequest className="h-3.5 w-3.5" />
-              )}
-              <span>
-                {displayStatus
-                  ? getPrStatusDisplay(displayStatus).label
-                  : 'Open'}{' '}
-                #{prNumber}
-              </span>
-              <CheckStatusIcon status={checkStatus ?? null} />
-            </a>
-          </>
-        )}
-
-        {/* PR conflicts indicator - desktop only */}
-        {mergeableStatus === 'conflicting' && (
-          <>
-            <div className="hidden @md:block h-4 w-px bg-border/50" />
-            <button
-              type="button"
-              className="hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-amber-600 dark:text-amber-400 transition-colors cursor-pointer hover:bg-muted/80"
-              title="PR has merge conflicts — click to resolve"
-              onClick={onResolvePrConflicts}
-            >
-              <GitMerge className="h-3 w-3" />
-              <span>Conflicts</span>
-            </button>
-          </>
-        )}
-
-        {/* MCP servers button - desktop only */}
-        <div className="hidden @md:block h-4 w-px bg-border/50" />
-        <DropdownMenu open={mcpDropdownOpen} onOpenChange={setMcpDropdownOpen}>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              disabled={hasPendingQuestions}
-              className={cn(
-                'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
-                activeMcpCount > 0 &&
-                  'border border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:border-emerald-400/40 dark:bg-emerald-500/10 dark:text-emerald-400'
-              )}
-              title={
-                activeMcpCount > 0
-                  ? `${activeMcpCount} MCP server(s) enabled`
-                  : 'No MCP servers enabled'
-              }
-            >
-              <Plug className="h-3.5 w-3.5" />
-              {activeMcpCount > 0 && (
-                <span>{activeMcpCount}</span>
-              )}
-              <ChevronDown className="h-3 w-3 opacity-50" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuLabel className="flex items-center gap-2">
-              MCP Servers
-              {isHealthChecking && (
-                <Loader2 className="size-3 animate-spin text-muted-foreground" />
-              )}
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {availableMcpServers.length > 0 ? (
-              availableMcpServers.map(server => {
-                const status = healthResult?.statuses[server.name]
-                return (
-                  <DropdownMenuCheckboxItem
-                    key={server.name}
-                    checked={
-                      !server.disabled &&
-                      enabledMcpServers.includes(server.name)
-                    }
-                    onCheckedChange={() => onToggleMcpServer(server.name)}
-                    disabled={server.disabled}
-                    className={server.disabled ? 'opacity-50' : undefined}
-                    title={mcpStatusHint(status)}
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <McpStatusDot status={status} />
-                      {server.name}
-                    </span>
-                    <span className="ml-auto pl-4 text-xs text-muted-foreground">
-                      {server.disabled ? 'disabled' : server.scope}
-                    </span>
-                  </DropdownMenuCheckboxItem>
-                )
-              })
-            ) : (
-              <DropdownMenuItem disabled>
-                <span className="text-xs text-muted-foreground">
-                  No MCP servers configured
-                </span>
-              </DropdownMenuItem>
-            )}
-            {onOpenProjectSettings && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={onOpenProjectSettings}>
-                  <span className="text-xs text-muted-foreground">
-                    Set defaults in project settings
-                  </span>
-                </DropdownMenuItem>
-              </>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        {/* Divider - desktop only */}
-        <div className="hidden @md:block h-4 w-px bg-border/50" />
-
-        {/* Model selector - desktop only */}
-        <Select
-          value={selectedModel}
-          onValueChange={handleModelChange}
-          disabled={hasPendingQuestions}
-        >
-          <SelectTrigger className="hidden @md:flex h-8 w-auto gap-1.5 rounded-none border-0 bg-transparent px-3 text-sm text-muted-foreground shadow-none hover:bg-muted/80 hover:text-foreground dark:bg-transparent dark:hover:bg-muted/80">
-            <Sparkles className="h-3.5 w-3.5" />
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {MODEL_OPTIONS.map(option => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        {/* Divider - desktop only */}
-        <div className="hidden @md:block h-4 w-px bg-border/50" />
-
-        {/* Thinking/Effort level dropdown - desktop only */}
-        {useAdaptiveThinking ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                disabled={hasPendingQuestions}
-                className={cn(
-                  'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
-                  !thinkingOverrideActive &&
-                    'border border-purple-500/50 bg-purple-500/10 text-purple-700 dark:border-purple-400/40 dark:bg-purple-500/10 dark:text-purple-400'
-                )}
-                title={
-                  thinkingOverrideActive
-                    ? `Effort disabled in ${executionMode} mode (change in Settings)`
-                    : `Effort: ${EFFORT_LEVEL_OPTIONS.find(o => o.value === selectedEffortLevel)?.label}`
-                }
-              >
-                <Brain className="h-3.5 w-3.5" />
-                <span>
-                  {thinkingOverrideActive
-                    ? 'Off'
-                    : EFFORT_LEVEL_OPTIONS.find(
-                        o => o.value === selectedEffortLevel
-                      )?.label}
-                </span>
-                <ChevronDown className="h-3 w-3 opacity-50" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              <DropdownMenuRadioGroup
-                value={thinkingOverrideActive ? '' : selectedEffortLevel}
-                onValueChange={handleEffortLevelChange}
-              >
-                {EFFORT_LEVEL_OPTIONS.map(option => (
-                  <DropdownMenuRadioItem
-                    key={option.value}
-                    value={option.value}
-                  >
-                    <Brain className="mr-2 h-4 w-4" />
-                    {option.label}
-                    <span className="ml-auto pl-4 text-xs text-muted-foreground">
-                      {option.description}
-                    </span>
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                disabled={hasPendingQuestions}
-                className={cn(
-                  'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
-                  selectedThinkingLevel !== 'off' &&
-                    !thinkingOverrideActive &&
-                    'border border-purple-500/50 bg-purple-500/10 text-purple-700 dark:border-purple-400/40 dark:bg-purple-500/10 dark:text-purple-400'
-                )}
-                title={
-                  thinkingOverrideActive
-                    ? `Thinking disabled in ${executionMode} mode (change in Settings)`
-                    : `Thinking: ${THINKING_LEVEL_OPTIONS.find(o => o.value === selectedThinkingLevel)?.label}`
-                }
-              >
-                <Brain className="h-3.5 w-3.5" />
-                <span>
-                  {thinkingOverrideActive
-                    ? 'Off'
-                    : THINKING_LEVEL_OPTIONS.find(
-                        o => o.value === selectedThinkingLevel
-                      )?.label}
-                </span>
-                <ChevronDown className="h-3 w-3 opacity-50" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              <DropdownMenuRadioGroup
-                value={thinkingOverrideActive ? 'off' : selectedThinkingLevel}
-                onValueChange={handleThinkingLevelChange}
-              >
-                {THINKING_LEVEL_OPTIONS.map(option => (
-                  <DropdownMenuRadioItem
-                    key={option.value}
-                    value={option.value}
-                  >
-                    <Brain className="mr-2 h-4 w-4" />
-                    {option.label}
-                    <span className="ml-auto pl-4 text-xs text-muted-foreground">
-                      {option.tokens}
-                    </span>
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-
-        {/* Divider - desktop only */}
-        <div className="hidden @md:block h-4 w-px bg-border/50" />
-
-        {/* Execution mode dropdown - desktop only */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              disabled={hasPendingQuestions}
-              className={cn(
-                'hidden @md:flex h-8 items-center gap-1.5 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
-                executionMode === 'plan' &&
-                  'border border-yellow-600/50 bg-yellow-500/10 text-yellow-700 dark:border-yellow-500/40 dark:bg-yellow-500/10 dark:text-yellow-400',
-                executionMode === 'yolo' &&
-                  'border border-red-500/50 bg-red-500/10 text-red-600 dark:border-red-400/40 dark:text-red-400'
-              )}
-              title={`${executionMode.charAt(0).toUpperCase() + executionMode.slice(1)} mode (Shift+Tab to cycle)`}
-            >
-              {executionMode === 'plan' && (
-                <ClipboardList className="h-3.5 w-3.5" />
-              )}
-              {executionMode === 'build' && <Hammer className="h-3.5 w-3.5" />}
-              {executionMode === 'yolo' && <Zap className="h-3.5 w-3.5" />}
-              <span className="capitalize">{executionMode}</span>
-              <ChevronDown className="h-3 w-3 opacity-50" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuRadioGroup
-              value={executionMode}
-              onValueChange={v => onSetExecutionMode(v as ExecutionMode)}
-            >
-              <DropdownMenuRadioItem value="plan">
-                <ClipboardList className="mr-2 h-4 w-4" />
-                Plan
-                <span className="ml-auto pl-4 text-xs text-muted-foreground">
-                  Read-only
-                </span>
-              </DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="build">
-                <Hammer className="mr-2 h-4 w-4" />
-                Build
-                <span className="ml-auto pl-4 text-xs text-muted-foreground">
-                  Auto-edits
-                </span>
-              </DropdownMenuRadioItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuRadioItem
-                value="yolo"
-                className="text-red-600 focus:text-red-600 dark:text-red-400 dark:focus:text-red-400"
-              >
-                <Zap className="mr-2 h-4 w-4" />
-                Yolo
-                <span className="ml-auto pl-4 text-xs">No limits!</span>
-              </DropdownMenuRadioItem>
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        {/* Divider */}
         <div className="h-4 w-px bg-border/50" />
 
-        {/* Send/Cancel button */}
-        {isSending ? (
-          <button
-            type="button"
-            onClick={onCancel}
-            className="flex h-8 items-center justify-center gap-1.5 rounded-r-lg px-3 text-sm transition-colors bg-primary text-primary-foreground hover:bg-primary/90"
-            title={`Cancel (${isMacOS ? `${getModifierSymbol()}+Option+Backspace` : 'Ctrl+Alt+Backspace'})`}
-          >
-            <span>Cancel</span>
-            <Kbd className="ml-0.5 h-4 text-[10px] bg-primary-foreground/20 text-primary-foreground">
-              {isMacOS ? `${getModifierSymbol()}⌥⌫` : 'Ctrl+Alt+⌫'}
-            </Kbd>
-          </button>
-        ) : (
-          <button
-            type="submit"
-            disabled={hasPendingQuestions || !canSend}
-            className={cn(
-              'flex h-8 items-center justify-center gap-1.5 rounded-r-lg px-3 text-sm transition-colors disabled:pointer-events-none disabled:opacity-50',
-              canSend
-                ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                : 'text-muted-foreground hover:bg-muted/80 hover:text-foreground'
-            )}
-            title="Send message (Enter)"
-          >
-            <Send className="h-3.5 w-3.5" />
-            <Kbd
-              className={cn(
-                'ml-0.5 h-4 text-[10px]',
-                canSend
-                  ? 'bg-primary-foreground/20 text-primary-foreground'
-                  : 'opacity-50'
-              )}
-            >
-              Enter
-            </Kbd>
-          </button>
-        )}
+        <SendCancelButton
+          isSending={isSending}
+          hasPendingQuestions={hasPendingQuestions}
+          canSend={canSend}
+          queuedMessageCount={queuedMessageCount}
+          onCancel={onCancel}
+        />
       </div>
 
-      {/* Context viewer dialog */}
-      {viewingContext && (
-        <Dialog open={true} onOpenChange={() => setViewingContext(null)}>
-          <DialogContent className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none sm:!w-[calc(100vw-8rem)] sm:!max-w-[calc(100vw-8rem)] sm:!h-[calc(100vh-8rem)] sm:!rounded-lg flex flex-col">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                {viewingContext.type === 'issue' && (
-                  <CircleDot className="h-4 w-4 text-green-500" />
-                )}
-                {viewingContext.type === 'pr' && (
-                  <GitPullRequest className="h-4 w-4 text-green-500" />
-                )}
-                {viewingContext.type === 'saved' && (
-                  <FolderOpen className="h-4 w-4 text-blue-500" />
-                )}
-                {viewingContext.number ? `#${viewingContext.number}: ` : ''}
-                {viewingContext.title}
-              </DialogTitle>
-            </DialogHeader>
-            <ScrollArea className="flex-1 min-h-0">
-              <Markdown className="p-4">{viewingContext.content}</Markdown>
-            </ScrollArea>
-          </DialogContent>
-        </Dialog>
-      )}
+      <ContextViewerDialog
+        viewingContext={viewingContext}
+        onClose={() => setViewingContext(null)}
+      />
     </div>
   )
 })

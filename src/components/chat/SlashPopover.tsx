@@ -39,6 +39,8 @@ interface SlashPopoverProps {
   searchQuery: string
   /** Position for the anchor (relative to textarea container) */
   anchorPosition: { top: number; left: number } | null
+  /** Reference to the form container for stable positioning */
+  containerRef?: React.RefObject<HTMLElement | null>
   /** Whether slash is at prompt start (enables commands) */
   isAtPromptStart: boolean
   /** Ref to expose navigation methods to parent */
@@ -56,6 +58,7 @@ export function SlashPopover({
   onSelectCommand,
   searchQuery,
   anchorPosition,
+  containerRef,
   isAtPromptStart,
   handleRef,
 }: SlashPopoverProps) {
@@ -146,41 +149,18 @@ export function SlashPopover({
 
   // Expose navigation methods via ref for parent to call
   useImperativeHandle(handleRef, () => {
-    console.log(
-      '[SlashPopover] useImperativeHandle creating handle, filteredItems.length:',
-      filteredItems.length
-    )
     return {
       moveUp: () => {
-        console.log(
-          '[SlashPopover] moveUp called, current selectedIndex:',
-          selectedIndex
-        )
         setSelectedIndex(i => Math.max(i - 1, 0))
       },
       moveDown: () => {
-        console.log(
-          '[SlashPopover] moveDown called, current selectedIndex:',
-          selectedIndex,
-          'max:',
-          filteredItems.length - 1
-        )
         setSelectedIndex(i => Math.min(i + 1, filteredItems.length - 1))
       },
       selectCurrent: () => {
-        console.log(
-          '[SlashPopover] selectCurrent called, clampedSelectedIndex:',
-          clampedSelectedIndex
-        )
         selectHighlighted()
       },
     }
-  }, [
-    filteredItems.length,
-    selectHighlighted,
-    selectedIndex,
-    clampedSelectedIndex,
-  ])
+  }, [filteredItems.length, selectHighlighted])
 
   // Scroll selected item into view
   useEffect(() => {
@@ -193,18 +173,44 @@ export function SlashPopover({
     selectedItem?.scrollIntoView({ block: 'nearest' })
   }, [clampedSelectedIndex])
 
+  // Calculate anchor position relative to form container for stable positioning
+  // When skill badges appear above the textarea, the ChatInput div shifts down.
+  // By anchoring to the form's top, the popover stays in the same position.
+  const anchorRef = useRef<HTMLDivElement>(null)
+  const [stableAnchorTop, setStableAnchorTop] = useState(0)
+
+  useEffect(() => {
+    if (
+      !open ||
+      !anchorPosition ||
+      !containerRef?.current ||
+      !anchorRef.current
+    ) {
+      return
+    }
+    const formRect = containerRef.current.getBoundingClientRect()
+    const wrapperRect = anchorRef.current.parentElement?.getBoundingClientRect()
+    if (wrapperRect) {
+      // Negative offset to position at form top instead of ChatInput top
+      setStableAnchorTop(formRect.top - wrapperRect.top)
+    }
+  }, [open, anchorPosition, containerRef])
+
   if (!open || !anchorPosition) return null
 
   // Split items by type for grouped rendering
   const commandItems = filteredItems.filter(item => item.type === 'command')
   const skillItems = filteredItems.filter(item => item.type === 'skill')
 
+  const resolvedTop = containerRef ? stableAnchorTop : anchorPosition.top
+
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverAnchor
+        ref={anchorRef}
         style={{
           position: 'absolute',
-          top: anchorPosition.top,
+          top: resolvedTop,
           left: anchorPosition.left,
           pointerEvents: 'none',
         }}
@@ -213,7 +219,7 @@ export function SlashPopover({
         className="w-80 p-0"
         align="start"
         side="top"
-        sideOffset={4}
+        sideOffset={12}
         onOpenAutoFocus={e => e.preventDefault()}
         onCloseAutoFocus={e => e.preventDefault()}
       >

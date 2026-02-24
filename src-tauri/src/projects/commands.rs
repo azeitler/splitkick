@@ -1,34 +1,65 @@
 use ignore::WalkBuilder;
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
 use std::process::Stdio;
+use std::sync::Mutex;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::DialogExt;
 use uuid::Uuid;
 
+use rand::Rng;
+
 use super::git;
 use super::git::get_repo_identifier;
 use super::github_issues::{
     add_issue_reference, add_pr_reference, format_issue_context_markdown,
     format_pr_context_markdown, generate_branch_name_from_issue, generate_branch_name_from_pr,
-    get_github_contexts_dir, get_github_pr, get_pr_diff, get_worktree_context_content,
-    get_worktree_context_numbers, IssueContext, PullRequestContext,
+    get_github_contexts_dir, get_github_pr, get_pr_diff, get_session_context_content,
+    get_session_context_numbers, IssueContext, PullRequestContext,
 };
 use super::names::generate_unique_workspace_name;
 use super::storage::{get_project_worktrees_dir, load_projects_data, save_projects_data};
 use super::types::{
-    MergeType, Project, SessionType, Worktree, WorktreeArchivedEvent, WorktreeBranchExistsEvent,
-    WorktreeCreateErrorEvent, WorktreeCreatedEvent, WorktreeCreatingEvent,
-    WorktreeDeleteErrorEvent, WorktreeDeletedEvent, WorktreeDeletingEvent, WorktreePathExistsEvent,
-    WorktreePermanentlyDeletedEvent, WorktreeUnarchivedEvent,
+    JeanConfig, MergeType, Project, SessionType, Worktree, WorktreeArchivedEvent,
+    WorktreeBranchExistsEvent, WorktreeCreateErrorEvent, WorktreeCreatedEvent,
+    WorktreeCreatingEvent, WorktreeDeleteErrorEvent, WorktreeDeletedEvent, WorktreeDeletingEvent,
+    WorktreePathExistsEvent, WorktreePermanentlyDeletedEvent, WorktreeUnarchivedEvent,
 };
-use crate::claude_cli::get_cli_binary_path;
+use crate::claude_cli::resolve_cli_binary;
+use crate::codex_cli::resolve_cli_binary as resolve_codex_cli_binary;
 use crate::gh_cli::config::resolve_gh_binary;
 use crate::http_server::EmitExt;
 use crate::platform::silent_command;
+
+/// Generate a unique name by appending 4 random alphanumeric chars,
+/// checking against both storage and git branches.
+fn generate_unique_suffix_name(
+    name: &str,
+    project_path: &str,
+    project_id: &str,
+    data: Option<&super::types::ProjectsData>,
+) -> String {
+    const CHARSET: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    let mut rng = rand::thread_rng();
+    loop {
+        let suffix: String = (0..4)
+            .map(|_| CHARSET[rng.gen_range(0..CHARSET.len())] as char)
+            .collect();
+        let candidate = format!("{name}-{suffix}");
+        let name_in_storage = data
+            .map(|d| d.worktree_name_exists(project_id, &candidate))
+            .unwrap_or(false);
+        let branch_in_git = git::branch_exists(project_path, &candidate);
+        if !name_in_storage && !branch_in_git {
+            break candidate;
+        }
+    }
+}
 
 /// Get current Unix timestamp
 fn now() -> u64 {
@@ -38,12 +69,31 @@ fn now() -> u64 {
         .as_secs()
 }
 
+/// Registry of in-flight AI review process PIDs keyed by review_run_id.
+static REVIEW_PROCESS_REGISTRY: Lazy<Mutex<HashMap<String, u32>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+
+fn register_review_process(review_run_id: &str, pid: u32) {
+    REVIEW_PROCESS_REGISTRY
+        .lock()
+        .unwrap()
+        .insert(review_run_id.to_string(), pid);
+}
+
+fn take_review_process_pid(review_run_id: &str) -> Option<u32> {
+    REVIEW_PROCESS_REGISTRY
+        .lock()
+        .unwrap()
+        .remove(review_run_id)
+}
+
 /// List all projects
 /// Check if git global user identity is configured
 #[tauri::command]
 pub async fn check_git_identity() -> Result<GitIdentity, String> {
     let name = silent_command("git")
         .args(["config", "--global", "user.name"])
+        .current_dir(std::env::temp_dir())
         .output()
         .ok()
         .filter(|o| o.status.success())
@@ -52,6 +102,7 @@ pub async fn check_git_identity() -> Result<GitIdentity, String> {
 
     let email = silent_command("git")
         .args(["config", "--global", "user.email"])
+        .current_dir(std::env::temp_dir())
         .output()
         .ok()
         .filter(|o| o.status.success())
@@ -66,6 +117,7 @@ pub async fn check_git_identity() -> Result<GitIdentity, String> {
 pub async fn set_git_identity(name: String, email: String) -> Result<(), String> {
     let name_output = silent_command("git")
         .args(["config", "--global", "user.name", &name])
+        .current_dir(std::env::temp_dir())
         .output()
         .map_err(|e| format!("Failed to set git user.name: {e}"))?;
 
@@ -76,6 +128,7 @@ pub async fn set_git_identity(name: String, email: String) -> Result<(), String>
 
     let email_output = silent_command("git")
         .args(["config", "--global", "user.email", &email])
+        .current_dir(std::env::temp_dir())
         .output()
         .map_err(|e| format!("Failed to set git user.email: {e}"))?;
 
@@ -142,8 +195,11 @@ pub async fn add_project(
         parent_id,
         is_folder: false,
         avatar_path: None,
-        enabled_mcp_servers: Vec::new(),
+        enabled_mcp_servers: None,
+        known_mcp_servers: Vec::new(),
         custom_system_prompt: None,
+        default_provider: None,
+        default_backend: None,
     };
 
     data.add_project(project.clone());
@@ -294,8 +350,11 @@ pub async fn init_project(
         parent_id,
         is_folder: false,
         avatar_path: None,
-        enabled_mcp_servers: Vec::new(),
+        enabled_mcp_servers: None,
+        known_mcp_servers: Vec::new(),
         custom_system_prompt: None,
+        default_provider: None,
+        default_backend: None,
     };
 
     data.add_project(project.clone());
@@ -433,6 +492,16 @@ pub async fn create_worktree(
     let preferred_base = base_branch.unwrap_or_else(|| project.default_branch.clone());
     let base = git::get_valid_base_branch(&project.path, &preferred_base)?;
 
+    // Resolve auto-pull preference now (async), but defer the actual pull to background thread
+    let should_auto_pull = if pr_context.is_none() {
+        crate::load_preferences(app.clone())
+            .await
+            .map(|prefs| prefs.auto_pull_base_branch)
+            .unwrap_or(false)
+    } else {
+        false
+    };
+
     // Generate workspace name - use custom name, PR-based name, issue-based name, or random name
     let name = if let Some(custom) = custom_name {
         // Use the provided custom name directly (already validated as unique by caller)
@@ -468,7 +537,9 @@ pub async fn create_worktree(
             issue_branch
         }
     } else {
-        generate_unique_workspace_name(|n| data.worktree_name_exists(&project_id, n))
+        generate_unique_workspace_name(|n| {
+            data.worktree_name_exists(&project_id, n) || git::branch_exists(&project.path, n)
+        })
     };
 
     // Build worktree path: ~/jean/<project-name>/<workspace-name>
@@ -490,6 +561,8 @@ pub async fn create_worktree(
         name: name.clone(),
         path: worktree_path_str.clone(),
         branch: name.clone(),
+        pr_number: pr_context.as_ref().map(|ctx| ctx.number as u64),
+        issue_number: issue_context.as_ref().map(|ctx| ctx.number as u64),
     };
     if let Err(e) = app.emit_all("worktree:creating", &creating_event) {
         log::error!("Failed to emit worktree:creating event: {e}");
@@ -506,8 +579,9 @@ pub async fn create_worktree(
         setup_output: None,
         setup_script: None,
         session_type: SessionType::Worktree,
-        pr_number: None,
+        pr_number: pr_context.as_ref().map(|ctx| ctx.number),
         pr_url: None,
+        issue_number: issue_context.as_ref().map(|ctx| ctx.number),
         cached_pr_status: None,
         cached_check_status: None,
         cached_behind_count: None,
@@ -538,326 +612,232 @@ pub async fn create_worktree(
 
     // Spawn background thread for git operations
     thread::spawn(move || {
-        log::trace!("Background: Creating git worktree {name_clone} at {worktree_path_clone}");
+        // Clone IDs for panic handler (before they're moved into the inner closure)
+        let panic_wt_id = worktree_id_clone.clone();
+        let panic_proj_id = project_id_clone.clone();
+        let panic_app = app_clone.clone();
 
-        // Check if path already exists
-        let worktree_path = std::path::Path::new(&worktree_path_clone);
-        if worktree_path.exists() {
-            log::trace!("Background: Path already exists: {worktree_path_clone}");
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+            log::trace!("Background: Creating git worktree {name_clone} at {worktree_path_clone}");
 
-            // Check if this path matches an archived worktree
-            let archived_info = load_projects_data(&app_clone).ok().and_then(|data| {
-                data.worktrees
-                    .iter()
-                    .find(|w| w.path == worktree_path_clone && w.archived_at.is_some())
-                    .map(|w| (w.id.clone(), w.name.clone()))
-            });
-
-            // Generate a suggested alternative name with incremented suffix
-            // Must check both storage AND git branches (branch may exist from previously deleted worktree)
-            let suggested_name = {
-                let data = load_projects_data(&app_clone).ok();
-                let mut counter = 2;
-                loop {
-                    let candidate = format!("{name_clone}-{counter}");
-                    let name_in_storage = data
-                        .as_ref()
-                        .map(|d| d.worktree_name_exists(&project_id_clone, &candidate))
-                        .unwrap_or(false);
-                    let branch_in_git = git::branch_exists(&project_path, &candidate);
-
-                    if !name_in_storage && !branch_in_git {
-                        break candidate;
-                    }
-                    counter += 1;
-                }
-            };
-
-            // Emit path_exists event with archived worktree info if available
-            let path_exists_event = WorktreePathExistsEvent {
-                id: worktree_id_clone.clone(),
-                project_id: project_id_clone.clone(),
-                path: worktree_path_clone.clone(),
-                suggested_name,
-                archived_worktree_id: archived_info.as_ref().map(|(id, _)| id.clone()),
-                archived_worktree_name: archived_info.map(|(_, name)| name),
-                issue_context: issue_context_clone.clone(),
-            };
-            if let Err(e) = app_clone.emit_all("worktree:path_exists", &path_exists_event) {
-                log::error!("Failed to emit worktree:path_exists event: {e}");
-            }
-
-            // Also emit error event to remove the pending worktree from UI
-            let error_event = WorktreeCreateErrorEvent {
-                id: worktree_id_clone,
-                project_id: project_id_clone,
-                error: format!("Directory already exists: {worktree_path_clone}"),
-            };
-            if let Err(e) = app_clone.emit_all("worktree:error", &error_event) {
-                log::error!("Failed to emit worktree:error event: {e}");
-            }
-            return;
-        }
-
-        // For PR context, we use a temp branch + gh pr checkout pattern
-        // For other cases, check if branch already exists
-        let (branch_for_worktree, temp_branch_to_delete, actual_branch_name) =
-            if let Some(ref ctx) = pr_context_clone {
-                // Use temp branch for PR checkout pattern
-                let temp_branch = format!(
-                    "pr-{}-temp-{}",
-                    ctx.number,
-                    uuid::Uuid::new_v4()
-                        .to_string()
-                        .split('-')
-                        .next()
-                        .unwrap_or("xxxx")
-                );
-                (
-                    temp_branch.clone(),
-                    Some(temp_branch),
-                    ctx.head_ref_name.clone(),
-                )
-            } else {
-                // Check if branch already exists for non-PR cases
-                if git::branch_exists(&project_path, &name_clone) {
-                    log::trace!("Background: Branch already exists: {name_clone}");
-
-                    // Generate a suggested alternative name with incremented suffix
-                    let suggested_name = {
-                        let data = load_projects_data(&app_clone).ok();
-                        let mut counter = 2;
-                        loop {
-                            let candidate = format!("{name_clone}-{counter}");
-                            let name_in_storage = data
-                                .as_ref()
-                                .map(|d| d.worktree_name_exists(&project_id_clone, &candidate))
-                                .unwrap_or(false);
-                            let branch_in_git = git::branch_exists(&project_path, &candidate);
-
-                            if !name_in_storage && !branch_in_git {
-                                break candidate;
-                            }
-                            counter += 1;
-                        }
-                    };
-
-                    // Emit branch_exists event
-                    let branch_exists_event = WorktreeBranchExistsEvent {
-                        id: worktree_id_clone.clone(),
-                        project_id: project_id_clone.clone(),
-                        branch: name_clone.clone(),
-                        suggested_name,
-                        issue_context: issue_context_clone.clone(),
-                        pr_context: pr_context_clone.clone(),
-                    };
-                    if let Err(e) =
-                        app_clone.emit_all("worktree:branch_exists", &branch_exists_event)
-                    {
-                        log::error!("Failed to emit worktree:branch_exists event: {e}");
-                    }
-
-                    // Also emit error event to remove the pending worktree from UI
-                    let error_event = WorktreeCreateErrorEvent {
-                        id: worktree_id_clone,
-                        project_id: project_id_clone,
-                        error: format!("Branch already exists: {name_clone}"),
-                    };
-                    if let Err(e) = app_clone.emit_all("worktree:error", &error_event) {
-                        log::error!("Failed to emit worktree:error event: {e}");
-                    }
-                    return;
-                }
-                (name_clone.clone(), None, name_clone.clone())
-            };
-
-        // Create the git worktree (this is the slow operation)
-        if let Err(e) = git::create_worktree(
-            &project_path,
-            &worktree_path_clone,
-            &branch_for_worktree,
-            &base_clone,
-        ) {
-            log::error!("Background: Failed to create worktree: {e}");
-            let error_event = WorktreeCreateErrorEvent {
-                id: worktree_id_clone,
-                project_id: project_id_clone,
-                error: e,
-            };
-            if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
-                log::error!("Failed to emit worktree:error event: {emit_err}");
-            }
-            return;
-        }
-
-        log::trace!("Background: Git worktree created successfully");
-
-        // For PR context, run gh pr checkout to get the actual PR branch
-        let final_branch = if let Some(ref ctx) = pr_context_clone {
-            log::trace!(
-                "Background: Running gh pr checkout {} for PR branch",
-                ctx.number
-            );
-
-            match git::gh_pr_checkout(
-                &worktree_path_clone,
-                ctx.number,
-                Some(&ctx.head_ref_name),
-                &resolve_gh_binary(&app_clone),
-            ) {
-                Ok(branch) => {
-                    log::trace!("Background: gh pr checkout succeeded, branch: {branch}");
-
-                    // Delete the temporary branch
-                    if let Some(ref temp_branch) = temp_branch_to_delete {
-                        if let Err(e) = git::delete_branch(&project_path, temp_branch) {
-                            log::warn!(
-                                "Background: Failed to delete temp branch {temp_branch}: {e}"
-                            );
-                            // Not fatal, continue anyway
-                        }
-                    }
-
-                    branch
-                }
-                Err(e) => {
-                    log::error!("Background: Failed to checkout PR: {e}");
-                    // Clean up the worktree we created
-                    let _ = git::remove_worktree(&project_path, &worktree_path_clone);
-                    if let Some(ref temp_branch) = temp_branch_to_delete {
-                        let _ = git::delete_branch(&project_path, temp_branch);
-                    }
-                    let error_event = WorktreeCreateErrorEvent {
-                        id: worktree_id_clone,
-                        project_id: project_id_clone,
-                        error: e,
-                    };
-                    if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
-                        log::error!("Failed to emit worktree:error event: {emit_err}");
-                    }
-                    return;
+            // Auto-pull base branch if enabled (non-blocking on failure)
+            if should_auto_pull {
+                log::trace!("Auto-pulling base branch {base_clone} before worktree creation");
+                match git::git_pull(&project_path, &base_clone, None) {
+                    Ok(_) => log::trace!("Successfully pulled base branch {base_clone}"),
+                    Err(e) => log::warn!("Failed to auto-pull base branch {base_clone}: {e}"),
                 }
             }
-        } else {
-            actual_branch_name
-        };
 
-        // Write issue context file if provided (to shared git-context directory)
-        if let Some(ctx) = &issue_context_clone {
-            log::trace!(
-                "Background: Writing issue context file for issue #{}",
-                ctx.number
-            );
-            if let Ok(repo_id) = get_repo_identifier(&project_path) {
-                let repo_key = repo_id.to_key();
-                if let Ok(contexts_dir) = get_github_contexts_dir(&app_clone) {
-                    if let Err(e) = std::fs::create_dir_all(&contexts_dir) {
-                        log::warn!("Background: Failed to create git-context directory: {e}");
-                    } else {
-                        let context_file =
-                            contexts_dir.join(format!("{repo_key}-issue-{}.md", ctx.number));
-                        let context_content = format_issue_context_markdown(ctx);
-                        if let Err(e) = std::fs::write(&context_file, context_content) {
-                            log::warn!("Background: Failed to write issue context file: {e}");
-                        } else {
-                            // Add reference for this worktree
-                            if let Err(e) = add_issue_reference(
-                                &app_clone,
-                                &repo_key,
-                                ctx.number,
-                                &worktree_id_clone,
-                            ) {
-                                log::warn!("Background: Failed to add issue reference: {e}");
-                            }
-                            log::trace!(
-                                "Background: Issue context file written to {:?}",
-                                context_file
-                            );
-                        }
-                    }
+            // Check if path already exists
+            let worktree_path = std::path::Path::new(&worktree_path_clone);
+            if worktree_path.exists() {
+                log::trace!("Background: Path already exists: {worktree_path_clone}");
+
+                // Check if this path matches an archived worktree
+                let archived_info = load_projects_data(&app_clone).ok().and_then(|data| {
+                    data.worktrees
+                        .iter()
+                        .find(|w| w.path == worktree_path_clone && w.archived_at.is_some())
+                        .map(|w| (w.id.clone(), w.name.clone()))
+                });
+
+                // Generate a suggested alternative name with random suffix
+                // Must check both storage AND git branches (branch may exist from previously deleted worktree)
+                let suggested_name = {
+                    let data = load_projects_data(&app_clone).ok();
+                    generate_unique_suffix_name(
+                        &name_clone,
+                        &project_path,
+                        &project_id_clone,
+                        data.as_ref(),
+                    )
+                };
+
+                // Emit path_exists event with archived worktree info if available
+                let path_exists_event = WorktreePathExistsEvent {
+                    id: worktree_id_clone.clone(),
+                    project_id: project_id_clone.clone(),
+                    path: worktree_path_clone.clone(),
+                    suggested_name,
+                    archived_worktree_id: archived_info.as_ref().map(|(id, _)| id.clone()),
+                    archived_worktree_name: archived_info.map(|(_, name)| name),
+                    issue_context: issue_context_clone.clone(),
+                };
+                if let Err(e) = app_clone.emit_all("worktree:path_exists", &path_exists_event) {
+                    log::error!("Failed to emit worktree:path_exists event: {e}");
                 }
-            } else {
-                log::warn!("Background: Could not get repo identifier for issue context");
-            }
-        }
 
-        // Write PR context file if provided (to shared git-context directory)
-        if let Some(ctx) = &pr_context_clone {
-            log::trace!("Background: Writing PR context file for PR #{}", ctx.number);
-            if let Ok(repo_id) = get_repo_identifier(&project_path) {
-                let repo_key = repo_id.to_key();
-                if let Ok(contexts_dir) = get_github_contexts_dir(&app_clone) {
-                    if let Err(e) = std::fs::create_dir_all(&contexts_dir) {
-                        log::warn!("Background: Failed to create git-context directory: {e}");
-                    } else {
-                        // Fetch the diff if not already present
-                        let gh = resolve_gh_binary(&app_clone);
-                        let ctx_with_diff = if ctx.diff.is_none() {
-                            log::debug!("Background: Fetching diff for PR #{}", ctx.number);
-                            let diff = get_pr_diff(&project_path, ctx.number, &gh).ok();
-                            PullRequestContext {
-                                number: ctx.number,
-                                title: ctx.title.clone(),
-                                body: ctx.body.clone(),
-                                head_ref_name: ctx.head_ref_name.clone(),
-                                base_ref_name: ctx.base_ref_name.clone(),
-                                comments: ctx.comments.clone(),
-                                reviews: ctx.reviews.clone(),
-                                diff,
-                            }
-                        } else {
-                            ctx.clone()
+                // Also emit error event to remove the pending worktree from UI
+                let error_event = WorktreeCreateErrorEvent {
+                    id: worktree_id_clone,
+                    project_id: project_id_clone,
+                    error: format!("Directory already exists: {worktree_path_clone}"),
+                };
+                if let Err(e) = app_clone.emit_all("worktree:error", &error_event) {
+                    log::error!("Failed to emit worktree:error event: {e}");
+                }
+                return;
+            }
+
+            // For PR context, we use a temp branch + gh pr checkout pattern
+            // For other cases, check if branch already exists
+            let (branch_for_worktree, temp_branch_to_delete, actual_branch_name) =
+                if let Some(ref ctx) = pr_context_clone {
+                    // Use temp branch for PR checkout pattern
+                    let temp_branch = format!(
+                        "pr-{}-temp-{}",
+                        ctx.number,
+                        uuid::Uuid::new_v4()
+                            .to_string()
+                            .split('-')
+                            .next()
+                            .unwrap_or("xxxx")
+                    );
+                    (
+                        temp_branch.clone(),
+                        Some(temp_branch),
+                        ctx.head_ref_name.clone(),
+                    )
+                } else {
+                    // Check if branch already exists for non-PR cases
+                    if git::branch_exists(&project_path, &name_clone) {
+                        log::trace!("Background: Branch already exists: {name_clone}");
+
+                        // Generate a suggested alternative name with random suffix
+                        let suggested_name = {
+                            let data = load_projects_data(&app_clone).ok();
+                            generate_unique_suffix_name(
+                                &name_clone,
+                                &project_path,
+                                &project_id_clone,
+                                data.as_ref(),
+                            )
                         };
 
-                        let context_file =
-                            contexts_dir.join(format!("{repo_key}-pr-{}.md", ctx.number));
-                        let context_content = format_pr_context_markdown(&ctx_with_diff);
-                        if let Err(e) = std::fs::write(&context_file, context_content) {
-                            log::warn!("Background: Failed to write PR context file: {e}");
-                        } else {
-                            // Add reference for this worktree
-                            if let Err(e) = add_pr_reference(
-                                &app_clone,
-                                &repo_key,
-                                ctx.number,
-                                &worktree_id_clone,
-                            ) {
-                                log::warn!("Background: Failed to add PR reference: {e}");
-                            }
-                            log::trace!(
-                                "Background: PR context file written to {:?}",
-                                context_file
-                            );
+                        // Emit branch_exists event
+                        let branch_exists_event = WorktreeBranchExistsEvent {
+                            id: worktree_id_clone.clone(),
+                            project_id: project_id_clone.clone(),
+                            branch: name_clone.clone(),
+                            suggested_name,
+                            issue_context: issue_context_clone.clone(),
+                            pr_context: pr_context_clone.clone(),
+                        };
+                        if let Err(e) =
+                            app_clone.emit_all("worktree:branch_exists", &branch_exists_event)
+                        {
+                            log::error!("Failed to emit worktree:branch_exists event: {e}");
                         }
-                    }
-                }
-            } else {
-                log::warn!("Background: Could not get repo identifier for PR context");
-            }
-        }
 
-        // Check for jean.json and run setup script
-        let (setup_output, setup_script) = if let Some(config) =
-            git::read_jean_config(&project_path)
-        {
-            if let Some(script) = config.scripts.setup {
-                log::trace!("Background: Found jean.json with setup script, executing...");
-                match git::run_setup_script(
-                    &worktree_path_clone,
-                    &project_path,
-                    &final_branch,
-                    &script,
-                ) {
-                    Ok(output) => (Some(output), Some(script)),
-                    Err(e) => {
-                        log::error!("Background: Setup script failed: {e}");
-                        // Clean up: remove the worktree since setup failed
-                        let _ = git::remove_worktree(&project_path, &worktree_path_clone);
-                        let _ = git::delete_branch(&project_path, &final_branch);
+                        // Also emit error event to remove the pending worktree from UI
                         let error_event = WorktreeCreateErrorEvent {
                             id: worktree_id_clone,
                             project_id: project_id_clone,
-                            error: format!("Setup script failed: {e}"),
+                            error: format!("Branch already exists: {name_clone}"),
+                        };
+                        if let Err(e) = app_clone.emit_all("worktree:error", &error_event) {
+                            log::error!("Failed to emit worktree:error event: {e}");
+                        }
+                        return;
+                    }
+                    (name_clone.clone(), None, name_clone.clone())
+                };
+
+            // Create the git worktree (this is the slow operation)
+            if let Err(e) = git::create_worktree(
+                &project_path,
+                &worktree_path_clone,
+                &branch_for_worktree,
+                &base_clone,
+            ) {
+                log::error!("Background: Failed to create worktree: {e}");
+                let error_event = WorktreeCreateErrorEvent {
+                    id: worktree_id_clone,
+                    project_id: project_id_clone,
+                    error: e,
+                };
+                if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
+                    log::error!("Failed to emit worktree:error event: {emit_err}");
+                }
+                return;
+            }
+
+            log::trace!("Background: Git worktree created successfully");
+
+            // For PR context, run gh pr checkout to get the actual PR branch
+            let final_branch = if let Some(ref ctx) = pr_context_clone {
+                log::trace!(
+                    "Background: Running gh pr checkout {} for PR branch",
+                    ctx.number
+                );
+
+                // Check if PR head branch name collides with a locally checked-out branch
+                // (e.g. PR from fork with head "main" when local "main" is already checked out)
+                let branch_collision = git::branch_exists(&project_path, &ctx.head_ref_name);
+                let local_branch_name = if branch_collision {
+                    let alt = format!("pr-{}-{}", ctx.number, ctx.head_ref_name);
+                    log::trace!(
+                        "Branch '{}' already exists, using '{alt}' instead",
+                        ctx.head_ref_name
+                    );
+                    alt
+                } else {
+                    ctx.head_ref_name.clone()
+                };
+
+                // Clean up stale branch from a previous checkout of this PR
+                git::cleanup_stale_branch(&project_path, &local_branch_name);
+
+                let checkout_result = if branch_collision {
+                    // Bypass gh pr checkout which internally fetches into the conflicting ref.
+                    // Manually fetch the PR into the alt branch name and switch to it.
+                    log::trace!(
+                    "Background: Branch collision, manual fetch PR #{} into {local_branch_name}",
+                    ctx.number
+                );
+                    git::fetch_pr_to_branch(&project_path, ctx.number, &local_branch_name).and_then(
+                        |_| {
+                            git::checkout_branch(&worktree_path_clone, &local_branch_name)?;
+                            Ok(local_branch_name)
+                        },
+                    )
+                } else {
+                    git::gh_pr_checkout(
+                        &worktree_path_clone,
+                        ctx.number,
+                        Some(&local_branch_name),
+                        &resolve_gh_binary(&app_clone),
+                    )
+                };
+
+                match checkout_result {
+                    Ok(branch) => {
+                        log::trace!("Background: PR checkout succeeded, branch: {branch}");
+
+                        // Delete the temporary branch
+                        if let Some(ref temp_branch) = temp_branch_to_delete {
+                            if let Err(e) = git::delete_branch(&project_path, temp_branch) {
+                                log::warn!(
+                                    "Background: Failed to delete temp branch {temp_branch}: {e}"
+                                );
+                                // Not fatal, continue anyway
+                            }
+                        }
+
+                        branch
+                    }
+                    Err(e) => {
+                        log::error!("Background: Failed to checkout PR: {e}");
+                        // Clean up the worktree we created
+                        let _ = git::remove_worktree(&project_path, &worktree_path_clone);
+                        if let Some(ref temp_branch) = temp_branch_to_delete {
+                            let _ = git::delete_branch(&project_path, temp_branch);
+                        }
+                        let error_event = WorktreeCreateErrorEvent {
+                            id: worktree_id_clone,
+                            project_id: project_id_clone,
+                            error: e,
                         };
                         if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
                             log::error!("Failed to emit worktree:error event: {emit_err}");
@@ -866,86 +846,226 @@ pub async fn create_worktree(
                     }
                 }
             } else {
-                (None, None)
-            }
-        } else {
-            (None, None)
-        };
-
-        // Save to storage
-        if let Ok(mut data) = load_projects_data(&app_clone) {
-            // Get max order for worktrees in this project
-            let max_order = data
-                .worktrees
-                .iter()
-                .filter(|w| w.project_id == project_id_clone)
-                .map(|w| w.order)
-                .max()
-                .unwrap_or(0);
-
-            // Create the final worktree record
-            let worktree = Worktree {
-                id: worktree_id_clone.clone(),
-                project_id: project_id_clone.clone(),
-                name: name_clone.clone(),
-                path: worktree_path_clone.clone(),
-                branch: final_branch,
-                created_at,
-                setup_output,
-                setup_script,
-                session_type: SessionType::Worktree,
-                pr_number: pr_context_clone.as_ref().map(|ctx| ctx.number),
-                pr_url: None,
-                cached_pr_status: None,
-                cached_check_status: None,
-                cached_behind_count: None,
-                cached_ahead_count: None,
-                cached_status_at: None,
-                cached_uncommitted_added: None,
-                cached_uncommitted_removed: None,
-                cached_branch_diff_added: None,
-                cached_branch_diff_removed: None,
-                cached_base_branch_ahead_count: None,
-                cached_base_branch_behind_count: None,
-                cached_worktree_ahead_count: None,
-                cached_unpushed_count: None,
-                order: max_order + 1,
-                archived_at: None,
+                actual_branch_name
             };
 
-            data.add_worktree(worktree.clone());
-            if let Err(e) = save_projects_data(&app_clone, &data) {
-                log::error!("Background: Failed to save worktree data: {e}");
+            // Write issue context file if provided (to shared git-context directory)
+            if let Some(ctx) = &issue_context_clone {
+                log::trace!(
+                    "Background: Writing issue context file for issue #{}",
+                    ctx.number
+                );
+                if let Ok(repo_id) = get_repo_identifier(&project_path) {
+                    let repo_key = repo_id.to_key();
+                    if let Ok(contexts_dir) = get_github_contexts_dir(&app_clone) {
+                        if let Err(e) = std::fs::create_dir_all(&contexts_dir) {
+                            log::warn!("Background: Failed to create git-context directory: {e}");
+                        } else {
+                            let context_file =
+                                contexts_dir.join(format!("{repo_key}-issue-{}.md", ctx.number));
+                            let context_content = format_issue_context_markdown(ctx);
+                            if let Err(e) = std::fs::write(&context_file, context_content) {
+                                log::warn!("Background: Failed to write issue context file: {e}");
+                            } else {
+                                // Add reference for this worktree
+                                if let Err(e) = add_issue_reference(
+                                    &app_clone,
+                                    &repo_key,
+                                    ctx.number,
+                                    &worktree_id_clone,
+                                ) {
+                                    log::warn!("Background: Failed to add issue reference: {e}");
+                                }
+                                log::trace!(
+                                    "Background: Issue context file written to {:?}",
+                                    context_file
+                                );
+                            }
+                        }
+                    }
+                } else {
+                    log::warn!("Background: Could not get repo identifier for issue context");
+                }
+            }
+
+            // Write PR context file if provided (to shared git-context directory)
+            if let Some(ctx) = &pr_context_clone {
+                log::trace!("Background: Writing PR context file for PR #{}", ctx.number);
+                if let Ok(repo_id) = get_repo_identifier(&project_path) {
+                    let repo_key = repo_id.to_key();
+                    if let Ok(contexts_dir) = get_github_contexts_dir(&app_clone) {
+                        if let Err(e) = std::fs::create_dir_all(&contexts_dir) {
+                            log::warn!("Background: Failed to create git-context directory: {e}");
+                        } else {
+                            // Fetch the diff if not already present
+                            let gh = resolve_gh_binary(&app_clone);
+                            let ctx_with_diff = if ctx.diff.is_none() {
+                                log::debug!("Background: Fetching diff for PR #{}", ctx.number);
+                                let diff = get_pr_diff(&project_path, ctx.number, &gh).ok();
+                                PullRequestContext {
+                                    number: ctx.number,
+                                    title: ctx.title.clone(),
+                                    body: ctx.body.clone(),
+                                    head_ref_name: ctx.head_ref_name.clone(),
+                                    base_ref_name: ctx.base_ref_name.clone(),
+                                    comments: ctx.comments.clone(),
+                                    reviews: ctx.reviews.clone(),
+                                    diff,
+                                }
+                            } else {
+                                ctx.clone()
+                            };
+
+                            let context_file =
+                                contexts_dir.join(format!("{repo_key}-pr-{}.md", ctx.number));
+                            let context_content = format_pr_context_markdown(&ctx_with_diff);
+                            if let Err(e) = std::fs::write(&context_file, context_content) {
+                                log::warn!("Background: Failed to write PR context file: {e}");
+                            } else {
+                                // Add reference for this worktree
+                                if let Err(e) = add_pr_reference(
+                                    &app_clone,
+                                    &repo_key,
+                                    ctx.number,
+                                    &worktree_id_clone,
+                                ) {
+                                    log::warn!("Background: Failed to add PR reference: {e}");
+                                }
+                                log::trace!(
+                                    "Background: PR context file written to {:?}",
+                                    context_file
+                                );
+                            }
+                        }
+                    }
+                } else {
+                    log::warn!("Background: Could not get repo identifier for PR context");
+                }
+            }
+
+            // Check for jean.json and run setup script
+            let (setup_output, setup_script) =
+                if let Some(config) = git::read_jean_config(&project_path) {
+                    if let Some(script) = config.scripts.setup {
+                        log::trace!("Background: Found jean.json with setup script, executing...");
+                        match git::run_setup_script(
+                            &worktree_path_clone,
+                            &project_path,
+                            &final_branch,
+                            &script,
+                        ) {
+                            Ok(output) => (Some(output), Some(script)),
+                            Err(e) => {
+                                log::error!("Background: Setup script failed: {e}");
+                                // Clean up: remove the worktree since setup failed
+                                let _ = git::remove_worktree(&project_path, &worktree_path_clone);
+                                let _ = git::delete_branch(&project_path, &final_branch);
+                                let error_event = WorktreeCreateErrorEvent {
+                                    id: worktree_id_clone,
+                                    project_id: project_id_clone,
+                                    error: format!("Setup script failed: {e}"),
+                                };
+                                if let Err(emit_err) =
+                                    app_clone.emit_all("worktree:error", &error_event)
+                                {
+                                    log::error!("Failed to emit worktree:error event: {emit_err}");
+                                }
+                                return;
+                            }
+                        }
+                    } else {
+                        (None, None)
+                    }
+                } else {
+                    (None, None)
+                };
+
+            // Save to storage
+            if let Ok(mut data) = load_projects_data(&app_clone) {
+                // Get max order for worktrees in this project
+                let max_order = data
+                    .worktrees
+                    .iter()
+                    .filter(|w| w.project_id == project_id_clone)
+                    .map(|w| w.order)
+                    .max()
+                    .unwrap_or(0);
+
+                // Create the final worktree record
+                let worktree = Worktree {
+                    id: worktree_id_clone.clone(),
+                    project_id: project_id_clone.clone(),
+                    name: name_clone.clone(),
+                    path: worktree_path_clone.clone(),
+                    branch: final_branch,
+                    created_at,
+                    setup_output,
+                    setup_script,
+                    session_type: SessionType::Worktree,
+                    pr_number: pr_context_clone.as_ref().map(|ctx| ctx.number),
+                    pr_url: None,
+                    issue_number: issue_context_clone.as_ref().map(|ctx| ctx.number),
+                    cached_pr_status: None,
+                    cached_check_status: None,
+                    cached_behind_count: None,
+                    cached_ahead_count: None,
+                    cached_status_at: None,
+                    cached_uncommitted_added: None,
+                    cached_uncommitted_removed: None,
+                    cached_branch_diff_added: None,
+                    cached_branch_diff_removed: None,
+                    cached_base_branch_ahead_count: None,
+                    cached_base_branch_behind_count: None,
+                    cached_worktree_ahead_count: None,
+                    cached_unpushed_count: None,
+                    order: max_order + 1,
+                    archived_at: None,
+                };
+
+                data.add_worktree(worktree.clone());
+                if let Err(e) = save_projects_data(&app_clone, &data) {
+                    log::error!("Background: Failed to save worktree data: {e}");
+                    let error_event = WorktreeCreateErrorEvent {
+                        id: worktree_id_clone,
+                        project_id: project_id_clone,
+                        error: format!("Failed to save worktree: {e}"),
+                    };
+                    if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
+                        log::error!("Failed to emit worktree:error event: {emit_err}");
+                    }
+                    return;
+                }
+
+                // Emit success event
+                log::trace!(
+                    "Background: Worktree created successfully: {}",
+                    worktree.name
+                );
+                let created_event = WorktreeCreatedEvent { worktree };
+                if let Err(e) = app_clone.emit_all("worktree:created", &created_event) {
+                    log::error!("Failed to emit worktree:created event: {e}");
+                }
+            } else {
+                log::error!("Background: Failed to load projects data for saving");
                 let error_event = WorktreeCreateErrorEvent {
                     id: worktree_id_clone,
                     project_id: project_id_clone,
-                    error: format!("Failed to save worktree: {e}"),
+                    error: "Failed to load projects data".to_string(),
                 };
                 if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
                     log::error!("Failed to emit worktree:error event: {emit_err}");
                 }
-                return;
             }
+        })); // end catch_unwind
 
-            // Emit success event
-            log::trace!(
-                "Background: Worktree created successfully: {}",
-                worktree.name
-            );
-            let created_event = WorktreeCreatedEvent { worktree };
-            if let Err(e) = app_clone.emit_all("worktree:created", &created_event) {
-                log::error!("Failed to emit worktree:created event: {e}");
-            }
-        } else {
-            log::error!("Background: Failed to load projects data for saving");
+        if let Err(panic_info) = result {
+            log::error!("Background thread panicked during worktree creation: {panic_info:?}");
             let error_event = WorktreeCreateErrorEvent {
-                id: worktree_id_clone,
-                project_id: project_id_clone,
-                error: "Failed to load projects data".to_string(),
+                id: panic_wt_id,
+                project_id: panic_proj_id,
+                error: "Internal error: worktree creation failed unexpectedly".to_string(),
             };
-            if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
-                log::error!("Failed to emit worktree:error event: {emit_err}");
-            }
+            let _ = panic_app.emit_all("worktree:error", &error_event);
         }
     });
 
@@ -998,6 +1118,8 @@ pub async fn create_worktree_from_existing_branch(
         name: name.clone(),
         path: worktree_path_str.clone(),
         branch: name.clone(),
+        pr_number: pr_context.as_ref().map(|ctx| ctx.number as u64),
+        issue_number: issue_context.as_ref().map(|ctx| ctx.number as u64),
     };
     if let Err(e) = app.emit_all("worktree:creating", &creating_event) {
         log::error!("Failed to emit worktree:creating event: {e}");
@@ -1014,8 +1136,9 @@ pub async fn create_worktree_from_existing_branch(
         setup_output: None,
         setup_script: None,
         session_type: SessionType::Worktree,
-        pr_number: None,
+        pr_number: pr_context.as_ref().map(|ctx| ctx.number),
         pr_url: None,
+        issue_number: issue_context.as_ref().map(|ctx| ctx.number),
         cached_pr_status: None,
         cached_check_status: None,
         cached_behind_count: None,
@@ -1046,215 +1169,40 @@ pub async fn create_worktree_from_existing_branch(
 
     // Spawn background thread for git operations
     thread::spawn(move || {
-        log::trace!("Background: Creating git worktree {name_clone} at {worktree_path_clone} using existing branch {branch_name_clone}");
+        // Clone IDs for panic handler (before they're moved into the inner closure)
+        let panic_wt_id = worktree_id_clone.clone();
+        let panic_proj_id = project_id_clone.clone();
+        let panic_app = app_clone.clone();
 
-        // Check if path already exists
-        let worktree_path = std::path::Path::new(&worktree_path_clone);
-        if worktree_path.exists() {
-            log::error!("Background: Path already exists: {worktree_path_clone}");
-            let error_event = WorktreeCreateErrorEvent {
-                id: worktree_id_clone,
-                project_id: project_id_clone,
-                error: format!("Directory already exists: {worktree_path_clone}"),
-            };
-            if let Err(e) = app_clone.emit_all("worktree:error", &error_event) {
-                log::error!("Failed to emit worktree:error event: {e}");
-            }
-            return;
-        }
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+            log::trace!("Background: Creating git worktree {name_clone} at {worktree_path_clone} using existing branch {branch_name_clone}");
 
-        // Create the git worktree from existing branch
-        if let Err(e) = git::create_worktree_from_existing_branch(
-            &project_path,
-            &worktree_path_clone,
-            &branch_name_clone,
-        ) {
-            log::error!("Background: Failed to create worktree: {e}");
-            let error_event = WorktreeCreateErrorEvent {
-                id: worktree_id_clone,
-                project_id: project_id_clone,
-                error: e,
-            };
-            if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
-                log::error!("Failed to emit worktree:error event: {emit_err}");
-            }
-            return;
-        }
-
-        log::trace!("Background: Git worktree created successfully from existing branch");
-
-        // Write issue context file if provided
-        if let Some(ctx) = &issue_context_clone {
-            log::trace!(
-                "Background: Writing issue context file for issue #{}",
-                ctx.number
-            );
-            if let Ok(repo_id) = get_repo_identifier(&project_path) {
-                let repo_key = repo_id.to_key();
-                if let Ok(contexts_dir) = get_github_contexts_dir(&app_clone) {
-                    if let Err(e) = std::fs::create_dir_all(&contexts_dir) {
-                        log::warn!("Background: Failed to create git-context directory: {e}");
-                    } else {
-                        let context_file =
-                            contexts_dir.join(format!("{repo_key}-issue-{}.md", ctx.number));
-                        let context_content = format_issue_context_markdown(ctx);
-                        if let Err(e) = std::fs::write(&context_file, context_content) {
-                            log::warn!("Background: Failed to write issue context file: {e}");
-                        } else {
-                            if let Err(e) = add_issue_reference(
-                                &app_clone,
-                                &repo_key,
-                                ctx.number,
-                                &worktree_id_clone,
-                            ) {
-                                log::warn!("Background: Failed to add issue reference: {e}");
-                            }
-                            log::trace!(
-                                "Background: Issue context file written to {:?}",
-                                context_file
-                            );
-                        }
-                    }
-                }
-            }
-        }
-
-        // Write PR context file if provided
-        if let Some(ctx) = &pr_context_clone {
-            log::trace!("Background: Writing PR context file for PR #{}", ctx.number);
-            if let Ok(repo_id) = get_repo_identifier(&project_path) {
-                let repo_key = repo_id.to_key();
-                if let Ok(contexts_dir) = get_github_contexts_dir(&app_clone) {
-                    if let Err(e) = std::fs::create_dir_all(&contexts_dir) {
-                        log::warn!("Background: Failed to create git-context directory: {e}");
-                    } else {
-                        // Fetch the diff if not already present
-                        let gh = resolve_gh_binary(&app_clone);
-                        let ctx_with_diff = if ctx.diff.is_none() {
-                            log::debug!("Background: Fetching diff for PR #{}", ctx.number);
-                            let diff = get_pr_diff(&project_path, ctx.number, &gh).ok();
-                            PullRequestContext {
-                                number: ctx.number,
-                                title: ctx.title.clone(),
-                                body: ctx.body.clone(),
-                                head_ref_name: ctx.head_ref_name.clone(),
-                                base_ref_name: ctx.base_ref_name.clone(),
-                                comments: ctx.comments.clone(),
-                                reviews: ctx.reviews.clone(),
-                                diff,
-                            }
-                        } else {
-                            ctx.clone()
-                        };
-
-                        let context_file =
-                            contexts_dir.join(format!("{repo_key}-pr-{}.md", ctx.number));
-                        let context_content = format_pr_context_markdown(&ctx_with_diff);
-                        if let Err(e) = std::fs::write(&context_file, context_content) {
-                            log::warn!("Background: Failed to write PR context file: {e}");
-                        } else {
-                            if let Err(e) = add_pr_reference(
-                                &app_clone,
-                                &repo_key,
-                                ctx.number,
-                                &worktree_id_clone,
-                            ) {
-                                log::warn!("Background: Failed to add PR reference: {e}");
-                            }
-                            log::trace!(
-                                "Background: PR context file written to {:?}",
-                                context_file
-                            );
-                        }
-                    }
-                }
-            }
-        }
-
-        // Check for jean.json and run setup script
-        let (setup_output, setup_script) = if let Some(config) =
-            git::read_jean_config(&project_path)
-        {
-            if let Some(script) = config.scripts.setup {
-                log::trace!("Background: Found jean.json with setup script, executing...");
-                match git::run_setup_script(
-                    &worktree_path_clone,
-                    &project_path,
-                    &name_clone,
-                    &script,
-                ) {
-                    Ok(output) => (Some(output), Some(script)),
-                    Err(e) => {
-                        log::error!("Background: Setup script failed: {e}");
-                        // Clean up: remove the worktree since setup failed
-                        // Note: Don't delete the branch since it's an existing branch
-                        let _ = git::remove_worktree(&project_path, &worktree_path_clone);
-                        let error_event = WorktreeCreateErrorEvent {
-                            id: worktree_id_clone,
-                            project_id: project_id_clone,
-                            error: format!("Setup script failed: {e}"),
-                        };
-                        if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
-                            log::error!("Failed to emit worktree:error event: {emit_err}");
-                        }
-                        return;
-                    }
-                }
-            } else {
-                (None, None)
-            }
-        } else {
-            (None, None)
-        };
-
-        // Save to storage
-        if let Ok(mut data) = load_projects_data(&app_clone) {
-            // Get max order for worktrees in this project
-            let max_order = data
-                .worktrees
-                .iter()
-                .filter(|w| w.project_id == project_id_clone)
-                .map(|w| w.order)
-                .max()
-                .unwrap_or(0);
-
-            // Create the final worktree record
-            let worktree = Worktree {
-                id: worktree_id_clone.clone(),
-                project_id: project_id_clone.clone(),
-                name: name_clone.clone(),
-                path: worktree_path_clone.clone(),
-                branch: branch_name_clone,
-                created_at,
-                setup_output,
-                setup_script,
-                session_type: SessionType::Worktree,
-                pr_number: None,
-                pr_url: None,
-                cached_pr_status: None,
-                cached_check_status: None,
-                cached_behind_count: None,
-                cached_ahead_count: None,
-                cached_status_at: None,
-                cached_uncommitted_added: None,
-                cached_uncommitted_removed: None,
-                cached_branch_diff_added: None,
-                cached_branch_diff_removed: None,
-                cached_base_branch_ahead_count: None,
-                cached_base_branch_behind_count: None,
-                cached_worktree_ahead_count: None,
-                cached_unpushed_count: None,
-                order: max_order + 1,
-                archived_at: None,
-            };
-
-            data.add_worktree(worktree.clone());
-            if let Err(e) = save_projects_data(&app_clone, &data) {
-                log::error!("Background: Failed to save worktree data: {e}");
+            // Check if path already exists
+            let worktree_path = std::path::Path::new(&worktree_path_clone);
+            if worktree_path.exists() {
+                log::error!("Background: Path already exists: {worktree_path_clone}");
                 let error_event = WorktreeCreateErrorEvent {
                     id: worktree_id_clone,
                     project_id: project_id_clone,
-                    error: format!("Failed to save worktree: {e}"),
+                    error: format!("Directory already exists: {worktree_path_clone}"),
+                };
+                if let Err(e) = app_clone.emit_all("worktree:error", &error_event) {
+                    log::error!("Failed to emit worktree:error event: {e}");
+                }
+                return;
+            }
+
+            // Create the git worktree from existing branch
+            if let Err(e) = git::create_worktree_from_existing_branch(
+                &project_path,
+                &worktree_path_clone,
+                &branch_name_clone,
+            ) {
+                log::error!("Background: Failed to create worktree: {e}");
+                let error_event = WorktreeCreateErrorEvent {
+                    id: worktree_id_clone,
+                    project_id: project_id_clone,
+                    error: e,
                 };
                 if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
                     log::error!("Failed to emit worktree:error event: {emit_err}");
@@ -1262,25 +1210,219 @@ pub async fn create_worktree_from_existing_branch(
                 return;
             }
 
-            // Emit success event
-            log::trace!(
-                "Background: Worktree created successfully from existing branch: {}",
-                worktree.name
-            );
-            let created_event = WorktreeCreatedEvent { worktree };
-            if let Err(e) = app_clone.emit_all("worktree:created", &created_event) {
-                log::error!("Failed to emit worktree:created event: {e}");
+            log::trace!("Background: Git worktree created successfully from existing branch");
+
+            // Write issue context file if provided
+            if let Some(ctx) = &issue_context_clone {
+                log::trace!(
+                    "Background: Writing issue context file for issue #{}",
+                    ctx.number
+                );
+                if let Ok(repo_id) = get_repo_identifier(&project_path) {
+                    let repo_key = repo_id.to_key();
+                    if let Ok(contexts_dir) = get_github_contexts_dir(&app_clone) {
+                        if let Err(e) = std::fs::create_dir_all(&contexts_dir) {
+                            log::warn!("Background: Failed to create git-context directory: {e}");
+                        } else {
+                            let context_file =
+                                contexts_dir.join(format!("{repo_key}-issue-{}.md", ctx.number));
+                            let context_content = format_issue_context_markdown(ctx);
+                            if let Err(e) = std::fs::write(&context_file, context_content) {
+                                log::warn!("Background: Failed to write issue context file: {e}");
+                            } else {
+                                if let Err(e) = add_issue_reference(
+                                    &app_clone,
+                                    &repo_key,
+                                    ctx.number,
+                                    &worktree_id_clone,
+                                ) {
+                                    log::warn!("Background: Failed to add issue reference: {e}");
+                                }
+                                log::trace!(
+                                    "Background: Issue context file written to {:?}",
+                                    context_file
+                                );
+                            }
+                        }
+                    }
+                }
             }
-        } else {
-            log::error!("Background: Failed to load projects data for saving");
+
+            // Write PR context file if provided
+            if let Some(ctx) = &pr_context_clone {
+                log::trace!("Background: Writing PR context file for PR #{}", ctx.number);
+                if let Ok(repo_id) = get_repo_identifier(&project_path) {
+                    let repo_key = repo_id.to_key();
+                    if let Ok(contexts_dir) = get_github_contexts_dir(&app_clone) {
+                        if let Err(e) = std::fs::create_dir_all(&contexts_dir) {
+                            log::warn!("Background: Failed to create git-context directory: {e}");
+                        } else {
+                            // Fetch the diff if not already present
+                            let gh = resolve_gh_binary(&app_clone);
+                            let ctx_with_diff = if ctx.diff.is_none() {
+                                log::debug!("Background: Fetching diff for PR #{}", ctx.number);
+                                let diff = get_pr_diff(&project_path, ctx.number, &gh).ok();
+                                PullRequestContext {
+                                    number: ctx.number,
+                                    title: ctx.title.clone(),
+                                    body: ctx.body.clone(),
+                                    head_ref_name: ctx.head_ref_name.clone(),
+                                    base_ref_name: ctx.base_ref_name.clone(),
+                                    comments: ctx.comments.clone(),
+                                    reviews: ctx.reviews.clone(),
+                                    diff,
+                                }
+                            } else {
+                                ctx.clone()
+                            };
+
+                            let context_file =
+                                contexts_dir.join(format!("{repo_key}-pr-{}.md", ctx.number));
+                            let context_content = format_pr_context_markdown(&ctx_with_diff);
+                            if let Err(e) = std::fs::write(&context_file, context_content) {
+                                log::warn!("Background: Failed to write PR context file: {e}");
+                            } else {
+                                if let Err(e) = add_pr_reference(
+                                    &app_clone,
+                                    &repo_key,
+                                    ctx.number,
+                                    &worktree_id_clone,
+                                ) {
+                                    log::warn!("Background: Failed to add PR reference: {e}");
+                                }
+                                log::trace!(
+                                    "Background: PR context file written to {:?}",
+                                    context_file
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Check for jean.json and run setup script
+            let (setup_output, setup_script) =
+                if let Some(config) = git::read_jean_config(&project_path) {
+                    if let Some(script) = config.scripts.setup {
+                        log::trace!("Background: Found jean.json with setup script, executing...");
+                        match git::run_setup_script(
+                            &worktree_path_clone,
+                            &project_path,
+                            &name_clone,
+                            &script,
+                        ) {
+                            Ok(output) => (Some(output), Some(script)),
+                            Err(e) => {
+                                log::error!("Background: Setup script failed: {e}");
+                                // Clean up: remove the worktree since setup failed
+                                // Note: Don't delete the branch since it's an existing branch
+                                let _ = git::remove_worktree(&project_path, &worktree_path_clone);
+                                let error_event = WorktreeCreateErrorEvent {
+                                    id: worktree_id_clone,
+                                    project_id: project_id_clone,
+                                    error: format!("Setup script failed: {e}"),
+                                };
+                                if let Err(emit_err) =
+                                    app_clone.emit_all("worktree:error", &error_event)
+                                {
+                                    log::error!("Failed to emit worktree:error event: {emit_err}");
+                                }
+                                return;
+                            }
+                        }
+                    } else {
+                        (None, None)
+                    }
+                } else {
+                    (None, None)
+                };
+
+            // Save to storage
+            if let Ok(mut data) = load_projects_data(&app_clone) {
+                // Get max order for worktrees in this project
+                let max_order = data
+                    .worktrees
+                    .iter()
+                    .filter(|w| w.project_id == project_id_clone)
+                    .map(|w| w.order)
+                    .max()
+                    .unwrap_or(0);
+
+                // Create the final worktree record
+                let worktree = Worktree {
+                    id: worktree_id_clone.clone(),
+                    project_id: project_id_clone.clone(),
+                    name: name_clone.clone(),
+                    path: worktree_path_clone.clone(),
+                    branch: branch_name_clone,
+                    created_at,
+                    setup_output,
+                    setup_script,
+                    session_type: SessionType::Worktree,
+                    pr_number: None,
+                    pr_url: None,
+                    issue_number: issue_context_clone.as_ref().map(|ctx| ctx.number),
+                    cached_pr_status: None,
+                    cached_check_status: None,
+                    cached_behind_count: None,
+                    cached_ahead_count: None,
+                    cached_status_at: None,
+                    cached_uncommitted_added: None,
+                    cached_uncommitted_removed: None,
+                    cached_branch_diff_added: None,
+                    cached_branch_diff_removed: None,
+                    cached_base_branch_ahead_count: None,
+                    cached_base_branch_behind_count: None,
+                    cached_worktree_ahead_count: None,
+                    cached_unpushed_count: None,
+                    order: max_order + 1,
+                    archived_at: None,
+                };
+
+                data.add_worktree(worktree.clone());
+                if let Err(e) = save_projects_data(&app_clone, &data) {
+                    log::error!("Background: Failed to save worktree data: {e}");
+                    let error_event = WorktreeCreateErrorEvent {
+                        id: worktree_id_clone,
+                        project_id: project_id_clone,
+                        error: format!("Failed to save worktree: {e}"),
+                    };
+                    if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
+                        log::error!("Failed to emit worktree:error event: {emit_err}");
+                    }
+                    return;
+                }
+
+                // Emit success event
+                log::trace!(
+                    "Background: Worktree created successfully from existing branch: {}",
+                    worktree.name
+                );
+                let created_event = WorktreeCreatedEvent { worktree };
+                if let Err(e) = app_clone.emit_all("worktree:created", &created_event) {
+                    log::error!("Failed to emit worktree:created event: {e}");
+                }
+            } else {
+                log::error!("Background: Failed to load projects data for saving");
+                let error_event = WorktreeCreateErrorEvent {
+                    id: worktree_id_clone,
+                    project_id: project_id_clone,
+                    error: "Failed to load projects data".to_string(),
+                };
+                if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
+                    log::error!("Failed to emit worktree:error event: {emit_err}");
+                }
+            }
+        })); // end catch_unwind
+
+        if let Err(panic_info) = result {
+            log::error!("Background thread panicked during worktree creation from existing branch: {panic_info:?}");
             let error_event = WorktreeCreateErrorEvent {
-                id: worktree_id_clone,
-                project_id: project_id_clone,
-                error: "Failed to load projects data".to_string(),
+                id: panic_wt_id,
+                project_id: panic_proj_id,
+                error: "Internal error: worktree creation failed unexpectedly".to_string(),
             };
-            if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
-                log::error!("Failed to emit worktree:error event: {emit_err}");
-            }
+            let _ = panic_app.emit_all("worktree:error", &error_event);
         }
     });
 
@@ -1308,7 +1450,7 @@ pub async fn checkout_pr(
 ) -> Result<Worktree, String> {
     log::trace!("Checking out PR #{pr_number} for project: {project_id}");
 
-    let data = load_projects_data(&app)?;
+    let mut data = load_projects_data(&app)?;
 
     let project = data
         .find_project(&project_id)
@@ -1320,9 +1462,10 @@ pub async fn checkout_pr(
         w.project_id == project_id && w.pr_number == Some(pr_number) && w.archived_at.is_some()
     }) {
         let worktree_id = archived_wt.id.clone();
-        log::trace!("Found archived worktree {worktree_id} for PR #{pr_number}, restoring instead of creating new");
+        log::info!("[checkout_pr] Found archived worktree {worktree_id} for PR #{pr_number}, attempting unarchive");
         return unarchive_worktree(app, worktree_id).await;
     }
+    log::info!("[checkout_pr] No archived worktree found for PR #{pr_number}, creating new");
 
     // Fetch PR details from GitHub (for context and worktree naming)
     let pr_detail = get_github_pr(app.clone(), project.path.clone(), pr_number).await?;
@@ -1332,18 +1475,55 @@ pub async fn checkout_pr(
 
     // Generate worktree name from PR (for the directory/worktree name, not the branch)
     let worktree_name = generate_branch_name_from_pr(pr_number, &pr_detail.title);
+    log::info!("[checkout_pr] Generated base worktree name: '{worktree_name}'");
 
-    // Check if worktree name already exists, add suffix if needed
-    let final_worktree_name = if data.worktree_name_exists(&project_id, &worktree_name) {
+    // Remove any archived worktree records for this PR from data so they don't
+    // interfere with name dedup. The background thread will clean up leftover
+    // git worktrees/branches/directories.
+    let project_worktrees_dir = get_project_worktrees_dir(&project.name)?;
+    let had_archived = data.worktrees.iter().any(|w| {
+        w.project_id == project_id && w.pr_number == Some(pr_number) && w.archived_at.is_some()
+    });
+    if had_archived {
+        log::info!(
+            "[checkout_pr] Removing archived worktree records for PR #{pr_number} from data"
+        );
+        data.worktrees.retain(|w| {
+            !(w.project_id == project_id
+                && w.pr_number == Some(pr_number)
+                && w.archived_at.is_some())
+        });
+        save_projects_data(&app, &data)?;
+    }
+
+    // Log all worktrees for this project to understand name collision state
+    let existing_names: Vec<String> = data
+        .worktrees
+        .iter()
+        .filter(|w| w.project_id == project_id)
+        .map(|w| format!("'{}' (archived={})", w.name, w.archived_at.is_some()))
+        .collect();
+    log::info!("[checkout_pr] Existing worktrees for project: [{existing_names:?}]");
+    let dir_exists = project_worktrees_dir.join(&worktree_name).exists();
+    let name_in_data = data.worktree_name_exists(&project_id, &worktree_name);
+    log::info!(
+        "[checkout_pr] Name '{worktree_name}' — in_data={name_in_data}, dir_exists={dir_exists}"
+    );
+
+    // Check if worktree name already exists among active worktrees, add suffix if needed.
+    // Don't check filesystem here — the background thread will clean up leftover dirs.
+    let final_worktree_name = if name_in_data {
         let mut counter = 2;
         loop {
             let candidate = format!("{worktree_name}-{counter}");
             if !data.worktree_name_exists(&project_id, &candidate) {
+                log::info!("[checkout_pr] Name collision, using '{candidate}'");
                 break candidate;
             }
             counter += 1;
         }
     } else {
+        log::info!("[checkout_pr] Using base name '{worktree_name}'");
         worktree_name
     };
 
@@ -1359,7 +1539,6 @@ pub async fn checkout_pr(
     );
 
     // Build worktree path: ~/jean/<project-name>/<workspace-name>
-    let project_worktrees_dir = get_project_worktrees_dir(&project.name)?;
     let worktree_path = project_worktrees_dir.join(&final_worktree_name);
     let worktree_path_str = worktree_path
         .to_str()
@@ -1377,6 +1556,8 @@ pub async fn checkout_pr(
         name: final_worktree_name.clone(),
         path: worktree_path_str.clone(),
         branch: pr_detail.head_ref_name.clone(), // Use PR's actual branch name
+        pr_number: Some(pr_number as u64),
+        issue_number: None,
     };
     if let Err(e) = app.emit_all("worktree:creating", &creating_event) {
         log::error!("Failed to emit worktree:creating event: {e}");
@@ -1396,6 +1577,7 @@ pub async fn checkout_pr(
         session_type: SessionType::Worktree,
         pr_number: Some(pr_number),
         pr_url: None,
+        issue_number: None,
         cached_pr_status: None,
         cached_check_status: None,
         cached_behind_count: None,
@@ -1431,59 +1613,43 @@ pub async fn checkout_pr(
 
     // Do the heavy lifting in a background thread
     thread::spawn(move || {
-        log::trace!("Background: Creating worktree for PR #{pr_number}");
+        // Clone IDs for panic handler (before they're moved into the inner closure)
+        let panic_wt_id = worktree_id_clone.clone();
+        let panic_proj_id = project_id_clone.clone();
+        let panic_app = app_clone.clone();
 
-        // Step 1: Create worktree with a temporary branch based on base branch
-        // This gives us a working directory where we can run gh pr checkout
-        if let Err(e) = git::create_worktree(
-            &project_path,
-            &worktree_path_clone,
-            &temp_branch_clone,
-            &base_branch_clone,
-        ) {
-            log::error!("Background: Failed to create worktree: {e}");
-            let error_event = WorktreeCreateErrorEvent {
-                id: worktree_id_clone,
-                project_id: project_id_clone,
-                error: e,
-            };
-            if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
-                log::error!("Failed to emit worktree:error event: {emit_err}");
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+            log::trace!("Background: Creating worktree for PR #{pr_number}");
+
+            // Clean up leftover directory from a previous checkout of this PR
+            // (e.g. permanently_delete_worktree's background cleanup hasn't finished yet)
+            let dir_exists_before = std::path::Path::new(&worktree_path_clone).exists();
+            log::info!("[checkout_pr bg] worktree_path={worktree_path_clone}, dir_exists={dir_exists_before}");
+            if dir_exists_before {
+                log::info!("[checkout_pr bg] Removing leftover directory at {worktree_path_clone}");
+                let remove_result = git::remove_worktree(&project_path, &worktree_path_clone);
+                log::info!("[checkout_pr bg] remove_worktree result: {remove_result:?}");
+                if std::path::Path::new(&worktree_path_clone).exists() {
+                    log::info!(
+                        "[checkout_pr bg] Dir still exists after remove_worktree, force removing"
+                    );
+                    let _ = std::fs::remove_dir_all(&worktree_path_clone);
+                }
+                log::info!(
+                    "[checkout_pr bg] Dir exists after cleanup: {}",
+                    std::path::Path::new(&worktree_path_clone).exists()
+                );
             }
-            return;
-        }
 
-        log::trace!("Background: Worktree created, now running gh pr checkout {pr_number}");
-
-        // Determine safe local branch name for gh pr checkout -b
-        // If pr_head_ref (e.g. "main") already exists locally, use an alternative
-        // to avoid "refusing to fetch into branch" errors when the branch is checked out
-        let local_branch_name = if git::branch_exists(&project_path, &pr_head_ref) {
-            let alt = format!("pr-{pr_number}-{pr_head_ref}");
-            log::trace!("Branch '{pr_head_ref}' already exists, using '{alt}' instead");
-            alt
-        } else {
-            pr_head_ref.clone()
-        };
-
-        // Step 2: Run gh pr checkout inside the worktree
-        // This checks out the actual PR branch and sets up tracking
-        // Pass the local branch name to ensure no conflicts with checked-out branches
-        let actual_branch = match git::gh_pr_checkout(
-            &worktree_path_clone,
-            pr_number,
-            Some(&local_branch_name),
-            &resolve_gh_binary(&app_clone),
-        ) {
-            Ok(branch) => {
-                log::trace!("Background: gh pr checkout succeeded, branch: {branch}");
-                branch
-            }
-            Err(e) => {
-                log::error!("Background: Failed to checkout PR: {e}");
-                // Clean up the worktree we created
-                let _ = git::remove_worktree(&project_path, &worktree_path_clone);
-                let _ = git::delete_branch(&project_path, &temp_branch_clone);
+            // Step 1: Create worktree with a temporary branch based on base branch
+            // This gives us a working directory where we can run gh pr checkout
+            if let Err(e) = git::create_worktree(
+                &project_path,
+                &worktree_path_clone,
+                &temp_branch_clone,
+                &base_branch_clone,
+            ) {
+                log::error!("Background: Failed to create worktree: {e}");
                 let error_event = WorktreeCreateErrorEvent {
                     id: worktree_id_clone,
                     project_id: project_id_clone,
@@ -1494,41 +1660,51 @@ pub async fn checkout_pr(
                 }
                 return;
             }
-        };
 
-        // Step 3: Delete the temporary branch (it's no longer needed)
-        // The worktree is now on the actual PR branch
-        if let Err(e) = git::delete_branch(&project_path, &temp_branch_clone) {
-            log::warn!("Background: Failed to delete temp branch {temp_branch_clone}: {e}");
-            // Not fatal, continue anyway
-        }
+            log::trace!("Background: Worktree created, now running gh pr checkout {pr_number}");
 
-        log::trace!(
-            "Background: Git worktree ready with PR #{pr_number} on branch {actual_branch}"
-        );
+            // Determine safe local branch name for gh pr checkout -b
+            // If pr_head_ref (e.g. "main") already exists locally, use an alternative
+            // to avoid "refusing to fetch into branch" errors when the branch is checked out
+            let branch_collision = git::branch_exists(&project_path, &pr_head_ref);
+            let local_branch_name = if branch_collision {
+                let alt = format!("pr-{pr_number}-{pr_head_ref}");
+                log::trace!("Branch '{pr_head_ref}' already exists, using '{alt}' instead");
+                alt
+            } else {
+                pr_head_ref.clone()
+            };
 
-        // Check for jean.json and run setup script
-        let (setup_output, setup_script) = if let Some(config) =
-            git::read_jean_config(&worktree_path_clone)
-        {
-            if let Some(script) = config.scripts.setup {
-                log::trace!("Background: Found jean.json with setup script, executing...");
-                match git::run_setup_script(
-                    &worktree_path_clone,
-                    &project_path,
-                    &actual_branch,
-                    &script,
-                ) {
-                    Ok(output) => (Some(output), Some(script)),
+            // Clean up stale branch from a previous checkout of this PR
+            // Handles: archived worktree still has branch checked out, or
+            // permanently-deleted worktree whose background cleanup didn't finish
+            git::cleanup_stale_branch(&project_path, &local_branch_name);
+
+            // Step 2: Checkout the PR branch into the worktree
+            // If branch name collides (e.g. PR head is "main" and "main" is checked out),
+            // bypass `gh pr checkout` which internally fetches into the conflicting ref.
+            // Instead, manually fetch the PR into the alt branch name and switch to it.
+            let actual_branch = if branch_collision {
+                log::trace!("Background: Branch collision detected, using manual fetch for PR #{pr_number} into {local_branch_name}");
+                match git::fetch_pr_to_branch(&project_path, pr_number, &local_branch_name)
+                    .and_then(|_| {
+                        git::checkout_branch(&worktree_path_clone, &local_branch_name)?;
+                        Ok(local_branch_name.clone())
+                    }) {
+                    Ok(branch) => {
+                        log::trace!(
+                            "Background: Manual PR fetch+checkout succeeded, branch: {branch}"
+                        );
+                        branch
+                    }
                     Err(e) => {
-                        log::error!("Background: Setup script failed: {e}");
-                        // Clean up: remove the worktree since setup failed
+                        log::error!("Background: Failed to checkout PR: {e}");
                         let _ = git::remove_worktree(&project_path, &worktree_path_clone);
-                        let _ = git::delete_branch(&project_path, &actual_branch);
+                        let _ = git::delete_branch(&project_path, &temp_branch_clone);
                         let error_event = WorktreeCreateErrorEvent {
                             id: worktree_id_clone,
                             project_id: project_id_clone,
-                            error: format!("Setup script failed: {e}"),
+                            error: e,
                         };
                         if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
                             log::error!("Failed to emit worktree:error event: {emit_err}");
@@ -1537,143 +1713,236 @@ pub async fn checkout_pr(
                     }
                 }
             } else {
-                (None, None)
-            }
-        } else {
-            (None, None)
-        };
-
-        // Write PR context file to shared git-context directory
-        if let Ok(repo_id) = get_repo_identifier(&project_path) {
-            let repo_key = repo_id.to_key();
-            if let Ok(contexts_dir) = get_github_contexts_dir(&app_clone) {
-                if let Err(e) = std::fs::create_dir_all(&contexts_dir) {
-                    log::warn!("Background: Failed to create git-context directory: {e}");
-                } else {
-                    // Create PR context
-                    let pr_context = PullRequestContext {
-                        number: pr_number,
-                        title: pr_title.clone(),
-                        body: pr_body,
-                        head_ref_name: pr_head_ref,
-                        base_ref_name: pr_base_ref,
-                        comments: pr_comments
-                            .into_iter()
-                            .map(|c| super::github_issues::GitHubComment {
-                                body: c.body,
-                                author: super::github_issues::GitHubAuthor {
-                                    login: c.author.login,
-                                },
-                                created_at: c.created_at,
-                            })
-                            .collect(),
-                        reviews: pr_reviews
-                            .into_iter()
-                            .map(|r| super::github_issues::GitHubReview {
-                                body: r.body,
-                                state: r.state,
-                                author: super::github_issues::GitHubAuthor {
-                                    login: r.author.login,
-                                },
-                                submitted_at: r.submitted_at,
-                            })
-                            .collect(),
-                        diff: get_pr_diff(&project_path, pr_number, &resolve_gh_binary(&app_clone))
-                            .ok(),
-                    };
-
-                    let context_file = contexts_dir.join(format!("{repo_key}-pr-{pr_number}.md"));
-                    let context_content = format_pr_context_markdown(&pr_context);
-                    if let Err(e) = std::fs::write(&context_file, context_content) {
-                        log::warn!("Background: Failed to write PR context file: {e}");
-                    } else {
-                        // Add reference for this worktree
-                        if let Err(e) =
-                            add_pr_reference(&app_clone, &repo_key, pr_number, &worktree_id_clone)
-                        {
-                            log::warn!("Background: Failed to add PR reference: {e}");
+                // No collision - use gh pr checkout which sets up tracking nicely
+                match git::gh_pr_checkout(
+                    &worktree_path_clone,
+                    pr_number,
+                    Some(&local_branch_name),
+                    &resolve_gh_binary(&app_clone),
+                ) {
+                    Ok(branch) => {
+                        log::trace!("Background: gh pr checkout succeeded, branch: {branch}");
+                        branch
+                    }
+                    Err(e) => {
+                        log::error!("Background: Failed to checkout PR: {e}");
+                        let _ = git::remove_worktree(&project_path, &worktree_path_clone);
+                        let _ = git::delete_branch(&project_path, &temp_branch_clone);
+                        let error_event = WorktreeCreateErrorEvent {
+                            id: worktree_id_clone,
+                            project_id: project_id_clone,
+                            error: e,
+                        };
+                        if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
+                            log::error!("Failed to emit worktree:error event: {emit_err}");
                         }
-                        log::trace!("Background: PR context file written to {:?}", context_file);
+                        return;
+                    }
+                }
+            };
+
+            // Step 3: Delete the temporary branch (it's no longer needed)
+            // The worktree is now on the actual PR branch
+            if let Err(e) = git::delete_branch(&project_path, &temp_branch_clone) {
+                log::warn!("Background: Failed to delete temp branch {temp_branch_clone}: {e}");
+                // Not fatal, continue anyway
+            }
+
+            log::trace!(
+                "Background: Git worktree ready with PR #{pr_number} on branch {actual_branch}"
+            );
+
+            // Check for jean.json and run setup script
+            let (setup_output, setup_script) =
+                if let Some(config) = git::read_jean_config(&worktree_path_clone) {
+                    if let Some(script) = config.scripts.setup {
+                        log::trace!("Background: Found jean.json with setup script, executing...");
+                        match git::run_setup_script(
+                            &worktree_path_clone,
+                            &project_path,
+                            &actual_branch,
+                            &script,
+                        ) {
+                            Ok(output) => (Some(output), Some(script)),
+                            Err(e) => {
+                                log::error!("Background: Setup script failed: {e}");
+                                // Clean up: remove the worktree since setup failed
+                                let _ = git::remove_worktree(&project_path, &worktree_path_clone);
+                                let _ = git::delete_branch(&project_path, &actual_branch);
+                                let error_event = WorktreeCreateErrorEvent {
+                                    id: worktree_id_clone,
+                                    project_id: project_id_clone,
+                                    error: format!("Setup script failed: {e}"),
+                                };
+                                if let Err(emit_err) =
+                                    app_clone.emit_all("worktree:error", &error_event)
+                                {
+                                    log::error!("Failed to emit worktree:error event: {emit_err}");
+                                }
+                                return;
+                            }
+                        }
+                    } else {
+                        (None, None)
+                    }
+                } else {
+                    (None, None)
+                };
+
+            // Write PR context file to shared git-context directory
+            if let Ok(repo_id) = get_repo_identifier(&project_path) {
+                let repo_key = repo_id.to_key();
+                if let Ok(contexts_dir) = get_github_contexts_dir(&app_clone) {
+                    if let Err(e) = std::fs::create_dir_all(&contexts_dir) {
+                        log::warn!("Background: Failed to create git-context directory: {e}");
+                    } else {
+                        // Create PR context
+                        let pr_context = PullRequestContext {
+                            number: pr_number,
+                            title: pr_title.clone(),
+                            body: pr_body,
+                            head_ref_name: pr_head_ref,
+                            base_ref_name: pr_base_ref,
+                            comments: pr_comments
+                                .into_iter()
+                                .map(|c| super::github_issues::GitHubComment {
+                                    body: c.body,
+                                    author: super::github_issues::GitHubAuthor {
+                                        login: c.author.login,
+                                    },
+                                    created_at: c.created_at,
+                                })
+                                .collect(),
+                            reviews: pr_reviews
+                                .into_iter()
+                                .map(|r| super::github_issues::GitHubReview {
+                                    body: r.body,
+                                    state: r.state,
+                                    author: super::github_issues::GitHubAuthor {
+                                        login: r.author.login,
+                                    },
+                                    submitted_at: r.submitted_at,
+                                })
+                                .collect(),
+                            diff: get_pr_diff(
+                                &project_path,
+                                pr_number,
+                                &resolve_gh_binary(&app_clone),
+                            )
+                            .ok(),
+                        };
+
+                        let context_file =
+                            contexts_dir.join(format!("{repo_key}-pr-{pr_number}.md"));
+                        let context_content = format_pr_context_markdown(&pr_context);
+                        if let Err(e) = std::fs::write(&context_file, context_content) {
+                            log::warn!("Background: Failed to write PR context file: {e}");
+                        } else {
+                            // Add reference for this worktree
+                            if let Err(e) = add_pr_reference(
+                                &app_clone,
+                                &repo_key,
+                                pr_number,
+                                &worktree_id_clone,
+                            ) {
+                                log::warn!("Background: Failed to add PR reference: {e}");
+                            }
+                            log::trace!(
+                                "Background: PR context file written to {:?}",
+                                context_file
+                            );
+                        }
                     }
                 }
             }
-        }
 
-        // Save to storage
-        if let Ok(mut data) = load_projects_data(&app_clone) {
-            // Get max order for worktrees in this project
-            let max_order = data
-                .worktrees
-                .iter()
-                .filter(|w| w.project_id == project_id_clone)
-                .map(|w| w.order)
-                .max()
-                .unwrap_or(0);
+            // Save to storage
+            if let Ok(mut data) = load_projects_data(&app_clone) {
+                // Get max order for worktrees in this project
+                let max_order = data
+                    .worktrees
+                    .iter()
+                    .filter(|w| w.project_id == project_id_clone)
+                    .map(|w| w.order)
+                    .max()
+                    .unwrap_or(0);
 
-            // Create the final worktree record with the actual PR branch name
-            let worktree = Worktree {
-                id: worktree_id_clone.clone(),
-                project_id: project_id_clone.clone(),
-                name: worktree_name_clone.clone(),
-                path: worktree_path_clone.clone(),
-                branch: actual_branch.clone(),
-                created_at,
-                setup_output,
-                setup_script,
-                session_type: SessionType::Worktree,
-                pr_number: Some(pr_number),
-                pr_url: None,
-                cached_pr_status: None,
-                cached_check_status: None,
-                cached_behind_count: None,
-                cached_ahead_count: None,
-                cached_status_at: None,
-                cached_uncommitted_added: None,
-                cached_uncommitted_removed: None,
-                cached_branch_diff_added: None,
-                cached_branch_diff_removed: None,
-                cached_base_branch_ahead_count: None,
-                cached_base_branch_behind_count: None,
-                cached_worktree_ahead_count: None,
-                cached_unpushed_count: None,
-                order: max_order + 1,
-                archived_at: None,
-            };
+                // Create the final worktree record with the actual PR branch name
+                let worktree = Worktree {
+                    id: worktree_id_clone.clone(),
+                    project_id: project_id_clone.clone(),
+                    name: worktree_name_clone.clone(),
+                    path: worktree_path_clone.clone(),
+                    branch: actual_branch.clone(),
+                    created_at,
+                    setup_output,
+                    setup_script,
+                    session_type: SessionType::Worktree,
+                    pr_number: Some(pr_number),
+                    pr_url: None,
+                    issue_number: None,
+                    cached_pr_status: None,
+                    cached_check_status: None,
+                    cached_behind_count: None,
+                    cached_ahead_count: None,
+                    cached_status_at: None,
+                    cached_uncommitted_added: None,
+                    cached_uncommitted_removed: None,
+                    cached_branch_diff_added: None,
+                    cached_branch_diff_removed: None,
+                    cached_base_branch_ahead_count: None,
+                    cached_base_branch_behind_count: None,
+                    cached_worktree_ahead_count: None,
+                    cached_unpushed_count: None,
+                    order: max_order + 1,
+                    archived_at: None,
+                };
 
-            data.add_worktree(worktree.clone());
-            if let Err(e) = save_projects_data(&app_clone, &data) {
-                log::error!("Background: Failed to save worktree data: {e}");
+                data.add_worktree(worktree.clone());
+                if let Err(e) = save_projects_data(&app_clone, &data) {
+                    log::error!("Background: Failed to save worktree data: {e}");
+                    let error_event = WorktreeCreateErrorEvent {
+                        id: worktree_id_clone,
+                        project_id: project_id_clone,
+                        error: format!("Failed to save worktree: {e}"),
+                    };
+                    if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
+                        log::error!("Failed to emit worktree:error event: {emit_err}");
+                    }
+                    return;
+                }
+
+                // Emit success event
+                log::trace!(
+                    "Background: Worktree created successfully for PR #{}: {}",
+                    pr_number,
+                    worktree.name
+                );
+                let created_event = WorktreeCreatedEvent { worktree };
+                if let Err(e) = app_clone.emit_all("worktree:created", &created_event) {
+                    log::error!("Failed to emit worktree:created event: {e}");
+                }
+            } else {
+                log::error!("Background: Failed to load projects data for saving");
                 let error_event = WorktreeCreateErrorEvent {
                     id: worktree_id_clone,
                     project_id: project_id_clone,
-                    error: format!("Failed to save worktree: {e}"),
+                    error: "Failed to load projects data".to_string(),
                 };
                 if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
                     log::error!("Failed to emit worktree:error event: {emit_err}");
                 }
-                return;
             }
+        })); // end catch_unwind
 
-            // Emit success event
-            log::trace!(
-                "Background: Worktree created successfully for PR #{}: {}",
-                pr_number,
-                worktree.name
-            );
-            let created_event = WorktreeCreatedEvent { worktree };
-            if let Err(e) = app_clone.emit_all("worktree:created", &created_event) {
-                log::error!("Failed to emit worktree:created event: {e}");
-            }
-        } else {
-            log::error!("Background: Failed to load projects data for saving");
+        if let Err(panic_info) = result {
+            log::error!("Background thread panicked during PR checkout: {panic_info:?}");
             let error_event = WorktreeCreateErrorEvent {
-                id: worktree_id_clone,
-                project_id: project_id_clone,
-                error: "Failed to load projects data".to_string(),
+                id: panic_wt_id,
+                project_id: panic_proj_id,
+                error: "Internal error: PR checkout failed unexpectedly".to_string(),
             };
-            if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
-                log::error!("Failed to emit worktree:error event: {emit_err}");
-            }
+            let _ = panic_app.emit_all("worktree:error", &error_event);
         }
     });
 
@@ -1699,20 +1968,6 @@ pub async fn delete_worktree(app: AppHandle, worktree_id: String) -> Result<(), 
 
     // Cancel any running Claude processes for this worktree FIRST
     crate::chat::registry::cancel_processes_for_worktree(&app, &worktree_id);
-
-    // Clean up issue context files for this worktree
-    if let Err(e) =
-        crate::projects::github_issues::cleanup_issue_contexts_for_worktree(&app, &worktree_id)
-    {
-        log::warn!("Failed to cleanup issue contexts: {e}");
-    }
-
-    // Clean up PR context files for this worktree
-    if let Err(e) =
-        crate::projects::github_issues::cleanup_pr_contexts_for_worktree(&app, &worktree_id)
-    {
-        log::warn!("Failed to cleanup PR contexts: {e}");
-    }
 
     let data = load_projects_data(&app)?;
 
@@ -1848,6 +2103,7 @@ pub async fn create_base_session(app: AppHandle, project_id: String) -> Result<W
         session_type: SessionType::Base,
         pr_number: None,
         pr_url: None,
+        issue_number: None,
         cached_pr_status: None,
         cached_check_status: None,
         cached_behind_count: None,
@@ -1873,6 +2129,20 @@ pub async fn create_base_session(app: AppHandle, project_id: String) -> Result<W
     match crate::chat::restore_base_sessions(&app, &project_id, &session.id) {
         Ok(Some(_)) => {
             log::trace!("Restored preserved sessions for base session");
+            // Unarchive all sessions — they were archived by close_base_session_archive
+            // but the user is reopening the base session, so they should be active again
+            let wt_path = session.path.clone();
+            let wt_id = session.id.clone();
+            if let Err(e) = crate::chat::with_sessions_mut(&app, &wt_path, &wt_id, |sessions| {
+                for s in &mut sessions.sessions {
+                    if s.archived_at.is_some() {
+                        s.archived_at = None;
+                    }
+                }
+                Ok(())
+            }) {
+                log::warn!("Failed to unarchive restored sessions: {e}");
+            }
         }
         Ok(None) => {
             log::trace!("No preserved sessions to restore");
@@ -1894,14 +2164,25 @@ pub async fn create_base_session(app: AppHandle, project_id: String) -> Result<W
 /// Preserves the sessions file so it can be restored when the base session is reopened
 #[tauri::command]
 pub async fn close_base_session(app: AppHandle, worktree_id: String) -> Result<(), String> {
-    close_base_session_internal(&app, &worktree_id, true).await
+    log::info!("[BASE_CLOSE] close_base_session (preserve, no archive) called for {worktree_id}");
+    close_base_session_internal(&app, &worktree_id, true, false).await
 }
 
 /// Close a base branch session without preserving sessions (clean close)
 /// Deletes the sessions file entirely so the base session starts fresh on reopen
 #[tauri::command]
 pub async fn close_base_session_clean(app: AppHandle, worktree_id: String) -> Result<(), String> {
-    close_base_session_internal(&app, &worktree_id, false).await
+    log::info!("[BASE_CLOSE] close_base_session_clean called for {worktree_id}");
+    close_base_session_internal(&app, &worktree_id, false, false).await
+}
+
+/// Close a base branch session, archiving all non-archived sessions first.
+/// Sets archived_at on each session and preserves the sessions file so they
+/// appear in the Archive modal.
+#[tauri::command]
+pub async fn close_base_session_archive(app: AppHandle, worktree_id: String) -> Result<(), String> {
+    log::info!("[BASE_CLOSE] close_base_session_archive called for {worktree_id}");
+    close_base_session_internal(&app, &worktree_id, true, true).await
 }
 
 /// Internal implementation for closing a base session
@@ -1909,8 +2190,9 @@ async fn close_base_session_internal(
     app: &AppHandle,
     worktree_id: &str,
     preserve_sessions: bool,
+    archive_sessions: bool,
 ) -> Result<(), String> {
-    log::trace!("Closing base session: {worktree_id} (preserve_sessions: {preserve_sessions})");
+    log::info!("[BASE_CLOSE] Closing base session: {worktree_id} (preserve_sessions: {preserve_sessions}, archive_sessions: {archive_sessions})");
 
     let mut data = load_projects_data(app)?;
 
@@ -1924,9 +2206,57 @@ async fn close_base_session_internal(
         return Err("Not a base session. Use delete_worktree instead.".to_string());
     }
 
-    if preserve_sessions {
+    log::info!(
+        "[BASE_CLOSE] Found base session, session_type={:?}, path={}",
+        worktree.session_type,
+        worktree.path
+    );
+
+    // Archive all non-archived sessions before closing
+    if archive_sessions {
+        let worktree_path = worktree.path.clone();
+        let wt_id = worktree_id.to_string();
+        log::info!("[BASE_CLOSE] Archiving sessions for worktree_id={wt_id}, path={worktree_path}");
+        let archive_result = crate::chat::with_sessions_mut(
+            app,
+            &worktree_path,
+            &wt_id,
+            |sessions| {
+                let ts = now();
+                let mut archived_count = 0u32;
+                let total = sessions.sessions.len();
+                for session in &mut sessions.sessions {
+                    log::info!(
+                        "[BASE_CLOSE] Session '{}' (id={}): archived_at={:?}",
+                        session.name,
+                        session.id,
+                        session.archived_at
+                    );
+                    if session.archived_at.is_none() {
+                        session.archived_at = Some(ts);
+                        archived_count += 1;
+                        log::info!("[BASE_CLOSE] -> Archived session '{}'", session.name);
+                    }
+                }
+                log::info!("[BASE_CLOSE] Archived {archived_count}/{total} sessions in base session {wt_id}");
+                Ok(archived_count)
+            },
+        );
+        match &archive_result {
+            Ok(count) => log::info!("[BASE_CLOSE] Archive result: Ok({count})"),
+            Err(e) => log::warn!("[BASE_CLOSE] Failed to archive sessions: {e}"),
+        }
+    } else {
+        log::info!("[BASE_CLOSE] Skipping session archival (archive_sessions=false)");
+    }
+
+    if preserve_sessions || archive_sessions {
         // Preserve the sessions file before removing the worktree
         // This renames {worktree_id}.json to base-{project_id}.json
+        log::info!(
+            "[BASE_CLOSE] Preserving sessions file for worktree_id={worktree_id}, project_id={}",
+            worktree.project_id
+        );
         crate::chat::preserve_base_sessions(app, worktree_id, &worktree.project_id)?;
     } else {
         // Delete the sessions file entirely for a clean close
@@ -2159,6 +2489,7 @@ pub async fn import_worktree(
         session_type: SessionType::Worktree,
         pr_number: None,
         pr_url: None,
+        issue_number: None,
         cached_pr_status: None,
         cached_check_status: None,
         cached_behind_count: None,
@@ -2241,22 +2572,6 @@ pub async fn permanently_delete_worktree(
     // Spawn background thread for git operations and cleanup only
     // Storage is already updated, so git failures won't corrupt other data
     thread::spawn(move || {
-        // Clean up issue context files for this worktree
-        if let Err(e) = crate::projects::github_issues::cleanup_issue_contexts_for_worktree(
-            &app_clone,
-            &worktree_id_clone,
-        ) {
-            log::warn!("Failed to cleanup issue contexts: {e}");
-        }
-
-        // Clean up PR context files for this worktree
-        if let Err(e) = crate::projects::github_issues::cleanup_pr_contexts_for_worktree(
-            &app_clone,
-            &worktree_id_clone,
-        ) {
-            log::warn!("Failed to cleanup PR contexts: {e}");
-        }
-
         // Only remove git worktree/branch for non-base sessions
         if !is_base_session {
             log::trace!("Background: Removing git worktree at {worktree_path}");
@@ -2318,6 +2633,56 @@ pub async fn open_project_worktrees_folder(project_name: String) -> Result<(), S
         .to_string();
 
     open_worktree_in_finder(path_str).await
+}
+
+/// Open the application log directory in the system file explorer
+#[tauri::command]
+pub async fn open_log_directory(app: AppHandle) -> Result<(), String> {
+    let log_dir = app
+        .path()
+        .app_log_dir()
+        .map_err(|e| format!("Failed to get log directory: {e}"))?;
+
+    // Create the directory if it doesn't exist yet
+    if !log_dir.exists() {
+        std::fs::create_dir_all(&log_dir)
+            .map_err(|e| format!("Failed to create log directory: {e}"))?;
+    }
+
+    let path = log_dir.to_string_lossy().to_string();
+    log::trace!("Opening log directory: {path}");
+
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("Failed to open Finder: {e}"))?;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("Failed to open Explorer: {e}"))?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("Failed to open file manager: {e}"))?;
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+    {
+        log::warn!("File explorer not supported on this platform");
+        return Err("File explorer not supported on this platform".to_string());
+    }
+
+    Ok(())
 }
 
 /// Open a worktree path in the system file explorer
@@ -2526,7 +2891,7 @@ pub async fn open_worktree_in_editor(
     worktree_path: String,
     editor: Option<String>,
 ) -> Result<(), String> {
-    let editor_app = editor.unwrap_or_else(|| "vscode".to_string());
+    let editor_app = editor.unwrap_or_else(|| "zed".to_string());
     log::trace!("Opening worktree in {editor_app}: {worktree_path}");
 
     // If opening jean.json and it doesn't exist, create template
@@ -2549,6 +2914,19 @@ pub async fn open_worktree_in_editor(
     #[cfg(target_os = "macos")]
     {
         let result = match editor_app.as_str() {
+            "zed" => match std::process::Command::new("zed")
+                .arg(&worktree_path)
+                .spawn()
+            {
+                Ok(child) => Ok(child),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    // zed CLI not installed, fall back to macOS open
+                    std::process::Command::new("open")
+                        .args(["-a", "Zed", &worktree_path])
+                        .spawn()
+                }
+                Err(e) => Err(e),
+            },
             "cursor" => {
                 // Cursor uses the same CLI pattern as VS Code
                 std::process::Command::new("cursor")
@@ -2583,6 +2961,9 @@ pub async fn open_worktree_in_editor(
     {
         // VS Code and Cursor CLI work the same on all platforms
         let result = match editor_app.as_str() {
+            "zed" => std::process::Command::new("zed")
+                .arg(&worktree_path)
+                .spawn(),
             "cursor" => std::process::Command::new("cursor")
                 .arg(&worktree_path)
                 .spawn(),
@@ -2608,6 +2989,20 @@ pub async fn open_worktree_in_editor(
     }
 
     Ok(())
+}
+
+/// Get all git remotes for a repository
+#[tauri::command]
+pub async fn get_git_remotes(repo_path: String) -> Result<Vec<git::GitRemote>, String> {
+    log::trace!("Getting git remotes for: {repo_path}");
+    git::get_git_remotes(&repo_path)
+}
+
+/// Get all GitHub remotes for a repository
+#[tauri::command]
+pub async fn get_github_remotes(repo_path: String) -> Result<Vec<git::GitHubRemote>, String> {
+    log::trace!("Getting GitHub remotes for: {repo_path}");
+    git::get_github_remotes(&repo_path)
 }
 
 /// Get the GitHub URL for a branch (for frontend to open)
@@ -2959,12 +3354,16 @@ pub async fn get_project_branches(
 
 /// Update project settings
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn update_project_settings(
     app: AppHandle,
     project_id: String,
     default_branch: Option<String>,
     enabled_mcp_servers: Option<Vec<String>>,
+    known_mcp_servers: Option<Vec<String>>,
     custom_system_prompt: Option<String>,
+    default_provider: Option<Option<String>>,
+    default_backend: Option<Option<String>>,
 ) -> Result<Project, String> {
     log::trace!("Updating settings for project: {project_id}");
 
@@ -2985,7 +3384,12 @@ pub async fn update_project_settings(
 
     if let Some(servers) = enabled_mcp_servers {
         log::trace!("Updating enabled MCP servers: {servers:?}");
-        project.enabled_mcp_servers = servers;
+        project.enabled_mcp_servers = Some(servers);
+    }
+
+    if let Some(servers) = known_mcp_servers {
+        log::trace!("Updating known MCP servers: {servers:?}");
+        project.known_mcp_servers = servers;
     }
 
     if let Some(prompt) = custom_system_prompt {
@@ -2996,6 +3400,16 @@ pub async fn update_project_settings(
         } else {
             Some(prompt)
         };
+    }
+
+    if let Some(provider) = default_provider {
+        log::trace!("Updating default provider: {provider:?}");
+        project.default_provider = provider.filter(|p| p != "__none__");
+    }
+
+    if let Some(backend) = default_backend {
+        log::trace!("Updating default backend: {backend:?}");
+        project.default_backend = backend.filter(|b| b != "__none__");
     }
 
     let updated_project = project.clone();
@@ -3612,28 +4026,29 @@ pub async fn reorder_worktrees(
 
 /// JSON schema for structured PR content generation
 /// Format requirements are specified in the schema descriptions
-const PR_CONTENT_SCHEMA: &str = r#"{"type":"object","properties":{"title":{"type":"string","description":"PR title under 72 chars using conventional commit format: type(scope): description. Types: feat, fix, docs, style, refactor, perf, test, chore. Example: 'feat(auth): add OAuth2 login flow'"},"body":{"type":"string","description":"PR description in markdown. Start with ## Summary containing bullet points of key changes. Add ## Breaking Changes section if any. Keep concise but informative."}},"required":["title","body"]}"#;
+const PR_CONTENT_SCHEMA: &str = r#"{"type":"object","properties":{"title":{"type":"string","description":"PR title under 72 chars using conventional commit format: type(scope): description. Types: feat, fix, docs, style, refactor, perf, test, chore. Example: 'feat(auth): add OAuth2 login flow'"},"body":{"type":"string","description":"PR description in markdown. Start with ## Summary containing bullet points of key changes. Add ## Breaking Changes section if any. Keep concise but informative."}},"required":["title","body"],"additionalProperties":false}"#;
 
 /// Prompt template for PR content generation
 /// Focuses on context - format requirements are in the JSON schema
-const PR_CONTENT_PROMPT: &str = r#"Generate a pull request title and description for the following changes.
+const PR_CONTENT_PROMPT: &str = r#"<task>Generate a pull request title and description</task>
 
-Branch: {current_branch} → {target_branch}
-Commits: {commit_count}
+<context>
+<source_branch>{current_branch}</source_branch>
+<target_branch>{target_branch}</target_branch>
+<commit_count>{commit_count}</commit_count>
+</context>
 
-## Related Context
-
+<related_context>
 {context}
+</related_context>
 
-## Commit Messages
-
+<commits>
 {commits}
+</commits>
 
-## Diff
-
-```diff
+<diff>
 {diff}
-```"#;
+</diff>"#;
 
 /// Structured response from PR content generation
 #[derive(Debug, Deserialize, Serialize)]
@@ -3648,6 +4063,8 @@ pub struct CreatePrResponse {
     pub pr_number: u32,
     pub pr_url: String,
     pub title: String,
+    /// Whether this PR already existed (was linked, not newly created)
+    pub existing: bool,
 }
 
 /// Extract structured output from Claude CLI stream-json response
@@ -3751,6 +4168,7 @@ fn count_branch_commits(repo_path: &str, target_branch: &str) -> Result<u32, Str
 }
 
 /// Generate PR content using Claude CLI with JSON schema
+#[allow(clippy::too_many_arguments)]
 fn generate_pr_content(
     app: &AppHandle,
     repo_path: &str,
@@ -3759,13 +4177,8 @@ fn generate_pr_content(
     custom_prompt: Option<&str>,
     model: Option<&str>,
     context: &str,
+    custom_profile_name: Option<&str>,
 ) -> Result<PrContentResponse, String> {
-    let cli_path = get_cli_binary_path(app)?;
-
-    if !cli_path.exists() {
-        return Err("Claude CLI not installed".to_string());
-    }
-
     // Get diff and commits
     let diff = get_branch_diff(repo_path, target_branch)?;
     if diff.trim().is_empty() {
@@ -3788,9 +4201,49 @@ fn generate_pr_content(
         .replace("{commits}", &commits)
         .replace("{diff}", &diff);
 
+    let model_str = model.unwrap_or("haiku");
+
+    // Route to OpenCode if model is an OpenCode model
+    if crate::is_opencode_model(model_str) {
+        log::trace!("Generating PR content with OpenCode");
+        let json_str = crate::chat::opencode::execute_one_shot_opencode(
+            app,
+            &prompt,
+            model_str,
+            Some(PR_CONTENT_SCHEMA),
+            Some(std::path::Path::new(repo_path)),
+        )?;
+        return serde_json::from_str(&json_str).map_err(|e| {
+            log::error!("Failed to parse OpenCode PR content JSON: {e}, content: {json_str}");
+            format!("Failed to parse PR content: {e}")
+        });
+    }
+
+    // Route to Codex CLI if model is a Codex model
+    if crate::is_codex_model(model_str) {
+        log::trace!("Generating PR content with Codex CLI (output-schema)");
+        let json_str = crate::chat::codex::execute_one_shot_codex(
+            app,
+            &prompt,
+            model_str,
+            PR_CONTENT_SCHEMA,
+            Some(std::path::Path::new(repo_path)),
+        )?;
+        return serde_json::from_str(&json_str).map_err(|e| {
+            log::error!("Failed to parse Codex PR content JSON: {e}, content: {json_str}");
+            format!("Failed to parse PR content: {e}")
+        });
+    }
+
     log::trace!("Generating PR content with Claude CLI (JSON schema)");
 
+    let cli_path = resolve_cli_binary(app);
+    if !cli_path.exists() {
+        return Err("Claude CLI not installed".to_string());
+    }
+
     let mut cmd = silent_command(&cli_path);
+    crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
     cmd.args([
         "--print",
         "--verbose",
@@ -3799,7 +4252,7 @@ fn generate_pr_content(
         "--output-format",
         "stream-json",
         "--model",
-        model.unwrap_or("haiku"),
+        model_str,
         "--no-session-persistence",
         "--tools",
         "",
@@ -3819,7 +4272,6 @@ fn generate_pr_content(
 
     // Write prompt to stdin
     {
-        let stdin = child.stdin.as_mut().ok_or("Failed to open stdin")?;
         let input_message = serde_json::json!({
             "type": "user",
             "message": {
@@ -3827,7 +4279,16 @@ fn generate_pr_content(
                 "content": prompt
             }
         });
-        writeln!(stdin, "{input_message}").map_err(|e| format!("Failed to write to stdin: {e}"))?;
+
+        let write_result = if let Some(stdin) = child.stdin.as_mut() {
+            writeln!(stdin, "{input_message}")
+        } else {
+            Err(std::io::Error::other("Failed to open stdin"))
+        };
+
+        if let Err(e) = write_result {
+            return Err(format!("Failed to write to stdin: {e}"));
+        }
     }
 
     let output = child
@@ -3882,8 +4343,10 @@ fn parse_pr_output(output: &str) -> Result<(u32, String), String> {
 pub async fn create_pr_with_ai_content(
     app: AppHandle,
     worktree_path: String,
+    session_id: Option<String>,
     custom_prompt: Option<String>,
     model: Option<String>,
+    custom_profile_name: Option<String>,
 ) -> Result<CreatePrResponse, String> {
     log::trace!("Creating PR for: {worktree_path}");
 
@@ -3957,11 +4420,40 @@ pub async fn create_pr_with_ai_content(
         }
     }
 
-    // Gather issue/PR context for this worktree
-    let context_content =
-        get_worktree_context_content(&app, &worktree.id, &project.path).unwrap_or_default();
-    let (issue_nums, pr_nums) =
-        get_worktree_context_numbers(&app, &worktree.id).unwrap_or_default();
+    // Gather issue/PR context for this session AND worktree.
+    // References may be stored under the session ID (manually loaded issues) or
+    // the worktree ID (issues attached at worktree creation time), so we look up both.
+    let effective_session_id = session_id.as_deref().unwrap_or("");
+    let worktree_id = &worktree.id;
+
+    let (mut issue_nums, mut pr_nums) =
+        get_session_context_numbers(&app, effective_session_id).unwrap_or_default();
+    let mut context_content =
+        get_session_context_content(&app, effective_session_id, &project.path).unwrap_or_default();
+
+    if worktree_id != effective_session_id {
+        let (wt_issue_nums, wt_pr_nums) =
+            get_session_context_numbers(&app, worktree_id).unwrap_or_default();
+        for n in wt_issue_nums {
+            if !issue_nums.contains(&n) {
+                issue_nums.push(n);
+            }
+        }
+        for n in wt_pr_nums {
+            if !pr_nums.contains(&n) {
+                pr_nums.push(n);
+            }
+        }
+        let wt_content =
+            get_session_context_content(&app, worktree_id, &project.path).unwrap_or_default();
+        if !wt_content.is_empty() {
+            if context_content.is_empty() {
+                context_content = wt_content;
+            } else {
+                context_content = format!("{context_content}\n\n{wt_content}");
+            }
+        }
+    }
 
     // Generate PR content using Claude CLI
     log::trace!("Generating PR content with AI");
@@ -3973,12 +4465,13 @@ pub async fn create_pr_with_ai_content(
         custom_prompt.as_deref(),
         model.as_deref(),
         &context_content,
+        custom_profile_name.as_deref(),
     )?;
 
     // Append unconditional issue/PR references to the body
     let mut refs: Vec<String> = Vec::new();
     for num in &issue_nums {
-        refs.push(format!("Closes #{num}"));
+        refs.push(format!("Fixes #{num}"));
     }
     for num in &pr_nums {
         refs.push(format!("Related to #{num}"));
@@ -4010,6 +4503,44 @@ pub async fn create_pr_with_ai_content(
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         if stderr.contains("already exists") {
+            // Try to look up the existing PR and link it to the worktree
+            let view_output = silent_command(&gh)
+                .args(["pr", "view", "--json", "number,url,title"])
+                .current_dir(&worktree_path)
+                .output();
+
+            if let Ok(view_out) = view_output {
+                if view_out.status.success() {
+                    if let Ok(view_json) =
+                        serde_json::from_slice::<serde_json::Value>(&view_out.stdout)
+                    {
+                        let pr_number = view_json["number"].as_u64().unwrap_or(0) as u32;
+                        let pr_url = view_json["url"].as_str().unwrap_or("").to_string();
+                        let title = view_json["title"].as_str().unwrap_or("").to_string();
+
+                        if pr_number > 0 && !pr_url.is_empty() {
+                            // Save PR info to worktree
+                            if let Ok(mut data) = load_projects_data(&app) {
+                                if let Some(wt) =
+                                    data.worktrees.iter_mut().find(|w| w.path == worktree_path)
+                                {
+                                    wt.pr_number = Some(pr_number);
+                                    wt.pr_url = Some(pr_url.clone());
+                                    let _ = save_projects_data(&app, &data);
+                                }
+                            }
+
+                            return Ok(CreatePrResponse {
+                                pr_number,
+                                pr_url,
+                                title,
+                                existing: true,
+                            });
+                        }
+                    }
+                }
+            }
+
             return Err("A pull request for this branch already exists".to_string());
         }
         return Err(format!("Failed to create PR: {stderr}"));
@@ -4024,7 +4555,145 @@ pub async fn create_pr_with_ai_content(
         pr_number,
         pr_url,
         title: pr_content.title,
+        existing: false,
     })
+}
+
+// =============================================================================
+// AI-Powered PR Update
+// =============================================================================
+
+/// Response from updating a PR with AI-generated content
+#[derive(Debug, Clone, Serialize)]
+pub struct UpdatePrResponse {
+    pub title: String,
+    pub body: String,
+}
+
+/// Generate AI content for updating a PR (does not apply changes)
+///
+/// Returns the generated title and body for the frontend to display/edit.
+#[tauri::command]
+pub async fn generate_pr_update_content(
+    app: AppHandle,
+    worktree_path: String,
+    session_id: Option<String>,
+    custom_prompt: Option<String>,
+    model: Option<String>,
+    custom_profile_name: Option<String>,
+) -> Result<UpdatePrResponse, String> {
+    log::trace!("Generating PR update content for: {worktree_path}");
+
+    let data = load_projects_data(&app)?;
+    let worktree = data
+        .worktrees
+        .iter()
+        .find(|w| w.path == worktree_path)
+        .ok_or_else(|| format!("Worktree not found: {worktree_path}"))?;
+
+    let project = data
+        .find_project(&worktree.project_id)
+        .ok_or_else(|| format!("Project not found: {}", worktree.project_id))?;
+
+    let target_branch = &project.default_branch;
+    let current_branch = git::get_current_branch(&worktree_path)?;
+
+    // Gather issue/PR context for this session AND worktree (same logic as create_pr_with_ai_content)
+    let effective_session_id = session_id.as_deref().unwrap_or("");
+    let worktree_id = &worktree.id;
+
+    let (mut issue_nums, mut pr_nums) =
+        get_session_context_numbers(&app, effective_session_id).unwrap_or_default();
+    let mut context_content =
+        get_session_context_content(&app, effective_session_id, &project.path).unwrap_or_default();
+
+    if worktree_id != effective_session_id {
+        let (wt_issue_nums, wt_pr_nums) =
+            get_session_context_numbers(&app, worktree_id).unwrap_or_default();
+        for n in wt_issue_nums {
+            if !issue_nums.contains(&n) {
+                issue_nums.push(n);
+            }
+        }
+        for n in wt_pr_nums {
+            if !pr_nums.contains(&n) {
+                pr_nums.push(n);
+            }
+        }
+        let wt_content =
+            get_session_context_content(&app, worktree_id, &project.path).unwrap_or_default();
+        if !wt_content.is_empty() {
+            if context_content.is_empty() {
+                context_content = wt_content;
+            } else {
+                context_content = format!("{context_content}\n\n{wt_content}");
+            }
+        }
+    }
+
+    // Generate PR content using Claude CLI
+    let mut pr_content = generate_pr_content(
+        &app,
+        &worktree_path,
+        &current_branch,
+        target_branch,
+        custom_prompt.as_deref(),
+        model.as_deref(),
+        &context_content,
+        custom_profile_name.as_deref(),
+    )?;
+
+    // Append unconditional issue/PR references to the body
+    let mut refs: Vec<String> = Vec::new();
+    for num in &issue_nums {
+        refs.push(format!("Fixes #{num}"));
+    }
+    for num in &pr_nums {
+        refs.push(format!("Related to #{num}"));
+    }
+    if !refs.is_empty() {
+        pr_content.body = format!("{}\n\n---\n\n{}", pr_content.body, refs.join("\n"));
+    }
+
+    Ok(UpdatePrResponse {
+        title: pr_content.title,
+        body: pr_content.body,
+    })
+}
+
+/// Update a PR's title and body on GitHub
+#[tauri::command]
+pub async fn update_pr_description(
+    app: AppHandle,
+    worktree_path: String,
+    pr_number: u32,
+    title: String,
+    body: String,
+) -> Result<(), String> {
+    log::trace!("Updating PR #{pr_number} description");
+
+    let gh = resolve_gh_binary(&app);
+    let output = silent_command(&gh)
+        .args([
+            "pr",
+            "edit",
+            &pr_number.to_string(),
+            "--title",
+            &title,
+            "--body",
+            &body,
+        ])
+        .current_dir(&worktree_path)
+        .output()
+        .map_err(|e| format!("Failed to run gh pr edit: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to update PR: {stderr}"));
+    }
+
+    log::trace!("Successfully updated PR #{pr_number}");
+    Ok(())
 }
 
 // =============================================================================
@@ -4032,24 +4701,26 @@ pub async fn create_pr_with_ai_content(
 // =============================================================================
 
 /// JSON schema for structured commit message generation
-const COMMIT_MESSAGE_SCHEMA: &str = r#"{"type":"object","properties":{"message":{"type":"string","description":"Commit message using Conventional Commits format. First line: type(scope): description (max 72 chars). Types: feat, fix, docs, style, refactor, perf, test, chore. Followed by blank line and optional body explaining what and why."}},"required":["message"]}"#;
+const COMMIT_MESSAGE_SCHEMA: &str = r#"{"type":"object","properties":{"message":{"type":"string","description":"Commit message using Conventional Commits format. First line: type(scope): description (max 72 chars). Types: feat, fix, docs, style, refactor, perf, test, chore. Followed by blank line and optional body explaining what and why."}},"required":["message"],"additionalProperties":false}"#;
 
 /// Prompt template for commit message generation
-const COMMIT_MESSAGE_PROMPT: &str = r#"Generate a commit message for the following changes.
+const COMMIT_MESSAGE_PROMPT: &str = r#"<task>Generate a commit message for the following changes</task>
 
-## Git Status
+<git_status>
 {status}
+</git_status>
 
-## Staged Changes (Diff)
-```diff
+<staged_diff>
 {diff}
-```
+</staged_diff>
 
-## Recent Commits (for style reference)
+<recent_commits>
 {recent_commits}
+</recent_commits>
 
-## Remote Info
-{remote_info}"#;
+<remote_info>
+{remote_info}
+</remote_info>"#;
 
 /// Structured response from commit message generation
 #[derive(Debug, Deserialize)]
@@ -4162,9 +4833,10 @@ fn create_git_commit(repo_path: &str, message: &str) -> Result<String, String> {
 }
 
 /// Push to remote
-fn push_to_remote(repo_path: &str) -> Result<(), String> {
+fn push_to_remote(repo_path: &str, remote: Option<&str>) -> Result<(), String> {
+    let remote = remote.unwrap_or("origin");
     let output = silent_command("git")
-        .args(["push"])
+        .args(["push", "-u", remote, "HEAD"])
         .current_dir(repo_path)
         .output()
         .map_err(|e| format!("Failed to push: {e}"))?;
@@ -4182,17 +4854,52 @@ fn generate_commit_message(
     app: &AppHandle,
     prompt: &str,
     model: Option<&str>,
+    custom_profile_name: Option<&str>,
+    working_dir: Option<&std::path::Path>,
 ) -> Result<CommitMessageResponse, String> {
-    let cli_path = get_cli_binary_path(app)?;
+    let model_str = model.unwrap_or("haiku");
 
-    if !cli_path.exists() {
-        return Err("Claude CLI not installed".to_string());
+    // Route to OpenCode if model is an OpenCode model
+    if crate::is_opencode_model(model_str) {
+        log::trace!("Generating commit message with OpenCode");
+        let json_str = crate::chat::opencode::execute_one_shot_opencode(
+            app,
+            prompt,
+            model_str,
+            Some(COMMIT_MESSAGE_SCHEMA),
+            working_dir,
+        )?;
+        return serde_json::from_str(&json_str).map_err(|e| {
+            log::error!("Failed to parse OpenCode commit message JSON: {e}, content: {json_str}");
+            format!("Failed to parse commit message: {e}")
+        });
+    }
+
+    // Route to Codex CLI if model is a Codex model
+    if crate::is_codex_model(model_str) {
+        log::trace!("Generating commit message with Codex CLI (output-schema)");
+        let json_str = crate::chat::codex::execute_one_shot_codex(
+            app,
+            prompt,
+            model_str,
+            COMMIT_MESSAGE_SCHEMA,
+            working_dir,
+        )?;
+        return serde_json::from_str(&json_str).map_err(|e| {
+            log::error!("Failed to parse Codex commit message JSON: {e}, content: {json_str}");
+            format!("Failed to parse commit message: {e}")
+        });
     }
 
     log::trace!("Generating commit message with Claude CLI (JSON schema)");
 
-    let model_str = model.unwrap_or("haiku");
+    let cli_path = resolve_cli_binary(app);
+    if !cli_path.exists() {
+        return Err("Claude CLI not installed".to_string());
+    }
+
     let mut cmd = silent_command(&cli_path);
+    crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
     cmd.args([
         "--print",
         "--verbose",
@@ -4263,13 +4970,25 @@ pub async fn create_commit_with_ai(
     worktree_path: String,
     custom_prompt: Option<String>,
     push: bool,
+    remote: Option<String>,
     model: Option<String>,
+    custom_profile_name: Option<String>,
 ) -> Result<CreateCommitResponse, String> {
     log::trace!("Creating commit for: {worktree_path}");
 
     // 1. Check for uncommitted changes
     let status = get_git_status(&worktree_path)?;
     if status.trim().is_empty() {
+        if push {
+            // No changes to commit, but user wants to push — push existing commits
+            push_to_remote(&worktree_path, remote.as_deref())?;
+            log::trace!("No changes to commit, pushed existing commits");
+            return Ok(CreateCommitResponse {
+                commit_hash: String::new(),
+                message: String::new(),
+                pushed: true,
+            });
+        }
         return Err("No changes to commit".to_string());
     }
 
@@ -4300,7 +5019,13 @@ pub async fn create_commit_with_ai(
         .replace("{remote_info}", &remote_info);
 
     // 6. Generate commit message with Claude CLI
-    let response = generate_commit_message(&app, &prompt, model.as_deref())?;
+    let response = generate_commit_message(
+        &app,
+        &prompt,
+        model.as_deref(),
+        custom_profile_name.as_deref(),
+        Some(std::path::Path::new(&worktree_path)),
+    )?;
 
     log::trace!(
         "Generated commit message: {}",
@@ -4314,7 +5039,7 @@ pub async fn create_commit_with_ai(
 
     // 8. Push if requested
     let pushed = if push {
-        push_to_remote(&worktree_path)?;
+        push_to_remote(&worktree_path, remote.as_deref())?;
         log::trace!("Pushed to remote");
         true
     } else {
@@ -4333,24 +5058,24 @@ pub async fn create_commit_with_ai(
 // =============================================================================
 
 /// JSON schema for structured code review output
-const REVIEW_SCHEMA: &str = r#"{"type":"object","properties":{"summary":{"type":"string","description":"Brief 1-2 sentence summary of the overall changes"},"findings":{"type":"array","items":{"type":"object","properties":{"severity":{"type":"string","enum":["critical","warning","suggestion","praise"],"description":"Severity level of the finding"},"file":{"type":"string","description":"File path where the finding applies"},"line":{"type":"integer","description":"Line number if applicable, 0 if not specific"},"title":{"type":"string","description":"Short title for the finding (max 80 chars)"},"description":{"type":"string","description":"Detailed explanation of the finding"},"suggestion":{"type":"string","description":"Optional code suggestion or fix"}},"required":["severity","file","title","description"]},"description":"List of review findings"},"approval_status":{"type":"string","enum":["approved","changes_requested","needs_discussion"],"description":"Overall review verdict"}},"required":["summary","findings","approval_status"]}"#;
+const REVIEW_SCHEMA: &str = r#"{"type":"object","properties":{"summary":{"type":"string","description":"Brief 1-2 sentence summary of the overall changes"},"findings":{"type":"array","items":{"type":"object","properties":{"severity":{"type":"string","enum":["critical","warning","suggestion","praise"],"description":"Severity level of the finding"},"file":{"type":"string","description":"File path where the finding applies"},"line":{"type":"integer","description":"Line number if applicable, 0 if not specific"},"title":{"type":"string","description":"Short title for the finding (max 80 chars)"},"description":{"type":"string","description":"Detailed explanation of the finding"},"suggestion":{"type":"string","description":"Optional code suggestion or fix"}},"required":["severity","file","line","title","description","suggestion"],"additionalProperties":false},"description":"List of review findings"},"approval_status":{"type":"string","enum":["approved","changes_requested","needs_discussion"],"description":"Overall review verdict"}},"required":["summary","findings","approval_status"],"additionalProperties":false}"#;
 
 /// Prompt template for code review
-const REVIEW_PROMPT: &str = r#"Review the following code changes and provide structured feedback.
+const REVIEW_PROMPT: &str = r#"<task>Review the following code changes and provide structured feedback</task>
 
-## Branch Info
-{branch_info}
+<branch_info>{branch_info}</branch_info>
 
-## Commit History
+<commits>
 {commits}
+</commits>
 
-## Changes (Diff)
-```diff
+<diff>
 {diff}
-```
+</diff>
 
 {uncommitted_section}
 
+<instructions>
 Focus on:
 - Security & supply-chain risks:
   - Malicious or obfuscated code (eval, encoded strings, hidden network calls, data exfiltration)
@@ -4361,12 +5086,15 @@ Focus on:
   - Weakened auth/permissions (removed checks, broadened access, disabled validation)
   - Suspicious file system or environment variable access
 - Performance issues
-- Code quality and maintainability
+- Code quality and maintainability (use /check skill if available to run linters/tests)
 - Potential bugs
 - Best practices violations
 
+If there are uncommitted changes, review those as well.
+
 Be constructive and specific. Include praise for good patterns.
-Provide actionable suggestions when possible."#;
+Provide actionable suggestions when possible.
+</instructions>"#;
 
 /// A single finding from the AI code review
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -4387,22 +5115,211 @@ pub struct ReviewResponse {
     pub approval_status: String,
 }
 
+fn extract_codex_review_structured_output(output: &str) -> Result<String, String> {
+    let mut last_agent_message = None;
+
+    for line in output.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let parsed: serde_json::Value = match serde_json::from_str(line) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+
+        let event_type = parsed.get("type").and_then(|t| t.as_str()).unwrap_or("");
+
+        match event_type {
+            "item.completed" => {
+                if let Some(item) = parsed.get("item") {
+                    let item_type = item.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                    if item_type == "agent_message" {
+                        if let Some(text) = item.get("text").and_then(|t| t.as_str()) {
+                            last_agent_message = Some(text.to_string());
+                        }
+                        if let Some(content) = item.get("content").and_then(|c| c.as_array()) {
+                            for block in content {
+                                if block.get("type").and_then(|t| t.as_str()) == Some("text") {
+                                    if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
+                                        last_agent_message = Some(text.to_string());
+                                    }
+                                }
+                                if block.get("type").and_then(|t| t.as_str()) == Some("output_text")
+                                {
+                                    if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
+                                        if serde_json::from_str::<serde_json::Value>(text).is_ok() {
+                                            return Ok(text.to_string());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            "turn.completed" => {
+                if let Some(output_val) = parsed.get("output") {
+                    if !output_val.is_null() {
+                        return Ok(output_val.to_string());
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if let Some(msg) = last_agent_message {
+        if serde_json::from_str::<serde_json::Value>(&msg).is_ok() {
+            return Ok(msg);
+        }
+    }
+
+    Err("No structured output found in Codex response".to_string())
+}
+
+fn execute_codex_review(
+    app: &AppHandle,
+    prompt: &str,
+    model: &str,
+    working_dir: Option<&std::path::Path>,
+    review_run_id: Option<&str>,
+) -> Result<String, String> {
+    let cli_path = resolve_codex_cli_binary(app);
+    if !cli_path.exists() {
+        return Err("Codex CLI not installed".to_string());
+    }
+
+    let schema_file = std::env::temp_dir().join(format!(
+        "jean-codex-review-schema-{}.json",
+        std::process::id()
+    ));
+    std::fs::write(&schema_file, REVIEW_SCHEMA)
+        .map_err(|e| format!("Failed to write schema file: {e}"))?;
+
+    let mut cmd = crate::platform::silent_command(&cli_path);
+    cmd.args([
+        "exec",
+        "--json",
+        "--model",
+        model,
+        "--full-auto",
+        "--output-schema",
+    ]);
+    cmd.arg(&schema_file);
+    if let Some(dir) = working_dir {
+        cmd.arg("--cd");
+        cmd.arg(dir);
+        cmd.current_dir(dir);
+    } else {
+        cmd.arg("--skip-git-repo-check");
+    }
+    cmd.arg("-");
+    cmd.stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to spawn Codex CLI: {e}"))?;
+
+    if let Some(run_id) = review_run_id {
+        register_review_process(run_id, child.id());
+    }
+
+    let write_result = if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(prompt.as_bytes())
+    } else {
+        Err(std::io::Error::other("Failed to open stdin"))
+    };
+    if let Err(e) = write_result {
+        if let Some(run_id) = review_run_id {
+            let _ = take_review_process_pid(run_id);
+        }
+        let _ = std::fs::remove_file(&schema_file);
+        return Err(format!("Failed to write to stdin: {e}"));
+    }
+
+    let output_result = child.wait_with_output();
+    let cancelled = review_run_id
+        .map(|run_id| take_review_process_pid(run_id).is_none())
+        .unwrap_or(false);
+    let _ = std::fs::remove_file(&schema_file);
+
+    let output = match output_result {
+        Ok(output) => output,
+        Err(e) => {
+            if cancelled {
+                return Err("Review cancelled".to_string());
+            }
+            return Err(format!("Failed to wait for Codex CLI: {e}"));
+        }
+    };
+
+    if !output.status.success() {
+        if cancelled {
+            return Err("Review cancelled".to_string());
+        }
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        return Err(format!(
+            "Codex CLI failed (exit {}): stderr={}, stdout={}",
+            output.status,
+            stderr.trim(),
+            stdout.trim()
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    extract_codex_review_structured_output(&stdout)
+}
+
 /// Execute Claude CLI to generate a code review
 fn generate_review(
     app: &AppHandle,
     prompt: &str,
     model: Option<&str>,
+    custom_profile_name: Option<&str>,
+    working_dir: Option<&std::path::Path>,
+    review_run_id: Option<&str>,
 ) -> Result<ReviewResponse, String> {
-    let cli_path = get_cli_binary_path(app)?;
+    let model_str = model.unwrap_or("haiku");
 
+    // Route to OpenCode if model is an OpenCode model
+    if crate::is_opencode_model(model_str) {
+        log::trace!("Running code review with OpenCode");
+        let json_str = crate::chat::opencode::execute_one_shot_opencode(
+            app,
+            prompt,
+            model_str,
+            Some(REVIEW_SCHEMA),
+            working_dir,
+        )?;
+        return serde_json::from_str(&json_str).map_err(|e| {
+            log::error!("Failed to parse OpenCode review JSON: {e}, content: {json_str}");
+            format!("Failed to parse review: {e}")
+        });
+    }
+
+    // Route to Codex CLI if model is a Codex model
+    if crate::is_codex_model(model_str) {
+        log::trace!("Running code review with Codex CLI (output-schema)");
+        let json_str = execute_codex_review(app, prompt, model_str, working_dir, review_run_id)?;
+        return serde_json::from_str(&json_str).map_err(|e| {
+            log::error!("Failed to parse Codex review JSON: {e}, content: {json_str}");
+            format!("Failed to parse review: {e}")
+        });
+    }
+
+    let cli_path = resolve_cli_binary(app);
     if !cli_path.exists() {
         return Err("Claude CLI not installed".to_string());
     }
 
     log::trace!("Running code review with Claude CLI (JSON schema)");
 
-    let model_str = model.unwrap_or("haiku");
     let mut cmd = silent_command(&cli_path);
+    crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
     cmd.args([
         "--print",
         "--verbose",
@@ -4419,6 +5336,488 @@ fn generate_review(
         "1",
         "--json-schema",
         REVIEW_SCHEMA,
+    ]);
+
+    cmd.stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to spawn Claude CLI: {e}"))?;
+    if let Some(run_id) = review_run_id {
+        register_review_process(run_id, child.id());
+    }
+
+    // Write prompt to stdin
+    {
+        let stdin = child.stdin.as_mut().ok_or("Failed to open stdin")?;
+        let input_message = serde_json::json!({
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": prompt
+            }
+        });
+        writeln!(stdin, "{input_message}").map_err(|e| format!("Failed to write to stdin: {e}"))?;
+    }
+
+    let output_result = child.wait_with_output();
+    let cancelled = review_run_id
+        .map(|run_id| take_review_process_pid(run_id).is_none())
+        .unwrap_or(false);
+    let output = match output_result {
+        Ok(output) => output,
+        Err(e) => {
+            if cancelled {
+                return Err("Review cancelled".to_string());
+            }
+            return Err(format!("Failed to wait for Claude CLI: {e}"));
+        }
+    };
+
+    if !output.status.success() {
+        if cancelled {
+            return Err("Review cancelled".to_string());
+        }
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        return Err(format!(
+            "Claude CLI failed: stderr={}, stdout={}",
+            stderr.trim(),
+            stdout.trim()
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    log::trace!("Claude CLI review stdout: {stdout}");
+
+    let json_content = extract_structured_output(&stdout)?;
+    log::trace!("Extracted review JSON: {json_content}");
+
+    serde_json::from_str::<ReviewResponse>(&json_content)
+        .map_err(|e| format!("Failed to parse review response: {e}"))
+}
+
+/// Run AI code review on the current branch
+#[tauri::command]
+pub async fn run_review_with_ai(
+    app: AppHandle,
+    worktree_path: String,
+    custom_prompt: Option<String>,
+    model: Option<String>,
+    custom_profile_name: Option<String>,
+    review_run_id: Option<String>,
+) -> Result<ReviewResponse, String> {
+    log::trace!("Running AI code review for: {worktree_path}");
+
+    // Load projects data to find the target branch
+    let data = load_projects_data(&app)?;
+
+    // Find the worktree by path
+    let worktree = data
+        .worktrees
+        .iter()
+        .find(|w| w.path == worktree_path)
+        .ok_or_else(|| format!("Worktree not found: {worktree_path}"))?;
+
+    // Find the project to get default_branch
+    let project = data
+        .find_project(&worktree.project_id)
+        .ok_or_else(|| format!("Project not found: {}", worktree.project_id))?;
+
+    let target_branch = &project.default_branch;
+    let current_branch = git::get_current_branch(&worktree_path)?;
+
+    // Get branch diff (non-fatal — may fail if origin ref doesn't exist)
+    let diff = get_branch_diff(&worktree_path, target_branch).unwrap_or_default();
+
+    // Get commit history (non-fatal — same reason)
+    let commits = get_branch_commits(&worktree_path, target_branch).unwrap_or_default();
+
+    // Get uncommitted changes (staged + unstaged for tracked files)
+    let uncommitted_output = silent_command("git")
+        .args(["diff", "HEAD"])
+        .current_dir(&worktree_path)
+        .output()
+        .map_err(|e| format!("Failed to get uncommitted diff: {e}"))?;
+
+    let uncommitted_diff = if uncommitted_output.status.success() {
+        String::from_utf8_lossy(&uncommitted_output.stdout).to_string()
+    } else {
+        String::new()
+    };
+
+    // Get untracked files
+    let untracked_output = silent_command("git")
+        .args(["ls-files", "--others", "--exclude-standard"])
+        .current_dir(&worktree_path)
+        .output()
+        .map_err(|e| format!("Failed to list untracked files: {e}"))?;
+
+    let untracked_files: Vec<String> = if untracked_output.status.success() {
+        String::from_utf8_lossy(&untracked_output.stdout)
+            .lines()
+            .map(|s| s.to_string())
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    // Read content of untracked files (skip binary and large files)
+    let mut untracked_content = String::new();
+    for file in &untracked_files {
+        let file_path = std::path::Path::new(&worktree_path).join(file);
+        if let Ok(metadata) = std::fs::metadata(&file_path) {
+            if metadata.len() > 100_000 {
+                untracked_content.push_str(&format!(
+                    "\n--- New file: {file} (skipped: file too large)\n"
+                ));
+                continue;
+            }
+        }
+        if let Ok(content) = std::fs::read_to_string(&file_path) {
+            untracked_content.push_str(&format!("\n--- New file: {file}\n"));
+            untracked_content.push_str(&content);
+            untracked_content.push('\n');
+        } else {
+            untracked_content.push_str(&format!("\n--- New file: {file} (binary or unreadable)\n"));
+        }
+    }
+
+    // Check if there's anything to review
+    if diff.trim().is_empty()
+        && commits.trim().is_empty()
+        && uncommitted_diff.trim().is_empty()
+        && untracked_content.trim().is_empty()
+    {
+        return Err("No changes to review".to_string());
+    }
+
+    // Build uncommitted section if there are uncommitted changes
+    let has_uncommitted =
+        !uncommitted_diff.trim().is_empty() || !untracked_content.trim().is_empty();
+    let uncommitted_section = if has_uncommitted {
+        let mut section = String::from("## Uncommitted Changes\n\n");
+        if !uncommitted_diff.trim().is_empty() {
+            section.push_str(&format!("```diff\n{}\n```\n", uncommitted_diff.trim()));
+        }
+        if !untracked_content.trim().is_empty() {
+            section.push_str(&format!(
+                "### New Untracked Files\n\n{}\n",
+                untracked_content.trim()
+            ));
+        }
+        section
+    } else {
+        String::new()
+    };
+
+    // Build prompt - use custom if provided and non-empty, otherwise use default
+    let branch_info = format!("{current_branch} → {target_branch}");
+    let prompt_template = custom_prompt
+        .as_ref()
+        .filter(|p| !p.trim().is_empty())
+        .map(|s| s.as_str())
+        .unwrap_or(REVIEW_PROMPT);
+
+    let prompt = prompt_template
+        .replace("{branch_info}", &branch_info)
+        .replace("{commits}", &commits)
+        .replace("{diff}", &diff)
+        .replace("{uncommitted_section}", &uncommitted_section);
+
+    // Run review with Claude CLI
+    let response = generate_review(
+        &app,
+        &prompt,
+        model.as_deref(),
+        custom_profile_name.as_deref(),
+        Some(std::path::Path::new(&worktree_path)),
+        review_run_id.as_deref(),
+    )?;
+
+    log::trace!(
+        "Review complete: {} findings, status: {}",
+        response.findings.len(),
+        response.approval_status
+    );
+
+    Ok(response)
+}
+
+/// Cancel a running AI review request by review_run_id.
+/// Returns true if a process was found and cancelled, false otherwise.
+#[tauri::command]
+pub async fn cancel_review_with_ai(review_run_id: String) -> Result<bool, String> {
+    let Some(pid) = take_review_process_pid(&review_run_id) else {
+        return Ok(false);
+    };
+
+    if pid == 0 || pid == 1 {
+        return Err(format!("Invalid PID: {pid}"));
+    }
+
+    if let Err(e) = crate::platform::kill_process(pid) {
+        return Err(format!("Failed to cancel review process {pid}: {e}"));
+    }
+
+    Ok(true)
+}
+
+/// Pull changes from remote origin for the specified base branch
+#[tauri::command]
+pub async fn git_pull(
+    worktree_path: String,
+    base_branch: String,
+    remote: Option<String>,
+) -> Result<String, String> {
+    log::trace!("Pulling changes for worktree: {worktree_path}, base branch: {base_branch}, remote: {remote:?}");
+    git::git_pull(&worktree_path, &base_branch, remote.as_deref())
+}
+
+/// Stash all local changes including untracked files
+#[tauri::command]
+pub async fn git_stash(worktree_path: String) -> Result<String, String> {
+    log::trace!("Stashing changes for worktree: {worktree_path}");
+    git::git_stash(&worktree_path)
+}
+
+/// Pop the most recent stash
+#[tauri::command]
+pub async fn git_stash_pop(worktree_path: String) -> Result<String, String> {
+    log::trace!("Popping stash for worktree: {worktree_path}");
+    git::git_stash_pop(&worktree_path)
+}
+
+/// Push current branch to remote. If pr_number is provided, uses PR-aware push
+/// that handles fork remotes and uses --force-with-lease.
+#[tauri::command]
+pub async fn git_push(
+    app: tauri::AppHandle,
+    worktree_path: String,
+    pr_number: Option<u32>,
+    remote: Option<String>,
+) -> Result<String, String> {
+    log::trace!("Pushing changes for worktree: {worktree_path}, pr_number: {pr_number:?}, remote: {remote:?}");
+    match pr_number {
+        Some(pr) => git::git_push_to_pr(&worktree_path, pr, &resolve_gh_binary(&app)),
+        None => git::git_push(&worktree_path, remote.as_deref()),
+    }
+}
+
+// =============================================================================
+// Release Notes
+// =============================================================================
+
+/// A GitHub release returned by `gh release list`
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubRelease {
+    pub tag_name: String,
+    pub name: String,
+    pub published_at: String,
+    pub is_latest: bool,
+    pub is_draft: bool,
+    pub is_prerelease: bool,
+}
+
+/// List GitHub releases for a project
+#[tauri::command]
+pub async fn list_github_releases(
+    app: AppHandle,
+    project_path: String,
+) -> Result<Vec<GitHubRelease>, String> {
+    log::trace!("Listing GitHub releases for: {project_path}");
+
+    let gh = resolve_gh_binary(&app);
+    let output = silent_command(&gh)
+        .args([
+            "release",
+            "list",
+            "--json",
+            "tagName,name,publishedAt,isLatest,isDraft,isPrerelease",
+            "--limit",
+            "30",
+        ])
+        .current_dir(&project_path)
+        .output()
+        .map_err(|e| format!("Failed to run gh CLI: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to list releases: {stderr}"));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    serde_json::from_str::<Vec<GitHubRelease>>(&stdout)
+        .map_err(|e| format!("Failed to parse releases: {e}"))
+}
+
+/// Response from generate_release_notes command
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReleaseNotesResponse {
+    pub title: String,
+    pub body: String,
+}
+
+const RELEASE_NOTES_SCHEMA: &str = r#"{
+    "type": "object",
+    "properties": {
+        "title": {
+            "type": "string",
+            "description": "A concise release title (e.g. 'v1.2.0 - Dark Mode & Performance')"
+        },
+        "body": {
+            "type": "string",
+            "description": "Release notes in markdown format, grouped by category"
+        }
+    },
+    "required": ["title", "body"],
+    "additionalProperties": false
+}"#;
+
+const RELEASE_NOTES_PROMPT: &str = r#"Generate release notes for changes since the `{tag}` release ({previous_release_name}).
+
+## Commits since {tag}
+
+{commits}
+
+## Instructions
+
+- Write a concise release title
+- Group changes into categories: Features, Fixes, Improvements, Breaking Changes (only include categories that have entries)
+- Use bullet points with brief descriptions
+- Reference PR numbers if visible in commit messages
+- Skip merge commits and trivial changes (typos, formatting)
+- Write in past tense ("Added", "Fixed", "Improved")
+- Keep it concise and user-facing (skip internal implementation details)"#;
+
+/// Generate release notes content using Claude CLI
+fn generate_release_notes_content(
+    app: &AppHandle,
+    project_path: &str,
+    tag: &str,
+    release_name: &str,
+    custom_prompt: Option<&str>,
+    model: Option<&str>,
+    custom_profile_name: Option<&str>,
+) -> Result<ReleaseNotesResponse, String> {
+    // Fetch tags to ensure we have the tag locally
+    let fetch_output = silent_command("git")
+        .args(["fetch", "--tags"])
+        .current_dir(project_path)
+        .output()
+        .map_err(|e| format!("Failed to fetch tags: {e}"))?;
+
+    if !fetch_output.status.success() {
+        let stderr = String::from_utf8_lossy(&fetch_output.stderr);
+        log::warn!("git fetch --tags warning: {stderr}");
+    }
+
+    // Get commits since the tag
+    let commits_output = silent_command("git")
+        .args([
+            "log",
+            &format!("{tag}..HEAD"),
+            "--format=%h %s%n%b---",
+            "--no-merges",
+        ])
+        .current_dir(project_path)
+        .output()
+        .map_err(|e| format!("Failed to get commits: {e}"))?;
+
+    if !commits_output.status.success() {
+        let stderr = String::from_utf8_lossy(&commits_output.stderr);
+        return Err(format!("Failed to get commits since {tag}: {stderr}"));
+    }
+
+    let commits = String::from_utf8_lossy(&commits_output.stdout).to_string();
+
+    if commits.trim().is_empty() {
+        return Err(format!("No changes found since {tag}"));
+    }
+
+    // Truncate commits if too large (50K chars)
+    let commits = if commits.len() > 50_000 {
+        format!(
+            "{}\n\n[... truncated, {} total characters]",
+            &commits[..50_000],
+            commits.len()
+        )
+    } else {
+        commits
+    };
+
+    // Build prompt
+    let prompt_template = custom_prompt
+        .filter(|p| !p.trim().is_empty())
+        .unwrap_or(RELEASE_NOTES_PROMPT);
+
+    let prompt = prompt_template
+        .replace("{tag}", tag)
+        .replace("{previous_release_name}", release_name)
+        .replace("{commits}", &commits);
+
+    let model_str = model.unwrap_or("haiku");
+
+    // Route to OpenCode if model is an OpenCode model
+    if crate::is_opencode_model(model_str) {
+        log::trace!("Generating release notes with OpenCode");
+        let json_str = crate::chat::opencode::execute_one_shot_opencode(
+            app,
+            &prompt,
+            model_str,
+            Some(RELEASE_NOTES_SCHEMA),
+            Some(std::path::Path::new(project_path)),
+        )?;
+        return serde_json::from_str(&json_str).map_err(|e| {
+            log::error!("Failed to parse OpenCode release notes JSON: {e}, content: {json_str}");
+            format!("Failed to parse release notes: {e}")
+        });
+    }
+
+    // Route to Codex CLI if model is a Codex model
+    if crate::is_codex_model(model_str) {
+        log::trace!("Generating release notes with Codex CLI (output-schema)");
+        let json_str = crate::chat::codex::execute_one_shot_codex(
+            app,
+            &prompt,
+            model_str,
+            RELEASE_NOTES_SCHEMA,
+            Some(std::path::Path::new(project_path)),
+        )?;
+        return serde_json::from_str(&json_str).map_err(|e| {
+            log::error!("Failed to parse Codex release notes JSON: {e}, content: {json_str}");
+            format!("Failed to parse release notes: {e}")
+        });
+    }
+
+    let cli_path = resolve_cli_binary(app);
+    if !cli_path.exists() {
+        return Err("Claude CLI not installed".to_string());
+    }
+
+    log::trace!("Generating release notes with Claude CLI (JSON schema)");
+
+    let mut cmd = silent_command(&cli_path);
+    crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
+    cmd.args([
+        "--print",
+        "--verbose",
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--model",
+        model_str,
+        "--no-session-persistence",
+        "--tools",
+        "",
+        "--max-turns",
+        "1",
+        "--json-schema",
+        RELEASE_NOTES_SCHEMA,
     ]);
 
     cmd.stdin(Stdio::piped())
@@ -4457,123 +5856,37 @@ fn generate_review(
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    log::trace!("Claude CLI review stdout: {stdout}");
+    log::trace!("Claude CLI release notes stdout: {stdout}");
 
     let json_content = extract_structured_output(&stdout)?;
-    log::trace!("Extracted review JSON: {json_content}");
+    log::trace!("Extracted release notes JSON: {json_content}");
 
-    serde_json::from_str::<ReviewResponse>(&json_content)
-        .map_err(|e| format!("Failed to parse review response: {e}"))
+    serde_json::from_str::<ReleaseNotesResponse>(&json_content)
+        .map_err(|e| format!("Failed to parse release notes response: {e}"))
 }
 
-/// Run AI code review on the current branch
+/// Generate release notes comparing a tag to HEAD
 #[tauri::command]
-pub async fn run_review_with_ai(
+pub async fn generate_release_notes(
     app: AppHandle,
-    worktree_path: String,
+    project_path: String,
+    tag: String,
+    release_name: String,
     custom_prompt: Option<String>,
     model: Option<String>,
-) -> Result<ReviewResponse, String> {
-    log::trace!("Running AI code review for: {worktree_path}");
+    custom_profile_name: Option<String>,
+) -> Result<ReleaseNotesResponse, String> {
+    log::trace!("Generating release notes for {project_path} since {tag}");
 
-    // Load projects data to find the target branch
-    let data = load_projects_data(&app)?;
-
-    // Find the worktree by path
-    let worktree = data
-        .worktrees
-        .iter()
-        .find(|w| w.path == worktree_path)
-        .ok_or_else(|| format!("Worktree not found: {worktree_path}"))?;
-
-    // Find the project to get default_branch
-    let project = data
-        .find_project(&worktree.project_id)
-        .ok_or_else(|| format!("Project not found: {}", worktree.project_id))?;
-
-    let target_branch = &project.default_branch;
-    let current_branch = git::get_current_branch(&worktree_path)?;
-
-    // Get branch diff
-    let diff = get_branch_diff(&worktree_path, target_branch)?;
-
-    // Get commit history
-    let commits = get_branch_commits(&worktree_path, target_branch)?;
-
-    // Get uncommitted changes
-    let uncommitted_output = silent_command("git")
-        .args(["diff", "HEAD"])
-        .current_dir(&worktree_path)
-        .output()
-        .map_err(|e| format!("Failed to get uncommitted diff: {e}"))?;
-
-    let uncommitted_diff = if uncommitted_output.status.success() {
-        String::from_utf8_lossy(&uncommitted_output.stdout).to_string()
-    } else {
-        String::new()
-    };
-
-    // Check if there's anything to review
-    if diff.trim().is_empty() && commits.trim().is_empty() && uncommitted_diff.trim().is_empty() {
-        return Err("No changes to review".to_string());
-    }
-
-    // Build uncommitted section if there are uncommitted changes
-    let uncommitted_section = if !uncommitted_diff.trim().is_empty() {
-        format!(
-            "## Uncommitted Changes\n\n```diff\n{}\n```",
-            uncommitted_diff.trim()
-        )
-    } else {
-        String::new()
-    };
-
-    // Build prompt - use custom if provided and non-empty, otherwise use default
-    let branch_info = format!("{current_branch} → {target_branch}");
-    let prompt_template = custom_prompt
-        .as_ref()
-        .filter(|p| !p.trim().is_empty())
-        .map(|s| s.as_str())
-        .unwrap_or(REVIEW_PROMPT);
-
-    let prompt = prompt_template
-        .replace("{branch_info}", &branch_info)
-        .replace("{commits}", &commits)
-        .replace("{diff}", &diff)
-        .replace("{uncommitted_section}", &uncommitted_section);
-
-    // Run review with Claude CLI
-    let response = generate_review(&app, &prompt, model.as_deref())?;
-
-    log::trace!(
-        "Review complete: {} findings, status: {}",
-        response.findings.len(),
-        response.approval_status
-    );
-
-    Ok(response)
-}
-
-/// Pull changes from remote origin for the specified base branch
-#[tauri::command]
-pub async fn git_pull(worktree_path: String, base_branch: String) -> Result<String, String> {
-    log::trace!("Pulling changes for worktree: {worktree_path}, base branch: {base_branch}");
-    git::git_pull(&worktree_path, &base_branch)
-}
-
-/// Push current branch to remote. If pr_number is provided, uses PR-aware push
-/// that handles fork remotes and uses --force-with-lease.
-#[tauri::command]
-pub async fn git_push(
-    app: tauri::AppHandle,
-    worktree_path: String,
-    pr_number: Option<u32>,
-) -> Result<String, String> {
-    log::trace!("Pushing changes for worktree: {worktree_path}, pr_number: {pr_number:?}");
-    match pr_number {
-        Some(pr) => git::git_push_to_pr(&worktree_path, pr, &resolve_gh_binary(&app)),
-        None => git::git_push(&worktree_path),
-    }
+    generate_release_notes_content(
+        &app,
+        &project_path,
+        &tag,
+        &release_name,
+        custom_prompt.as_deref(),
+        model.as_deref(),
+        custom_profile_name.as_deref(),
+    )
 }
 
 // =============================================================================
@@ -4660,7 +5973,13 @@ pub async fn merge_worktree_to_base(
             .replace("{recent_commits}", &recent_commits)
             .replace("{remote_info}", &remote_info);
 
-        match generate_commit_message(&app, &prompt, None) {
+        match generate_commit_message(
+            &app,
+            &prompt,
+            None,
+            None,
+            Some(std::path::Path::new(&worktree.path)),
+        ) {
             Ok(response) => {
                 // Create the commit with AI-generated message
                 match create_git_commit(&worktree.path, &response.message) {
@@ -5003,7 +6322,20 @@ pub async fn cleanup_old_archives(
             }
         }
 
-        // Delete the sessions file
+        // Collect session IDs before deleting the index so we can clean up data dirs
+        let session_ids: Vec<String> =
+            crate::chat::storage::load_sessions(&app, &worktree.path, &worktree.id)
+                .map(|ws| ws.sessions.iter().map(|s| s.id.clone()).collect())
+                .unwrap_or_default();
+
+        // Delete session data directories
+        for sid in &session_ids {
+            if let Err(e) = crate::chat::storage::delete_session_data(&app, sid) {
+                log::warn!("Failed to delete session data for {sid}: {e}");
+            }
+        }
+
+        // Delete the sessions index file
         if let Ok(app_data_dir) = app.path().app_data_dir() {
             let sessions_file = app_data_dir
                 .join("sessions")
@@ -5028,9 +6360,11 @@ pub async fn cleanup_old_archives(
             continue;
         }
 
-        // Atomically clean up old archived sessions
+        // Atomically clean up old archived sessions, collecting removed IDs
         let worktree_path = worktree.path.clone();
         let worktree_id = worktree.id.clone();
+        let removed_ids = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let removed_ids_clone = removed_ids.clone();
         let result =
             crate::chat::with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
                 let original_count = sessions.sessions.len();
@@ -5045,6 +6379,7 @@ pub async fn cleanup_old_archives(
                                 s.name,
                                 (now() - archived_at) / 86400
                             );
+                            removed_ids_clone.lock().unwrap().push(s.id.clone());
                             removed_count += 1;
                             return false; // Remove this session
                         }
@@ -5059,10 +6394,23 @@ pub async fn cleanup_old_archives(
                 }
             });
 
+        // Delete session data directories for removed sessions
+        if let Ok(ids) = removed_ids.lock() {
+            for sid in ids.iter() {
+                if let Err(e) = crate::chat::storage::delete_session_data(&app, sid) {
+                    log::warn!("Failed to delete session data for {sid}: {e}");
+                }
+            }
+        }
+
         if let Ok(count) = result {
             deleted_sessions += count;
         }
     }
+
+    // --- Clean up orphaned session data directories ---
+    let orphaned = crate::chat::storage::cleanup_orphaned_session_data(&app).unwrap_or(0);
+    deleted_sessions += orphaned;
 
     // --- Clean up orphaned context files ---
     let deleted_contexts =
@@ -5131,7 +6479,20 @@ pub async fn delete_all_archives(app: AppHandle) -> Result<CleanupResult, String
             }
         }
 
-        // Delete the sessions file
+        // Collect session IDs before deleting the index so we can clean up data dirs
+        let session_ids: Vec<String> =
+            crate::chat::storage::load_sessions(&app, &worktree.path, &worktree.id)
+                .map(|ws| ws.sessions.iter().map(|s| s.id.clone()).collect())
+                .unwrap_or_default();
+
+        // Delete session data directories
+        for sid in &session_ids {
+            if let Err(e) = crate::chat::storage::delete_session_data(&app, sid) {
+                log::warn!("Failed to delete session data for {sid}: {e}");
+            }
+        }
+
+        // Delete the sessions index file
         if let Ok(app_data_dir) = app.path().app_data_dir() {
             let sessions_file = app_data_dir
                 .join("sessions")
@@ -5155,9 +6516,11 @@ pub async fn delete_all_archives(app: AppHandle) -> Result<CleanupResult, String
             continue;
         }
 
-        // Atomically delete all archived sessions
+        // Atomically delete all archived sessions, collecting removed IDs
         let worktree_path = worktree.path.clone();
         let worktree_id = worktree.id.clone();
+        let removed_ids = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let removed_ids_clone = removed_ids.clone();
         let result =
             crate::chat::with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
                 let original_count = sessions.sessions.len();
@@ -5167,6 +6530,7 @@ pub async fn delete_all_archives(app: AppHandle) -> Result<CleanupResult, String
                 sessions.sessions.retain(|s| {
                     if s.archived_at.is_some() {
                         log::trace!("Deleting archived session: {}", s.name);
+                        removed_ids_clone.lock().unwrap().push(s.id.clone());
                         removed_count += 1;
                         return false; // Remove this session
                     }
@@ -5179,6 +6543,15 @@ pub async fn delete_all_archives(app: AppHandle) -> Result<CleanupResult, String
                     Ok(0)
                 }
             });
+
+        // Delete session data directories for removed sessions
+        if let Ok(ids) = removed_ids.lock() {
+            for sid in ids.iter() {
+                if let Err(e) = crate::chat::storage::delete_session_data(&app, sid) {
+                    log::warn!("Failed to delete session data for {sid}: {e}");
+                }
+            }
+        }
 
         if let Ok(count) = result {
             deleted_sessions += count;
@@ -5260,8 +6633,11 @@ pub async fn create_folder(
         parent_id,
         is_folder: true,
         avatar_path: None,
-        enabled_mcp_servers: Vec::new(),
+        enabled_mcp_servers: None,
+        known_mcp_servers: Vec::new(),
         custom_system_prompt: None,
+        default_provider: None,
+        default_backend: None,
     };
 
     data.add_project(folder.clone());
@@ -5880,6 +7256,24 @@ pub async fn get_app_data_dir(app: AppHandle) -> Result<String, String> {
         .map_err(|e| format!("Failed to get app data dir: {e}"))?;
 
     Ok(app_data_dir.to_string_lossy().to_string())
+}
+
+/// Get full jean.json config for a project
+#[tauri::command]
+pub async fn get_jean_config(project_path: String) -> Option<JeanConfig> {
+    git::read_jean_config(&project_path)
+}
+
+/// Save jean.json config to disk
+#[tauri::command]
+pub async fn save_jean_config(project_path: String, config: JeanConfig) -> Result<(), String> {
+    let config_path = Path::new(&project_path).join("jean.json");
+    let json = serde_json::to_string_pretty(&config)
+        .map_err(|e| format!("Failed to serialize config: {e}"))?;
+    std::fs::write(&config_path, format!("{json}\n"))
+        .map_err(|e| format!("Failed to write jean.json: {e}"))?;
+    log::trace!("Saved jean.json to {}", config_path.display());
+    Ok(())
 }
 
 #[cfg(test)]

@@ -3,7 +3,17 @@ import { X, FileText, Copy, Pencil, Check } from 'lucide-react'
 import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 import type { PendingTextFile } from '@/types/chat'
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Markdown } from '@/components/ui/markdown'
 import { useChatStore } from '@/store/chat-store'
@@ -147,14 +157,18 @@ export function TextFilePreview({
               </div>
             </button>
             {!disabled && (
-              <button
-                type="button"
-                onClick={e => handleRemove(e, textFile)}
-                className="absolute -top-1.5 -right-1.5 p-0.5 bg-destructive text-destructive-foreground rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-destructive/90 z-10"
-                title="Remove text file"
-              >
-                <X className="h-3 w-3" />
-              </button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={e => handleRemove(e, textFile)}
+                    className="absolute -top-1.5 -right-1.5 p-0.5 bg-destructive text-destructive-foreground rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-destructive/90 z-10"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Remove text file</TooltipContent>
+              </Tooltip>
             )}
           </div>
         ))}
@@ -173,6 +187,9 @@ export function TextFilePreview({
               ({openFile ? formatBytes(openFile.size) : ''})
             </span>
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            Preview of pending text file content before sending.
+          </DialogDescription>
           <ScrollArea className="h-[calc(85vh-8rem)] mt-2">
             {isEditing ? (
               <textarea
@@ -182,13 +199,13 @@ export function TextFilePreview({
                 className="w-full h-full min-h-[calc(85vh-10rem)] text-xs font-mono whitespace-pre-wrap break-words p-3 bg-muted rounded-md border-none outline-none resize-none"
               />
             ) : isMarkdownFile(openFile?.filename) ? (
-              <div className="p-3">
+              <div className="p-3 select-text cursor-text">
                 <Markdown className="text-sm">
                   {openFile?.content ?? ''}
                 </Markdown>
               </div>
             ) : (
-              <pre className="text-xs font-mono whitespace-pre-wrap break-words p-3 bg-muted rounded-md">
+              <pre className="text-xs font-mono whitespace-pre-wrap break-words p-3 bg-muted rounded-md select-text cursor-text">
                 {openFile?.content}
               </pre>
             )}

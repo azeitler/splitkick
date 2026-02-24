@@ -16,7 +16,7 @@ describe('ChatStore', () => {
       activeWorktreePath: null,
       activeSessionIds: {},
       reviewResults: {},
-      viewingReviewTab: {},
+      reviewSidebarVisible: false,
       fixedReviewFindings: {},
       worktreePaths: {},
       sendingSessionIds: {},
@@ -29,7 +29,6 @@ describe('ChatStore', () => {
       inputDrafts: {},
       executionModes: {},
       thinkingLevels: {},
-      manualThinkingOverrides: {},
       selectedModels: {},
       answeredQuestions: {},
       submittedAnswers: {},
@@ -50,6 +49,7 @@ describe('ChatStore', () => {
       lastCompaction: {},
       compactingSessions: {},
       reviewingSessions: {},
+      sessionLabels: {},
       savingContext: {},
       skippedQuestionSessions: {},
     })
@@ -336,15 +336,6 @@ describe('ChatStore', () => {
       expect(getThinkingLevel('session-1')).toBe('think')
     })
 
-    it('tracks manual thinking override', () => {
-      const { setManualThinkingOverride, hasManualThinkingOverride } =
-        useChatStore.getState()
-
-      expect(hasManualThinkingOverride('session-1')).toBe(false)
-
-      setManualThinkingOverride('session-1', true)
-      expect(hasManualThinkingOverride('session-1')).toBe(true)
-    })
   })
 
   describe('question answering', () => {
@@ -390,9 +381,9 @@ describe('ChatStore', () => {
       pendingSkills: [],
       pendingTextFiles: [],
       model: 'sonnet',
+      provider: null,
       executionMode: 'plan',
       thinkingLevel: 'off',
-      disableThinkingForMode: false,
       queuedAt: Date.now(),
     })
 
@@ -460,16 +451,16 @@ describe('ChatStore', () => {
     it('adds approved tool', () => {
       const { addApprovedTool, getApprovedTools } = useChatStore.getState()
 
-      addApprovedTool('session-1', 'Bash(npm test)')
+      addApprovedTool('session-1', 'Bash(bun test)')
 
-      expect(getApprovedTools('session-1')).toContain('Bash(npm test)')
+      expect(getApprovedTools('session-1')).toContain('Bash(bun test)')
     })
 
     it('clears approved tools', () => {
       const { addApprovedTool, clearApprovedTools, getApprovedTools } =
         useChatStore.getState()
 
-      addApprovedTool('session-1', 'Bash(npm test)')
+      addApprovedTool('session-1', 'Bash(bun test)')
       clearApprovedTools('session-1')
 
       expect(getApprovedTools('session-1')).toHaveLength(0)
@@ -550,7 +541,6 @@ describe('ChatStore', () => {
         { questionIndex: 0, selectedOptions: [0] },
       ])
       store.markFindingFixed('session-1', 'finding-1')
-      store.setManualThinkingOverride('session-1', true)
 
       store.clearSessionState('session-1')
 
@@ -561,7 +551,6 @@ describe('ChatStore', () => {
       expect(store.isWaitingForInput('session-1')).toBe(false)
       expect(store.isQuestionAnswered('session-1', 'q1')).toBe(false)
       expect(store.isFindingFixed('session-1', 'finding-1')).toBe(false)
-      expect(store.hasManualThinkingOverride('session-1')).toBe(false)
     })
   })
 
@@ -787,43 +776,39 @@ describe('ChatStore', () => {
       approval_status: 'approved',
     }
 
-    it('sets review results and switches to review tab', () => {
-      const { setReviewResults, isViewingReviewTab } = useChatStore.getState()
+    it('sets review results and opens sidebar', () => {
+      const { setReviewResults } = useChatStore.getState()
 
-      setReviewResults('worktree-1', mockResults)
+      setReviewResults('session-1', mockResults)
 
-      expect(useChatStore.getState().reviewResults['worktree-1']).toEqual(
+      expect(useChatStore.getState().reviewResults['session-1']).toEqual(
         mockResults
       )
-      expect(isViewingReviewTab('worktree-1')).toBe(true)
+      expect(useChatStore.getState().reviewSidebarVisible).toBe(true)
     })
 
-    it('clears review results and viewing state', () => {
-      const { setReviewResults, clearReviewResults, isViewingReviewTab } =
-        useChatStore.getState()
+    it('clears review results', () => {
+      const { setReviewResults, clearReviewResults } = useChatStore.getState()
 
-      setReviewResults('worktree-1', mockResults)
-      clearReviewResults('worktree-1')
+      setReviewResults('session-1', mockResults)
+      clearReviewResults('session-1')
 
-      expect(
-        useChatStore.getState().reviewResults['worktree-1']
-      ).toBeUndefined()
-      expect(isViewingReviewTab('worktree-1')).toBe(false)
+      expect(useChatStore.getState().reviewResults['session-1']).toBeUndefined()
     })
 
-    it('sets viewing review tab', () => {
-      const { setViewingReviewTab, isViewingReviewTab } =
+    it('toggles review sidebar visibility', () => {
+      const { setReviewSidebarVisible, toggleReviewSidebar } =
         useChatStore.getState()
 
-      setViewingReviewTab('worktree-1', true)
-      expect(isViewingReviewTab('worktree-1')).toBe(true)
+      setReviewSidebarVisible(true)
+      expect(useChatStore.getState().reviewSidebarVisible).toBe(true)
 
-      setViewingReviewTab('worktree-1', false)
-      expect(isViewingReviewTab('worktree-1')).toBe(false)
+      toggleReviewSidebar()
+      expect(useChatStore.getState().reviewSidebarVisible).toBe(false)
     })
   })
 
-  describe('review fixed findings (worktree-based)', () => {
+  describe('review fixed findings (session-based)', () => {
     it('marks and checks review finding fixed', () => {
       const { markReviewFindingFixed, isReviewFindingFixed } =
         useChatStore.getState()

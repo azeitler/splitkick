@@ -70,6 +70,24 @@ const steps = [
       { shortcut: 'mod+r' as ShortcutString, label: 'Run script' },
     ] satisfies ShortcutRow[],
   },
+  {
+    title: 'Automation',
+    description: 'Automate your workflow with jean.json',
+    shortcuts: [
+      {
+        shortcut: 'jean.json' as ShortcutString,
+        label: 'Config file in your project root',
+      },
+      {
+        shortcut: 'setup' as ShortcutString,
+        label: 'Runs after each worktree is created',
+      },
+      {
+        shortcut: 'run' as ShortcutString,
+        label: 'Dev server script, launched via ⌘R',
+      },
+    ] satisfies ShortcutRow[],
+  },
 ] as const
 
 function formatArrowKeys(shortcut: string): string {
@@ -79,14 +97,11 @@ function formatArrowKeys(shortcut: string): string {
 }
 
 export function FeatureTourDialog() {
-  const featureTourOpen = useUIStore(state => state.featureTourOpen)
-
-  if (!featureTourOpen) return null
-
   return <FeatureTourDialogContent />
 }
 
 function FeatureTourDialogContent() {
+  const featureTourOpen = useUIStore(state => state.featureTourOpen)
   const [stepIndex, setStepIndex] = useState(0)
   const { setFeatureTourOpen } = useUIStore.getState()
   const { data: preferences } = usePreferences()
@@ -116,6 +131,7 @@ function FeatureTourDialogContent() {
 
   // Keyboard navigation: arrows, Enter, S
   useEffect(() => {
+    if (!featureTourOpen) return
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'ArrowRight') {
         e.preventDefault()
@@ -133,20 +149,20 @@ function FeatureTourDialogContent() {
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [handleNext, handleClose])
+  }, [featureTourOpen, handleNext, handleClose])
 
   const step = steps[stepIndex] as (typeof steps)[number]
   const isLastStep = stepIndex === steps.length - 1
 
   return (
-    <Dialog open onOpenChange={open => !open && handleClose()}>
+    <Dialog open={featureTourOpen} onOpenChange={open => !open && handleClose()}>
       <DialogContent className="sm:max-w-md" showCloseButton>
         <DialogHeader>
           {/* Step dots */}
           <div className="flex items-center justify-center gap-1.5 mb-2">
-            {steps.map((_, i) => (
+            {steps.map((s, i) => (
               <button
-                key={i}
+                key={s.title}
                 type="button"
                 onClick={() => setStepIndex(i)}
                 className={`size-2 rounded-full transition-colors cursor-pointer hover:bg-primary/70 ${
@@ -164,9 +180,9 @@ function FeatureTourDialogContent() {
         </DialogHeader>
 
         <div className="min-h-[300px] py-3 space-y-2">
-          {step.shortcuts.map((item, i) => (
+          {step.shortcuts.map(item => (
             <div
-              key={i}
+              key={item.shortcut}
               className="flex items-center gap-3 rounded-md border border-border/50 bg-muted/30 px-3 py-2.5"
             >
               <Kbd className="h-6 min-w-8 shrink-0 px-2 text-xs font-medium">

@@ -1,12 +1,12 @@
 import { memo, useCallback, useRef } from 'react'
-import { Terminal, X } from 'lucide-react'
+import { Terminal } from 'lucide-react'
 import {
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
-import { Button } from '@/components/ui/button'
+import { ModalCloseButton } from '@/components/ui/modal-close-button'
 import { useTerminalStore } from '@/store/terminal-store'
 import { TerminalView } from './TerminalView'
 
@@ -75,14 +75,7 @@ export const ModalTerminalDrawer = memo(function ModalTerminalDrawer({
               <Terminal className="h-4 w-4" />
               <SheetTitle className="text-sm">Terminal</SheetTitle>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              onClick={handleClose}
-            >
-              <X className="h-3.5 w-3.5" />
-            </Button>
+            <ModalCloseButton size="sm" onClick={handleClose} />
           </div>
         </SheetHeader>
 

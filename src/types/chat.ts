@@ -1,3 +1,5 @@
+import type { ReviewResponse } from '@/types/projects'
+
 /**
  * Role of a chat message sender
  */
@@ -23,6 +25,11 @@ export type ThinkingLevel = 'off' | 'think' | 'megathink' | 'ultrathink'
  * - max: No constraints on thinking depth (Opus 4.6 only)
  */
 export type EffortLevel = 'low' | 'medium' | 'high' | 'max'
+
+/**
+ * Backend for a chat session (Claude CLI, Codex CLI, or OpenCode)
+ */
+export type Backend = 'claude' | 'codex' | 'opencode'
 
 /**
  * Execution mode for Claude CLI permission handling
@@ -121,16 +128,26 @@ export interface Session {
   order: number
   /** Unix timestamp when session was created */
   created_at: number
+  /** Unix timestamp of last activity (latest run end/start, or created_at) */
+  updated_at: number
   /** Chat messages for this session */
   messages: ChatMessage[]
   /** Message count (populated separately for efficiency when full messages not needed) */
   message_count?: number
+  /** Backend for this session (claude, codex, or opencode) */
+  backend?: Backend
   /** Claude CLI session ID for resuming conversations */
   claude_session_id?: string
+  /** Codex CLI thread ID for resuming conversations */
+  codex_thread_id?: string
+  /** OpenCode session ID for resuming conversations */
+  opencode_session_id?: string
   /** Selected model for this session */
   selected_model?: string
   /** Selected thinking level for this session */
   selected_thinking_level?: ThinkingLevel
+  /** Selected provider (custom CLI profile name) for this session */
+  selected_provider?: string
   /** Whether session naming has been attempted for this session */
   session_naming_completed?: boolean
   /** Unix timestamp when session was archived (undefined = not archived) */
@@ -150,6 +167,8 @@ export interface Session {
   pending_permission_denials?: PermissionDenial[]
   /** Original message context for re-send after permission approval */
   denied_message_context?: DeniedMessageContext
+  /** AI code review results for this session */
+  review_results?: ReviewResponse
   /** Whether this session is marked for review in session board */
   is_reviewing?: boolean
   /** Whether this session is waiting for user input (AskUserQuestion, ExitPlanMode) */
@@ -162,12 +181,16 @@ export interface Session {
   plan_file_path?: string
   /** Message ID of the pending plan awaiting approval (for Canvas view) */
   pending_plan_message_id?: string
+  /** Per-session MCP server override (undefined = inherit from project/global) */
+  enabled_mcp_servers?: string[]
   /** Persisted session digest (recap summary) */
   digest?: SessionDigest
   /** Status of the last run (for immediate status on app restart) */
   last_run_status?: RunStatus
   /** Execution mode of the last run (plan/build/yolo) */
   last_run_execution_mode?: ExecutionMode
+  /** User-assigned label with color (e.g. "Needs testing") */
+  label?: LabelData
 }
 
 /**
@@ -356,10 +379,12 @@ export interface ToolResultEvent {
 export interface PermissionDenial {
   /** Name of the denied tool (e.g., "Bash") */
   tool_name: string
-  /** Tool use ID from Claude */
+  /** Tool use ID */
   tool_use_id: string
   /** Input parameters that were denied */
   tool_input: unknown
+  /** JSON-RPC request ID (Codex only — used to respond to approval requests) */
+  rpc_id?: number
 }
 
 /**
@@ -462,6 +487,35 @@ export function isTodoWrite(
 }
 
 /**
+ * A Codex multi-agent entry extracted from collab_tool_call events
+ */
+export interface CodexAgent {
+  /** Tool call ID of the SpawnAgent collab_tool_call */
+  id: string
+  /** The prompt given to the agent (truncated for display) */
+  prompt: string
+  /** Agent lifecycle status */
+  status: 'in_progress' | 'completed' | 'errored'
+  /** Completion message from agents_states */
+  message?: string
+}
+
+/** Names of collab tool calls that should be shown in the AgentWidget, not the timeline */
+const COLLAB_TOOL_NAMES = new Set([
+  'SpawnAgent',
+  'WaitForAgents',
+  'CloseAgent',
+  'SendInput',
+])
+
+/**
+ * Check if a tool call is a Codex collab tool (multi-agent)
+ */
+export function isCollabToolCall(toolCall: ToolCall): boolean {
+  return COLLAB_TOOL_NAMES.has(toolCall.name)
+}
+
+/**
  * Answer to a single question
  */
 export interface QuestionAnswer {
@@ -485,6 +539,8 @@ export interface PendingImage {
   path: string
   /** Filename (e.g., "image-1704067200-abc123.png") */
   filename: string
+  /** Whether the image is still being processed (resized/compressed) */
+  loading?: boolean
 }
 
 /**
@@ -701,16 +757,18 @@ export interface QueuedMessage {
   pendingTextFiles: PendingTextFile[]
   /** Model to use for this message (snapshot at queue time) */
   model: string
+  /** Provider profile name to use (snapshot at queue time, null = default) */
+  provider: string | null
   /** Execution mode setting (snapshot at queue time) */
   executionMode: ExecutionMode
   /** Thinking level setting (snapshot at queue time) */
   thinkingLevel: ThinkingLevel
-  /** Whether thinking should be disabled for this mode (snapshot at queue time) */
-  disableThinkingForMode: boolean
   /** Effort level for Opus 4.6 adaptive thinking (snapshot at queue time) */
   effortLevel?: EffortLevel
   /** MCP config JSON to pass to CLI (snapshot at queue time) */
   mcpConfig?: string
+  /** Backend to use for this message (snapshot at queue time) */
+  backend?: Backend
   /** Timestamp when queued (for display ordering) */
   queuedAt: number
 }
@@ -885,4 +943,12 @@ export interface SessionDigest {
   created_at?: number
   /** Number of messages when this digest was generated */
   message_count?: number
+}
+
+/** User-assigned label with color for session cards */
+export interface LabelData {
+  /** Label name (e.g. "Needs testing") */
+  name: string
+  /** Background color hex value (e.g. "#eab308") */
+  color: string
 }

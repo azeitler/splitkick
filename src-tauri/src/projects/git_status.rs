@@ -70,6 +70,56 @@ fn fetch_origin_branch(repo_path: &str, branch: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Fetch a branch from a specific remote (not necessarily origin)
+fn fetch_origin_branch_from_remote(
+    repo_path: &str,
+    remote: &str,
+    branch: &str,
+) -> Result<(), String> {
+    log::trace!("Fetching {remote}/{branch} in {repo_path}");
+
+    let output = silent_command("git")
+        .args(["fetch", remote, branch])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to run git fetch: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("does not appear to be a git repository")
+            || stderr.contains("Could not read from remote")
+            || stderr.contains("couldn't find remote ref")
+        {
+            log::trace!("No remote {remote}/{branch} available: {stderr}");
+            return Ok(());
+        }
+        log::warn!("Failed to fetch {remote}/{branch}: {stderr}");
+    }
+
+    Ok(())
+}
+
+/// Get the upstream tracking ref for the current branch (e.g., "origin/main", "fork/feature")
+/// Returns None if no upstream is configured.
+fn get_upstream_ref(repo_path: &str) -> Option<String> {
+    let output = silent_command("git")
+        .args(["rev-parse", "--abbrev-ref", "@{upstream}"])
+        .current_dir(repo_path)
+        .output()
+        .ok()?;
+
+    if output.status.success() {
+        let upstream = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if upstream.is_empty() {
+            None
+        } else {
+            Some(upstream)
+        }
+    } else {
+        None
+    }
+}
+
 /// Get the current branch name
 fn get_current_branch(repo_path: &str) -> Result<String, String> {
     let output = silent_command("git")
@@ -691,17 +741,32 @@ pub fn get_branch_status(info: &ActiveWorktreeInfo) -> Result<GitBranchStatus, S
     // Commits unique to this worktree (ahead of local base branch)
     let worktree_ahead_count = count_commits_between(repo_path, base_branch, "HEAD");
 
-    // Commits not yet pushed to origin/{current_branch}
-    // If the remote branch doesn't exist (never pushed), all worktree commits are unpushed
-    let origin_current_ref = format!("origin/{current_branch}");
+    // Commits not yet pushed to the upstream tracking ref
+    // Uses @{upstream} to support non-origin remotes (e.g., fork/branch)
+    // Falls back to origin/{current_branch} if no upstream is configured
     let unpushed_count = if current_branch != *base_branch {
-        // Fetch origin/{current_branch} so we have up-to-date remote info
-        let _ = fetch_origin_branch(repo_path, &current_branch);
-        if ref_exists(repo_path, &origin_current_ref) {
-            count_commits_between(repo_path, &origin_current_ref, "HEAD")
+        let upstream_ref = get_upstream_ref(repo_path);
+
+        if let Some(ref upstream) = upstream_ref {
+            // Fetch the remote for the upstream ref (e.g., "fork" from "fork/branch")
+            if let Some(remote) = upstream.split('/').next() {
+                if remote != "origin" {
+                    let _ = fetch_origin_branch_from_remote(repo_path, remote, &current_branch);
+                } else {
+                    let _ = fetch_origin_branch(repo_path, &current_branch);
+                }
+            }
+            count_commits_between(repo_path, upstream, "HEAD")
         } else {
-            // Never pushed — all worktree-unique commits are unpushed
-            worktree_ahead_count
+            // No upstream configured — try origin/{current_branch}
+            let _ = fetch_origin_branch(repo_path, &current_branch);
+            let origin_current_ref = format!("origin/{current_branch}");
+            if ref_exists(repo_path, &origin_current_ref) {
+                count_commits_between(repo_path, &origin_current_ref, "HEAD")
+            } else {
+                // Never pushed — all worktree-unique commits are unpushed
+                worktree_ahead_count
+            }
         }
     } else {
         // On the base branch itself, unpushed = base_branch_ahead_count

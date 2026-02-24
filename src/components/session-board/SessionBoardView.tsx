@@ -14,6 +14,7 @@ import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { useWorktrees, useProjects } from '@/services/projects'
 import { useSessions } from '@/services/chat'
 import { useChatStore } from '@/store/chat-store'
+import { useShallow } from 'zustand/react/shallow'
 import { useProjectsStore } from '@/store/projects-store'
 import { isAskUserQuestion, isExitPlanMode, type ToolCall } from '@/types/chat'
 import type { ExecutionMode } from '@/types/chat'
@@ -59,15 +60,29 @@ export function SessionBoardView({
     useWorktrees(projectId)
 
   // Get chat store state for determining session status
-  const sendingSessionIds = useChatStore(state => state.sendingSessionIds)
-  const activeToolCalls = useChatStore(state => state.activeToolCalls)
-  const answeredQuestions = useChatStore(state => state.answeredQuestions)
-  const executionModes = useChatStore(state => state.executionModes)
-  const executingModes = useChatStore(state => state.executingModes)
-  const reviewingSessions = useChatStore(state => state.reviewingSessions)
-  const setSessionReviewing = useChatStore(state => state.setSessionReviewing)
-  const setActiveWorktree = useChatStore(state => state.setActiveWorktree)
-  const setActiveSession = useChatStore(state => state.setActiveSession)
+  const {
+    sendingSessionIds,
+    activeToolCalls,
+    answeredQuestions,
+    executionModes,
+    executingModes,
+    reviewingSessions,
+    setSessionReviewing,
+    setActiveWorktree,
+    setActiveSession,
+  } = useChatStore(
+    useShallow(state => ({
+      sendingSessionIds: state.sendingSessionIds,
+      activeToolCalls: state.activeToolCalls,
+      answeredQuestions: state.answeredQuestions,
+      executionModes: state.executionModes,
+      executingModes: state.executingModes,
+      reviewingSessions: state.reviewingSessions,
+      setSessionReviewing: state.setSessionReviewing,
+      setActiveWorktree: state.setActiveWorktree,
+      setActiveSession: state.setActiveSession,
+    }))
+  )
 
   // Also need to update projects store when switching worktrees
   const selectProject = useProjectsStore(state => state.selectProject)

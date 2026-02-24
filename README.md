@@ -1,25 +1,59 @@
+<div align="center">
+
 # Jean
 
-Jean (Claude haha) is an AI assistant application that helps you to manage multiple projects, worktrees, session with Claude CLI.
+A desktop AI assistant for managing multiple projects, worktrees, and chat sessions with Claude CLI.
 
-# Features
+Tauri v2 · React 19 · Rust · TypeScript · Tailwind CSS v4 · shadcn/ui v4 · Zustand v5 · TanStack Query · CodeMirror 6 · xterm.js
 
-- Automated worktree management
-- Load context from sessions, GitHub Issues / Pull requests
-- Automated (magic) Git commands / prompts (review, commit, open PR, investigate issue/pr)
-- Automated GitHub PR or local merge worktrees
-- Automated merge conflict resolver
-- Archive worktrees / branches so you can restore them and continue to work
-- A lot more
+</div>
 
-# Screenshots
+## About the Project
 
-![Main Interface](screenshots/SCR-20260209-nigu.png)
-![Development Mode](screenshots/SCR-20260209-ninl.png)
-![Diff View](screenshots/SCR-20260209-niug.png)
-![Plan Mode](screenshots/SCR-20260209-njel.png)
+Jean is an opinionated native desktop app built with Tauri that gives you a powerful interface for working with Claude CLI across multiple projects. It has strong opinions about how AI-assisted development should work — managing git worktrees, chat sessions, terminals, and GitHub integrations in one cohesive workflow.
 
-# Prerequisites
+No vendor lock-in. Everything runs locally on your machine with your own Claude CLI installation.
+
+For more information, take a look at [jean.build](https://jean.build).
+
+## Screenshots
+
+<table>
+<tr>
+<td><img src="screenshots/SCR-20260209-nigu.png" width="400" alt="Main Interface" /></td>
+<td><img src="screenshots/SCR-20260209-ninl.png" width="400" alt="Development Mode" /></td>
+</tr>
+<tr>
+<td><img src="screenshots/SCR-20260209-niug.png" width="400" alt="Diff View" /></td>
+<td><img src="screenshots/SCR-20260209-njel.png" width="400" alt="Plan Mode" /></td>
+</tr>
+</table>
+
+## Features
+
+- **Project & Worktree Management** — Multi-project support, git worktree automation (create, archive, restore, delete), custom project avatars
+- **Session Management** — Multiple sessions per worktree, execution modes (Plan, Build, Yolo), archiving, recovery, auto-naming, canvas views
+- **AI Chat (Claude CLI)** — Model selection (Opus, Sonnet, Haiku), thinking/effort levels, MCP server support, file mentions, image support, custom system prompts
+- **Magic Commands** — Investigate issues/PRs/workflows, code review with finding tracking, AI commit messages, PR content generation, merge conflict resolution, release notes
+- **GitHub Integration** — Issue & PR investigation, checkout PRs as worktrees, auto-archive on PR merge, workflow investigation
+- **Developer Tools** — Integrated terminal, open in editor (Zed, VS Code, Cursor, Xcode), git status, diff viewer (unified & side-by-side), file tree with preview
+- **Remote Access** — Built-in HTTP server with WebSocket support, token-based auth, web browser access
+- **Customization** — Themes (light/dark/system), custom fonts, customizable AI prompts, configurable keybindings
+
+## Installation
+
+Download the latest version from the [GitHub Releases](https://github.com/coollabsio/jean/releases) page or visit [jean.build](https://jean.build).
+
+### Homebrew (macOS)
+
+```bash
+brew tap coollabsio/jean
+brew install --cask jean
+```
+
+### Building from Source
+
+Prerequisites:
 
 - [Node.js](https://nodejs.org/)
 - [Rust](https://www.rust-lang.org/tools/install)
@@ -27,25 +61,34 @@ Jean (Claude haha) is an AI assistant application that helps you to manage multi
   - MSVC C++ build tools
   - Windows SDK (provides `kernel32.lib` and other system libraries required by Rust)
 
-# Platform Support
+See [CONTRIBUTING.md](CONTRIBUTING.md) for full development setup and guidelines.
+
+## Platform Support
 
 - **macOS**: Tested
 - **Windows**: Not fully tested
 - **Linux**: Not tested at all
 
-# Roadmap
+## Roadmap
 
 - Add [Opencode](https://opencode.ai/) support
-- Add remote access support through an API
+- Enhance remote web access
 
-# Contributing
+## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
-# Philosophy
+## Core Maintainer
+
+|                                                                                                                                                                            Andras Bacsai                                                                                                                                                                             |
+| :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------: |
+|                                                                                                                                         <img src="https://github.com/andrasbacsai.png" width="200px" alt="Andras Bacsai" />                                                                                                                                          |
+| <a href="https://github.com/andrasbacsai"><img src="https://api.iconify.design/devicon:github.svg" width="25px"></a> <a href="https://x.com/heyandras"><img src="https://api.iconify.design/devicon:twitter.svg" width="25px"></a> <a href="https://bsky.app/profile/heyandras.dev"><img src="https://api.iconify.design/simple-icons:bluesky.svg" width="25px"></a> |
+
+## Philosophy
 
 Learn more about our approach: [Philosophy](https://coollabs.io/philosophy/)
 
----
+## Star History
 
-Made by [Andras Bacsai](https://x.com/heyandras).
+[![Star History Chart](https://api.star-history.com/svg?repos=coollabsio/jean&type=Date)](https://star-history.com/#coollabsio/jean&Date)

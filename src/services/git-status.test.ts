@@ -10,6 +10,7 @@ import {
   getGitPollInterval,
   triggerImmediateGitPoll,
   gitPull,
+  getGitRemotes,
   setRemotePollInterval,
   getRemotePollInterval,
   triggerImmediateRemotePoll,
@@ -214,6 +215,7 @@ describe('git-status service', () => {
       expect(mockInvoke).toHaveBeenCalledWith('git_pull', {
         worktreePath: '/path/to/repo',
         baseBranch: 'main',
+        remote: null,
       })
     })
 
@@ -236,6 +238,35 @@ describe('git-status service', () => {
       expect(mockInvoke).toHaveBeenCalledWith('set_remote_poll_interval', {
         seconds: 120,
       })
+    })
+  })
+
+  describe('getGitRemotes', () => {
+    it('returns remotes with origin first', async () => {
+      mockInvoke.mockResolvedValueOnce([
+        { name: 'upstream' },
+        { name: 'origin' },
+        { name: 'fork' },
+      ])
+
+      const result = await getGitRemotes('/path/to/repo')
+
+      expect(result).toEqual([
+        { name: 'origin' },
+        { name: 'upstream' },
+        { name: 'fork' },
+      ])
+      expect(mockInvoke).toHaveBeenCalledWith('get_git_remotes', {
+        repoPath: '/path/to/repo',
+      })
+    })
+
+    it('keeps order unchanged when origin is missing', async () => {
+      mockInvoke.mockResolvedValueOnce([{ name: 'upstream' }, { name: 'fork' }])
+
+      const result = await getGitRemotes('/path/to/repo')
+
+      expect(result).toEqual([{ name: 'upstream' }, { name: 'fork' }])
     })
   })
 

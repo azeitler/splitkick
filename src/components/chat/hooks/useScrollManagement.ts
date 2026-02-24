@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react'
 import type { RefObject } from 'react'
 import type { VirtualizedMessageListHandle } from '../VirtualizedMessageList'
 import type { ChatMessage } from '@/types/chat'
@@ -8,6 +14,8 @@ interface UseScrollManagementOptions {
   messages: ChatMessage[] | undefined
   /** Ref to virtualized list for scrolling to specific message index */
   virtualizedListRef: RefObject<VirtualizedMessageListHandle | null>
+  /** Active worktree ID — used to scroll to bottom before paint on switch */
+  activeWorktreeId: string | null
 }
 
 interface UseScrollManagementReturn {
@@ -17,8 +25,8 @@ interface UseScrollManagementReturn {
   isAtBottom: boolean
   /** Whether findings are visible in viewport */
   areFindingsVisible: boolean
-  /** Scroll to bottom with auto-scroll flag */
-  scrollToBottom: () => void
+  /** Scroll to bottom with auto-scroll flag. Pass `true` for instant (no animation). */
+  scrollToBottom: (instant?: boolean) => void
   /** Scroll to findings element */
   scrollToFindings: () => void
   /** Handler for onScroll event */
@@ -30,6 +38,7 @@ interface UseScrollManagementReturn {
 export function useScrollManagement({
   messages,
   virtualizedListRef,
+  activeWorktreeId,
 }: UseScrollManagementOptions): UseScrollManagementReturn {
   const scrollViewportRef = useRef<HTMLDivElement>(null)
 
@@ -53,6 +62,14 @@ export function useScrollManagement({
     }
   }, [])
 
+  // Scroll to bottom before paint when switching worktrees to prevent flash of top content
+  useLayoutEffect(() => {
+    const viewport = scrollViewportRef.current
+    if (viewport) {
+      viewport.scrollTop = viewport.scrollHeight
+    }
+  }, [activeWorktreeId])
+
   // Handle scroll events to track if user is at bottom and if findings are visible
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     // Skip updating isAtBottom during auto-scroll to avoid race conditions
@@ -66,7 +83,8 @@ export function useScrollManagement({
     // Consider "at bottom" if within 100px of the bottom
     const atBottom = scrollHeight - scrollTop - clientHeight < 100
     isAtBottomRef.current = atBottom
-    setIsAtBottom(atBottom)
+    // PERFORMANCE: Functional setState skips re-render when value hasn't changed
+    setIsAtBottom(prev => (prev === atBottom ? prev : atBottom))
 
     // Check if findings element is visible in the viewport
     const findingsEl = target.querySelector('[data-review-findings="unfixed"]')
@@ -75,9 +93,9 @@ export function useScrollManagement({
       const containerRect = target.getBoundingClientRect()
       const isVisible =
         rect.top < containerRect.bottom && rect.bottom > containerRect.top
-      setAreFindingsVisible(isVisible)
+      setAreFindingsVisible(prev => (prev === isVisible ? prev : isVisible))
     } else {
-      setAreFindingsVisible(true) // No unfixed findings, so don't show button
+      setAreFindingsVisible(prev => (prev === true ? prev : true))
     }
   }, [])
 
@@ -88,7 +106,10 @@ export function useScrollManagement({
   }, [])
 
   // Scroll to bottom helper
-  const scrollToBottom = useCallback(() => {
+  // Pass instant=true for user-initiated actions (answering questions, approving plans)
+  // where DOM changes immediately and smooth scroll would target stale scrollHeight.
+  // Default smooth is for auto-scroll during streaming.
+  const scrollToBottom = useCallback((instant?: boolean) => {
     const viewport = scrollViewportRef.current
     if (!viewport) return
 
@@ -99,6 +120,13 @@ export function useScrollManagement({
 
     isAtBottomRef.current = true
     setIsAtBottom(true)
+
+    if (instant) {
+      // Instant scroll — no animation, no correction needed
+      viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'instant' })
+      return
+    }
+
     isAutoScrollingRef.current = true
 
     viewport.scrollTo({

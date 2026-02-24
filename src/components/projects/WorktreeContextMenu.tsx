@@ -75,12 +75,10 @@ export function WorktreeContextMenu({
           </ContextMenuItem>
         )}
 
-        {isNativeApp() && (
-          <ContextMenuItem onClick={handleOpenJeanConfig}>
-            <FileJson className="mr-2 h-4 w-4" />
-            Edit jean.json
-          </ContextMenuItem>
-        )}
+        <ContextMenuItem onClick={handleOpenJeanConfig}>
+          <FileJson className="mr-2 h-4 w-4" />
+          Edit jean.json
+        </ContextMenuItem>
 
         {hasMessages && (
           <ContextMenuItem onClick={handleGenerateRecap}>
@@ -137,7 +135,16 @@ export function WorktreeContextMenu({
       </ContextMenuContent>
 
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <AlertDialogContent>
+        <AlertDialogContent
+          onKeyDown={e => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              e.stopPropagation()
+              handleDelete()
+              setShowDeleteConfirm(false)
+            }
+          }}
+        >
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Worktree</AlertDialogTitle>
             <AlertDialogDescription>
@@ -148,10 +155,12 @@ export function WorktreeContextMenu({
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
+              autoFocus
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Delete
+              <kbd className="ml-1.5 text-xs opacity-70">↵</kbd>
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

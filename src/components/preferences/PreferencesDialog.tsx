@@ -5,9 +5,9 @@ import {
   Keyboard,
   Wand2,
   Plug,
+  Blocks,
   FlaskConical,
   Globe,
-  X,
 } from 'lucide-react'
 import {
   Breadcrumb,
@@ -23,7 +23,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
+import { ModalCloseButton } from '@/components/ui/modal-close-button'
 import {
   Select,
   SelectContent,
@@ -47,6 +47,7 @@ import { AppearancePane } from './panes/AppearancePane'
 import { KeybindingsPane } from './panes/KeybindingsPane'
 import { MagicPromptsPane } from './panes/MagicPromptsPane'
 import { McpServersPane } from './panes/McpServersPane'
+import { ProvidersPane } from './panes/ProvidersPane'
 import { ExperimentalPane } from './panes/ExperimentalPane'
 import { WebAccessPane } from './panes/WebAccessPane'
 
@@ -55,6 +56,11 @@ const navigationItems = [
     id: 'general' as const,
     name: 'General',
     icon: Settings,
+  },
+  {
+    id: 'providers' as const,
+    name: 'Providers',
+    icon: Blocks,
   },
   {
     id: 'appearance' as const,
@@ -102,6 +108,8 @@ const getPaneTitle = (pane: PreferencePane): string => {
       return 'Magic Prompts'
     case 'mcp-servers':
       return 'MCP Servers'
+    case 'providers':
+      return 'Providers'
     case 'experimental':
       return 'Experimental'
     case 'web-access':
@@ -113,7 +121,9 @@ const getPaneTitle = (pane: PreferencePane): string => {
 
 export function PreferencesDialog() {
   const [activePane, setActivePane] = useState<PreferencePane>('general')
-  const { preferencesOpen, setPreferencesOpen, preferencesPane } = useUIStore()
+  const preferencesOpen = useUIStore(state => state.preferencesOpen)
+  const setPreferencesOpen = useUIStore(state => state.setPreferencesOpen)
+  const preferencesPane = useUIStore(state => state.preferencesPane)
 
   // Handle open state change and navigate to specific pane if requested
   const handleOpenChange = useCallback(
@@ -136,7 +146,10 @@ export function PreferencesDialog() {
 
   return (
     <Dialog open={preferencesOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="overflow-hidden p-0 !w-screen !h-dvh !max-w-screen !max-h-none !rounded-none sm:!w-[calc(100vw-4rem)] sm:!max-w-[calc(100vw-4rem)] sm:!h-[85vh] sm:!rounded-xl font-sans [&_[data-slot=dialog-close]]:hidden sm:[&_[data-slot=dialog-close]]:block">
+      <DialogContent
+        showCloseButton={false}
+        className="overflow-hidden p-0 !w-screen !h-dvh !max-w-screen !max-h-none !rounded-none sm:!w-[calc(100vw-4rem)] sm:!max-w-[calc(100vw-4rem)] sm:!h-[85vh] sm:!rounded-xl font-sans"
+      >
         <DialogTitle className="sr-only">Settings</DialogTitle>
         <DialogDescription className="sr-only">
           Customize your application preferences here.
@@ -172,7 +185,7 @@ export function PreferencesDialog() {
 
           <main className="flex flex-1 flex-col overflow-hidden">
             <header className="flex h-16 shrink-0 items-center gap-2">
-              <div className="flex flex-1 items-center gap-2 px-4 sm:pr-10">
+              <div className="flex flex-1 items-center gap-2 px-4">
                 {/* Mobile pane selector */}
                 <Select
                   value={activePane}
@@ -191,14 +204,11 @@ export function PreferencesDialog() {
                       ))}
                   </SelectContent>
                 </Select>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="sm:hidden h-9 w-9 shrink-0"
+                <ModalCloseButton
+                  size="lg"
+                  className="md:hidden"
                   onClick={() => handleOpenChange(false)}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
+                />
                 <Breadcrumb className="hidden md:block">
                   <BreadcrumbList>
                     <BreadcrumbItem>
@@ -212,6 +222,10 @@ export function PreferencesDialog() {
                     </BreadcrumbItem>
                   </BreadcrumbList>
                 </Breadcrumb>
+                <ModalCloseButton
+                  className="hidden md:inline-flex ml-auto"
+                  onClick={() => handleOpenChange(false)}
+                />
               </div>
             </header>
 
@@ -221,6 +235,7 @@ export function PreferencesDialog() {
               {activePane === 'keybindings' && <KeybindingsPane />}
               {activePane === 'magic-prompts' && <MagicPromptsPane />}
               {activePane === 'mcp-servers' && <McpServersPane />}
+              {activePane === 'providers' && <ProvidersPane />}
               {activePane === 'experimental' && <ExperimentalPane />}
               {activePane === 'web-access' && <WebAccessPane />}
             </div>

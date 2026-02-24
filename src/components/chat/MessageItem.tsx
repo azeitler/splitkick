@@ -20,7 +20,14 @@ import { SkillBadge } from './SkillBadge'
 import { ToolCallsDisplay } from './ToolCallsDisplay'
 import { ExitPlanModeButton } from './ExitPlanModeButton'
 import { EditedFilesDisplay } from './EditedFilesDisplay'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip'
 import { ThinkingBlock } from './ThinkingBlock'
+import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
+import { logger } from '@/lib/logger'
 import {
   parseReviewFindings,
   hasReviewFindings,
@@ -93,6 +100,8 @@ interface MessageItemProps {
   isFindingFixed: (sessionId: string, key: string) => boolean
   /** Callback to copy a user message back to the input field */
   onCopyToInput?: (message: ChatMessage) => void
+  /** Hide approve buttons (e.g. for Codex which has no native approval flow) */
+  hideApproveButtons?: boolean
 }
 
 /**
@@ -124,6 +133,7 @@ export const MessageItem = memo(function MessageItem({
   areQuestionsSkipped,
   isFindingFixed,
   onCopyToInput,
+  hideApproveButtons,
 }: MessageItemProps) {
   // Only show Approve button for the last message with ExitPlanMode
   const isLatestPlanRequest = messageIndex === lastPlanMessageIndex
@@ -138,9 +148,7 @@ export const MessageItem = memo(function MessageItem({
   const skillPaths =
     message.role === 'user' ? extractSkillPaths(message.content) : []
   const displayContent =
-    message.role === 'user'
-      ? stripAllMarkers(message.content)
-      : message.content
+    message.role === 'user' ? stripAllMarkers(message.content) : message.content
 
   // Show content if it's not empty
   const showContent = displayContent.trim()
@@ -245,137 +253,165 @@ export const MessageItem = memo(function MessageItem({
         <>
           {/* Build timeline preserving order of text and tools */}
           <div className="space-y-4">
-            {buildTimeline(
-              message.content_blocks,
-              message.tool_calls ?? []
-            ).map(item => {
-              switch (item.type) {
-                case 'thinking':
-                  return (
-                    <ThinkingBlock
-                      key={item.key}
-                      thinking={item.thinking}
-                      isStreaming={false}
-                    />
-                  )
-                case 'text': {
-                  // Check if text contains review findings
-                  if (hasReviewFindings(item.text)) {
-                    const findings = parseReviewFindings(item.text)
-                    const strippedText = stripFindingBlocks(item.text)
-                    return (
-                      <div key={item.key}>
-                        <Markdown>{strippedText}</Markdown>
-                        {findings.length > 0 && (
-                          <ReviewFindingsList
-                            findings={findings}
-                            sessionId={sessionId}
-                            onFix={onFixFinding}
-                            onFixAll={onFixAllFindings}
-                            isFixedFn={handleIsFindingFixed}
-                            disabled={isSending}
-                          />
-                        )}
-                      </div>
-                    )
-                  }
-                  return <Markdown key={item.key}>{item.text}</Markdown>
-                }
-                case 'task':
-                  return (
-                    <TaskCallInline
-                      key={item.key}
-                      taskToolCall={item.taskTool}
-                      subToolCalls={item.subTools}
-                      allToolCalls={message.tool_calls ?? []}
-                      onFileClick={onFileClick}
-                      isStreaming={false}
-                    />
-                  )
-                case 'standalone':
-                  return (
-                    <ToolCallInline
-                      key={item.key}
-                      toolCall={item.tool}
-                      onFileClick={onFileClick}
-                      isStreaming={false}
-                    />
-                  )
-                case 'stackedGroup':
-                  return (
-                    <StackedGroup
-                      key={item.key}
-                      items={item.items}
-                      onFileClick={onFileClick}
-                      isStreaming={false}
-                    />
-                  )
-                case 'askUserQuestion': {
-                  const isAnswered =
-                    hasFollowUpMessage ||
-                    isQuestionAnswered(message.session_id, item.tool.id)
-                  const input = item.tool.input as {
-                    questions: Question[]
-                  }
-                  return (
-                    <AskUserQuestion
-                      key={item.key}
-                      toolCallId={item.tool.id}
-                      questions={input.questions}
-                      introText={item.introText}
-                      onSubmit={(toolCallId, answers) =>
-                        onQuestionAnswer(toolCallId, answers, input.questions)
-                      }
-                      onSkip={onQuestionSkip}
-                      readOnly={isAnswered}
-                      submittedAnswers={
-                        isAnswered
-                          ? getSubmittedAnswers(
-                              message.session_id,
-                              item.tool.id
-                            )
-                          : undefined
-                      }
-                    />
-                  )
-                }
-                case 'exitPlanMode': {
-                  // Render plan inline in its natural position
-                  // Extract plan from this specific tool's input (not global search)
-                  const toolInput = item.tool.input as
-                    | { plan?: string }
-                    | undefined
-                  const inlinePlan = toolInput?.plan
-                  if (inlinePlan) {
-                    return (
-                      <PlanDisplay
-                        key={item.key}
-                        content={inlinePlan}
-                        defaultCollapsed={
-                          message.plan_approved || hasFollowUpMessage
-                        }
-                      />
-                    )
-                  }
-                  // Fall back to file-based plan (Write to ~/.claude/plans/*.md)
-                  const planFilePath = findPlanFilePath(
-                    message.tool_calls ?? []
-                  )
-                  if (!planFilePath) return null
-                  return (
-                    <PlanDisplay
-                      key={item.key}
-                      filePath={planFilePath}
-                      defaultCollapsed={
-                        message.plan_approved || hasFollowUpMessage
-                      }
-                    />
-                  )
-                }
-                default:
-                  return null
+            {(() => {
+              let timeline
+              try {
+                timeline = buildTimeline(
+                  message.content_blocks,
+                  message.tool_calls ?? []
+                )
+              } catch (e) {
+                logger.error('Failed to build timeline for message', {
+                  messageId: message.id,
+                  error: e,
+                })
+                return (
+                  <div className="text-sm text-muted-foreground italic">
+                    <span>[Message could not be rendered]</span>
+                    {message.content && <Markdown>{message.content}</Markdown>}
+                  </div>
+                )
               }
-            })}
+              return timeline.map(item => (
+                <ErrorBoundary
+                  key={item.key}
+                  fallback={
+                    <div className="text-xs text-muted-foreground italic border rounded px-2 py-1">
+                      [Failed to render content]
+                    </div>
+                  }
+                >
+                  {(() => {
+                    switch (item.type) {
+                      case 'thinking':
+                        return (
+                          <ThinkingBlock
+                            thinking={item.thinking}
+                            isStreaming={false}
+                          />
+                        )
+                      case 'text': {
+                        if (hasReviewFindings(item.text)) {
+                          const findings = parseReviewFindings(item.text)
+                          const strippedText = stripFindingBlocks(item.text)
+                          return (
+                            <div>
+                              <Markdown>{strippedText}</Markdown>
+                              {findings.length > 0 && (
+                                <ReviewFindingsList
+                                  findings={findings}
+                                  sessionId={sessionId}
+                                  onFix={onFixFinding}
+                                  onFixAll={onFixAllFindings}
+                                  isFixedFn={handleIsFindingFixed}
+                                  disabled={isSending}
+                                />
+                              )}
+                            </div>
+                          )
+                        }
+                        return <Markdown>{item.text}</Markdown>
+                      }
+                      case 'task':
+                        return (
+                          <TaskCallInline
+                            taskToolCall={item.taskTool}
+                            subToolCalls={item.subTools}
+                            allToolCalls={message.tool_calls ?? []}
+                            onFileClick={onFileClick}
+                            isStreaming={false}
+                          />
+                        )
+                      case 'standalone':
+                        return (
+                          <ToolCallInline
+                            toolCall={item.tool}
+                            onFileClick={onFileClick}
+                            isStreaming={false}
+                          />
+                        )
+                      case 'stackedGroup':
+                        return (
+                          <StackedGroup
+                            items={item.items}
+                            onFileClick={onFileClick}
+                            isStreaming={false}
+                          />
+                        )
+                      case 'askUserQuestion': {
+                        const isAnswered =
+                          hasFollowUpMessage ||
+                          isQuestionAnswered(message.session_id, item.tool.id)
+                        const input = item.tool.input as {
+                          questions: Question[]
+                        }
+                        return (
+                          <AskUserQuestion
+                            toolCallId={item.tool.id}
+                            questions={input.questions}
+                            introText={item.introText}
+                            onSubmit={(toolCallId, answers) =>
+                              onQuestionAnswer(
+                                toolCallId,
+                                answers,
+                                input.questions
+                              )
+                            }
+                            onSkip={onQuestionSkip}
+                            readOnly={isAnswered}
+                            submittedAnswers={
+                              isAnswered
+                                ? getSubmittedAnswers(
+                                    message.session_id,
+                                    item.tool.id
+                                  )
+                                : undefined
+                            }
+                          />
+                        )
+                      }
+                      case 'exitPlanMode': {
+                        const toolInput = item.tool.input as
+                          | { plan?: string }
+                          | undefined
+                        const inlinePlan = toolInput?.plan
+                        if (inlinePlan) {
+                          return (
+                            <PlanDisplay
+                              content={inlinePlan}
+                              defaultCollapsed={
+                                message.plan_approved || hasFollowUpMessage
+                              }
+                            />
+                          )
+                        }
+                        const planFilePath = findPlanFilePath(
+                          message.tool_calls ?? []
+                        )
+                        if (!planFilePath) return null
+                        return (
+                          <PlanDisplay
+                            filePath={planFilePath}
+                            defaultCollapsed={
+                              message.plan_approved || hasFollowUpMessage
+                            }
+                          />
+                        )
+                      }
+                      case 'unknown':
+                        return (
+                          <div className="text-xs text-muted-foreground border rounded px-2 py-1">
+                            Unsupported content type: &quot;{item.rawType}&quot;
+                            — if you see this, please report it as a bug
+                          </div>
+                        )
+                      default:
+                        return null
+                    }
+                  })()}
+                </ErrorBoundary>
+              ))
+            })()}
           </div>
           {/* Show ExitPlanMode button after all content blocks */}
           <ExitPlanModeButton
@@ -388,6 +424,7 @@ export const MessageItem = memo(function MessageItem({
             buttonRef={isLatestPlanRequest ? approveButtonRef : undefined}
             shortcut={approveShortcut}
             shortcutYolo={approveShortcutYolo}
+            hideApproveButtons={hideApproveButtons}
           />
         </>
       ) : (
@@ -423,6 +460,10 @@ export const MessageItem = memo(function MessageItem({
                     disabled={isSending}
                   />
                 </>
+              ) : message.role === 'user' ? (
+                <div className="whitespace-pre-wrap break-words">
+                  {displayContent}
+                </div>
               ) : (
                 <Markdown>{displayContent}</Markdown>
               )}
@@ -474,16 +515,20 @@ export const MessageItem = memo(function MessageItem({
     >
       {message.role === 'user' ? (
         <div className="relative group flex items-start gap-1 max-w-[85%] sm:max-w-[70%]">
-          {/* Copy to input button - appears on hover */}
+          {/* Copy to clipboard button - appears on hover */}
           {onCopyToInput && (
-            <button
-              type="button"
-              onClick={handleCopyToInput}
-              className="shrink-0 mt-2 p-1 rounded cursor-pointer text-muted-foreground/0 hover:text-muted-foreground hover:bg-muted/50 group-hover:text-muted-foreground/50 transition-colors"
-              title="Copy to input"
-            >
-              <Copy className="h-3.5 w-3.5" />
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={handleCopyToInput}
+                  className="shrink-0 mt-2 p-1 rounded cursor-pointer text-muted-foreground/0 hover:text-muted-foreground hover:bg-muted/50 group-hover:text-muted-foreground/50 transition-colors"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Copy to clipboard</TooltipContent>
+            </Tooltip>
           )}
           <div
             className={cn(

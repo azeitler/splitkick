@@ -266,7 +266,7 @@ Update command context type in `src/lib/commands/types.ts` to add `hasPlan`.
 ## Verification
 
 1. `cargo build` - Rust compiles
-2. `npm run check:all` - TS/lint passes
+2. `bun run check:all` - TS/lint passes
 3. Manual test:
    - Open Jean, no plan → Clear modes hidden
    - Create plan (via plan mode) → Clear modes appear

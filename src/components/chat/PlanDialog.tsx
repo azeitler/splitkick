@@ -34,6 +34,8 @@ interface PlanDialogBaseProps {
   approvalContext?: ApprovalContext
   onApprove?: (updatedPlan: string) => void
   onApproveYolo?: (updatedPlan: string) => void
+  /** Hide approve buttons (e.g. for Codex which has no native approval flow) */
+  hideApproveButtons?: boolean
 }
 
 interface PlanDialogFileProps extends PlanDialogBaseProps {
@@ -58,6 +60,7 @@ export function PlanDialog({
   approvalContext: _approvalContext,
   onApprove,
   onApproveYolo,
+  hideApproveButtons,
 }: PlanDialogProps) {
   const filename = filePath ? getFilename(filePath) : null
   const queryClient = useQueryClient()
@@ -97,7 +100,7 @@ export function PlanDialog({
 
   const hasChanges = editedContent !== originalContent
   // Enable approve buttons when callbacks are provided and not disabled (session still running)
-  const canApprove = !!onApprove && !!onApproveYolo && !disabled
+  const canApprove = !hideApproveButtons && !!onApprove && !!onApproveYolo && !disabled
 
   // Auto-save plan file with debounce when content changes
   useEffect(() => {
@@ -117,18 +120,6 @@ export function PlanDialog({
 
     return () => clearTimeout(timer)
   }, [filePath, editedContent, hasChanges, isOpen, editable, queryClient])
-
-  // Debug logging
-  console.log(
-    '[PlanDialog] render - canApprove:',
-    canApprove,
-    'onApprove:',
-    !!onApprove,
-    'onApproveYolo:',
-    !!onApproveYolo,
-    'editable:',
-    editable
-  )
 
   const handleReset = useCallback(() => {
     setEditedContent(originalContent)
@@ -199,7 +190,7 @@ export function PlanDialog({
           />
         ) : (
           // View mode: rendered markdown
-          <ScrollArea className="flex-1 min-h-0 -mx-6 px-6">
+          <ScrollArea className="flex-1 min-h-0 -mx-6 px-6 select-text">
             {!inlineContent && isLoading ? (
               <div className="text-sm text-muted-foreground">
                 Loading plan...

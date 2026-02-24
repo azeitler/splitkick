@@ -8,8 +8,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = resolve(__dirname, '..')
 
 const bump = process.argv[2] || 'patch'
-if (!['patch', 'minor', 'major'].includes(bump)) {
-  console.error(`Usage: node scripts/bump-version.js [patch|minor|major]`)
+const isExplicitVersion = /^\d+\.\d+\.\d+$/.test(bump)
+if (!isExplicitVersion && !['patch', 'minor', 'major'].includes(bump)) {
+  console.error(`Usage: node scripts/bump-version.js [patch|minor|major|x.y.z]`)
   process.exit(1)
 }
 
@@ -18,8 +19,9 @@ const pkgPath = resolve(root, 'package.json')
 const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'))
 const [major, minor, patch] = pkg.version.split('.').map(Number)
 
-const newVersion =
-  bump === 'major'
+const newVersion = isExplicitVersion
+  ? bump
+  : bump === 'major'
     ? `${major + 1}.0.0`
     : bump === 'minor'
       ? `${major}.${minor + 1}.0`
@@ -41,4 +43,6 @@ let cargo = readFileSync(cargoPath, 'utf-8')
 cargo = cargo.replace(/^version = ".*"/m, `version = "${newVersion}"`)
 writeFileSync(cargoPath, cargo)
 
-console.log(`Bumped version: ${pkg.version.replace(newVersion, '')}${major}.${minor}.${patch} → ${newVersion}`)
+console.log(
+  `Bumped version: ${pkg.version.replace(newVersion, '')}${major}.${minor}.${patch} → ${newVersion}`
+)

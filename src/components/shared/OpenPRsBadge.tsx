@@ -2,6 +2,11 @@ import { useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { GitPullRequestArrow } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip'
 import { useGitHubPRs } from '@/services/github'
 import { ghCliQueryKeys } from '@/services/gh-cli'
 import { useUIStore } from '@/store/ui-store'
@@ -47,18 +52,22 @@ export function OpenPRsBadge({
   if (totalCount === 0) return null
 
   return (
-    <button
-      onClick={handleClick}
-      className={cn(
-        'shrink-0 rounded bg-blue-500/10 px-1.5 py-0.5 text-[11px] font-medium text-blue-600 transition-colors hover:bg-blue-500/20',
-        className
-      )}
-      title={`${totalCount} open PR${totalCount > 1 ? 's' : ''}`}
-    >
-      <span className="flex items-center gap-0.5">
-        <GitPullRequestArrow className="h-3 w-3" />
-        {totalCount}
-      </span>
-    </button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          onClick={handleClick}
+          className={cn(
+            'shrink-0 rounded bg-blue-500/10 px-1.5 py-0.5 text-[11px] font-medium text-blue-600 transition-colors hover:bg-blue-500/20',
+            className
+          )}
+        >
+          <span className="flex items-center gap-0.5">
+            <GitPullRequestArrow className="h-3 w-3" />
+            {totalCount}
+          </span>
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>{`${totalCount} open PR${totalCount > 1 ? 's' : ''}`}</TooltipContent>
+    </Tooltip>
   )
 }

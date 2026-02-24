@@ -24,19 +24,21 @@ export function KeybindingHints({ hints, className }: KeybindingHintsProps) {
   return (
     <div
       className={cn(
-        'absolute bottom-4 left-4 z-10 hidden sm:inline-flex w-fit items-center gap-4 rounded border border-border/30 bg-background/60 px-3 py-1.5 backdrop-blur-md',
+        'absolute bottom-4 left-4 z-10 hidden sm:inline-flex w-fit items-end lg:items-center gap-3 lg:gap-4 rounded border border-border/30 bg-background/60 px-3 py-2 lg:py-1.5 backdrop-blur-md',
         className
       )}
     >
-      {hints.map((hint, index) => (
+      {hints.map(hint => (
         <div
-          key={index}
-          className="flex items-center gap-1.5 text-xs text-muted-foreground"
+          key={hint.shortcut}
+          className="flex flex-col lg:flex-row items-center gap-0.5 lg:gap-1.5 text-xs text-muted-foreground"
         >
           <Kbd className="h-5 px-1.5 text-[11px]">
             {formatShortcutDisplay(hint.shortcut)}
           </Kbd>
-          <span>{hint.label}</span>
+          <span className="text-[10px] lg:text-xs leading-none">
+            {hint.label}
+          </span>
         </div>
       ))}
     </div>

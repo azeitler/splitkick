@@ -39,7 +39,7 @@ export function useClaudeCliStatus() {
     queryFn: async (): Promise<ClaudeCliStatus> => {
       if (!isTauri()) {
         logger.debug('Not in Tauri context, returning mock CLI status')
-        return { installed: false, version: null, path: null }
+        return { installed: false, version: null, path: null, supports_auth_command: false }
       }
 
       try {
@@ -51,7 +51,7 @@ export function useClaudeCliStatus() {
         return status
       } catch (error) {
         logger.error('Failed to check Claude CLI status', { error })
-        return { installed: false, version: null, path: null }
+        return { installed: false, version: null, path: null, supports_auth_command: false }
       }
     },
     staleTime: 1000 * 60 * 5, // 5 minutes
@@ -126,9 +126,8 @@ export function useAvailableCliVersions() {
         throw error
       }
     },
-    staleTime: 1000 * 60 * 15, // 15 minutes
+    staleTime: 1000 * 60 * 15, // Cache for 15 minutes to avoid rate limiting
     gcTime: 1000 * 60 * 30, // 30 minutes
-    refetchInterval: 1000 * 60 * 60, // Re-check every hour
   })
 }
 
@@ -260,7 +259,9 @@ export function useClaudeCliSetup() {
     status: status.data,
     isStatusLoading: status.isLoading,
     versions: versions.data ?? [],
-    isVersionsLoading: versions.isLoading,
+    isVersionsLoading: versions.isFetching,
+    isVersionsError: versions.isError,
+    refetchVersions: versions.refetch,
     needsSetup,
     isInstalling: installMutation.isPending,
     installError: installMutation.error,

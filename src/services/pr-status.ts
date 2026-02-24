@@ -47,7 +47,6 @@ export function usePrStatusEvents(
     unlistenPromises.push(
       listen<PrStatusEvent>('pr:status-update', event => {
         const status = event.payload
-        console.debug('[pr-status] Received status update:', status)
 
         // Update the query cache
         queryClient.setQueryData(
@@ -63,7 +62,9 @@ export function usePrStatusEvents(
           status.check_status,
           null, // behind_count - handled by git-status service
           null // ahead_count - handled by git-status service
-        ).catch(err => console.warn('[pr-status] Failed to cache status:', err))
+        ).catch(() => {
+          /* silent */
+        })
 
         // Call the optional callback
         onStatusUpdate?.(status)

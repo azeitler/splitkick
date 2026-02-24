@@ -1,4 +1,11 @@
-import { useCallback, useMemo } from 'react'
+import {
+  useCallback,
+  useMemo,
+  useState,
+  useRef,
+  useEffect,
+  forwardRef,
+} from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   CheckCircle2,
@@ -7,25 +14,41 @@ import {
   MinusCircle,
   Loader2,
   Wand2,
+  RefreshCw,
 } from 'lucide-react'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip'
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
+import { ModalCloseButton } from '@/components/ui/modal-close-button'
 import { toast } from 'sonner'
 import { invoke } from '@/lib/transport'
 import { useUIStore } from '@/store/ui-store'
 import { useChatStore, DEFAULT_MODEL } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
-import { useWorkflowRuns } from '@/services/github'
+import { useWorkflowRuns, githubQueryKeys } from '@/services/github'
 import { projectsQueryKeys } from '@/services/projects'
-import { useCreateSession, useSendMessage, chatQueryKeys } from '@/services/chat'
+import {
+  useCreateSession,
+  useSendMessage,
+  chatQueryKeys,
+} from '@/services/chat'
 import type { WorktreeSessions } from '@/types/chat'
 import { usePreferences } from '@/services/preferences'
 import { openExternal } from '@/lib/platform'
-import { DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT } from '@/types/preferences'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT,
+  DEFAULT_PARALLEL_EXECUTION_PROMPT,
+} from '@/types/preferences'
 import type { WorkflowRun } from '@/types/github'
 import type { Project, Worktree } from '@/types/projects'
 
@@ -70,15 +93,59 @@ function RunStatusIcon({ run }: { run: WorkflowRun }) {
   }
 }
 
+interface WorkflowGroup {
+  workflowName: string
+  totalCount: number
+  failedCount: number
+  latestStatus: 'success' | 'failure' | 'pending'
+}
+
+const SidebarItem = forwardRef<
+  HTMLButtonElement,
+  {
+    label: string
+    count: number
+    latestStatus: 'success' | 'failure' | 'pending'
+    isSelected: boolean
+    isFocused: boolean
+    onClick: () => void
+  }
+>(({ label, count, latestStatus, isSelected, isFocused, onClick }, ref) => {
+  const countBg =
+    latestStatus === 'success'
+      ? 'bg-green-500/10 text-green-600 dark:text-green-400'
+      : latestStatus === 'failure'
+        ? 'bg-red-500/10 text-red-500'
+        : 'bg-muted text-muted-foreground'
+
+  return (
+    <button
+      ref={ref}
+      onClick={onClick}
+      className={`w-full text-left rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent ${isSelected || isFocused ? 'bg-accent font-medium' : ''}`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="truncate">{label}</span>
+        <div className="flex items-center gap-1 shrink-0">
+          <span
+            className={`rounded px-1 py-0.5 text-[10px] font-medium ${countBg}`}
+          >
+            {count}
+          </span>
+        </div>
+      </div>
+    </button>
+  )
+})
+SidebarItem.displayName = 'SidebarItem'
+
 export function WorkflowRunsModal() {
   const queryClient = useQueryClient()
   const createSession = useCreateSession()
   const sendMessage = useSendMessage()
   const { data: preferences } = usePreferences()
 
-  const workflowRunsModalOpen = useUIStore(
-    state => state.workflowRunsModalOpen
-  )
+  const workflowRunsModalOpen = useUIStore(state => state.workflowRunsModalOpen)
   const workflowRunsModalProjectPath = useUIStore(
     state => state.workflowRunsModalProjectPath
   )
@@ -89,12 +156,102 @@ export function WorkflowRunsModal() {
     state => state.setWorkflowRunsModalOpen
   )
 
-  const { data: result, isLoading } = useWorkflowRuns(
+  const {
+    data: result,
+    isLoading,
+    isFetching,
+  } = useWorkflowRuns(
     workflowRunsModalOpen ? workflowRunsModalProjectPath : null,
     workflowRunsModalBranch ?? undefined
   )
 
-  const runs = result?.runs ?? []
+  const handleRefresh = useCallback(() => {
+    if (workflowRunsModalProjectPath) {
+      queryClient.invalidateQueries({
+        queryKey: githubQueryKeys.workflowRuns(
+          workflowRunsModalProjectPath,
+          workflowRunsModalBranch ?? undefined
+        ),
+      })
+    }
+  }, [queryClient, workflowRunsModalProjectPath, workflowRunsModalBranch])
+
+  const runs = useMemo(() => result?.runs ?? [], [result?.runs])
+  const [selectedWorkflow, setSelectedWorkflow] = useState<string | null>(null)
+  const [focusedIndex, setFocusedIndex] = useState(0)
+  const [focusedPane, setFocusedPane] = useState<'sidebar' | 'list'>('sidebar')
+  const [sidebarFocusedIndex, setSidebarFocusedIndex] = useState(0)
+  const listRef = useRef<HTMLDivElement>(null)
+  const sidebarRef = useRef<HTMLDivElement>(null)
+  const itemRefs = useRef<(HTMLDivElement | null)[]>([])
+  const sidebarItemRefs = useRef<(HTMLButtonElement | null)[]>([])
+
+  const groups = useMemo(() => {
+    const groupMap = new Map<string, WorkflowGroup>()
+    for (const run of runs) {
+      const existing = groupMap.get(run.workflowName)
+      if (existing) {
+        existing.totalCount++
+        if (isFailedRun(run)) existing.failedCount++
+      } else {
+        // First occurrence per workflow = latest (runs are sorted by date)
+        const status: WorkflowGroup['latestStatus'] =
+          run.status === 'in_progress' || run.status === 'queued'
+            ? 'pending'
+            : isFailedRun(run)
+              ? 'failure'
+              : run.conclusion === 'success'
+                ? 'success'
+                : 'pending'
+        groupMap.set(run.workflowName, {
+          workflowName: run.workflowName,
+          totalCount: 1,
+          failedCount: isFailedRun(run) ? 1 : 0,
+          latestStatus: status,
+        })
+      }
+    }
+    return Array.from(groupMap.values()).sort((a, b) =>
+      a.workflowName.localeCompare(b.workflowName)
+    )
+  }, [runs])
+
+  const displayedRuns = useMemo(() => {
+    if (!selectedWorkflow) return runs
+    return runs.filter(run => run.workflowName === selectedWorkflow)
+  }, [runs, selectedWorkflow])
+
+  // Reset focus when modal opens or runs change
+  useEffect(() => {
+    if (workflowRunsModalOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSelectedWorkflow(null)
+
+      setFocusedIndex(0)
+
+      setFocusedPane('sidebar')
+
+      setSidebarFocusedIndex(0)
+      requestAnimationFrame(() => sidebarRef.current?.focus())
+    }
+  }, [workflowRunsModalOpen, runs.length])
+
+  // Reset focus when filter changes
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setFocusedIndex(0)
+  }, [selectedWorkflow])
+
+  // Scroll focused items into view
+  useEffect(() => {
+    itemRefs.current[focusedIndex]?.scrollIntoView({ block: 'nearest' })
+  }, [focusedIndex])
+
+  useEffect(() => {
+    sidebarItemRefs.current[sidebarFocusedIndex]?.scrollIntoView({
+      block: 'nearest',
+    })
+  }, [sidebarFocusedIndex])
 
   const title = useMemo(() => {
     if (workflowRunsModalBranch) {
@@ -118,18 +275,11 @@ export function WorkflowRunsModal() {
     async (run: WorkflowRun) => {
       const projectPath = workflowRunsModalProjectPath
 
-      console.warn('[WF-MODAL] Investigate clicked:', {
-        workflowName: run.workflowName,
-        branch: run.headBranch,
-        projectPath,
-      })
-
       // Close modal immediately
       setWorkflowRunsModalOpen(false)
 
       // Build the investigate prompt
-      const customPrompt =
-        preferences?.magic_prompts?.investigate_workflow_run
+      const customPrompt = preferences?.magic_prompts?.investigate_workflow_run
       const template =
         customPrompt && customPrompt.trim()
           ? customPrompt
@@ -144,7 +294,8 @@ export function WorkflowRunsModal() {
         .replace(/\{displayTitle\}/g, run.displayTitle)
 
       const investigateModel =
-        preferences?.magic_prompt_models?.investigate_model ?? DEFAULT_MODEL
+        preferences?.magic_prompt_models?.investigate_workflow_run_model ??
+        DEFAULT_MODEL
 
       // --- Find/create the target worktree ---
       let targetWorktreeId: string | null = null
@@ -157,10 +308,6 @@ export function WorkflowRunsModal() {
           staleTime: 1000 * 60,
         })
         const project = projects?.find(p => p.path === projectPath)
-        console.warn('[WF-MODAL] Project lookup:', {
-          found: !!project,
-          projectId: project?.id,
-        })
 
         if (project) {
           let worktrees: Worktree[] = []
@@ -173,17 +320,11 @@ export function WorkflowRunsModal() {
                 }),
               staleTime: 1000 * 60,
             })
-            console.warn('[WF-MODAL] Worktrees:', worktrees.map(w => ({
-              id: w.id,
-              branch: w.branch,
-              status: w.status,
-            })))
           } catch (err) {
             console.error('[WF-MODAL] Failed to fetch worktrees:', err)
           }
 
-          const isUsable = (w: Worktree) =>
-            !w.status || w.status === 'ready'
+          const isUsable = (w: Worktree) => !w.status || w.status === 'ready'
 
           if (worktrees.length > 0) {
             const matching = worktrees.find(
@@ -203,13 +344,11 @@ export function WorkflowRunsModal() {
 
           // No usable worktrees — create the base session
           if (!targetWorktreeId) {
-            console.warn('[WF-MODAL] Creating base session for project:', project.id)
             try {
               const baseSession = await invoke<Worktree>(
                 'create_base_session',
                 { projectId: project.id }
               )
-              console.warn('[WF-MODAL] Base session created:', baseSession.id)
               queryClient.invalidateQueries({
                 queryKey: projectsQueryKeys.worktrees(project.id),
               })
@@ -241,8 +380,6 @@ export function WorkflowRunsModal() {
       const worktreeId = targetWorktreeId
       const worktreePath = targetWorktreePath
 
-      console.warn('[WF-MODAL] Target worktree:', { worktreeId, worktreePath })
-
       // Switch to the target worktree
       const { setActiveWorktree, setActiveSession } = useChatStore.getState()
       const { selectWorktree } = useProjectsStore.getState()
@@ -250,7 +387,6 @@ export function WorkflowRunsModal() {
       selectWorktree(worktreeId)
 
       const sendInvestigateToSession = (sessionId: string) => {
-        console.warn('[WF-MODAL] Sending investigate to session:', sessionId)
         setActiveSession(worktreeId, sessionId)
 
         const {
@@ -275,8 +411,11 @@ export function WorkflowRunsModal() {
           model: investigateModel,
           executionMode: 'build',
           thinkingLevel: 'think',
-          parallelExecutionPromptEnabled:
-            preferences?.parallel_execution_prompt_enabled ?? false,
+          parallelExecutionPrompt:
+            preferences?.parallel_execution_prompt_enabled
+              ? (preferences.magic_prompts?.parallel_execution ??
+                DEFAULT_PARALLEL_EXECUTION_PROMPT)
+              : undefined,
           chromeEnabled: preferences?.chrome_enabled ?? false,
           aiLanguage: preferences?.ai_language,
         })
@@ -306,19 +445,17 @@ export function WorkflowRunsModal() {
       }
 
       const emptySession = existingSessions?.sessions.find(
-        s => !s.archived_at && (s.message_count === 0 || s.message_count == null)
+        s =>
+          !s.archived_at && (s.message_count === 0 || s.message_count == null)
       )
 
       if (emptySession) {
-        console.warn('[WF-MODAL] Reusing empty session:', emptySession.id)
         sendInvestigateToSession(emptySession.id)
       } else {
-        console.warn('[WF-MODAL] Creating new session in worktree:', worktreeId)
         createSession.mutate(
           { worktreeId, worktreePath },
           {
             onSuccess: session => {
-              console.warn('[WF-MODAL] New session created:', session.id)
               sendInvestigateToSession(session.id)
             },
             onError: error => {
@@ -339,11 +476,126 @@ export function WorkflowRunsModal() {
     ]
   )
 
+  // Sidebar items: "All" + each group
+  const sidebarItems = useMemo(() => {
+    return [null, ...groups.map(g => g.workflowName)] as (string | null)[]
+  }, [groups])
+
+  const handleSidebarSelect = useCallback(
+    (index: number) => {
+      setSelectedWorkflow(sidebarItems[index] ?? null)
+      setSidebarFocusedIndex(index)
+    },
+    [sidebarItems]
+  )
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'r') {
+        e.preventDefault()
+        handleRefresh()
+        return
+      }
+      if (focusedPane === 'sidebar') {
+        switch (e.key) {
+          case 'ArrowDown':
+          case 'j': {
+            e.preventDefault()
+            const next = Math.min(
+              sidebarFocusedIndex + 1,
+              sidebarItems.length - 1
+            )
+            handleSidebarSelect(next)
+            break
+          }
+          case 'ArrowUp':
+          case 'k': {
+            e.preventDefault()
+            const prev = Math.max(sidebarFocusedIndex - 1, 0)
+            handleSidebarSelect(prev)
+            break
+          }
+          case 'ArrowRight':
+          case 'l':
+            e.preventDefault()
+            setFocusedPane('list')
+            setFocusedIndex(0)
+            break
+        }
+      } else {
+        switch (e.key) {
+          case 'ArrowDown':
+          case 'j':
+            e.preventDefault()
+            setFocusedIndex(i => Math.min(i + 1, displayedRuns.length - 1))
+            break
+          case 'ArrowUp':
+          case 'k':
+            e.preventDefault()
+            setFocusedIndex(i => Math.max(i - 1, 0))
+            break
+          case 'ArrowLeft':
+          case 'h':
+            e.preventDefault()
+            setFocusedPane('sidebar')
+            break
+          case 'Enter': {
+            e.preventDefault()
+            const run = displayedRuns[focusedIndex]
+            if (run) handleRunClick(run.url)
+            break
+          }
+          case 'm': {
+            e.preventDefault()
+            const run = displayedRuns[focusedIndex]
+            if (run && isFailedRun(run)) handleInvestigate(run)
+            break
+          }
+        }
+      }
+    },
+    [
+      focusedPane,
+      sidebarItems,
+      sidebarFocusedIndex,
+      handleSidebarSelect,
+      displayedRuns,
+      focusedIndex,
+      handleRunClick,
+      handleInvestigate,
+      handleRefresh,
+    ]
+  )
+
   return (
     <Dialog open={workflowRunsModalOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-h-[80vh] max-w-lg overflow-hidden flex flex-col">
+      <DialogContent
+        showCloseButton={false}
+        className="h-[80vh] sm:max-w-5xl overflow-hidden flex flex-col"
+      >
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
+          <div className="flex items-center gap-2">
+            <DialogTitle>{title}</DialogTitle>
+            <div className="ml-auto flex items-center gap-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 shrink-0 p-0"
+                    onClick={handleRefresh}
+                    disabled={isFetching}
+                  >
+                    <RefreshCw
+                      className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`}
+                    />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Refresh</TooltipContent>
+              </Tooltip>
+              <ModalCloseButton onClick={() => handleOpenChange(false)} />
+            </div>
+          </div>
         </DialogHeader>
 
         {isLoading ? (
@@ -355,46 +607,111 @@ export function WorkflowRunsModal() {
             No workflow runs found
           </div>
         ) : (
-          <div className="overflow-y-auto -mx-6 px-6">
-            <div className="space-y-1 pb-2">
-              {runs.map(run => (
-                <div
-                  key={run.databaseId}
-                  onClick={() => handleRunClick(run.url)}
-                  className="group flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2 py-2 text-left transition-colors hover:bg-accent"
-                >
-                  <RunStatusIcon run={run} />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
-                      <span className="truncate text-sm font-medium">
-                        {run.workflowName}
-                      </span>
-                      <span className="shrink-0 rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
-                        {run.headBranch}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <span className="truncate">{run.displayTitle}</span>
-                      <span className="shrink-0">·</span>
-                      <span className="shrink-0">
-                        {timeAgo(run.createdAt)}
-                      </span>
+          <div
+            ref={sidebarRef}
+            tabIndex={0}
+            onKeyDown={handleKeyDown}
+            className="flex min-h-0 flex-1 gap-4 outline-none"
+          >
+            {/* Sidebar */}
+            <ScrollArea className="w-80 shrink-0">
+              <div className="space-y-0.5 pr-3">
+                {sidebarItems.map((workflowName, idx) => {
+                  const group = workflowName
+                    ? groups.find(g => g.workflowName === workflowName)
+                    : null
+                  return (
+                    <SidebarItem
+                      key={workflowName ?? '__all__'}
+                      ref={el => {
+                        sidebarItemRefs.current[idx] = el
+                      }}
+                      label={workflowName ?? 'All'}
+                      count={group ? group.totalCount : runs.length}
+                      latestStatus={
+                        group
+                          ? group.latestStatus
+                          : (result?.failedCount ?? 0) > 0
+                            ? 'failure'
+                            : runs.length > 0
+                              ? 'success'
+                              : 'pending'
+                      }
+                      isSelected={selectedWorkflow === workflowName}
+                      isFocused={
+                        focusedPane === 'sidebar' && sidebarFocusedIndex === idx
+                      }
+                      onClick={() => {
+                        setSelectedWorkflow(workflowName)
+                        setSidebarFocusedIndex(idx)
+                      }}
+                    />
+                  )
+                })}
+              </div>
+            </ScrollArea>
+
+            {/* Run list */}
+            <div
+              ref={listRef}
+              className="flex-1 min-w-0 overflow-y-auto outline-none"
+            >
+              <div className="space-y-1 pb-2">
+                {displayedRuns.map((run, index) => (
+                  <div
+                    key={run.databaseId}
+                    ref={el => {
+                      itemRefs.current[index] = el
+                    }}
+                    className={`group relative flex cursor-pointer items-center rounded-md px-2 py-2 transition-colors hover:bg-accent ${focusedPane === 'list' && index === focusedIndex ? 'bg-accent' : ''}`}
+                    onClick={() => handleRunClick(run.url)}
+                    onMouseEnter={() => {
+                      setFocusedIndex(index)
+                      setFocusedPane('list')
+                    }}
+                  >
+                    <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                      <RunStatusIcon run={run} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="truncate text-sm font-medium">
+                            {run.workflowName}
+                          </span>
+                          <span className="shrink-0 rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
+                            {run.headBranch}
+                          </span>
+                          {isFailedRun(run) && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  onClick={e => {
+                                    e.stopPropagation()
+                                    handleInvestigate(run)
+                                  }}
+                                  className="shrink-0 inline-flex items-center gap-0.5 rounded bg-black px-1 py-0.5 text-[10px] text-white transition-colors hover:bg-black/80 dark:bg-yellow-500/20 dark:text-yellow-400 dark:hover:bg-yellow-500/30 dark:hover:text-yellow-300"
+                                >
+                                  <Wand2 className="h-3 w-3" />
+                                  <span>M</span>
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                Investigate this failure
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <span className="truncate">{run.displayTitle}</span>
+                          <span className="shrink-0">·</span>
+                          <span className="shrink-0">
+                            {timeAgo(run.createdAt)}
+                          </span>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                  {isFailedRun(run) && (
-                    <button
-                      onClick={e => {
-                        e.stopPropagation()
-                        handleInvestigate(run)
-                      }}
-                      title="Investigate this failure"
-                      className="shrink-0 rounded-md p-1.5 opacity-50 transition-opacity hover:bg-accent-foreground/10 hover:opacity-100"
-                    >
-                      <Wand2 className="h-4 w-4 text-muted-foreground" />
-                    </button>
-                  )}
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
         )}
