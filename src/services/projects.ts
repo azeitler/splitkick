@@ -708,6 +708,8 @@ function handleWorktreeReady(
       setActiveWorktree(worktree.id, worktree.path)
     }
   }
+  // Background worktrees with auto-investigate flags are handled
+  // headlessly by useBackgroundInvestigation hook (no modal needed).
 }
 
 /**

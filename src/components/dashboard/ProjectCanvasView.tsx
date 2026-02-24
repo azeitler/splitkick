@@ -1406,6 +1406,31 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       )
   }, [selectedWorktreeModal])
 
+  // Periodically refresh git status for all worktrees while on the dashboard
+  useEffect(() => {
+    if (!isTauri() || !projectId || readyWorktrees.length === 0) return
+
+    const interval = setInterval(() => {
+      if (document.hasFocus()) {
+        fetchWorktreesStatus(projectId)
+      }
+    }, 60_000) // 1 minute
+
+    return () => clearInterval(interval)
+  }, [projectId, readyWorktrees.length])
+
+  // Refresh git status when session modal closes (user returns to canvas)
+  const prevModalRef = useRef(selectedWorktreeModal)
+  useEffect(() => {
+    const wasOpen = !!prevModalRef.current
+    const isOpen = !!selectedWorktreeModal
+    prevModalRef.current = selectedWorktreeModal
+
+    if (wasOpen && !isOpen && isTauri() && projectId) {
+      fetchWorktreesStatus(projectId)
+    }
+  }, [selectedWorktreeModal, projectId])
+
   // Check if loading
   const isLoading =
     projectsLoading ||

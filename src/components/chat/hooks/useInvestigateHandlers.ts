@@ -9,7 +9,7 @@ import {
 } from '@/services/chat'
 import { projectsQueryKeys } from '@/services/projects'
 import { buildMcpConfigJson } from '@/services/mcp'
-import { supportsAdaptiveThinking } from '@/lib/model-utils'
+import { resolveBackend, supportsAdaptiveThinking } from '@/lib/model-utils'
 import {
   DEFAULT_INVESTIGATE_ISSUE_PROMPT,
   DEFAULT_INVESTIGATE_PR_PROMPT,
@@ -37,12 +37,6 @@ export interface WorkflowRunDetail {
   projectPath?: string | null
 }
 
-// Resolve backend from model string
-function resolveBackend(model: string): 'claude' | 'codex' | 'opencode' {
-  if (model.startsWith('opencode/')) return 'opencode'
-  if (model.startsWith('codex') || model.includes('codex')) return 'codex'
-  return 'claude'
-}
 
 interface UseInvestigateHandlersParams {
   activeSessionId: string | null | undefined
