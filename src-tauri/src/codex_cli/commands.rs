@@ -379,9 +379,9 @@ pub async fn install_codex_cli(app: AppHandle, version: Option<String>) -> Resul
     emit_progress(&app, "extracting", "Extracting archive...", 45);
 
     if is_zip {
-        extract_zip_binary(&archive_content, &binary_path)?;
+        extract_zip_binary(&archive_content, &binary_path, target)?;
     } else {
-        extract_tar_gz_binary(&archive_content, &binary_path)?;
+        extract_tar_gz_binary(&archive_content, &binary_path, target)?;
     }
 
     // Emit progress: installing
@@ -433,6 +433,7 @@ pub async fn install_codex_cli(app: AppHandle, version: Option<String>) -> Resul
 fn extract_tar_gz_binary(
     archive_content: &[u8],
     binary_path: &std::path::Path,
+    target: &str,
 ) -> Result<(), String> {
     use flate2::read::GzDecoder;
     use std::io::{Cursor, Read};
@@ -442,7 +443,10 @@ fn extract_tar_gz_binary(
     let decoder = GzDecoder::new(cursor);
     let mut archive = Archive::new(decoder);
 
-    // The archive contains a single binary (e.g. "codex-aarch64-apple-darwin")
+    // Match only the main codex binary (e.g. "codex-aarch64-apple-darwin"),
+    // not helper binaries like codex-command-runner or codex-windows-sandbox-setup.
+    let expected_name = format!("codex-{target}");
+
     for entry in archive
         .entries()
         .map_err(|e| format!("Failed to read tar entries: {e}"))?
@@ -452,9 +456,8 @@ fn extract_tar_gz_binary(
             .path()
             .map_err(|e| format!("Failed to get entry path: {e}"))?;
 
-        // Look for any file starting with "codex" (excluding signatures)
         if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-            if name.starts_with("codex") && !name.ends_with(".sig") {
+            if name == expected_name {
                 let mut content = Vec::new();
                 entry
                     .read_to_end(&mut content)
@@ -468,16 +471,28 @@ fn extract_tar_gz_binary(
         }
     }
 
-    Err("Codex binary not found in tar.gz archive".to_string())
+    Err(format!(
+        "Codex binary '{expected_name}' not found in tar.gz archive"
+    ))
 }
 
 /// Extract the codex binary from a zip archive (Windows)
-fn extract_zip_binary(archive_content: &[u8], binary_path: &std::path::Path) -> Result<(), String> {
+///
+/// The Windows zip may contain helper binaries (codex-command-runner.exe,
+/// codex-windows-sandbox-setup.exe) bundled for WinGet. We must extract only
+/// the main codex binary matching the expected target name.
+fn extract_zip_binary(
+    archive_content: &[u8],
+    binary_path: &std::path::Path,
+    target: &str,
+) -> Result<(), String> {
     use std::io::{Cursor, Read};
 
     let cursor = Cursor::new(archive_content);
     let mut archive =
         zip::ZipArchive::new(cursor).map_err(|e| format!("Failed to open zip archive: {e}"))?;
+
+    let expected_name = format!("codex-{target}.exe");
 
     for i in 0..archive.len() {
         let mut file = archive
@@ -489,7 +504,7 @@ fn extract_zip_binary(archive_content: &[u8], binary_path: &std::path::Path) -> 
                 .and_then(|n| n.to_str())
                 .map(|s| s.to_string())
         }) {
-            if name.starts_with("codex") && !name.ends_with(".sig") {
+            if name == expected_name {
                 let mut content = Vec::new();
                 file.read_to_end(&mut content)
                     .map_err(|e| format!("Failed to read binary from archive: {e}"))?;
@@ -502,5 +517,7 @@ fn extract_zip_binary(archive_content: &[u8], binary_path: &std::path::Path) -> 
         }
     }
 
-    Err("Codex binary not found in zip archive".to_string())
+    Err(format!(
+        "Codex binary '{expected_name}' not found in zip archive"
+    ))
 }
