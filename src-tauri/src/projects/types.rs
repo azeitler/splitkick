@@ -37,6 +37,8 @@ pub struct JeanConfig {
 pub struct JeanScripts {
     /// Script to run after worktree creation
     pub setup: Option<String>,
+    /// Script to run before worktree deletion
+    pub teardown: Option<String>,
     /// Script to run the dev environment
     pub run: Option<String>,
 }
@@ -424,6 +426,9 @@ pub struct WorktreeDeletedEvent {
     pub id: String,
     /// The project ID
     pub project_id: String,
+    /// Output from the teardown script, if one was configured and ran successfully
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub teardown_output: Option<String>,
 }
 
 /// Event emitted when worktree deletion fails

@@ -21,6 +21,7 @@ import { GitInitModal } from '@/components/projects/GitInitModal'
 import { QuitConfirmationDialog } from './QuitConfirmationDialog'
 import { CloseWorktreeDialog } from '@/components/chat/CloseWorktreeDialog'
 import { BranchConflictDialog } from '@/components/worktree/BranchConflictDialog'
+import { TeardownOutputDialog } from '@/components/worktree/TeardownOutputDialog'
 
 // Lazy-loaded heavy modals (code splitting)
 const PreferencesDialog = lazy(() =>
@@ -321,6 +322,7 @@ export function MainWindow() {
       />
       <QuitConfirmationDialog />
       <BranchConflictDialog />
+      <TeardownOutputDialog />
       <Toaster
         position="bottom-right"
         offset="52px"
