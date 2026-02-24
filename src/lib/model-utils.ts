@@ -13,6 +13,15 @@ import { compareVersions } from './version-utils'
 const ADAPTIVE_THINKING_MIN_CLI_VERSION = '2.1.32'
 
 /**
+ * Resolve which CLI backend to use based on the model string.
+ */
+export function resolveBackend(model: string): 'claude' | 'codex' | 'opencode' {
+  if (model.startsWith('opencode/')) return 'opencode'
+  if (model.startsWith('codex') || model.includes('codex')) return 'codex'
+  return 'claude'
+}
+
+/**
  * Check if the current model + CLI version combination supports
  * adaptive thinking (effort parameter) instead of traditional thinking levels.
  *

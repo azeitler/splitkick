@@ -2,6 +2,7 @@ import { useEffect, useRef, type RefObject } from 'react'
 import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 import { useChatStore } from '@/store/chat-store'
+import { useUIStore } from '@/store/ui-store'
 import { useTerminalStore } from '@/store/terminal-store'
 import { cancelChatMessage } from '@/services/chat'
 import { isNativeApp } from '@/lib/environment'
@@ -303,26 +304,39 @@ export function useChatWindowEvents({
       logger.debug('cancel-prompt event received', {
         wtId,
         activeSessionId: cancelContextRef.current.activeSessionId,
+        isModal,
       })
       if (!wtId) {
         logger.debug('cancel-prompt: no worktreeId, aborting')
         return
       }
 
-      const isCanvas = state.viewingCanvasTab[wtId] ?? true
-      const canvasSession = state.canvasSelectedSessionIds[wtId] ?? null
+      // Non-modal: skip when session modal is open (modal's handler takes priority)
+      if (!isModal && useUIStore.getState().sessionChatModalOpen) {
+        logger.debug('cancel-prompt: non-modal skipping, session modal is open')
+        return
+      }
+
       const activeSession =
         cancelContextRef.current.activeSessionId ??
         state.activeSessionIds[wtId] ??
         null
 
-      const sessionToCancel =
-        isCanvas && canvasSession ? canvasSession : activeSession
+      let sessionToCancel: string | null
+      if (isModal) {
+        // Modal: always use active session (what the user is looking at)
+        sessionToCancel = activeSession
+      } else {
+        // Canvas: use canvas-selected session; Chat tab: use active session
+        const isCanvas = state.viewingCanvasTab[wtId] ?? true
+        const canvasSession = state.canvasSelectedSessionIds[wtId] ?? null
+        sessionToCancel = isCanvas && canvasSession ? canvasSession : activeSession
+      }
+
       if (!sessionToCancel) {
         logger.debug('cancel-prompt: no sessionToCancel', {
-          isCanvas,
-          canvasSession,
           activeSession,
+          isModal,
         })
         return
       }
@@ -341,7 +355,7 @@ export function useChatWindowEvents({
     }
     window.addEventListener('cancel-prompt', handler)
     return () => window.removeEventListener('cancel-prompt', handler)
-  }, [])
+  }, []) // isModal is constant for the lifetime of ChatWindow
 
   // Context commands (save/load/run-script)
   useEffect(() => {

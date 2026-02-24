@@ -378,6 +378,24 @@ pub async fn install_codex_cli(app: AppHandle, version: Option<String>) -> Resul
     // Emit progress: extracting
     emit_progress(&app, "extracting", "Extracting archive...", 45);
 
+    // On Windows, a running codex.exe holds a file lock that prevents overwriting.
+    // Rename the old binary out of the way before extracting the new one.
+    #[cfg(windows)]
+    if binary_path.exists() {
+        let old_path = binary_path.with_extension("exe.old");
+        let _ = std::fs::remove_file(&old_path); // Clean up previous .old if any
+        if let Err(e) = std::fs::rename(&binary_path, &old_path) {
+            log::warn!("Could not rename existing binary (may be unlocked): {e}");
+            // Try removing directly as a fallback
+            if let Err(e2) = std::fs::remove_file(&binary_path) {
+                return Err(format!(
+                    "Cannot replace existing Codex CLI binary — it may be in use by another process. \
+                     Please close any running Codex sessions and try again. (rename: {e}, remove: {e2})"
+                ));
+            }
+        }
+    }
+
     if is_zip {
         extract_zip_binary(&archive_content, &binary_path, target)?;
     } else {
@@ -420,6 +438,13 @@ pub async fn install_codex_cli(app: AppHandle, version: Option<String>) -> Resul
     if !version_output.status.success() {
         let stderr = String::from_utf8_lossy(&version_output.stderr);
         return Err(format!("Codex CLI verification failed: {stderr}"));
+    }
+
+    // Clean up stale .old binary from Windows rename-on-reinstall
+    #[cfg(windows)]
+    {
+        let old_path = binary_path.with_extension("exe.old");
+        let _ = std::fs::remove_file(&old_path);
     }
 
     // Emit progress: complete

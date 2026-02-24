@@ -708,6 +708,8 @@ function handleWorktreeReady(
       setActiveWorktree(worktree.id, worktree.path)
     }
   }
+  // Background worktrees with auto-investigate flags are handled
+  // headlessly by useBackgroundInvestigation hook (no modal needed).
 }
 
 /**
@@ -1027,6 +1029,20 @@ export function useWorktreeEvents() {
           )
         }
       )
+    )
+
+    // =========================================================================
+    // Generic worktree change notification (for backend-created worktrees)
+    // =========================================================================
+
+    unlistenPromises.push(
+      listen<{ project_id: string }>('worktrees:changed', event => {
+        const { project_id } = event.payload
+        logger.info('Worktrees changed (backend notification)', { project_id })
+        queryClient.invalidateQueries({
+          queryKey: projectsQueryKeys.worktrees(project_id),
+        })
+      })
     )
 
     // Listen for path exists conflicts — show error toast instead of auto-creating

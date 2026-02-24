@@ -7,6 +7,7 @@ import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 import { chatQueryKeys } from '@/services/chat'
 import { isTauri, saveWorktreePr, projectsQueryKeys } from '@/services/projects'
+import type { Project, Worktree } from '@/types/projects'
 import { preferencesQueryKeys } from '@/services/preferences'
 import type { AppPreferences, NotificationSound } from '@/types/preferences'
 import { triggerImmediateGitPoll } from '@/services/git-status'
@@ -33,6 +34,52 @@ import type {
 
 interface UseStreamingEventsParams {
   queryClient: QueryClient
+}
+
+/**
+ * Look up project/worktree/session names from query cache for display in toasts.
+ * Returns a formatted label like "project / worktree / session" with graceful fallback.
+ */
+function lookupSessionLabel(
+  queryClient: QueryClient,
+  sessionId: string,
+  worktreeId: string
+): string {
+  let projectName: string | undefined
+  let worktreeName: string | undefined
+  let sessionName: string | undefined
+
+  // Look up session name from sessions cache
+  const sessionsData = queryClient.getQueriesData<WorktreeSessions>({
+    queryKey: ['chat', 'sessions'],
+  })
+  for (const [, data] of sessionsData) {
+    const match = data?.sessions?.find(s => s.id === sessionId)
+    if (match) {
+      sessionName = match.name
+      break
+    }
+  }
+
+  // Look up worktree name and project name from worktrees cache
+  const worktreesData = queryClient.getQueriesData<Worktree[]>({
+    queryKey: [...projectsQueryKeys.all, 'worktrees'],
+  })
+  for (const [, worktrees] of worktreesData) {
+    const match = worktrees?.find(w => w.id === worktreeId)
+    if (match) {
+      worktreeName = match.name
+      // Look up project name
+      const projects = queryClient.getQueryData<Project[]>(
+        projectsQueryKeys.list()
+      )
+      projectName = projects?.find(p => p.id === match.project_id)?.name
+      break
+    }
+  }
+
+  const parts = [projectName, worktreeName, sessionName].filter(Boolean)
+  return parts.length > 0 ? parts.join(' / ') : ''
 }
 
 /**
@@ -738,7 +785,11 @@ export default function useStreamingEvents({
         // - undo_send from backend, OR
         // - No content streamed yet (cancelled before any response)
         // BUT: Don't restore if there are queued messages (user chose "Skip to Next")
-        const hasContent = content || (toolCalls && toolCalls.length > 0)
+        // Require substantial text (>50 chars) to count as meaningful partial response
+        // when there are no tool calls — short filler like "Planning." isn't worth preserving
+        const hasToolCalls = toolCalls && toolCalls.length > 0
+        const hasSubstantialText = !!content && content.trim().length > 50
+        const hasContent = hasToolCalls || hasSubstantialText
         const hasQueuedMessages =
           (useChatStore.getState().messageQueues[session_id] ?? []).length > 0
         const shouldRestoreMessage =
@@ -875,37 +926,25 @@ export default function useStreamingEvents({
     const unlistenCompacting = listen<CompactingEvent>(
       'chat:compacting',
       event => {
-        const { session_id } = event.payload
+        const { session_id, worktree_id } = event.payload
         const { setCompacting } = useChatStore.getState()
         setCompacting(session_id, true)
-        toast.info('Compacting context...')
+        const label = lookupSessionLabel(queryClient, session_id, worktree_id)
+        toast.info(label ? `Compacting context: ${label}...` : 'Compacting context...')
       }
     )
 
     const unlistenCompacted = listen<CompactedEvent>(
       'chat:compacted',
       event => {
-        const { session_id, metadata } = event.payload
+        const { session_id, worktree_id, metadata } = event.payload
         const { setLastCompaction, setCompacting } = useChatStore.getState()
         setCompacting(session_id, false)
         setLastCompaction(session_id, metadata.trigger)
 
-        // Look up session name from query cache
-        let sessionName: string | undefined
-        const queriesData = queryClient.getQueriesData<WorktreeSessions>({
-          queryKey: ['chat', 'sessions'],
-        })
-        for (const [, data] of queriesData) {
-          const match = data?.sessions?.find(s => s.id === session_id)
-          if (match) {
-            sessionName = match.name
-            break
-          }
-        }
-        const label = sessionName ? ` (${sessionName})` : ''
-        toast.info(
-          `Context ${metadata.trigger === 'auto' ? 'auto-' : ''}compacted${label}`
-        )
+        const label = lookupSessionLabel(queryClient, session_id, worktree_id)
+        const prefix = `Context ${metadata.trigger === 'auto' ? 'auto-' : ''}compacted`
+        toast.info(label ? `${prefix}: ${label}` : prefix)
       }
     )
 

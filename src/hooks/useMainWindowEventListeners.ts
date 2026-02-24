@@ -371,15 +371,25 @@ export function useMainWindowEventListeners() {
         return
       if (useProjectsStore.getState().projectSettingsDialogOpen) return
 
-      // CMD/Ctrl+1–9: switch to session tab by index (hardcoded, like browser tabs)
+      // CMD/Ctrl+1–9: switch session tab (in modal) or open worktree by index (on dashboard)
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
         const digit = parseInt(e.key, 10)
         if (digit >= 1 && digit <= 9) {
           e.preventDefault()
           e.stopPropagation()
-          window.dispatchEvent(
-            new CustomEvent('switch-session', { detail: { index: digit - 1 } })
-          )
+          if (useUIStore.getState().sessionChatModalOpen) {
+            window.dispatchEvent(
+              new CustomEvent('switch-session', {
+                detail: { index: digit - 1 },
+              })
+            )
+          } else {
+            window.dispatchEvent(
+              new CustomEvent('open-worktree-by-index', {
+                detail: { index: digit - 1 },
+              })
+            )
+          }
           return
         }
       }

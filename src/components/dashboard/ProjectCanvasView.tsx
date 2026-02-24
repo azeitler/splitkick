@@ -195,6 +195,7 @@ function WorktreeSectionHeader({
   cards,
   showDetails = false,
   isSelected,
+  shortcutNumber,
   onRowClick,
 }: {
   worktree: Worktree
@@ -203,6 +204,7 @@ function WorktreeSectionHeader({
   cards?: SessionCardData[]
   showDetails?: boolean
   isSelected?: boolean
+  shortcutNumber?: number
   onRowClick?: () => void
 }) {
   const isBase = isBaseSession(worktree)
@@ -314,6 +316,11 @@ function WorktreeSectionHeader({
 
         <div className={cn(showDetails ? 'flex flex-col gap-1.5' : 'contents')}>
           <div className="flex min-w-0 items-center gap-2">
+            {shortcutNumber !== undefined && (
+              <kbd className="shrink-0 inline-flex h-5 min-w-5 items-center justify-center rounded border border-border/50 bg-muted/50 px-1 text-[10px] font-mono text-muted-foreground">
+                ⌘{shortcutNumber}
+              </kbd>
+            )}
             {hasRunningTerminal && (
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -1065,6 +1072,35 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     }
   }, [selectedIndex, syncSelectionToStore])
 
+  // CMD+1–9: open worktree by index (dispatched by centralized keybinding system)
+  useEffect(() => {
+    const handleOpenWorktreeByIndex = (e: Event) => {
+      const index = (e as CustomEvent).detail?.index as number
+      if (typeof index !== 'number') return
+      // Find the nth non-pending worktree section
+      let count = 0
+      for (const section of worktreeSections) {
+        if (section.isPending) continue
+        if (count === index) {
+          const flatIndex = flatCards.findIndex(
+            fc => fc.worktreeId === section.worktree.id
+          )
+          if (flatIndex >= 0) handleSelectedIndexChange(flatIndex)
+          handleWorktreeClick(section.worktree.id, section.worktree.path)
+          return
+        }
+        count++
+      }
+    }
+
+    window.addEventListener('open-worktree-by-index', handleOpenWorktreeByIndex)
+    return () =>
+      window.removeEventListener(
+        'open-worktree-by-index',
+        handleOpenWorktreeByIndex
+      )
+  }, [worktreeSections, flatCards, handleWorktreeClick, handleSelectedIndexChange])
+
   // Cancel running session via cancel-prompt event (dispatched by centralized keybinding system)
   useEffect(() => {
     const handleCancelPrompt = () => {
@@ -1406,6 +1442,31 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       )
   }, [selectedWorktreeModal])
 
+  // Periodically refresh git status for all worktrees while on the dashboard
+  useEffect(() => {
+    if (!isTauri() || !projectId || readyWorktrees.length === 0) return
+
+    const interval = setInterval(() => {
+      if (document.hasFocus()) {
+        fetchWorktreesStatus(projectId)
+      }
+    }, 60_000) // 1 minute
+
+    return () => clearInterval(interval)
+  }, [projectId, readyWorktrees.length])
+
+  // Refresh git status when session modal closes (user returns to canvas)
+  const prevModalRef = useRef(selectedWorktreeModal)
+  useEffect(() => {
+    const wasOpen = !!prevModalRef.current
+    const isOpen = !!selectedWorktreeModal
+    prevModalRef.current = selectedWorktreeModal
+
+    if (wasOpen && !isOpen && isTauri() && projectId) {
+      fetchWorktreesStatus(projectId)
+    }
+  }, [selectedWorktreeModal, projectId])
+
   // Check if loading
   const isLoading =
     projectsLoading ||
@@ -1554,44 +1615,52 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
           ) : isListLayout ? (
             /* List view: one compact row per worktree */
             <div className="flex flex-col gap-1">
-              {worktreeSections.map(section => {
-                const currentIndex = cardIndex++
-                return section.isPending ? (
-                  <WorktreeSetupCard
-                    key={section.worktree.id}
-                    ref={el => {
-                      cardRefs.current[currentIndex] = el
-                    }}
-                    worktree={section.worktree}
-                    layout="list"
-                    isSelected={selectedIndex === currentIndex}
-                    onSelect={() => setSelectedIndex(currentIndex)}
-                  />
-                ) : (
-                  <div
-                    key={section.worktree.id}
-                    ref={el => {
-                      cardRefs.current[currentIndex] = el
-                    }}
-                  >
-                    <WorktreeSectionHeader
-                      worktree={section.worktree}
-                      projectId={projectId}
-                      defaultBranch={project.default_branch}
-                      cards={section.cards}
-                      showDetails={true}
-                      isSelected={selectedIndex === currentIndex}
-                      onRowClick={() => {
-                        setSelectedIndex(currentIndex)
-                        handleWorktreeClick(
-                          section.worktree.id,
-                          section.worktree.path
-                        )
+              {(() => {
+                let shortcutNum = 0
+                return worktreeSections.map(section => {
+                  const currentIndex = cardIndex++
+                  if (section.isPending) {
+                    return (
+                      <WorktreeSetupCard
+                        key={section.worktree.id}
+                        ref={el => {
+                          cardRefs.current[currentIndex] = el
+                        }}
+                        worktree={section.worktree}
+                        layout="list"
+                        isSelected={selectedIndex === currentIndex}
+                        onSelect={() => setSelectedIndex(currentIndex)}
+                      />
+                    )
+                  }
+                  const thisShortcut = ++shortcutNum <= 9 ? shortcutNum : undefined
+                  return (
+                    <div
+                      key={section.worktree.id}
+                      ref={el => {
+                        cardRefs.current[currentIndex] = el
                       }}
-                    />
-                  </div>
-                )
-              })}
+                    >
+                      <WorktreeSectionHeader
+                        worktree={section.worktree}
+                        projectId={projectId}
+                        defaultBranch={project.default_branch}
+                        cards={section.cards}
+                        showDetails={true}
+                        isSelected={selectedIndex === currentIndex}
+                        shortcutNumber={thisShortcut}
+                        onRowClick={() => {
+                          setSelectedIndex(currentIndex)
+                          handleWorktreeClick(
+                            section.worktree.id,
+                            section.worktree.path
+                          )
+                        }}
+                      />
+                    </div>
+                  )
+                })
+              })()}
             </div>
           ) : (
             /* Grid view: full card rendering */

@@ -586,8 +586,9 @@ pub fn parse_run_to_message(lines: &[String], run: &RunEntry) -> Result<ChatMess
     // Filter out blocking tool calls (AskUserQuestion/ExitPlanMode) that received
     // error responses. When Jean denies a blocking tool, it sends back an error
     // tool_result. Claude may retry the same tool multiple times, producing duplicate
-    // question/plan UIs on recovery. Remove all errored blocking tool calls and their
-    // corresponding content blocks.
+    // question/plan UIs on recovery. Only filter errored blocking tools when
+    // non-errored blocking tools of the same type remain — never remove ALL blocking
+    // tools, as the last one is the legitimate pending one.
     if !errored_tool_ids.is_empty() {
         let errored_blocking: std::collections::HashSet<String> = tool_calls
             .iter()
@@ -599,14 +600,22 @@ pub fn parse_run_to_message(lines: &[String], run: &RunEntry) -> Result<ChatMess
             .collect();
 
         if !errored_blocking.is_empty() {
-            tool_calls.retain(|tc| !errored_blocking.contains(&tc.id));
-            content_blocks.retain(|cb| {
-                if let ContentBlock::ToolUse { tool_call_id } = cb {
-                    !errored_blocking.contains(tool_call_id)
-                } else {
-                    true
-                }
+            // Only filter if non-errored blocking tools remain — never remove all
+            let has_non_errored_blocking = tool_calls.iter().any(|tc| {
+                (tc.name == "AskUserQuestion" || tc.name == "ExitPlanMode")
+                    && !errored_tool_ids.contains(&tc.id)
             });
+
+            if has_non_errored_blocking {
+                tool_calls.retain(|tc| !errored_blocking.contains(&tc.id));
+                content_blocks.retain(|cb| {
+                    if let ContentBlock::ToolUse { tool_call_id } = cb {
+                        !errored_blocking.contains(tool_call_id)
+                    } else {
+                        true
+                    }
+                });
+            }
         }
     }
 
