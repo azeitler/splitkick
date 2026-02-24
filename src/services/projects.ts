@@ -919,7 +919,7 @@ export function useWorktreeEvents() {
     // Listen for successful deletion
     unlistenPromises.push(
       listen<WorktreeDeletedEvent>('worktree:deleted', event => {
-        const { id, project_id } = event.payload
+        const { id, project_id, teardown_output } = event.payload
         logger.info('Worktree deleted (background complete)', { id })
 
         // Remove worktree from cache
@@ -943,6 +943,25 @@ export function useWorktreeEvents() {
         if (selectedWorktreeId === id) {
           selectWorktree(null)
         }
+
+        // Show teardown output if a teardown script ran
+        if (teardown_output) {
+          toast.success('Teardown completed', {
+            description:
+              teardown_output.length > 200
+                ? teardown_output.slice(0, 200) + '…'
+                : teardown_output,
+            action: {
+              label: 'View Output',
+              onClick: () =>
+                window.dispatchEvent(
+                  new CustomEvent('show-teardown-output', {
+                    detail: { output: teardown_output, success: true },
+                  })
+                ),
+            },
+          })
+        }
       })
     )
 
@@ -963,7 +982,19 @@ export function useWorktreeEvents() {
           }
         )
 
-        toast.error('Failed to delete worktree', { description: error })
+        toast.error('Failed to delete worktree', {
+          description: error,
+          duration: Infinity,
+          action: {
+            label: 'View Output',
+            onClick: () =>
+              window.dispatchEvent(
+                new CustomEvent('show-teardown-output', {
+                  detail: { output: error, success: false },
+                })
+              ),
+          },
+        })
       })
     )
 
@@ -1817,6 +1848,7 @@ export function useOpenWorktreeInEditor() {
 export interface JeanConfig {
   scripts: {
     setup: string | null
+    teardown: string | null
     run: string | null
   }
 }

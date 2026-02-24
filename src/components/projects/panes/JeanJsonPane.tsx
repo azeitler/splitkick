@@ -29,6 +29,7 @@ export function JeanJsonPane({
   const saveJeanConfig = useSaveJeanConfig()
 
   const [localSetup, setLocalSetup] = useState('')
+  const [localTeardown, setLocalTeardown] = useState('')
   const [localRun, setLocalRun] = useState('')
   const [synced, setSynced] = useState(false)
 
@@ -37,7 +38,7 @@ export function JeanJsonPane({
     if (jeanConfig) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setLocalSetup(jeanConfig.scripts.setup ?? '')
-
+      setLocalTeardown(jeanConfig.scripts.teardown ?? '')
       setLocalRun(jeanConfig.scripts.run ?? '')
 
       setSynced(true)
@@ -46,8 +47,11 @@ export function JeanJsonPane({
 
   const hasChanges = synced
     ? localSetup !== (jeanConfig?.scripts.setup ?? '') ||
+      localTeardown !== (jeanConfig?.scripts.teardown ?? '') ||
       localRun !== (jeanConfig?.scripts.run ?? '')
-    : localSetup.trim() !== '' || localRun.trim() !== ''
+    : localSetup.trim() !== '' ||
+      localTeardown.trim() !== '' ||
+      localRun.trim() !== ''
 
   const handleSave = useCallback(() => {
     saveJeanConfig.mutate({
@@ -55,18 +59,19 @@ export function JeanJsonPane({
       config: {
         scripts: {
           setup: localSetup.trim() || null,
+          teardown: localTeardown.trim() || null,
           run: localRun.trim() || null,
         },
       },
     })
-  }, [localSetup, localRun, projectPath, saveJeanConfig])
+  }, [localSetup, localTeardown, localRun, projectPath, saveJeanConfig])
 
   return (
     <div className="space-y-6">
       <SettingsSection title="Automation Scripts">
         <p className="text-xs text-muted-foreground">
-          Scripts from jean.json — setup runs after worktree creation, run
-          launches via the run command
+          Scripts from jean.json — setup runs after worktree creation, teardown
+          before deletion, run launches via the run command
         </p>
         <div className="space-y-4">
           <div className="space-y-1.5">
@@ -85,6 +90,21 @@ export function JeanJsonPane({
             </p>
           </div>
           <div className="space-y-1.5">
+            <Label htmlFor="teardown-script" className="text-sm">
+              Teardown
+            </Label>
+            <Input
+              id="teardown-script"
+              placeholder="e.g. docker compose down"
+              value={localTeardown}
+              onChange={e => setLocalTeardown(e.target.value)}
+              className="font-mono text-sm"
+            />
+            <p className="text-xs text-muted-foreground">
+              Runs automatically before a worktree is deleted/archived
+            </p>
+          </div>
+          <div className="space-y-1.5">
             <Label htmlFor="run-script" className="text-sm">
               Run
             </Label>
@@ -97,6 +117,20 @@ export function JeanJsonPane({
             />
             <p className="text-xs text-muted-foreground">
               Launches via the run command in the toolbar
+            </p>
+          </div>
+          <div className="space-y-0.5 text-xs text-muted-foreground">
+            <p>
+              <code className="text-foreground/80">$JEAN_WORKSPACE_PATH</code>
+              {' — worktree directory'}
+            </p>
+            <p>
+              <code className="text-foreground/80">$JEAN_ROOT_PATH</code>
+              {' — repository root'}
+            </p>
+            <p>
+              <code className="text-foreground/80">$JEAN_BRANCH</code>
+              {' — branch name'}
             </p>
           </div>
           <Button

@@ -165,6 +165,7 @@ export interface WorktreeDeletingEvent {
 export interface WorktreeDeletedEvent {
   id: string
   project_id: string
+  teardown_output?: string
 }
 
 /** Event payload when worktree deletion fails */

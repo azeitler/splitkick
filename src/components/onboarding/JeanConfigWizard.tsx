@@ -34,6 +34,7 @@ function JeanConfigWizardContent() {
   const saveConfig = useSaveJeanConfig()
 
   const [setupScript, setSetupScript] = useState('')
+  const [teardownScript, setTeardownScript] = useState('')
   const [runScript, setRunScript] = useState('')
 
   const markSeen = () => {
@@ -53,6 +54,7 @@ function JeanConfigWizardContent() {
       config: {
         scripts: {
           setup: setupScript.trim() || null,
+          teardown: teardownScript.trim() || null,
           run: runScript.trim() || null,
         },
       },
@@ -67,7 +69,7 @@ function JeanConfigWizardContent() {
     closeJeanConfigWizard()
   }
 
-  const hasContent = setupScript.trim() || runScript.trim()
+  const hasContent = setupScript.trim() || teardownScript.trim() || runScript.trim()
 
   return (
     <Dialog
@@ -102,10 +104,28 @@ function JeanConfigWizardContent() {
                   is created (e.g. installing dependencies)
                 </li>
                 <li>
+                  <strong>Teardown</strong> runs before a worktree is deleted/archived
+                  (e.g. stopping services)
+                </li>
+                <li>
                   <strong>Run</strong> launches your dev server via the run
                   command
                 </li>
               </ul>
+              <div className="space-y-0.5 pt-1">
+                <p>
+                  <code className="text-foreground/80">$JEAN_WORKSPACE_PATH</code>
+                  {' — worktree directory'}
+                </p>
+                <p>
+                  <code className="text-foreground/80">$JEAN_ROOT_PATH</code>
+                  {' — repository root'}
+                </p>
+                <p>
+                  <code className="text-foreground/80">$JEAN_BRANCH</code>
+                  {' — branch name'}
+                </p>
+              </div>
             </div>
           </div>
 
@@ -124,6 +144,23 @@ function JeanConfigWizardContent() {
             />
             <p className="text-xs text-muted-foreground">
               Runs after each new worktree is created
+            </p>
+          </div>
+
+          {/* Teardown script */}
+          <div className="space-y-1.5">
+            <Label htmlFor="wizard-teardown-script" className="text-sm">
+              Teardown Script
+            </Label>
+            <Input
+              id="wizard-teardown-script"
+              placeholder="e.g. docker compose down"
+              value={teardownScript}
+              onChange={e => setTeardownScript(e.target.value)}
+              className="font-mono text-sm"
+            />
+            <p className="text-xs text-muted-foreground">
+              Runs before each worktree is deleted
             </p>
           </div>
 

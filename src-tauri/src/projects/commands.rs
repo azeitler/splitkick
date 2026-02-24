@@ -2010,8 +2010,10 @@ pub async fn delete_worktree(app: AppHandle, worktree_id: String) -> Result<(), 
 
     log::trace!("Found project: id={}, path={}", project.id, project.path);
 
-    // Read jean.json teardown script before removing from storage
-    let teardown_script = git::read_jean_config(&project.path)
+    // Read jean.json teardown script — try worktree first, fall back to project root
+    // (worktree has jean.json if committed; project root always has it if saved via UI)
+    let teardown_script = git::read_jean_config(&worktree.path)
+        .or_else(|| git::read_jean_config(&project.path))
         .and_then(|config| config.scripts.teardown);
 
     // Remove from storage SYNCHRONOUSLY to avoid race conditions with other operations
@@ -2044,39 +2046,50 @@ pub async fn delete_worktree(app: AppHandle, worktree_id: String) -> Result<(), 
     // Storage is already updated, so failures require re-adding the worktree
     thread::spawn(move || {
         // Run teardown script before git operations (directory still exists)
+        let mut teardown_output: Option<String> = None;
         if let Some(ref script) = teardown_script {
             log::trace!("Background: Running teardown script for {worktree_name}");
-            if let Err(e) =
-                git::run_teardown_script(&worktree_path, &project_path, &worktree_branch, script)
+            match git::run_teardown_script(&worktree_path, &project_path, &worktree_branch, script)
             {
-                log::error!("Background: Teardown script failed: {e}");
+                Ok(output) => {
+                    if !output.is_empty() {
+                        teardown_output = Some(output);
+                    }
+                    // NOTE: Teardown side effects (e.g. docker compose down) are not reversible.
+                    // If subsequent git operations fail, the teardown has already run.
+                    log::trace!("Background: Teardown script completed for {worktree_name}");
+                }
+                Err(e) => {
+                    log::error!("Background: Teardown script failed: {e}");
 
-                // Re-add worktree to storage since teardown blocked deletion
-                match load_projects_data(&app_clone) {
-                    Ok(mut data) => {
-                        data.add_worktree(worktree_for_restore);
-                        if let Err(save_err) = save_projects_data(&app_clone, &data) {
-                            log::error!("Failed to restore worktree in storage: {save_err}");
+                    // Re-add worktree to storage since teardown blocked deletion
+                    match load_projects_data(&app_clone) {
+                        Ok(mut data) => {
+                            data.add_worktree(worktree_for_restore);
+                            if let Err(save_err) = save_projects_data(&app_clone, &data) {
+                                log::error!("Failed to restore worktree in storage: {save_err}");
+                            }
+                        }
+                        Err(load_err) => {
+                            log::error!(
+                                "Failed to load projects data for restore: {load_err}"
+                            );
                         }
                     }
-                    Err(load_err) => {
-                        log::error!("Failed to load projects data for restore: {load_err}");
-                    }
-                }
 
-                let error_event = WorktreeDeleteErrorEvent {
-                    id: worktree_id_clone,
-                    project_id: project_id_clone,
-                    error: format!("Teardown script failed: {e}"),
-                };
-                if let Err(emit_err) =
-                    app_clone.emit_all("worktree:delete_error", &error_event)
-                {
-                    log::error!("Failed to emit worktree:delete_error event: {emit_err}");
+                    let error_event = WorktreeDeleteErrorEvent {
+                        id: worktree_id_clone,
+                        project_id: project_id_clone,
+                        error: format!("Teardown script failed: {e}"),
+                    };
+                    if let Err(emit_err) =
+                        app_clone.emit_all("worktree:delete_error", &error_event)
+                    {
+                        log::error!("Failed to emit worktree:delete_error event: {emit_err}");
+                    }
+                    return;
                 }
-                return;
             }
-            log::trace!("Background: Teardown script completed for {worktree_name}");
         }
 
         log::trace!("Background: Removing git worktree at {worktree_path}");
@@ -2116,6 +2129,7 @@ pub async fn delete_worktree(app: AppHandle, worktree_id: String) -> Result<(), 
         let deleted_event = WorktreeDeletedEvent {
             id: worktree_id_clone,
             project_id: project_id_clone,
+            teardown_output,
         };
         if let Err(e) = app_clone.emit_all("worktree:deleted", &deleted_event) {
             log::error!("Failed to emit worktree:deleted event: {e}");
@@ -2344,6 +2358,7 @@ async fn close_base_session_internal(
     let deleted_event = WorktreeDeletedEvent {
         id: worktree_id.to_string(),
         project_id,
+        teardown_output: None,
     };
     if let Err(e) = app.emit_all("worktree:deleted", &deleted_event) {
         log::error!("Failed to emit worktree:deleted event for base session close: {e}");
@@ -6241,6 +6256,7 @@ pub async fn merge_worktree_to_base(
             let deleted_event = WorktreeDeletedEvent {
                 id: worktree_id.clone(),
                 project_id: worktree.project_id.clone(),
+                teardown_output: None,
             };
             if let Err(e) = app.emit_all("worktree:deleted", &deleted_event) {
                 log::error!("Failed to emit worktree:deleted event: {e}");

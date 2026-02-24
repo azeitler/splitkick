@@ -1551,38 +1551,7 @@ pub fn run_setup_script(
     branch: &str,
     script: &str,
 ) -> Result<String, String> {
-    log::trace!("Running setup script in {worktree_path}: {script}");
-
-    // Use user's shell with login mode for proper PATH
-    let (shell, supports_login) = get_user_shell();
-    log::trace!("Using shell: {shell} (login mode: {supports_login})");
-
-    let mut cmd = silent_command(&shell);
-    if supports_login {
-        cmd.args(["-l", "-c", script]);
-    } else {
-        cmd.args(["-c", script]);
-    }
-
-    let output = cmd
-        .current_dir(worktree_path)
-        .env("JEAN_WORKSPACE_PATH", worktree_path)
-        .env("JEAN_ROOT_PATH", root_path)
-        .env("JEAN_BRANCH", branch)
-        .output()
-        .map_err(|e| format!("Failed to run setup script: {e}"))?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-
-    if !output.status.success() {
-        let combined = format!("{stdout}{stderr}").trim().to_string();
-        return Err(format!("Setup script failed:\n{combined}"));
-    }
-
-    let combined = format!("{stdout}{stderr}").trim().to_string();
-    log::trace!("Setup script completed successfully");
-    Ok(combined)
+    run_jean_script("setup", worktree_path, root_path, branch, script)
 }
 
 /// Run a teardown script in a worktree directory before deletion
@@ -1598,7 +1567,52 @@ pub fn run_teardown_script(
     branch: &str,
     script: &str,
 ) -> Result<String, String> {
-    log::trace!("Running teardown script in {worktree_path}: {script}");
+    run_jean_script("teardown", worktree_path, root_path, branch, script)
+}
+
+/// Validate that environment variables passed to jean.json scripts are safe.
+///
+/// Rejects empty strings and non-absolute paths to prevent destructive commands
+/// when scripts reference `$JEAN_WORKSPACE_PATH` or `$JEAN_ROOT_PATH`.
+/// For example, `rm -rf $JEAN_WORKSPACE_PATH/node_modules` with an empty var
+/// would expand to `rm -rf /node_modules`.
+fn validate_script_env(worktree_path: &str, root_path: &str, branch: &str) -> Result<(), String> {
+    if worktree_path.is_empty() {
+        return Err("JEAN_WORKSPACE_PATH is empty — refusing to run script".to_string());
+    }
+    if root_path.is_empty() {
+        return Err("JEAN_ROOT_PATH is empty — refusing to run script".to_string());
+    }
+    if branch.is_empty() {
+        return Err("JEAN_BRANCH is empty — refusing to run script".to_string());
+    }
+    if !std::path::Path::new(worktree_path).is_absolute() {
+        return Err(format!(
+            "JEAN_WORKSPACE_PATH is not an absolute path: {worktree_path}"
+        ));
+    }
+    if !std::path::Path::new(root_path).is_absolute() {
+        return Err(format!(
+            "JEAN_ROOT_PATH is not an absolute path: {root_path}"
+        ));
+    }
+    Ok(())
+}
+
+/// Shared implementation for running jean.json setup/teardown scripts.
+///
+/// Validates environment variables, then executes the script in the user's
+/// login shell with JEAN_WORKSPACE_PATH, JEAN_ROOT_PATH, and JEAN_BRANCH set.
+fn run_jean_script(
+    kind: &str,
+    worktree_path: &str,
+    root_path: &str,
+    branch: &str,
+    script: &str,
+) -> Result<String, String> {
+    log::trace!("Running {kind} script in {worktree_path}: {script}");
+
+    validate_script_env(worktree_path, root_path, branch)?;
 
     let (shell, supports_login) = get_user_shell();
     log::trace!("Using shell: {shell} (login mode: {supports_login})");
@@ -1616,18 +1630,18 @@ pub fn run_teardown_script(
         .env("JEAN_ROOT_PATH", root_path)
         .env("JEAN_BRANCH", branch)
         .output()
-        .map_err(|e| format!("Failed to run teardown script: {e}"))?;
+        .map_err(|e| format!("Failed to run {kind} script: {e}"))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
     if !output.status.success() {
         let combined = format!("{stdout}{stderr}").trim().to_string();
-        return Err(format!("Teardown script failed:\n{combined}"));
+        return Err(format!("{kind} script failed:\n{combined}"));
     }
 
     let combined = format!("{stdout}{stderr}").trim().to_string();
-    log::trace!("Teardown script completed successfully");
+    log::trace!("{kind} script completed successfully");
     Ok(combined)
 }
 

@@ -426,6 +426,9 @@ pub struct WorktreeDeletedEvent {
     pub id: String,
     /// The project ID
     pub project_id: String,
+    /// Output from the teardown script, if one was configured and ran successfully
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub teardown_output: Option<String>,
 }
 
 /// Event emitted when worktree deletion fails
