@@ -61,6 +61,8 @@ interface UIState {
   sessionChatModalOpen: boolean
   /** Which worktree the session chat modal is for (for magic command worktree resolution) */
   sessionChatModalWorktreeId: string | null
+  /** Whether a git diff modal is open (blocks execute_run keybinding) */
+  gitDiffModalOpen: boolean
   /** Whether a plan dialog is open (blocks canvas approve keybindings) */
   planDialogOpen: boolean
   /** Whether the feature tour dialog is open */
@@ -126,6 +128,7 @@ interface UIState {
     sessionId?: string
   }
   setSessionChatModalOpen: (open: boolean, worktreeId?: string | null) => void
+  setGitDiffModalOpen: (open: boolean) => void
   setPlanDialogOpen: (open: boolean) => void
   setFeatureTourOpen: (open: boolean) => void
   setUIStateInitialized: (initialized: boolean) => void
@@ -172,6 +175,7 @@ export const useUIStore = create<UIState>()(
       pendingAutoOpenSessionIds: {},
       sessionChatModalOpen: false,
       sessionChatModalWorktreeId: null,
+      gitDiffModalOpen: false,
       planDialogOpen: false,
       featureTourOpen: false,
       uiStateInitialized: false,
@@ -487,6 +491,9 @@ export const useUIStore = create<UIState>()(
           undefined,
           'setSessionChatModalOpen'
         ),
+
+      setGitDiffModalOpen: (open: boolean) =>
+        set({ gitDiffModalOpen: open }, undefined, 'setGitDiffModalOpen'),
 
       setPlanDialogOpen: (open: boolean) =>
         set({ planDialogOpen: open }, undefined, 'setPlanDialogOpen'),

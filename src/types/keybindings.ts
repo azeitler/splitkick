@@ -21,7 +21,7 @@ export type KeybindingAction =
   | 'open_recap'
   | 'restore_last_archived'
   | 'focus_canvas_search'
-  | 'toggle_modal_terminal'
+  | 'toggle_terminal'
   | 'toggle_session_label'
   | 'open_provider_dropdown'
   | 'open_model_dropdown'
@@ -67,7 +67,7 @@ export const DEFAULT_KEYBINDINGS: KeybindingsMap = {
   open_recap: 'r',
   restore_last_archived: 'mod+shift+t',
   focus_canvas_search: 'slash',
-  toggle_modal_terminal: 'mod+backquote',
+  toggle_terminal: 'mod+backquote',
   toggle_session_label: 'mod+s',
   open_provider_dropdown: 'alt+p',
   open_model_dropdown: 'alt+m',
@@ -226,9 +226,9 @@ export const KEYBINDING_DEFINITIONS: KeybindingDefinition[] = [
     category: 'navigation',
   },
   {
-    action: 'toggle_modal_terminal',
-    label: 'Toggle modal terminal',
-    description: 'Show or hide terminal drawer in session modal',
+    action: 'toggle_terminal',
+    label: 'Toggle terminal',
+    description: 'Show or hide the terminal panel',
     default_shortcut: 'mod+backquote',
     category: 'chat',
   },

@@ -4122,6 +4122,76 @@ pub async fn get_git_diff(
     super::git_status::get_git_diff(&worktree_path, &diff_type, base_branch.as_deref())
 }
 
+/// Revert a single file to its HEAD state, discarding uncommitted changes
+#[tauri::command]
+pub async fn revert_file(
+    worktree_path: String,
+    file_path: String,
+    file_status: String,
+) -> Result<(), String> {
+    use crate::platform::silent_command;
+
+    log::trace!("Reverting file {file_path} (status: {file_status}) in {worktree_path}");
+
+    match file_status.as_str() {
+        "modified" | "deleted" => {
+            // Restore file to HEAD state (unstage + restore working tree)
+            let output = silent_command("git")
+                .args(["checkout", "HEAD", "--", &file_path])
+                .current_dir(&worktree_path)
+                .output()
+                .map_err(|e| format!("Failed to run git checkout: {e}"))?;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(format!("Failed to revert file: {stderr}"));
+            }
+        }
+        "added" => {
+            // Remove untracked/newly-added file; also unstage if staged
+            let _ = silent_command("git")
+                .args(["reset", "HEAD", "--", &file_path])
+                .current_dir(&worktree_path)
+                .output();
+
+            let target = std::path::Path::new(&worktree_path).join(&file_path);
+            if target.exists() {
+                std::fs::remove_file(&target)
+                    .map_err(|e| format!("Failed to remove file: {e}"))?;
+            }
+        }
+        "renamed" => {
+            // For renamed files, restore the old path and remove the new one
+            // The file_path for renamed files is the new path
+            // First, try to restore via checkout which handles the rename
+            let output = silent_command("git")
+                .args(["checkout", "HEAD", "--", &file_path])
+                .current_dir(&worktree_path)
+                .output()
+                .map_err(|e| format!("Failed to run git checkout: {e}"))?;
+
+            if !output.status.success() {
+                // If checkout fails (new name doesn't exist at HEAD), reset index
+                let _ = silent_command("git")
+                    .args(["reset", "HEAD", "--", &file_path])
+                    .current_dir(&worktree_path)
+                    .output();
+
+                let target = std::path::Path::new(&worktree_path).join(&file_path);
+                if target.exists() {
+                    std::fs::remove_file(&target)
+                        .map_err(|e| format!("Failed to remove renamed file: {e}"))?;
+                }
+            }
+        }
+        _ => {
+            return Err(format!("Unknown file status: {file_status}"));
+        }
+    }
+
+    Ok(())
+}
+
 /// Reorder projects in the sidebar
 #[tauri::command]
 pub async fn reorder_projects(app: AppHandle, project_ids: Vec<String>) -> Result<(), String> {

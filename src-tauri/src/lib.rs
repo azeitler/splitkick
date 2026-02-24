@@ -2040,6 +2040,7 @@ pub fn run() {
             projects::rebase_worktree,
             projects::has_uncommitted_changes,
             projects::get_git_diff,
+            projects::revert_file,
             projects::git_pull,
             projects::git_stash,
             projects::git_stash_pop,

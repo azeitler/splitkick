@@ -228,9 +228,19 @@ function WorktreeSectionHeader({
   const isBase = isBaseSession(worktree)
   const { data: gitStatus } = useGitStatus(worktree.id)
   const [diffRequest, setDiffRequest] = useState<DiffRequest | null>(null)
+
+  // Sync git diff modal open state to UI store (blocks execute_run keybinding)
+  useEffect(() => {
+    useUIStore.getState().setGitDiffModalOpen(!!diffRequest)
+    return () => useUIStore.getState().setGitDiffModalOpen(false)
+  }, [diffRequest])
+
   const hasRunningTerminal = useTerminalStore(state => {
     const terminals = state.terminals[worktree.id] ?? []
-    return terminals.some(t => state.runningTerminals.has(t.id))
+    // Show spinner when a run-script terminal exists: covers both "pending" (created
+    // by startRun on canvas, PTY starts when session opens) and "running" (PTY active).
+    // Terminal entry is removed on successful exit, so spinner clears automatically.
+    return terminals.some(t => !!t.command)
   })
 
   const behindCount =
@@ -692,6 +702,16 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     worktreeId: string
     branchName?: string
   } | null>(null)
+
+  // Git diff modal (CMD+G on canvas)
+  const [canvasDiffRequest, setCanvasDiffRequest] =
+    useState<DiffRequest | null>(null)
+
+  // Sync canvas-level git diff modal open state to UI store (blocks execute_run keybinding)
+  useEffect(() => {
+    useUIStore.getState().setGitDiffModalOpen(!!canvasDiffRequest)
+    return () => useUIStore.getState().setGitDiffModalOpen(false)
+  }, [canvasDiffRequest])
 
   // Get current selected card's worktree info for hooks
   const selectedFlatCard =
@@ -1237,6 +1257,47 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     return () =>
       window.removeEventListener('toggle-session-label', handleToggleLabel)
   }, [selectedWorktreeModal, selectedIndex, flatCards, worktreeSections])
+
+  // CMD+G: Open git diff for selected worktree
+  useEffect(() => {
+    if (!!selectedWorktreeModal || selectedIndex === null) return
+
+    const handleOpenGitDiff = () => {
+      const flatCard = flatCards[selectedIndex]
+      if (!flatCard) return
+
+      const section = worktreeSections.find(
+        s => s.worktree.id === flatCard.worktreeId
+      )
+      if (!section) return
+
+      const isBase = isBaseSession(section.worktree)
+      const baseBranch = project?.default_branch ?? 'main'
+
+      setCanvasDiffRequest(prev => {
+        if (prev) {
+          return {
+            ...prev,
+            type: prev.type === 'uncommitted' ? 'branch' : 'uncommitted',
+          }
+        }
+        return {
+          type: isBase ? 'uncommitted' : 'branch',
+          worktreePath: section.worktree.path,
+          baseBranch,
+        }
+      })
+    }
+
+    window.addEventListener('open-git-diff', handleOpenGitDiff)
+    return () => window.removeEventListener('open-git-diff', handleOpenGitDiff)
+  }, [
+    selectedWorktreeModal,
+    selectedIndex,
+    flatCards,
+    worktreeSections,
+    project?.default_branch,
+  ])
 
   const handleWorktreeLabelApply = useCallback(
     async (label: LabelData | null) => {
@@ -2034,6 +2095,14 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
         isOpen={!!selectedWorktreeModal}
         onClose={() => setSelectedWorktreeModal(null)}
       />
+
+      {/* Git Diff Modal (CMD+G on canvas) */}
+      <Suspense fallback={null}>
+        <GitDiffModal
+          diffRequest={canvasDiffRequest}
+          onClose={() => setCanvasDiffRequest(null)}
+        />
+      </Suspense>
 
       {/* Keybinding hints */}
       {preferences?.show_keybinding_hints !== false && (

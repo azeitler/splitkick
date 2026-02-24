@@ -99,6 +99,13 @@ export function WorktreeCanvasView({
 
   // Git badge interaction state
   const [diffRequest, setDiffRequest] = useState<DiffRequest | null>(null)
+
+  // Sync git diff modal open state to UI store (blocks execute_run keybinding)
+  useEffect(() => {
+    useUIStore.getState().setGitDiffModalOpen(!!diffRequest)
+    return () => useUIStore.getState().setGitDiffModalOpen(false)
+  }, [diffRequest])
+
   const defaultBranch = project?.default_branch ?? 'main'
 
   const handlePull = useCallback(
@@ -140,6 +147,27 @@ export function WorktreeCanvasView({
       worktreePath,
       baseBranch: defaultBranch,
     })
+  }, [isBase, worktreePath, defaultBranch])
+
+  // CMD+G: Open git diff from canvas
+  useEffect(() => {
+    const handler = () => {
+      setDiffRequest(prev => {
+        if (prev) {
+          return {
+            ...prev,
+            type: prev.type === 'uncommitted' ? 'branch' : 'uncommitted',
+          }
+        }
+        return {
+          type: isBase ? 'uncommitted' : 'branch',
+          worktreePath,
+          baseBranch: defaultBranch,
+        }
+      })
+    }
+    window.addEventListener('open-git-diff', handler)
+    return () => window.removeEventListener('open-git-diff', handler)
   }, [isBase, worktreePath, defaultBranch])
 
   // Preferences for keybinding hints and layout

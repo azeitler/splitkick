@@ -9,7 +9,7 @@ import { useChatStore } from '@/store/chat-store'
 import { useTerminalStore } from '@/store/terminal-store'
 import { projectsQueryKeys } from '@/services/projects'
 import { chatQueryKeys } from '@/services/chat'
-import { disposeTerminal } from '@/lib/terminal-instances'
+import { disposeTerminal, startHeadless } from '@/lib/terminal-instances'
 import { toast } from 'sonner'
 import { useCommandContext } from './use-command-context'
 import { usePreferences } from '@/services/preferences'
@@ -80,21 +80,35 @@ function executeKeybindingAction(
       logger.debug('Keybinding: execute_run')
       if (!isNativeApp()) break
 
-      const chatStore = useChatStore.getState()
+      // Skip if git diff modal is open
       const uiStore = useUIStore.getState()
+      if (uiStore.gitDiffModalOpen) break
+
+      const chatStore = useChatStore.getState()
       const sessionModalOpen = uiStore.sessionChatModalOpen
 
-      // Resolve target worktree: modal > active worktree > selected worktree (dashboard)
+      // Resolve target worktree: modal > active worktree > selected worktree (canvas/dashboard)
       const targetWorktreeId =
         sessionModalOpen && uiStore.sessionChatModalWorktreeId
           ? uiStore.sessionChatModalWorktreeId
           : (chatStore.activeWorktreeId ??
             useProjectsStore.getState().selectedWorktreeId)
 
-      const targetWorktreePath = targetWorktreeId
+      // Resolve path: chat store first, then fall back to worktrees query cache (canvas)
+      let targetWorktreePath = targetWorktreeId
         ? (chatStore.activeWorktreePath ??
           chatStore.worktreePaths[targetWorktreeId])
         : null
+
+      if (!targetWorktreePath && targetWorktreeId) {
+        const projectId = useProjectsStore.getState().selectedProjectId
+        if (projectId) {
+          const worktrees = queryClient.getQueryData<{ id: string; path: string }[]>(
+            projectsQueryKeys.worktrees(projectId)
+          )
+          targetWorktreePath = worktrees?.find(w => w.id === targetWorktreeId)?.path ?? null
+        }
+      }
 
       if (!targetWorktreeId || !targetWorktreePath) {
         notify('Open a worktree to run', undefined, { type: 'error' })
@@ -138,14 +152,23 @@ function executeKeybindingAction(
           return
         }
 
-        // Start run (works on canvas, modal, or main view)
-        useTerminalStore.getState().startRun(targetWorktreeId, runScript)
+        // Start run
+        const terminalId = useTerminalStore
+          .getState()
+          .startRun(targetWorktreeId, runScript)
 
-        // If modal is open, also open the terminal drawer
         if (sessionModalOpen) {
+          // Modal view: open terminal drawer
           useTerminalStore
             .getState()
             .setModalTerminalOpen(targetWorktreeId, true)
+        } else {
+          // Canvas view: start PTY headlessly (no terminal UI mounted yet)
+          startHeadless(terminalId, {
+            worktreeId: targetWorktreeId,
+            worktreePath: targetWorktreePath!,
+            command: runScript,
+          })
         }
       })()
       break
@@ -272,14 +295,19 @@ function executeKeybindingAction(
       logger.debug('Keybinding: focus_canvas_search')
       window.dispatchEvent(new CustomEvent('focus-canvas-search'))
       break
-    case 'toggle_modal_terminal': {
-      logger.debug('Keybinding: toggle_modal_terminal')
-      // Only works when session modal is open
-      const sessionModalOpen = useUIStore.getState().sessionChatModalOpen
-      if (!sessionModalOpen) break
-      const { activeWorktreeId } = useChatStore.getState()
-      if (activeWorktreeId) {
-        useTerminalStore.getState().toggleModalTerminal(activeWorktreeId)
+    case 'toggle_terminal': {
+      logger.debug('Keybinding: toggle_terminal')
+      const uiState = useUIStore.getState()
+      if (uiState.sessionChatModalOpen) {
+        // Modal view → sheet drawer
+        const wid =
+          uiState.sessionChatModalWorktreeId ??
+          useChatStore.getState().activeWorktreeId
+        if (wid) useTerminalStore.getState().toggleModalTerminal(wid)
+      } else {
+        // Standalone view → resizable panel
+        const wid = useChatStore.getState().activeWorktreeId
+        if (wid) useTerminalStore.getState().toggleTerminal(wid)
       }
       break
     }

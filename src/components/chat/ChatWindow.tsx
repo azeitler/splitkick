@@ -568,6 +568,12 @@ export function ChatWindow({
   )
   // Streaming execution mode - uses executing mode when sending, otherwise selected mode
   const streamingExecutionMode = executingMode ?? executionMode
+  // Whether this session is waiting for user input (AskUserQuestion/ExitPlanMode)
+  const isWaitingForInput = useChatStore(state =>
+    activeSessionId
+      ? (state.waitingForInputSessionIds[activeSessionId] ?? false)
+      : false
+  )
   // Per-session error state (uses deferredSessionId for content consistency)
   const currentError = useChatStore(state =>
     deferredSessionId ? (state.errors[deferredSessionId] ?? null) : null
@@ -731,6 +737,12 @@ export function ChatWindow({
 
   // State for git diff modal (opened by clicking diff stats)
   const [diffRequest, setDiffRequest] = useState<DiffRequest | null>(null)
+
+  // Sync git diff modal open state to UI store (blocks execute_run keybinding)
+  useEffect(() => {
+    useUIStore.getState().setGitDiffModalOpen(!!diffRequest)
+    return () => useUIStore.getState().setGitDiffModalOpen(false)
+  }, [diffRequest])
 
   // State for single file diff modal (opened by clicking edited file badges)
   const [editedFilePath, setEditedFilePath] = useState<string | null>(null)
@@ -1115,7 +1127,6 @@ export function ChatWindow({
     setIsRecapDialogOpen,
     setIsGeneratingRecap,
     gitStatus,
-    sessionModalOpen,
     setDiffRequest,
     isAtBottom,
     scrollToBottom,
@@ -1384,6 +1395,8 @@ export function ChatWindow({
 
                             {/* Restored session status - shown when session was running but app restarted */}
                             {!isSending &&
+                              !isWaitingForInput &&
+                              !hasPendingQuestions &&
                               session?.last_run_status === 'running' && (
                                 <div className="text-sm text-muted-foreground/60 mt-4">
                                   <span className="animate-dots">

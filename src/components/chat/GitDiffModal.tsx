@@ -20,6 +20,7 @@ import {
   Pencil,
   X,
   Search,
+  Undo2,
 } from 'lucide-react'
 import { FileDiff } from '@pierre/diffs/react'
 import {
@@ -36,6 +37,11 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { ModalCloseButton } from '@/components/ui/modal-close-button'
+import {
+  ResizablePanelGroup,
+  ResizablePanel,
+  ResizableHandle,
+} from '@/components/ui/resizable'
 import { cn } from '@/lib/utils'
 import { generateId } from '@/lib/uuid'
 import { getFilename } from '@/lib/path-utils'
@@ -44,7 +50,23 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from '@/components/ui/tooltip'
-import { getGitDiff } from '@/services/git-status'
+import { getGitDiff, revertFile } from '@/services/git-status'
+import {
+  ContextMenu,
+  ContextMenuTrigger,
+  ContextMenuContent,
+  ContextMenuItem,
+} from '@/components/ui/context-menu'
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from '@/components/ui/alert-dialog'
 import { useTheme } from '@/hooks/use-theme'
 import { usePreferences } from '@/services/preferences'
 import type { GitDiff, DiffRequest } from '@/types/git-diff'
@@ -412,6 +434,13 @@ export function GitDiffModal({
   const [isSwitching, setIsSwitching] = useState(false)
   const switchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Revert file state
+  const [revertTarget, setRevertTarget] = useState<{
+    fileName: string
+    fileStatus: string
+  } | null>(null)
+  const [isReverting, setIsReverting] = useState(false)
+
   // Resolve theme to actual dark/light value
   const resolvedThemeType = useMemo((): 'dark' | 'light' => {
     if (theme === 'system') {
@@ -447,6 +476,42 @@ export function GitDiffModal({
     },
     []
   )
+
+  /** Map @pierre/diffs file type back to backend git status */
+  const diffTypeToStatus = useCallback((type: string): string => {
+    switch (type) {
+      case 'new':
+        return 'added'
+      case 'deleted':
+        return 'deleted'
+      case 'rename-pure':
+      case 'rename-changed':
+        return 'renamed'
+      default:
+        return 'modified'
+    }
+  }, [])
+
+  const handleRevertFile = useCallback(async () => {
+    if (!revertTarget || !diffRequest) return
+    setIsReverting(true)
+    try {
+      await revertFile(
+        diffRequest.worktreePath,
+        revertTarget.fileName,
+        revertTarget.fileStatus
+      )
+      // Refresh diff to reflect reverted file
+      await loadDiff({ ...diffRequest, type: activeDiffType }, true)
+    } catch (err) {
+      setError(
+        `Failed to revert: ${err instanceof Error ? err.message : String(err)}`
+      )
+    } finally {
+      setIsReverting(false)
+      setRevertTarget(null)
+    }
+  }, [revertTarget, diffRequest, activeDiffType, loadDiff])
 
   useEffect(() => {
     if (diffRequest) {
@@ -713,6 +778,18 @@ export function GitDiffModal({
           setSelectedFileIndex(i => Math.min(i + 1, filteredFiles.length - 1))
         })
         switchTimeoutRef.current = setTimeout(() => setIsSwitching(false), 150)
+      } else if (
+        e.key === 'Backspace' &&
+        activeDiffType === 'uncommitted'
+      ) {
+        e.preventDefault()
+        const file = filteredFiles[selectedFileIndex]
+        if (file) {
+          setRevertTarget({
+            fileName: file.fileName,
+            fileStatus: diffTypeToStatus(file.fileDiff.type),
+          })
+        }
       } else if (e.key === 'ArrowUp' || e.key === 'k') {
         e.preventDefault()
         if (switchTimeoutRef.current) clearTimeout(switchTimeoutRef.current)
@@ -728,7 +805,7 @@ export function GitDiffModal({
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [diffRequest, filteredFiles.length])
+  }, [diffRequest, filteredFiles, selectedFileIndex, activeDiffType, diffTypeToStatus])
 
   // Scroll selected file into view in sidebar
   useEffect(() => {
@@ -777,6 +854,7 @@ export function GitDiffModal({
       : `Changes vs ${diffRequest?.baseBranch ?? 'main'}`
 
   return (
+    <>
     <Dialog open={!!diffRequest} onOpenChange={open => !open && onClose()}>
       <DialogContent
         ref={dialogContentRef}
@@ -788,6 +866,12 @@ export function GitDiffModal({
           // which would cause the tooltip to open immediately on modal open
           e.preventDefault()
           dialogContentRef.current?.focus()
+        }}
+        onKeyDown={e => {
+          // Only stop Enter from propagating to canvas behind the modal
+          // (which would open a worktree/session). Other keys must propagate
+          // to reach the document-level keyboard navigation handler.
+          if (e.key === 'Enter') e.stopPropagation()
         }}
         onEscapeKeyDown={e => {
           if (showCommentInput) {
@@ -987,121 +1071,214 @@ export function GitDiffModal({
 
         {/* Flex container fills remaining space - only render when we have files */}
         {hasFiles && (
-          <div className="flex flex-1 min-h-0 mt-2 gap-0">
+          <ResizablePanelGroup
+            direction="horizontal"
+            className="flex-1 min-h-0 mt-2"
+          >
             {/* File sidebar */}
-            <div
-              ref={fileListRef}
-              className={cn(
-                'w-64 shrink-0 overflow-y-auto transition-opacity duration-150',
-                (isSwitching || isLoading) && 'opacity-60'
-              )}
+            <ResizablePanel
+              defaultSize={25}
+              minSize={15}
+              maxSize={50}
             >
-              {flattenedFiles.length > 1 && (
-                <div className="sticky top-0 z-10 bg-background border-b border-border pb-2">
-                  <div className="relative">
-                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-[1em] w-[1em] text-muted-foreground pointer-events-none" />
-                    <input
-                      type="text"
-                      value={fileFilter}
-                      onChange={e => {
-                        setFileFilter(e.target.value)
-                        setSelectedFileIndex(0)
-                      }}
-                      placeholder="Filter files..."
-                      className="w-full bg-muted text-sm outline-none border border-border pl-7 pr-2 py-2.5 placeholder:text-muted-foreground focus:border-ring"
-                    />
+              <div
+                ref={fileListRef}
+                className={cn(
+                  'h-full overflow-y-auto transition-opacity duration-150',
+                  (isSwitching || isLoading) && 'opacity-60'
+                )}
+              >
+                {flattenedFiles.length > 1 && (
+                  <div className="sticky top-0 z-10 bg-background border-b border-border pb-2">
+                    <div className="relative">
+                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-[1em] w-[1em] text-muted-foreground pointer-events-none" />
+                      <input
+                        type="text"
+                        value={fileFilter}
+                        onChange={e => {
+                          setFileFilter(e.target.value)
+                          setSelectedFileIndex(0)
+                        }}
+                        placeholder="Filter files..."
+                        className="w-full bg-muted text-sm outline-none border border-border pl-7 pr-2 py-2.5 placeholder:text-muted-foreground focus:border-ring"
+                      />
+                    </div>
                   </div>
-                </div>
-              )}
-              <div>
-                {filteredFiles.map((file, index) => {
-                  const isSelected = index === selectedFileIndex
-                  const displayName = getFilename(file.fileName)
+                )}
+                <div>
+                  {filteredFiles.map((file, index) => {
+                    const isSelected = index === selectedFileIndex
+                    const displayName = getFilename(file.fileName)
 
-                  return (
-                    <Tooltip key={file.key}>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          data-index={index}
-                          onClick={() => handleSelectFile(index)}
+                    const fileButton = (
+                      <button
+                        type="button"
+                        data-index={index}
+                        onClick={() => handleSelectFile(index)}
+                        className={cn(
+                          'w-full flex items-center gap-2 px-3 py-2 text-left transition-colors',
+                          'hover:bg-muted/50',
+                          isSelected && 'bg-accent'
+                        )}
+                      >
+                        <FileText
                           className={cn(
-                            'w-full flex items-center gap-2 px-3 py-2 text-left transition-colors',
-                            'hover:bg-muted/50',
-                            isSelected && 'bg-accent'
+                            'h-[1em] w-[1em] shrink-0',
+                            getStatusColor(file.fileDiff.type)
                           )}
-                        >
-                          <FileText
-                            className={cn(
-                              'h-[1em] w-[1em] shrink-0',
-                              getStatusColor(file.fileDiff.type)
-                            )}
-                          />
-                          <span className="truncate flex-1">{displayName}</span>
-                          <div className="flex items-center gap-1 shrink-0">
-                            {file.additions > 0 && (
-                              <span className="text-green-500">
-                                +{file.additions}
-                              </span>
-                            )}
-                            {file.deletions > 0 && (
-                              <span className="text-red-500">
-                                -{file.deletions}
-                              </span>
-                            )}
-                          </div>
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent>{file.fileName}</TooltipContent>
-                    </Tooltip>
-                  )
-                })}
+                        />
+                        <span className="truncate flex-1">{displayName}</span>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {file.additions > 0 && (
+                            <span className="text-green-500">
+                              +{file.additions}
+                            </span>
+                          )}
+                          {file.deletions > 0 && (
+                            <span className="text-red-500">
+                              -{file.deletions}
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    )
+
+                    return activeDiffType === 'uncommitted' ? (
+                      <ContextMenu key={file.key}>
+                        <Tooltip>
+                          <ContextMenuTrigger asChild>
+                            <TooltipTrigger asChild>
+                              {fileButton}
+                            </TooltipTrigger>
+                          </ContextMenuTrigger>
+                          <TooltipContent>{file.fileName}</TooltipContent>
+                        </Tooltip>
+                        <ContextMenuContent className="w-48">
+                          <ContextMenuItem
+                            variant="destructive"
+                            onSelect={() =>
+                              setRevertTarget({
+                                fileName: file.fileName,
+                                fileStatus: diffTypeToStatus(
+                                  file.fileDiff.type
+                                ),
+                              })
+                            }
+                          >
+                            <Undo2 className="mr-2 h-4 w-4" />
+                            Revert File
+                          </ContextMenuItem>
+                        </ContextMenuContent>
+                      </ContextMenu>
+                    ) : (
+                      <Tooltip key={file.key}>
+                        <TooltipTrigger asChild>
+                          {fileButton}
+                        </TooltipTrigger>
+                        <TooltipContent>{file.fileName}</TooltipContent>
+                      </Tooltip>
+                    )
+                  })}
+                </div>
               </div>
-            </div>
+            </ResizablePanel>
+
+            <ResizableHandle />
 
             {/* Main content area */}
-            <div
-              ref={scrollContainerRef}
-              className={cn(
-                'flex-1 min-w-0 overflow-y-auto transition-opacity duration-150',
-                (isSwitching || isLoading) && 'opacity-60'
-              )}
-            >
-              {selectedFile ? (
-                <div className="px-2">
-                  <MemoizedFileDiff
-                    key={selectedFile.key}
-                    fileDiff={selectedFile.fileDiff}
-                    fileName={selectedFile.fileName}
-                    annotations={getAnnotationsForFile(selectedFile.fileName)}
-                    selectedLines={
-                      activeFileName === selectedFile.fileName
-                        ? selectedRange
-                        : null
-                    }
-                    themeType={resolvedThemeType}
-                    syntaxThemeDark={
-                      preferences?.syntax_theme_dark ?? 'vitesse-black'
-                    }
-                    syntaxThemeLight={
-                      preferences?.syntax_theme_light ?? 'github-light'
-                    }
-                    diffStyle={diffStyle}
-                    onLineSelected={getLineSelectedCallback(
-                      selectedFile.fileName
-                    )}
-                    onRemoveComment={handleRemoveComment}
-                  />
-                </div>
-              ) : (
-                <div className="flex items-center justify-center h-full text-muted-foreground">
-                  Select a file to view its diff
-                </div>
-              )}
-            </div>
-          </div>
+            <ResizablePanel defaultSize={75} minSize={50}>
+              <div
+                ref={scrollContainerRef}
+                className={cn(
+                  'h-full min-w-0 overflow-y-auto transition-opacity duration-150',
+                  (isSwitching || isLoading) && 'opacity-60'
+                )}
+              >
+                {selectedFile ? (
+                  <div className="px-2">
+                    <MemoizedFileDiff
+                      key={selectedFile.key}
+                      fileDiff={selectedFile.fileDiff}
+                      fileName={selectedFile.fileName}
+                      annotations={getAnnotationsForFile(selectedFile.fileName)}
+                      selectedLines={
+                        activeFileName === selectedFile.fileName
+                          ? selectedRange
+                          : null
+                      }
+                      themeType={resolvedThemeType}
+                      syntaxThemeDark={
+                        preferences?.syntax_theme_dark ?? 'vitesse-black'
+                      }
+                      syntaxThemeLight={
+                        preferences?.syntax_theme_light ?? 'github-light'
+                      }
+                      diffStyle={diffStyle}
+                      onLineSelected={getLineSelectedCallback(
+                        selectedFile.fileName
+                      )}
+                      onRemoveComment={handleRemoveComment}
+                    />
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-full text-muted-foreground">
+                    Select a file to view its diff
+                  </div>
+                )}
+              </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
         )}
       </DialogContent>
     </Dialog>
+
+      <AlertDialog
+        open={!!revertTarget}
+        onOpenChange={open => !open && setRevertTarget(null)}
+      >
+        <AlertDialogContent
+          onKeyDown={e => e.stopPropagation()}
+          onOpenAutoFocus={e => {
+            e.preventDefault()
+            // Focus the Revert button instead of Cancel
+            const container = e.target as HTMLElement | null
+            const action =
+              container?.querySelector<HTMLButtonElement>('[data-revert-action]')
+            action?.focus()
+          }}
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle>Revert file?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will discard all changes to{' '}
+              <span className="font-mono font-semibold">
+                {revertTarget?.fileName}
+              </span>
+              . This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isReverting}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              data-revert-action
+              className="bg-destructive text-white hover:bg-destructive/90"
+              disabled={isReverting}
+              onClick={handleRevertFile}
+            >
+              {isReverting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Reverting...
+                </>
+              ) : (
+                'Revert'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }

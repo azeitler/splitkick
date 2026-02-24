@@ -239,6 +239,31 @@ export async function attachToContainer(
 }
 
 /**
+ * Start a terminal PTY without attaching to DOM.
+ * Creates the xterm instance (for event listeners + output buffering) and spawns
+ * the PTY immediately. When the user later opens the session, attachToContainer
+ * will detect the running PTY via has_active_terminal and reconnect.
+ */
+export function startHeadless(
+  terminalId: string,
+  options: { worktreeId: string; worktreePath: string; command: string }
+): void {
+  const instance = getOrCreateTerminal(terminalId, options)
+  if (instance.initialized) return // Already started
+
+  instance.initialized = true
+  invoke('start_terminal', {
+    terminalId,
+    worktreePath: options.worktreePath,
+    cols: 80,
+    rows: 24,
+    command: options.command,
+  }).catch(error => {
+    console.error('[terminal-instances] headless start_terminal failed:', error)
+  })
+}
+
+/**
  * Detach terminal from DOM container.
  * Terminal stays in memory with preserved buffer.
  */

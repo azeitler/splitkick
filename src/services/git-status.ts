@@ -435,6 +435,20 @@ export async function getGitDiff(
   })
 }
 
+/**
+ * Revert a single file to its HEAD state, discarding uncommitted changes.
+ */
+export async function revertFile(
+  worktreePath: string,
+  filePath: string,
+  fileStatus: string
+): Promise<void> {
+  if (!isTauri()) {
+    throw new Error('Revert file only available in Tauri')
+  }
+  return invoke('revert_file', { worktreePath, filePath, fileStatus })
+}
+
 // ============================================================================
 // Query Keys
 // ============================================================================

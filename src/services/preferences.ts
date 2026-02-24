@@ -58,12 +58,16 @@ export function usePreferences() {
         logger.info('Preferences loaded successfully', { preferences })
         // Migrate old defaults and merge with new defaults
         const migratedBindings = migrateKeybindings(preferences.keybindings)
+        const merged = { ...DEFAULT_KEYBINDINGS, ...migratedBindings }
+        // Drop stale keys (renamed/removed actions) that persist in saved prefs
+        const validKeys = new Set(Object.keys(DEFAULT_KEYBINDINGS))
+        const keybindings: KeybindingsMap = {}
+        for (const [key, value] of Object.entries(merged)) {
+          if (validKeys.has(key)) keybindings[key] = value
+        }
         return {
           ...preferences,
-          keybindings: {
-            ...DEFAULT_KEYBINDINGS,
-            ...migratedBindings,
-          },
+          keybindings,
         }
       } catch (error) {
         // Return defaults if preferences file doesn't exist yet

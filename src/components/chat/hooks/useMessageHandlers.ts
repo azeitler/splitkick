@@ -170,12 +170,18 @@ export function useMessageHandlers({
         )
       })
 
-      // Scroll to bottom after DOM updates from collapsing the question form
+      // Scroll to bottom after DOM updates from collapsing the question form.
       // rAF ensures React has processed state changes before we read scrollHeight.
       // Using instant scroll so stale scrollHeight during animation isn't a concern.
       requestAnimationFrame(() => {
         scrollToBottom(true)
       })
+      // Safety net: if React committed after our rAF scroll (large content blocks),
+      // the scroll position may be past the now-shorter content → empty viewport.
+      // Re-scroll after React has definitely flushed.
+      setTimeout(() => {
+        scrollToBottom(true)
+      }, 100)
 
       // Format answers as natural language
       const message = formatAnswersAsNaturalLanguage(questions, answers)
@@ -341,6 +347,11 @@ export function useMessageHandlers({
       requestAnimationFrame(() => {
         scrollToBottom(true)
       })
+      // Safety net: if React committed after our rAF scroll (large content blocks),
+      // the scroll position may be past the now-shorter content → empty viewport.
+      setTimeout(() => {
+        scrollToBottom(true)
+      }, 100)
 
       // Format approval message - include updated plan if provided
       // For Codex: use explicit execution instruction since it resumes a thread
@@ -459,6 +470,11 @@ export function useMessageHandlers({
       requestAnimationFrame(() => {
         scrollToBottom(true)
       })
+      // Safety net: if React committed after our rAF scroll (large content blocks),
+      // the scroll position may be past the now-shorter content → empty viewport.
+      setTimeout(() => {
+        scrollToBottom(true)
+      }, 100)
 
       // Format approval message - include updated plan if provided
       const isCodexYolo =
