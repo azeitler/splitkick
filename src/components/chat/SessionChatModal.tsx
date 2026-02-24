@@ -361,6 +361,14 @@ export function SessionChatModal({
     null
   )
   const [renameValue, setRenameValue] = useState('')
+  // Start rename immediately (for double-click)
+  const handleStartRenameImmediate = useCallback(
+    (sessionId: string, currentName: string) => {
+      setRenameValue(currentName)
+      setRenamingSessionId(sessionId)
+    },
+    []
+  )
   // Delay rename start so the input renders after the context menu fully closes
   // (Radix restores focus to the trigger on close, which would steal focus from the input)
   const handleStartRename = useCallback(
@@ -932,6 +940,12 @@ export function SessionChatModal({
                           <button
                             data-session-id={session.id}
                             onClick={() => handleTabClick(session.id)}
+                            onDoubleClick={() =>
+                              handleStartRenameImmediate(
+                                session.id,
+                                session.name
+                              )
+                            }
                             className={cn(
                               'group/tab flex rounded items-center gap-2 px-2.5 py-1.5 text-xs transition-colors whitespace-nowrap border border-transparent',
                               isActive

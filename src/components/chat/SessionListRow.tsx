@@ -1,9 +1,10 @@
-import { forwardRef } from 'react'
+import { forwardRef, useCallback } from 'react'
 import {
   Archive,
   Eye,
   EyeOff,
   FileText,
+  Pencil,
   Shield,
   Sparkles,
   Tag,
@@ -44,10 +45,34 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
       onYolo,
       onToggleLabel,
       onToggleReview,
+      isRenaming,
+      renameValue,
+      onRenameValueChange,
+      onRenameStart,
+      onRenameSubmit,
+      onRenameCancel,
     },
     ref
   ) {
     const config = statusConfig[card.status]
+    const renameInputRef = useCallback((node: HTMLInputElement | null) => {
+      if (node) {
+        node.focus()
+        node.select()
+      }
+    }, [])
+
+    const handleRenameKeyDown = useCallback(
+      (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') {
+          e.preventDefault()
+          onRenameSubmit?.(card.session.id)
+        } else if (e.key === 'Escape') {
+          onRenameCancel?.()
+        }
+      },
+      [onRenameSubmit, onRenameCancel, card.session.id]
+    )
 
     return (
       <ContextMenu>
@@ -57,6 +82,9 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
             role="button"
             tabIndex={-1}
             onClick={onSelect}
+            onDoubleClick={() =>
+              onRenameStart?.(card.session.id, card.session.name)
+            }
             className={cn(
               'group flex w-full items-center gap-3 rounded-md px-3 py-1.5 border border-transparent transition-colors text-left cursor-pointer scroll-mt-28 scroll-mb-20',
               'hover:bg-muted/50 hover:border-foreground/10',
@@ -72,7 +100,23 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
             />
 
             {/* Session name */}
-            <span className="flex-1 truncate text-sm">{card.session.name}</span>
+            {isRenaming ? (
+              <input
+                ref={renameInputRef}
+                type="text"
+                value={renameValue ?? ''}
+                onChange={e => onRenameValueChange?.(e.target.value)}
+                onBlur={() => onRenameSubmit?.(card.session.id)}
+                onKeyDown={handleRenameKeyDown}
+                onClick={e => e.stopPropagation()}
+                onDoubleClick={e => e.stopPropagation()}
+                className="flex-1 min-w-0 bg-transparent text-sm outline-none ring-1 ring-ring rounded px-1"
+              />
+            ) : (
+              <span className="flex-1 truncate text-sm">
+                {card.session.name}
+              </span>
+            )}
 
             {/* Blocked badge */}
             {card.hasPermissionDenials && (
@@ -176,6 +220,16 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
           </div>
         </ContextMenuTrigger>
         <ContextMenuContent className="w-48">
+          {onRenameStart && (
+            <ContextMenuItem
+              onSelect={() =>
+                onRenameStart(card.session.id, card.session.name)
+              }
+            >
+              <Pencil className="mr-2 h-4 w-4" />
+              Rename
+            </ContextMenuItem>
+          )}
           {onToggleLabel && (
             <ContextMenuItem onSelect={onToggleLabel}>
               <Tag className="mr-2 h-4 w-4" />
