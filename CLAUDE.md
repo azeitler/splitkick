@@ -360,3 +360,16 @@ Three files need updating when adding a new model option:
 3. **`src/components/chat/ChatToolbar.tsx`** — Add to `MODEL_OPTIONS` array (short labels like "Sonnet 4.6")
 
 No Rust changes needed — model is stored as `String` in `AppPreferences` and passed directly to `--model` CLI flag.
+
+#### Per-Project Worktrees Location
+
+Projects have an optional `worktrees_dir: Option<String>` field that overrides the default `~/jean` base directory for worktree creation.
+
+- **Rust**: `Project.worktrees_dir` in `src-tauri/src/projects/types.rs`
+- **TypeScript**: `Project.worktrees_dir` in `src/types/projects.ts`
+- **Path resolution**: `get_project_worktrees_dir(name, custom_base_dir)` in `src-tauri/src/projects/storage.rs`
+  - When `Some(dir)` → `<dir>/<project-name>/<worktree-name>`
+  - When `None` → `~/jean/<project-name>/<worktree-name>`
+  - The `<project-name>` subdirectory is always appended to prevent collisions when multiple projects share the same custom base dir
+- **UI**: "Worktrees Location" section in `src/components/projects/panes/GeneralPane.tsx` (Browse + Save + Reset)
+- **Saved via**: `update_project_settings` Tauri command, `worktrees_dir: Option<Option<String>>` param (outer Option = not updating, inner Option = clear/set)

@@ -21,6 +21,13 @@ import {
   Clock3,
   GitBranch,
   MessageSquare,
+  Code,
+  ExternalLink,
+  Folder,
+  FolderOpen,
+  Home,
+  Terminal,
+  Trash2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -38,6 +45,14 @@ import {
   useProjects,
   useJeanConfig,
   isTauri,
+  useCreateBaseSession,
+  useCreateWorktree,
+  useOpenProjectOnGitHub,
+  useOpenProjectWorktreesFolder,
+  useOpenWorktreeInEditor,
+  useOpenWorktreeInFinder,
+  useOpenWorktreeInTerminal,
+  useRemoveProject,
 } from '@/services/projects'
 import {
   chatQueryKeys,
@@ -49,6 +64,7 @@ import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
 import { isBaseSession, type Worktree } from '@/types/projects'
+import { getEditorLabel, getTerminalLabel } from '@/types/preferences'
 import type { Session, WorktreeSessions } from '@/types/chat'
 import { NewIssuesBadge } from '@/components/shared/NewIssuesBadge'
 import { OpenPRsBadge } from '@/components/shared/OpenPRsBadge'
@@ -418,6 +434,16 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   const savePreferences = useSavePreferences()
   const canvasLayout = preferences?.canvas_layout ?? 'list'
   const isListLayout = canvasLayout === 'list'
+
+  // Project action mutations
+  const createWorktree = useCreateWorktree()
+  const createBaseSession = useCreateBaseSession()
+  const removeProject = useRemoveProject()
+  const openOnGitHub = useOpenProjectOnGitHub()
+  const openInFinder = useOpenWorktreeInFinder()
+  const openWorktreesFolder = useOpenProjectWorktreesFolder()
+  const openInTerminal = useOpenWorktreeInTerminal()
+  const openInEditor = useOpenWorktreeInEditor()
 
   const [searchQuery, setSearchQuery] = useState('')
 
@@ -1515,16 +1541,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                     <MoreHorizontal className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  <DropdownMenuItem
-                    onSelect={() =>
-                      window.dispatchEvent(new CustomEvent('create-new-worktree'))
-                    }
-                  >
-                    <Plus className="h-4 w-4" />
-                    New Worktree
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
+                <DropdownMenuContent align="start" className="w-64">
                   <DropdownMenuItem
                     onSelect={() =>
                       useProjectsStore.getState().openProjectSettings(projectId)
@@ -1532,6 +1549,92 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                   >
                     <Settings className="h-4 w-4" />
                     Project Settings
+                  </DropdownMenuItem>
+
+                  <DropdownMenuSeparator />
+
+                  <DropdownMenuItem
+                    onSelect={() => createBaseSession.mutate(projectId)}
+                  >
+                    <Home className="h-4 w-4" />
+                    {worktrees.find(isBaseSession)
+                      ? 'Open Base Session'
+                      : 'New Base Session'}
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      createWorktree.mutate({ projectId })
+                    }
+                  >
+                    <Plus className="h-4 w-4" />
+                    New Worktree
+                  </DropdownMenuItem>
+
+                  <DropdownMenuSeparator />
+
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      openInEditor.mutate({
+                        worktreePath: project.path,
+                        editor: preferences?.editor,
+                      })
+                    }
+                  >
+                    <Code className="h-4 w-4" />
+                    Open in {getEditorLabel(preferences?.editor)}
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem
+                    onSelect={() => openInFinder.mutate(project.path)}
+                  >
+                    <FolderOpen className="h-4 w-4" />
+                    Open in Finder
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      openInTerminal.mutate({
+                        worktreePath: project.path,
+                        terminal: preferences?.terminal,
+                      })
+                    }
+                  >
+                    <Terminal className="h-4 w-4" />
+                    Open in {getTerminalLabel(preferences?.terminal)}
+                  </DropdownMenuItem>
+
+                  <DropdownMenuSeparator />
+
+                  <DropdownMenuItem
+                    onSelect={() => openWorktreesFolder.mutate(projectId)}
+                  >
+                    <Folder className="h-4 w-4" />
+                    Open Worktrees Folder
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem
+                    onSelect={() => openOnGitHub.mutate(projectId)}
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Open on GitHub
+                  </DropdownMenuItem>
+
+                  <DropdownMenuSeparator />
+
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onSelect={() => removeProject.mutate(projectId)}
+                    disabled={worktrees.length > 0}
+                    className="whitespace-nowrap"
+                  >
+                    <Trash2 className="h-4 w-4 shrink-0" />
+                    Remove Project
+                    {worktrees.length > 0 && (
+                      <span className="ml-auto text-xs opacity-60 shrink-0">
+                        ({worktrees.length} worktrees)
+                      </span>
+                    )}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
