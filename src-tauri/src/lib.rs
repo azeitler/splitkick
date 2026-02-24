@@ -2134,6 +2134,7 @@ pub fn run() {
             chat::delete_pasted_image,
             // Chat commands - Text paste handling
             chat::save_pasted_text,
+            chat::update_pasted_text,
             chat::delete_pasted_text,
             chat::read_pasted_text,
             // Chat commands - Plan file handling
