@@ -2,13 +2,16 @@ import React, { useState, useCallback } from 'react'
 import {
   Check,
   ChevronsUpDown,
+  FolderOpen,
   GitBranch,
   ImageIcon,
   Loader2,
+  RotateCcw,
   X,
 } from 'lucide-react'
 import { convertFileSrc } from '@/lib/transport'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
@@ -97,6 +100,9 @@ export function GeneralPane({
   const [localSystemPrompt, setLocalSystemPrompt] = useState<string | null>(
     null
   )
+  const [localWorktreesDir, setLocalWorktreesDir] = useState<string | null>(
+    null
+  )
 
   // Track image load errors
   const [imgErrorKey, setImgErrorKey] = useState<string | null>(null)
@@ -150,6 +156,43 @@ export function GeneralPane({
       { onSuccess: () => setLocalSystemPrompt(null) }
     )
   }, [localSystemPrompt, projectId, updateSettings])
+
+  const displayedWorktreesDir =
+    localWorktreesDir ?? project?.worktrees_dir ?? ''
+
+  const worktreesDirChanged =
+    localWorktreesDir !== null &&
+    localWorktreesDir !== (project?.worktrees_dir ?? '')
+
+  const handleSaveWorktreesDir = useCallback(() => {
+    if (localWorktreesDir === null) return
+    updateSettings.mutate(
+      {
+        projectId,
+        worktreesDir: localWorktreesDir.trim(),
+      },
+      { onSuccess: () => setLocalWorktreesDir(null) }
+    )
+  }, [localWorktreesDir, projectId, updateSettings])
+
+  const handleResetWorktreesDir = useCallback(() => {
+    updateSettings.mutate(
+      { projectId, worktreesDir: '' },
+      { onSuccess: () => setLocalWorktreesDir(null) }
+    )
+  }, [projectId, updateSettings])
+
+  const handleBrowseWorktreesDir = useCallback(async () => {
+    const { open } = await import('@tauri-apps/plugin-dialog')
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      title: 'Select worktrees base directory',
+    })
+    if (selected) {
+      setLocalWorktreesDir(selected)
+    }
+  }, [])
 
   return (
     <div className="space-y-6">
@@ -336,6 +379,60 @@ export function GeneralPane({
               </SelectItem>
             </SelectContent>
           </Select>
+        </InlineField>
+      </SettingsSection>
+
+      <SettingsSection title="Worktrees Location">
+        <InlineField
+          label="Base Directory"
+          description={
+            <>
+              Where new worktrees are created. Defaults to{' '}
+              <code className="text-[11px] bg-muted px-1 py-0.5 rounded">
+                ~/jean
+              </code>
+            </>
+          }
+        >
+          <div className="flex items-center gap-2">
+            <Input
+              placeholder="~/jean (default)"
+              value={displayedWorktreesDir}
+              onChange={e => setLocalWorktreesDir(e.target.value)}
+              className="flex-1 text-sm"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleBrowseWorktreesDir}
+            >
+              <FolderOpen className="h-4 w-4" />
+              Browse
+            </Button>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={handleSaveWorktreesDir}
+              disabled={!worktreesDirChanged || updateSettings.isPending}
+            >
+              {updateSettings.isPending && (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              )}
+              Save
+            </Button>
+            {project?.worktrees_dir && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleResetWorktreesDir}
+                disabled={updateSettings.isPending}
+              >
+                <RotateCcw className="h-4 w-4" />
+                Reset to default
+              </Button>
+            )}
+          </div>
         </InlineField>
       </SettingsSection>
 

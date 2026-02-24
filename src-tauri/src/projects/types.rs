@@ -79,6 +79,10 @@ pub struct Project {
     /// Default CLI backend for sessions in this project (None = use global default)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_backend: Option<String>,
+    /// Custom base directory for worktrees (None = use default ~/jean).
+    /// When set, worktrees go to <worktrees_dir>/<project-name>/<worktree-name>.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worktrees_dir: Option<String>,
 }
 
 /// A git worktree created for a project
@@ -90,7 +94,7 @@ pub struct Worktree {
     pub project_id: String,
     /// Random workspace name (e.g., "fuzzy-tiger")
     pub name: String,
-    /// Absolute path to worktree (~/jean/<project>/<name>)
+    /// Absolute path to worktree (configurable base dir, defaults to ~/jean/<project>/<name>)
     pub path: String,
     /// Git branch name (same as workspace name)
     pub branch: String,

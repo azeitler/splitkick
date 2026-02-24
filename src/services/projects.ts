@@ -1714,17 +1714,17 @@ export function useOpenWorktreeInFinder() {
 }
 
 /**
- * Hook to open a project's worktrees folder in Finder (~/jean/<project-name>)
+ * Hook to open a project's worktrees folder in Finder
  */
 export function useOpenProjectWorktreesFolder() {
   return useMutation({
-    mutationFn: async (projectName: string): Promise<void> => {
+    mutationFn: async (projectId: string): Promise<void> => {
       if (!isTauri()) {
         throw new Error('Not in Tauri context')
       }
 
-      logger.debug('Opening project worktrees folder', { projectName })
-      await invoke('open_project_worktrees_folder', { projectName })
+      logger.debug('Opening project worktrees folder', { projectId })
+      await invoke('open_project_worktrees_folder', { projectId })
       logger.info('Opened project worktrees folder')
     },
     onError: error => {
@@ -2139,6 +2139,7 @@ export function useUpdateProjectSettings() {
       customSystemPrompt,
       defaultProvider,
       defaultBackend,
+      worktreesDir,
     }: {
       projectId: string
       defaultBranch?: string
@@ -2147,6 +2148,7 @@ export function useUpdateProjectSettings() {
       customSystemPrompt?: string
       defaultProvider?: string | null
       defaultBackend?: string | null
+      worktreesDir?: string
     }): Promise<Project> => {
       if (!isTauri()) {
         throw new Error('Not in Tauri context')
@@ -2161,6 +2163,7 @@ export function useUpdateProjectSettings() {
         customSystemPrompt,
         defaultProvider,
         defaultBackend,
+        worktreesDir,
       })
       logger.info('Project settings updated', { project })
       return project

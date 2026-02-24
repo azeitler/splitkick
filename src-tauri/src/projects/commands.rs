@@ -200,6 +200,7 @@ pub async fn add_project(
         custom_system_prompt: None,
         default_provider: None,
         default_backend: None,
+        worktrees_dir: None,
     };
 
     data.add_project(project.clone());
@@ -355,6 +356,7 @@ pub async fn init_project(
         custom_system_prompt: None,
         default_provider: None,
         default_backend: None,
+        worktrees_dir: None,
     };
 
     data.add_project(project.clone());
@@ -542,8 +544,9 @@ pub async fn create_worktree(
         })
     };
 
-    // Build worktree path: ~/jean/<project-name>/<workspace-name>
-    let project_worktrees_dir = get_project_worktrees_dir(&project.name)?;
+    // Build worktree path: <base>/<project-name>/<workspace-name>
+    let project_worktrees_dir =
+        get_project_worktrees_dir(&project.name, project.worktrees_dir.as_deref())?;
     let worktree_path = project_worktrees_dir.join(&name);
     let worktree_path_str = worktree_path
         .to_str()
@@ -1099,8 +1102,9 @@ pub async fn create_worktree_from_existing_branch(
     // Use the branch name as the worktree name
     let name = branch_name.clone();
 
-    // Build worktree path: ~/jean/<project-name>/<workspace-name>
-    let project_worktrees_dir = get_project_worktrees_dir(&project.name)?;
+    // Build worktree path: <base>/<project-name>/<workspace-name>
+    let project_worktrees_dir =
+        get_project_worktrees_dir(&project.name, project.worktrees_dir.as_deref())?;
     let worktree_path = project_worktrees_dir.join(&name);
     let worktree_path_str = worktree_path
         .to_str()
@@ -1480,7 +1484,8 @@ pub async fn checkout_pr(
     // Remove any archived worktree records for this PR from data so they don't
     // interfere with name dedup. The background thread will clean up leftover
     // git worktrees/branches/directories.
-    let project_worktrees_dir = get_project_worktrees_dir(&project.name)?;
+    let project_worktrees_dir =
+        get_project_worktrees_dir(&project.name, project.worktrees_dir.as_deref())?;
     let had_archived = data.worktrees.iter().any(|w| {
         w.project_id == project_id && w.pr_number == Some(pr_number) && w.archived_at.is_some()
     });
@@ -2621,12 +2626,20 @@ pub async fn permanently_delete_worktree(
     Ok(())
 }
 
-/// Open a project's worktrees folder in the system file explorer (~/jean/<project-name>)
+/// Open a project's worktrees folder in the system file explorer
 #[tauri::command]
-pub async fn open_project_worktrees_folder(project_name: String) -> Result<(), String> {
-    log::trace!("Opening project worktrees folder: {project_name}");
+pub async fn open_project_worktrees_folder(
+    app: AppHandle,
+    project_id: String,
+) -> Result<(), String> {
+    log::trace!("Opening project worktrees folder: {project_id}");
 
-    let worktrees_dir = get_project_worktrees_dir(&project_name)?;
+    let data = load_projects_data(&app)?;
+    let project = data
+        .find_project(&project_id)
+        .ok_or_else(|| format!("Project not found: {project_id}"))?;
+
+    let worktrees_dir = get_project_worktrees_dir(&project.name, project.worktrees_dir.as_deref())?;
     let path_str = worktrees_dir
         .to_str()
         .ok_or_else(|| "Invalid worktrees directory path".to_string())?
@@ -3408,6 +3421,7 @@ pub async fn update_project_settings(
     custom_system_prompt: Option<String>,
     default_provider: Option<Option<String>>,
     default_backend: Option<Option<String>>,
+    worktrees_dir: Option<String>,
 ) -> Result<Project, String> {
     log::trace!("Updating settings for project: {project_id}");
 
@@ -3454,6 +3468,12 @@ pub async fn update_project_settings(
     if let Some(backend) = default_backend {
         log::trace!("Updating default backend: {backend:?}");
         project.default_backend = backend.filter(|b| b != "__none__");
+    }
+
+    if let Some(dir) = worktrees_dir {
+        let dir = dir.trim().to_string();
+        log::trace!("Updating worktrees dir: {dir:?}");
+        project.worktrees_dir = if dir.is_empty() { None } else { Some(dir) };
     }
 
     let updated_project = project.clone();
@@ -6682,6 +6702,7 @@ pub async fn create_folder(
         custom_system_prompt: None,
         default_provider: None,
         default_backend: None,
+        worktrees_dir: None,
     };
 
     data.add_project(folder.clone());

@@ -68,7 +68,7 @@ export function ProjectContextMenu({
   }
 
   const handleOpenWorktreesFolder = () => {
-    openWorktreesFolder.mutate(project.name)
+    openWorktreesFolder.mutate(project.id)
   }
 
   const handleOpenInTerminal = () => {

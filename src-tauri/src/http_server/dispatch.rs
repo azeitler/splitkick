@@ -110,6 +110,7 @@ pub async fn dispatch_command(
                 None,
                 None,
                 None,
+                None,
             )
             .await?;
             to_value(result)
