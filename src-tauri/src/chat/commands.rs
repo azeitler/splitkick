@@ -3102,6 +3102,14 @@ pub async fn open_file_in_default_app(path: String, editor: Option<String>) -> R
     let editor_app = editor.unwrap_or_else(|| "zed".to_string());
     log::trace!("Opening file in {editor_app}: {path}");
 
+    let friendly_name = match editor_app.as_str() {
+        "vscode" => "VS Code ('code')",
+        "cursor" => "Cursor ('cursor')",
+        "zed" => "Zed ('zed')",
+        "xcode" => "Xcode ('xed')",
+        _ => editor_app.as_str(),
+    };
+
     #[cfg(target_os = "macos")]
     {
         let result = match editor_app.as_str() {
@@ -3111,7 +3119,13 @@ pub async fn open_file_in_default_app(path: String, editor: Option<String>) -> R
             _ => std::process::Command::new("code").arg(&path).spawn(),
         };
 
-        result.map_err(|e| format!("Failed to open {editor_app}: {e}"))?;
+        result.map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                format!("{friendly_name} not found. Make sure it is installed and available in your PATH.")
+            } else {
+                format!("Failed to open {friendly_name}: {e}")
+            }
+        })?;
     }
 
     #[cfg(target_os = "windows")]
@@ -3128,13 +3142,20 @@ pub async fn open_file_in_default_app(path: String, editor: Option<String>) -> R
                 .args(["/c", "cursor", &path])
                 .creation_flags(CREATE_NO_WINDOW)
                 .spawn(),
+            "xcode" => return Err("Xcode is only available on macOS".to_string()),
             _ => std::process::Command::new("cmd")
                 .args(["/c", "code", &path])
                 .creation_flags(CREATE_NO_WINDOW)
                 .spawn(),
         };
 
-        result.map_err(|e| format!("Failed to open {editor_app}: {e}"))?;
+        result.map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                format!("{friendly_name} not found. Make sure it is installed and available in your PATH.")
+            } else {
+                format!("Failed to open {friendly_name}: {e}")
+            }
+        })?;
     }
 
     #[cfg(target_os = "linux")]
@@ -3142,10 +3163,17 @@ pub async fn open_file_in_default_app(path: String, editor: Option<String>) -> R
         let result = match editor_app.as_str() {
             "zed" => std::process::Command::new("zed").arg(&path).spawn(),
             "cursor" => std::process::Command::new("cursor").arg(&path).spawn(),
+            "xcode" => return Err("Xcode is only available on macOS".to_string()),
             _ => std::process::Command::new("code").arg(&path).spawn(),
         };
 
-        result.map_err(|e| format!("Failed to open {editor_app}: {e}"))?;
+        result.map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                format!("{friendly_name} not found. Make sure it is installed and available in your PATH.")
+            } else {
+                format!("Failed to open {friendly_name}: {e}")
+            }
+        })?;
     }
 
     Ok(())
