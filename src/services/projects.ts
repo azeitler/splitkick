@@ -2148,7 +2148,7 @@ export function useUpdateProjectSettings() {
       customSystemPrompt?: string
       defaultProvider?: string | null
       defaultBackend?: string | null
-      worktreesDir?: string | null
+      worktreesDir?: string
     }): Promise<Project> => {
       if (!isTauri()) {
         throw new Error('Not in Tauri context')

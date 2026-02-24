@@ -169,7 +169,7 @@ export function GeneralPane({
     updateSettings.mutate(
       {
         projectId,
-        worktreesDir: localWorktreesDir.trim() || null,
+        worktreesDir: localWorktreesDir.trim(),
       },
       { onSuccess: () => setLocalWorktreesDir(null) }
     )
@@ -177,7 +177,7 @@ export function GeneralPane({
 
   const handleResetWorktreesDir = useCallback(() => {
     updateSettings.mutate(
-      { projectId, worktreesDir: null },
+      { projectId, worktreesDir: '' },
       { onSuccess: () => setLocalWorktreesDir(null) }
     )
   }, [projectId, updateSettings])

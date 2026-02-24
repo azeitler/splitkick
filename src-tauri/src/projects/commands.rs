@@ -3421,7 +3421,7 @@ pub async fn update_project_settings(
     custom_system_prompt: Option<String>,
     default_provider: Option<Option<String>>,
     default_backend: Option<Option<String>>,
-    worktrees_dir: Option<Option<String>>,
+    worktrees_dir: Option<String>,
 ) -> Result<Project, String> {
     log::trace!("Updating settings for project: {project_id}");
 
@@ -3471,9 +3471,9 @@ pub async fn update_project_settings(
     }
 
     if let Some(dir) = worktrees_dir {
-        let dir = dir.filter(|d| !d.trim().is_empty());
+        let dir = dir.trim().to_string();
         log::trace!("Updating worktrees dir: {dir:?}");
-        project.worktrees_dir = dir;
+        project.worktrees_dir = if dir.is_empty() { None } else { Some(dir) };
     }
 
     let updated_project = project.clone();
