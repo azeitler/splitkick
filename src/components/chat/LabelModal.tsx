@@ -33,6 +33,10 @@ interface LabelModalProps {
   onClose: () => void
   sessionId: string | null
   currentLabel: LabelData | null
+  /** Custom apply handler. If provided, called instead of default setSessionLabel */
+  onApply?: (label: LabelData | null) => void
+  /** Additional labels to include in the custom labels list (e.g. worktree labels) */
+  extraLabels?: LabelData[]
 }
 
 export function LabelModal({
@@ -40,6 +44,8 @@ export function LabelModal({
   onClose,
   sessionId,
   currentLabel,
+  onApply,
+  extraLabels,
 }: LabelModalProps) {
   const [inputValue, setInputValue] = useState('')
   const [selectedColor, setSelectedColor] = useState(
@@ -51,15 +57,20 @@ export function LabelModal({
 
   const sessionLabels = useChatStore(state => state.sessionLabels)
 
-  // Extract unique label names (from LabelData) for the dropdown list
+  // Extract unique label names (from LabelData + extraLabels) for the dropdown list
   const customLabels = useMemo(() => {
     const presetSet = new Set(PRESET_LABELS)
     const unique = new Set<string>()
     for (const label of Object.values(sessionLabels)) {
       if (!presetSet.has(label.name)) unique.add(label.name)
     }
+    if (extraLabels) {
+      for (const label of extraLabels) {
+        if (!presetSet.has(label.name)) unique.add(label.name)
+      }
+    }
     return [...unique].sort()
-  }, [sessionLabels])
+  }, [sessionLabels, extraLabels])
 
   const allLabelNames = useMemo(
     () => [...PRESET_LABELS, ...customLabels],
@@ -69,9 +80,11 @@ export function LabelModal({
   // Get the label data for current label (for preset labels, use default yellow)
   const getLabelData = useCallback(
     (name: string): LabelData => {
-      // Check if this label name exists in sessionLabels (has a color)
+      // Check if this label name exists in sessionLabels or extraLabels (has a color)
       const existing = Object.values(sessionLabels).find(l => l.name === name)
       if (existing) return existing
+      const extra = extraLabels?.find(l => l.name === name)
+      if (extra) return extra
       // Preset labels get yellow by default
       return { name, color: '#eab308' }
     },
@@ -94,12 +107,18 @@ export function LabelModal({
 
   const applyLabel = useCallback(
     (labelData: LabelData | null) => {
+      if (onApply) {
+        onApply(labelData)
+        toast.success(labelData ? `Labeled: ${labelData.name}` : 'Label removed')
+        onClose()
+        return
+      }
       if (!sessionId) return
       useChatStore.getState().setSessionLabel(sessionId, labelData)
       toast.success(labelData ? `Labeled: ${labelData.name}` : 'Label removed')
       onClose()
     },
-    [sessionId, onClose]
+    [sessionId, onClose, onApply]
   )
 
   // Start editing an existing label's color

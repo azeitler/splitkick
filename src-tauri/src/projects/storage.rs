@@ -38,9 +38,17 @@ pub fn get_worktrees_base_dir() -> Result<PathBuf, String> {
     Ok(jean_dir)
 }
 
-/// Get the directory for a specific project's worktrees (~/jean/<project-name>)
-pub fn get_project_worktrees_dir(project_name: &str) -> Result<PathBuf, String> {
-    let base_dir = get_worktrees_base_dir()?;
+/// Get the directory for a specific project's worktrees.
+/// When `custom_base_dir` is Some, uses that instead of ~/jean as the base.
+/// In both cases, `<project-name>` subdirectory is appended.
+pub fn get_project_worktrees_dir(
+    project_name: &str,
+    custom_base_dir: Option<&str>,
+) -> Result<PathBuf, String> {
+    let base_dir = match custom_base_dir {
+        Some(dir) => PathBuf::from(dir),
+        None => get_worktrees_base_dir()?,
+    };
     let project_dir = base_dir.join(sanitize_directory_name(project_name));
 
     // Ensure the directory exists

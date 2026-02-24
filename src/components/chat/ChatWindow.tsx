@@ -798,7 +798,7 @@ export function ChatWindow({
     })
 
   // Note: Streaming event listeners are in App.tsx, not here
-  // This ensures they stay active even when ChatWindow is unmounted (e.g., session board view)
+  // This ensures they stay active even when ChatWindow is unmounted
 
   // Message sending pipeline: resolveCustomProfile, sendMessageNow, handleSubmit, git diff handlers
   const {

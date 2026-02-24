@@ -186,7 +186,7 @@ interface ChatUIState {
   // Sessions currently compacting context
   compactingSessions: Record<string, boolean>
 
-  // Sessions marked as "reviewing" (manual session board status, persisted)
+  // Sessions marked as "reviewing" (persisted)
   reviewingSessions: Record<string, boolean>
 
   // Plan file paths per session (persisted)

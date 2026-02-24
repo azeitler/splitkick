@@ -216,10 +216,14 @@ export const ChatToolbar = memo(function ChatToolbar({
       setWorktreeLoading(worktreeId, 'push')
       const toastId = toast.loading('Pushing changes...')
       try {
-        await gitPush(activeWorktreePath, prNumber, remote)
+        const result = await gitPush(activeWorktreePath, prNumber, remote)
         triggerImmediateGitPoll()
         if (projectId) fetchWorktreesStatus(projectId)
-        toast.success('Changes pushed', { id: toastId })
+        if (result.fellBack) {
+          toast.warning('Could not push to PR branch, pushed to new branch instead', { id: toastId })
+        } else {
+          toast.success('Changes pushed', { id: toastId })
+        }
       } catch (error) {
         toast.error(`Push failed: ${error}`, { id: toastId })
       } finally {

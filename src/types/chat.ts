@@ -169,7 +169,7 @@ export interface Session {
   denied_message_context?: DeniedMessageContext
   /** AI code review results for this session */
   review_results?: ReviewResponse
-  /** Whether this session is marked for review in session board */
+  /** Whether this session is marked for review */
   is_reviewing?: boolean
   /** Whether this session is waiting for user input (AskUserQuestion, ExitPlanMode) */
   waiting_for_input?: boolean

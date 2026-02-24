@@ -301,12 +301,14 @@ function executeKeybindingAction(
       break
     case 'toggle_session_label': {
       logger.debug('Keybinding: toggle_session_label')
-      // Only works when a session is active (modal open or in session view, not on dashboard canvas)
+      // Works when a session is active (modal open or in session view) or on project canvas
       const uiStoreForLabel = useUIStore.getState()
       const chatStoreForLabel = useChatStore.getState()
+      const projectsStoreForLabel = useProjectsStore.getState()
       if (
         !uiStoreForLabel.sessionChatModalOpen &&
-        !chatStoreForLabel.activeWorktreePath
+        !chatStoreForLabel.activeWorktreePath &&
+        !projectsStoreForLabel.selectedProjectId
       )
         break
       window.dispatchEvent(new CustomEvent('toggle-session-label'))

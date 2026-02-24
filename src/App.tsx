@@ -307,7 +307,7 @@ function App() {
   useCliVersionCheck()
 
   // Global streaming event listeners - must be at App level so they stay active
-  // even when ChatWindow is unmounted (e.g., when viewing session board)
+  // even when ChatWindow is unmounted (e.g., when viewing a different worktree)
   useStreamingEvents({ queryClient })
 
   // Global queue processor - must be at App level so queued messages execute

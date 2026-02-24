@@ -200,6 +200,7 @@ pub async fn add_project(
         custom_system_prompt: None,
         default_provider: None,
         default_backend: None,
+        worktrees_dir: None,
     };
 
     data.add_project(project.clone());
@@ -355,6 +356,7 @@ pub async fn init_project(
         custom_system_prompt: None,
         default_provider: None,
         default_backend: None,
+        worktrees_dir: None,
     };
 
     data.add_project(project.clone());
@@ -542,8 +544,9 @@ pub async fn create_worktree(
         })
     };
 
-    // Build worktree path: ~/jean/<project-name>/<workspace-name>
-    let project_worktrees_dir = get_project_worktrees_dir(&project.name)?;
+    // Build worktree path: <base>/<project-name>/<workspace-name>
+    let project_worktrees_dir =
+        get_project_worktrees_dir(&project.name, project.worktrees_dir.as_deref())?;
     let worktree_path = project_worktrees_dir.join(&name);
     let worktree_path_str = worktree_path
         .to_str()
@@ -597,6 +600,7 @@ pub async fn create_worktree(
         cached_unpushed_count: None,
         order: 0, // Placeholder, actual order is set in background thread
         archived_at: None,
+        label: None,
     };
 
     // Clone values for the background thread
@@ -1020,6 +1024,7 @@ pub async fn create_worktree(
                     cached_unpushed_count: None,
                     order: max_order + 1,
                     archived_at: None,
+                    label: None,
                 };
 
                 data.add_worktree(worktree.clone());
@@ -1099,8 +1104,9 @@ pub async fn create_worktree_from_existing_branch(
     // Use the branch name as the worktree name
     let name = branch_name.clone();
 
-    // Build worktree path: ~/jean/<project-name>/<workspace-name>
-    let project_worktrees_dir = get_project_worktrees_dir(&project.name)?;
+    // Build worktree path: <base>/<project-name>/<workspace-name>
+    let project_worktrees_dir =
+        get_project_worktrees_dir(&project.name, project.worktrees_dir.as_deref())?;
     let worktree_path = project_worktrees_dir.join(&name);
     let worktree_path_str = worktree_path
         .to_str()
@@ -1154,6 +1160,7 @@ pub async fn create_worktree_from_existing_branch(
         cached_unpushed_count: None,
         order: 0, // Placeholder, actual order is set in background thread
         archived_at: None,
+        label: None,
     };
 
     // Clone values for the background thread
@@ -1377,6 +1384,7 @@ pub async fn create_worktree_from_existing_branch(
                     cached_unpushed_count: None,
                     order: max_order + 1,
                     archived_at: None,
+                    label: None,
                 };
 
                 data.add_worktree(worktree.clone());
@@ -1480,7 +1488,8 @@ pub async fn checkout_pr(
     // Remove any archived worktree records for this PR from data so they don't
     // interfere with name dedup. The background thread will clean up leftover
     // git worktrees/branches/directories.
-    let project_worktrees_dir = get_project_worktrees_dir(&project.name)?;
+    let project_worktrees_dir =
+        get_project_worktrees_dir(&project.name, project.worktrees_dir.as_deref())?;
     let had_archived = data.worktrees.iter().any(|w| {
         w.project_id == project_id && w.pr_number == Some(pr_number) && w.archived_at.is_some()
     });
@@ -1593,6 +1602,7 @@ pub async fn checkout_pr(
         cached_unpushed_count: None,
         order: 0, // Will be updated in background thread
         archived_at: None,
+        label: None,
     };
 
     // Clone values for background thread
@@ -1695,6 +1705,14 @@ pub async fn checkout_pr(
                         log::trace!(
                             "Background: Manual PR fetch+checkout succeeded, branch: {branch}"
                         );
+                        // Set upstream tracking so terminal `git push` works correctly
+                        if let Err(e) = git::set_upstream_tracking(
+                            &project_path,
+                            &local_branch_name,
+                            &pr_head_ref,
+                        ) {
+                            log::warn!("Background: Failed to set upstream tracking: {e}");
+                        }
                         branch
                     }
                     Err(e) => {
@@ -1896,6 +1914,7 @@ pub async fn checkout_pr(
                     cached_unpushed_count: None,
                     order: max_order + 1,
                     archived_at: None,
+                    label: None,
                 };
 
                 data.add_worktree(worktree.clone());
@@ -2119,6 +2138,7 @@ pub async fn create_base_session(app: AppHandle, project_id: String) -> Result<W
         cached_unpushed_count: None,
         order: 0, // Base sessions are always first
         archived_at: None,
+        label: None,
     };
 
     data.add_worktree(session.clone());
@@ -2505,6 +2525,7 @@ pub async fn import_worktree(
         cached_unpushed_count: None,
         order: max_order + 1,
         archived_at: None,
+        label: None,
     };
 
     data.add_worktree(worktree.clone());
@@ -2621,12 +2642,20 @@ pub async fn permanently_delete_worktree(
     Ok(())
 }
 
-/// Open a project's worktrees folder in the system file explorer (~/jean/<project-name>)
+/// Open a project's worktrees folder in the system file explorer
 #[tauri::command]
-pub async fn open_project_worktrees_folder(project_name: String) -> Result<(), String> {
-    log::trace!("Opening project worktrees folder: {project_name}");
+pub async fn open_project_worktrees_folder(
+    app: AppHandle,
+    project_id: String,
+) -> Result<(), String> {
+    log::trace!("Opening project worktrees folder: {project_id}");
 
-    let worktrees_dir = get_project_worktrees_dir(&project_name)?;
+    let data = load_projects_data(&app)?;
+    let project = data
+        .find_project(&project_id)
+        .ok_or_else(|| format!("Project not found: {project_id}"))?;
+
+    let worktrees_dir = get_project_worktrees_dir(&project.name, project.worktrees_dir.as_deref())?;
     let path_str = worktrees_dir
         .to_str()
         .ok_or_else(|| "Invalid worktrees directory path".to_string())?
@@ -2725,10 +2754,17 @@ pub async fn open_worktree_in_finder(worktree_path: String) -> Result<(), String
 
 /// Format a spawn error with a user-friendly message when the executable is not found
 fn format_open_error(app_name: &str, error: &std::io::Error) -> String {
+    let display_name = match app_name {
+        "vscode" => "VS Code ('code')",
+        "cursor" => "Cursor ('cursor')",
+        "zed" => "Zed ('zed')",
+        "xcode" => "Xcode ('xed')",
+        other => other,
+    };
     if error.kind() == std::io::ErrorKind::NotFound {
-        format!("'{app_name}' not found. Make sure it is installed and available in your PATH.")
+        format!("{display_name} not found. Make sure it is installed and available in your PATH.")
     } else {
-        format!("Failed to open {app_name}: {error}")
+        format!("Failed to open {display_name}: {error}")
     }
 }
 
@@ -2957,9 +2993,46 @@ pub async fn open_worktree_in_editor(
         }
     }
 
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[cfg(target_os = "windows")]
     {
-        // VS Code and Cursor CLI work the same on all platforms
+        // On Windows, VS Code and Cursor install as .cmd batch wrappers (code.cmd, cursor.cmd).
+        // Command::new("code") uses CreateProcessW which can't execute .cmd files directly,
+        // so we wrap them with cmd /c. CREATE_NO_WINDOW prevents cmd.exe console flash.
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+        let result = match editor_app.as_str() {
+            "zed" => std::process::Command::new("zed")
+                .arg(&worktree_path)
+                .spawn(),
+            "cursor" => std::process::Command::new("cmd")
+                .args(["/c", "cursor", &worktree_path])
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn(),
+            "xcode" => {
+                return Err("Xcode is only available on macOS".to_string());
+            }
+            _ => {
+                // Default to VS Code
+                std::process::Command::new("cmd")
+                    .args(["/c", "code", &worktree_path])
+                    .creation_flags(CREATE_NO_WINDOW)
+                    .spawn()
+            }
+        };
+
+        match result {
+            Ok(_) => {
+                log::trace!("Successfully opened {editor_app}");
+            }
+            Err(e) => {
+                return Err(format_open_error(&editor_app, &e));
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
         let result = match editor_app.as_str() {
             "zed" => std::process::Command::new("zed")
                 .arg(&worktree_path)
@@ -3149,6 +3222,29 @@ pub async fn rename_worktree(
 
     log::trace!("Successfully renamed worktree to: {new_name}");
     Ok(updated_worktree)
+}
+
+/// Update the label on a worktree
+#[tauri::command]
+pub async fn update_worktree_label(
+    app: AppHandle,
+    worktree_id: String,
+    label: Option<crate::chat::types::LabelData>,
+) -> Result<(), String> {
+    log::trace!("Updating worktree label: {worktree_id}");
+
+    let mut data = load_projects_data(&app)?;
+
+    let worktree = data
+        .find_worktree_mut(&worktree_id)
+        .ok_or_else(|| format!("Worktree not found: {worktree_id}"))?;
+
+    worktree.label = label;
+
+    save_projects_data(&app, &data)?;
+
+    log::trace!("Successfully updated worktree label for: {worktree_id}");
+    Ok(())
 }
 
 /// Commit changes in a worktree
@@ -3364,6 +3460,7 @@ pub async fn update_project_settings(
     custom_system_prompt: Option<String>,
     default_provider: Option<Option<String>>,
     default_backend: Option<Option<String>>,
+    worktrees_dir: Option<String>,
 ) -> Result<Project, String> {
     log::trace!("Updating settings for project: {project_id}");
 
@@ -3410,6 +3507,12 @@ pub async fn update_project_settings(
     if let Some(backend) = default_backend {
         log::trace!("Updating default backend: {backend:?}");
         project.default_backend = backend.filter(|b| b != "__none__");
+    }
+
+    if let Some(dir) = worktrees_dir {
+        let dir = dir.trim().to_string();
+        log::trace!("Updating worktrees dir: {dir:?}");
+        project.worktrees_dir = if dir.is_empty() { None } else { Some(dir) };
     }
 
     let updated_project = project.clone();
@@ -4734,6 +4837,7 @@ pub struct CreateCommitResponse {
     pub commit_hash: String,
     pub message: String,
     pub pushed: bool,
+    pub push_fell_back: bool,
 }
 
 /// Get git status output
@@ -4847,6 +4951,26 @@ fn push_to_remote(repo_path: &str, remote: Option<&str>) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+/// Push to remote, routing through PR-aware push when a PR number is provided.
+/// Returns whether the push fell back to creating a new branch.
+fn push_for_commit(
+    app: &AppHandle,
+    repo_path: &str,
+    remote: Option<&str>,
+    pr_number: Option<u32>,
+) -> Result<bool, String> {
+    match pr_number {
+        Some(pr) => {
+            let result = git::git_push_to_pr(repo_path, pr, &resolve_gh_binary(app))?;
+            Ok(result.fell_back)
+        }
+        None => {
+            push_to_remote(repo_path, remote)?;
+            Ok(false)
+        }
+    }
 }
 
 /// Generate commit message using Claude CLI with JSON schema
@@ -4964,6 +5088,7 @@ fn generate_commit_message(
 }
 
 /// Create a commit with AI-generated message
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn create_commit_with_ai(
     app: AppHandle,
@@ -4971,6 +5096,7 @@ pub async fn create_commit_with_ai(
     custom_prompt: Option<String>,
     push: bool,
     remote: Option<String>,
+    pr_number: Option<u32>,
     model: Option<String>,
     custom_profile_name: Option<String>,
 ) -> Result<CreateCommitResponse, String> {
@@ -4981,12 +5107,13 @@ pub async fn create_commit_with_ai(
     if status.trim().is_empty() {
         if push {
             // No changes to commit, but user wants to push — push existing commits
-            push_to_remote(&worktree_path, remote.as_deref())?;
+            let fell_back = push_for_commit(&app, &worktree_path, remote.as_deref(), pr_number)?;
             log::trace!("No changes to commit, pushed existing commits");
             return Ok(CreateCommitResponse {
                 commit_hash: String::new(),
                 message: String::new(),
                 pushed: true,
+                push_fell_back: fell_back,
             });
         }
         return Err("No changes to commit".to_string());
@@ -5038,18 +5165,19 @@ pub async fn create_commit_with_ai(
     log::trace!("Created commit: {commit_hash}");
 
     // 8. Push if requested
-    let pushed = if push {
-        push_to_remote(&worktree_path, remote.as_deref())?;
-        log::trace!("Pushed to remote");
-        true
+    let (pushed, push_fell_back) = if push {
+        let fell_back = push_for_commit(&app, &worktree_path, remote.as_deref(), pr_number)?;
+        log::trace!("Pushed to remote (fell_back={fell_back})");
+        (true, fell_back)
     } else {
-        false
+        (false, false)
     };
 
     Ok(CreateCommitResponse {
         commit_hash,
         message: response.message,
         pushed,
+        push_fell_back,
     })
 }
 
@@ -5590,6 +5718,14 @@ pub async fn git_stash_pop(worktree_path: String) -> Result<String, String> {
     git::git_stash_pop(&worktree_path)
 }
 
+/// Response from git push, includes whether the push fell back to a new branch
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitPushResponse {
+    pub output: String,
+    pub fell_back: bool,
+}
+
 /// Push current branch to remote. If pr_number is provided, uses PR-aware push
 /// that handles fork remotes and uses --force-with-lease.
 #[tauri::command]
@@ -5598,11 +5734,23 @@ pub async fn git_push(
     worktree_path: String,
     pr_number: Option<u32>,
     remote: Option<String>,
-) -> Result<String, String> {
+) -> Result<GitPushResponse, String> {
     log::trace!("Pushing changes for worktree: {worktree_path}, pr_number: {pr_number:?}, remote: {remote:?}");
     match pr_number {
-        Some(pr) => git::git_push_to_pr(&worktree_path, pr, &resolve_gh_binary(&app)),
-        None => git::git_push(&worktree_path, remote.as_deref()),
+        Some(pr) => {
+            let result = git::git_push_to_pr(&worktree_path, pr, &resolve_gh_binary(&app))?;
+            Ok(GitPushResponse {
+                output: result.output,
+                fell_back: result.fell_back,
+            })
+        }
+        None => {
+            let output = git::git_push(&worktree_path, remote.as_deref())?;
+            Ok(GitPushResponse {
+                output,
+                fell_back: false,
+            })
+        }
     }
 }
 
@@ -6638,6 +6786,7 @@ pub async fn create_folder(
         custom_system_prompt: None,
         default_provider: None,
         default_backend: None,
+        worktrees_dir: None,
     };
 
     data.add_project(folder.clone());

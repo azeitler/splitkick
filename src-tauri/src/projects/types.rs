@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::chat::types::LabelData;
+
 /// Type of session (base branch or worktree)
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -79,6 +81,10 @@ pub struct Project {
     /// Default CLI backend for sessions in this project (None = use global default)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_backend: Option<String>,
+    /// Custom base directory for worktrees (None = use default ~/jean).
+    /// When set, worktrees go to <worktrees_dir>/<project-name>/<worktree-name>.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worktrees_dir: Option<String>,
 }
 
 /// A git worktree created for a project
@@ -90,7 +96,7 @@ pub struct Worktree {
     pub project_id: String,
     /// Random workspace name (e.g., "fuzzy-tiger")
     pub name: String,
-    /// Absolute path to worktree (~/jean/<project>/<name>)
+    /// Absolute path to worktree (configurable base dir, defaults to ~/jean/<project>/<name>)
     pub path: String,
     /// Git branch name (same as workspace name)
     pub branch: String,
@@ -156,6 +162,9 @@ pub struct Worktree {
     /// Display order within project (lower = higher in list, base sessions ignore this)
     #[serde(default)]
     pub order: u32,
+    /// User-assigned label with color (e.g. "In Progress")
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<LabelData>,
     /// Unix timestamp when worktree was archived (None = not archived)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub archived_at: Option<u64>,

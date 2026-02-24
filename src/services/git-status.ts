@@ -15,7 +15,7 @@ import {
   updateWorktreeCachedStatus,
   projectsQueryKeys,
 } from '@/services/projects'
-import type { Worktree } from '@/types/projects'
+import type { GitPushResponse, Worktree } from '@/types/projects'
 import type { GitDiff } from '@/types/git-diff'
 
 // ============================================================================
@@ -291,20 +291,21 @@ export async function performGitPull(opts: GitPullOptions): Promise<void> {
 /**
  * Push current branch to remote. If prNumber is provided, uses PR-aware push
  * that handles fork remotes and uses --force-with-lease.
+ * Falls back to creating a new branch if pushing to the PR branch fails.
  *
  * @param worktreePath - Path to the worktree/repository
  * @param prNumber - Optional PR number for PR-aware push
- * @returns Output from git push command
+ * @returns Push result including whether it fell back to a new branch
  */
 export async function gitPush(
   worktreePath: string,
   prNumber?: number,
   remote?: string
-): Promise<string> {
+): Promise<GitPushResponse> {
   if (!isTauri()) {
     throw new Error('Git push only available in Tauri')
   }
-  return invoke<string>('git_push', {
+  return invoke<GitPushResponse>('git_push', {
     worktreePath,
     prNumber: prNumber ?? null,
     remote: remote ?? null,
