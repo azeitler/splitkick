@@ -63,7 +63,21 @@ pub fn spawn_terminal(
     } else {
         CommandBuilder::new(&shell)
     };
-    cmd.cwd(&worktree_path);
+    // Use the requested working directory if it exists, otherwise fall back to
+    // the system temp directory. This is critical on Windows where `/tmp` doesn't
+    // exist — CLI login terminals pass `/tmp` as a placeholder path.
+    let cwd = if std::path::Path::new(&worktree_path).is_dir() {
+        worktree_path.clone()
+    } else {
+        let fallback = std::env::temp_dir().to_string_lossy().to_string();
+        log::warn!(
+            "Worktree path '{}' does not exist, falling back to '{}'",
+            worktree_path,
+            fallback
+        );
+        fallback
+    };
+    cmd.cwd(&cwd);
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
     cmd.env("JEAN_WORKTREE_PATH", &worktree_path);
