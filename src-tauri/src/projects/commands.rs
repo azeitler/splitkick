@@ -2725,10 +2725,17 @@ pub async fn open_worktree_in_finder(worktree_path: String) -> Result<(), String
 
 /// Format a spawn error with a user-friendly message when the executable is not found
 fn format_open_error(app_name: &str, error: &std::io::Error) -> String {
+    let display_name = match app_name {
+        "vscode" => "VS Code ('code')",
+        "cursor" => "Cursor ('cursor')",
+        "zed" => "Zed ('zed')",
+        "xcode" => "Xcode ('xed')",
+        other => other,
+    };
     if error.kind() == std::io::ErrorKind::NotFound {
-        format!("'{app_name}' not found. Make sure it is installed and available in your PATH.")
+        format!("{display_name} not found. Make sure it is installed and available in your PATH.")
     } else {
-        format!("Failed to open {app_name}: {error}")
+        format!("Failed to open {display_name}: {error}")
     }
 }
 
@@ -2957,9 +2964,46 @@ pub async fn open_worktree_in_editor(
         }
     }
 
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[cfg(target_os = "windows")]
     {
-        // VS Code and Cursor CLI work the same on all platforms
+        // On Windows, VS Code and Cursor install as .cmd batch wrappers (code.cmd, cursor.cmd).
+        // Command::new("code") uses CreateProcessW which can't execute .cmd files directly,
+        // so we wrap them with cmd /c. CREATE_NO_WINDOW prevents cmd.exe console flash.
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+        let result = match editor_app.as_str() {
+            "zed" => std::process::Command::new("zed")
+                .arg(&worktree_path)
+                .spawn(),
+            "cursor" => std::process::Command::new("cmd")
+                .args(["/c", "cursor", &worktree_path])
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn(),
+            "xcode" => {
+                return Err("Xcode is only available on macOS".to_string());
+            }
+            _ => {
+                // Default to VS Code
+                std::process::Command::new("cmd")
+                    .args(["/c", "code", &worktree_path])
+                    .creation_flags(CREATE_NO_WINDOW)
+                    .spawn()
+            }
+        };
+
+        match result {
+            Ok(_) => {
+                log::trace!("Successfully opened {editor_app}");
+            }
+            Err(e) => {
+                return Err(format_open_error(&editor_app, &e));
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
         let result = match editor_app.as_str() {
             "zed" => std::process::Command::new("zed")
                 .arg(&worktree_path)

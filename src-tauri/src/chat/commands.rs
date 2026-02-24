@@ -3116,10 +3116,22 @@ pub async fn open_file_in_default_app(path: String, editor: Option<String>) -> R
 
     #[cfg(target_os = "windows")]
     {
+        // On Windows, VS Code and Cursor install as .cmd batch wrappers (code.cmd, cursor.cmd).
+        // Command::new("code") uses CreateProcessW which can't execute .cmd files directly,
+        // so we wrap them with cmd /c. CREATE_NO_WINDOW prevents cmd.exe console flash.
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+
         let result = match editor_app.as_str() {
             "zed" => std::process::Command::new("zed").arg(&path).spawn(),
-            "cursor" => std::process::Command::new("cursor").arg(&path).spawn(),
-            _ => std::process::Command::new("code").arg(&path).spawn(),
+            "cursor" => std::process::Command::new("cmd")
+                .args(["/c", "cursor", &path])
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn(),
+            _ => std::process::Command::new("cmd")
+                .args(["/c", "code", &path])
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn(),
         };
 
         result.map_err(|e| format!("Failed to open {editor_app}: {e}"))?;
