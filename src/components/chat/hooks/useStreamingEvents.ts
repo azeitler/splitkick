@@ -471,6 +471,30 @@ export default function useStreamingEvents({
         }
       }
 
+      // Optimistically update last_run_status in caches so the "restored session"
+      // indicator (ChatWindow) hides immediately — the Rust backend updates the run
+      // log AFTER emitting chat:done, so a refetch would return stale 'running'.
+      if (!hasUnansweredBlockingTool) {
+        queryClient.setQueryData<Session>(
+          chatQueryKeys.session(sessionId),
+          old => (old ? { ...old, last_run_status: 'completed' } : old)
+        )
+        queryClient.setQueryData<WorktreeSessions>(
+          chatQueryKeys.sessions(worktreeId),
+          old => {
+            if (!old) return old
+            return {
+              ...old,
+              sessions: old.sessions.map(s =>
+                s.id === sessionId
+                  ? { ...s, last_run_status: 'completed' as const }
+                  : s
+              ),
+            }
+          }
+        )
+      }
+
       // NOW add optimistic message after streaming state is cleared
       // Add message if there's content OR tool calls (some responses are only tool calls)
       if (content || (effectiveToolCalls && effectiveToolCalls.length > 0)) {
@@ -669,6 +693,28 @@ export default function useStreamingEvents({
       clearExecutingMode(session_id)
       setSessionReviewing(session_id, true)
 
+      // Optimistically update last_run_status so "restored session" indicator hides
+      queryClient.setQueryData<Session>(
+        chatQueryKeys.session(session_id),
+        old => (old ? { ...old, last_run_status: 'crashed' as const } : old)
+      )
+      if (sessionWorktreeId) {
+        queryClient.setQueryData<WorktreeSessions>(
+          chatQueryKeys.sessions(sessionWorktreeId),
+          old => {
+            if (!old) return old
+            return {
+              ...old,
+              sessions: old.sessions.map(s =>
+                s.id === session_id
+                  ? { ...s, last_run_status: 'crashed' as const }
+                  : s
+              ),
+            }
+          }
+        )
+      }
+
       // Invalidate sessions list to update last_run_status in tab bar
       if (sessionWorktreeId) {
         queryClient.invalidateQueries({
@@ -780,6 +826,28 @@ export default function useStreamingEvents({
         setWaitingForInput(session_id, false)
         clearExecutingMode(session_id)
         clearStreamingPlanApproval(session_id)
+
+        // Optimistically update last_run_status so "restored session" indicator hides
+        queryClient.setQueryData<Session>(
+          chatQueryKeys.session(session_id),
+          old => (old ? { ...old, last_run_status: 'cancelled' } : old)
+        )
+        if (sessionWorktreeId) {
+          queryClient.setQueryData<WorktreeSessions>(
+            chatQueryKeys.sessions(sessionWorktreeId),
+            old => {
+              if (!old) return old
+              return {
+                ...old,
+                sessions: old.sessions.map(s =>
+                  s.id === session_id
+                    ? { ...s, last_run_status: 'cancelled' as const }
+                    : s
+                ),
+              }
+            }
+          )
+        }
 
         // Determine if we should restore message to input:
         // - undo_send from backend, OR

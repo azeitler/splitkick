@@ -221,6 +221,12 @@ export function ChatWindow({
   const hasReviewResults = useChatStore(state =>
     activeSessionId ? !!state.reviewResults[activeSessionId] : false
   )
+  // Whether session is in review state (used to hide "restored session" indicator after prompt finishes)
+  const isSessionReviewing = useChatStore(state =>
+    activeSessionId
+      ? (state.reviewingSessions[activeSessionId] ?? false)
+      : false
+  )
   // PERFORMANCE: Proper selector for isViewingCanvasTab - subscribes to actual data
   // Default to true so Canvas is the initial view when opening a worktree
   const isViewingCanvasTabRaw = useChatStore(state =>
@@ -1397,6 +1403,7 @@ export function ChatWindow({
                             {!isSending &&
                               !isWaitingForInput &&
                               !hasPendingQuestions &&
+                              !isSessionReviewing &&
                               session?.last_run_status === 'running' && (
                                 <div className="text-sm text-muted-foreground/60 mt-4">
                                   <span className="animate-dots">
