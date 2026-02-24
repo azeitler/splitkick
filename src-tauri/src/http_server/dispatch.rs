@@ -1314,6 +1314,13 @@ pub async fn dispatch_command(
             let result = crate::chat::save_pasted_text(app.clone(), content).await?;
             to_value(result)
         }
+        "update_pasted_text" => {
+            let path: String = from_field(&args, "path")?;
+            let content: String = from_field(&args, "content")?;
+            let result =
+                crate::chat::update_pasted_text(app.clone(), path, content).await?;
+            to_value(result)
+        }
         "delete_pasted_text" => {
             let path: String = from_field(&args, "path")?;
             crate::chat::delete_pasted_text(app.clone(), path).await?;
