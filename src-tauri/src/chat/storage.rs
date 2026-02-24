@@ -778,6 +778,17 @@ mod tests {
     }
 
     #[test]
+    fn test_worktree_index_new_empty() {
+        let index = WorktreeIndex::new_empty("test-worktree".to_string());
+
+        assert_eq!(index.worktree_id, "test-worktree");
+        assert_eq!(index.sessions.len(), 0);
+        assert!(index.active_session_id.is_none());
+        assert_eq!(index.version, 1);
+        assert!(index.branch_naming_completed);
+    }
+
+    #[test]
     fn test_worktree_index_find_methods() {
         let mut index = WorktreeIndex::new("test".to_string());
         let session_id = index.sessions[0].id.clone();
