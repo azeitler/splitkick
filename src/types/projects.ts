@@ -47,6 +47,8 @@ export interface Project {
   default_provider?: string | null
   /** Default CLI backend for sessions in this project (undefined = use global default) */
   default_backend?: string | null
+  /** Custom base directory for worktrees (undefined = use default ~/jean) */
+  worktrees_dir?: string | null
 }
 
 /**
@@ -66,7 +68,7 @@ export interface Worktree {
   project_id: string
   /** Random workspace name (e.g., "fuzzy-tiger") */
   name: string
-  /** Absolute path to worktree (~/jean/<project>/<name>) */
+  /** Absolute path to worktree (configurable base dir, defaults to ~/jean/<project>/<name>) */
   path: string
   /** Git branch name (same as workspace name) */
   branch: string
