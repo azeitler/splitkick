@@ -23,6 +23,7 @@ import {
   useOpenCodeCliAuth,
 } from '@/services/opencode-cli'
 import { useGhCliSetup, useGhCliAuth } from '@/services/gh-cli'
+import { escapeCliCommand } from '@/lib/shell-escape'
 import {
   SetupState,
   InstallingState,
@@ -681,20 +682,22 @@ function OnboardingDialogContent() {
   const isGhReinstall = ghSetup.status?.installed && step === 'gh-setup'
 
   const claudeLoginCommand = claudeSetup.status?.path
-    ? `'${claudeSetup.status.path.replace(/'/g, "'\\''")}'` +
-      (claudeSetup.status.supports_auth_command ? ' auth login' : '')
+    ? escapeCliCommand(
+        claudeSetup.status.path,
+        claudeSetup.status.supports_auth_command ? 'auth login' : undefined
+      )
     : ''
 
   const codexLoginCommand = codexSetup.status?.path
-    ? `'${codexSetup.status.path.replace(/'/g, "'\\''")}' login`
+    ? escapeCliCommand(codexSetup.status.path, 'login')
     : ''
 
   const opencodeLoginCommand = opencodeSetup.status?.path
-    ? `'${opencodeSetup.status.path.replace(/'/g, "'\\''")}' auth login`
+    ? escapeCliCommand(opencodeSetup.status.path, 'auth login')
     : ''
 
   const ghLoginCommand = ghSetup.status?.path
-    ? `'${ghSetup.status.path.replace(/'/g, "'\\''")}' auth login`
+    ? escapeCliCommand(ghSetup.status.path, 'auth login')
     : ''
 
   const getDialogContent = () => {
