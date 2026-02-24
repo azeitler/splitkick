@@ -657,6 +657,12 @@ export function SessionChatModal({
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
                 <DialogTitle className="text-sm font-medium shrink-0">
+                  {project && (
+                    <span className="text-muted-foreground font-normal">
+                      {project.name}
+                      <span className="mx-1.5 text-muted-foreground/50">›</span>
+                    </span>
+                  )}
                   {isBase ? 'Base Session' : (worktree?.name ?? 'Worktree')}
                 </DialogTitle>
                 <DialogDescription className="sr-only">
