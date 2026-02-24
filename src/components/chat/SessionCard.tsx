@@ -1,9 +1,10 @@
-import { forwardRef } from 'react'
+import { forwardRef, useCallback } from 'react'
 import {
   Archive,
   Eye,
   EyeOff,
   FileText,
+  Pencil,
   Shield,
   Sparkles,
   Tag,
@@ -41,6 +42,13 @@ export interface SessionCardProps {
   onYolo?: () => void
   onToggleLabel?: () => void
   onToggleReview?: () => void
+  onRename?: (sessionId: string, newName: string) => void
+  isRenaming?: boolean
+  renameValue?: string
+  onRenameValueChange?: (value: string) => void
+  onRenameStart?: (sessionId: string, currentName: string) => void
+  onRenameSubmit?: (sessionId: string) => void
+  onRenameCancel?: () => void
 }
 
 export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
@@ -57,10 +65,34 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
       onYolo,
       onToggleLabel,
       onToggleReview,
+      isRenaming,
+      renameValue,
+      onRenameValueChange,
+      onRenameStart,
+      onRenameSubmit,
+      onRenameCancel,
     },
     ref
   ) {
     const config = statusConfig[card.status]
+    const renameInputRef = useCallback((node: HTMLInputElement | null) => {
+      if (node) {
+        node.focus()
+        node.select()
+      }
+    }, [])
+
+    const handleRenameKeyDown = useCallback(
+      (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') {
+          e.preventDefault()
+          onRenameSubmit?.(card.session.id)
+        } else if (e.key === 'Escape') {
+          onRenameCancel?.()
+        }
+      },
+      [onRenameSubmit, onRenameCancel, card.session.id]
+    )
 
     return (
       <ContextMenu>
@@ -70,6 +102,9 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
             role="button"
             tabIndex={-1}
             onClick={onSelect}
+            onDoubleClick={() =>
+              onRenameStart?.(card.session.id, card.session.name)
+            }
             className={cn(
               'group flex w-full sm:w-[260px] flex-col rounded-md overflow-hidden bg-muted/30 border transition-colors text-left cursor-pointer scroll-mt-28 scroll-mb-20',
               'hover:border-foreground/20 hover:bg-muted/50',
@@ -151,7 +186,21 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
                 card.status !== 'idle' && 'min-h-[2.75em]'
               )}
             >
-              {card.session.name}
+              {isRenaming ? (
+                <input
+                  ref={renameInputRef}
+                  type="text"
+                  value={renameValue ?? ''}
+                  onChange={e => onRenameValueChange?.(e.target.value)}
+                  onBlur={() => onRenameSubmit?.(card.session.id)}
+                  onKeyDown={handleRenameKeyDown}
+                  onClick={e => e.stopPropagation()}
+                  onDoubleClick={e => e.stopPropagation()}
+                  className="w-full min-w-0 bg-transparent text-sm font-medium outline-none ring-1 ring-ring rounded px-1"
+                />
+              ) : (
+                card.session.name
+              )}
             </div>
 
             {/* Bottom section: status badge + actions */}
@@ -210,6 +259,16 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
           </div>
         </ContextMenuTrigger>
         <ContextMenuContent className="w-48">
+          {onRenameStart && (
+            <ContextMenuItem
+              onSelect={() =>
+                onRenameStart(card.session.id, card.session.name)
+              }
+            >
+              <Pencil className="mr-2 h-4 w-4" />
+              Rename
+            </ContextMenuItem>
+          )}
           {onToggleLabel && (
             <ContextMenuItem onSelect={onToggleLabel}>
               <Tag className="mr-2 h-4 w-4" />
