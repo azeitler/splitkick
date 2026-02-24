@@ -10,6 +10,7 @@
     "dev": "vite",
     "dev:web": "vite build --watch",
     "build": "tsc && vite build",
+    "postbuild": "touch dist/.gitkeep",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
