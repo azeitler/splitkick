@@ -9,6 +9,7 @@ import { PlanDialog } from './PlanDialog'
 import { RecapDialog } from './RecapDialog'
 import { CloseWorktreeDialog } from './CloseWorktreeDialog'
 import { usePreferences } from '@/services/preferences'
+import { useRenameSession } from '@/services/chat'
 import { useCanvasKeyboardNav } from './hooks/useCanvasKeyboardNav'
 import { useCanvasShortcutEvents } from './hooks/useCanvasShortcutEvents'
 import { type SessionCardData, groupCardsByStatus } from './session-card-utils'
@@ -218,6 +219,34 @@ export function CanvasList({
 
   const groups = useMemo(() => groupCardsByStatus(cards), [cards])
 
+  // Rename session state
+  const renameSession = useRenameSession()
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+
+  const handleStartRename = useCallback(
+    (sessionId: string, currentName: string) => {
+      setRenameValue(currentName)
+      setRenamingSessionId(sessionId)
+    },
+    []
+  )
+
+  const handleRenameSubmit = useCallback(
+    (sessionId: string) => {
+      const newName = renameValue.trim()
+      if (newName && newName !== cards.find(c => c.session.id === sessionId)?.session.name) {
+        renameSession.mutate({ worktreeId, worktreePath, sessionId, newName })
+      }
+      setRenamingSessionId(null)
+    },
+    [renameValue, worktreeId, worktreePath, renameSession, cards]
+  )
+
+  const handleRenameCancel = useCallback(() => {
+    setRenamingSessionId(null)
+  }, [])
+
   let indexOffset = 0
 
   return (
@@ -266,6 +295,12 @@ export function CanvasList({
                           !!card.session.review_results
                         setSessionReviewing(card.session.id, !isReviewing)
                       }}
+                      isRenaming={renamingSessionId === card.session.id}
+                      renameValue={renameValue}
+                      onRenameValueChange={setRenameValue}
+                      onRenameStart={handleStartRename}
+                      onRenameSubmit={handleRenameSubmit}
+                      onRenameCancel={handleRenameCancel}
                     />
                   )
                 })}

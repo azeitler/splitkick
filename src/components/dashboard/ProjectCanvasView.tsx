@@ -77,7 +77,7 @@ import {
   useCloseBaseSessionClean,
   useCloseBaseSessionArchive,
 } from '@/services/projects'
-import { useArchiveSession, useCloseSession } from '@/services/chat'
+import { useArchiveSession, useCloseSession, useRenameSession } from '@/services/chat'
 import { usePreferences, useSavePreferences } from '@/services/preferences'
 import { KeybindingHints } from '@/components/ui/keybinding-hints'
 import { DEFAULT_KEYBINDINGS, formatShortcutDisplay } from '@/types/keybindings'
@@ -1245,6 +1245,49 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     ]
   )
 
+  // Rename session state
+  const renameSessionMutation = useRenameSession()
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  // Track which worktree the renaming session belongs to
+  const renamingWorktreeRef = useRef<{ id: string; path: string } | null>(null)
+
+  const handleStartRenameForWorktree = useCallback(
+    (worktreeId: string, worktreePath: string, sessionId: string, currentName: string) => {
+      renamingWorktreeRef.current = { id: worktreeId, path: worktreePath }
+      setRenameValue(currentName)
+      setRenamingSessionId(sessionId)
+    },
+    []
+  )
+
+  const handleRenameSubmit = useCallback(
+    (sessionId: string) => {
+      const newName = renameValue.trim()
+      const wt = renamingWorktreeRef.current
+      if (newName && wt) {
+        // Find the current name to avoid no-op mutations
+        const currentSession = flatCards.find(c => c.card?.session.id === sessionId)
+        if (currentSession && currentSession.card?.session.name !== newName) {
+          renameSessionMutation.mutate({
+            worktreeId: wt.id,
+            worktreePath: wt.path,
+            sessionId,
+            newName,
+          })
+        }
+      }
+      setRenamingSessionId(null)
+      renamingWorktreeRef.current = null
+    },
+    [renameValue, flatCards, renameSessionMutation]
+  )
+
+  const handleRenameCancel = useCallback(() => {
+    setRenamingSessionId(null)
+    renamingWorktreeRef.current = null
+  }, [])
+
   // Listen for close-session-or-worktree event to handle CMD+W
   useEffect(() => {
     const handleCloseSessionOrWorktree = (e: Event) => {
@@ -1643,6 +1686,19 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                                       !isReviewing
                                     )
                                   }}
+                                  isRenaming={renamingSessionId === card.session.id}
+                                  renameValue={renameValue}
+                                  onRenameValueChange={setRenameValue}
+                                  onRenameStart={(sessionId, currentName) =>
+                                    handleStartRenameForWorktree(
+                                      section.worktree.id,
+                                      section.worktree.path,
+                                      sessionId,
+                                      currentName
+                                    )
+                                  }
+                                  onRenameSubmit={handleRenameSubmit}
+                                  onRenameCancel={handleRenameCancel}
                                 />
                               )
                             })}
