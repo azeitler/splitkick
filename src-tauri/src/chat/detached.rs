@@ -4,14 +4,18 @@
 //! survives Jean quitting. The process writes directly to a JSONL file,
 //! which Jean tails for real-time updates.
 
-use std::io::{BufRead, BufReader};
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
+
+#[cfg(unix)]
+use std::io::{BufRead, BufReader};
 
 // Re-export is_process_alive from platform module
 pub use crate::platform::is_process_alive;
+use crate::platform::silent_command;
 
 /// Escape a string for safe use in a shell command.
+#[cfg(unix)]
 fn shell_escape(s: &str) -> String {
     // Use single quotes and escape any single quotes within
     format!("'{}'", s.replace('\'', "'\\''"))
@@ -92,7 +96,7 @@ pub fn spawn_detached_claude(
     log::trace!("Working directory: {working_dir:?}");
 
     // Spawn the shell command
-    let mut child = Command::new("sh")
+    let mut child = silent_command("sh")
         .arg("-c")
         .arg(&shell_cmd)
         .current_dir(working_dir)
@@ -157,12 +161,10 @@ pub fn spawn_detached_claude(
     Ok(pid)
 }
 
-/// Spawn Claude CLI as a detached process via WSL (Windows).
+/// Spawn Claude CLI as a detached native Windows process.
 ///
-/// On Windows, Claude CLI requires WSL. We invoke `wsl` to run the command
-/// inside the Linux environment, with paths translated to WSL format.
-///
-/// Returns the PID of the wsl.exe process (killing it terminates WSL children).
+/// Runs claude.exe directly with stdout/stderr redirected to the output file.
+/// Returns the Windows PID of the Claude CLI process.
 #[cfg(windows)]
 #[allow(clippy::too_many_arguments)]
 pub fn spawn_detached_claude(
@@ -173,104 +175,166 @@ pub fn spawn_detached_claude(
     working_dir: &Path,
     env_vars: &[(&str, &str)],
 ) -> Result<u32, String> {
-    use crate::platform::shell::{is_wsl_available, windows_to_wsl_path};
+    use std::fs::OpenOptions;
+    use std::io::Write;
     use std::os::windows::process::CommandExt;
 
-    // Windows process creation flags
     const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
     const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-    // Check WSL availability
-    if !is_wsl_available() {
-        return Err(
-            "WSL is required on Windows to run Claude CLI. Install with: wsl --install".to_string(),
-        );
+    // Open output file in append mode (metadata header already written)
+    let out_file = OpenOptions::new()
+        .append(true)
+        .open(output_file)
+        .map_err(|e| format!("Failed to open output file: {e}"))?;
+
+    // Clone for stderr
+    let err_file = out_file
+        .try_clone()
+        .map_err(|e| format!("Failed to clone output file handle: {e}"))?;
+
+    // Build command - run claude.exe directly
+    // NOTE: silent_command sets CREATE_NO_WINDOW, but creation_flags() replaces
+    // (doesn't merge), so we must re-specify both flags here.
+    let mut cmd = silent_command(cli_path);
+    cmd.args(args)
+        .current_dir(working_dir)
+        .stdin(Stdio::piped())
+        .stdout(out_file)
+        .stderr(err_file)
+        .creation_flags(CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW);
+
+    // Set environment variables
+    for (key, value) in env_vars {
+        cmd.env(key, value);
     }
 
-    // Convert Windows paths to WSL paths
-    let wsl_cli_path =
-        windows_to_wsl_path(cli_path.to_str().ok_or("CLI path contains invalid UTF-8")?);
-    let wsl_input_path = windows_to_wsl_path(
-        input_file
-            .to_str()
-            .ok_or("Input file path contains invalid UTF-8")?,
-    );
-    let wsl_output_path = windows_to_wsl_path(
+    log::trace!("Spawning detached Claude CLI natively on Windows");
+    log::trace!("CLI path: {cli_path:?}");
+    log::trace!("Working directory: {working_dir:?}");
+
+    // Spawn the process
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to spawn Claude CLI: {e}"))?;
+
+    let pid = child.id();
+
+    // Read input file and write to stdin, then close stdin to signal EOF
+    let input_data =
+        std::fs::read(input_file).map_err(|e| format!("Failed to read input file: {e}"))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin
+            .write_all(&input_data)
+            .map_err(|e| format!("Failed to write to stdin: {e}"))?;
+        // stdin dropped here, closing the pipe (signals EOF to Claude CLI)
+    }
+
+    log::trace!("Detached Claude CLI spawned with Windows PID: {pid}");
+
+    Ok(pid)
+}
+
+/// Spawn Codex CLI as a detached process (Unix).
+///
+/// Key difference from Claude: Codex takes the prompt as a positional argument,
+/// not piped via stdin. For resume, prompt is None (thread_id is in args).
+#[cfg(unix)]
+#[allow(clippy::too_many_arguments)]
+pub fn spawn_detached_codex(
+    cli_path: &Path,
+    args: &[String],
+    prompt: Option<&str>,
+    output_file: &Path,
+    working_dir: &Path,
+    env_vars: &[(&str, &str)],
+) -> Result<u32, String> {
+    let cli_path_escaped =
+        shell_escape(cli_path.to_str().ok_or("CLI path contains invalid UTF-8")?);
+    let output_path_escaped = shell_escape(
         output_file
             .to_str()
             .ok_or("Output file path contains invalid UTF-8")?,
     );
-    let wsl_working_dir = windows_to_wsl_path(
-        working_dir
-            .to_str()
-            .ok_or("Working directory path contains invalid UTF-8")?,
-    );
 
-    // Build args string with proper escaping
     let args_str = args
         .iter()
         .map(|arg| shell_escape(arg))
         .collect::<Vec<_>>()
         .join(" ");
 
-    // Build environment variable exports
     let env_exports = env_vars
         .iter()
         .map(|(k, v)| format!("{}={}", k, shell_escape(v)))
         .collect::<Vec<_>>()
         .join(" ");
 
-    // Build the shell command to run inside WSL
-    // Same structure as Unix, but with WSL paths
+    // Codex: first message uses positional arg, resume pipes prompt via stdin
+    let is_resume = args.iter().any(|a| a == "resume");
+
+    let (prompt_arg, stdin_pipe) = if is_resume {
+        // Resume: pipe prompt via stdin (Codex reads follow-up from stdin)
+        let pipe = prompt
+            .map(|p| format!("echo {} | ", shell_escape(p)))
+            .unwrap_or_default();
+        (String::new(), pipe)
+    } else {
+        // First message: prompt as positional arg
+        let arg = prompt
+            .map(|p| format!(" {}", shell_escape(p)))
+            .unwrap_or_default();
+        (arg, String::new())
+    };
+
     let shell_cmd = if env_exports.is_empty() {
         format!(
-            "cd '{}' && cat '{}' | nohup '{}' {} >> '{}' 2>&1 & echo $!",
-            wsl_working_dir, wsl_input_path, wsl_cli_path, args_str, wsl_output_path
+            "{stdin_pipe}nohup {cli_path_escaped} {args_str}{prompt_arg} >> {output_path_escaped} 2>&1 & echo $!"
         )
     } else {
         format!(
-            "cd '{}' && cat '{}' | {} nohup '{}' {} >> '{}' 2>&1 & echo $!",
-            wsl_working_dir, wsl_input_path, env_exports, wsl_cli_path, args_str, wsl_output_path
+            "{stdin_pipe}{env_exports} nohup {cli_path_escaped} {args_str}{prompt_arg} >> {output_path_escaped} 2>&1 & echo $!"
         )
     };
 
-    log::trace!("Spawning detached Claude CLI via WSL");
-    log::trace!("WSL shell command: {shell_cmd}");
+    log::trace!("Spawning detached Codex CLI");
+    log::trace!("Shell command: {shell_cmd}");
+    log::trace!("Working directory: {working_dir:?}");
 
-    // Spawn wsl.exe with the shell command
-    let mut child = Command::new("wsl")
-        .args(["-e", "bash", "-c", &shell_cmd])
+    let mut child = silent_command("sh")
+        .arg("-c")
+        .arg(&shell_cmd)
+        .current_dir(working_dir)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .creation_flags(CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW)
         .spawn()
-        .map_err(|e| format!("Failed to spawn WSL: {e}"))?;
+        .map_err(|e| format!("Failed to spawn shell: {e}"))?;
 
-    // Read the PID from stdout (the `echo $!` part from inside WSL)
-    let stdout = child.stdout.take().ok_or("Failed to capture WSL stdout")?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or("Failed to capture shell stdout")?;
     let reader = BufReader::new(stdout);
 
-    let mut wsl_pid_str = String::new();
+    let mut pid_str = String::new();
     for line in reader.lines() {
         match line {
             Ok(l) => {
-                wsl_pid_str = l.trim().to_string();
+                pid_str = l.trim().to_string();
                 break;
             }
             Err(e) => {
-                log::warn!("Error reading PID from WSL: {e}");
+                log::warn!("Error reading PID from shell: {e}");
             }
         }
     }
 
-    // Capture stderr for error reporting
     let stderr_handle = child.stderr.take();
 
-    // Wait for the wsl command to finish setting up (returns after backgrounding)
     let status = child
         .wait()
-        .map_err(|e| format!("Failed to wait for WSL: {e}"))?;
+        .map_err(|e| format!("Failed to wait for shell: {e}"))?;
 
     if !status.success() {
         let stderr_output = stderr_handle
@@ -284,22 +348,89 @@ pub fn spawn_detached_claude(
             .unwrap_or_default();
 
         return Err(format!(
-            "WSL command failed with status: {status}\nStderr: {stderr_output}"
+            "Shell command failed with status: {status}\nStderr: {stderr_output}"
         ));
     }
 
-    // The PID we get is from inside WSL (bash's $!)
-    // For process management, we track the Windows wsl.exe PID instead
-    // because killing wsl.exe will terminate its children
-    //
-    // Note: We could potentially use the WSL PID for finer-grained control,
-    // but for simplicity we use a marker approach - we just check if output
-    // file is still being written to
-    let pid: u32 = wsl_pid_str
+    let pid: u32 = pid_str
         .parse()
-        .map_err(|e| format!("Failed to parse WSL PID '{wsl_pid_str}': {e}"))?;
+        .map_err(|e| format!("Failed to parse PID '{pid_str}': {e}"))?;
 
-    log::trace!("Detached Claude CLI spawned via WSL with PID: {pid}");
+    log::trace!("Detached Codex CLI spawned with PID: {pid}");
+
+    Ok(pid)
+}
+
+/// Spawn Codex CLI as a detached native Windows process.
+#[cfg(windows)]
+#[allow(clippy::too_many_arguments)]
+pub fn spawn_detached_codex(
+    cli_path: &Path,
+    args: &[String],
+    prompt: Option<&str>,
+    output_file: &Path,
+    working_dir: &Path,
+    env_vars: &[(&str, &str)],
+) -> Result<u32, String> {
+    use std::fs::OpenOptions;
+    use std::os::windows::process::CommandExt;
+
+    const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+    let out_file = OpenOptions::new()
+        .append(true)
+        .open(output_file)
+        .map_err(|e| format!("Failed to open output file: {e}"))?;
+
+    let err_file = out_file
+        .try_clone()
+        .map_err(|e| format!("Failed to clone output file handle: {e}"))?;
+
+    let is_resume = args.iter().any(|a| a == "resume");
+
+    let mut cmd = silent_command(cli_path);
+    cmd.args(args)
+        .current_dir(working_dir)
+        .stdout(out_file)
+        .stderr(err_file)
+        .creation_flags(CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW);
+
+    if is_resume {
+        // Resume: pipe prompt via stdin
+        cmd.stdin(Stdio::piped());
+    } else {
+        cmd.stdin(Stdio::null());
+        // First message: prompt as positional arg
+        if let Some(p) = prompt {
+            cmd.arg(p);
+        }
+    }
+
+    for (key, value) in env_vars {
+        cmd.env(key, value);
+    }
+
+    log::trace!("Spawning detached Codex CLI natively on Windows");
+
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to spawn Codex CLI: {e}"))?;
+
+    // Resume: write prompt to stdin, then close to signal EOF
+    if is_resume {
+        if let Some(p) = prompt {
+            use std::io::Write;
+            if let Some(mut stdin) = child.stdin.take() {
+                stdin
+                    .write_all(p.as_bytes())
+                    .map_err(|e| format!("Failed to write prompt to stdin: {e}"))?;
+            }
+        }
+    }
+
+    let pid = child.id();
+    log::trace!("Detached Codex CLI spawned with Windows PID: {pid}");
 
     Ok(pid)
 }
@@ -309,6 +440,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(unix)]
     fn test_shell_escape() {
         assert_eq!(shell_escape("hello"), "'hello'");
         assert_eq!(shell_escape("hello world"), "'hello world'");

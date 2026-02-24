@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from '@/lib/transport'
 import { logger } from '@/lib/logger'
 import type { ClaudeSkill, ClaudeCommand } from '@/types/chat'
 import { isTauri } from '@/services/projects'
@@ -55,7 +55,9 @@ export function useClaudeCommands() {
       try {
         logger.debug('Loading Claude CLI custom commands')
         const commands = await invoke<ClaudeCommand[]>('list_claude_commands')
-        logger.info('Claude CLI custom commands loaded', { count: commands.length })
+        logger.info('Claude CLI custom commands loaded', {
+          count: commands.length,
+        })
         return commands
       } catch (error) {
         logger.error('Failed to load Claude CLI custom commands', { error })

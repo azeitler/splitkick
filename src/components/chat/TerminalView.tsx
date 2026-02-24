@@ -1,33 +1,47 @@
 import { useEffect, useRef, useCallback, memo } from 'react'
 import { Plus, X, Minus, Terminal, ChevronUp } from 'lucide-react'
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from '@/lib/transport'
 import { useTerminal } from '@/hooks/useTerminal'
 import { useTerminalStore, type TerminalInstance } from '@/store/terminal-store'
+import {
+  disposeTerminal,
+  disposeAllWorktreeTerminals,
+} from '@/lib/terminal-instances'
 import { cn } from '@/lib/utils'
 import '@xterm/xterm/css/xterm.css'
+
+const EMPTY_TERMINALS: TerminalInstance[] = []
 
 interface TerminalViewProps {
   worktreeId: string
   worktreePath: string
   isCollapsed?: boolean
+  isWorktreeActive?: boolean
   onExpand?: () => void
+  /** Hide minimize and close-all buttons (for use in drawer) */
+  hideControls?: boolean
 }
 
 /** Individual terminal tab content */
 const TerminalTabContent = memo(function TerminalTabContent({
   terminal,
+  worktreeId,
   worktreePath,
   isActive,
   isCollapsed = false,
+  isWorktreeActive = true,
 }: {
   terminal: TerminalInstance
+  worktreeId: string
   worktreePath: string
   isActive: boolean
   isCollapsed?: boolean
+  isWorktreeActive?: boolean
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const { initTerminal, fit, focus } = useTerminal({
     terminalId: terminal.id,
+    worktreeId,
     worktreePath,
     command: terminal.command,
   })
@@ -62,16 +76,16 @@ const TerminalTabContent = memo(function TerminalTabContent({
     }
   }, [fit, isActive])
 
-  // Fit and focus when becoming active or when expanding from collapsed
+  // Fit and focus when becoming active, expanding from collapsed, or worktree becomes visible
   useEffect(() => {
-    if (isActive && initialized.current && !isCollapsed) {
+    if (isActive && initialized.current && !isCollapsed && isWorktreeActive) {
       // Use requestAnimationFrame to ensure container has proper dimensions after expanding
       requestAnimationFrame(() => {
         fit()
         focus()
       })
     }
-  }, [isActive, isCollapsed, fit, focus])
+  }, [isActive, isCollapsed, isWorktreeActive, fit, focus])
 
   return (
     <div className={cn('h-full w-full p-2', !isActive && 'hidden')}>
@@ -84,9 +98,13 @@ export function TerminalView({
   worktreeId,
   worktreePath,
   isCollapsed = false,
+  isWorktreeActive = true,
   onExpand,
+  hideControls = false,
 }: TerminalViewProps) {
-  const terminals = useTerminalStore(state => state.terminals[worktreeId] ?? [])
+  const terminals = useTerminalStore(
+    state => state.terminals[worktreeId] ?? EMPTY_TERMINALS
+  )
   const activeTerminalId = useTerminalStore(
     state => state.activeTerminalIds[worktreeId]
   )
@@ -98,15 +116,19 @@ export function TerminalView({
     setActiveTerminal,
     setTerminalVisible,
     setTerminalPanelOpen,
-    closeAllTerminals,
   } = useTerminalStore.getState()
 
-  // Auto-create first terminal if none exists
+  // Auto-create a terminal only on initial mount (not when tabs are closed)
+  const mountedRef = useRef(false)
   useEffect(() => {
-    if (terminals.length === 0) {
-      addTerminal(worktreeId)
+    if (!mountedRef.current) {
+      mountedRef.current = true
+      const existing = useTerminalStore.getState().terminals[worktreeId] ?? []
+      if (existing.length === 0) {
+        addTerminal(worktreeId)
+      }
     }
-  }, [terminals.length, worktreeId, addTerminal])
+  }, [worktreeId, addTerminal])
 
   const handleAddTerminal = useCallback(() => {
     addTerminal(worktreeId)
@@ -121,13 +143,15 @@ export function TerminalView({
       } catch {
         // Terminal may already be stopped
       }
+      // Dispose xterm instance (cleanup listeners, clear buffer)
+      disposeTerminal(terminalId)
       // Remove from store
       removeTerminal(worktreeId, terminalId)
-      // If this was the last terminal, close the panel
       const remaining = useTerminalStore.getState().terminals[worktreeId] ?? []
       if (remaining.length === 0) {
-        setTerminalPanelOpen(false)
+        setTerminalPanelOpen(worktreeId, false)
         setTerminalVisible(false)
+        useTerminalStore.getState().setModalTerminalOpen(worktreeId, false)
       }
     },
     [worktreeId, removeTerminal, setTerminalPanelOpen, setTerminalVisible]
@@ -144,17 +168,10 @@ export function TerminalView({
     setTerminalVisible(false)
   }, [setTerminalVisible])
 
-  const handleCloseAll = useCallback(async () => {
-    const terminalIds = closeAllTerminals(worktreeId)
-    // Stop all PTY processes
-    for (const terminalId of terminalIds) {
-      try {
-        await invoke('stop_terminal', { terminalId })
-      } catch {
-        // Terminal may already be stopped
-      }
-    }
-  }, [worktreeId, closeAllTerminals])
+  const handleCloseAll = useCallback(() => {
+    // Dispose all xterm instances and stop PTY processes
+    disposeAllWorktreeTerminals(worktreeId)
+  }, [worktreeId])
 
   // When collapsed, show collapsed bar but keep terminals mounted (hidden) to preserve state
   if (isCollapsed) {
@@ -180,9 +197,11 @@ export function TerminalView({
             <TerminalTabContent
               key={terminal.id}
               terminal={terminal}
+              worktreeId={worktreeId}
               worktreePath={worktreePath}
               isActive={terminal.id === activeTerminalId}
               isCollapsed
+              isWorktreeActive={isWorktreeActive}
             />
           ))}
         </div>
@@ -192,8 +211,8 @@ export function TerminalView({
 
   return (
     <div className="flex h-full flex-col bg-[#1a1a1a]">
-      {/* Tab bar */}
-      <div className="flex items-center border-b border-neutral-700">
+      {/* Tab bar - fixed height for consistency */}
+      <div className="flex h-8 items-stretch border-b border-neutral-700">
         <div className="flex min-w-0 items-center overflow-x-auto">
           {terminals.map(terminal => {
             const isActive = terminal.id === activeTerminalId
@@ -239,40 +258,44 @@ export function TerminalView({
               </button>
             )
           })}
-
-          {/* Add terminal button */}
-          <button
-            type="button"
-            onClick={handleAddTerminal}
-            className="flex h-full shrink-0 items-center px-2 text-neutral-400 transition-colors hover:bg-neutral-800/50 hover:text-neutral-300"
-            aria-label="New terminal"
-          >
-            <Plus className="h-3.5 w-3.5" />
-          </button>
         </div>
+
+        {/* Add terminal button - outside scroll container for full height */}
+        <button
+          type="button"
+          onClick={handleAddTerminal}
+          className="flex shrink-0 items-center px-2 text-neutral-400 transition-colors hover:bg-neutral-800/50 hover:text-neutral-300"
+          aria-label="New terminal"
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </button>
 
         {/* Spacer */}
         <div className="flex-1" />
 
-        {/* Minimize button */}
-        <button
-          type="button"
-          onClick={handleMinimize}
-          className="flex h-full shrink-0 items-center px-2 text-neutral-400 transition-colors hover:bg-neutral-800/50 hover:text-neutral-300"
-          aria-label="Minimize terminal"
-        >
-          <Minus className="h-3.5 w-3.5" />
-        </button>
+        {!hideControls && (
+          <>
+            {/* Minimize button */}
+            <button
+              type="button"
+              onClick={handleMinimize}
+              className="flex h-full shrink-0 items-center px-2 text-neutral-400 transition-colors hover:bg-neutral-800/50 hover:text-neutral-300"
+              aria-label="Minimize terminal"
+            >
+              <Minus className="h-3.5 w-3.5" />
+            </button>
 
-        {/* Close all button */}
-        <button
-          type="button"
-          onClick={handleCloseAll}
-          className="flex h-full shrink-0 items-center px-2 text-neutral-400 transition-colors hover:bg-neutral-800/50 hover:text-red-400"
-          aria-label="Close all terminals"
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
+            {/* Close all button */}
+            <button
+              type="button"
+              onClick={handleCloseAll}
+              className="flex h-full shrink-0 items-center px-2 text-neutral-400 transition-colors hover:bg-neutral-800/50 hover:text-red-400"
+              aria-label="Close all terminals"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </>
+        )}
       </div>
 
       {/* Terminal content area */}
@@ -281,8 +304,10 @@ export function TerminalView({
           <TerminalTabContent
             key={terminal.id}
             terminal={terminal}
+            worktreeId={worktreeId}
             worktreePath={worktreePath}
             isActive={terminal.id === activeTerminalId}
+            isWorktreeActive={isWorktreeActive}
           />
         ))}
       </div>

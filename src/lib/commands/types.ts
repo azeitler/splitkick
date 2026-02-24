@@ -50,6 +50,7 @@ export interface CommandContext {
   clearSessionHistory: () => Promise<void>
   renameSession: () => void
   resumeSession: () => Promise<void>
+  regenerateSessionName: () => Promise<void>
 
   // Worktrees
   createWorktree: () => void
@@ -83,6 +84,7 @@ export interface CommandContext {
   addProject: () => void
   initProject: () => void
   removeProject: () => void
+  openProjectSettings: () => void
 
   // AI
   runAIReview: () => Promise<void>
@@ -99,10 +101,14 @@ export interface CommandContext {
   openArchivedModal: () => void
   restoreLastArchived: () => void
 
+  // Developer
+  toggleDebugMode: () => void
+
   // State getters for isAvailable checks
   hasActiveSession: () => boolean
   hasActiveWorktree: () => boolean
   hasSelectedProject: () => boolean
+  hasInstalledBackend: () => boolean
   hasMultipleSessions: () => boolean
   hasMultipleWorktrees: () => boolean
   hasRunScript: () => boolean

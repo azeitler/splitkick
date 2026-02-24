@@ -1,15 +1,20 @@
 import { useEffect } from 'react'
-import { listen } from '@tauri-apps/api/event'
-import { invoke } from '@tauri-apps/api/core'
+import { listen, useWsConnectionStatus } from '@/lib/transport'
+import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 import type { QueryClient } from '@tanstack/react-query'
 import { useChatStore } from '@/store/chat-store'
+import { useUIStore } from '@/store/ui-store'
 import { chatQueryKeys } from '@/services/chat'
 import { isTauri, saveWorktreePr, projectsQueryKeys } from '@/services/projects'
+import type { Project, Worktree } from '@/types/projects'
 import { preferencesQueryKeys } from '@/services/preferences'
-import type { AppPreferences } from '@/types/preferences'
+import type { AppPreferences, NotificationSound } from '@/types/preferences'
 import { triggerImmediateGitPoll } from '@/services/git-status'
 import { isAskUserQuestion, isExitPlanMode } from '@/types/chat'
+import { playNotificationSound } from '@/lib/sounds'
+import { findPlanFilePath } from '@/components/chat/tool-call-utils'
+import { generateId } from '@/lib/uuid'
 import type {
   ChunkEvent,
   ToolUseEvent,
@@ -20,13 +25,61 @@ import type {
   CancelledEvent,
   ThinkingEvent,
   PermissionDeniedEvent,
+  CompactingEvent,
   CompactedEvent,
   Session,
   SessionDigest,
+  WorktreeSessions,
 } from '@/types/chat'
 
 interface UseStreamingEventsParams {
   queryClient: QueryClient
+}
+
+/**
+ * Look up project/worktree/session names from query cache for display in toasts.
+ * Returns a formatted label like "project / worktree / session" with graceful fallback.
+ */
+function lookupSessionLabel(
+  queryClient: QueryClient,
+  sessionId: string,
+  worktreeId: string
+): string {
+  let projectName: string | undefined
+  let worktreeName: string | undefined
+  let sessionName: string | undefined
+
+  // Look up session name from sessions cache
+  const sessionsData = queryClient.getQueriesData<WorktreeSessions>({
+    queryKey: ['chat', 'sessions'],
+  })
+  for (const [, data] of sessionsData) {
+    const match = data?.sessions?.find(s => s.id === sessionId)
+    if (match) {
+      sessionName = match.name
+      break
+    }
+  }
+
+  // Look up worktree name and project name from worktrees cache
+  const worktreesData = queryClient.getQueriesData<Worktree[]>({
+    queryKey: [...projectsQueryKeys.all, 'worktrees'],
+  })
+  for (const [, worktrees] of worktreesData) {
+    const match = worktrees?.find(w => w.id === worktreeId)
+    if (match) {
+      worktreeName = match.name
+      // Look up project name
+      const projects = queryClient.getQueryData<Project[]>(
+        projectsQueryKeys.list()
+      )
+      projectName = projects?.find(p => p.id === match.project_id)?.name
+      break
+    }
+  }
+
+  const parts = [projectName, worktreeName, sessionName].filter(Boolean)
+  return parts.length > 0 ? parts.join(' / ') : ''
 }
 
 /**
@@ -40,6 +93,9 @@ interface UseStreamingEventsParams {
 export default function useStreamingEvents({
   queryClient,
 }: UseStreamingEventsParams): void {
+  // Re-run effect when WS connects so listeners are registered in web mode
+  const wsConnected = useWsConnectionStatus()
+
   useEffect(() => {
     if (!isTauri()) return
 
@@ -54,16 +110,26 @@ export default function useStreamingEvents({
       clearToolCalls,
       clearStreamingContentBlocks,
       removeSendingSession,
+      addSendingSession,
     } = useChatStore.getState()
 
+    // Sync sending state across clients (web <-> native)
+    const unlistenSending = listen<{
+      session_id: string
+      worktree_id: string
+    }>('chat:sending', event => {
+      const { session_id, worktree_id: wtId } = event.payload
+      addSendingSession(session_id)
+      // Invalidate sessions list so non-sender windows update metadata.
+      // IMPORTANT: Do NOT invalidate individual session queries here — it races
+      // with the mutation's optimistic updates and can overwrite them with stale
+      // JSONL data, causing duplicate/mismatched messages.
+      queryClient.invalidateQueries({
+        queryKey: chatQueryKeys.sessions(wtId),
+      })
+    })
+
     const unlistenChunk = listen<ChunkEvent>('chat:chunk', event => {
-      // Log chunks that might contain ExitPlanMode
-      if (event.payload.content.includes('ExitPlanMode')) {
-        console.log(
-          '[ChatWindow] Chunk contains ExitPlanMode:',
-          event.payload.content
-        )
-      }
       appendStreamingContent(event.payload.session_id, event.payload.content)
       // Also add to content blocks for inline rendering
       addTextBlock(event.payload.session_id, event.payload.content)
@@ -71,12 +137,6 @@ export default function useStreamingEvents({
 
     const unlistenToolUse = listen<ToolUseEvent>('chat:tool_use', event => {
       const { session_id, id, name, input, parent_tool_use_id } = event.payload
-      console.log('[ChatWindow] Tool use received:', {
-        name,
-        id,
-        input,
-        parent_tool_use_id,
-      })
       addToolCall(session_id, { id, name, input, parent_tool_use_id })
     })
 
@@ -84,7 +144,6 @@ export default function useStreamingEvents({
       'chat:tool_block',
       event => {
         const { session_id, tool_call_id } = event.payload
-        console.log('[ChatWindow] Tool block received:', { tool_call_id })
         addToolBlock(session_id, tool_call_id)
       }
     )
@@ -92,9 +151,6 @@ export default function useStreamingEvents({
     // Handle thinking content blocks (extended thinking)
     const unlistenThinking = listen<ThinkingEvent>('chat:thinking', event => {
       const { session_id, content } = event.payload
-      console.log('[ChatWindow] Thinking block received:', {
-        length: content.length,
-      })
       addThinkingBlock(session_id, content)
     })
 
@@ -115,10 +171,6 @@ export default function useStreamingEvents({
             d => d.tool_use_id !== tool_use_id
           )
           setPendingDenials(session_id, remainingDenials)
-          console.log(
-            '[ChatWindow] Cleared executed tool from pending denials:',
-            tool_use_id
-          )
         }
 
         // Look up the tool call to get its name
@@ -127,17 +179,9 @@ export default function useStreamingEvents({
 
         // Skip storing output for Read tool (files can be large, users can click to open)
         if (toolCall?.name === 'Read') {
-          console.log('[ChatWindow] Tool result skipped (Read tool):', {
-            tool_use_id,
-            outputLength: output.length,
-          })
           return
         }
 
-        console.log('[ChatWindow] Tool result received:', {
-          tool_use_id,
-          outputLength: output.length,
-        })
         updateToolCallOutput(session_id, tool_use_id, output)
       }
     )
@@ -147,14 +191,6 @@ export default function useStreamingEvents({
       'chat:permission_denied',
       event => {
         const { session_id, denials } = event.payload
-        console.log('[ChatWindow] Permission denied:', {
-          session_id,
-          denials: denials.map(d => ({
-            tool_name: d.tool_name,
-            tool_use_id: d.tool_use_id,
-          })),
-        })
-
         const {
           setPendingDenials,
           lastSentMessages,
@@ -204,25 +240,52 @@ export default function useStreamingEvents({
       // Only skip digest if BOTH the worktree AND session are active (user is looking at it)
       const isActiveWorktree = worktreeId === activeWorktreeId
       const isActiveSession = activeSessionIds[worktreeId] === sessionId
-      const isCurrentlyViewing = isActiveWorktree && isActiveSession
+      const isViewingInFullView = isActiveWorktree && isActiveSession
+
+      // Also check if viewing in modal (modal doesn't change activeWorktreeId)
+      const { sessionChatModalOpen, sessionChatModalWorktreeId } =
+        useUIStore.getState()
+      const isViewingInModal =
+        sessionChatModalOpen &&
+        sessionChatModalWorktreeId === worktreeId &&
+        isActiveSession
+
+      const isCurrentlyViewing = isViewingInFullView || isViewingInModal
 
       // Check if session recap is enabled in preferences
-      const preferences = queryClient.getQueryData<AppPreferences>(preferencesQueryKeys.preferences())
+      const preferences = queryClient.getQueryData<AppPreferences>(
+        preferencesQueryKeys.preferences()
+      )
       const sessionRecapEnabled = preferences?.session_recap_enabled ?? false
 
-      if (!isCurrentlyViewing && sessionRecapEnabled) {
+      // Only generate digest if status is CHANGING to review (not already reviewing)
+      // This prevents generating digests for all restored sessions on app startup
+      const wasAlreadyReviewing =
+        useChatStore.getState().reviewingSessions[sessionId] ?? false
+
+      if (!isCurrentlyViewing && sessionRecapEnabled && !wasAlreadyReviewing) {
         // Mark for digest and generate it in the background immediately
         markSessionNeedsDigest(sessionId)
-        console.log('[useStreamingEvents] Session completed while not viewing, generating digest:', sessionId)
 
         // Generate digest in background (fire and forget)
         invoke<SessionDigest>('generate_session_digest', { sessionId })
           .then(digest => {
             useChatStore.getState().setSessionDigest(sessionId, digest)
-            console.log('[useStreamingEvents] Digest generated for session:', sessionId)
+            // Persist digest to disk so it survives app reload
+            invoke('update_session_digest', { sessionId, digest }).catch(
+              err => {
+                console.error(
+                  '[useStreamingEvents] Failed to persist digest:',
+                  err
+                )
+              }
+            )
           })
           .catch(err => {
-            console.error('[useStreamingEvents] Failed to generate digest:', err)
+            console.error(
+              '[useStreamingEvents] Failed to generate digest:',
+              err
+            )
           })
       }
 
@@ -232,13 +295,21 @@ export default function useStreamingEvents({
       const toolCalls = activeToolCalls[sessionId]
       const contentBlocks = streamingContentBlocks[sessionId]
 
+      // Codex has no native plan approval flow — skip synthetic ExitPlanMode injection.
+      // Codex plan completions fall through to the "no blocking tools" path → status = "review".
+      const effectiveToolCalls = toolCalls
+      const effectiveContentBlocks = contentBlocks
+
       // Check for unanswered blocking tools BEFORE clearing state
       // This determines whether to show "waiting" status in the UI
-      const hasUnansweredBlockingTool = toolCalls?.some(
+      const hasUnansweredBlockingTool = effectiveToolCalls?.some(
         tc =>
           (isAskUserQuestion(tc) || isExitPlanMode(tc)) &&
           !isQuestionAnswered(sessionId, tc.id)
       )
+
+      // Clear compacting state (safety net in case chat:compacted was missed)
+      useChatStore.getState().setCompacting(sessionId, false)
 
       // CRITICAL: Clear streaming/sending state BEFORE adding optimistic message
       // This prevents double-render where both StreamingMessage and persisted message show
@@ -246,15 +317,121 @@ export default function useStreamingEvents({
       // false before the new message appears in the cache
       setError(sessionId, null)
       clearLastSentMessage(sessionId)
+      useChatStore.getState().clearLastSentAttachments(sessionId)
 
       if (hasUnansweredBlockingTool) {
-        // Keep tool calls and content blocks so UI shows question
-        // Clear text content (not blocks) and executing mode
-        // Set waiting state and allow user to send messages (answers)
-        clearStreamingContent(sessionId)
-        clearExecutingMode(sessionId)
-        setWaitingForInput(sessionId, true)
-        removeSendingSession(sessionId)
+        // Check if there are queued messages AND only ExitPlanMode is blocking (not AskUserQuestion)
+        const { messageQueues } = useChatStore.getState()
+        const hasQueuedMessages = (messageQueues[sessionId]?.length ?? 0) > 0
+        const isOnlyExitPlanMode =
+          effectiveToolCalls?.every(
+            tc => !isAskUserQuestion(tc) || isQuestionAnswered(sessionId, tc.id)
+          ) &&
+          effectiveToolCalls?.some(
+            tc => isExitPlanMode(tc) && !isQuestionAnswered(sessionId, tc.id)
+          )
+
+        if (hasQueuedMessages && isOnlyExitPlanMode) {
+          // Queued message takes priority over plan approval
+          // Clear tool calls so approval UI doesn't show, let queue processor handle the queued message
+          // Don't set waitingForInput(true) - this allows queue processor to send the queued message
+          clearStreamingContent(sessionId)
+          clearStreamingContentBlocks(sessionId)
+          clearToolCalls(sessionId)
+          clearExecutingMode(sessionId)
+          removeSendingSession(sessionId)
+        } else {
+          // Original behavior: show blocking tool UI and wait for user input
+          // Keep tool calls and content blocks so UI shows question
+          // Clear text content (not blocks) and executing mode
+          // Set waiting state and allow user to send messages (answers)
+          clearStreamingContent(sessionId)
+          clearExecutingMode(sessionId)
+          setWaitingForInput(sessionId, true)
+          removeSendingSession(sessionId)
+
+          // Determine waiting type: question or plan
+          const hasUnansweredQuestion = effectiveToolCalls?.some(
+            tc => isAskUserQuestion(tc) && !isQuestionAnswered(sessionId, tc.id)
+          )
+          const hasUnansweredPlan = effectiveToolCalls?.some(
+            tc => isExitPlanMode(tc) && !isQuestionAnswered(sessionId, tc.id)
+          )
+          // Questions take priority over plans for the type indicator
+          const waitingType: 'question' | 'plan' | null = hasUnansweredQuestion
+            ? 'question'
+            : hasUnansweredPlan
+              ? 'plan'
+              : null
+
+          // Persist plan file path and pending message ID for ExitPlanMode
+          if (effectiveToolCalls) {
+            const planPath = findPlanFilePath(effectiveToolCalls)
+            if (planPath) {
+              useChatStore.getState().setPlanFilePath(sessionId, planPath)
+            }
+
+            // Check if there's an ExitPlanMode tool call - if so, generate a message ID
+            // that will be used for the optimistic message and persist it
+            const hasExitPlanModeCall = effectiveToolCalls.some(tc => isExitPlanMode(tc))
+            if (hasExitPlanModeCall) {
+              // Generate message ID now so we can persist it before the optimistic message is created
+              const pendingMessageId = generateId()
+              useChatStore
+                .getState()
+                .setPendingPlanMessageId(sessionId, pendingMessageId)
+              // Store for use when creating the optimistic message
+              ;(window as unknown as Record<string, string>)[
+                `__pendingMessageId_${sessionId}`
+              ] = pendingMessageId
+
+              // Persist directly to session file (session state persistence hook only handles active session)
+              const { worktreePaths } = useChatStore.getState()
+              const wtPath = worktreePaths[worktreeId]
+              if (wtPath) {
+                invoke('update_session_state', {
+                  worktreeId,
+                  worktreePath: wtPath,
+                  sessionId,
+                  planFilePath: planPath ?? undefined,
+                  pendingPlanMessageId: pendingMessageId,
+                  waitingForInput: true,
+                  waitingForInputType: waitingType,
+                }).catch(err => {
+                  console.error(
+                    '[useStreamingEvents] Failed to persist plan state:',
+                    err
+                  )
+                })
+              }
+            } else if (waitingType === 'question') {
+              // Persist question waiting state (no plan file path needed)
+              const { worktreePaths } = useChatStore.getState()
+              const wtPath = worktreePaths[worktreeId]
+              if (wtPath) {
+                invoke('update_session_state', {
+                  worktreeId,
+                  worktreePath: wtPath,
+                  sessionId,
+                  waitingForInput: true,
+                  waitingForInputType: waitingType,
+                }).catch(err => {
+                  console.error(
+                    '[useStreamingEvents] Failed to persist question state:',
+                    err
+                  )
+                })
+              }
+            }
+          }
+
+          // Play waiting sound if not currently viewing this session
+          if (!isCurrentlyViewing) {
+            const waitingSound = (preferences?.waiting_sound ??
+              'none') as NotificationSound
+            playNotificationSound(waitingSound)
+          }
+        }
       } else {
         // No blocking tools - clear everything and mark for review
         clearStreamingContent(sessionId)
@@ -265,11 +442,50 @@ export default function useStreamingEvents({
         clearStreamingPlanApproval(sessionId)
         clearExecutingMode(sessionId)
         setSessionReviewing(sessionId, true)
+
+        // Persist reviewing state to disk BEFORE invalidating queries below.
+        // Without this, invalidateQueries can refetch stale is_reviewing: false
+        // and useSessionStatePersistence overwrites Zustand, causing idle↔review oscillation.
+        const { worktreePaths: wtPaths } = useChatStore.getState()
+        const wtPath = wtPaths[worktreeId]
+        if (wtPath) {
+          invoke('update_session_state', {
+            worktreeId,
+            worktreePath: wtPath,
+            sessionId,
+            isReviewing: true,
+            waitingForInput: false,
+          }).catch(err =>
+            console.error(
+              '[useStreamingEvents] Failed to persist reviewing state:',
+              err
+            )
+          )
+        }
+
+        // Play review sound if not currently viewing this session
+        if (!isCurrentlyViewing) {
+          const reviewSound = (preferences?.review_sound ??
+            'none') as NotificationSound
+          playNotificationSound(reviewSound)
+        }
       }
 
       // NOW add optimistic message after streaming state is cleared
       // Add message if there's content OR tool calls (some responses are only tool calls)
-      if (content || (toolCalls && toolCalls.length > 0)) {
+      if (content || (effectiveToolCalls && effectiveToolCalls.length > 0)) {
+        // Use pre-generated message ID if available (for ExitPlanMode), otherwise generate new
+        const pendingIdKey = `__pendingMessageId_${sessionId}`
+        const preGeneratedId = (window as unknown as Record<string, string>)[
+          pendingIdKey
+        ]
+        const messageId = preGeneratedId ?? generateId()
+        // Clean up the temporary storage
+        if (preGeneratedId) {
+          // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+          delete (window as unknown as Record<string, string>)[pendingIdKey]
+        }
+
         queryClient.setQueryData<Session>(
           chatQueryKeys.session(sessionId),
           old => {
@@ -279,13 +495,13 @@ export default function useStreamingEvents({
               messages: [
                 ...old.messages,
                 {
-                  id: crypto.randomUUID(),
+                  id: messageId,
                   session_id: sessionId,
                   role: 'assistant' as const,
                   content: content ?? '',
                   timestamp: Math.floor(Date.now() / 1000),
-                  tool_calls: toolCalls ?? [],
-                  content_blocks: contentBlocks ?? [],
+                  tool_calls: effectiveToolCalls ?? [],
+                  content_blocks: effectiveContentBlocks ?? [],
                 },
               ],
             }
@@ -303,15 +519,9 @@ export default function useStreamingEvents({
         const prUrl = prMatch?.[2]
         if (prNumberStr && prUrl) {
           const prNumber = parseInt(prNumberStr, 10)
-          console.log('[ChatWindow] PR created detected:', {
-            prNumber,
-            prUrl,
-            worktreeId,
-          })
           // Save PR info to worktree (async, fire and forget)
           saveWorktreePr(worktreeId, prNumber, prUrl)
             .then(() => {
-              console.log('[ChatWindow] PR info saved successfully')
               // Invalidate worktree query to refresh PR link in UI
               queryClient.invalidateQueries({
                 queryKey: [...projectsQueryKeys.all, 'worktree', worktreeId],
@@ -352,28 +562,59 @@ export default function useStreamingEvents({
 
       // Check if this session is currently being viewed
       // Look up the worktree from sessionWorktreeMap since ErrorEvent may not have it
-      const sessionWorktreeId = useChatStore.getState().sessionWorktreeMap[session_id]
+      const sessionWorktreeId =
+        useChatStore.getState().sessionWorktreeMap[session_id]
       const isActiveWorktree = sessionWorktreeId === activeWorktreeId
       const isActiveSession = sessionWorktreeId
         ? activeSessionIds[sessionWorktreeId] === session_id
         : false
-      const isCurrentlyViewing = isActiveWorktree && isActiveSession
+      const isViewingInFullView = isActiveWorktree && isActiveSession
+
+      // Also check if viewing in modal (modal doesn't change activeWorktreeId)
+      const { sessionChatModalOpen, sessionChatModalWorktreeId } =
+        useUIStore.getState()
+      const isViewingInModal =
+        sessionChatModalOpen &&
+        sessionChatModalWorktreeId === sessionWorktreeId &&
+        isActiveSession
+
+      const isCurrentlyViewing = isViewingInFullView || isViewingInModal
 
       // Check if session recap is enabled in preferences
-      const preferences = queryClient.getQueryData<AppPreferences>(preferencesQueryKeys.preferences())
+      const preferences = queryClient.getQueryData<AppPreferences>(
+        preferencesQueryKeys.preferences()
+      )
       const sessionRecapEnabled = preferences?.session_recap_enabled ?? false
 
-      if (!isCurrentlyViewing && sessionRecapEnabled) {
+      // Only generate digest if status is CHANGING to review (not already reviewing)
+      const wasAlreadyReviewing =
+        useChatStore.getState().reviewingSessions[session_id] ?? false
+
+      if (!isCurrentlyViewing && sessionRecapEnabled && !wasAlreadyReviewing) {
         // Mark for digest and generate it in the background immediately
         markSessionNeedsDigest(session_id)
-        console.log('[useStreamingEvents] Session errored while not viewing, generating digest:', session_id)
 
-        invoke<SessionDigest>('generate_session_digest', { sessionId: session_id })
+        invoke<SessionDigest>('generate_session_digest', {
+          sessionId: session_id,
+        })
           .then(digest => {
             useChatStore.getState().setSessionDigest(session_id, digest)
+            // Persist digest to disk so it survives app reload
+            invoke('update_session_digest', {
+              sessionId: session_id,
+              digest,
+            }).catch(err => {
+              console.error(
+                '[useStreamingEvents] Failed to persist digest:',
+                err
+              )
+            })
           })
           .catch(err => {
-            console.error('[useStreamingEvents] Failed to generate digest:', err)
+            console.error(
+              '[useStreamingEvents] Failed to generate digest:',
+              err
+            )
           })
       }
 
@@ -385,7 +626,34 @@ export default function useStreamingEvents({
       if (lastMessage) {
         setInputDraft(session_id, lastMessage)
         clearLastSentMessage(session_id)
+
+        // Remove the optimistic user message from query cache
+        queryClient.setQueryData<Session>(
+          chatQueryKeys.session(session_id),
+          old => {
+            if (!old?.messages?.length) return old
+            // Find last user message matching the failed content
+            let lastUserIdx = -1
+            for (let i = old.messages.length - 1; i >= 0; i--) {
+              if (
+                old.messages[i]?.role === 'user' &&
+                old.messages[i]?.content === lastMessage
+              ) {
+                lastUserIdx = i
+                break
+              }
+            }
+            if (lastUserIdx === -1) return old
+            const newMessages = [...old.messages]
+            newMessages.splice(lastUserIdx, 1)
+            return { ...old, messages: newMessages }
+          }
+        )
+
       }
+
+      // Restore attachments that were cleared on send
+      useChatStore.getState().restoreAttachments(session_id)
 
       // Clear streaming state for this session
       clearStreamingContent(session_id)
@@ -396,15 +664,17 @@ export default function useStreamingEvents({
       setWaitingForInput(session_id, false)
 
       // Clear executing planning mode and set reviewing state
-      const { clearExecutingMode, setSessionReviewing } = useChatStore.getState()
+      const { clearExecutingMode, setSessionReviewing } =
+        useChatStore.getState()
       clearExecutingMode(session_id)
       setSessionReviewing(session_id, true)
 
-      // Show error toast with longer duration
-      toast.error('Request failed', {
-        description: error,
-        duration: 10000,
-      })
+      // Invalidate sessions list to update last_run_status in tab bar
+      if (sessionWorktreeId) {
+        queryClient.invalidateQueries({
+          queryKey: chatQueryKeys.sessions(sessionWorktreeId),
+        })
+      }
     })
 
     // Handle cancellation (user pressed Cmd+Option+Backspace / Ctrl+Alt+Backspace)
@@ -413,7 +683,11 @@ export default function useStreamingEvents({
     const unlistenCancelled = listen<CancelledEvent>(
       'chat:cancelled',
       event => {
-        const { session_id, undo_send } = event.payload
+        const {
+          session_id,
+          worktree_id: eventWorktreeId,
+          undo_send,
+        } = event.payload
 
         // Capture streaming state BEFORE clearing (like chat:done does)
         const {
@@ -429,32 +703,68 @@ export default function useStreamingEvents({
         const contentBlocks = streamingContentBlocks[session_id]
 
         // Check if this session is currently being viewed
-        const sessionWorktreeId = useChatStore.getState().sessionWorktreeMap[session_id]
+        const sessionWorktreeId =
+          useChatStore.getState().sessionWorktreeMap[session_id]
         const isActiveWorktree = sessionWorktreeId === activeWorktreeId
         const isActiveSession = sessionWorktreeId
           ? activeSessionIds[sessionWorktreeId] === session_id
           : false
-        const isCurrentlyViewing = isActiveWorktree && isActiveSession
+        const isViewingInFullView = isActiveWorktree && isActiveSession
+
+        // Also check if viewing in modal (modal doesn't change activeWorktreeId)
+        const { sessionChatModalOpen, sessionChatModalWorktreeId } =
+          useUIStore.getState()
+        const isViewingInModal =
+          sessionChatModalOpen &&
+          sessionChatModalWorktreeId === sessionWorktreeId &&
+          isActiveSession
+
+        const isCurrentlyViewing = isViewingInFullView || isViewingInModal
 
         // Check if session recap is enabled in preferences
-        const preferences = queryClient.getQueryData<AppPreferences>(preferencesQueryKeys.preferences())
+        const preferences = queryClient.getQueryData<AppPreferences>(
+          preferencesQueryKeys.preferences()
+        )
         const sessionRecapEnabled = preferences?.session_recap_enabled ?? false
 
-        if (!isCurrentlyViewing && sessionRecapEnabled) {
+        // Only generate digest if status is CHANGING to review (not already reviewing)
+        const wasAlreadyReviewing =
+          useChatStore.getState().reviewingSessions[session_id] ?? false
+
+        if (
+          !isCurrentlyViewing &&
+          sessionRecapEnabled &&
+          !wasAlreadyReviewing
+        ) {
           // Mark for digest and generate it in the background immediately
           markSessionNeedsDigest(session_id)
-          console.log('[useStreamingEvents] Session cancelled while not viewing, generating digest:', session_id)
 
-          invoke<SessionDigest>('generate_session_digest', { sessionId: session_id })
+          invoke<SessionDigest>('generate_session_digest', {
+            sessionId: session_id,
+          })
             .then(digest => {
               useChatStore.getState().setSessionDigest(session_id, digest)
+              // Persist digest to disk so it survives app reload
+              invoke('update_session_digest', {
+                sessionId: session_id,
+                digest,
+              }).catch(err => {
+                console.error(
+                  '[useStreamingEvents] Failed to persist digest:',
+                  err
+                )
+              })
             })
             .catch(err => {
-              console.error('[useStreamingEvents] Failed to generate digest:', err)
+              console.error(
+                '[useStreamingEvents] Failed to generate digest:',
+                err
+              )
             })
         }
 
-        // Clear streaming state for this session
+        // Clear streaming and compacting state for this session
+        useChatStore.getState().setCompacting(session_id, false)
         clearStreamingContent(session_id)
         clearToolCalls(session_id)
         clearStreamingContentBlocks(session_id)
@@ -474,11 +784,20 @@ export default function useStreamingEvents({
         // Determine if we should restore message to input:
         // - undo_send from backend, OR
         // - No content streamed yet (cancelled before any response)
-        const hasContent = content || (toolCalls && toolCalls.length > 0)
-        const shouldRestoreMessage = undo_send || !hasContent
+        // BUT: Don't restore if there are queued messages (user chose "Skip to Next")
+        // Require substantial text (>50 chars) to count as meaningful partial response
+        // when there are no tool calls — short filler like "Planning." isn't worth preserving
+        const hasToolCalls = toolCalls && toolCalls.length > 0
+        const hasSubstantialText = !!content && content.trim().length > 50
+        const hasContent = hasToolCalls || hasSubstantialText
+        const hasQueuedMessages =
+          (useChatStore.getState().messageQueues[session_id] ?? []).length > 0
+        const shouldRestoreMessage =
+          !hasQueuedMessages && (undo_send || !hasContent)
 
         if (shouldRestoreMessage) {
-          // Restore message to input and remove from chat (no content to preserve)
+          // Restore message to input and optimistically undo the sent message.
+          // This keeps cancel UX immediate while backend state catches up.
           const {
             lastSentMessages,
             inputDrafts,
@@ -492,18 +811,19 @@ export default function useStreamingEvents({
             // Only restore if input is empty (user hasn't typed new content)
             if (!currentDraft.trim()) {
               setInputDraft(session_id, lastMessage)
+              // Restore any attachments that were sent with the message
+              useChatStore.getState().restoreAttachments(session_id)
               toast.info('Message restored to input')
             } else {
               toast.info('Request cancelled')
+              useChatStore.getState().clearLastSentAttachments(session_id)
             }
             clearLastSentMessage(session_id)
 
-            // Remove the user message from chat (undo the send)
             queryClient.setQueryData<Session>(
               chatQueryKeys.session(session_id),
               old => {
                 if (!old) return old
-                // Remove the last user message
                 const messages = [...old.messages]
                 for (let i = messages.length - 1; i >= 0; i--) {
                   if (messages[i]?.role === 'user') {
@@ -516,8 +836,19 @@ export default function useStreamingEvents({
             )
           } else {
             toast.info('Request cancelled')
+            useChatStore.getState().clearLastSentAttachments(session_id)
+          }
+
+          // Restore review state if session still has messages after undoing the send
+          const updatedSession = queryClient.getQueryData<Session>(
+            chatQueryKeys.session(session_id)
+          )
+          if (updatedSession && updatedSession.messages.length > 0) {
+            setSessionReviewing(session_id, true)
           }
         } else {
+          // Partial response exists — attachments were consumed, don't restore
+          useChatStore.getState().clearLastSentAttachments(session_id)
           // Preserve partial response as optimistic message
           // This provides immediate visual feedback; mutation completion will update with persisted version
           queryClient.setQueryData<Session>(
@@ -529,7 +860,7 @@ export default function useStreamingEvents({
                 messages: [
                   ...old.messages,
                   {
-                    id: crypto.randomUUID(),
+                    id: generateId(),
                     session_id,
                     role: 'assistant' as const,
                     content: content ?? '',
@@ -546,30 +877,104 @@ export default function useStreamingEvents({
           setSessionReviewing(session_id, true)
         }
 
-        // Invalidate sessions to ensure persisted state is loaded
-        // (optimistic update above may differ from what backend persisted)
-        if (sessionWorktreeId) {
-          queryClient.invalidateQueries({
-            queryKey: chatQueryKeys.sessions(sessionWorktreeId),
+        // Persist cancel state to disk BEFORE invalidating queries
+        // This prevents a race where invalidation refetches stale waiting_for_input: true from disk
+        const resolvedWorktreeId = sessionWorktreeId || eventWorktreeId
+        const { worktreePaths } = useChatStore.getState()
+        const wtPath = resolvedWorktreeId
+          ? worktreePaths[resolvedWorktreeId]
+          : null
+
+        const invalidateSessions = () => {
+          if (resolvedWorktreeId) {
+            queryClient.invalidateQueries({
+              queryKey: chatQueryKeys.sessions(resolvedWorktreeId),
+            })
+          }
+        }
+
+        if (resolvedWorktreeId && wtPath) {
+          // Determine final reviewing state from the branch that just ran
+          const isNowReviewing = shouldRestoreMessage
+            ? (queryClient.getQueryData<Session>(
+                chatQueryKeys.session(session_id)
+              )?.messages.length ?? 0) > 0
+            : true
+
+          invoke('update_session_state', {
+            worktreeId: resolvedWorktreeId,
+            worktreePath: wtPath,
+            sessionId: session_id,
+            waitingForInput: false,
+            waitingForInputType: null,
+            isReviewing: isNowReviewing,
           })
+            .catch(err =>
+              console.error(
+                '[useStreamingEvents] Failed to persist cancel state:',
+                err
+              )
+            )
+            .finally(invalidateSessions)
+        } else {
+          invalidateSessions()
         }
       }
     )
 
     // Handle context compaction events
-    const unlistenCompacted = listen<CompactedEvent>(
-      'chat:compacted',
+    const unlistenCompacting = listen<CompactingEvent>(
+      'chat:compacting',
       event => {
-        const { session_id, metadata } = event.payload
-        const { setLastCompaction } = useChatStore.getState()
-        setLastCompaction(session_id, metadata.trigger)
-        toast.info(
-          `Context ${metadata.trigger === 'auto' ? 'auto-' : ''}compacted`
-        )
+        const { session_id, worktree_id } = event.payload
+        const { setCompacting } = useChatStore.getState()
+        setCompacting(session_id, true)
+        const label = lookupSessionLabel(queryClient, session_id, worktree_id)
+        toast.info(label ? `Compacting context: ${label}...` : 'Compacting context...')
       }
     )
 
+    const unlistenCompacted = listen<CompactedEvent>(
+      'chat:compacted',
+      event => {
+        const { session_id, worktree_id, metadata } = event.payload
+        const { setLastCompaction, setCompacting } = useChatStore.getState()
+        setCompacting(session_id, false)
+        setLastCompaction(session_id, metadata.trigger)
+
+        const label = lookupSessionLabel(queryClient, session_id, worktree_id)
+        const prefix = `Context ${metadata.trigger === 'auto' ? 'auto-' : ''}compacted`
+        toast.info(label ? `${prefix}: ${label}` : prefix)
+      }
+    )
+
+    // Handle session setting changes (model, thinking level, execution mode)
+    // Broadcast by other clients via broadcast_session_setting command
+    const unlistenSettingChanged = listen<{
+      session_id: string
+      key: string
+      value: string
+    }>('session:setting-changed', event => {
+      const { session_id, key, value } = event.payload
+      const store = useChatStore.getState()
+      switch (key) {
+        case 'model':
+          store.setSelectedModel(session_id, value)
+          break
+        case 'thinkingLevel':
+          store.setThinkingLevel(
+            session_id,
+            value as 'off' | 'think' | 'megathink' | 'ultrathink'
+          )
+          break
+        case 'executionMode':
+          store.setExecutionMode(session_id, value as 'plan' | 'build' | 'yolo')
+          break
+      }
+    })
+
     return () => {
+      unlistenSending.then(f => f())
       unlistenChunk.then(f => f())
       unlistenToolUse.then(f => f())
       unlistenToolBlock.then(f => f())
@@ -579,7 +984,9 @@ export default function useStreamingEvents({
       unlistenDone.then(f => f())
       unlistenError.then(f => f())
       unlistenCancelled.then(f => f())
+      unlistenCompacting.then(f => f())
       unlistenCompacted.then(f => f())
+      unlistenSettingChanged.then(f => f())
     }
-  }, [queryClient])
+  }, [queryClient, wsConnected])
 }

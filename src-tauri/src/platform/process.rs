@@ -1,7 +1,21 @@
 // Cross-platform process management
 
-#[cfg(windows)]
 use std::process::Command;
+
+/// Creates a Command that won't open a console window on Windows.
+/// Use for all background operations (git, gh, claude CLI, etc.).
+/// Do NOT use for commands that intentionally open UI (terminals, editors, file explorers).
+pub fn silent_command<S: AsRef<std::ffi::OsStr>>(program: S) -> Command {
+    #[allow(unused_mut)]
+    let mut cmd = Command::new(program);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
 
 /// Check if a process is still alive
 /// - Unix: Uses kill(pid, 0) to check
@@ -106,7 +120,7 @@ pub fn kill_process_tree(pid: u32) -> Result<(), String> {
 #[cfg(windows)]
 pub fn kill_process_tree(pid: u32) -> Result<(), String> {
     // Use taskkill with /T flag for tree kill
-    let output = Command::new("taskkill")
+    let output = silent_command("taskkill")
         .args(["/F", "/T", "/PID", &pid.to_string()])
         .output()
         .map_err(|e| format!("Failed to run taskkill: {}", e))?;

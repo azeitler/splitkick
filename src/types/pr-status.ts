@@ -22,6 +22,11 @@ export type CheckStatus = 'success' | 'failure' | 'pending' | 'error'
 export type PrDisplayStatus = 'draft' | 'open' | 'review' | 'merged' | 'closed'
 
 /**
+ * PR merge conflict status from GitHub API
+ */
+export type MergeableStatus = 'mergeable' | 'conflicting' | 'unknown'
+
+/**
  * PR status event from the backend
  */
 export interface PrStatusEvent {
@@ -33,5 +38,6 @@ export interface PrStatusEvent {
   review_decision: ReviewDecision | null
   check_status: CheckStatus | null
   display_status: PrDisplayStatus
+  mergeable: MergeableStatus | null
   checked_at: number
 }

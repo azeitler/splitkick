@@ -27,7 +27,7 @@ This repository is a template with sensible defaults for building Tauri React ap
 4. **Batch Operations**: Use multiple tool calls in single responses
 5. **Match Code Style**: Follow existing formatting and patterns
 6. **Test Coverage**: Write comprehensive tests for business logic
-7. **Quality Gates**: Run `npm run check:all` after significant changes
+7. **Quality Gates**: Run `bun run check:all` after significant changes
 8. **No Dev Server**: Ask user to run and report back
 9. **No Unsolicited Commits**: Only when explicitly requested
 10. **Documentation**: Update relevant `docs/developer/` files for new patterns
@@ -81,18 +81,21 @@ const handleAction = useCallback(() => {
 **CRITICAL:** There are two patterns for Rust-TypeScript serialization. Pick ONE per struct and be consistent.
 
 **Pattern A: snake_case (for persisted/settings data)**
+
 - Used for: `AppPreferences`, `UIState`, and other persisted data
 - Rust structs use snake_case by default (e.g., `active_worktree_id`)
 - TypeScript interfaces must match exactly (e.g., `active_worktree_id`, NOT `activeWorktreeId`)
 - See `src/types/preferences.ts` and `src/types/ui-state.ts` for examples
 
 **Pattern B: camelCase with `#[serde(rename_all = "camelCase")]` (for API/command data)**
+
 - Used for: Data passed between frontend and Tauri commands (e.g., `IssueContext`, `PullRequestContext`)
 - Add `#[serde(rename_all = "camelCase")]` to Rust struct
 - TypeScript uses standard camelCase (e.g., `headRefName`, `baseRefName`)
 - See `src-tauri/src/projects/github_issues.rs` for examples
 
 **Common error:** `invalid args for command: missing field 'field_name'`
+
 - This means Rust expects snake_case but frontend sent camelCase (or vice versa)
 - Fix: Add `#[serde(rename_all = "camelCase")]` to the Rust struct, OR change TypeScript to snake_case
 
@@ -133,6 +136,51 @@ return isViewingLogsTab ? <LogsView /> : <ChatView />
 - Using inside callbacks obtained via `getState()`
 
 **The bug:** Zustand selectors subscribe to whatever the selector returns. If you return a function, you subscribe to that function reference (which never changes), not the data the function reads internally.
+
+#### Zustand Store Mutation Guards
+
+**CRITICAL:** Every Zustand `set()` call notifies ALL subscribers, even if the value didn't change. `useShallow` only prevents re-renders if the selected field references are identical. Store mutations that spread new objects (`{...state.field, [id]: value}`) without checking whether the value actually changed will cause unnecessary re-renders across every component subscribing to that store.
+
+```typescript
+// ✅ GOOD: Guard against no-op updates
+addSendingSession: sessionId =>
+  set(state => {
+    if (state.sendingSessionIds[sessionId]) return state // No new ref
+    return {
+      sendingSessionIds: { ...state.sendingSessionIds, [sessionId]: true },
+    }
+  })
+
+// ❌ BAD: Always creates new object reference, triggers all subscribers
+addSendingSession: sessionId =>
+  set(state => ({
+    sendingSessionIds: { ...state.sendingSessionIds, [sessionId]: true },
+  }))
+```
+
+**Guard patterns by type:**
+
+- **Boolean Records:** `if (state.field[id]) return state` / `if (!(id in state.field)) return state`
+- **Value Records:** `if (state.field[id] === value) return state`
+- **Array fields:** `if (!existing || existing.output === output) return state`
+- **Set fields:** `if (existingSet.has(value)) return state`
+
+#### Debugging Re-renders with WDYR
+
+To diagnose unnecessary re-renders, temporarily install [why-did-you-render](https://github.com/welldone-software/why-did-you-render):
+
+1. `bun add -d @welldone-software/why-did-you-render`
+2. Create `src/wdyr.ts`:
+   ```typescript
+   if (import.meta.env.DEV) {
+     const whyDidYouRender = (await import('@welldone-software/why-did-you-render')).default
+     whyDidYouRender(React, { trackAllPureComponents: false })
+   }
+   ```
+3. Import at top of `src/main.tsx`: `import './wdyr'`
+4. Annotate suspect components: `MyComponent.whyDidYouRender = true`
+5. Check browser console for "Re-rendered because of hook changes" / "different objects that are equal by value"
+6. **Before releasing:** Remove all annotations, `wdyr.ts`, its import, and `bun remove @welldone-software/why-did-you-render`
 
 #### Claude CLI JSON Schema Pattern
 
@@ -232,3 +280,83 @@ toast.success('PR created', {
   },
 })
 ```
+
+#### Windows Console Window Flash Prevention
+
+**CRITICAL:** On Windows, every `std::process::Command::new()` call opens a visible console window that briefly flashes on screen unless `CREATE_NO_WINDOW` (0x08000000) is set via `creation_flags()`.
+
+**Use `silent_command()` for all background operations:**
+
+```rust
+use crate::platform::silent_command;
+
+// ✅ GOOD: No console window flash
+let output = silent_command("git")
+    .args(["status", "--porcelain"])
+    .current_dir(repo_path)
+    .output()?;
+
+// ❌ BAD: Flashes a console window on Windows
+let output = Command::new("git")
+    .args(["status", "--porcelain"])
+    .current_dir(repo_path)
+    .output()?;
+```
+
+**Keep `Command::new()` ONLY for commands that intentionally open UI:**
+
+- File managers: `open`, `explorer`, `xdg-open`
+- Terminals: `wt`, `powershell`, `cmd`, terminal emulators
+- Editors: `code`, `cursor`, `xed`
+- macOS automation: `osascript`
+
+**For detached processes** that need both `CREATE_NO_WINDOW` and `CREATE_NEW_PROCESS_GROUP`: use `silent_command()` but re-set both flags via `creation_flags()` (it replaces, doesn't merge).
+
+The helper is defined in `src-tauri/src/platform/process.rs` and exported via `pub use process::*` in `platform/mod.rs`.
+
+#### Canvas Views Architecture
+
+**"Canvas"** refers to two distinct grid views that display session cards:
+
+1. **WorktreeCanvasView** (`src/components/chat/WorktreeCanvasView.tsx`)
+   - Worktree-level canvas showing sessions within a single worktree
+   - Uses the shared `CanvasGrid` component
+
+2. **ProjectCanvasView** (`src/components/dashboard/ProjectCanvasView.tsx`)
+   - Project-level canvas showing sessions grouped by worktree (with section headers)
+   - Has its own rendering logic but uses shared hooks
+
+**Shared Hooks** (in `src/components/chat/hooks/`):
+
+- `useCanvasKeyboardNav.ts` - Arrow key navigation, Enter selection, visual-position vertical neighbor finding
+- `useCanvasShortcutEvents.ts` - Event handlers for `open-plan`, `open-recap`, `approve-plan`, etc.
+- `useCanvasStoreState.ts` - Subscribes to chat store state needed for `SessionCardData`
+
+**Shared Components**:
+
+- `SessionCard.tsx` - Individual card component used by both canvas views
+- `CanvasGrid.tsx` - Shared grid component (used by WorktreeCanvasView only)
+- `session-card-utils.tsx` - `computeSessionCardData()` function and `SessionCardData` type
+
+When user mentions "Canvas", consider both views and their shared infrastructure.
+
+#### Image Processing on Paste/Drop
+
+Images pasted or dropped into chat are processed before saving (`process_image()` in `src-tauri/src/chat/commands.rs`):
+
+- **Resize**: Max 1568px on longest side (Claude's internal limit — anything larger gets downscaled by Claude anyway, wasting bandwidth). Images below 200px on any edge may degrade Claude's vision performance.
+- **Compress**: Opaque PNGs → JPEG at 85% quality (typically 5-10x smaller). PNGs with transparency stay PNG.
+- **Skip**: GIFs (may be animated), images < 50KB, already-compressed formats (JPEG/WebP below 1568px).
+- **Performance**: Uses `Triangle` (bilinear) filter for resize, runs in `spawn_blocking` to avoid blocking async runtime.
+- **Token cost**: `(width × height) / 750` tokens per image. Max optimal size (~1568×1568) ≈ 3,280 tokens.
+- **Reference**: https://platform.claude.com/docs/en/build-with-claude/vision
+
+#### Adding a New Claude Model
+
+Three files need updating when adding a new model option:
+
+1. **`src/types/preferences.ts`** — Add to `ClaudeModel` type union and `modelOptions` array (full labels like "Claude Sonnet 4.6"). Model IDs use short names: `opus`, `opus-4.5`, `sonnet`, `sonnet-4.5`, `haiku`
+2. **`src/store/chat-store.ts`** — Add to duplicated `ClaudeModel` type union (line ~27)
+3. **`src/components/chat/ChatToolbar.tsx`** — Add to `MODEL_OPTIONS` array (short labels like "Sonnet 4.6")
+
+No Rust changes needed — model is stored as `String` in `AppPreferences` and passed directly to `--model` CLI flag.

@@ -1,99 +1,61 @@
-import { X, Minus, Maximize2, Maximize, Minimize2 } from 'lucide-react'
+import { Maximize, Minus, Minimize, Square, X } from 'lucide-react'
+
 import type { AppCommand } from './types'
-import { getCurrentWindow } from '@tauri-apps/api/window'
+
+const getAppWindow = async () => {
+  const { getCurrentWindow } = await import('@tauri-apps/api/window')
+  return getCurrentWindow()
+}
 
 export const windowCommands: AppCommand[] = [
   {
     id: 'window-close',
     label: 'Close Window',
-    description: 'Close the current window',
     icon: X,
     group: 'window',
-    shortcut: '⌘+W',
-
-    execute: async context => {
-      try {
-        const appWindow = getCurrentWindow()
-        await appWindow.close()
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error'
-        context.showToast(`Failed to close window: ${message}`, 'error')
-      }
+    execute: async () => {
+      const appWindow = await getAppWindow()
+      await appWindow.close()
     },
   },
-
   {
     id: 'window-minimize',
     label: 'Minimize Window',
-    description: 'Minimize the current window',
     icon: Minus,
     group: 'window',
-    shortcut: '⌘+M',
-
-    execute: async context => {
-      try {
-        const appWindow = getCurrentWindow()
-        await appWindow.minimize()
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error'
-        context.showToast(`Failed to minimize window: ${message}`, 'error')
-      }
+    execute: async () => {
+      const appWindow = await getAppWindow()
+      await appWindow.minimize()
     },
   },
-
-  {
-    id: 'window-toggle-maximize',
-    label: 'Toggle Maximize',
-    description: 'Toggle window maximize state',
-    icon: Maximize2,
-    group: 'window',
-
-    execute: async context => {
-      try {
-        const appWindow = getCurrentWindow()
-        await appWindow.toggleMaximize()
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error'
-        context.showToast(`Failed to toggle maximize: ${message}`, 'error')
-      }
-    },
-  },
-
   {
     id: 'window-fullscreen',
     label: 'Enter Fullscreen',
-    description: 'Enter fullscreen mode',
     icon: Maximize,
     group: 'window',
-    shortcut: 'F11',
-
-    execute: async context => {
-      try {
-        const appWindow = getCurrentWindow()
-        await appWindow.setFullscreen(true)
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error'
-        context.showToast(`Failed to enter fullscreen: ${message}`, 'error')
-      }
+    execute: async () => {
+      const appWindow = await getAppWindow()
+      await appWindow.setFullscreen(true)
     },
   },
-
   {
     id: 'window-exit-fullscreen',
     label: 'Exit Fullscreen',
-    description: 'Exit fullscreen mode',
-    icon: Minimize2,
+    icon: Minimize,
     group: 'window',
-    shortcut: 'Escape',
-
-    execute: async context => {
-      try {
-        const appWindow = getCurrentWindow()
-        await appWindow.setFullscreen(false)
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error'
-        context.showToast(`Failed to exit fullscreen: ${message}`, 'error')
-      }
+    execute: async () => {
+      const appWindow = await getAppWindow()
+      await appWindow.setFullscreen(false)
+    },
+  },
+  {
+    id: 'window-toggle-maximize',
+    label: 'Toggle Maximize',
+    icon: Square,
+    group: 'window',
+    execute: async () => {
+      const appWindow = await getAppWindow()
+      await appWindow.toggleMaximize()
     },
   },
 ]

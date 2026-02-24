@@ -7,7 +7,10 @@
 
 import { useEffect, useRef } from 'react'
 import { toast } from 'sonner'
-import { useClaudeCliStatus, useAvailableCliVersions } from '@/services/claude-cli'
+import {
+  useClaudeCliStatus,
+  useAvailableCliVersions,
+} from '@/services/claude-cli'
 import { useGhCliStatus, useAvailableGhVersions } from '@/services/gh-cli'
 import { useUIStore } from '@/store/ui-store'
 import { isNewerVersion } from '@/lib/version-utils'
@@ -20,7 +23,8 @@ interface CliUpdateInfo {
 }
 
 /**
- * Hook that checks for CLI updates on startup and shows toast notifications.
+ * Hook that checks for CLI updates on startup and periodically (every hour).
+ * Shows toast notifications when updates are detected.
  * Should be called once in App.tsx.
  */
 export function useCliVersionCheck() {
@@ -31,55 +35,75 @@ export function useCliVersionCheck() {
   const { data: ghVersions, isLoading: ghVersionsLoading } =
     useAvailableGhVersions()
 
-  // Track if we've already shown the notifications this session
-  const hasCheckedRef = useRef(false)
+  // Track which update pairs we've already shown notifications for
+  // Format: "type:currentVersion→latestVersion"
+  const notifiedRef = useRef<Set<string>>(new Set())
+  const isInitialCheckRef = useRef(true)
 
   useEffect(() => {
-    // Only check once per session
-    if (hasCheckedRef.current) return
-
     // Wait until all data is loaded
     const isLoading =
       claudeLoading || ghLoading || claudeVersionsLoading || ghVersionsLoading
     if (isLoading) return
 
-    // Mark as checked to prevent re-running
-    hasCheckedRef.current = true
-
     const updates: CliUpdateInfo[] = []
 
     // Check Claude CLI
-    if (claudeStatus?.installed && claudeStatus.version && claudeVersions?.length) {
+    if (
+      claudeStatus?.installed &&
+      claudeStatus.version &&
+      claudeVersions?.length
+    ) {
       const latestStable = claudeVersions.find(v => !v.prerelease)
-      if (latestStable && isNewerVersion(latestStable.version, claudeStatus.version)) {
-        updates.push({
-          type: 'claude',
-          currentVersion: claudeStatus.version,
-          latestVersion: latestStable.version,
-        })
+      if (
+        latestStable &&
+        isNewerVersion(latestStable.version, claudeStatus.version)
+      ) {
+        const key = `claude:${claudeStatus.version}→${latestStable.version}`
+        if (!notifiedRef.current.has(key)) {
+          notifiedRef.current.add(key)
+          updates.push({
+            type: 'claude',
+            currentVersion: claudeStatus.version,
+            latestVersion: latestStable.version,
+          })
+        }
       }
     }
 
     // Check GitHub CLI
     if (ghStatus?.installed && ghStatus.version && ghVersions?.length) {
       const latestStable = ghVersions.find(v => !v.prerelease)
-      if (latestStable && isNewerVersion(latestStable.version, ghStatus.version)) {
-        updates.push({
-          type: 'gh',
-          currentVersion: ghStatus.version,
-          latestVersion: latestStable.version,
-        })
+      if (
+        latestStable &&
+        isNewerVersion(latestStable.version, ghStatus.version)
+      ) {
+        const key = `gh:${ghStatus.version}→${latestStable.version}`
+        if (!notifiedRef.current.has(key)) {
+          notifiedRef.current.add(key)
+          updates.push({
+            type: 'gh',
+            currentVersion: ghStatus.version,
+            latestVersion: latestStable.version,
+          })
+        }
       }
     }
 
-    // Show notifications after a delay (like app update check)
     if (updates.length > 0) {
       logger.info('CLI updates available', { updates })
-      // Delay to let the app settle before showing notifications
-      setTimeout(() => {
+
+      if (isInitialCheckRef.current) {
+        // Delay initial notification to let the app settle
+        setTimeout(() => {
+          showUpdateToasts(updates)
+        }, 5000)
+      } else {
         showUpdateToasts(updates)
-      }, 5000)
+      }
     }
+
+    isInitialCheckRef.current = false
   }, [
     claudeStatus,
     ghStatus,

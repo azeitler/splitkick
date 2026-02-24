@@ -1,15 +1,36 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 
+export interface WorkflowRunDetail {
+  workflowName: string
+  runUrl: string
+  runId: string
+  branch: string
+  displayTitle: string
+  projectPath: string | null
+}
+
 interface MagicCommandHandlers {
   handleSaveContext: () => void
   handleLoadContext: () => void
   handleCommit: () => void
   handleCommitAndPush: () => void
+  handlePull: () => void
+  handlePush: () => void
   handleOpenPr: () => void
   handleReview: () => void
   handleMerge: () => void
-  handleInvestigateIssue: () => void
-  handleInvestigatePR: () => void
+  handleResolveConflicts: () => void
+  handleInvestigateWorkflowRun: (detail: WorkflowRunDetail) => void
+  handleInvestigate: (type: 'issue' | 'pr') => void
+}
+
+interface UseMagicCommandsOptions extends MagicCommandHandlers {
+  /** Whether this ChatWindow is rendered in modal mode */
+  isModal?: boolean
+  /** Whether the main ChatWindow is currently showing canvas tab */
+  isViewingCanvasTab?: boolean
+  /** Whether the session chat modal is currently open */
+  sessionModalOpen?: boolean
 }
 
 /**
@@ -17,29 +38,41 @@ interface MagicCommandHandlers {
  *
  * PERFORMANCE: Uses refs to keep event listener stable across handler changes.
  * The event listener is set up once and uses refs to access current handler versions.
+ *
+ * DEDUPLICATION: When main ChatWindow shows canvas view, it skips listener registration.
+ * The modal ChatWindow (inside SessionChatModal) will handle events instead.
  */
 export function useMagicCommands({
   handleSaveContext,
   handleLoadContext,
   handleCommit,
   handleCommitAndPush,
+  handlePull,
+  handlePush,
   handleOpenPr,
   handleReview,
   handleMerge,
-  handleInvestigateIssue,
-  handleInvestigatePR,
-}: MagicCommandHandlers): void {
+  handleResolveConflicts,
+  handleInvestigateWorkflowRun,
+  handleInvestigate,
+  isModal = false,
+  isViewingCanvasTab = false,
+  sessionModalOpen = false,
+}: UseMagicCommandsOptions): void {
   // Store handlers in ref so event listener always has access to current versions
   const handlersRef = useRef<MagicCommandHandlers>({
     handleSaveContext,
     handleLoadContext,
     handleCommit,
     handleCommitAndPush,
+    handlePull,
+    handlePush,
     handleOpenPr,
     handleReview,
     handleMerge,
-    handleInvestigateIssue,
-    handleInvestigatePR,
+    handleResolveConflicts,
+    handleInvestigateWorkflowRun,
+    handleInvestigate,
   })
 
   // Update refs in useLayoutEffect to avoid linter warning about ref updates during render
@@ -50,17 +83,31 @@ export function useMagicCommands({
       handleLoadContext,
       handleCommit,
       handleCommitAndPush,
+      handlePull,
+      handlePush,
       handleOpenPr,
       handleReview,
       handleMerge,
-      handleInvestigateIssue,
-      handleInvestigatePR,
+      handleResolveConflicts,
+      handleInvestigateWorkflowRun,
+      handleInvestigate,
     }
   })
 
   useEffect(() => {
-    const handleMagicCommand = (e: CustomEvent<{ command: string }>) => {
-      const { command } = e.detail
+    // If main ChatWindow is showing canvas view AND a session modal is open,
+    // don't register listener here — the modal ChatWindow will handle events instead.
+    // When on canvas WITHOUT a modal, the main ChatWindow still listens (for canvas-allowed commands).
+    if (!isModal && isViewingCanvasTab && sessionModalOpen) {
+      return
+    }
+
+    const handleMagicCommand = (
+      e: CustomEvent<
+        { command: string; sessionId?: string } & Partial<WorkflowRunDetail>
+      >
+    ) => {
+      const { command, ...rest } = e.detail
       const handlers = handlersRef.current
       switch (command) {
         case 'save-context':
@@ -75,6 +122,12 @@ export function useMagicCommands({
         case 'commit-and-push':
           handlers.handleCommitAndPush()
           break
+        case 'pull':
+          handlers.handlePull()
+          break
+        case 'push':
+          handlers.handlePush()
+          break
         case 'open-pr':
           handlers.handleOpenPr()
           break
@@ -84,11 +137,16 @@ export function useMagicCommands({
         case 'merge':
           handlers.handleMerge()
           break
-        case 'investigate-issue':
-          handlers.handleInvestigateIssue()
+        case 'resolve-conflicts':
+          handlers.handleResolveConflicts()
           break
-        case 'investigate-pr':
-          handlers.handleInvestigatePR()
+        case 'investigate':
+          handlers.handleInvestigate(
+            (rest as { type: 'issue' | 'pr' }).type ?? 'issue'
+          )
+          break
+        case 'investigate-workflow-run':
+          handlers.handleInvestigateWorkflowRun(rest as WorkflowRunDetail)
           break
       }
     }
@@ -102,5 +160,5 @@ export function useMagicCommands({
         'magic-command',
         handleMagicCommand as EventListener
       )
-  }, []) // Empty deps - stable listener using refs
+  }, [isModal, isViewingCanvasTab, sessionModalOpen]) // Re-register when modal/canvas state changes
 }

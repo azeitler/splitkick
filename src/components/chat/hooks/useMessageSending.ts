@@ -1,0 +1,588 @@
+import { useCallback, useEffect, type RefObject } from 'react'
+import { generateId } from '@/lib/uuid'
+import { toast } from 'sonner'
+import { useChatStore } from '@/store/chat-store'
+import { chatQueryKeys, cancelChatMessage } from '@/services/chat'
+import { buildMcpConfigJson } from '@/services/mcp'
+import { DEFAULT_PARALLEL_EXECUTION_PROMPT } from '@/types/preferences'
+import type {
+  QueuedMessage,
+  ExecutionMode,
+  ThinkingLevel,
+  EffortLevel,
+  McpServerInfo,
+} from '@/types/chat'
+import type { QueryClient } from '@tanstack/react-query'
+import { GIT_ALLOWED_TOOLS } from './useMessageHandlers'
+
+interface UseMessageSendingParams {
+  activeSessionId: string | null | undefined
+  activeWorktreeId: string | null | undefined
+  activeWorktreePath: string | null | undefined
+  inputRef: RefObject<HTMLTextAreaElement | null>
+  selectedModelRef: RefObject<string>
+  selectedProviderRef: RefObject<string | null>
+  selectedThinkingLevelRef: RefObject<ThinkingLevel>
+  selectedEffortLevelRef: RefObject<EffortLevel>
+  executionModeRef: RefObject<ExecutionMode>
+  useAdaptiveThinkingRef: RefObject<boolean>
+  isCodexBackendRef: RefObject<boolean>
+  mcpServersDataRef: RefObject<McpServerInfo[] | undefined>
+  enabledMcpServersRef: RefObject<string[]>
+  selectedBackendRef: RefObject<'claude' | 'codex' | 'opencode'>
+  activeWorktreeIdRef: RefObject<string | null | undefined>
+  preferences:
+    | {
+        custom_cli_profiles?: { name: string }[]
+        parallel_execution_prompt_enabled?: boolean
+        magic_prompts?: { parallel_execution?: string | null }
+        chrome_enabled?: boolean
+        ai_language?: string
+      }
+    | undefined
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sendMessage: { mutate: (args: any, opts?: any) => void }
+  queryClient: QueryClient
+  scrollToBottom: (instant?: boolean) => void
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sessionsData: any
+  setInputDraft: (sessionId: string, draft: string) => void
+  clearInputDraft: (sessionId: string) => void
+  isModal: boolean
+}
+
+/**
+ * Core message sending pipeline: resolveCustomProfile, buildMessageWithRefs,
+ * sendMessageNow, handleSubmit, handleGitDiff handlers, and review-fix-message listener.
+ */
+export function useMessageSending({
+  activeSessionId,
+  activeWorktreeId,
+  activeWorktreePath,
+  inputRef,
+  selectedModelRef,
+  selectedProviderRef,
+  selectedThinkingLevelRef,
+  selectedEffortLevelRef,
+  executionModeRef,
+  useAdaptiveThinkingRef,
+  isCodexBackendRef,
+  mcpServersDataRef,
+  enabledMcpServersRef,
+  selectedBackendRef,
+  activeWorktreeIdRef,
+  preferences,
+  sendMessage,
+  queryClient,
+  scrollToBottom,
+  sessionsData,
+  setInputDraft,
+  clearInputDraft,
+  isModal,
+}: UseMessageSendingParams) {
+  // Helper to resolve custom CLI profile name for the active provider
+  const resolveCustomProfile = useCallback(
+    (model: string, provider: string | null) => {
+      if (!provider || provider === '__anthropic__')
+        return { model, customProfileName: undefined }
+      const profile = preferences?.custom_cli_profiles?.find(
+        p => p.name === provider
+      )
+      return {
+        model,
+        customProfileName: profile?.name,
+      }
+    },
+    [preferences?.custom_cli_profiles]
+  )
+
+  // Helper to build full message with attachment references for backend
+  const buildMessageWithRefs = useCallback(
+    (queuedMsg: QueuedMessage): string => {
+      let message = queuedMsg.message
+
+      if (queuedMsg.pendingFiles.length > 0) {
+        const fileRefs = queuedMsg.pendingFiles
+          .map(
+            f =>
+              `[File: ${f.relativePath} - Use the Read tool to view this file]`
+          )
+          .join('\n')
+        message = message ? `${message}\n\n${fileRefs}` : fileRefs
+      }
+
+      if (queuedMsg.pendingSkills.length > 0) {
+        const skillRefs = queuedMsg.pendingSkills
+          .map(
+            s =>
+              `[Skill: ${s.path} - Read and use this skill to guide your response]`
+          )
+          .join('\n')
+        message = message ? `${message}\n\n${skillRefs}` : skillRefs
+      }
+
+      if (queuedMsg.pendingImages.length > 0) {
+        const imageRefs = queuedMsg.pendingImages
+          .map(
+            img =>
+              `[Image attached: ${img.path} - Use the Read tool to view this image]`
+          )
+          .join('\n')
+        message = message ? `${message}\n\n${imageRefs}` : imageRefs
+      }
+
+      if (queuedMsg.pendingTextFiles.length > 0) {
+        const textFileRefs = queuedMsg.pendingTextFiles
+          .map(
+            tf =>
+              `[Text file attached: ${tf.path} - Use the Read tool to view this file]`
+          )
+          .join('\n')
+        message = message ? `${message}\n\n${textFileRefs}` : textFileRefs
+      }
+
+      return message
+    },
+    []
+  )
+
+  // Helper to send a queued message immediately
+  const sendMessageNow = useCallback(
+    (queuedMsg: QueuedMessage) => {
+      if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
+
+      const {
+        addSendingSession,
+        setLastSentMessage,
+        setError,
+        setExecutingMode,
+        setSelectedModel,
+        getApprovedTools,
+        clearStreamingContent,
+        clearToolCalls,
+        clearStreamingContentBlocks,
+      } = useChatStore.getState()
+
+      clearStreamingContent(activeSessionId)
+      clearToolCalls(activeSessionId)
+      clearStreamingContentBlocks(activeSessionId)
+
+      setLastSentMessage(activeSessionId, queuedMsg.message)
+      setError(activeSessionId, null)
+      addSendingSession(activeSessionId)
+      queryClient.invalidateQueries({
+        queryKey: chatQueryKeys.sessions(activeWorktreeId),
+      })
+      setExecutingMode(activeSessionId, queuedMsg.executionMode)
+      setSelectedModel(activeSessionId, queuedMsg.model)
+
+      const sessionApprovedTools = getApprovedTools(activeSessionId)
+      const allowedTools =
+        sessionApprovedTools.length > 0
+          ? [...GIT_ALLOWED_TOOLS, ...sessionApprovedTools]
+          : undefined
+
+      const fullMessage = buildMessageWithRefs(queuedMsg)
+      const resolved = resolveCustomProfile(queuedMsg.model, queuedMsg.provider)
+
+      sendMessage.mutate(
+        {
+          sessionId: activeSessionId,
+          worktreeId: activeWorktreeId,
+          worktreePath: activeWorktreePath,
+          message: fullMessage,
+          model: resolved.model,
+          executionMode: queuedMsg.executionMode,
+          thinkingLevel: queuedMsg.thinkingLevel,
+          effortLevel: queuedMsg.effortLevel,
+          mcpConfig: queuedMsg.mcpConfig,
+          customProfileName: resolved.customProfileName,
+          parallelExecutionPrompt:
+            preferences?.parallel_execution_prompt_enabled
+              ? (preferences.magic_prompts?.parallel_execution ??
+                DEFAULT_PARALLEL_EXECUTION_PROMPT)
+              : undefined,
+          chromeEnabled: preferences?.chrome_enabled ?? false,
+          aiLanguage: preferences?.ai_language,
+          allowedTools,
+          backend: queuedMsg.backend,
+        },
+        {
+          onSettled: () => {
+            inputRef.current?.focus()
+          },
+        }
+      )
+    },
+    [
+      activeSessionId,
+      activeWorktreeId,
+      activeWorktreePath,
+      buildMessageWithRefs,
+      sendMessage,
+      queryClient,
+      preferences?.parallel_execution_prompt_enabled,
+      preferences?.chrome_enabled,
+      preferences?.ai_language,
+      preferences?.magic_prompts?.parallel_execution,
+      resolveCustomProfile,
+    ]
+  )
+
+  // GitDiffModal: add diff reference to input
+  const handleGitDiffAddToPrompt = useCallback(
+    (reference: string) => {
+      if (activeSessionId) {
+        const { inputDrafts } = useChatStore.getState()
+        const currentInput = inputDrafts[activeSessionId] ?? ''
+        const separator = currentInput.length > 0 ? '\n' : ''
+        setInputDraft(
+          activeSessionId,
+          `${currentInput}${separator}${reference}`
+        )
+      }
+    },
+    [activeSessionId, setInputDraft]
+  )
+
+  // GitDiffModal: execute diff prompt immediately
+  const handleGitDiffExecutePrompt = useCallback(
+    (reference: string) => {
+      if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
+
+      const {
+        inputDrafts,
+        addSendingSession,
+        setLastSentMessage,
+        setError,
+        setSelectedModel,
+        setExecutingMode,
+        clearInputDraft: clearDraft,
+      } = useChatStore.getState()
+      const currentInput = inputDrafts[activeSessionId] ?? ''
+      const separator = currentInput.length > 0 ? '\n' : ''
+      const message = `${currentInput}${separator}${reference}`
+
+      const model = selectedModelRef.current
+      const thinkingLevel = selectedThinkingLevelRef.current
+
+      setLastSentMessage(activeSessionId, message)
+      setError(activeSessionId, null)
+      clearDraft(activeSessionId)
+      addSendingSession(activeSessionId)
+      setSelectedModel(activeSessionId, model)
+      setExecutingMode(activeSessionId, 'build')
+
+      const diffResolved = resolveCustomProfile(
+        model,
+        selectedProviderRef.current
+      )
+      sendMessage.mutate(
+        {
+          sessionId: activeSessionId,
+          worktreeId: activeWorktreeId,
+          worktreePath: activeWorktreePath,
+          message,
+          model: diffResolved.model,
+          customProfileName: diffResolved.customProfileName,
+          executionMode: 'build',
+          thinkingLevel,
+          effortLevel:
+            useAdaptiveThinkingRef.current || isCodexBackendRef.current
+              ? selectedEffortLevelRef.current
+              : undefined,
+          mcpConfig: buildMcpConfigJson(
+            mcpServersDataRef.current ?? [],
+            enabledMcpServersRef.current
+          ),
+          parallelExecutionPrompt:
+            preferences?.parallel_execution_prompt_enabled
+              ? (preferences.magic_prompts?.parallel_execution ??
+                DEFAULT_PARALLEL_EXECUTION_PROMPT)
+              : undefined,
+          chromeEnabled: preferences?.chrome_enabled ?? false,
+          aiLanguage: preferences?.ai_language,
+          backend:
+            selectedBackendRef.current !== 'claude'
+              ? selectedBackendRef.current
+              : undefined,
+        },
+        { onSettled: () => inputRef.current?.focus() }
+      )
+    },
+    [
+      activeSessionId,
+      activeWorktreeId,
+      activeWorktreePath,
+      preferences,
+      sendMessage,
+      resolveCustomProfile,
+    ]
+  )
+
+  // Form submit handler
+  const handleSubmit = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault()
+
+      const {
+        inputDrafts,
+        getPendingImages,
+        clearPendingImages,
+        getPendingFiles,
+        clearPendingFiles,
+        getPendingTextFiles,
+        clearPendingTextFiles,
+        getPendingSkills,
+        clearPendingSkills,
+        enqueueMessage,
+        isSending: checkIsSendingNow,
+        setSessionReviewing,
+      } = useChatStore.getState()
+      const textMessage = (inputDrafts[activeSessionId ?? ''] ?? '').trim()
+      const images = getPendingImages(activeSessionId ?? '')
+      const files = getPendingFiles(activeSessionId ?? '')
+      const skills = getPendingSkills(activeSessionId ?? '')
+      const textFiles = getPendingTextFiles(activeSessionId ?? '')
+
+      if (
+        !textMessage &&
+        images.length === 0 &&
+        files.length === 0 &&
+        textFiles.length === 0 &&
+        skills.length === 0
+      )
+        return
+      if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
+
+      if (
+        sessionsData &&
+        !sessionsData.sessions.some(
+          (s: { id: string }) => s.id === activeSessionId
+        )
+      ) {
+        toast.error(
+          'Session not found. Please refresh or create a new session.'
+        )
+        return
+      }
+
+      const message = textMessage
+
+      if (
+        images.length > 0 ||
+        files.length > 0 ||
+        textFiles.length > 0 ||
+        skills.length > 0
+      ) {
+        useChatStore.getState().setLastSentAttachments(activeSessionId, {
+          images,
+          files,
+          textFiles,
+          skills,
+        })
+      }
+
+      clearInputDraft(activeSessionId)
+      clearPendingImages(activeSessionId)
+      clearPendingFiles(activeSessionId)
+      clearPendingSkills(activeSessionId)
+      clearPendingTextFiles(activeSessionId)
+      setSessionReviewing(activeSessionId, false)
+      useChatStore.getState().clearPendingDigest(activeSessionId)
+
+      const { setQuestionsSkipped, setWaitingForInput } =
+        useChatStore.getState()
+      setQuestionsSkipped(activeSessionId, false)
+      setWaitingForInput(activeSessionId, false)
+
+      const mode = executionModeRef.current
+      const thinkingLvl = selectedThinkingLevelRef.current
+      const queuedMessage: QueuedMessage = {
+        id: generateId(),
+        message,
+        pendingImages: images,
+        pendingFiles: files,
+        pendingSkills: skills,
+        pendingTextFiles: textFiles,
+        model: selectedModelRef.current,
+        provider: selectedProviderRef.current,
+        executionMode: mode,
+        thinkingLevel: thinkingLvl,
+        effortLevel:
+          useAdaptiveThinkingRef.current || isCodexBackendRef.current
+            ? selectedEffortLevelRef.current
+            : undefined,
+        mcpConfig: buildMcpConfigJson(
+          mcpServersDataRef.current ?? [],
+          enabledMcpServersRef.current
+        ),
+        backend:
+          selectedBackendRef.current !== 'claude'
+            ? selectedBackendRef.current
+            : undefined,
+        queuedAt: Date.now(),
+      }
+
+      scrollToBottom(true)
+
+      if (checkIsSendingNow(activeSessionId)) {
+        enqueueMessage(activeSessionId, queuedMessage)
+        return
+      }
+
+      sendMessageNow(queuedMessage)
+    },
+    [
+      activeSessionId,
+      activeWorktreeId,
+      activeWorktreePath,
+      clearInputDraft,
+      scrollToBottom,
+      sendMessageNow,
+      sessionsData,
+    ]
+  )
+
+  // Handle cancellation of running Claude process
+  const handleCancel = useCallback(async () => {
+    if (!activeSessionId || !activeWorktreeId) return
+    const sending =
+      useChatStore.getState().sendingSessionIds[activeSessionId] ?? false
+    if (!sending) return
+
+    const cancelled = await cancelChatMessage(activeSessionId, activeWorktreeId)
+    if (!cancelled) {
+      toast.info('No active request to cancel')
+    }
+  }, [activeSessionId, activeWorktreeId])
+
+  // Listen for review-fix-message events from ReviewResultsPanel
+  useEffect(() => {
+    const handleReviewFixMessage = (e: CustomEvent) => {
+      if (isModal) return
+
+      const {
+        sessionId,
+        worktreeId,
+        worktreePath,
+        message,
+        executionMode: fixExecutionMode,
+      } = e.detail
+      if (!sessionId || !worktreeId || !worktreePath || !message) return
+      const fixMode = fixExecutionMode ?? 'plan'
+      if (worktreeId !== activeWorktreeIdRef.current) return
+
+      const {
+        addSendingSession,
+        setSelectedModel,
+        setExecutingMode,
+        setLastSentMessage,
+        setError,
+        isSending,
+        enqueueMessage,
+      } = useChatStore.getState()
+
+      const thinkingLvl = selectedThinkingLevelRef.current
+      const fixResolved = resolveCustomProfile(
+        selectedModelRef.current,
+        selectedProviderRef.current
+      )
+
+      if (isSending(sessionId)) {
+        enqueueMessage(sessionId, {
+          id: generateId(),
+          message,
+          pendingImages: [],
+          pendingFiles: [],
+          pendingSkills: [],
+          pendingTextFiles: [],
+          model: fixResolved.model,
+          provider: fixResolved.customProfileName ?? null,
+          executionMode: fixMode,
+          thinkingLevel: thinkingLvl,
+          effortLevel:
+            useAdaptiveThinkingRef.current || isCodexBackendRef.current
+              ? selectedEffortLevelRef.current
+              : undefined,
+          mcpConfig: buildMcpConfigJson(
+            mcpServersDataRef.current ?? [],
+            enabledMcpServersRef.current
+          ),
+          queuedAt: Date.now(),
+        })
+        toast.info('Fix queued — will start when current task completes')
+        return
+      }
+
+      setLastSentMessage(sessionId, message)
+      setError(sessionId, null)
+      addSendingSession(sessionId)
+      setSelectedModel(sessionId, selectedModelRef.current)
+      setExecutingMode(sessionId, fixMode)
+      sendMessage.mutate(
+        {
+          sessionId,
+          worktreeId,
+          worktreePath,
+          message,
+          model: fixResolved.model,
+          customProfileName: fixResolved.customProfileName,
+          executionMode: fixMode,
+          thinkingLevel: thinkingLvl,
+          effortLevel:
+            useAdaptiveThinkingRef.current || isCodexBackendRef.current
+              ? selectedEffortLevelRef.current
+              : undefined,
+          mcpConfig: buildMcpConfigJson(
+            mcpServersDataRef.current ?? [],
+            enabledMcpServersRef.current
+          ),
+          parallelExecutionPrompt:
+            preferences?.parallel_execution_prompt_enabled
+              ? (preferences.magic_prompts?.parallel_execution ??
+                DEFAULT_PARALLEL_EXECUTION_PROMPT)
+              : undefined,
+          chromeEnabled: preferences?.chrome_enabled ?? false,
+          aiLanguage: preferences?.ai_language,
+          backend:
+            selectedBackendRef.current !== 'claude'
+              ? selectedBackendRef.current
+              : undefined,
+        },
+        {
+          onSettled: () => {
+            inputRef.current?.focus()
+          },
+        }
+      )
+    }
+
+    window.addEventListener(
+      'review-fix-message',
+      handleReviewFixMessage as EventListener
+    )
+    return () =>
+      window.removeEventListener(
+        'review-fix-message',
+        handleReviewFixMessage as EventListener
+      )
+  }, [
+    sendMessage,
+    preferences?.parallel_execution_prompt_enabled,
+    preferences?.magic_prompts?.parallel_execution,
+    resolveCustomProfile,
+    preferences?.chrome_enabled,
+    preferences?.ai_language,
+    isModal,
+  ])
+
+  return {
+    resolveCustomProfile,
+    sendMessageNow,
+    handleSubmit,
+    handleCancel,
+    handleGitDiffAddToPrompt,
+    handleGitDiffExecutePrompt,
+  }
+}

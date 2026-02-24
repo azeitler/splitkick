@@ -1,22 +1,40 @@
 import { useCallback, useState, useRef, useEffect, useMemo } from 'react'
-import { BorderSpinner } from '@/components/ui/border-spinner'
-import { ArrowDown, ArrowUp, Circle, GitBranch, Square } from 'lucide-react'
+import { StatusIndicator } from '@/components/ui/status-indicator'
+import type {
+  IndicatorStatus,
+  IndicatorVariant,
+} from '@/components/ui/status-indicator'
+import { ArrowDown, ArrowUp, ChevronDown, GitBranch } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { isBaseSession, type Worktree } from '@/types/projects'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
+import { useUIStore } from '@/store/ui-store'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { WorktreeContextMenu } from './WorktreeContextMenu'
 import { useRenameWorktree } from '@/services/projects'
 import { useSessions } from '@/services/chat'
 import { isAskUserQuestion, isExitPlanMode } from '@/types/chat'
 import {
+  computeSessionCardData,
+  groupCardsByStatus,
+  statusConfig,
+} from '@/components/chat/session-card-utils'
+import { useCanvasStoreState } from '@/components/chat/hooks/useCanvasStoreState'
+import {
   setActiveWorktreeForPolling,
   useGitStatus,
-  gitPull,
   gitPush,
+  fetchWorktreesStatus,
   triggerImmediateGitPoll,
+  performGitPull,
 } from '@/services/git-status'
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@/components/ui/tooltip'
 import { useSidebarWidth } from '@/components/layout/SidebarWidthContext'
 
 interface WorktreeItemProps {
@@ -32,8 +50,14 @@ export function WorktreeItem({
   projectPath,
   defaultBranch,
 }: WorktreeItemProps) {
-  const { selectedWorktreeId, selectWorktree, selectProject } =
-    useProjectsStore()
+  const isMobile = useIsMobile()
+  const {
+    selectedWorktreeId,
+    selectWorktree,
+    selectProject,
+    expandedWorktreeIds,
+    toggleWorktreeExpanded,
+  } = useProjectsStore()
   // Check if any session in this worktree is running (chat)
   const isChatRunning = useChatStore(state =>
     state.isWorktreeRunning(worktree.id)
@@ -49,6 +73,10 @@ export function WorktreeItem({
     state => state.waitingForInputSessionIds
   )
   const reviewingSessions = useChatStore(state => state.reviewingSessions)
+  // Check if worktree has a loading operation (commit, pr, review, merge, pull)
+  const loadingOperation = useChatStore(
+    state => state.worktreeLoadingOperations[worktree.id] ?? null
+  )
   const isSelected = selectedWorktreeId === worktree.id
   const isBase = isBaseSession(worktree)
 
@@ -58,14 +86,16 @@ export function WorktreeItem({
   const { data: gitStatus } = useGitStatus(worktree.id)
   const behindCount =
     gitStatus?.behind_count ?? worktree.cached_behind_count ?? 0
-  const worktreeAheadCount =
-    gitStatus?.ahead_count ?? worktree.cached_ahead_count ?? 0
-  const baseBranchAheadCount =
-    gitStatus?.base_branch_ahead_count ??
-    worktree.cached_base_branch_ahead_count ??
-    0
-  // For base sessions, show base branch unpushed; for worktrees, show worktree unpushed
-  const pushCount = isBase ? baseBranchAheadCount : worktreeAheadCount
+  const unpushedCount =
+    gitStatus?.unpushed_count ?? worktree.cached_unpushed_count ?? 0
+  const pushCount = unpushedCount
+
+  // Uncommitted changes (working directory)
+  const uncommittedAdded =
+    gitStatus?.uncommitted_added ?? worktree.cached_uncommitted_added ?? 0
+  const uncommittedRemoved =
+    gitStatus?.uncommitted_removed ?? worktree.cached_uncommitted_removed ?? 0
+  const hasUncommitted = uncommittedAdded > 0 || uncommittedRemoved > 0
 
   // Fetch sessions to check for persisted unanswered questions
   const { data: sessionsData } = useSessions(worktree.id, worktree.path)
@@ -129,30 +159,32 @@ export function WorktreeItem({
   }, [sessionsData?.sessions, sendingSessionIds, isQuestionAnswered])
 
   // Check if any session has unanswered ExitPlanMode in persisted messages (solid)
+  // Uses plan_approved / approved_plan_message_ids (matching session-card-utils.tsx)
   const hasPendingPlan = useMemo(() => {
     const sessions = sessionsData?.sessions ?? []
     for (const session of sessions) {
       // Skip sessions that are currently streaming (handled by isStreamingWaitingPlan)
       if (sendingSessionIds[session.id]) continue
 
+      const approvedPlanIds = new Set(session.approved_plan_message_ids ?? [])
+
       // Find last assistant message by iterating from end (avoids array copy from .reverse())
-      let lastAssistantMsg = null
       for (let i = session.messages.length - 1; i >= 0; i--) {
-        if (session.messages[i]?.role === 'assistant') {
-          lastAssistantMsg = session.messages[i]
+        const msg = session.messages[i]
+        if (msg?.role === 'assistant') {
+          if (
+            msg.tool_calls?.some(isExitPlanMode) &&
+            !msg.plan_approved &&
+            !approvedPlanIds.has(msg.id)
+          ) {
+            return true
+          }
           break
         }
       }
-      if (
-        lastAssistantMsg?.tool_calls?.some(
-          tc => isExitPlanMode(tc) && !isQuestionAnswered(session.id, tc.id)
-        )
-      ) {
-        return true
-      }
     }
     return false
-  }, [sessionsData?.sessions, sendingSessionIds, isQuestionAnswered])
+  }, [sessionsData?.sessions, sendingSessionIds])
 
   // Check if any session is explicitly waiting for user input
   const isExplicitlyWaiting = useMemo(() => {
@@ -166,10 +198,29 @@ export function WorktreeItem({
     return false
   }, [waitingForInputSessionIds, sessionWorktreeMap, worktree.id])
 
+  // Check for persisted waiting state from session metadata (fallback when messages not loaded)
+  const hasPersistedWaitingQuestion = useMemo(() => {
+    const sessions = sessionsData?.sessions ?? []
+    return sessions.some(
+      s => s.waiting_for_input && s.waiting_for_input_type === 'question'
+    )
+  }, [sessionsData?.sessions])
+
+  const hasPersistedWaitingPlan = useMemo(() => {
+    const sessions = sessionsData?.sessions ?? []
+    return sessions.some(
+      s => s.waiting_for_input && s.waiting_for_input_type === 'plan'
+    )
+  }, [sessionsData?.sessions])
+
   // Question waiting (blinks) vs plan waiting (solid)
   const isWaitingQuestion =
-    isStreamingWaitingQuestion || hasPendingQuestion || isExplicitlyWaiting
-  const isWaitingPlan = isStreamingWaitingPlan || hasPendingPlan
+    isStreamingWaitingQuestion ||
+    hasPendingQuestion ||
+    isExplicitlyWaiting ||
+    hasPersistedWaitingQuestion
+  const isWaitingPlan =
+    isStreamingWaitingPlan || hasPendingPlan || hasPersistedWaitingPlan
 
   // Check if any session in this worktree is in review state (done, needs user review)
   const isReviewing = useMemo(() => {
@@ -196,14 +247,96 @@ export function WorktreeItem({
     executionModes,
   ])
 
-  // Determine indicator color: blinking yellow=waiting for user, green=review, grey=idle
-  // Running state uses BorderSpinner component instead (handled in render)
-  const indicatorColor = useMemo(() => {
-    if (isWaitingQuestion) return 'text-yellow-500 animate-blink shadow-[0_0_6px_currentColor]'
-    if (isWaitingPlan) return 'text-yellow-500 animate-blink shadow-[0_0_6px_currentColor]'
-    if (isReviewing) return 'text-green-500 shadow-[0_0_6px_currentColor]'
-    return 'text-muted-foreground/50'
-  }, [isWaitingQuestion, isWaitingPlan, isReviewing])
+  // Determine indicator status and variant for StatusIndicator component
+  const { indicatorStatus, indicatorVariant } = useMemo((): {
+    indicatorStatus: IndicatorStatus
+    indicatorVariant?: IndicatorVariant
+  } => {
+    if (isWaitingQuestion || isWaitingPlan) {
+      return { indicatorStatus: 'waiting' }
+    }
+    if (isChatRunning) {
+      return {
+        indicatorStatus: 'running',
+        indicatorVariant:
+          runningSessionExecutionMode === 'yolo' ? 'destructive' : 'default',
+      }
+    }
+    if (loadingOperation) {
+      return { indicatorStatus: 'running', indicatorVariant: 'loading' }
+    }
+    if (isReviewing) {
+      return { indicatorStatus: 'review' }
+    }
+    return { indicatorStatus: 'idle' }
+  }, [
+    isWaitingQuestion,
+    isWaitingPlan,
+    isChatRunning,
+    runningSessionExecutionMode,
+    loadingOperation,
+    isReviewing,
+  ])
+
+  // Worktree expansion state for sidebar session list
+  const isExpanded = expandedWorktreeIds.has(worktree.id)
+  const storeState = useCanvasStoreState()
+
+  // Compute card data for all sessions (needed for both summary and expanded list)
+  const allCards = useMemo(() => {
+    const sessions = sessionsData?.sessions ?? []
+    return sessions.map(s => computeSessionCardData(s, storeState))
+  }, [sessionsData?.sessions, storeState])
+
+  const sessionGroups = useMemo(() => {
+    if (!isExpanded) return []
+    return groupCardsByStatus(allCards)
+  }, [isExpanded, allCards])
+
+  const handleChevronClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation()
+      toggleWorktreeExpanded(worktree.id)
+    },
+    [worktree.id, toggleWorktreeExpanded]
+  )
+
+  const handleSessionSelect = useCallback(
+    (sessionId: string) => {
+      selectProject(projectId)
+      selectWorktree(worktree.id)
+      const { setActiveWorktree, setActiveSession, setViewingCanvasTab } =
+        useChatStore.getState()
+      setActiveWorktree(worktree.id, worktree.path)
+      setActiveSession(worktree.id, sessionId)
+      setViewingCanvasTab(worktree.id, true)
+      setActiveWorktreeForPolling({
+        worktreeId: worktree.id,
+        worktreePath: worktree.path,
+        baseBranch: defaultBranch,
+        prNumber: worktree.pr_number,
+        prUrl: worktree.pr_url,
+      })
+      // Open session modal in the canvas view
+      setTimeout(() => {
+        window.dispatchEvent(
+          new CustomEvent('open-session-modal', {
+            detail: { sessionId },
+          })
+        )
+      }, 50)
+    },
+    [
+      projectId,
+      worktree.id,
+      worktree.path,
+      defaultBranch,
+      worktree.pr_number,
+      worktree.pr_url,
+      selectProject,
+      selectWorktree,
+    ]
+  )
 
   // Responsive padding based on sidebar width
   const sidebarWidth = useSidebarWidth()
@@ -260,7 +393,13 @@ export function WorktreeItem({
       prNumber: worktree.pr_number,
       prUrl: worktree.pr_url,
     })
+
+    // Close sidebar on mobile after navigation
+    if (isMobile) {
+      useUIStore.getState().setLeftSidebarVisible(false)
+    }
   }, [
+    isMobile,
     projectId,
     worktree.id,
     worktree.path,
@@ -301,12 +440,17 @@ export function WorktreeItem({
     (e: React.KeyboardEvent) => {
       if (e.key === 'Enter') {
         e.preventDefault()
+        e.stopPropagation()
         handleSubmit()
       } else if (e.key === 'Escape') {
         e.preventDefault()
+        e.stopPropagation()
         handleCancel()
-      } else if (e.key === ' ') {
-        // Prevent space from triggering parent ContextMenuTrigger
+      } else if (
+        e.key === ' ' ||
+        ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)
+      ) {
+        // Prevent space/arrows from triggering parent handlers or canvas navigation
         e.stopPropagation()
       }
     },
@@ -320,16 +464,24 @@ export function WorktreeItem({
   const handlePull = useCallback(
     async (e: React.MouseEvent) => {
       e.stopPropagation()
-      const toastId = toast.loading('Pulling changes...')
-      try {
-        await gitPull(worktree.path, defaultBranch)
-        triggerImmediateGitPoll()
-        toast.success('Changes pulled', { id: toastId })
-      } catch (error) {
-        toast.error(`Pull failed: ${error}`, { id: toastId })
-      }
+      await performGitPull({
+        worktreeId: worktree.id,
+        worktreePath: worktree.path,
+        baseBranch: defaultBranch,
+        projectId,
+        onMergeConflict: () => {
+          selectWorktree(worktree.id)
+          setTimeout(() => {
+            window.dispatchEvent(
+              new CustomEvent('magic-command', {
+                detail: { command: 'resolve-conflicts' },
+              })
+            )
+          }, 100)
+        },
+      })
     },
-    [worktree.path, defaultBranch]
+    [worktree.id, worktree.path, defaultBranch, projectId, selectWorktree]
   )
 
   const handlePush = useCallback(
@@ -337,108 +489,182 @@ export function WorktreeItem({
       e.stopPropagation()
       const toastId = toast.loading('Pushing changes...')
       try {
-        await gitPush(worktree.path)
+        await gitPush(worktree.path, worktree.pr_number)
         triggerImmediateGitPoll()
+        fetchWorktreesStatus(projectId)
         toast.success('Changes pushed', { id: toastId })
       } catch (error) {
         toast.error(`Push failed: ${error}`, { id: toastId })
       }
     },
-    [worktree.path]
+    [worktree.path, worktree.pr_number, projectId]
   )
 
   return (
-    <WorktreeContextMenu
-      worktree={worktree}
-      projectId={projectId}
-      projectPath={projectPath}
-    >
-      <div
-        className={cn(
-          'group relative flex cursor-pointer items-center gap-1.5 py-1.5 pr-2 transition-colors duration-150',
-          isNarrowSidebar ? 'pl-4' : 'pl-7',
-          isSelected
-            ? 'bg-primary/10 text-foreground before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:bg-primary'
-            : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
-        )}
-        onClick={handleClick}
-        onDoubleClick={handleDoubleClick}
+    <div>
+      <WorktreeContextMenu
+        worktree={worktree}
+        projectId={projectId}
+        projectPath={projectPath}
       >
-        {/* Status indicator: circle for base session, square for worktrees */}
-        {/* When running, show spinning border; otherwise show filled shape */}
-        {isChatRunning ? (
-          <BorderSpinner
-            shape={isBase ? 'circle' : 'square'}
-            className={cn(
-              'h-2 w-2 shadow-[0_0_6px_currentColor]',
-              runningSessionExecutionMode === 'yolo' ? 'text-destructive' : 'text-yellow-500'
-            )}
-            bgClassName={
-              runningSessionExecutionMode === 'yolo' ? 'fill-destructive/50' : 'fill-yellow-500/50'
-            }
+        <div
+          className={cn(
+            'group relative flex cursor-pointer items-center gap-1.5 py-1.5 pr-2 overflow-hidden transition-colors duration-150',
+            isNarrowSidebar ? 'pl-4' : 'pl-7',
+            isSelected
+              ? 'bg-primary/10 text-foreground before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:bg-primary'
+              : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+          )}
+          onClick={handleClick}
+          onDoubleClick={handleDoubleClick}
+        >
+          {/* Status indicator */}
+          <StatusIndicator
+            status={indicatorStatus}
+            variant={indicatorVariant}
+            className="h-2 w-2"
           />
-        ) : isBase ? (
-          <Circle className={cn('h-2 w-2 shrink-0 fill-current rounded-full', indicatorColor)} />
-        ) : (
-          <Square className={cn('h-2 w-2 shrink-0 fill-current rounded-sm', indicatorColor)} />
-        )}
 
-        {/* Workspace name - editable on double-click */}
-        {isEditing ? (
-          <input
-            ref={inputRef}
-            type="text"
-            value={editValue}
-            onChange={e => setEditValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onBlur={handleBlur}
-            onClick={e => e.stopPropagation()}
-            className="flex-1 bg-transparent text-sm outline-none ring-1 ring-ring rounded px-1"
-          />
-        ) : (
-          <span
-            className={cn('flex-1 truncate text-sm', isBase && 'font-medium')}
-          >
-            {worktree.name}
-            {/* Show branch name if different from worktree name */}
-            {worktree.branch !== worktree.name && (
-              <span className="ml-1 inline-flex items-center gap-0.5 text-xs text-muted-foreground">
-                <GitBranch className="h-2.5 w-2.5" />
-                {worktree.branch}
-              </span>
-            )}
-          </span>
-        )}
-
-        {/* Pull badge - shown when behind remote */}
-        {behindCount > 0 && (
-          <button
-            onClick={handlePull}
-            className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/20"
-            title={`Pull ${behindCount} commit${behindCount > 1 ? 's' : ''} from remote`}
-          >
-            <span className="flex items-center gap-0.5">
-              <ArrowDown className="h-3 w-3" />
-              {behindCount}
+          {/* Workspace name - editable on double-click */}
+          {isEditing ? (
+            <input
+              ref={inputRef}
+              type="text"
+              value={editValue}
+              onChange={e => setEditValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onBlur={handleBlur}
+              onClick={e => e.stopPropagation()}
+              className="flex-1 bg-transparent text-sm outline-none ring-1 ring-ring rounded px-1"
+            />
+          ) : (
+            <span
+              className={cn(
+                'flex flex-1 items-center gap-0.5 truncate text-sm',
+                isBase && 'font-medium'
+              )}
+            >
+              <span className="truncate">{worktree.name}</span>
+              {/* Chevron for expand/collapse sessions */}
+              <button
+                className="flex size-4 shrink-0 items-center justify-center rounded opacity-0 transition-opacity group-hover:opacity-50 hover:!opacity-100 hover:bg-accent-foreground/10"
+                onClick={handleChevronClick}
+              >
+                <ChevronDown
+                  className={cn(
+                    'size-3 transition-transform',
+                    isExpanded && 'rotate-180'
+                  )}
+                />
+              </button>
+              {/* Show branch name only when different from displayed name */}
+              {(() => {
+                const displayBranch =
+                  gitStatus?.current_branch ?? worktree.branch
+                return displayBranch !== worktree.name ? (
+                  <span className="ml-0.5 inline-flex max-w-[80px] items-center gap-0.5 truncate text-xs text-muted-foreground">
+                    <GitBranch className="h-2.5 w-2.5" />
+                    {displayBranch}
+                  </span>
+                ) : null
+              })()}
             </span>
-          </button>
-        )}
+          )}
 
-        {/* Push badge - unpushed commits */}
-        {pushCount > 0 && (
-          <button
-            onClick={handlePush}
-            className="shrink-0 rounded bg-orange-500/10 px-1.5 py-0.5 text-[11px] font-medium text-orange-500 transition-colors hover:bg-orange-500/20"
-            title={`Push ${pushCount} commit${pushCount > 1 ? 's' : ''} to remote`}
-          >
-            <span className="flex items-center gap-0.5">
-              <ArrowUp className="h-3 w-3" />
-              {pushCount}
-            </span>
-          </button>
-        )}
+          {/* Pull badge - shown when behind remote */}
+          {behindCount > 0 && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={handlePull}
+                  className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/20"
+                >
+                  <span className="flex items-center gap-0.5">
+                    <ArrowDown className="h-3 w-3" />
+                    {behindCount}
+                  </span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>{`Pull ${behindCount} commit${behindCount > 1 ? 's' : ''} from remote`}</TooltipContent>
+            </Tooltip>
+          )}
 
-      </div>
-    </WorktreeContextMenu>
+          {/* Push badge - unpushed commits */}
+          {pushCount > 0 && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={handlePush}
+                  className="shrink-0 rounded bg-orange-500/10 px-1.5 py-0.5 text-[11px] font-medium text-orange-500 transition-colors hover:bg-orange-500/20"
+                >
+                  <span className="flex items-center gap-0.5">
+                    <ArrowUp className="h-3 w-3" />
+                    {pushCount}
+                  </span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>{`Push ${pushCount} commit${pushCount > 1 ? 's' : ''} to remote`}</TooltipContent>
+            </Tooltip>
+          )}
+
+          {/* Uncommitted changes */}
+          {hasUncommitted && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex shrink-0 items-center gap-0.5 text-[11px] font-medium">
+                  <span className="text-green-500">+{uncommittedAdded}</span>
+                  <span className="text-muted-foreground">/</span>
+                  <span className="text-red-500">-{uncommittedRemoved}</span>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>{`Uncommitted: +${uncommittedAdded}/-${uncommittedRemoved} lines`}</TooltipContent>
+            </Tooltip>
+          )}
+        </div>
+      </WorktreeContextMenu>
+
+      {/* Expandable session list grouped by status */}
+      {isExpanded && sessionGroups.length > 0 && (
+        <div
+          className={cn(
+            'border-l border-border/40 py-0.5',
+            isNarrowSidebar ? 'ml-6' : 'ml-9'
+          )}
+        >
+          {sessionGroups.map(group => (
+            <div key={group.key}>
+              <div className="pl-3 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                {group.title}{' '}
+                <span className="text-muted-foreground/60">
+                  {group.cards.length}
+                </span>
+              </div>
+              {group.cards.map(card => {
+                const config = statusConfig[card.status]
+                return (
+                  <div
+                    key={card.session.id}
+                    className="flex items-center gap-1.5 pl-5 py-1 cursor-pointer text-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 truncate"
+                    onClick={e => {
+                      e.stopPropagation()
+                      handleSessionSelect(card.session.id)
+                    }}
+                  >
+                    <StatusIndicator
+                      status={config.indicatorStatus}
+                      variant={config.indicatorVariant}
+                      className="h-1.5 w-1.5 shrink-0"
+                    />
+                    <span className="truncate text-xs">
+                      {card.session.name || 'Untitled'}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }

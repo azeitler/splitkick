@@ -79,7 +79,7 @@ impl NdjsonTailer {
                     // Check if we have a complete line (ends with newline)
                     if self.buffer.ends_with('\n') {
                         // Remove the trailing newline and add to results
-                        let complete_line = self.buffer.trim_end_matches('\n').to_string();
+                        let complete_line = self.buffer.trim_end_matches(['\n', '\r']).to_string();
                         lines.push(complete_line);
                         self.buffer.clear();
                     }
@@ -98,6 +98,11 @@ impl NdjsonTailer {
     #[allow(dead_code)] // Used in tests
     pub fn has_incomplete_data(&self) -> bool {
         !self.buffer.is_empty()
+    }
+
+    /// Drain and return any buffered incomplete data.
+    pub fn drain_buffer(&mut self) -> String {
+        std::mem::take(&mut self.buffer)
     }
 }
 
@@ -294,7 +299,7 @@ mod tests {
         let mut tailer = NdjsonTailer::new_from_start(&path).unwrap();
 
         // Write with CRLF line endings (Windows-style)
-        write!(file, "{}\r\n", r#"{"type": "crlf"}"#).unwrap();
+        write!(file, "{{\"type\": \"crlf\"}}\r\n").unwrap();
         file.flush().unwrap();
 
         let lines = tailer.poll().unwrap();

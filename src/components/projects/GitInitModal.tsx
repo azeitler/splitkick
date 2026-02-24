@@ -1,4 +1,5 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
+import { invoke } from '@tauri-apps/api/core'
 import { Loader2, GitBranch, FolderOpen, AlertCircle } from 'lucide-react'
 import {
   Dialog,
@@ -9,9 +10,16 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { useProjectsStore } from '@/store/projects-store'
 import { useInitGitInFolder, useAddProject } from '@/services/projects'
 import { getFilename } from '@/lib/path-utils'
+
+interface GitIdentity {
+  name: string | null
+  email: string | null
+}
 
 export function GitInitModal() {
   const {
@@ -26,8 +34,40 @@ export function GitInitModal() {
   const addProject = useAddProject()
 
   const [error, setError] = useState<string | null>(null)
+  const [identityChecked, setIdentityChecked] = useState(false)
+  const [needsIdentity, setNeedsIdentity] = useState(false)
+  const [gitName, setGitName] = useState('')
+  const [gitEmail, setGitEmail] = useState('')
+  const [savingIdentity, setSavingIdentity] = useState(false)
 
   const folderName = gitInitModalPath ? getFilename(gitInitModalPath) : ''
+
+  // Check git identity when modal opens
+  useEffect(() => {
+    if (!gitInitModalOpen) {
+      // Reset state when modal closes
+      setIdentityChecked(false)
+      setNeedsIdentity(false)
+      setGitName('')
+      setGitEmail('')
+      setError(null)
+      return
+    }
+
+    invoke<GitIdentity>('check_git_identity')
+      .then(identity => {
+        const missing = !identity.name || !identity.email
+        setNeedsIdentity(missing)
+        if (identity.name) setGitName(identity.name)
+        if (identity.email) setGitEmail(identity.email)
+        setIdentityChecked(true)
+      })
+      .catch(() => {
+        // If check fails, assume identity is needed
+        setNeedsIdentity(true)
+        setIdentityChecked(true)
+      })
+  }, [gitInitModalOpen])
 
   const handleOpenChange = useCallback(
     (open: boolean) => {
@@ -45,6 +85,23 @@ export function GitInitModal() {
     setError(null)
 
     try {
+      // Step 0: Set git identity if needed
+      if (needsIdentity) {
+        if (!gitName.trim() || !gitEmail.trim()) {
+          setError('Please enter your name and email for git commits.')
+          return
+        }
+        setSavingIdentity(true)
+        try {
+          await invoke('set_git_identity', {
+            name: gitName.trim(),
+            email: gitEmail.trim(),
+          })
+        } finally {
+          setSavingIdentity(false)
+        }
+      }
+
       // Step 1: Initialize git
       await initGit.mutateAsync(gitInitModalPath)
 
@@ -63,6 +120,9 @@ export function GitInitModal() {
     }
   }, [
     gitInitModalPath,
+    needsIdentity,
+    gitName,
+    gitEmail,
     initGit,
     addProject,
     addProjectParentFolderId,
@@ -70,7 +130,7 @@ export function GitInitModal() {
     setAddProjectDialogOpen,
   ])
 
-  const isPending = initGit.isPending || addProject.isPending
+  const isPending = savingIdentity || initGit.isPending || addProject.isPending
 
   return (
     <Dialog open={gitInitModalOpen} onOpenChange={handleOpenChange}>
@@ -96,6 +156,44 @@ export function GitInitModal() {
               </p>
             </div>
           </div>
+
+          {/* Git identity fields - shown when not configured */}
+          {identityChecked && needsIdentity && (
+            <div className="space-y-3 rounded-lg border p-3">
+              <p className="text-sm font-medium">Git identity not configured</p>
+              <p className="text-xs text-muted-foreground">
+                Git requires a name and email for commits. This will be saved
+                globally.
+              </p>
+              <div className="space-y-2">
+                <div className="space-y-1">
+                  <Label htmlFor="git-name" className="text-xs">
+                    Name
+                  </Label>
+                  <Input
+                    id="git-name"
+                    placeholder="Your Name"
+                    value={gitName}
+                    onChange={e => setGitName(e.target.value)}
+                    disabled={isPending}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="git-email" className="text-xs">
+                    Email
+                  </Label>
+                  <Input
+                    id="git-email"
+                    type="email"
+                    placeholder="you@example.com"
+                    value={gitEmail}
+                    onChange={e => setGitEmail(e.target.value)}
+                    disabled={isPending}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Description of what will happen */}
           <div className="space-y-2 text-sm text-muted-foreground">
@@ -126,13 +224,23 @@ export function GitInitModal() {
           >
             Cancel
           </Button>
-          <Button onClick={handleInitialize} disabled={isPending}>
+          <Button
+            onClick={handleInitialize}
+            disabled={
+              isPending ||
+              (identityChecked &&
+                needsIdentity &&
+                (!gitName.trim() || !gitEmail.trim()))
+            }
+          >
             {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-            {initGit.isPending
-              ? 'Initializing...'
-              : addProject.isPending
-                ? 'Adding project...'
-                : 'Initialize Git'}
+            {savingIdentity
+              ? 'Setting identity...'
+              : initGit.isPending
+                ? 'Initializing...'
+                : addProject.isPending
+                  ? 'Adding project...'
+                  : 'Initialize Git'}
           </Button>
         </DialogFooter>
       </DialogContent>

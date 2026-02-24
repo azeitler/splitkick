@@ -6,8 +6,8 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { invoke } from '@tauri-apps/api/core'
-import { listen } from '@tauri-apps/api/event'
+import { invoke, useWsConnectionStatus } from '@/lib/transport'
+import { listen } from '@/lib/transport'
 import { toast } from 'sonner'
 import { useCallback, useEffect, useState } from 'react'
 import { logger } from '@/lib/logger'
@@ -18,9 +18,9 @@ import type {
   InstallProgress,
 } from '@/types/claude-cli'
 
-// Check if running in Tauri context (vs plain browser)
-const isTauri = () =>
-  typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+import { hasBackend } from '@/lib/environment'
+
+const isTauri = hasBackend
 
 // Query keys for Claude CLI
 export const claudeCliQueryKeys = {
@@ -39,7 +39,7 @@ export function useClaudeCliStatus() {
     queryFn: async (): Promise<ClaudeCliStatus> => {
       if (!isTauri()) {
         logger.debug('Not in Tauri context, returning mock CLI status')
-        return { installed: false, version: null, path: null }
+        return { installed: false, version: null, path: null, supports_auth_command: false }
       }
 
       try {
@@ -51,11 +51,12 @@ export function useClaudeCliStatus() {
         return status
       } catch (error) {
         logger.error('Failed to check Claude CLI status', { error })
-        return { installed: false, version: null, path: null }
+        return { installed: false, version: null, path: null, supports_auth_command: false }
       }
     },
     staleTime: 1000 * 60 * 5, // 5 minutes
     gcTime: 1000 * 60 * 10, // 10 minutes
+    refetchInterval: 1000 * 60 * 60, // Re-check every hour
   })
 }
 
@@ -125,7 +126,7 @@ export function useAvailableCliVersions() {
         throw error
       }
     },
-    staleTime: 1000 * 60 * 15, // 15 minutes
+    staleTime: 1000 * 60 * 15, // Cache for 15 minutes to avoid rate limiting
     gcTime: 1000 * 60 * 30, // 30 minutes
   })
 }
@@ -167,6 +168,7 @@ export function useInstallClaudeCli() {
  */
 export function useInstallProgress(): [InstallProgress | null, () => void] {
   const [progress, setProgress] = useState<InstallProgress | null>(null)
+  const wsConnected = useWsConnectionStatus()
 
   const resetProgress = useCallback(() => {
     setProgress(null)
@@ -194,7 +196,10 @@ export function useInstallProgress(): [InstallProgress | null, () => void] {
           }
         )
       } catch (error) {
-        logger.error('[useInstallProgress] Failed to setup listener', { listenerId, error })
+        logger.error('[useInstallProgress] Failed to setup listener', {
+          listenerId,
+          error,
+        })
       }
     }
 
@@ -206,7 +211,7 @@ export function useInstallProgress(): [InstallProgress | null, () => void] {
         unlistenFn()
       }
     }
-  }, [])
+  }, [wsConnected])
 
   return [progress, resetProgress]
 }
@@ -235,7 +240,9 @@ export function useClaudeCliSetup() {
     // Reset progress before starting new installation to prevent stale state
     resetProgress()
 
-    logger.info('[useClaudeCliSetup] Calling installMutation.mutate()', { version })
+    logger.info('[useClaudeCliSetup] Calling installMutation.mutate()', {
+      version,
+    })
     installMutation.mutate(version, {
       onSuccess: () => {
         logger.info('[useClaudeCliSetup] mutate onSuccess callback')
@@ -252,7 +259,9 @@ export function useClaudeCliSetup() {
     status: status.data,
     isStatusLoading: status.isLoading,
     versions: versions.data ?? [],
-    isVersionsLoading: versions.isLoading,
+    isVersionsLoading: versions.isFetching,
+    isVersionsError: versions.isError,
+    refetchVersions: versions.refetch,
     needsSetup,
     isInstalling: installMutation.isPending,
     installError: installMutation.error,

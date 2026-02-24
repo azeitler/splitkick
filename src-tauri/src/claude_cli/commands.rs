@@ -3,9 +3,11 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::io::Write;
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 
-use super::config::{ensure_cli_dir, get_cli_binary_path};
+use super::config::{ensure_cli_dir, get_cli_binary_path, resolve_cli_binary};
+use crate::http_server::EmitExt;
+use crate::platform::silent_command;
 
 /// Extract semver version number from a version string
 /// Handles formats like: "1.0.28", "v1.0.28", "Claude CLI 1.0.28"
@@ -41,6 +43,9 @@ pub struct ClaudeCliStatus {
     pub version: Option<String>,
     /// Path to the CLI binary (if installed)
     pub path: Option<String>,
+    /// Whether the CLI supports the `auth` subcommand (older CLIs lack it)
+    #[serde(default)]
+    pub supports_auth_command: bool,
 }
 
 /// Information about a Claude CLI release from GitHub
@@ -72,7 +77,7 @@ pub struct InstallProgress {
 pub async fn check_claude_cli_installed(app: AppHandle) -> Result<ClaudeCliStatus, String> {
     log::trace!("Checking Claude CLI installation status");
 
-    let binary_path = get_cli_binary_path(&app)?;
+    let binary_path = resolve_cli_binary(&app);
 
     if !binary_path.exists() {
         log::trace!("Claude CLI not found at {:?}", binary_path);
@@ -80,13 +85,13 @@ pub async fn check_claude_cli_installed(app: AppHandle) -> Result<ClaudeCliStatu
             installed: false,
             version: None,
             path: None,
+            supports_auth_command: false,
         });
     }
 
     // Try to get the version by running claude --version
-    // Use shell wrapper to bypass macOS security restrictions
-    let shell_cmd = format!("{:?} --version", binary_path);
-    let version = match crate::platform::shell_command(&shell_cmd).output() {
+    // Use the binary directly - shell wrapper causes PowerShell parsing issues on Windows
+    let version = match silent_command(&binary_path).arg("--version").output() {
         Ok(output) => {
             if output.status.success() {
                 let version_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -107,10 +112,19 @@ pub async fn check_claude_cli_installed(app: AppHandle) -> Result<ClaudeCliStatu
         }
     };
 
+    // Check if the CLI supports the `auth` subcommand (older versions lack it)
+    let supports_auth_command = silent_command(&binary_path)
+        .args(["auth", "--help"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    log::trace!("Claude CLI supports auth command: {supports_auth_command}");
+
     Ok(ClaudeCliStatus {
         installed: true,
         version,
         path: Some(binary_path.to_string_lossy().to_string()),
+        supports_auth_command,
     })
 }
 
@@ -247,6 +261,11 @@ fn get_platform() -> Result<&'static str, String> {
         return Ok("linux-arm64");
     }
 
+    #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
+    {
+        return Ok("win32-x64");
+    }
+
     #[allow(unreachable_code)]
     Err("Unsupported platform".to_string())
 }
@@ -339,7 +358,12 @@ pub async fn install_claude_cli(app: AppHandle, version: Option<String>) -> Resu
     log::trace!("Expected checksum for {platform}: {expected_checksum}");
 
     // Build download URL
-    let download_url = format!("{CLAUDE_DIST_BUCKET}/{version}/{platform}/claude");
+    let binary_name = if cfg!(windows) {
+        "claude.exe"
+    } else {
+        "claude"
+    };
+    let download_url = format!("{CLAUDE_DIST_BUCKET}/{version}/{platform}/{binary_name}");
     log::trace!("Downloading from: {download_url}");
 
     // Emit progress: downloading
@@ -411,7 +435,7 @@ pub async fn install_claude_cli(app: AppHandle, version: Option<String>) -> Resu
     #[cfg(target_os = "macos")]
     {
         log::trace!("Removing quarantine attribute from {:?}", binary_path);
-        let _ = Command::new("xattr")
+        let _ = silent_command("xattr")
             .args(["-d", "com.apple.quarantine"])
             .arg(&binary_path)
             .output();
@@ -439,7 +463,7 @@ pub struct ClaudeAuthStatus {
 pub async fn check_claude_cli_auth(app: AppHandle) -> Result<ClaudeAuthStatus, String> {
     log::trace!("Checking Claude CLI authentication status");
 
-    let binary_path = get_cli_binary_path(&app)?;
+    let binary_path = resolve_cli_binary(&app);
 
     if !binary_path.exists() {
         return Ok(ClaudeAuthStatus {
@@ -448,29 +472,29 @@ pub async fn check_claude_cli_auth(app: AppHandle) -> Result<ClaudeAuthStatus, S
         });
     }
 
-    // Run a simple non-interactive query to check if authenticated
-    // Use --print to avoid interactive mode, and a simple prompt
-    let shell_cmd = format!(
-        "{:?} --print --output-format text -p 'Reply with just the word OK'",
-        binary_path
-    );
+    // Run `claude auth status` to check authentication
+    log::trace!("Running auth check: {:?}", binary_path);
 
-    log::trace!("Running auth check: {:?}", shell_cmd);
-
-    let output = crate::platform::shell_command(&shell_cmd)
+    let output = silent_command(&binary_path)
+        .args(["auth", "status"])
         .output()
         .map_err(|e| format!("Failed to execute Claude CLI: {e}"))?;
 
     if output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        log::trace!("Claude CLI auth check successful, response: {}", stdout);
+        log::trace!("Claude CLI auth check output: {stdout}");
+        // Parse JSON response: {"loggedIn": true, ...}
+        let logged_in = serde_json::from_str::<serde_json::Value>(&stdout)
+            .ok()
+            .and_then(|v| v.get("loggedIn")?.as_bool())
+            .unwrap_or(false);
         Ok(ClaudeAuthStatus {
-            authenticated: true,
-            error: None,
+            authenticated: logged_in,
+            error: if logged_in { None } else { Some(stdout) },
         })
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        log::warn!("Claude CLI auth check failed: {}", stderr);
+        log::warn!("Claude CLI auth check failed: {stderr}");
         Ok(ClaudeAuthStatus {
             authenticated: false,
             error: Some(stderr),
@@ -486,7 +510,7 @@ fn emit_progress(app: &AppHandle, stage: &str, message: &str, percent: u8) {
         percent,
     };
 
-    if let Err(e) = app.emit("claude-cli:install-progress", &progress) {
+    if let Err(e) = app.emit_all("claude-cli:install-progress", &progress) {
         log::warn!("Failed to emit install progress: {}", e);
     }
 }

@@ -14,11 +14,15 @@ import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { useWorktrees, useProjects } from '@/services/projects'
 import { useSessions } from '@/services/chat'
 import { useChatStore } from '@/store/chat-store'
+import { useShallow } from 'zustand/react/shallow'
 import { useProjectsStore } from '@/store/projects-store'
 import { isAskUserQuestion, isExitPlanMode, type ToolCall } from '@/types/chat'
 import type { ExecutionMode } from '@/types/chat'
 import type { Session } from '@/types/chat'
 import type { Worktree } from '@/types/projects'
+import { NewIssuesBadge } from '@/components/shared/NewIssuesBadge'
+import { OpenPRsBadge } from '@/components/shared/OpenPRsBadge'
+import { FailedRunsBadge } from '@/components/shared/FailedRunsBadge'
 import { SessionCard } from './SessionCard'
 import { SessionColumn } from './SessionColumn'
 import { Spinner } from '@/components/ui/spinner'
@@ -43,7 +47,10 @@ interface SessionBoardViewProps {
   onSessionClick: (worktreeId: string, sessionId: string) => void
 }
 
-export function SessionBoardView({ projectId, onSessionClick }: SessionBoardViewProps) {
+export function SessionBoardView({
+  projectId,
+  onSessionClick,
+}: SessionBoardViewProps) {
   // Get all projects to find the current one
   const { data: projects = [], isLoading: projectsLoading } = useProjects()
   const project = projects.find(p => p.id === projectId)
@@ -53,15 +60,29 @@ export function SessionBoardView({ projectId, onSessionClick }: SessionBoardView
     useWorktrees(projectId)
 
   // Get chat store state for determining session status
-  const sendingSessionIds = useChatStore(state => state.sendingSessionIds)
-  const activeToolCalls = useChatStore(state => state.activeToolCalls)
-  const answeredQuestions = useChatStore(state => state.answeredQuestions)
-  const executionModes = useChatStore(state => state.executionModes)
-  const executingModes = useChatStore(state => state.executingModes)
-  const reviewingSessions = useChatStore(state => state.reviewingSessions)
-  const setSessionReviewing = useChatStore(state => state.setSessionReviewing)
-  const setActiveWorktree = useChatStore(state => state.setActiveWorktree)
-  const setActiveSession = useChatStore(state => state.setActiveSession)
+  const {
+    sendingSessionIds,
+    activeToolCalls,
+    answeredQuestions,
+    executionModes,
+    executingModes,
+    reviewingSessions,
+    setSessionReviewing,
+    setActiveWorktree,
+    setActiveSession,
+  } = useChatStore(
+    useShallow(state => ({
+      sendingSessionIds: state.sendingSessionIds,
+      activeToolCalls: state.activeToolCalls,
+      answeredQuestions: state.answeredQuestions,
+      executionModes: state.executionModes,
+      executingModes: state.executingModes,
+      reviewingSessions: state.reviewingSessions,
+      setSessionReviewing: state.setSessionReviewing,
+      setActiveWorktree: state.setActiveWorktree,
+      setActiveSession: state.setActiveSession,
+    }))
+  )
 
   // Also need to update projects store when switching worktrees
   const selectProject = useProjectsStore(state => state.selectProject)
@@ -236,9 +257,11 @@ export function SessionBoardView({ projectId, onSessionClick }: SessionBoardView
   return (
     <div className="flex h-full flex-col p-4">
       {/* Header */}
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Session Board</h2>
+      <div className="mb-4 flex items-center justify-end gap-2">
         <span className="text-sm text-muted-foreground">{project.name}</span>
+        <NewIssuesBadge projectPath={project.path} projectId={project.id} />
+        <OpenPRsBadge projectPath={project.path} projectId={project.id} />
+        <FailedRunsBadge projectPath={project.path} />
       </div>
 
       {/* Session Board */}
@@ -307,7 +330,10 @@ function MultiWorktreeSessionsView({
   const q8 = useSessions(wt8?.id ?? null, wt8?.path ?? null)
   const q9 = useSessions(wt9?.id ?? null, wt9?.path ?? null)
 
-  const queries = [q0, q1, q2, q3, q4, q5, q6, q7, q8, q9]
+  const queries = useMemo(
+    () => [q0, q1, q2, q3, q4, q5, q6, q7, q8, q9],
+    [q0, q1, q2, q3, q4, q5, q6, q7, q8, q9]
+  )
 
   // Aggregate all sessions
   const allBoardSessions = useMemo(() => {

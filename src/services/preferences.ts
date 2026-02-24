@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
 import type { AppPreferences } from '@/types/preferences'
@@ -31,10 +31,9 @@ function migrateKeybindings(
   return migrated
 }
 
-// Check if running in Tauri context (vs plain browser)
-// In Tauri v2, we check for __TAURI_INTERNALS__ which is always injected
-const isTauri = () =>
-  typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+import { hasBackend } from '@/lib/environment'
+
+const isTauri = hasBackend
 
 // Query keys for preferences
 export const preferencesQueryKeys = {
@@ -47,7 +46,7 @@ export function usePreferences() {
   return useQuery({
     queryKey: preferencesQueryKeys.preferences(),
     queryFn: async (): Promise<AppPreferences> => {
-      // Return defaults when running outside Tauri (e.g., npm run dev in browser)
+      // Return defaults when running outside Tauri (e.g., bun run dev in browser)
       if (!isTauri()) {
         logger.debug('Not in Tauri context, using default preferences')
         return defaultPreferences
@@ -82,7 +81,7 @@ export function useSavePreferences() {
 
   return useMutation({
     mutationFn: async (preferences: AppPreferences) => {
-      // Skip persistence when running outside Tauri (e.g., npm run dev in browser)
+      // Skip persistence when running outside Tauri (e.g., bun run dev in browser)
       if (!isTauri()) {
         logger.debug(
           'Not in Tauri context, preferences not persisted to disk',
@@ -97,17 +96,23 @@ export function useSavePreferences() {
         logger.info('Preferences saved successfully')
       } catch (error) {
         const message =
-          error instanceof Error ? error.message : 'Unknown error occurred'
+          error instanceof Error
+            ? error.message
+            : typeof error === 'string'
+              ? error
+              : 'Unknown error occurred'
         logger.error('Failed to save preferences', { error, preferences })
         toast.error('Failed to save preferences', { description: message })
         throw error
       }
     },
     onSuccess: (_, preferences) => {
-      // Update the cache with the new preferences
+      // Optimistically update cache, then refetch to get backend-populated fields (e.g., file_path)
       queryClient.setQueryData(preferencesQueryKeys.preferences(), preferences)
+      queryClient.invalidateQueries({
+        queryKey: preferencesQueryKeys.preferences(),
+      })
       logger.info('Preferences cache updated')
-      toast.success('Preferences saved')
     },
   })
 }

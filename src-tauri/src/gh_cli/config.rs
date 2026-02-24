@@ -34,10 +34,31 @@ pub fn get_gh_cli_binary_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(get_gh_cli_dir(app)?.join(GH_CLI_BINARY_NAME))
 }
 
+/// Resolve GitHub CLI binary path in Jean-managed app data only.
+///
+/// This intentionally does not fall back to PATH/global installs.
+pub fn resolve_gh_binary(app: &AppHandle) -> PathBuf {
+    get_gh_cli_binary_path(app)
+        .unwrap_or_else(|_| PathBuf::from(GH_CLI_DIR_NAME).join(GH_CLI_BINARY_NAME))
+}
+
 /// Ensure the CLI directory exists, creating it if necessary
 pub fn ensure_gh_cli_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let cli_dir = get_gh_cli_dir(app)?;
     std::fs::create_dir_all(&cli_dir)
         .map_err(|e| format!("Failed to create GitHub CLI directory: {e}"))?;
     Ok(cli_dir)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fallback_path_is_jean_managed_location_shape() {
+        let resolved = PathBuf::from(GH_CLI_DIR_NAME).join(GH_CLI_BINARY_NAME);
+
+        assert!(resolved.ends_with(GH_CLI_BINARY_NAME));
+        assert!(resolved.to_string_lossy().contains(GH_CLI_DIR_NAME));
+    }
 }

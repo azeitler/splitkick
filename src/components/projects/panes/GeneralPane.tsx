@@ -1,0 +1,368 @@
+import React, { useState, useCallback } from 'react'
+import {
+  Check,
+  ChevronsUpDown,
+  GitBranch,
+  ImageIcon,
+  Loader2,
+  X,
+} from 'lucide-react'
+import { convertFileSrc } from '@/lib/transport'
+import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { Separator } from '@/components/ui/separator'
+import { Textarea } from '@/components/ui/textarea'
+import { cn } from '@/lib/utils'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import {
+  useProjects,
+  useProjectBranches,
+  useUpdateProjectSettings,
+  useAppDataDir,
+  useSetProjectAvatar,
+  useRemoveProjectAvatar,
+} from '@/services/projects'
+import { usePreferences } from '@/services/preferences'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+
+const SettingsSection: React.FC<{
+  title: string
+  children: React.ReactNode
+}> = ({ title, children }) => (
+  <div className="space-y-4">
+    <div>
+      <h3 className="text-lg font-medium text-foreground">{title}</h3>
+      <Separator className="mt-2" />
+    </div>
+    {children}
+  </div>
+)
+
+const InlineField: React.FC<{
+  label: string
+  description?: React.ReactNode
+  children: React.ReactNode
+}> = ({ label, description, children }) => (
+  <div className="space-y-2">
+    <Label className="text-sm text-foreground">{label}</Label>
+    {description && (
+      <div className="text-xs text-muted-foreground">{description}</div>
+    )}
+    {children}
+  </div>
+)
+
+export function GeneralPane({
+  projectId,
+}: {
+  projectId: string
+  projectPath: string
+}) {
+  const { data: projects = [] } = useProjects()
+  const project = projects.find(p => p.id === projectId)
+
+  const {
+    data: branches = [],
+    isLoading: branchesLoading,
+    error: branchesError,
+  } = useProjectBranches(projectId)
+
+  const { data: preferences } = usePreferences()
+  const profiles = preferences?.custom_cli_profiles ?? []
+
+  const updateSettings = useUpdateProjectSettings()
+  const { data: appDataDir = '' } = useAppDataDir()
+  const setProjectAvatar = useSetProjectAvatar()
+  const removeProjectAvatar = useRemoveProjectAvatar()
+
+  const [branchPopoverOpen, setBranchPopoverOpen] = useState(false)
+  const [localSystemPrompt, setLocalSystemPrompt] = useState<string | null>(
+    null
+  )
+
+  // Track image load errors
+  const [imgErrorKey, setImgErrorKey] = useState<string | null>(null)
+  const imgError = imgErrorKey === project?.avatar_path
+
+  const avatarUrl =
+    project?.avatar_path && appDataDir && !imgError
+      ? convertFileSrc(`${appDataDir}/${project.avatar_path}`)
+      : null
+
+  const selectedBranch = project?.default_branch ?? ''
+  const displayedSystemPrompt =
+    localSystemPrompt ?? project?.custom_system_prompt ?? ''
+
+  const handleSelectBranch = useCallback(
+    (branch: string) => {
+      setBranchPopoverOpen(false)
+      updateSettings.mutate({ projectId, defaultBranch: branch })
+    },
+    [projectId, updateSettings]
+  )
+
+  const handleProviderChange = useCallback(
+    (value: string) => {
+      updateSettings.mutate({
+        projectId,
+        defaultProvider: value === 'global-default' ? '__none__' : value,
+      })
+    },
+    [projectId, updateSettings]
+  )
+
+  const handleBackendChange = useCallback(
+    (value: string) => {
+      updateSettings.mutate({
+        projectId,
+        defaultBackend: value === 'global-default' ? '__none__' : value,
+      })
+    },
+    [projectId, updateSettings]
+  )
+
+  const systemPromptChanged =
+    localSystemPrompt !== null &&
+    localSystemPrompt !== (project?.custom_system_prompt ?? '')
+
+  const handleSaveSystemPrompt = useCallback(() => {
+    if (localSystemPrompt === null) return
+    updateSettings.mutate(
+      { projectId, customSystemPrompt: localSystemPrompt },
+      { onSuccess: () => setLocalSystemPrompt(null) }
+    )
+  }, [localSystemPrompt, projectId, updateSettings])
+
+  return (
+    <div className="space-y-6">
+      <SettingsSection title="Avatar">
+        <InlineField
+          label="Project Avatar"
+          description="Custom image displayed in the sidebar"
+        >
+          <div className="flex items-center gap-3">
+            <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-muted-foreground/20 overflow-hidden">
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt={project?.name ?? 'Project avatar'}
+                  className="size-full object-cover"
+                  onError={() => setImgErrorKey(project?.avatar_path ?? null)}
+                />
+              ) : (
+                <span className="text-lg font-medium uppercase text-muted-foreground">
+                  {project?.name?.[0] ?? '?'}
+                </span>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setProjectAvatar.mutate(projectId)}
+                disabled={setProjectAvatar.isPending}
+              >
+                {setProjectAvatar.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ImageIcon className="h-4 w-4" />
+                )}
+                {project?.avatar_path ? 'Change' : 'Add Image'}
+              </Button>
+              {project?.avatar_path && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => removeProjectAvatar.mutate(projectId)}
+                  disabled={removeProjectAvatar.isPending}
+                >
+                  {removeProjectAvatar.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <X className="h-4 w-4" />
+                  )}
+                  Remove
+                </Button>
+              )}
+            </div>
+          </div>
+        </InlineField>
+      </SettingsSection>
+
+      <SettingsSection title="Defaults">
+        <InlineField
+          label="Default Branch"
+          description="New worktrees will be created from this branch"
+        >
+          {branchesLoading ? (
+            <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Fetching branches...
+            </div>
+          ) : branchesError ? (
+            <div className="py-2 text-sm text-destructive">
+              Failed to load branches
+            </div>
+          ) : branches.length === 0 ? (
+            <div className="py-2 text-sm text-muted-foreground">
+              No branches found
+            </div>
+          ) : (
+            <Popover
+              open={branchPopoverOpen}
+              onOpenChange={setBranchPopoverOpen}
+            >
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={branchPopoverOpen}
+                  aria-controls="default-branch-selector"
+                  className="w-full justify-between"
+                >
+                  <span className="flex items-center gap-2 truncate">
+                    <GitBranch className="h-4 w-4 shrink-0" />
+                    {selectedBranch || 'Select a branch'}
+                  </span>
+                  <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                id="default-branch-selector"
+                align="start"
+                className="!w-[var(--radix-popover-trigger-width)] p-0"
+              >
+                <Command>
+                  <CommandInput placeholder="Search branches..." />
+                  <CommandList>
+                    <CommandEmpty>No branch found.</CommandEmpty>
+                    <CommandGroup>
+                      {branches.map(branch => (
+                        <CommandItem
+                          key={branch}
+                          value={branch}
+                          onSelect={handleSelectBranch}
+                        >
+                          <GitBranch className="h-4 w-4" />
+                          {branch}
+                          <Check
+                            className={cn(
+                              'ml-auto h-4 w-4',
+                              selectedBranch === branch
+                                ? 'opacity-100'
+                                : 'opacity-0'
+                            )}
+                          />
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          )}
+        </InlineField>
+
+        {profiles.length > 0 && (
+          <InlineField
+            label="Default Provider"
+            description="Default provider for new sessions in this project"
+          >
+            <Select
+              value={project?.default_provider ?? 'global-default'}
+              onValueChange={handleProviderChange}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="global-default">
+                  Use global default
+                </SelectItem>
+                <SelectItem value="__anthropic__">Anthropic</SelectItem>
+                {profiles.map(p => (
+                  <SelectItem key={p.name} value={p.name}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </InlineField>
+        )}
+
+        <InlineField
+          label="Default Backend"
+          description="CLI to use for new sessions in this project"
+        >
+          <Select
+            value={project?.default_backend ?? 'global-default'}
+            onValueChange={handleBackendChange}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="global-default">Use global default</SelectItem>
+              <SelectItem value="claude">Claude</SelectItem>
+              <SelectItem value="codex">
+                Codex{' '}
+                <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">
+                  BETA
+                </span>
+              </SelectItem>
+              <SelectItem value="opencode">
+                OpenCode{' '}
+                <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">
+                  BETA
+                </span>
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </InlineField>
+      </SettingsSection>
+
+      <SettingsSection title="System Prompt">
+        <InlineField
+          label="Custom System Prompt"
+          description="Appended to every session's system prompt in this project"
+        >
+          <Textarea
+            placeholder="e.g. Always use TypeScript strict mode. Prefer functional components..."
+            value={displayedSystemPrompt}
+            onChange={e => setLocalSystemPrompt(e.target.value)}
+            rows={4}
+            className="resize-y text-sm"
+          />
+          <Button
+            size="sm"
+            onClick={handleSaveSystemPrompt}
+            disabled={!systemPromptChanged || updateSettings.isPending}
+          >
+            {updateSettings.isPending && (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            )}
+            Save
+          </Button>
+        </InlineField>
+      </SettingsSection>
+    </div>
+  )
+}

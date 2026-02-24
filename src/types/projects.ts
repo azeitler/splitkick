@@ -37,6 +37,16 @@ export interface Project {
   is_folder?: boolean
   /** Path to custom avatar image (relative to app data dir, e.g., "avatars/abc123.png") */
   avatar_path?: string
+  /** MCP server names enabled by default for this project (null/undefined = inherit from global) */
+  enabled_mcp_servers?: string[] | null
+  /** All MCP server names ever seen for this project (prevents re-enabling user-disabled servers) */
+  known_mcp_servers?: string[]
+  /** Custom system prompt appended to every session execution */
+  custom_system_prompt?: string
+  /** Default provider profile name for sessions in this project (undefined = use global default) */
+  default_provider?: string | null
+  /** Default CLI backend for sessions in this project (undefined = use global default) */
+  default_backend?: string | null
 }
 
 /**
@@ -74,6 +84,8 @@ export interface Worktree {
   pr_number?: number
   /** GitHub PR URL (if a PR has been created) */
   pr_url?: string
+  /** GitHub issue number (if created from an issue) */
+  issue_number?: number
   /** Cached PR display status (draft, open, review, merged, closed) */
   cached_pr_status?: string
   /** Cached CI check status (success, failure, pending, error) */
@@ -96,6 +108,10 @@ export interface Worktree {
   cached_base_branch_ahead_count?: number
   /** Cached base branch behind count (commits behind on base branch) */
   cached_base_branch_behind_count?: number
+  /** Cached worktree ahead count (commits unique to worktree, ahead of local base) */
+  cached_worktree_ahead_count?: number
+  /** Cached unpushed count (commits not yet pushed to origin/current_branch) */
+  cached_unpushed_count?: number
   /** Display order within project (lower = higher in list, base sessions ignore this) */
   order: number
   /** Unix timestamp when worktree was archived (undefined = not archived) */
@@ -113,6 +129,8 @@ export interface WorktreeCreatingEvent {
   name: string
   path: string
   branch: string
+  pr_number?: number
+  issue_number?: number
 }
 
 /** Event payload when worktree creation completes */
@@ -190,11 +208,11 @@ export interface WorktreePathExistsEvent {
     number: number
     title: string
     body?: string
-    comments: Array<{
+    comments: {
       author: { login: string }
       body: string
       createdAt: string
-    }>
+    }[]
   }
 }
 
@@ -213,11 +231,11 @@ export interface WorktreeBranchExistsEvent {
     number: number
     title: string
     body?: string
-    comments: Array<{
+    comments: {
       author: { login: string }
       body: string
       createdAt: string
-    }>
+    }[]
   }
   /** PR context to use when creating a new worktree with the suggested name */
   pr_context?: {
@@ -226,17 +244,17 @@ export interface WorktreeBranchExistsEvent {
     body?: string
     headRefName: string
     baseRefName: string
-    comments: Array<{
+    comments: {
       author: { login: string }
       body: string
       createdAt: string
-    }>
-    reviews: Array<{
+    }[]
+    reviews: {
       author: { login: string }
       body: string
       state: string
       submittedAt: string
-    }>
+    }[]
     diff?: string
   }
 }
@@ -253,6 +271,8 @@ export interface CreatePrResponse {
   pr_url: string
   /** AI-generated PR title */
   title: string
+  /** Whether this PR already existed (was linked, not newly created) */
+  existing: boolean
 }
 
 // =============================================================================
@@ -300,6 +320,26 @@ export interface ReviewResponse {
 }
 
 // =============================================================================
+// Release Notes
+// =============================================================================
+
+/** A GitHub release from gh release list */
+export interface GitHubRelease {
+  tagName: string
+  name: string
+  publishedAt: string
+  isLatest: boolean
+  isDraft: boolean
+  isPrerelease: boolean
+}
+
+/** Response from generate_release_notes command */
+export interface ReleaseNotesResponse {
+  title: string
+  body: string
+}
+
+// =============================================================================
 // Local Merge
 // =============================================================================
 
@@ -318,4 +358,14 @@ export interface MergeWorktreeResponse {
   conflict_diff?: string
   /** Whether worktree was cleaned up */
   cleaned_up: boolean
+}
+
+/** Response from get_merge_conflicts command */
+export interface MergeConflictsResponse {
+  /** Whether there are unresolved merge conflicts */
+  has_conflicts: boolean
+  /** List of files with conflicts */
+  conflicts: string[]
+  /** Diff showing conflict markers */
+  conflict_diff: string
 }

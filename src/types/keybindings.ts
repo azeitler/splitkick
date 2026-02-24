@@ -14,11 +14,19 @@ export type KeybindingAction =
   | 'previous_session'
   | 'close_session_or_worktree'
   | 'new_worktree'
-  | 'next_worktree'
-  | 'previous_worktree'
   | 'cycle_execution_mode'
   | 'approve_plan'
+  | 'approve_plan_yolo'
+  | 'open_plan'
+  | 'open_recap'
   | 'restore_last_archived'
+  | 'focus_canvas_search'
+  | 'toggle_modal_terminal'
+  | 'toggle_session_label'
+  | 'open_provider_dropdown'
+  | 'open_model_dropdown'
+  | 'open_thinking_dropdown'
+  | 'cancel_prompt'
 
 // Shortcut string format: "mod+key" where mod is cmd/ctrl
 // Examples: "mod+l", "mod+shift+p", "mod+1"
@@ -52,11 +60,19 @@ export const DEFAULT_KEYBINDINGS: KeybindingsMap = {
   previous_session: 'mod+alt+arrowleft',
   close_session_or_worktree: 'mod+w',
   new_worktree: 'mod+n',
-  next_worktree: 'mod+alt+arrowdown',
-  previous_worktree: 'mod+alt+arrowup',
   cycle_execution_mode: 'shift+tab',
   approve_plan: 'mod+enter',
+  approve_plan_yolo: 'mod+y',
+  open_plan: 'p',
+  open_recap: 'r',
   restore_last_archived: 'mod+shift+t',
+  focus_canvas_search: 'slash',
+  toggle_modal_terminal: 'mod+backquote',
+  toggle_session_label: 'mod+s',
+  open_provider_dropdown: 'alt+p',
+  open_model_dropdown: 'alt+m',
+  open_thinking_dropdown: 'alt+e',
+  cancel_prompt: 'mod+alt+backspace',
 }
 
 // UI definitions for the settings pane
@@ -168,24 +184,31 @@ export const KEYBINDING_DEFINITIONS: KeybindingDefinition[] = [
     category: 'chat',
   },
   {
+    action: 'approve_plan_yolo',
+    label: 'Approve plan (YOLO)',
+    description: 'Approve the current plan with YOLO mode',
+    default_shortcut: 'mod+y',
+    category: 'chat',
+  },
+  {
+    action: 'open_plan',
+    label: 'Open plan',
+    description: 'Open the plan dialog for the selected session',
+    default_shortcut: 'p',
+    category: 'chat',
+  },
+  {
+    action: 'open_recap',
+    label: 'Open recap',
+    description: 'Open the session recap dialog for the selected session',
+    default_shortcut: 'r',
+    category: 'chat',
+  },
+  {
     action: 'new_worktree',
     label: 'New worktree',
     description: 'Create a new worktree in the current project',
     default_shortcut: 'mod+n',
-    category: 'navigation',
-  },
-  {
-    action: 'next_worktree',
-    label: 'Next worktree',
-    description: 'Switch to the next worktree',
-    default_shortcut: 'mod+alt+arrowdown',
-    category: 'navigation',
-  },
-  {
-    action: 'previous_worktree',
-    label: 'Previous worktree',
-    description: 'Switch to the previous worktree',
-    default_shortcut: 'mod+alt+arrowup',
     category: 'navigation',
   },
   {
@@ -195,25 +218,103 @@ export const KEYBINDING_DEFINITIONS: KeybindingDefinition[] = [
     default_shortcut: 'mod+shift+t',
     category: 'navigation',
   },
+  {
+    action: 'focus_canvas_search',
+    label: 'Focus canvas search',
+    description: 'Focus the search input on canvas views',
+    default_shortcut: 'slash',
+    category: 'navigation',
+  },
+  {
+    action: 'toggle_modal_terminal',
+    label: 'Toggle modal terminal',
+    description: 'Show or hide terminal drawer in session modal',
+    default_shortcut: 'mod+backquote',
+    category: 'chat',
+  },
+  {
+    action: 'toggle_session_label',
+    label: 'Toggle label',
+    description: 'Mark/unmark session with "Needs testing" label',
+    default_shortcut: 'mod+s',
+    category: 'chat',
+  },
+  {
+    action: 'open_provider_dropdown',
+    label: 'Open provider dropdown',
+    description: 'Open the provider selector dropdown',
+    default_shortcut: 'alt+p',
+    category: 'chat',
+  },
+  {
+    action: 'open_model_dropdown',
+    label: 'Open model dropdown',
+    description: 'Open the model selector dropdown',
+    default_shortcut: 'alt+m',
+    category: 'chat',
+  },
+  {
+    action: 'open_thinking_dropdown',
+    label: 'Open thinking dropdown',
+    description: 'Open the thinking/effort level dropdown',
+    default_shortcut: 'alt+e',
+    category: 'chat',
+  },
+  {
+    action: 'cancel_prompt',
+    label: 'Cancel prompt',
+    description: 'Cancel the running Claude process for the current session',
+    default_shortcut: 'mod+alt+backspace',
+    category: 'chat',
+  },
 ]
 
 // Helper to convert shortcut string to display format
-export function formatShortcutDisplay(shortcut: ShortcutString): string {
+export function formatShortcutDisplay(
+  shortcut: ShortcutString | undefined | null
+): string {
+  if (!shortcut) return ''
+
   const isMac =
     typeof navigator !== 'undefined' && navigator.platform.includes('Mac')
+  // On macOS web, Cmd shortcuts are intercepted by the browser.
+  // Ctrl+key already works (both map to "mod"), so show ⌃ instead of ⌘.
+  const isWeb =
+    typeof window !== 'undefined' && !('__TAURI_INTERNALS__' in window)
+  const useMacCtrl = isMac && isWeb
 
   return shortcut
     .split('+')
     .map(part => {
       switch (part) {
         case 'mod':
-          return isMac ? '⌘' : 'Ctrl'
+          return useMacCtrl ? '⌃' : isMac ? '⌘' : 'Ctrl'
         case 'shift':
           return isMac ? '⇧' : 'Shift'
         case 'alt':
           return isMac ? '⌥' : 'Alt'
         case 'comma':
           return ','
+        case 'period':
+          return '.'
+        case 'arrowup':
+          return '↑'
+        case 'arrowdown':
+          return '↓'
+        case 'arrowleft':
+          return '←'
+        case 'arrowright':
+          return '→'
+        case 'slash':
+          return '/'
+        case 'backspace':
+          return isMac ? '⌫' : 'Backspace'
+        case 'enter':
+          return isMac ? '↩' : 'Enter'
+        case 'tab':
+          return 'Tab'
+        case 'escape':
+          return 'Esc'
         default:
           return part.toUpperCase()
       }
@@ -233,6 +334,14 @@ export function eventToShortcutString(e: KeyboardEvent): ShortcutString | null {
   if (e.shiftKey) parts.push('shift')
   if (e.altKey) parts.push('alt')
 
+  // Prefer physical key codes when possible so Option/Alt modified letters
+  // on macOS (e.g. Alt+M -> µ, Alt+E -> Dead) still map to alt+m / alt+e.
+  const keyFromCode = keyboardCodeToShortcutKey(e.code)
+  if (keyFromCode) {
+    parts.push(keyFromCode)
+    return parts.join('+')
+  }
+
   // Normalize key names
   let key = e.key.toLowerCase()
   if (key === ',') key = 'comma'
@@ -246,10 +355,69 @@ export function eventToShortcutString(e: KeyboardEvent): ShortcutString | null {
   if (key === '`') key = 'backquote'
   if (key === '-') key = 'minus'
   if (key === '=') key = 'equal'
+  if (key === 'delete') key = 'backspace'
 
   parts.push(key)
 
   return parts.join('+')
+}
+
+function keyboardCodeToShortcutKey(code: string): string | null {
+  if (code.startsWith('Key') && code.length === 4) {
+    return code.slice(3).toLowerCase()
+  }
+  if (code.startsWith('Digit') && code.length === 6) {
+    return code.slice(5)
+  }
+
+  switch (code) {
+    case 'Comma':
+      return 'comma'
+    case 'Period':
+      return 'period'
+    case 'Slash':
+      return 'slash'
+    case 'Backslash':
+      return 'backslash'
+    case 'BracketLeft':
+      return 'bracketleft'
+    case 'BracketRight':
+      return 'bracketright'
+    case 'Semicolon':
+      return 'semicolon'
+    case 'Quote':
+      return 'quote'
+    case 'Backquote':
+      return 'backquote'
+    case 'Minus':
+      return 'minus'
+    case 'Equal':
+      return 'equal'
+    case 'ArrowUp':
+      return 'arrowup'
+    case 'ArrowDown':
+      return 'arrowdown'
+    case 'ArrowLeft':
+      return 'arrowleft'
+    case 'ArrowRight':
+      return 'arrowright'
+    case 'Enter':
+      return 'enter'
+    case 'Tab':
+      return 'tab'
+    case 'Escape':
+      return 'escape'
+    case 'Backspace':
+      return 'backspace'
+    case 'Delete':
+      // Treat forward delete as backspace so mod+alt+delete also matches
+      // cancel shortcuts across keyboard layouts/devices.
+      return 'backspace'
+    case 'Space':
+      return 'space'
+    default:
+      return null
+  }
 }
 
 // Helper to check if an event matches a shortcut string
