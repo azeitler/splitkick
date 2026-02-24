@@ -489,10 +489,14 @@ export function WorktreeItem({
       e.stopPropagation()
       const toastId = toast.loading('Pushing changes...')
       try {
-        await gitPush(worktree.path, worktree.pr_number)
+        const result = await gitPush(worktree.path, worktree.pr_number)
         triggerImmediateGitPoll()
         fetchWorktreesStatus(projectId)
-        toast.success('Changes pushed', { id: toastId })
+        if (result.fellBack) {
+          toast.warning('Could not push to PR branch, pushed to new branch instead', { id: toastId })
+        } else {
+          toast.success('Changes pushed', { id: toastId })
+        }
       } catch (error) {
         toast.error(`Push failed: ${error}`, { id: toastId })
       }

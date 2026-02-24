@@ -57,8 +57,6 @@ interface UIState {
   autoOpenSessionWorktreeIds: Set<string>
   /** Specific session ID to auto-open per worktree (overrides first-session default) */
   pendingAutoOpenSessionIds: Record<string, string>
-  /** Project ID for the Session Board modal (null = closed) */
-  sessionBoardProjectId: string | null
   /** Whether a session chat modal is open (for magic command keybinding checks) */
   sessionChatModalOpen: boolean
   /** Which worktree the session chat modal is for (for magic command worktree resolution) */
@@ -127,8 +125,6 @@ interface UIState {
     shouldOpen: boolean
     sessionId?: string
   }
-  openSessionBoardModal: (projectId: string) => void
-  closeSessionBoardModal: () => void
   setSessionChatModalOpen: (open: boolean, worktreeId?: string | null) => void
   setPlanDialogOpen: (open: boolean) => void
   setFeatureTourOpen: (open: boolean) => void
@@ -174,7 +170,6 @@ export const useUIStore = create<UIState>()(
       pendingBackgroundCreations: 0,
       autoOpenSessionWorktreeIds: new Set(),
       pendingAutoOpenSessionIds: {},
-      sessionBoardProjectId: null,
       sessionChatModalOpen: false,
       sessionChatModalWorktreeId: null,
       planDialogOpen: false,
@@ -482,20 +477,6 @@ export const useUIStore = create<UIState>()(
         }
         return { shouldOpen: false }
       },
-
-      openSessionBoardModal: (projectId: string) =>
-        set(
-          { sessionBoardProjectId: projectId },
-          undefined,
-          'openSessionBoardModal'
-        ),
-
-      closeSessionBoardModal: () =>
-        set(
-          { sessionBoardProjectId: null },
-          undefined,
-          'closeSessionBoardModal'
-        ),
 
       setSessionChatModalOpen: (open: boolean, worktreeId?: string | null) =>
         set(

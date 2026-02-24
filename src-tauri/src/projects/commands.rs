@@ -600,6 +600,7 @@ pub async fn create_worktree(
         cached_unpushed_count: None,
         order: 0, // Placeholder, actual order is set in background thread
         archived_at: None,
+        label: None,
     };
 
     // Clone values for the background thread
@@ -1023,6 +1024,7 @@ pub async fn create_worktree(
                     cached_unpushed_count: None,
                     order: max_order + 1,
                     archived_at: None,
+                    label: None,
                 };
 
                 data.add_worktree(worktree.clone());
@@ -1158,6 +1160,7 @@ pub async fn create_worktree_from_existing_branch(
         cached_unpushed_count: None,
         order: 0, // Placeholder, actual order is set in background thread
         archived_at: None,
+        label: None,
     };
 
     // Clone values for the background thread
@@ -1381,6 +1384,7 @@ pub async fn create_worktree_from_existing_branch(
                     cached_unpushed_count: None,
                     order: max_order + 1,
                     archived_at: None,
+                    label: None,
                 };
 
                 data.add_worktree(worktree.clone());
@@ -1598,6 +1602,7 @@ pub async fn checkout_pr(
         cached_unpushed_count: None,
         order: 0, // Will be updated in background thread
         archived_at: None,
+        label: None,
     };
 
     // Clone values for background thread
@@ -1700,6 +1705,14 @@ pub async fn checkout_pr(
                         log::trace!(
                             "Background: Manual PR fetch+checkout succeeded, branch: {branch}"
                         );
+                        // Set upstream tracking so terminal `git push` works correctly
+                        if let Err(e) = git::set_upstream_tracking(
+                            &project_path,
+                            &local_branch_name,
+                            &pr_head_ref,
+                        ) {
+                            log::warn!("Background: Failed to set upstream tracking: {e}");
+                        }
                         branch
                     }
                     Err(e) => {
@@ -1901,6 +1914,7 @@ pub async fn checkout_pr(
                     cached_unpushed_count: None,
                     order: max_order + 1,
                     archived_at: None,
+                    label: None,
                 };
 
                 data.add_worktree(worktree.clone());
@@ -2124,6 +2138,7 @@ pub async fn create_base_session(app: AppHandle, project_id: String) -> Result<W
         cached_unpushed_count: None,
         order: 0, // Base sessions are always first
         archived_at: None,
+        label: None,
     };
 
     data.add_worktree(session.clone());
@@ -2510,6 +2525,7 @@ pub async fn import_worktree(
         cached_unpushed_count: None,
         order: max_order + 1,
         archived_at: None,
+        label: None,
     };
 
     data.add_worktree(worktree.clone());
@@ -3206,6 +3222,29 @@ pub async fn rename_worktree(
 
     log::trace!("Successfully renamed worktree to: {new_name}");
     Ok(updated_worktree)
+}
+
+/// Update the label on a worktree
+#[tauri::command]
+pub async fn update_worktree_label(
+    app: AppHandle,
+    worktree_id: String,
+    label: Option<crate::chat::types::LabelData>,
+) -> Result<(), String> {
+    log::trace!("Updating worktree label: {worktree_id}");
+
+    let mut data = load_projects_data(&app)?;
+
+    let worktree = data
+        .find_worktree_mut(&worktree_id)
+        .ok_or_else(|| format!("Worktree not found: {worktree_id}"))?;
+
+    worktree.label = label;
+
+    save_projects_data(&app, &data)?;
+
+    log::trace!("Successfully updated worktree label for: {worktree_id}");
+    Ok(())
 }
 
 /// Commit changes in a worktree
@@ -4798,6 +4837,7 @@ pub struct CreateCommitResponse {
     pub commit_hash: String,
     pub message: String,
     pub pushed: bool,
+    pub push_fell_back: bool,
 }
 
 /// Get git status output
@@ -4911,6 +4951,26 @@ fn push_to_remote(repo_path: &str, remote: Option<&str>) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+/// Push to remote, routing through PR-aware push when a PR number is provided.
+/// Returns whether the push fell back to creating a new branch.
+fn push_for_commit(
+    app: &AppHandle,
+    repo_path: &str,
+    remote: Option<&str>,
+    pr_number: Option<u32>,
+) -> Result<bool, String> {
+    match pr_number {
+        Some(pr) => {
+            let result = git::git_push_to_pr(repo_path, pr, &resolve_gh_binary(app))?;
+            Ok(result.fell_back)
+        }
+        None => {
+            push_to_remote(repo_path, remote)?;
+            Ok(false)
+        }
+    }
 }
 
 /// Generate commit message using Claude CLI with JSON schema
@@ -5028,6 +5088,7 @@ fn generate_commit_message(
 }
 
 /// Create a commit with AI-generated message
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn create_commit_with_ai(
     app: AppHandle,
@@ -5035,6 +5096,7 @@ pub async fn create_commit_with_ai(
     custom_prompt: Option<String>,
     push: bool,
     remote: Option<String>,
+    pr_number: Option<u32>,
     model: Option<String>,
     custom_profile_name: Option<String>,
 ) -> Result<CreateCommitResponse, String> {
@@ -5045,12 +5107,13 @@ pub async fn create_commit_with_ai(
     if status.trim().is_empty() {
         if push {
             // No changes to commit, but user wants to push — push existing commits
-            push_to_remote(&worktree_path, remote.as_deref())?;
+            let fell_back = push_for_commit(&app, &worktree_path, remote.as_deref(), pr_number)?;
             log::trace!("No changes to commit, pushed existing commits");
             return Ok(CreateCommitResponse {
                 commit_hash: String::new(),
                 message: String::new(),
                 pushed: true,
+                push_fell_back: fell_back,
             });
         }
         return Err("No changes to commit".to_string());
@@ -5102,18 +5165,19 @@ pub async fn create_commit_with_ai(
     log::trace!("Created commit: {commit_hash}");
 
     // 8. Push if requested
-    let pushed = if push {
-        push_to_remote(&worktree_path, remote.as_deref())?;
-        log::trace!("Pushed to remote");
-        true
+    let (pushed, push_fell_back) = if push {
+        let fell_back = push_for_commit(&app, &worktree_path, remote.as_deref(), pr_number)?;
+        log::trace!("Pushed to remote (fell_back={fell_back})");
+        (true, fell_back)
     } else {
-        false
+        (false, false)
     };
 
     Ok(CreateCommitResponse {
         commit_hash,
         message: response.message,
         pushed,
+        push_fell_back,
     })
 }
 
@@ -5654,6 +5718,14 @@ pub async fn git_stash_pop(worktree_path: String) -> Result<String, String> {
     git::git_stash_pop(&worktree_path)
 }
 
+/// Response from git push, includes whether the push fell back to a new branch
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitPushResponse {
+    pub output: String,
+    pub fell_back: bool,
+}
+
 /// Push current branch to remote. If pr_number is provided, uses PR-aware push
 /// that handles fork remotes and uses --force-with-lease.
 #[tauri::command]
@@ -5662,11 +5734,23 @@ pub async fn git_push(
     worktree_path: String,
     pr_number: Option<u32>,
     remote: Option<String>,
-) -> Result<String, String> {
+) -> Result<GitPushResponse, String> {
     log::trace!("Pushing changes for worktree: {worktree_path}, pr_number: {pr_number:?}, remote: {remote:?}");
     match pr_number {
-        Some(pr) => git::git_push_to_pr(&worktree_path, pr, &resolve_gh_binary(&app)),
-        None => git::git_push(&worktree_path, remote.as_deref()),
+        Some(pr) => {
+            let result = git::git_push_to_pr(&worktree_path, pr, &resolve_gh_binary(&app))?;
+            Ok(GitPushResponse {
+                output: result.output,
+                fell_back: result.fell_back,
+            })
+        }
+        None => {
+            let output = git::git_push(&worktree_path, remote.as_deref())?;
+            Ok(GitPushResponse {
+                output,
+                fell_back: false,
+            })
+        }
     }
 }
 

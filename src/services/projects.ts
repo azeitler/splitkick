@@ -908,6 +908,11 @@ export function useWorktreeEvents() {
         if (selectedWorktreeId === id) {
           selectWorktree(null)
         }
+
+        // Close SessionChatModal if it's open for this worktree
+        window.dispatchEvent(
+          new CustomEvent('close-worktree-modal', { detail: { worktreeId: id } })
+        )
       })
     )
 

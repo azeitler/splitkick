@@ -66,7 +66,7 @@ function buildMessageWithRefs(queuedMsg: QueuedMessage): string {
 
 /**
  * Global queue processor hook - must be at App level so it stays active
- * even when ChatWindow is unmounted (e.g., when viewing session board or different worktree)
+ * even when ChatWindow is unmounted (e.g., when viewing a different worktree)
  *
  * Processes queued messages for ALL sessions, not just the active one.
  * This fixes the bug where queued prompts don't execute when the worktree is unfocused.

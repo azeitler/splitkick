@@ -150,6 +150,13 @@ pub async fn dispatch_command(
                 crate::projects::rename_worktree(app.clone(), worktree_id, new_name).await?;
             to_value(result)
         }
+        "update_worktree_label" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let label: Option<crate::chat::types::LabelData> =
+                field_opt(&args, "label", "label")?;
+            crate::projects::update_worktree_label(app.clone(), worktree_id, label).await?;
+            Ok(Value::Null)
+        }
         "has_uncommitted_changes" => {
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
             let result = crate::projects::has_uncommitted_changes(app.clone(), worktree_id).await?;
@@ -224,6 +231,7 @@ pub async fn dispatch_command(
             let custom_prompt: Option<String> = field_opt(&args, "magicPrompt", "magic_prompt")?;
             let push: bool = from_field_opt(&args, "push")?.unwrap_or(false);
             let remote: Option<String> = from_field_opt(&args, "remote")?;
+            let pr_number: Option<u32> = from_field_opt(&args, "prNumber")?;
             let model: Option<String> = from_field_opt(&args, "model")?;
             let custom_profile_name: Option<String> =
                 field_opt(&args, "customProfileName", "custom_profile_name")?;
@@ -233,6 +241,7 @@ pub async fn dispatch_command(
                 custom_prompt,
                 push,
                 remote,
+                pr_number,
                 model,
                 custom_profile_name,
             )

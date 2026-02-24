@@ -1,3 +1,5 @@
+import type { LabelData } from '@/types/chat'
+
 /**
  * Type of session (base branch or worktree)
  */
@@ -114,6 +116,8 @@ export interface Worktree {
   cached_worktree_ahead_count?: number
   /** Cached unpushed count (commits not yet pushed to origin/current_branch) */
   cached_unpushed_count?: number
+  /** User-assigned label with color (e.g. "In Progress") */
+  label?: LabelData
   /** Display order within project (lower = higher in list, base sessions ignore this) */
   order: number
   /** Unix timestamp when worktree was archived (undefined = not archived) */
@@ -289,6 +293,15 @@ export interface CreateCommitResponse {
   message: string
   /** Whether the commit was pushed to remote */
   pushed: boolean
+  /** Whether the push fell back to creating a new branch (couldn't push to PR branch) */
+  push_fell_back: boolean
+}
+
+/** Response from git push */
+export interface GitPushResponse {
+  output: string
+  /** Whether the push fell back to creating a new branch (couldn't push to PR branch) */
+  fellBack: boolean
 }
 
 // =============================================================================

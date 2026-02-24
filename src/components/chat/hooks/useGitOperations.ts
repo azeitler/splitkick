@@ -163,6 +163,7 @@ export function useGitOperations({
             customPrompt: preferences?.magic_prompts?.commit_message,
             push: true,
             remote: remote ?? null,
+            prNumber: worktree?.pr_number ?? null,
             model: preferences?.magic_prompt_models?.commit_message_model,
             customProfileName: resolveMagicPromptProvider(
               preferences?.magic_prompt_providers,
@@ -175,7 +176,12 @@ export function useGitOperations({
         // Trigger git status refresh
         triggerImmediateGitPoll()
 
-        if (result.commit_hash) {
+        if (result.push_fell_back) {
+          toast.warning(
+            `${prefix}: Could not push to PR branch, pushed to new branch instead`,
+            { id: toastId }
+          )
+        } else if (result.commit_hash) {
           toast.success(
             `${prefix}: ${result.message.split('\n')[0]}`,
             { id: toastId }
@@ -194,6 +200,7 @@ export function useGitOperations({
       activeWorktreePath,
       project?.name,
       worktree?.name,
+      worktree?.pr_number,
       preferences?.magic_prompts?.commit_message,
       preferences?.magic_prompt_models?.commit_message_model,
       preferences?.magic_prompt_providers,
@@ -241,9 +248,13 @@ export function useGitOperations({
       const toastId = toast.loading(`Pushing ${branch}...`)
 
       try {
-        await gitPush(activeWorktreePath, worktree?.pr_number, remote)
+        const result = await gitPush(activeWorktreePath, worktree?.pr_number, remote)
         triggerImmediateGitPoll()
-        toast.success('Changes pushed', { id: toastId })
+        if (result.fellBack) {
+          toast.warning('Could not push to PR branch, pushed to new branch instead', { id: toastId })
+        } else {
+          toast.success('Changes pushed', { id: toastId })
+        }
       } catch (error) {
         toast.error(`Push failed: ${error}`, { id: toastId })
       } finally {

@@ -19,6 +19,8 @@ interface UseCanvasShortcutEventsOptions {
   onPlanApproval: (card: SessionCardData, updatedPlan?: string) => void
   /** Callback for YOLO plan approval */
   onPlanApprovalYolo: (card: SessionCardData, updatedPlan?: string) => void
+  /** If true, skip handling toggle-session-label event (caller handles it) */
+  skipLabelHandling?: boolean
 }
 
 interface UseCanvasShortcutEventsResult {
@@ -69,6 +71,7 @@ export function useCanvasShortcutEvents({
   worktreePath,
   onPlanApproval,
   onPlanApprovalYolo,
+  skipLabelHandling,
 }: UseCanvasShortcutEventsOptions): UseCanvasShortcutEventsResult {
   // Plan dialog state
   const [planDialogPath, setPlanDialogPath] = useState<string | null>(null)
@@ -322,7 +325,9 @@ export function useCanvasShortcutEvents({
     window.addEventListener('approve-plan-yolo', handleApprovePlanYoloEvent)
     window.addEventListener('open-plan', handleOpenPlanEvent)
     window.addEventListener('open-recap', handleOpenRecapEvent)
-    window.addEventListener('toggle-session-label', handleToggleLabelEvent)
+    if (!skipLabelHandling) {
+      window.addEventListener('toggle-session-label', handleToggleLabelEvent)
+    }
 
     return () => {
       window.removeEventListener('approve-plan', handleApprovePlanEvent)
@@ -332,7 +337,9 @@ export function useCanvasShortcutEvents({
       )
       window.removeEventListener('open-plan', handleOpenPlanEvent)
       window.removeEventListener('open-recap', handleOpenRecapEvent)
-      window.removeEventListener('toggle-session-label', handleToggleLabelEvent)
+      if (!skipLabelHandling) {
+        window.removeEventListener('toggle-session-label', handleToggleLabelEvent)
+      }
     }
   }, [
     enabled,
@@ -341,6 +348,7 @@ export function useCanvasShortcutEvents({
     onPlanApprovalYolo,
     handlePlanView,
     handleRecapView,
+    skipLabelHandling,
   ])
 
   return {

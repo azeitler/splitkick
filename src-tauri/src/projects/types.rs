@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::chat::types::LabelData;
+
 /// Type of session (base branch or worktree)
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -160,6 +162,9 @@ pub struct Worktree {
     /// Display order within project (lower = higher in list, base sessions ignore this)
     #[serde(default)]
     pub order: u32,
+    /// User-assigned label with color (e.g. "In Progress")
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<LabelData>,
     /// Unix timestamp when worktree was archived (None = not archived)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub archived_at: Option<u64>,

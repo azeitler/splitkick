@@ -416,7 +416,7 @@ pub struct Session {
     /// Original message context for re-send after permission approval
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub denied_message_context: Option<DeniedMessageContext>,
-    /// Whether this session is marked for review in session board
+    /// Whether this session is marked for review
     #[serde(default)]
     pub is_reviewing: bool,
     /// Whether this session is waiting for user input (AskUserQuestion, ExitPlanMode)
@@ -976,7 +976,7 @@ pub struct SessionMetadata {
     /// Original message context for re-send after permission approval
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub denied_message_context: Option<DeniedMessageContext>,
-    /// Whether this session is marked for review in session board
+    /// Whether this session is marked for review
     #[serde(default)]
     pub is_reviewing: bool,
     /// Whether this session is waiting for user input (AskUserQuestion, ExitPlanMode)

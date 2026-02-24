@@ -97,7 +97,7 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
 
   const handleClick = useCallback(() => {
     selectProject(project.id)
-    // Clear active worktree so ChatWindow shows Session Board view
+    // Clear active worktree so ChatWindow shows project canvas view
     clearActiveWorktree()
     // Close sidebar on mobile after navigation
     if (isMobile) {

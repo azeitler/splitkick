@@ -122,7 +122,6 @@ MainWindow (Top-level orchestrator)
     ├── WorkflowRunsModal
     ├── MagicModal / ReleaseNotesDialog / UpdatePrDialog
     ├── NewWorktreeModal / BranchConflictDialog
-    ├── SessionBoardModal (Kanban-style session overview)
     ├── AddProjectDialog / GitInitModal
     ├── ArchivedModal / CloseWorktreeDialog / QuitConfirmationDialog
     └── Toaster (Notifications)
@@ -144,10 +143,6 @@ Shared infrastructure in `src/components/chat/`:
 - `hooks/useCanvasShortcutEvents.ts` - Event handlers for plan/recap/approve shortcuts
 - `hooks/useCanvasStoreState.ts` - Store state subscriptions for card data
 
-### Session Board
-
-A Kanban-style board (`src/components/session-board/`) showing sessions across all projects in columns: `idle`, `active`, `waiting`, `reviewing`. Uses dnd-kit for drag-and-drop. Accessible via `SessionBoardModal`.
-
 ### File Organization
 
 ```
@@ -165,7 +160,6 @@ src/
 │   ├── open-in/           # OpenInButton, OpenInModal
 │   ├── preferences/       # PreferencesDialog, DiagnosticsPanel, 8 settings panes
 │   ├── projects/          # ProjectTree, WorktreeList, AddProjectDialog, ProjectSettingsDialog
-│   ├── session-board/     # SessionBoardView, SessionColumn, SessionCard (Kanban)
 │   ├── shared/            # FailedRunsBadge, GhAuthError, OpenPRsBadge, WorkflowRunsModal
 │   ├── titlebar/          # TitleBar, platform-specific window controls
 │   ├── ui/                # 45+ shadcn/ui primitives

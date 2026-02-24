@@ -119,10 +119,14 @@ export function WorktreeCanvasView({
       e.stopPropagation()
       const toastId = toast.loading('Pushing changes...')
       try {
-        await gitPush(worktreePath, worktree?.pr_number)
+        const result = await gitPush(worktreePath, worktree?.pr_number)
         triggerImmediateGitPoll()
         if (project) fetchWorktreesStatus(project.id)
-        toast.success('Changes pushed', { id: toastId })
+        if (result.fellBack) {
+          toast.warning('Could not push to PR branch, pushed to new branch instead', { id: toastId })
+        } else {
+          toast.success('Changes pushed', { id: toastId })
+        }
       } catch (error) {
         toast.error(`Push failed: ${error}`, { id: toastId })
       }
@@ -239,6 +243,18 @@ export function WorktreeCanvasView({
         handleOpenSessionModal as EventListener
       )
   }, [])
+
+  // Close modal when this worktree is deleted/archived (e.g. PR merged)
+  useEffect(() => {
+    const handleCloseModal = (e: CustomEvent<{ worktreeId: string }>) => {
+      if (e.detail.worktreeId === worktreeId) {
+        setSelectedSessionId(null)
+      }
+    }
+    window.addEventListener('close-worktree-modal', handleCloseModal as EventListener)
+    return () =>
+      window.removeEventListener('close-worktree-modal', handleCloseModal as EventListener)
+  }, [worktreeId])
 
   // When sessions load for a newly created worktree, auto-open the first session modal
   useEffect(() => {

@@ -848,6 +848,7 @@ pub async fn restore_session_with_base(
         cached_worktree_ahead_count: None,
         cached_unpushed_count: None,
         order: 0,
+        label: None,
         archived_at: None,
     };
 

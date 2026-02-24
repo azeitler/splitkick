@@ -7,7 +7,7 @@ import {
   lazy,
   Suspense,
 } from 'react'
-import { useQueries } from '@tanstack/react-query'
+import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { invoke } from '@/lib/transport'
 import { cn } from '@/lib/utils'
 import {
@@ -53,6 +53,7 @@ import {
   useOpenWorktreeInFinder,
   useOpenWorktreeInTerminal,
   useRemoveProject,
+  projectsQueryKeys,
 } from '@/services/projects'
 import {
   chatQueryKeys,
@@ -65,7 +66,7 @@ import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
 import { isBaseSession, type Worktree } from '@/types/projects'
 import { getEditorLabel, getTerminalLabel } from '@/types/preferences'
-import type { Session, WorktreeSessions } from '@/types/chat'
+import type { LabelData, Session, WorktreeSessions } from '@/types/chat'
 import { NewIssuesBadge } from '@/components/shared/NewIssuesBadge'
 import { OpenPRsBadge } from '@/components/shared/OpenPRsBadge'
 import { FailedRunsBadge } from '@/components/shared/FailedRunsBadge'
@@ -75,6 +76,7 @@ import { SessionChatModal } from '@/components/chat/SessionChatModal'
 import { SessionCard } from '@/components/chat/SessionCard'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { LabelModal } from '@/components/chat/LabelModal'
+import { getLabelTextColor } from '@/lib/label-colors'
 import {
   type SessionCardData,
   computeSessionCardData,
@@ -270,10 +272,14 @@ function WorktreeSectionHeader({
       e.stopPropagation()
       const toastId = toast.loading('Pushing changes...')
       try {
-        await gitPush(worktree.path, worktree.pr_number)
+        const result = await gitPush(worktree.path, worktree.pr_number)
         triggerImmediateGitPoll()
         fetchWorktreesStatus(projectId)
-        toast.success('Changes pushed', { id: toastId })
+        if (result.fellBack) {
+          toast.warning('Could not push to PR branch, pushed to new branch instead', { id: toastId })
+        } else {
+          toast.success('Changes pushed', { id: toastId })
+        }
       } catch (error) {
         toast.error(`Push failed: ${error}`, { id: toastId })
       }
@@ -361,6 +367,17 @@ function WorktreeSectionHeader({
                   </span>
                 ) : null
               })()}
+              {worktree.label && (
+                <span
+                  className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
+                  style={{
+                    backgroundColor: worktree.label.color,
+                    color: getLabelTextColor(worktree.label.color),
+                  }}
+                >
+                  {worktree.label.name}
+                </span>
+              )}
               <span
                 className="inline-flex items-center font-normal hover:bg-muted/50 rounded  px-1.5 py-0.5"
                 onClick={e => e.stopPropagation()}
@@ -751,6 +768,18 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
         selectedWorktreeModal?.worktreeId ?? null
       )
   }, [selectedWorktreeModal])
+
+  // Close modal when worktree is deleted/archived (e.g. PR merged)
+  useEffect(() => {
+    const handleCloseModal = (e: CustomEvent<{ worktreeId: string }>) => {
+      if (selectedWorktreeModal?.worktreeId === e.detail.worktreeId) {
+        setSelectedWorktreeModal(null)
+      }
+    }
+    window.addEventListener('close-worktree-modal', handleCloseModal as EventListener)
+    return () =>
+      window.removeEventListener('close-worktree-modal', handleCloseModal as EventListener)
+  }, [selectedWorktreeModal?.worktreeId])
 
   // Record last opened worktree+session per project for restoration on project switch
   const activeSessionIdForModal = useChatStore(state =>
@@ -1164,11 +1193,6 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     closeRecapDialog,
     handlePlanView,
     handleRecapView,
-    isLabelModalOpen,
-    labelModalSessionId,
-    labelModalCurrentLabel,
-    closeLabelModal,
-    handleOpenLabelModal,
   } = useCanvasShortcutEvents({
     selectedCard,
     enabled: !selectedWorktreeModal && selectedIndex !== null,
@@ -1178,7 +1202,76 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       handlePlanApproval(card, updatedPlan),
     onPlanApprovalYolo: (card, updatedPlan) =>
       handlePlanApprovalYolo(card, updatedPlan),
+    skipLabelHandling: true,
   })
+
+  // Worktree label modal state
+  const queryClient = useQueryClient()
+  const [worktreeLabelModalOpen, setWorktreeLabelModalOpen] = useState(false)
+  const [worktreeLabelTarget, setWorktreeLabelTarget] = useState<{
+    worktreeId: string
+    currentLabel: LabelData | null
+  } | null>(null)
+
+  // Listen for toggle-session-label event — open label modal for worktree
+  useEffect(() => {
+    if (!!selectedWorktreeModal || selectedIndex === null) return
+
+    const handleToggleLabel = () => {
+      const flatCard = flatCards[selectedIndex]
+      if (!flatCard) return
+
+      const section = worktreeSections.find(
+        s => s.worktree.id === flatCard.worktreeId
+      )
+      if (!section) return
+
+      setWorktreeLabelTarget({
+        worktreeId: section.worktree.id,
+        currentLabel: section.worktree.label ?? null,
+      })
+      setWorktreeLabelModalOpen(true)
+    }
+
+    window.addEventListener('toggle-session-label', handleToggleLabel)
+    return () =>
+      window.removeEventListener('toggle-session-label', handleToggleLabel)
+  }, [selectedWorktreeModal, selectedIndex, flatCards, worktreeSections])
+
+  const handleWorktreeLabelApply = useCallback(
+    async (label: LabelData | null) => {
+      if (!worktreeLabelTarget) return
+
+      try {
+        await invoke('update_worktree_label', {
+          worktreeId: worktreeLabelTarget.worktreeId,
+          label,
+        })
+        queryClient.invalidateQueries({
+          queryKey: projectsQueryKeys.worktrees(projectId),
+        })
+      } catch (error) {
+        toast.error(`Failed to update label: ${error}`)
+      }
+    },
+    [worktreeLabelTarget, queryClient, projectId]
+  )
+
+  const handleOpenWorktreeLabelModal = useCallback(
+    (card: SessionCardData) => {
+      const section = worktreeSections.find(s =>
+        s.cards.some(c => c.session.id === card.session.id)
+      )
+      if (!section) return
+
+      setWorktreeLabelTarget({
+        worktreeId: section.worktree.id,
+        currentLabel: section.worktree.label ?? null,
+      })
+      setWorktreeLabelModalOpen(true)
+    },
+    [worktreeSections]
+  )
 
   // Keyboard navigation - disable when any modal/dialog is open
   const isModalOpen =
@@ -1186,7 +1279,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     !!planDialogPath ||
     !!planDialogContent ||
     isRecapDialogOpen ||
-    isLabelModalOpen
+    worktreeLabelModalOpen
   const { cardRefs } = useCanvasKeyboardNav({
     cards: flatCards,
     selectedIndex,
@@ -1843,7 +1936,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                                   onApprove={() => handlePlanApproval(card)}
                                   onYolo={() => handlePlanApprovalYolo(card)}
                                   onToggleLabel={() =>
-                                    handleOpenLabelModal(card)
+                                    handleOpenWorktreeLabelModal(card)
                                   }
                                   onToggleReview={() => {
                                     const {
@@ -1918,13 +2011,20 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
         onRegenerate={regenerateRecap}
       />
 
-      {/* Label Modal */}
+      {/* Worktree Label Modal */}
       <LabelModal
-        key={labelModalSessionId}
-        isOpen={isLabelModalOpen}
-        onClose={closeLabelModal}
-        sessionId={labelModalSessionId}
-        currentLabel={labelModalCurrentLabel}
+        key={worktreeLabelTarget?.worktreeId ?? 'wt-label'}
+        isOpen={worktreeLabelModalOpen}
+        onClose={() => {
+          setWorktreeLabelModalOpen(false)
+          setWorktreeLabelTarget(null)
+        }}
+        sessionId={null}
+        currentLabel={worktreeLabelTarget?.currentLabel ?? null}
+        onApply={handleWorktreeLabelApply}
+        extraLabels={worktreeSections
+          .map(s => s.worktree.label)
+          .filter((l): l is LabelData => !!l)}
       />
 
       {/* Session Chat Modal */}

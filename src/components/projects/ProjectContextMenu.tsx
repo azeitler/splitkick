@@ -5,7 +5,6 @@ import {
   Folder,
   FolderOpen,
   Home,
-  LayoutGrid,
   Plus,
   Settings,
   Terminal,
@@ -33,7 +32,6 @@ import {
 } from '@/services/projects'
 import { usePreferences } from '@/services/preferences'
 import { useProjectsStore } from '@/store/projects-store'
-import { useUIStore } from '@/store/ui-store'
 import { getEditorLabel, getTerminalLabel } from '@/types/preferences'
 
 interface ProjectContextMenuProps {
@@ -57,8 +55,6 @@ export function ProjectContextMenu({
   const { data: worktrees = [] } = useWorktrees(project.id)
   const { data: preferences } = usePreferences()
   const { openProjectSettings } = useProjectsStore()
-  const openSessionBoardModal = useUIStore(state => state.openSessionBoardModal)
-
   // Check if base session already exists
   const existingBaseSession = worktrees.find(isBaseSession)
   const isNested = project.parent_id !== undefined
@@ -109,10 +105,6 @@ export function ProjectContextMenu({
     openProjectSettings(project.id)
   }
 
-  const handleOpenSessionBoard = () => {
-    openSessionBoardModal(project.id)
-  }
-
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
@@ -120,11 +112,6 @@ export function ProjectContextMenu({
         <ContextMenuItem onClick={handleOpenSettings}>
           <Settings className="mr-2 h-4 w-4" />
           Project Settings
-        </ContextMenuItem>
-
-        <ContextMenuItem onClick={handleOpenSessionBoard}>
-          <LayoutGrid className="mr-2 h-4 w-4" />
-          Session Board
         </ContextMenuItem>
 
         {isNested && (
