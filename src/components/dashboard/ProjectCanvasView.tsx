@@ -317,8 +317,8 @@ function WorktreeSectionHeader({
         <div className={cn(showDetails ? 'flex flex-col gap-1.5' : 'contents')}>
           <div className="flex min-w-0 items-center gap-2">
             {shortcutNumber !== undefined && (
-              <kbd className="shrink-0 inline-flex h-5 min-w-5 items-center justify-center rounded border border-border/50 bg-muted/50 px-1 text-[10px] font-mono text-muted-foreground">
-                ⌘{shortcutNumber}
+              <kbd className="shrink-0 inline-flex h-4 min-w-4 items-center justify-center rounded border border-border/50 bg-muted/50 px-0.5 font-mono text-muted-foreground">
+                <span className='text-[9px]'>⌘{shortcutNumber}</span>
               </kbd>
             )}
             {hasRunningTerminal && (
@@ -346,7 +346,7 @@ function WorktreeSectionHeader({
                 ) : null
               })()}
               <span
-                className="inline-flex items-center font-normal"
+                className="inline-flex items-center font-normal hover:bg-muted/50 rounded  px-1.5 py-0.5"
                 onClick={e => e.stopPropagation()}
               >
                 <GitStatusBadges
@@ -363,29 +363,29 @@ function WorktreeSectionHeader({
           </div>
           {showDetails && sessionMetrics && (
             <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5">
+              <span className="inline-flex items-center gap-1 rounded bg-muted/50 border border-border/50 px-2 py-0.5">
                 <MessageSquare className="h-3 w-3" />
                 {sessionMetrics.totalCount} sessions
               </span>
               {sessionMetrics.reviewCount > 0 && (
-                <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-emerald-600">
+                <span className="rounded  bg-green-500/10 px-2 py-0.5 text-green-600">
                   {sessionMetrics.reviewCount} review
                 </span>
               )}
               {sessionMetrics.waitingCount > 0 && (
-                <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-600">
+                <span className="rounded bg-yellow-500/90 px-2 py-0.5 text-black">
                   {sessionMetrics.waitingCount} waiting
                 </span>
               )}
               {sessionMetrics.activeCount > 0 && (
-                <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-sky-600">
+                <span className="rounded bg-sky-500/10 px-2 py-0.5 text-sky-600">
                   {sessionMetrics.activeCount} active
                 </span>
               )}
               {lastActivity && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5">
+                <span className="inline-flex items-center gap-1 rounded px-2 py-0.5">
                   <Clock3 className="h-3 w-3" />
-                  Last activity {lastActivity}
+                  {lastActivity}
                 </span>
               )}
               {onRowClick && (
