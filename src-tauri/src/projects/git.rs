@@ -638,18 +638,26 @@ pub fn git_push(repo_path: &str, remote: Option<&str>) -> Result<String, String>
     }
 }
 
+/// Result of a PR-aware push operation
+pub struct PushResult {
+    pub output: String,
+    /// true when we tried to push to the PR branch but failed and fell back to a regular push
+    pub fell_back: bool,
+}
+
 /// Push to a PR's remote branch, handling fork PRs by adding the fork remote if needed.
-/// Uses --force-with-lease for safety.
+/// Uses --force-with-lease for safety. Falls back to regular push (new branch) on failure.
 ///
 /// Flow:
 /// 1. Query gh pr view for fork info
 /// 2. Same-repo PR: push to origin
 /// 3. Fork PR: add fork remote if needed, fetch, push
+/// 4. On failure: fall back to regular push (git push -u origin HEAD)
 pub fn git_push_to_pr(
     repo_path: &str,
     pr_number: u32,
     gh_binary: &std::path::Path,
-) -> Result<String, String> {
+) -> Result<PushResult, String> {
     log::trace!("Pushing to PR #{pr_number} remote branch in {repo_path}");
 
     // 1. Query PR info from GitHub
@@ -668,7 +676,11 @@ pub fn git_push_to_pr(
     if !gh_output.status.success() {
         let stderr = String::from_utf8_lossy(&gh_output.stderr).to_string();
         log::warn!("gh pr view failed, falling back to regular push: {stderr}");
-        return git_push(repo_path, None);
+        let output = git_push(repo_path, None)?;
+        return Ok(PushResult {
+            output,
+            fell_back: true,
+        });
     }
 
     let pr_info: serde_json::Value = serde_json::from_slice(&gh_output.stdout)
@@ -680,10 +692,11 @@ pub fn git_push_to_pr(
     let is_cross_repository = pr_info["isCrossRepository"].as_bool().unwrap_or(false);
 
     if !is_cross_repository {
-        // Same-repo PR: push to origin with --force-with-lease
-        log::trace!("Same-repo PR, pushing to origin/{head_ref_name}");
+        // Same-repo PR: push HEAD to origin/{head_ref_name} with --force-with-lease
+        let refspec = format!("HEAD:{head_ref_name}");
+        log::trace!("Same-repo PR, pushing {refspec} to origin");
         let output = silent_command("git")
-            .args(["push", "--force-with-lease", "origin", head_ref_name])
+            .args(["push", "--force-with-lease", "origin", &refspec])
             .current_dir(repo_path)
             .output()
             .map_err(|e| format!("Failed to run git push: {e}"))?;
@@ -693,11 +706,18 @@ pub fn git_push_to_pr(
             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
             let result = if stdout.is_empty() { stderr } else { stdout };
             log::trace!("Successfully pushed to origin/{head_ref_name}");
-            return Ok(result);
+            return Ok(PushResult {
+                output: result,
+                fell_back: false,
+            });
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-            log::error!("Failed to push to origin/{head_ref_name}: {stderr}");
-            return Err(stderr);
+            log::warn!("Failed to push to origin/{head_ref_name}, falling back to regular push: {stderr}");
+            let fallback_output = git_push(repo_path, None)?;
+            return Ok(PushResult {
+                output: fallback_output,
+                fell_back: true,
+            });
         }
     }
 
@@ -777,10 +797,11 @@ pub fn git_push_to_pr(
         log::warn!("Fetch from fork failed (continuing with push): {stderr}");
     }
 
-    // Push to the fork remote with --force-with-lease
-    log::trace!("Pushing to {remote_name}/{head_ref_name} --force-with-lease");
+    // Push HEAD to the fork remote with --force-with-lease
+    let refspec = format!("HEAD:{head_ref_name}");
+    log::trace!("Pushing {refspec} to {remote_name} --force-with-lease");
     let push_output = silent_command("git")
-        .args(["push", "--force-with-lease", &remote_name, head_ref_name])
+        .args(["push", "--force-with-lease", &remote_name, &refspec])
         .current_dir(repo_path)
         .output()
         .map_err(|e| format!("Failed to push to fork: {e}"))?;
@@ -790,12 +811,56 @@ pub fn git_push_to_pr(
         let stderr = String::from_utf8_lossy(&push_output.stderr).to_string();
         let result = if stdout.is_empty() { stderr } else { stdout };
         log::trace!("Successfully pushed to {remote_name}/{head_ref_name}");
-        Ok(result)
+        Ok(PushResult {
+            output: result,
+            fell_back: false,
+        })
     } else {
         let stderr = String::from_utf8_lossy(&push_output.stderr).to_string();
-        log::error!("Failed to push to {remote_name}/{head_ref_name}: {stderr}");
-        Err(stderr)
+        log::warn!("Failed to push to {remote_name}/{head_ref_name}, falling back to regular push: {stderr}");
+        let fallback_output = git_push(repo_path, None)?;
+        Ok(PushResult {
+            output: fallback_output,
+            fell_back: true,
+        })
     }
+}
+
+/// Set upstream tracking for a local branch to a remote branch.
+/// Uses git config directly (more robust than --set-upstream-to when the
+/// remote-tracking ref may not exist after fetch_pr_to_branch).
+pub fn set_upstream_tracking(
+    repo_path: &str,
+    local_branch: &str,
+    remote_branch: &str,
+) -> Result<(), String> {
+    log::trace!("Setting upstream for {local_branch} to origin/{remote_branch} in {repo_path}");
+
+    let _ = silent_command("git")
+        .args([
+            "config",
+            &format!("branch.{local_branch}.remote"),
+            "origin",
+        ])
+        .current_dir(repo_path)
+        .output();
+
+    let merge_ref = format!("refs/heads/{remote_branch}");
+    let output = silent_command("git")
+        .args([
+            "config",
+            &format!("branch.{local_branch}.merge"),
+            &merge_ref,
+        ])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to set upstream config: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        log::warn!("Failed to set upstream config for {local_branch}: {stderr}");
+    }
+    Ok(())
 }
 
 /// Fetch from remote origin (best effort, ignores errors if no remote)

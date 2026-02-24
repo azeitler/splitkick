@@ -2005,6 +2005,7 @@ pub fn run() {
             projects::cleanup_old_archives,
             projects::delete_all_archives,
             projects::rename_worktree,
+            projects::update_worktree_label,
             projects::open_worktree_in_finder,
             projects::open_log_directory,
             projects::open_project_worktrees_folder,
@@ -2133,6 +2134,7 @@ pub fn run() {
             chat::delete_pasted_image,
             // Chat commands - Text paste handling
             chat::save_pasted_text,
+            chat::update_pasted_text,
             chat::delete_pasted_text,
             chat::read_pasted_text,
             // Chat commands - Plan file handling

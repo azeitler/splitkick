@@ -19,6 +19,9 @@ import {
   FileMentionPopover,
   type FileMentionPopoverHandle,
 } from './FileMentionPopover'
+import { queryClient } from '@/lib/query-client'
+import { fileQueryKeys } from '@/services/files'
+import type { WorktreeFile } from '@/types/chat'
 import { SlashPopover, type SlashPopoverHandle } from './SlashPopover'
 
 import { MAX_IMAGE_SIZE, ALLOWED_IMAGE_TYPES } from './image-constants'
@@ -663,8 +666,68 @@ export const ChatInput = memo(function ChatInput({
           })
         }
       }
+
+      // Auto-resolve @file mentions in regular (small) text pastes
+      if (text && text.length < TEXT_PASTE_THRESHOLD && activeWorktreePath) {
+        const mentionRegex = /@(\S+)/g
+        let mentionMatch
+        const mentions: string[] = []
+        while ((mentionMatch = mentionRegex.exec(text)) !== null) {
+          if (mentionMatch[1]) mentions.push(mentionMatch[1])
+        }
+
+        if (mentions.length > 0) {
+          // Get file list: cache-first, async fallback
+          let fileList: WorktreeFile[] | undefined =
+            queryClient.getQueryData(
+              fileQueryKeys.worktreeFiles(activeWorktreePath)
+            )
+          if (!fileList) {
+            try {
+              fileList = await invoke<WorktreeFile[]>('list_worktree_files', {
+                worktreePath: activeWorktreePath,
+                maxFiles: 5000,
+              })
+              queryClient.setQueryData(
+                fileQueryKeys.worktreeFiles(activeWorktreePath),
+                fileList
+              )
+            } catch {
+              fileList = []
+            }
+          }
+
+          if (fileList.length > 0) {
+            const byFullPath = new Map<string, WorktreeFile>()
+            const byFilename = new Map<string, WorktreeFile[]>()
+            for (const f of fileList) {
+              byFullPath.set(f.relative_path, f)
+              const name = getFilename(f.relative_path)
+              const arr = byFilename.get(name)
+              if (arr) arr.push(f)
+              else byFilename.set(name, [f])
+            }
+
+            const { addPendingFile } = useChatStore.getState()
+            for (const mention of mentions) {
+              let resolved = byFullPath.get(mention)
+              if (!resolved) {
+                const candidates = byFilename.get(mention)
+                if (candidates?.length === 1) resolved = candidates[0]
+              }
+              if (resolved) {
+                addPendingFile(activeSessionId, {
+                  id: generateId(),
+                  relativePath: resolved.relative_path,
+                  extension: resolved.extension,
+                })
+              }
+            }
+          }
+        }
+      }
     },
-    [activeSessionId, inputRef]
+    [activeSessionId, activeWorktreePath, inputRef]
   )
 
   // Handle file selection from @ mention popover

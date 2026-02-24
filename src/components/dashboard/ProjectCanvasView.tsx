@@ -7,7 +7,7 @@ import {
   lazy,
   Suspense,
 } from 'react'
-import { useQueries } from '@tanstack/react-query'
+import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { invoke } from '@/lib/transport'
 import { cn } from '@/lib/utils'
 import {
@@ -21,6 +21,13 @@ import {
   Clock3,
   GitBranch,
   MessageSquare,
+  Code,
+  ExternalLink,
+  Folder,
+  FolderOpen,
+  Home,
+  Terminal,
+  Trash2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -38,6 +45,15 @@ import {
   useProjects,
   useJeanConfig,
   isTauri,
+  useCreateBaseSession,
+  useCreateWorktree,
+  useOpenProjectOnGitHub,
+  useOpenProjectWorktreesFolder,
+  useOpenWorktreeInEditor,
+  useOpenWorktreeInFinder,
+  useOpenWorktreeInTerminal,
+  useRemoveProject,
+  projectsQueryKeys,
 } from '@/services/projects'
 import {
   chatQueryKeys,
@@ -49,7 +65,8 @@ import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
 import { isBaseSession, type Worktree } from '@/types/projects'
-import type { Session, WorktreeSessions } from '@/types/chat'
+import { getEditorLabel, getTerminalLabel } from '@/types/preferences'
+import type { LabelData, Session, WorktreeSessions } from '@/types/chat'
 import { NewIssuesBadge } from '@/components/shared/NewIssuesBadge'
 import { OpenPRsBadge } from '@/components/shared/OpenPRsBadge'
 import { FailedRunsBadge } from '@/components/shared/FailedRunsBadge'
@@ -59,6 +76,7 @@ import { SessionChatModal } from '@/components/chat/SessionChatModal'
 import { SessionCard } from '@/components/chat/SessionCard'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { LabelModal } from '@/components/chat/LabelModal'
+import { getLabelTextColor } from '@/lib/label-colors'
 import {
   type SessionCardData,
   computeSessionCardData,
@@ -254,10 +272,14 @@ function WorktreeSectionHeader({
       e.stopPropagation()
       const toastId = toast.loading('Pushing changes...')
       try {
-        await gitPush(worktree.path, worktree.pr_number)
+        const result = await gitPush(worktree.path, worktree.pr_number)
         triggerImmediateGitPoll()
         fetchWorktreesStatus(projectId)
-        toast.success('Changes pushed', { id: toastId })
+        if (result.fellBack) {
+          toast.warning('Could not push to PR branch, pushed to new branch instead', { id: toastId })
+        } else {
+          toast.success('Changes pushed', { id: toastId })
+        }
       } catch (error) {
         toast.error(`Push failed: ${error}`, { id: toastId })
       }
@@ -317,8 +339,8 @@ function WorktreeSectionHeader({
         <div className={cn(showDetails ? 'flex flex-col gap-1.5' : 'contents')}>
           <div className="flex min-w-0 items-center gap-2">
             {shortcutNumber !== undefined && (
-              <kbd className="shrink-0 inline-flex h-5 min-w-5 items-center justify-center rounded border border-border/50 bg-muted/50 px-1 text-[10px] font-mono text-muted-foreground">
-                ⌘{shortcutNumber}
+              <kbd className="shrink-0 inline-flex h-4 min-w-4 items-center justify-center rounded border border-border/50 bg-muted/50 px-0.5 font-mono text-muted-foreground">
+                <span className='text-[9px]'>⌘{shortcutNumber}</span>
               </kbd>
             )}
             {hasRunningTerminal && (
@@ -345,8 +367,19 @@ function WorktreeSectionHeader({
                   </span>
                 ) : null
               })()}
+              {worktree.label && (
+                <span
+                  className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
+                  style={{
+                    backgroundColor: worktree.label.color,
+                    color: getLabelTextColor(worktree.label.color),
+                  }}
+                >
+                  {worktree.label.name}
+                </span>
+              )}
               <span
-                className="inline-flex items-center font-normal"
+                className="inline-flex items-center font-normal hover:bg-muted/50 rounded  px-1.5 py-0.5"
                 onClick={e => e.stopPropagation()}
               >
                 <GitStatusBadges
@@ -363,29 +396,29 @@ function WorktreeSectionHeader({
           </div>
           {showDetails && sessionMetrics && (
             <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5">
+              <span className="inline-flex items-center gap-1 rounded bg-muted/50 border border-border/50 px-2 py-0.5">
                 <MessageSquare className="h-3 w-3" />
                 {sessionMetrics.totalCount} sessions
               </span>
               {sessionMetrics.reviewCount > 0 && (
-                <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-emerald-600">
+                <span className="rounded  bg-green-500/10 px-2 py-0.5 text-green-600">
                   {sessionMetrics.reviewCount} review
                 </span>
               )}
               {sessionMetrics.waitingCount > 0 && (
-                <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-600">
+                <span className="rounded bg-yellow-500/90 px-2 py-0.5 text-black">
                   {sessionMetrics.waitingCount} waiting
                 </span>
               )}
               {sessionMetrics.activeCount > 0 && (
-                <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-sky-600">
+                <span className="rounded bg-sky-500/10 px-2 py-0.5 text-sky-600">
                   {sessionMetrics.activeCount} active
                 </span>
               )}
               {lastActivity && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5">
+                <span className="inline-flex items-center gap-1 rounded px-2 py-0.5">
                   <Clock3 className="h-3 w-3" />
-                  Last activity {lastActivity}
+                  {lastActivity}
                 </span>
               )}
               {onRowClick && (
@@ -418,6 +451,16 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   const savePreferences = useSavePreferences()
   const canvasLayout = preferences?.canvas_layout ?? 'list'
   const isListLayout = canvasLayout === 'list'
+
+  // Project action mutations
+  const createWorktree = useCreateWorktree()
+  const createBaseSession = useCreateBaseSession()
+  const removeProject = useRemoveProject()
+  const openOnGitHub = useOpenProjectOnGitHub()
+  const openInFinder = useOpenWorktreeInFinder()
+  const openWorktreesFolder = useOpenProjectWorktreesFolder()
+  const openInTerminal = useOpenWorktreeInTerminal()
+  const openInEditor = useOpenWorktreeInEditor()
 
   const [searchQuery, setSearchQuery] = useState('')
 
@@ -725,6 +768,18 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
         selectedWorktreeModal?.worktreeId ?? null
       )
   }, [selectedWorktreeModal])
+
+  // Close modal when worktree is deleted/archived (e.g. PR merged)
+  useEffect(() => {
+    const handleCloseModal = (e: CustomEvent<{ worktreeId: string }>) => {
+      if (selectedWorktreeModal?.worktreeId === e.detail.worktreeId) {
+        setSelectedWorktreeModal(null)
+      }
+    }
+    window.addEventListener('close-worktree-modal', handleCloseModal as EventListener)
+    return () =>
+      window.removeEventListener('close-worktree-modal', handleCloseModal as EventListener)
+  }, [selectedWorktreeModal?.worktreeId])
 
   // Record last opened worktree+session per project for restoration on project switch
   const activeSessionIdForModal = useChatStore(state =>
@@ -1138,11 +1193,6 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     closeRecapDialog,
     handlePlanView,
     handleRecapView,
-    isLabelModalOpen,
-    labelModalSessionId,
-    labelModalCurrentLabel,
-    closeLabelModal,
-    handleOpenLabelModal,
   } = useCanvasShortcutEvents({
     selectedCard,
     enabled: !selectedWorktreeModal && selectedIndex !== null,
@@ -1152,7 +1202,76 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       handlePlanApproval(card, updatedPlan),
     onPlanApprovalYolo: (card, updatedPlan) =>
       handlePlanApprovalYolo(card, updatedPlan),
+    skipLabelHandling: true,
   })
+
+  // Worktree label modal state
+  const queryClient = useQueryClient()
+  const [worktreeLabelModalOpen, setWorktreeLabelModalOpen] = useState(false)
+  const [worktreeLabelTarget, setWorktreeLabelTarget] = useState<{
+    worktreeId: string
+    currentLabel: LabelData | null
+  } | null>(null)
+
+  // Listen for toggle-session-label event — open label modal for worktree
+  useEffect(() => {
+    if (!!selectedWorktreeModal || selectedIndex === null) return
+
+    const handleToggleLabel = () => {
+      const flatCard = flatCards[selectedIndex]
+      if (!flatCard) return
+
+      const section = worktreeSections.find(
+        s => s.worktree.id === flatCard.worktreeId
+      )
+      if (!section) return
+
+      setWorktreeLabelTarget({
+        worktreeId: section.worktree.id,
+        currentLabel: section.worktree.label ?? null,
+      })
+      setWorktreeLabelModalOpen(true)
+    }
+
+    window.addEventListener('toggle-session-label', handleToggleLabel)
+    return () =>
+      window.removeEventListener('toggle-session-label', handleToggleLabel)
+  }, [selectedWorktreeModal, selectedIndex, flatCards, worktreeSections])
+
+  const handleWorktreeLabelApply = useCallback(
+    async (label: LabelData | null) => {
+      if (!worktreeLabelTarget) return
+
+      try {
+        await invoke('update_worktree_label', {
+          worktreeId: worktreeLabelTarget.worktreeId,
+          label,
+        })
+        queryClient.invalidateQueries({
+          queryKey: projectsQueryKeys.worktrees(projectId),
+        })
+      } catch (error) {
+        toast.error(`Failed to update label: ${error}`)
+      }
+    },
+    [worktreeLabelTarget, queryClient, projectId]
+  )
+
+  const handleOpenWorktreeLabelModal = useCallback(
+    (card: SessionCardData) => {
+      const section = worktreeSections.find(s =>
+        s.cards.some(c => c.session.id === card.session.id)
+      )
+      if (!section) return
+
+      setWorktreeLabelTarget({
+        worktreeId: section.worktree.id,
+        currentLabel: section.worktree.label ?? null,
+      })
+      setWorktreeLabelModalOpen(true)
+    },
+    [worktreeSections]
+  )
 
   // Keyboard navigation - disable when any modal/dialog is open
   const isModalOpen =
@@ -1160,7 +1279,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     !!planDialogPath ||
     !!planDialogContent ||
     isRecapDialogOpen ||
-    isLabelModalOpen
+    worktreeLabelModalOpen
   const { cardRefs } = useCanvasKeyboardNav({
     cards: flatCards,
     selectedIndex,
@@ -1515,16 +1634,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                     <MoreHorizontal className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  <DropdownMenuItem
-                    onSelect={() =>
-                      window.dispatchEvent(new CustomEvent('create-new-worktree'))
-                    }
-                  >
-                    <Plus className="h-4 w-4" />
-                    New Worktree
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
+                <DropdownMenuContent align="start" className="w-64">
                   <DropdownMenuItem
                     onSelect={() =>
                       useProjectsStore.getState().openProjectSettings(projectId)
@@ -1532,6 +1642,92 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                   >
                     <Settings className="h-4 w-4" />
                     Project Settings
+                  </DropdownMenuItem>
+
+                  <DropdownMenuSeparator />
+
+                  <DropdownMenuItem
+                    onSelect={() => createBaseSession.mutate(projectId)}
+                  >
+                    <Home className="h-4 w-4" />
+                    {worktrees.find(isBaseSession)
+                      ? 'Open Base Session'
+                      : 'New Base Session'}
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      createWorktree.mutate({ projectId })
+                    }
+                  >
+                    <Plus className="h-4 w-4" />
+                    New Worktree
+                  </DropdownMenuItem>
+
+                  <DropdownMenuSeparator />
+
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      openInEditor.mutate({
+                        worktreePath: project.path,
+                        editor: preferences?.editor,
+                      })
+                    }
+                  >
+                    <Code className="h-4 w-4" />
+                    Open in {getEditorLabel(preferences?.editor)}
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem
+                    onSelect={() => openInFinder.mutate(project.path)}
+                  >
+                    <FolderOpen className="h-4 w-4" />
+                    Open in Finder
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      openInTerminal.mutate({
+                        worktreePath: project.path,
+                        terminal: preferences?.terminal,
+                      })
+                    }
+                  >
+                    <Terminal className="h-4 w-4" />
+                    Open in {getTerminalLabel(preferences?.terminal)}
+                  </DropdownMenuItem>
+
+                  <DropdownMenuSeparator />
+
+                  <DropdownMenuItem
+                    onSelect={() => openWorktreesFolder.mutate(projectId)}
+                  >
+                    <Folder className="h-4 w-4" />
+                    Open Worktrees Folder
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem
+                    onSelect={() => openOnGitHub.mutate(projectId)}
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Open on GitHub
+                  </DropdownMenuItem>
+
+                  <DropdownMenuSeparator />
+
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onSelect={() => removeProject.mutate(projectId)}
+                    disabled={worktrees.length > 0}
+                    className="whitespace-nowrap"
+                  >
+                    <Trash2 className="h-4 w-4 shrink-0" />
+                    Remove Project
+                    {worktrees.length > 0 && (
+                      <span className="ml-auto text-xs opacity-60 shrink-0">
+                        ({worktrees.length} worktrees)
+                      </span>
+                    )}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -1740,7 +1936,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                                   onApprove={() => handlePlanApproval(card)}
                                   onYolo={() => handlePlanApprovalYolo(card)}
                                   onToggleLabel={() =>
-                                    handleOpenLabelModal(card)
+                                    handleOpenWorktreeLabelModal(card)
                                   }
                                   onToggleReview={() => {
                                     const {
@@ -1815,13 +2011,20 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
         onRegenerate={regenerateRecap}
       />
 
-      {/* Label Modal */}
+      {/* Worktree Label Modal */}
       <LabelModal
-        key={labelModalSessionId}
-        isOpen={isLabelModalOpen}
-        onClose={closeLabelModal}
-        sessionId={labelModalSessionId}
-        currentLabel={labelModalCurrentLabel}
+        key={worktreeLabelTarget?.worktreeId ?? 'wt-label'}
+        isOpen={worktreeLabelModalOpen}
+        onClose={() => {
+          setWorktreeLabelModalOpen(false)
+          setWorktreeLabelTarget(null)
+        }}
+        sessionId={null}
+        currentLabel={worktreeLabelTarget?.currentLabel ?? null}
+        onApply={handleWorktreeLabelApply}
+        extraLabels={worktreeSections
+          .map(s => s.worktree.label)
+          .filter((l): l is LabelData => !!l)}
       />
 
       {/* Session Chat Modal */}

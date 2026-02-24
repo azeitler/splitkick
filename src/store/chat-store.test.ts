@@ -5,6 +5,7 @@ import type {
   QueuedMessage,
   PermissionDenial,
   PendingImage,
+  PendingTextFile,
   QuestionAnswer,
 } from '@/types/chat'
 import type { ReviewResponse } from '@/types/projects'
@@ -630,6 +631,94 @@ describe('ChatStore', () => {
       clearPendingImages('session-1')
 
       expect(getPendingImages('session-1')).toHaveLength(0)
+    })
+  })
+
+  describe('pending text files', () => {
+    const mockTextFile: PendingTextFile = {
+      id: 'text-1',
+      path: '/tmp/pasted-texts/paste-123.txt',
+      filename: 'paste-123.txt',
+      size: 1024,
+      content: 'Hello world',
+    }
+
+    it('adds pending text file', () => {
+      const { addPendingTextFile, getPendingTextFiles } =
+        useChatStore.getState()
+
+      addPendingTextFile('session-1', mockTextFile)
+
+      expect(getPendingTextFiles('session-1')).toContainEqual(mockTextFile)
+    })
+
+    it('updates pending text file content and size', () => {
+      const { addPendingTextFile, updatePendingTextFile, getPendingTextFiles } =
+        useChatStore.getState()
+
+      addPendingTextFile('session-1', mockTextFile)
+      updatePendingTextFile('session-1', 'text-1', 'Updated content', 15)
+
+      const files = getPendingTextFiles('session-1')
+      expect(files).toHaveLength(1)
+      expect(files[0]?.content).toBe('Updated content')
+      expect(files[0]?.size).toBe(15)
+    })
+
+    it('does not affect other text files when updating', () => {
+      const { addPendingTextFile, updatePendingTextFile, getPendingTextFiles } =
+        useChatStore.getState()
+
+      const otherFile: PendingTextFile = {
+        id: 'text-2',
+        path: '/tmp/pasted-texts/paste-456.txt',
+        filename: 'paste-456.txt',
+        size: 512,
+        content: 'Other content',
+      }
+
+      addPendingTextFile('session-1', mockTextFile)
+      addPendingTextFile('session-1', otherFile)
+      updatePendingTextFile('session-1', 'text-1', 'Updated', 7)
+
+      const files = getPendingTextFiles('session-1')
+      expect(files).toHaveLength(2)
+      expect(files.find(f => f.id === 'text-2')?.content).toBe('Other content')
+    })
+
+    it('handles update for non-existent text file gracefully', () => {
+      const { addPendingTextFile, updatePendingTextFile, getPendingTextFiles } =
+        useChatStore.getState()
+
+      addPendingTextFile('session-1', mockTextFile)
+      updatePendingTextFile('session-1', 'non-existent', 'New content', 11)
+
+      const files = getPendingTextFiles('session-1')
+      expect(files).toHaveLength(1)
+      expect(files[0]?.content).toBe('Hello world')
+    })
+
+    it('removes pending text file', () => {
+      const { addPendingTextFile, removePendingTextFile, getPendingTextFiles } =
+        useChatStore.getState()
+
+      addPendingTextFile('session-1', mockTextFile)
+      removePendingTextFile('session-1', 'text-1')
+
+      expect(getPendingTextFiles('session-1')).toHaveLength(0)
+    })
+
+    it('clears pending text files', () => {
+      const {
+        addPendingTextFile,
+        clearPendingTextFiles,
+        getPendingTextFiles,
+      } = useChatStore.getState()
+
+      addPendingTextFile('session-1', mockTextFile)
+      clearPendingTextFiles('session-1')
+
+      expect(getPendingTextFiles('session-1')).toHaveLength(0)
     })
   })
 

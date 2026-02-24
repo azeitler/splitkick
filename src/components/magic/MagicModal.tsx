@@ -339,6 +339,7 @@ export function MagicModal() {
               customPrompt: preferences?.magic_prompts?.commit_message,
               push: isPush,
               remote: remote ?? null,
+              prNumber: isPush ? (worktree.pr_number ?? null) : null,
               model: preferences?.magic_prompt_models?.commit_message_model,
               customProfileName: resolveMagicPromptProvider(
                 preferences?.magic_prompt_providers,
@@ -349,10 +350,16 @@ export function MagicModal() {
           )
           triggerImmediateGitPoll()
           if (worktree.project_id) fetchWorktreesStatus(worktree.project_id)
-          const prefix = isPush ? 'Committed and pushed' : 'Committed'
-          toast.success(`${prefix}: ${result.message.split('\n')[0]}`, {
-            id: toastId,
-          })
+          if (result.push_fell_back) {
+            toast.warning('Could not push to PR branch, pushed to new branch instead', {
+              id: toastId,
+            })
+          } else {
+            const prefix = isPush ? 'Committed and pushed' : 'Committed'
+            toast.success(`${prefix}: ${result.message.split('\n')[0]}`, {
+              id: toastId,
+            })
+          }
         } catch (error) {
           toast.error(`Failed: ${error}`, { id: toastId })
         } finally {
@@ -387,10 +394,14 @@ export function MagicModal() {
           await pickRemoteOrRun(async remote => {
             const toastId = toast.loading(`Pushing ${worktree.branch}...`)
             try {
-              await gitPush(worktree.path, worktree.pr_number, remote)
+              const result = await gitPush(worktree.path, worktree.pr_number, remote)
               triggerImmediateGitPoll()
               if (worktree.project_id) fetchWorktreesStatus(worktree.project_id)
-              toast.success('Changes pushed', { id: toastId })
+              if (result.fellBack) {
+                toast.warning('Could not push to PR branch, pushed to new branch instead', { id: toastId })
+              } else {
+                toast.success('Changes pushed', { id: toastId })
+              }
             } catch (error) {
               toast.error(`Push failed: ${error}`, { id: toastId })
             }

@@ -16,7 +16,6 @@ import { CliLoginModal } from '@/components/preferences/CliLoginModal'
 import { OpenInModal } from '@/components/open-in/OpenInModal'
 import { RemotePickerModal } from '@/components/magic/RemotePickerModal'
 import { UpdatePrDialog } from '@/components/magic/UpdatePrDialog'
-import { SessionBoardModal } from '@/components/session-board'
 import { AddProjectDialog } from '@/components/projects/AddProjectDialog'
 import { GitInitModal } from '@/components/projects/GitInitModal'
 import { QuitConfirmationDialog } from './QuitConfirmationDialog'
@@ -305,7 +304,6 @@ export function MainWindow() {
       <Suspense fallback={null}>
         <NewWorktreeModal />
       </Suspense>
-      <SessionBoardModal />
       <AddProjectDialog />
       <GitInitModal />
       <Suspense fallback={null}>
