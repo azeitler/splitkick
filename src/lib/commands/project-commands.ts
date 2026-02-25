@@ -7,6 +7,7 @@ import {
   ArchiveRestore,
   Settings,
   RefreshCw,
+  BellDot,
 } from 'lucide-react'
 import type { AppCommand } from './types'
 import { useUIStore } from '@/store/ui-store'
@@ -128,6 +129,19 @@ export const projectCommands: AppCommand[] = [
 
     execute: context => {
       context.restoreLastArchived()
+    },
+  },
+
+  {
+    id: 'unread-sessions',
+    label: 'Unread Sessions',
+    description: 'View sessions with new activity since last opened',
+    icon: BellDot,
+    group: 'sessions',
+    keywords: ['unread', 'new', 'activity', 'sessions', 'inbox', 'notifications'],
+
+    execute: context => {
+      context.openUnreadSessions()
     },
   },
 

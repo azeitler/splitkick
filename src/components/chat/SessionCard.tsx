@@ -75,6 +75,7 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
     ref
   ) {
     const config = statusConfig[card.status]
+    const isRunning = card.status === 'planning' || card.status === 'vibing' || card.status === 'yoloing'
     const renameInputRef = useCallback((node: HTMLInputElement | null) => {
       if (node) {
         node.focus()
@@ -95,6 +96,12 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
     )
 
     return (
+      <div
+        className={cn(
+          isRunning && 'card-border-spin',
+          isRunning && card.status === 'yoloing' && 'card-border-spin--destructive',
+        )}
+      >
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <div
@@ -110,6 +117,7 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
               'hover:border-foreground/20 hover:bg-muted/50',
               isSelected &&
                 'border-primary/50 bg-primary/5 hover:border-primary/50 hover:bg-primary/10 opacity-100',
+              isRunning && 'relative z-[1] border-transparent bg-background',
               card.status === 'idle'
                 ? 'gap-1.5 p-2.5'
                 : 'gap-3 p-4 min-h-[132px]'
@@ -301,6 +309,7 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
+      </div>
     )
   }
 )

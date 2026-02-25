@@ -122,6 +122,8 @@ export interface Worktree {
   order: number
   /** Unix timestamp when worktree was archived (undefined = not archived) */
   archived_at?: number
+  /** Unix timestamp when worktree was last opened/viewed by the user */
+  last_opened_at?: number
 }
 
 // =============================================================================

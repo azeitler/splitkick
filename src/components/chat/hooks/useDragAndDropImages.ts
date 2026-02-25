@@ -2,12 +2,15 @@ import { useEffect, useState } from 'react'
 import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 import { useChatStore } from '@/store/chat-store'
-import type { SaveImageResponse } from '@/types/chat'
+import type { SaveImageResponse, SaveTextResponse } from '@/types/chat'
 import { MAX_IMAGE_SIZE } from '../image-constants'
 import { isNativeApp } from '@/lib/environment'
 
 /** Allowed file extensions for dropped images */
 const ALLOWED_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp']
+
+/** Extensions handled as text files (vector formats) */
+const TEXT_IMAGE_EXTENSIONS = ['svg']
 
 interface UseDragAndDropImagesOptions {
   /** Whether drag-and-drop is disabled */
@@ -58,25 +61,35 @@ export function useDragAndDropImages(
           }
 
           const paths = event.payload.paths
-          const imagePaths = paths.filter(path => {
+          const imagePaths: string[] = []
+          const svgPaths: string[] = []
+          for (const path of paths) {
             const ext = path.split('.').pop()?.toLowerCase() ?? ''
-            return ALLOWED_EXTENSIONS.includes(ext)
-          })
+            if (ALLOWED_EXTENSIONS.includes(ext)) imagePaths.push(path)
+            else if (TEXT_IMAGE_EXTENSIONS.includes(ext)) svgPaths.push(path)
+          }
 
-          if (imagePaths.length === 0) {
+          if (imagePaths.length === 0 && svgPaths.length === 0) {
             toast.error('No image detected', {
-              description: 'Only PNG, JPEG, GIF, WebP files are accepted',
+              description:
+                'Only PNG, JPEG, GIF, WebP, SVG files are accepted',
             })
             return
           }
 
-          // Process each image
+          // Process raster images
           for (const sourcePath of imagePaths) {
             processDroppedImage(sourcePath, sessionId)
           }
 
+          // Process SVGs as text files
+          for (const sourcePath of svgPaths) {
+            processDroppedSvg(sourcePath, sessionId)
+          }
+
           // Notify if some files were skipped
-          const skippedCount = paths.length - imagePaths.length
+          const skippedCount =
+            paths.length - imagePaths.length - svgPaths.length
           if (skippedCount > 0) {
             toast.warning(`${skippedCount} file(s) skipped`, {
               description: 'Only images are accepted',
@@ -104,6 +117,37 @@ export function useDragAndDropImages(
   }, [sessionId, options?.disabled])
 
   return { isDragging }
+}
+
+/**
+ * Process a dropped SVG file by reading its text content and saving as a text file.
+ */
+async function processDroppedSvg(
+  sourcePath: string,
+  sessionId: string
+): Promise<void> {
+  try {
+    const { readTextFile } = await import('@tauri-apps/plugin-fs')
+    const svgText = await readTextFile(sourcePath)
+
+    const result = await invoke<SaveTextResponse>('save_pasted_text', {
+      content: svgText,
+    })
+
+    const { addPendingTextFile } = useChatStore.getState()
+    addPendingTextFile(sessionId, {
+      id: result.id,
+      path: result.path,
+      filename: sourcePath.split('/').pop() ?? result.filename,
+      size: result.size,
+      content: svgText,
+    })
+  } catch (error) {
+    console.error('Failed to save dropped SVG:', error)
+    toast.error('Failed to save SVG', {
+      description: String(error),
+    })
+  }
 }
 
 /**

@@ -571,6 +571,7 @@ export default function useStreamingEvents({
       queryClient.invalidateQueries({
         queryKey: chatQueryKeys.sessions(worktreeId),
       })
+      queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
     })
 
     // Handle errors from Claude CLI
@@ -726,6 +727,7 @@ export default function useStreamingEvents({
           queryKey: chatQueryKeys.sessions(sessionWorktreeId),
         })
       }
+      queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
     })
 
     // Handle cancellation (user pressed Cmd+Option+Backspace / Ctrl+Alt+Backspace)
@@ -964,6 +966,7 @@ export default function useStreamingEvents({
               queryKey: chatQueryKeys.sessions(resolvedWorktreeId),
             })
           }
+          queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
         }
 
         if (resolvedWorktreeId && wtPath) {

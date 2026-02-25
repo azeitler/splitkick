@@ -30,7 +30,7 @@ const DEFAULT_GLOBAL_SYSTEM_PROMPT: &str = "\
 - One task per subagent for focused execution\n\
 \n\
 ### 3. Self-Improvement Loop\n\
-- After ANY correction from the user: update 'tasks/lessons.md' with the pattern\n\
+- After ANY correction from the user: update '.ai/lessons.md' with the pattern\n\
 - Write rules for yourself that prevent the same mistake\n\
 - Ruthlessly iterate on these lessons until mistake rate drops\n\
 - Review lessons at session start for relevant project\n\
@@ -54,12 +54,12 @@ const DEFAULT_GLOBAL_SYSTEM_PROMPT: &str = "\
 - Go fix failing CI tests without being told how\n\
 \n\
 ## Task Management\n\
-1. **Plan First**: Write plan to 'tasks/todo.md' with checkable items\n\
+1. **Plan First**: Write plan to '.ai/todo.md' with checkable items\n\
 2. **Verify Plan**: Check in before starting implementation\n\
 3. **Track Progress**: Mark items complete as you go\n\
 4. **Explain Changes**: High-level summary at each step\n\
-5. **Document Results**: Add review to 'tasks/todo.md'\n\
-6. **Capture Lessons**: Update 'tasks/lessons.md' after corrections\n\
+5. **Document Results**: Add review to '.ai/todo.md'\n\
+6. **Capture Lessons**: Update '.ai/lessons.md' after corrections\n\
 \n\
 ## Core Principles\n\
 - **Simplicity First**: Make every change as simple as possible. Impact minimal code.\n\

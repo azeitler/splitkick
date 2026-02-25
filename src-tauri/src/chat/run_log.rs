@@ -687,8 +687,7 @@ pub fn load_session_messages(
         // Add assistant message if run has completed/cancelled/crashed,
         // OR if the run is still Running but the session is waiting for user input
         // (ExitPlanMode/AskUserQuestion blocked the CLI — JSONL has complete content up to the block)
-        let include_waiting_run =
-            run.status == RunStatus::Running && metadata.waiting_for_input;
+        let include_waiting_run = run.status == RunStatus::Running && metadata.waiting_for_input;
         if (run.status != RunStatus::Running || include_waiting_run) && !is_undo_send {
             let lines = read_run_log(app, session_id, &run.run_id)?;
 
@@ -853,10 +852,7 @@ pub fn recover_incomplete_runs(app: &tauri::AppHandle) -> Result<Vec<RecoveredRu
     }
 
     if !recovered.is_empty() {
-        log::trace!(
-            "Recovered {} run(s) from previous session",
-            recovered.len()
-        );
+        log::trace!("Recovered {} run(s) from previous session", recovered.len());
     }
 
     Ok(recovered)

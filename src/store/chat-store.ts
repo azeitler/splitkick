@@ -22,6 +22,7 @@ import {
   isExitPlanMode,
 } from '@/types/chat'
 import type { ReviewResponse } from '@/types/projects'
+import { invoke } from '@/lib/transport'
 import type { ClaudeModel, CodexModel } from '@/types/preferences'
 export type { ClaudeModel, CodexModel }
 
@@ -572,7 +573,7 @@ export const useChatStore = create<ChatUIState>()(
       canvasSelectedSessionIds: {},
 
       // Session management
-      setActiveSession: (worktreeId, sessionId) =>
+      setActiveSession: (worktreeId, sessionId) => {
         set(
           state => ({
             activeSessionIds: {
@@ -587,7 +588,15 @@ export const useChatStore = create<ChatUIState>()(
           }),
           undefined,
           'setActiveSession'
-        ),
+        )
+
+        // Fire-and-forget: update last_opened_at on the backend
+        invoke('set_session_last_opened', { sessionId })
+          .then(() =>
+            window.dispatchEvent(new CustomEvent('session-opened'))
+          )
+          .catch(() => undefined)
+      },
 
       getActiveSession: worktreeId => get().activeSessionIds[worktreeId],
 
@@ -768,7 +777,7 @@ export const useChatStore = create<ChatUIState>()(
         get().pendingPlanMessageIds[sessionId] ?? null,
 
       // Worktree management
-      setActiveWorktree: (id, path) =>
+      setActiveWorktree: (id, path) => {
         set(
           state => ({
             activeWorktreeId: id,
@@ -783,7 +792,13 @@ export const useChatStore = create<ChatUIState>()(
           }),
           undefined,
           'setActiveWorktree'
-        ),
+        )
+
+        // Fire-and-forget: update last_opened_at on the backend
+        if (id) {
+          invoke('set_worktree_last_opened', { worktreeId: id }).catch(() => undefined)
+        }
+      },
 
       clearActiveWorktree: () =>
         set(

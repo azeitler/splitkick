@@ -1248,7 +1248,9 @@ fn tail_codex_attached(
                 // Check for unrecognized JSON with error fields (e.g., API error responses)
                 if let Some(error_msg) = extract_codex_error_message(&msg) {
                     let user_error = format_codex_user_error(&error_msg);
-                    log::error!("Codex error (unrecognized event) for session {session_id}: {error_msg}");
+                    log::error!(
+                        "Codex error (unrecognized event) for session {session_id}: {error_msg}"
+                    );
                     let _ = app.emit_all(
                         "chat:error",
                         &ErrorEvent {
@@ -1840,7 +1842,9 @@ fn process_codex_event(
             // Check for unrecognized JSON with error fields (e.g., API error responses)
             if let Some(error_msg) = extract_codex_error_message(msg) {
                 let user_error = format_codex_user_error(&error_msg);
-                log::error!("Codex error (unrecognized event) for session {session_id}: {error_msg}");
+                log::error!(
+                    "Codex error (unrecognized event) for session {session_id}: {error_msg}"
+                );
                 let _ = app.emit_all(
                     "chat:error",
                     &ErrorEvent {

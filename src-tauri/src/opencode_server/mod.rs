@@ -145,7 +145,9 @@ pub fn cleanup_orphaned_server(app: &AppHandle) {
         std::thread::sleep(Duration::from_millis(300));
         // Verify kill succeeded
         if is_healthy(&url) {
-            log::warn!("[OPENCODE CLEANUP] Server still healthy after tree kill, trying direct kill");
+            log::warn!(
+                "[OPENCODE CLEANUP] Server still healthy after tree kill, trying direct kill"
+            );
             let _ = crate::platform::kill_process(record.server_pid);
         }
     } else {

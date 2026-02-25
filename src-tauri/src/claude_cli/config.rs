@@ -34,8 +34,7 @@ pub fn get_cli_binary_path(app: &AppHandle) -> Result<PathBuf, String> {
 ///
 /// This intentionally does not fall back to PATH/global installs.
 pub fn resolve_cli_binary(app: &AppHandle) -> PathBuf {
-    get_cli_binary_path(app)
-        .unwrap_or_else(|_| PathBuf::from(CLI_DIR_NAME).join(CLI_BINARY_NAME))
+    get_cli_binary_path(app).unwrap_or_else(|_| PathBuf::from(CLI_DIR_NAME).join(CLI_BINARY_NAME))
 }
 
 /// Ensure the CLI directory exists, creating it if necessary

@@ -73,10 +73,8 @@ pub async fn dispatch_command(
             let base_branch: Option<String> = field_opt(&args, "baseBranch", "base_branch")?;
             let issue_context = field_opt(&args, "issueContext", "issue_context")?;
             let pr_context = field_opt(&args, "prContext", "pr_context")?;
-            let security_context =
-                field_opt(&args, "securityContext", "security_context")?;
-            let advisory_context =
-                field_opt(&args, "advisoryContext", "advisory_context")?;
+            let security_context = field_opt(&args, "securityContext", "security_context")?;
+            let advisory_context = field_opt(&args, "advisoryContext", "advisory_context")?;
             let custom_name = field_opt(&args, "customName", "custom_name")?;
             let result = crate::projects::create_worktree(
                 app.clone(),
@@ -158,8 +156,7 @@ pub async fn dispatch_command(
         }
         "update_worktree_label" => {
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
-            let label: Option<crate::chat::types::LabelData> =
-                field_opt(&args, "label", "label")?;
+            let label: Option<crate::chat::types::LabelData> = field_opt(&args, "label", "label")?;
             crate::projects::update_worktree_label(app.clone(), worktree_id, label).await?;
             Ok(Value::Null)
         }
@@ -1038,10 +1035,8 @@ pub async fn dispatch_command(
             let branch_name: String = field(&args, "branchName", "branch_name")?;
             let issue_context = field_opt(&args, "issueContext", "issue_context")?;
             let pr_context = field_opt(&args, "prContext", "pr_context")?;
-            let security_context =
-                field_opt(&args, "securityContext", "security_context")?;
-            let advisory_context =
-                field_opt(&args, "advisoryContext", "advisory_context")?;
+            let security_context = field_opt(&args, "securityContext", "security_context")?;
+            let advisory_context = field_opt(&args, "advisoryContext", "advisory_context")?;
             let result = crate::projects::create_worktree_from_existing_branch(
                 app.clone(),
                 project_id,
@@ -1472,8 +1467,7 @@ pub async fn dispatch_command(
         "update_pasted_text" => {
             let path: String = from_field(&args, "path")?;
             let content: String = from_field(&args, "content")?;
-            let result =
-                crate::chat::update_pasted_text(app.clone(), path, content).await?;
+            let result = crate::chat::update_pasted_text(app.clone(), path, content).await?;
             to_value(result)
         }
         "delete_pasted_text" => {

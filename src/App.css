@@ -195,6 +195,10 @@
     transparent 60%,
     var(--spinner-color) 100%
   );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
   mask:
     linear-gradient(#fff 0 0) content-box,
     linear-gradient(#fff 0 0);
@@ -211,6 +215,44 @@
   syntax: '<angle>';
   initial-value: 0deg;
   inherits: false;
+}
+
+/* Animated border for session cards in running state.
+   Uses transform:rotate on an oversized conic-gradient pseudo-element
+   (WebKit doesn't support @property animation needed for the from-angle approach). */
+.card-border-spin {
+  --card-spin-color: oklch(0.795 0.184 86.047); /* yellow-500 */
+  position: relative;
+  overflow: hidden;
+  border-radius: calc(var(--radius) - 2px);
+  padding: 1.5px;
+}
+.card-border-spin::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 150%;
+  height: 150%;
+  background: conic-gradient(
+    transparent 0%,
+    transparent 70%,
+    var(--card-spin-color) 100%
+  );
+  transform: translate(-50%, -50%) rotate(0deg);
+  animation: card-border-rotate 2s linear infinite;
+}
+@keyframes card-border-rotate {
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+.card-border-spin:hover::before {
+  background: var(--card-spin-color);
+  animation: none;
+}
+.card-border-spin--destructive {
+  --card-spin-color: var(--destructive);
 }
 
 /* Animated dots for loading indicator */
@@ -261,6 +303,31 @@
 
 .animate-collapsible-up {
   animation: collapsible-up 150ms ease-out;
+}
+
+/* Bell ring animation for unread notifications */
+@keyframes bell-ring {
+  0%, 70%, 100% {
+    transform: rotate(0deg);
+  }
+  5% {
+    transform: rotate(14deg);
+  }
+  10% {
+    transform: rotate(-12deg);
+  }
+  15% {
+    transform: rotate(10deg);
+  }
+  20% {
+    transform: rotate(-8deg);
+  }
+  25% {
+    transform: rotate(5deg);
+  }
+  30% {
+    transform: rotate(0deg);
+  }
 }
 
 @layer base {

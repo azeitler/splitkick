@@ -154,9 +154,8 @@ fn prepare_opencode_parts(prompt: &str) -> serde_json::Value {
     let mut image_parts: Vec<serde_json::Value> = Vec::new();
 
     // Images: extract paths, read binary, base64-encode as file parts
-    let image_re =
-        Regex::new(r"\[Image attached: (.+?) - Use the Read tool to view this image\]")
-            .expect("Invalid regex");
+    let image_re = Regex::new(r"\[Image attached: (.+?) - Use the Read tool to view this image\]")
+        .expect("Invalid regex");
     for cap in image_re.captures_iter(prompt) {
         let path_str = &cap[1];
         let annotation = &cap[0];
@@ -197,9 +196,8 @@ fn prepare_opencode_parts(prompt: &str) -> serde_json::Value {
     }
 
     // Skills: read text content and inline
-    let skill_re =
-        Regex::new(r"\[Skill: (.+?) - Read and use this skill to guide your response\]")
-            .expect("Invalid regex");
+    let skill_re = Regex::new(r"\[Skill: (.+?) - Read and use this skill to guide your response\]")
+        .expect("Invalid regex");
     for cap in skill_re.captures_iter(prompt) {
         let path_str = &cap[1];
         let annotation = cap[0].to_string();
@@ -356,12 +354,7 @@ pub fn execute_opencode_http(
     }
 
     // Retry once on connection-level errors (server temporarily unreachable).
-    let response = match client
-        .post(&msg_url)
-        .query(&query)
-        .json(&payload)
-        .send()
-    {
+    let response = match client.post(&msg_url).query(&query).json(&payload).send() {
         Ok(resp) => resp,
         Err(e) if e.is_connect() || e.is_request() => {
             log::warn!("OpenCode message connection error, retrying in 2s: {e}");
@@ -683,12 +676,7 @@ fn one_shot_opencode_blocking(
     }
 
     // Retry once on connection-level errors (server temporarily unreachable).
-    let response = match client
-        .post(&msg_url)
-        .query(&query)
-        .json(&payload)
-        .send()
-    {
+    let response = match client.post(&msg_url).query(&query).json(&payload).send() {
         Ok(resp) => resp,
         Err(e) if e.is_connect() || e.is_request() => {
             log::warn!("OpenCode one-shot connection error, retrying in 2s: {e}");

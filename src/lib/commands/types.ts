@@ -101,6 +101,9 @@ export interface CommandContext {
   openArchivedModal: () => void
   restoreLastArchived: () => void
 
+  // Unread
+  openUnreadSessions: () => void
+
   // Developer
   toggleDebugMode: () => void
 

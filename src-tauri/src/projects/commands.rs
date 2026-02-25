@@ -21,9 +21,9 @@ use super::github_issues::{
     format_advisory_context_markdown, format_issue_context_markdown, format_pr_context_markdown,
     format_security_context_markdown, generate_branch_name_from_advisory,
     generate_branch_name_from_issue, generate_branch_name_from_pr,
-    generate_branch_name_from_security_alert, get_github_contexts_dir, get_github_pr,
-    get_pr_diff, get_session_context_content, get_session_context_numbers, AdvisoryContext,
-    IssueContext, PullRequestContext, SecurityAlertContext,
+    generate_branch_name_from_security_alert, get_github_contexts_dir, get_github_pr, get_pr_diff,
+    get_session_context_content, get_session_context_numbers, AdvisoryContext, IssueContext,
+    PullRequestContext, SecurityAlertContext,
 };
 use super::names::generate_unique_workspace_name;
 use super::storage::{get_project_worktrees_dir, load_projects_data, save_projects_data};
@@ -594,8 +594,7 @@ pub async fn create_worktree(
             security_branch
         }
     } else if let Some(ref ctx) = advisory_context {
-        let advisory_branch =
-            generate_branch_name_from_advisory(&ctx.ghsa_id, &ctx.summary);
+        let advisory_branch = generate_branch_name_from_advisory(&ctx.ghsa_id, &ctx.summary);
         if data.worktree_name_exists(&project_id, &advisory_branch) {
             let mut counter = 2;
             loop {
@@ -686,6 +685,7 @@ pub async fn create_worktree(
         order: 0, // Placeholder, actual order is set in background thread
         archived_at: None,
         label: None,
+        last_opened_at: None,
     };
 
     // Clone values for the background thread
@@ -1046,8 +1046,8 @@ pub async fn create_worktree(
                         if let Err(e) = std::fs::create_dir_all(&contexts_dir) {
                             log::warn!("Background: Failed to create git-context directory: {e}");
                         } else {
-                            let context_file = contexts_dir
-                                .join(format!("{repo_key}-security-{}.md", ctx.number));
+                            let context_file =
+                                contexts_dir.join(format!("{repo_key}-security-{}.md", ctx.number));
                             let context_content = format_security_context_markdown(ctx);
                             if let Err(e) = std::fs::write(&context_file, context_content) {
                                 log::warn!(
@@ -1060,9 +1060,7 @@ pub async fn create_worktree(
                                     ctx.number,
                                     &worktree_id_clone,
                                 ) {
-                                    log::warn!(
-                                        "Background: Failed to add security reference: {e}"
-                                    );
+                                    log::warn!("Background: Failed to add security reference: {e}");
                                 }
                                 log::trace!(
                                     "Background: Security context file written to {:?}",
@@ -1072,9 +1070,7 @@ pub async fn create_worktree(
                         }
                     }
                 } else {
-                    log::warn!(
-                        "Background: Could not get repo identifier for security context"
-                    );
+                    log::warn!("Background: Could not get repo identifier for security context");
                 }
             }
 
@@ -1104,9 +1100,7 @@ pub async fn create_worktree(
                                     &ctx.ghsa_id,
                                     &worktree_id_clone,
                                 ) {
-                                    log::warn!(
-                                        "Background: Failed to add advisory reference: {e}"
-                                    );
+                                    log::warn!("Background: Failed to add advisory reference: {e}");
                                 }
                                 log::trace!(
                                     "Background: Advisory context file written to {:?}",
@@ -1116,9 +1110,7 @@ pub async fn create_worktree(
                         }
                     }
                 } else {
-                    log::warn!(
-                        "Background: Could not get repo identifier for advisory context"
-                    );
+                    log::warn!("Background: Could not get repo identifier for advisory context");
                 }
             }
 
@@ -1200,6 +1192,7 @@ pub async fn create_worktree(
                     order: max_order + 1,
                     archived_at: None,
                     label: None,
+                    last_opened_at: None,
                 };
 
                 data.add_worktree(worktree.clone());
@@ -1338,6 +1331,7 @@ pub async fn create_worktree_from_existing_branch(
         order: 0, // Placeholder, actual order is set in background thread
         archived_at: None,
         label: None,
+        last_opened_at: None,
     };
 
     // Clone values for the background thread
@@ -1498,8 +1492,8 @@ pub async fn create_worktree_from_existing_branch(
                         if let Err(e) = std::fs::create_dir_all(&contexts_dir) {
                             log::warn!("Background: Failed to create git-context directory: {e}");
                         } else {
-                            let context_file = contexts_dir
-                                .join(format!("{repo_key}-security-{}.md", ctx.number));
+                            let context_file =
+                                contexts_dir.join(format!("{repo_key}-security-{}.md", ctx.number));
                             let context_content = format_security_context_markdown(ctx);
                             if let Err(e) = std::fs::write(&context_file, context_content) {
                                 log::warn!(
@@ -1512,9 +1506,7 @@ pub async fn create_worktree_from_existing_branch(
                                     ctx.number,
                                     &worktree_id_clone,
                                 ) {
-                                    log::warn!(
-                                        "Background: Failed to add security reference: {e}"
-                                    );
+                                    log::warn!("Background: Failed to add security reference: {e}");
                                 }
                                 log::trace!(
                                     "Background: Security context file written to {:?}",
@@ -1524,9 +1516,7 @@ pub async fn create_worktree_from_existing_branch(
                         }
                     }
                 } else {
-                    log::warn!(
-                        "Background: Could not get repo identifier for security context"
-                    );
+                    log::warn!("Background: Could not get repo identifier for security context");
                 }
             }
 
@@ -1556,9 +1546,7 @@ pub async fn create_worktree_from_existing_branch(
                                     &ctx.ghsa_id,
                                     &worktree_id_clone,
                                 ) {
-                                    log::warn!(
-                                        "Background: Failed to add advisory reference: {e}"
-                                    );
+                                    log::warn!("Background: Failed to add advisory reference: {e}");
                                 }
                                 log::trace!(
                                     "Background: Advisory context file written to {:?}",
@@ -1568,9 +1556,7 @@ pub async fn create_worktree_from_existing_branch(
                         }
                     }
                 } else {
-                    log::warn!(
-                        "Background: Could not get repo identifier for advisory context"
-                    );
+                    log::warn!("Background: Could not get repo identifier for advisory context");
                 }
             }
 
@@ -1652,6 +1638,7 @@ pub async fn create_worktree_from_existing_branch(
                     order: max_order + 1,
                     archived_at: None,
                     label: None,
+                    last_opened_at: None,
                 };
 
                 data.add_worktree(worktree.clone());
@@ -1870,6 +1857,7 @@ pub async fn checkout_pr(
         order: 0, // Will be updated in background thread
         archived_at: None,
         label: None,
+        last_opened_at: None,
     };
 
     // Clone values for background thread
@@ -2182,6 +2170,7 @@ pub async fn checkout_pr(
                     order: max_order + 1,
                     archived_at: None,
                     label: None,
+                    last_opened_at: None,
                 };
 
                 data.add_worktree(worktree.clone());
@@ -2338,9 +2327,7 @@ pub async fn delete_worktree(app: AppHandle, worktree_id: String) -> Result<(), 
                             }
                         }
                         Err(load_err) => {
-                            log::error!(
-                                "Failed to load projects data for restore: {load_err}"
-                            );
+                            log::error!("Failed to load projects data for restore: {load_err}");
                         }
                     }
 
@@ -2349,8 +2336,7 @@ pub async fn delete_worktree(app: AppHandle, worktree_id: String) -> Result<(), 
                         project_id: project_id_clone,
                         error: format!("Teardown script failed: {e}"),
                     };
-                    if let Err(emit_err) =
-                        app_clone.emit_all("worktree:delete_error", &error_event)
+                    if let Err(emit_err) = app_clone.emit_all("worktree:delete_error", &error_event)
                     {
                         log::error!("Failed to emit worktree:delete_error event: {emit_err}");
                     }
@@ -2461,6 +2447,7 @@ pub async fn create_base_session(app: AppHandle, project_id: String) -> Result<W
         order: 0, // Base sessions are always first
         archived_at: None,
         label: None,
+        last_opened_at: None,
     };
 
     data.add_worktree(session.clone());
@@ -2849,6 +2836,7 @@ pub async fn import_worktree(
         order: max_order + 1,
         archived_at: None,
         label: None,
+        last_opened_at: None,
     };
 
     data.add_worktree(worktree.clone());
@@ -3286,24 +3274,35 @@ pub async fn open_worktree_in_editor(
                 }
                 Err(e) => Err(e),
             },
-            "cursor" => {
-                // Cursor uses the same CLI pattern as VS Code
-                std::process::Command::new("cursor")
-                    .arg(&worktree_path)
-                    .spawn()
-            }
+            "cursor" => match std::process::Command::new("cursor")
+                .arg(&worktree_path)
+                .spawn()
+            {
+                Ok(child) => Ok(child),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    std::process::Command::new("open")
+                        .args(["-a", "Cursor", &worktree_path])
+                        .spawn()
+                }
+                Err(e) => Err(e),
+            },
             "xcode" => {
-                // Use xed (Xcode Editor) to open in Xcode
                 std::process::Command::new("xed")
                     .arg(&worktree_path)
                     .spawn()
             }
-            _ => {
-                // Default to VS Code
-                std::process::Command::new("code")
-                    .arg(&worktree_path)
-                    .spawn()
-            }
+            _ => match std::process::Command::new("code")
+                .arg(&worktree_path)
+                .spawn()
+            {
+                Ok(child) => Ok(child),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    std::process::Command::new("open")
+                        .args(["-a", "Visual Studio Code", &worktree_path])
+                        .spawn()
+                }
+                Err(e) => Err(e),
+            },
         };
 
         match result {
@@ -3567,6 +3566,28 @@ pub async fn update_worktree_label(
     save_projects_data(&app, &data)?;
 
     log::trace!("Successfully updated worktree label for: {worktree_id}");
+    Ok(())
+}
+
+/// Update the last_opened_at timestamp on a worktree
+#[tauri::command]
+pub async fn set_worktree_last_opened(app: AppHandle, worktree_id: String) -> Result<(), String> {
+    log::trace!("Setting last_opened_at for worktree: {worktree_id}");
+
+    let mut data = load_projects_data(&app)?;
+
+    let worktree = data
+        .find_worktree_mut(&worktree_id)
+        .ok_or_else(|| format!("Worktree not found: {worktree_id}"))?;
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    worktree.last_opened_at = Some(now);
+
+    save_projects_data(&app, &data)?;
+
     Ok(())
 }
 
@@ -4423,8 +4444,7 @@ pub async fn revert_file(
 
             let target = std::path::Path::new(&worktree_path).join(&file_path);
             if target.exists() {
-                std::fs::remove_file(&target)
-                    .map_err(|e| format!("Failed to remove file: {e}"))?;
+                std::fs::remove_file(&target).map_err(|e| format!("Failed to remove file: {e}"))?;
             }
         }
         "renamed" => {

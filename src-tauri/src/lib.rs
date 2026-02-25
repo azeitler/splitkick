@@ -2117,6 +2117,7 @@ pub fn run() {
             projects::delete_all_archives,
             projects::rename_worktree,
             projects::update_worktree_label,
+            projects::set_worktree_last_opened,
             projects::open_worktree_in_finder,
             projects::open_log_directory,
             projects::open_project_worktrees_folder,
@@ -2240,6 +2241,7 @@ pub fn run() {
             chat::list_all_archived_sessions,
             chat::reorder_sessions,
             chat::set_active_session,
+            chat::set_session_last_opened,
             // Chat commands - Session-based messaging
             chat::send_chat_message,
             chat::get_mcp_servers,

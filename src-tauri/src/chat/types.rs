@@ -394,6 +394,9 @@ pub struct Session {
     /// Unix timestamp when session was archived (None = not archived)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub archived_at: Option<u64>,
+    /// Unix timestamp when session was last opened/viewed by the user
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_opened_at: Option<u64>,
 
     // ========================================================================
     // Session-specific UI state (moved from ui-state.json)
@@ -485,6 +488,7 @@ impl Session {
             selected_provider: None,
             session_naming_completed: false,
             archived_at: None,
+            last_opened_at: None,
             // Session-specific UI state
             answered_questions: vec![],
             submitted_answers: HashMap::new(),
@@ -662,6 +666,7 @@ impl SessionMetadata {
             selected_provider: self.selected_provider.clone(),
             session_naming_completed: self.session_naming_completed,
             archived_at: self.archived_at,
+            last_opened_at: self.last_opened_at,
             answered_questions: self.answered_questions.clone(),
             submitted_answers: self.submitted_answers.clone(),
             fixed_findings: self.fixed_findings.clone(),
@@ -1008,6 +1013,10 @@ pub struct SessionMetadata {
     )]
     pub label: Option<LabelData>,
 
+    /// Unix timestamp when session was last opened/viewed by the user
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_opened_at: Option<u64>,
+
     /// Run history - each entry corresponds to one Claude CLI execution
     #[serde(default)]
     pub runs: Vec<RunEntry>,
@@ -1099,6 +1108,7 @@ impl SessionMetadata {
             enabled_mcp_servers: None,
             digest: None,
             label: None,
+            last_opened_at: None,
             runs: vec![],
             version: 1,
         }

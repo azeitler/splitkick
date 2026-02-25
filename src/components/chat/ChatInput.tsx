@@ -555,10 +555,39 @@ export const ChatInput = memo(function ChatInput({
         if (!item.type.startsWith('image/')) continue
         hasImage = true
 
+        // SVGs are XML text — route through text file path instead of raster image pipeline
+        if (item.type === 'image/svg+xml') {
+          const file = item.getAsFile()
+          if (!file) continue
+          e.preventDefault()
+
+          try {
+            const svgText = await file.text()
+            const result = await invoke<SaveTextResponse>(
+              'save_pasted_text',
+              { content: svgText }
+            )
+            const { addPendingTextFile } = useChatStore.getState()
+            addPendingTextFile(activeSessionId, {
+              id: result.id,
+              path: result.path,
+              filename: result.filename,
+              size: result.size,
+              content: svgText,
+            })
+          } catch (error) {
+            console.error('Failed to save SVG:', error)
+            toast.error('Failed to save SVG', {
+              description: String(error),
+            })
+          }
+          continue
+        }
+
         // Check if it's an allowed type
         if (!ALLOWED_IMAGE_TYPES.includes(item.type)) {
           toast.error('Unsupported image type', {
-            description: `Allowed types: PNG, JPEG, GIF, WebP`,
+            description: `Allowed types: PNG, JPEG, GIF, WebP, SVG`,
           })
           continue
         }

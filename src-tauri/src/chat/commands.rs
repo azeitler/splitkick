@@ -11,7 +11,7 @@ use super::registry::cancel_process;
 use super::run_log;
 use super::storage::{
     delete_session_data, get_base_index_path, get_data_dir, get_index_path, get_session_dir,
-    load_metadata, load_sessions, with_sessions_mut,
+    load_metadata, load_sessions, save_metadata, with_sessions_mut,
 };
 use super::types::{
     AllSessionsEntry, AllSessionsResponse, Backend, ChatMessage, ClaudeContext, EffortLevel,
@@ -850,6 +850,7 @@ pub async fn restore_session_with_base(
         order: 0,
         label: None,
         archived_at: None,
+        last_opened_at: None,
     };
 
     projects_data.add_worktree(new_worktree.clone());
@@ -1085,9 +1086,38 @@ pub async fn set_active_session(
     log::trace!("Setting active session: {session_id}");
 
     with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
-        sessions.active_session_id = Some(session_id);
+        sessions.active_session_id = Some(session_id.clone());
         Ok(())
-    })
+    })?;
+
+    // Update last_opened_at timestamp on the session metadata
+    if let Ok(Some(mut metadata)) = load_metadata(&app, &session_id) {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        metadata.last_opened_at = Some(now);
+        let _ = save_metadata(&app, &metadata);
+    }
+
+    Ok(())
+}
+
+/// Update the last_opened_at timestamp on a session's metadata
+#[tauri::command]
+pub async fn set_session_last_opened(app: AppHandle, session_id: String) -> Result<(), String> {
+    log::trace!("Setting last_opened_at for session: {session_id}");
+
+    if let Ok(Some(mut metadata)) = load_metadata(&app, &session_id) {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        metadata.last_opened_at = Some(now);
+        save_metadata(&app, &metadata)?;
+    }
+
+    Ok(())
 }
 
 // ============================================================================
@@ -3169,10 +3199,34 @@ pub async fn open_file_in_default_app(path: String, editor: Option<String>) -> R
     #[cfg(target_os = "macos")]
     {
         let result = match editor_app.as_str() {
-            "zed" => std::process::Command::new("zed").arg(&path).spawn(),
-            "cursor" => std::process::Command::new("cursor").arg(&path).spawn(),
+            "zed" => match std::process::Command::new("zed").arg(&path).spawn() {
+                Ok(child) => Ok(child),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    std::process::Command::new("open")
+                        .args(["-a", "Zed", &path])
+                        .spawn()
+                }
+                Err(e) => Err(e),
+            },
+            "cursor" => match std::process::Command::new("cursor").arg(&path).spawn() {
+                Ok(child) => Ok(child),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    std::process::Command::new("open")
+                        .args(["-a", "Cursor", &path])
+                        .spawn()
+                }
+                Err(e) => Err(e),
+            },
             "xcode" => std::process::Command::new("xed").arg(&path).spawn(),
-            _ => std::process::Command::new("code").arg(&path).spawn(),
+            _ => match std::process::Command::new("code").arg(&path).spawn() {
+                Ok(child) => Ok(child),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    std::process::Command::new("open")
+                        .args(["-a", "Visual Studio Code", &path])
+                        .spawn()
+                }
+                Err(e) => Err(e),
+            },
         };
 
         result.map_err(|e| {

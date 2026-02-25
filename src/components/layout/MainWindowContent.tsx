@@ -67,7 +67,7 @@ export function MainWindowContent({
   return (
     <div
       className={cn(
-        'flex h-full w-full min-w-0 flex-col overflow-hidden bg-background',
+        'relative flex h-full w-full min-w-0 flex-col overflow-hidden bg-background',
         className
       )}
     >

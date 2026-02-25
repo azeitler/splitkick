@@ -2274,9 +2274,7 @@ pub async fn list_dependabot_alerts(
             return Ok(vec![]);
         }
         if stderr.contains("403") {
-            return Err(
-                "Insufficient permissions to access Dependabot alerts.".to_string(),
-            );
+            return Err("Insufficient permissions to access Dependabot alerts.".to_string());
         }
         return Err(format!("gh api failed: {stderr}"));
     }
@@ -2607,8 +2605,7 @@ pub async fn list_repository_advisories(
     let raw: Vec<RepositoryAdvisoryRaw> = serde_json::from_str(&stdout)
         .map_err(|e| format!("Failed to parse advisories response: {e}"))?;
 
-    let advisories: Vec<RepositoryAdvisory> =
-        raw.into_iter().map(|a| a.into_frontend()).collect();
+    let advisories: Vec<RepositoryAdvisory> = raw.into_iter().map(|a| a.into_frontend()).collect();
 
     log::trace!("Found {} repository advisories", advisories.len());
     Ok(advisories)
@@ -2839,18 +2836,14 @@ pub async fn get_advisory_context_content(
     let refs = get_session_advisory_refs(&app, &session_id)?;
     let expected_key = format!("{repo_key}::{ghsa_id}");
     if !refs.contains(&expected_key) {
-        return Err(format!(
-            "Session does not have advisory {ghsa_id} loaded"
-        ));
+        return Err(format!("Session does not have advisory {ghsa_id} loaded"));
     }
 
     let contexts_dir = get_github_contexts_dir(&app)?;
     let context_file = contexts_dir.join(format!("{repo_key}-advisory-{ghsa_id}.md"));
 
     if !context_file.exists() {
-        return Err(format!(
-            "Advisory context file not found for {ghsa_id}"
-        ));
+        return Err(format!("Advisory context file not found for {ghsa_id}"));
     }
 
     std::fs::read_to_string(&context_file)
@@ -2937,8 +2930,10 @@ mod tests {
 
     #[test]
     fn test_generate_branch_name_from_advisory() {
-        let result =
-            generate_branch_name_from_advisory("GHSA-jg7v-5cqg-jvmf", "Prototype Pollution in lodash");
+        let result = generate_branch_name_from_advisory(
+            "GHSA-jg7v-5cqg-jvmf",
+            "Prototype Pollution in lodash",
+        );
         assert!(result.starts_with("advisory-jg7v-5cqg-jvmf-"));
         assert!(result.contains("prototype"));
     }

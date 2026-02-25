@@ -90,6 +90,9 @@ const createMockContext = (): CommandContext => ({
   openArchivedModal: vi.fn(),
   restoreLastArchived: vi.fn(),
 
+  // Unread
+  openUnreadSessions: vi.fn(),
+
   // State getters
   hasActiveSession: vi.fn().mockReturnValue(true),
   hasActiveWorktree: vi.fn().mockReturnValue(true),

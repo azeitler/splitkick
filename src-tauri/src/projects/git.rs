@@ -207,9 +207,7 @@ pub fn clone_repo(url: &str, destination: &str) -> Result<(), String> {
     // Check destination doesn't already exist
     let dest_path = Path::new(destination);
     if dest_path.exists() {
-        return Err(format!(
-            "Destination already exists: {destination}"
-        ));
+        return Err(format!("Destination already exists: {destination}"));
     }
 
     // Ensure parent directory exists
@@ -785,7 +783,9 @@ pub fn git_push_to_pr(
             });
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-            log::warn!("Failed to push to origin/{head_ref_name}, falling back to regular push: {stderr}");
+            log::warn!(
+                "Failed to push to origin/{head_ref_name}, falling back to regular push: {stderr}"
+            );
             let fallback_output = git_push(repo_path, None)?;
             return Ok(PushResult {
                 output: fallback_output,
@@ -910,11 +910,7 @@ pub fn set_upstream_tracking(
     log::trace!("Setting upstream for {local_branch} to origin/{remote_branch} in {repo_path}");
 
     let _ = silent_command("git")
-        .args([
-            "config",
-            &format!("branch.{local_branch}.remote"),
-            "origin",
-        ])
+        .args(["config", &format!("branch.{local_branch}.remote"), "origin"])
         .current_dir(repo_path)
         .output();
 

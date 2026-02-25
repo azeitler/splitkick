@@ -174,6 +174,7 @@ export function MainWindow() {
       window.removeEventListener('command:open-archived-modal', handler)
   }, [])
 
+
   // Auto-cleanup old archived items on startup
   useArchiveCleanup()
 

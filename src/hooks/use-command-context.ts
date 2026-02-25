@@ -650,6 +650,11 @@ export function useCommandContext(
     window.dispatchEvent(new CustomEvent('restore-last-archived'))
   }, [])
 
+  // Unread sessions
+  const openUnreadSessions = useCallback(() => {
+    window.dispatchEvent(new CustomEvent('command:open-unread-sessions'))
+  }, [])
+
   // Developer - Toggle debug mode
   const toggleDebugMode = useCallback(() => {
     window.dispatchEvent(new CustomEvent('command:toggle-debug-mode'))
@@ -821,6 +826,9 @@ export function useCommandContext(
       openArchivedModal,
       restoreLastArchived,
 
+      // Unread
+      openUnreadSessions,
+
       // Developer
       toggleDebugMode,
 
@@ -882,6 +890,7 @@ export function useCommandContext(
       loadContext,
       openArchivedModal,
       restoreLastArchived,
+      openUnreadSessions,
       toggleDebugMode,
       hasActiveSession,
       hasActiveWorktree,

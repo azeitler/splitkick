@@ -185,6 +185,8 @@ export interface Session {
   enabled_mcp_servers?: string[]
   /** Persisted session digest (recap summary) */
   digest?: SessionDigest
+  /** Unix timestamp when session was last opened/viewed by the user */
+  last_opened_at?: number
   /** Status of the last run (for immediate status on app restart) */
   last_run_status?: RunStatus
   /** Execution mode of the last run (plan/build/yolo) */

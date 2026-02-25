@@ -453,6 +453,7 @@ pub fn load_sessions(
                 selected_provider: None,
                 session_naming_completed: false,
                 archived_at: entry.archived_at,
+                last_opened_at: None,
                 answered_questions: vec![],
                 submitted_answers: std::collections::HashMap::new(),
                 fixed_findings: vec![],

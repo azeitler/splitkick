@@ -170,6 +170,9 @@ pub struct Worktree {
     /// Unix timestamp when worktree was archived (None = not archived)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub archived_at: Option<u64>,
+    /// Unix timestamp when worktree was last opened/viewed by the user
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_opened_at: Option<u64>,
 }
 
 /// Container for all persisted project data

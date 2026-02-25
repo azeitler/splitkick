@@ -1,0 +1,325 @@
+import { useMemo, useCallback, useEffect, useRef } from 'react'
+import {
+  BellDot,
+  Loader2,
+  CheckCircle2,
+  AlertTriangle,
+  CirclePause,
+  Eye,
+  HelpCircle,
+  FileText,
+  X,
+} from 'lucide-react'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { cn } from '@/lib/utils'
+import { useQueryClient } from '@tanstack/react-query'
+import { useAllSessions } from '@/services/chat'
+import { useProjectsStore } from '@/store/projects-store'
+import { useChatStore } from '@/store/chat-store'
+import type { Session } from '@/types/chat'
+
+interface UnreadSessionsDrawerProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}
+
+/**
+ * A session is "unread" if it has activity the user hasn't seen:
+ * - Not archived
+ * - Has a meaningful status (finished, waiting for input, or reviewing)
+ * - Never opened, or opened before last update
+ */
+function isUnread(session: Session): boolean {
+  if (session.archived_at) return false
+
+  const actionableStatuses = ['completed', 'cancelled', 'crashed']
+  const hasFinishedRun =
+    session.last_run_status &&
+    actionableStatuses.includes(session.last_run_status)
+  const isWaiting = session.waiting_for_input
+  const isReviewing = session.is_reviewing
+
+  // Must have some actionable state
+  if (!hasFinishedRun && !isWaiting && !isReviewing) return false
+
+  // Never opened → definitely unread
+  if (!session.last_opened_at) return true
+
+  // Opened before last update → unread
+  return session.last_opened_at < session.updated_at
+}
+
+/** Format a unix timestamp (seconds) to relative time like "2h ago" */
+function formatRelativeTime(timestamp: number): string {
+  const ms =
+    timestamp < 1_000_000_000_000 ? timestamp * 1000 : timestamp
+  const diffMs = Date.now() - ms
+  if (diffMs < 0) return 'just now'
+  const minuteMs = 60_000
+  const hourMs = 60 * minuteMs
+  const dayMs = 24 * hourMs
+  if (diffMs < hourMs) {
+    const minutes = Math.max(1, Math.floor(diffMs / minuteMs))
+    return `${minutes}m ago`
+  }
+  if (diffMs < dayMs) {
+    const hours = Math.floor(diffMs / hourMs)
+    return `${hours}h ago`
+  }
+  const days = Math.floor(diffMs / dayMs)
+  return `${days}d ago`
+}
+
+interface UnreadItem {
+  session: Session
+  projectId: string
+  projectName: string
+  worktreeId: string
+  worktreeName: string
+  worktreePath: string
+}
+
+/** Get display info for a session's current state */
+function getSessionStatus(session: Session) {
+  if (session.waiting_for_input) {
+    const isplan = session.waiting_for_input_type === 'plan'
+    return {
+      icon: isplan ? FileText : HelpCircle,
+      label: isplan ? 'Needs approval' : 'Needs input',
+      className: 'text-yellow-500',
+    }
+  }
+
+  if (session.is_reviewing) {
+    return {
+      icon: Eye,
+      label: 'Review ready',
+      className: 'text-green-500',
+    }
+  }
+
+  const config: Record<
+    string,
+    { icon: typeof CheckCircle2; label: string; className: string }
+  > = {
+    completed: {
+      icon: CheckCircle2,
+      label: 'Completed',
+      className: 'text-green-500',
+    },
+    cancelled: {
+      icon: CirclePause,
+      label: 'Cancelled',
+      className: 'text-muted-foreground',
+    },
+    crashed: {
+      icon: AlertTriangle,
+      label: 'Crashed',
+      className: 'text-destructive',
+    },
+  }
+
+  if (session.last_run_status && config[session.last_run_status]) {
+    return config[session.last_run_status]
+  }
+
+  return null
+}
+
+export function UnreadSessionsDrawer({
+  open,
+  onOpenChange,
+}: UnreadSessionsDrawerProps) {
+  const queryClient = useQueryClient()
+  const panelRef = useRef<HTMLDivElement>(null)
+  const { data: allSessions, isLoading } = useAllSessions(open)
+  const selectedProjectId = useProjectsStore(
+    state => state.selectedProjectId
+  )
+
+  // Invalidate cached data each time panel opens so manually-read sessions disappear
+  useEffect(() => {
+    if (open) {
+      queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
+    }
+  }, [open, queryClient])
+
+  // Close on Escape key
+  useEffect(() => {
+    if (!open) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onOpenChange(false)
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [open, onOpenChange])
+
+  const unreadItems = useMemo((): UnreadItem[] => {
+    if (!allSessions) return []
+
+    const results: UnreadItem[] = []
+
+    for (const entry of allSessions.entries) {
+      for (const session of entry.sessions) {
+        if (isUnread(session)) {
+          results.push({
+            session,
+            projectId: entry.project_id,
+            projectName: entry.project_name,
+            worktreeId: entry.worktree_id,
+            worktreeName: entry.worktree_name,
+            worktreePath: entry.worktree_path,
+          })
+        }
+      }
+    }
+
+    return results.sort((a, b) => b.session.updated_at - a.session.updated_at)
+  }, [allSessions])
+
+  // Group by project, current project first
+  const groupedItems = useMemo(() => {
+    const groups = new Map<
+      string,
+      { projectId: string; projectName: string; items: UnreadItem[] }
+    >()
+
+    for (const item of unreadItems) {
+      const existing = groups.get(item.projectId)
+      if (existing) {
+        existing.items.push(item)
+      } else {
+        groups.set(item.projectId, {
+          projectId: item.projectId,
+          projectName: item.projectName,
+          items: [item],
+        })
+      }
+    }
+
+    return Array.from(groups.values()).sort((a, b) => {
+      if (a.projectId === selectedProjectId) return -1
+      if (b.projectId === selectedProjectId) return 1
+      return a.projectName.localeCompare(b.projectName)
+    })
+  }, [unreadItems, selectedProjectId])
+
+  const handleSelect = useCallback(
+    (item: UnreadItem) => {
+      const { selectedProjectId, selectProject, selectWorktree } =
+        useProjectsStore.getState()
+      const { setActiveWorktree, setActiveSession, setViewingCanvasTab } =
+        useChatStore.getState()
+
+      if (selectedProjectId !== item.projectId) {
+        selectProject(item.projectId)
+      }
+
+      selectWorktree(item.worktreeId)
+      setActiveWorktree(item.worktreeId, item.worktreePath)
+      setActiveSession(item.worktreeId, item.session.id)
+      setViewingCanvasTab(item.worktreeId, true)
+      onOpenChange(false)
+
+      setTimeout(() => {
+        window.dispatchEvent(
+          new CustomEvent('open-session-modal', {
+            detail: { sessionId: item.session.id },
+          })
+        )
+      }, 50)
+    },
+    [onOpenChange]
+  )
+
+  if (!open) return null
+
+  return (
+    <div className="fixed inset-0 z-[80]" onClick={() => onOpenChange(false)}>
+      <div
+        ref={panelRef}
+        onClick={e => e.stopPropagation()}
+        className="absolute left-1/2 top-12 -translate-x-1/2 w-[min(420px,calc(100vw-2rem))] bg-popover border rounded-lg shadow-lg animate-in fade-in-0 slide-in-from-top-2 duration-200"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-3 py-2 border-b">
+          <div className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
+            <BellDot className="h-3.5 w-3.5" />
+            Unread
+            {unreadItems.length > 0 && (
+              <span className="text-xs bg-muted px-1.5 py-0.5 rounded-full">
+                {unreadItems.length}
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => onOpenChange(false)}
+            className="text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        {/* Content */}
+        {isLoading ? (
+          <div className="flex items-center justify-center py-6">
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          </div>
+        ) : unreadItems.length === 0 ? (
+          <div className="text-center py-6 text-muted-foreground text-xs">
+            No unread sessions
+          </div>
+        ) : (
+          <ScrollArea className="max-h-[min(400px,60vh)]">
+            <div className="p-1">
+              {groupedItems.map(group => (
+                <div key={group.projectId}>
+                  <div
+                    className={cn(
+                      'text-[10px] font-medium uppercase tracking-wider px-2 pt-1.5 pb-0.5',
+                      'text-muted-foreground'
+                    )}
+                  >
+                    {group.projectName}
+                  </div>
+                  {group.items.map(item => {
+                    const status = getSessionStatus(item.session)
+                    const StatusIcon = status?.icon ?? CheckCircle2
+
+                    return (
+                      <button
+                        key={item.session.id}
+                        type="button"
+                        onClick={() => handleSelect(item)}
+                        className="w-full text-left px-2 py-1.5 rounded-md hover:bg-accent/50 transition-colors cursor-pointer flex items-center gap-2"
+                      >
+                        <StatusIcon
+                          className={cn(
+                            'h-3.5 w-3.5 shrink-0',
+                            status?.className ?? 'text-muted-foreground'
+                          )}
+                        />
+                        <span className="text-sm truncate flex-1 min-w-0">
+                          {item.session.name}
+                        </span>
+                        <span className="text-[11px] text-muted-foreground/60 shrink-0">
+                          {item.worktreeName}
+                        </span>
+                        <span className="text-[11px] text-muted-foreground/40 shrink-0">
+                          {formatRelativeTime(item.session.updated_at)}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export default UnreadSessionsDrawer

@@ -29,13 +29,6 @@ import {
 } from 'lucide-react'
 import { ModalCloseButton } from '@/components/ui/modal-close-button'
 import { cn } from '@/lib/utils'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -649,17 +642,27 @@ export function SessionChatModal({
     useTerminalStore.getState().setModalTerminalOpen(worktreeId, true)
   }, [worktreeId, runScript])
 
+  // Close on Escape key
+  useEffect(() => {
+    if (!isOpen) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        handleClose()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, handleClose])
+
   if (!isOpen || !worktreeId) return null
 
   return (
     <>
-      <Dialog open={isOpen} onOpenChange={open => !open && handleClose()}>
-        <DialogContent
-          key={worktreeId}
-          className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none sm:!w-[calc(100vw-48px)] sm:!h-[calc(100vh-48px)] sm:!max-w-[calc(100vw-48px)] sm:!rounded-lg flex flex-col p-0 gap-0 overflow-hidden"
-          showCloseButton={false}
-        >
-          <DialogHeader className="shrink-0 border-b px-4 py-2">
+      <div
+        key={worktreeId}
+        className="absolute inset-0 z-10 flex flex-col overflow-hidden bg-background pb-14"
+      >
+          <div className="flex shrink-0 flex-col gap-2 border-b px-4 py-2 sm:text-left">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 min-w-0">
                 <Button
@@ -670,7 +673,7 @@ export function SessionChatModal({
                 >
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
-                <DialogTitle className="text-sm font-medium shrink-0">
+                <h2 className="text-sm font-medium shrink-0">
                   {project && (
                     <span className="text-muted-foreground font-normal">
                       {project.name}
@@ -678,12 +681,7 @@ export function SessionChatModal({
                     </span>
                   )}
                   {isBase ? 'Base Session' : (worktree?.name ?? 'Worktree')}
-                </DialogTitle>
-                <DialogDescription className="sr-only">
-                  Chat workspace for {worktree?.name ?? 'the current worktree'}.
-                  Use the tabs to switch sessions and run actions for this
-                  branch.
-                </DialogDescription>
+                </h2>
                 {worktree && project && (
                   <WorktreeDropdownMenu
                     worktree={worktree}
@@ -911,7 +909,7 @@ export function SessionChatModal({
                 <ModalCloseButton onClick={handleClose} />
               </div>
             </div>
-          </DialogHeader>
+          </div>
 
           {/* Session tabs */}
           {sessions.length > 0 && (
@@ -1170,17 +1168,16 @@ export function SessionChatModal({
               />
             </Suspense>
           )}
-        </DialogContent>
-        <LabelModal
-          isOpen={labelModalOpen}
-          onClose={() => {
-            setLabelModalOpen(false)
-            setLabelTargetSessionId(null)
-          }}
-          sessionId={labelSessionId}
-          currentLabel={currentLabel}
-        />
-      </Dialog>
+      </div>
+      <LabelModal
+        isOpen={labelModalOpen}
+        onClose={() => {
+          setLabelModalOpen(false)
+          setLabelTargetSessionId(null)
+        }}
+        sessionId={labelSessionId}
+        currentLabel={currentLabel}
+      />
       <CloseWorktreeDialog
         open={closeConfirmOpen}
         onOpenChange={setCloseConfirmOpen}

@@ -316,7 +316,10 @@ pub async fn get_available_opencode_versions() -> Result<Vec<OpenCodeReleaseInfo
     })?;
 
     let releases: Vec<GitHubRelease> = serde_json::from_str(&body).map_err(|e| {
-        log::error!("OpenCode versions: failed to parse JSON: {e}, body: {}", &body[..body.len().min(500)]);
+        log::error!(
+            "OpenCode versions: failed to parse JSON: {e}, body: {}",
+            &body[..body.len().min(500)]
+        );
         format!("Failed to parse GitHub releases: {e}")
     })?;
 
