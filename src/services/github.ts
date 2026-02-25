@@ -736,11 +736,14 @@ export function useDependabotAlerts(
         logger.info('Dependabot alerts loaded', { count: alerts.length })
         return alerts
       } catch (error) {
-        logger.error('Failed to load Dependabot alerts', {
+        // Auth errors should propagate so GhAuthError UI is shown
+        if (isGhAuthError(error)) throw error
+        // Other errors (permissions, feature not available) — treat as empty
+        logger.debug('Dependabot alerts not available', {
           error,
           projectPath,
         })
-        throw error
+        return []
       }
     },
     enabled: (options?.enabled ?? true) && !!projectPath,
@@ -827,11 +830,11 @@ export function useLoadedSecurityContexts(
         })
         return contexts
       } catch (error) {
-        logger.error('Failed to load security contexts', {
+        logger.debug('Failed to load security contexts', {
           error,
           sessionId,
         })
-        throw error
+        return []
       }
     },
     enabled: !!sessionId,
@@ -944,11 +947,14 @@ export function useRepositoryAdvisories(
         })
         return advisories
       } catch (error) {
-        logger.error('Failed to load repository advisories', {
+        // Auth errors should propagate so GhAuthError UI is shown
+        if (isGhAuthError(error)) throw error
+        // Other errors (permissions, feature not available) — treat as empty
+        logger.debug('Repository advisories not available', {
           error,
           projectPath,
         })
-        throw error
+        return []
       }
     },
     enabled: (options?.enabled ?? true) && !!projectPath,
@@ -1031,11 +1037,11 @@ export function useLoadedAdvisoryContexts(
         })
         return contexts
       } catch (error) {
-        logger.error('Failed to load advisory contexts', {
+        logger.debug('Failed to load advisory contexts', {
           error,
           sessionId,
         })
-        throw error
+        return []
       }
     },
     enabled: !!sessionId,

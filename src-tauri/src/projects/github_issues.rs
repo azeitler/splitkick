@@ -2270,7 +2270,8 @@ pub async fn list_dependabot_alerts(
             return Err("Not a git repository".to_string());
         }
         if stderr.contains("404") || stderr.contains("Dependabot alerts are not available") {
-            return Err("Dependabot alerts are not enabled for this repository. Enable them in Settings > Security.".to_string());
+            log::debug!("Dependabot alerts not available for this repo, returning empty list");
+            return Ok(vec![]);
         }
         if stderr.contains("403") {
             return Err(
@@ -2593,9 +2594,8 @@ pub async fn list_repository_advisories(
             return Err("Not a git repository".to_string());
         }
         if stderr.contains("404") {
-            return Err(
-                "Repository security advisories are not available for this repository.".to_string(),
-            );
+            log::debug!("Repository advisories not available for this repo, returning empty list");
+            return Ok(vec![]);
         }
         if stderr.contains("403") {
             return Err("Insufficient permissions to access security advisories.".to_string());
