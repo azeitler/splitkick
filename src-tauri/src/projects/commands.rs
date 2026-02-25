@@ -5233,6 +5233,25 @@ pub struct CreateCommitResponse {
     pub push_fell_back: bool,
 }
 
+/// Check if there are unpushed commits (commits ahead of upstream).
+/// Returns true if there are unpushed commits OR if there's no upstream (safe fallback).
+fn has_unpushed_commits(repo_path: &str) -> Result<bool, String> {
+    let output = silent_command("git")
+        .args(["rev-list", "--count", "@{u}..HEAD"])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to check unpushed commits: {e}"))?;
+
+    if !output.status.success() {
+        // No upstream configured — assume there are unpushed commits (safe to attempt push)
+        return Ok(true);
+    }
+
+    let count_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let count: u32 = count_str.parse().unwrap_or(1); // Default to 1 if parse fails (safe fallback)
+    Ok(count > 0)
+}
+
 /// Get git status output
 fn get_git_status(repo_path: &str) -> Result<String, String> {
     let output = silent_command("git")
@@ -5499,7 +5518,10 @@ pub async fn create_commit_with_ai(
     let status = get_git_status(&worktree_path)?;
     if status.trim().is_empty() {
         if push {
-            // No changes to commit, but user wants to push — push existing commits
+            // No changes to commit — check if there are unpushed commits to push
+            if !has_unpushed_commits(&worktree_path)? {
+                return Err("Nothing to commit or push".to_string());
+            }
             let fell_back = push_for_commit(&app, &worktree_path, remote.as_deref(), pr_number)?;
             log::trace!("No changes to commit, pushed existing commits");
             return Ok(CreateCommitResponse {

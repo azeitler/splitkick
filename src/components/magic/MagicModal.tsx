@@ -354,11 +354,13 @@ export function MagicModal() {
             toast.warning('Could not push to PR branch, pushed to new branch instead', {
               id: toastId,
             })
-          } else {
+          } else if (result.commit_hash) {
             const prefix = isPush ? 'Committed and pushed' : 'Committed'
             toast.success(`${prefix}: ${result.message.split('\n')[0]}`, {
               id: toastId,
             })
+          } else {
+            toast.success('Pushed to remote', { id: toastId })
           }
         } catch (error) {
           toast.error(`Failed: ${error}`, { id: toastId })
