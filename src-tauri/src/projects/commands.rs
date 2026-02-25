@@ -366,6 +366,56 @@ pub async fn init_project(
     Ok(project)
 }
 
+/// Clone a remote git repository and add it as a project
+#[tauri::command]
+pub async fn clone_project(
+    app: AppHandle,
+    url: String,
+    path: String,
+    parent_id: Option<String>,
+) -> Result<Project, String> {
+    log::trace!("Cloning project from {url} to {path}, parent_id: {parent_id:?}");
+
+    // Clone the repository
+    git::clone_repo(&url, &path)?;
+
+    // Get repository name and default branch from the cloned repo
+    let name = git::get_repo_name(&path)?;
+    let default_branch = git::get_current_branch(&path).unwrap_or_else(|_| "main".to_string());
+
+    // Check if project already exists
+    let mut data = load_projects_data(&app)?;
+    if data.projects.iter().any(|p| p.path == path) {
+        return Err(format!("Project already exists: {path}"));
+    }
+
+    // Create project with order at the end of the specified parent level
+    let max_order = data.get_next_order(parent_id.as_deref());
+    let project = Project {
+        id: Uuid::new_v4().to_string(),
+        name,
+        path,
+        default_branch,
+        added_at: now(),
+        order: max_order,
+        parent_id,
+        is_folder: false,
+        avatar_path: None,
+        enabled_mcp_servers: None,
+        known_mcp_servers: Vec::new(),
+        custom_system_prompt: None,
+        default_provider: None,
+        default_backend: None,
+        worktrees_dir: None,
+    };
+
+    data.add_project(project.clone());
+    save_projects_data(&app, &data)?;
+
+    log::trace!("Successfully cloned project: {}", project.name);
+    Ok(project)
+}
+
 /// Remove a project
 /// Only blocks if there are active (non-archived) worktrees.
 /// Automatically cleans up archived worktrees and their sessions.

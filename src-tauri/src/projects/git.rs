@@ -163,6 +163,79 @@ pub fn init_repo(path: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Extract a repository name from a git URL
+///
+/// Handles HTTPS (`https://github.com/user/repo.git`) and SSH (`git@github.com:user/repo.git`) formats.
+/// Strips `.git` suffix if present.
+pub fn extract_repo_name_from_url(url: &str) -> Result<String, String> {
+    let trimmed = url.trim().trim_end_matches('/');
+
+    // Get the last path segment
+    let name = trimmed
+        .rsplit('/')
+        .next()
+        // SSH format: git@host:user/repo.git — split on ':'  then take last
+        .or_else(|| trimmed.rsplit(':').next())
+        .ok_or_else(|| format!("Could not extract repository name from URL: {url}"))?;
+
+    // Strip .git suffix
+    let name = name.strip_suffix(".git").unwrap_or(name);
+
+    if name.is_empty() {
+        return Err(format!("Could not extract repository name from URL: {url}"));
+    }
+
+    Ok(name.to_string())
+}
+
+/// Clone a git repository from a remote URL to a local destination
+pub fn clone_repo(url: &str, destination: &str) -> Result<(), String> {
+    let url = url.trim();
+
+    // Basic URL format validation
+    let valid_prefix = url.starts_with("https://")
+        || url.starts_with("http://")
+        || url.starts_with("git@")
+        || url.starts_with("ssh://");
+
+    if !valid_prefix {
+        return Err(
+            "Invalid git URL. Use HTTPS (https://...) or SSH (git@...) format.".to_string(),
+        );
+    }
+
+    // Check destination doesn't already exist
+    let dest_path = Path::new(destination);
+    if dest_path.exists() {
+        return Err(format!(
+            "Destination already exists: {destination}"
+        ));
+    }
+
+    // Ensure parent directory exists
+    if let Some(parent) = dest_path.parent() {
+        if !parent.exists() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create parent directory: {e}"))?;
+        }
+    }
+
+    log::info!("Cloning {url} into {destination}");
+
+    let output = silent_command("git")
+        .args(["clone", url, destination])
+        .output()
+        .map_err(|e| format!("Failed to run git clone: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("git clone failed: {stderr}"));
+    }
+
+    log::info!("Successfully cloned repository to {destination}");
+    Ok(())
+}
+
 /// Get the repository name from a path (last component of the path)
 pub fn get_repo_name(path: &str) -> Result<String, String> {
     let path = Path::new(path);

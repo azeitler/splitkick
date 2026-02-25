@@ -18,6 +18,7 @@ import { RemotePickerModal } from '@/components/magic/RemotePickerModal'
 import { UpdatePrDialog } from '@/components/magic/UpdatePrDialog'
 import { AddProjectDialog } from '@/components/projects/AddProjectDialog'
 import { GitInitModal } from '@/components/projects/GitInitModal'
+import { CloneProjectModal } from '@/components/projects/CloneProjectModal'
 import { QuitConfirmationDialog } from './QuitConfirmationDialog'
 import { CloseWorktreeDialog } from '@/components/chat/CloseWorktreeDialog'
 import { BranchConflictDialog } from '@/components/worktree/BranchConflictDialog'
@@ -307,6 +308,7 @@ export function MainWindow() {
       </Suspense>
       <AddProjectDialog />
       <GitInitModal />
+      <CloneProjectModal />
       <Suspense fallback={null}>
         <ArchivedModal
           open={archivedModalOpen}
