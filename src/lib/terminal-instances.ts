@@ -74,6 +74,17 @@ export function getOrCreateTerminal(
     allowProposedApi: true,
   })
 
+  // Let CMD combos pass through to the app's global shortcut handler
+  // so CMD+T, CMD+W, CMD+1-9, etc. work while terminal is focused.
+  // Note: only intercept metaKey (CMD on macOS), NOT ctrlKey —
+  // Ctrl+C/D/Z/L etc. must reach the PTY for terminal signal handling.
+  terminal.attachCustomKeyEventHandler(event => {
+    if (event.metaKey) {
+      return false
+    }
+    return true
+  })
+
   const fitAddon = new FitAddon()
   terminal.loadAddon(fitAddon)
   terminal.loadAddon(

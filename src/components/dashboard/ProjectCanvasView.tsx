@@ -1519,15 +1519,16 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
         const item = flatCards[selectedIndex]
         if (!item.card) return // pending worktree, skip
 
-        if (preferences?.confirm_session_close === false) {
+        const section = worktreeSections.find(
+          s => s.worktree.id === item.worktreeId
+        )
+        const allEmpty = section?.cards.every(c => !c.session.message_count) ?? true
+        if (preferences?.confirm_session_close === false || allEmpty) {
           closeWorktreeDirectly(item.worktreeId)
         } else {
-          const wt = worktreeSections.find(
-            s => s.worktree.id === item.worktreeId
-          )?.worktree
           setCloseWorktreeTarget({
             worktreeId: item.worktreeId,
-            branchName: wt?.branch,
+            branchName: section?.worktree.branch,
           })
         }
       }

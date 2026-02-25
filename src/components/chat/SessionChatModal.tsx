@@ -444,7 +444,9 @@ export function SessionChatModal({
           handleArchiveSession(currentSessionId)
         }
       }
-      if (preferences?.confirm_session_close !== false) {
+      const currentSession = sessions.find(s => s.id === currentSessionId)
+      const sessionIsEmpty = !currentSession?.message_count
+      if (preferences?.confirm_session_close !== false && !sessionIsEmpty) {
         pendingCloseAction.current = action
         setCloseConfirmOpen(true)
       } else {
@@ -1003,9 +1005,10 @@ export function SessionChatModal({
                                         handleDeleteSession(session.id)
                                         onClose()
                                       }
+                                      const sessionIsEmpty = !session.message_count
                                       if (
                                         preferences?.confirm_session_close !==
-                                        false
+                                        false && !sessionIsEmpty
                                       ) {
                                         pendingCloseAction.current = action
                                         setCloseConfirmOpen(true)

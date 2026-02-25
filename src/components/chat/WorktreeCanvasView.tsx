@@ -245,12 +245,14 @@ export function WorktreeCanvasView({
   ])
 
   const handleCloseWorktreeOrConfirm = useCallback(() => {
-    if (preferences?.confirm_session_close === false) {
+    const activeSessions = sessionsData?.sessions.filter(s => !s.archived_at) ?? []
+    const allEmpty = activeSessions.every(s => !s.message_count)
+    if (preferences?.confirm_session_close === false || allEmpty) {
       handleCloseWorktree()
     } else {
       setCloseWorktreeDialogOpen(true)
     }
-  }, [preferences?.confirm_session_close, handleCloseWorktree])
+  }, [preferences?.confirm_session_close, handleCloseWorktree, sessionsData?.sessions])
 
   // Session creation
   const createSession = useCreateSession()

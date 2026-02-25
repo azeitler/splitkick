@@ -210,10 +210,20 @@ function executeKeybindingAction(
       }
       break
     }
-    case 'new_session':
+    case 'new_session': {
+      // If terminal is focused, add a new terminal tab instead
+      if (document.activeElement?.closest('.xterm')) {
+        const chatStore = useChatStore.getState()
+        const wId = chatStore.activeWorktreeId
+        if (wId) {
+          useTerminalStore.getState().addTerminal(wId)
+          break
+        }
+      }
       logger.debug('Keybinding: new_session')
       window.dispatchEvent(new CustomEvent('create-new-session'))
       break
+    }
     case 'next_session':
       logger.debug('Keybinding: next_session')
       window.dispatchEvent(
@@ -401,13 +411,25 @@ export function useMainWindowEventListeners() {
         return
       if (useProjectsStore.getState().projectSettingsDialogOpen) return
 
-      // CMD/Ctrl+1–9: switch session tab (in modal) or open worktree by index (on dashboard)
+      // CMD/Ctrl+1–9: switch terminal tab (if terminal focused), session tab (in modal), or worktree by index (on dashboard)
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
-        const digit = parseInt(e.key, 10)
+        // Use e.code (physical key) since e.key can vary with CMD held on macOS
+        const digitMatch = e.code.match(/^Digit(\d)$/)
+        const digit = digitMatch ? parseInt(digitMatch[1], 10) : NaN
         if (digit >= 1 && digit <= 9) {
           e.preventDefault()
           e.stopPropagation()
-          if (useUIStore.getState().sessionChatModalOpen) {
+          // If terminal is focused, switch terminal tab
+          if (document.activeElement?.closest('.xterm')) {
+            const wId = useChatStore.getState().activeWorktreeId
+            if (wId) {
+              const termStore = useTerminalStore.getState()
+              const terms = termStore.terminals[wId] ?? []
+              if (digit - 1 < terms.length) {
+                termStore.setActiveTerminal(wId, terms[digit - 1].id)
+              }
+            }
+          } else if (useUIStore.getState().sessionChatModalOpen) {
             window.dispatchEvent(
               new CustomEvent('switch-session', {
                 detail: { index: digit - 1 },

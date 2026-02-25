@@ -443,7 +443,7 @@ export function OpenInModal() {
           </div>
         )}
 
-        {contextOptions.length > 0 && (
+        {contextOptions.length > 0 && !showingRemotes && (
           <div className="border-t pb-2">
             <div className="px-4 pt-2 pb-1">
               <span className="text-xs text-muted-foreground">Contexts</span>

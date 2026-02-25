@@ -198,8 +198,10 @@ export function CanvasGrid({
       // Close the selected session (not the whole worktree)
       if (selectedIndex !== null && cards[selectedIndex]) {
         e.stopImmediatePropagation()
-        const sessionId = cards[selectedIndex].session.id
-        if (preferences?.confirm_session_close !== false) {
+        const card = cards[selectedIndex]
+        const sessionId = card.session.id
+        const sessionIsEmpty = !card.session.message_count
+        if (preferences?.confirm_session_close !== false && !sessionIsEmpty) {
           pendingDeleteSessionId.current = sessionId
           setCloseConfirmOpen(true)
         } else {
