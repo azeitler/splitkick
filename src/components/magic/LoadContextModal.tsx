@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { getModifierSymbol } from '@/lib/platform'
-import { Bookmark, CircleDot, FolderOpen, GitPullRequest } from 'lucide-react'
+import { Bookmark, CircleDot, FolderOpen, GitPullRequest, Shield, ShieldAlert } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import {
   Dialog,
@@ -17,12 +17,13 @@ import { useGhLogin } from '@/hooks/useGhLogin'
 import { IssuePreviewModal } from '@/components/worktree/IssuePreviewModal'
 import { githubQueryKeys } from '@/services/github'
 import { GitHubItemsTab } from './GitHubItemsTab'
+import { SecurityAlertsTab } from './SecurityAlertsTab'
 import { ContextsTab } from './ContextsTab'
 import { useLoadContextData } from './hooks/useLoadContextData'
 import { useLoadContextHandlers } from './hooks/useLoadContextHandlers'
 import { useLoadContextKeyboard } from './hooks/useLoadContextKeyboard'
 
-type TabId = 'issues' | 'prs' | 'contexts'
+type TabId = 'issues' | 'prs' | 'security' | 'contexts'
 
 interface Tab {
   id: TabId
@@ -35,6 +36,7 @@ const TABS: Tab[] = [
   { id: 'contexts', label: 'Contexts', key: '1', icon: Bookmark },
   { id: 'issues', label: 'Issues', key: '2', icon: CircleDot },
   { id: 'prs', label: 'PRs', key: '3', icon: GitPullRequest },
+  { id: 'security', label: 'Security', key: '4', icon: Shield },
 ]
 
 interface LoadContextModalProps {
@@ -86,6 +88,8 @@ export function LoadContextModal({
     worktreePath,
     refetchIssueContexts: data.refetchIssueContexts,
     refetchPRContexts: data.refetchPRContexts,
+    refetchSecurityContexts: data.refetchSecurityContexts,
+    refetchAdvisoryContexts: data.refetchAdvisoryContexts,
     refetchAttachedContexts: data.refetchAttachedContexts,
     refetchContexts: data.refetchContexts,
     renameMutation: data.renameMutation,
@@ -98,14 +102,20 @@ export function LoadContextModal({
     activeTab,
     filteredIssues: data.filteredIssues,
     filteredPRs: data.filteredPRs,
+    filteredSecurityAlerts: data.filteredSecurityAlerts,
+    filteredAdvisories: data.filteredAdvisories,
     filteredContexts: data.filteredContexts,
     filteredEntries: data.filteredEntries,
     selectedIndex,
     setSelectedIndex,
     onSelectIssue: handlers.handleSelectIssue,
     onSelectPR: handlers.handleSelectPR,
+    onSelectSecurityAlert: handlers.handleSelectSecurityAlert,
     onPreviewIssue: handlers.handlePreviewIssue,
     onPreviewPR: handlers.handlePreviewPR,
+    onPreviewSecurityAlert: handlers.handlePreviewSecurityAlert,
+    onSelectAdvisory: handlers.handleSelectAdvisory,
+    onPreviewAdvisory: handlers.handlePreviewAdvisory,
     onAttachContext: handlers.handleAttachContext,
     onSessionClick: handlers.handleSessionClick,
     onTabChange: setActiveTab,
@@ -122,6 +132,8 @@ export function LoadContextModal({
         setActiveTab('issues')
       } else if (data.hasLoadedPRContexts) {
         setActiveTab('prs')
+      } else if (data.hasLoadedSecurityContexts || data.hasLoadedAdvisoryContexts) {
+        setActiveTab('security')
       } else {
         setActiveTab('contexts')
       }
@@ -145,6 +157,15 @@ export function LoadContextModal({
         queryClient.invalidateQueries({
           queryKey: githubQueryKeys.prs(worktreePath, 'all'),
         })
+        queryClient.invalidateQueries({
+          queryKey: githubQueryKeys.securityAlerts(worktreePath, 'open'),
+        })
+        queryClient.invalidateQueries({
+          queryKey: githubQueryKeys.securityAlerts(worktreePath, 'all'),
+        })
+        queryClient.invalidateQueries({
+          queryKey: githubQueryKeys.advisories(worktreePath, 'all'),
+        })
       }
       if (activeSessionId) {
         queryClient.invalidateQueries({
@@ -155,6 +176,12 @@ export function LoadContextModal({
         })
         queryClient.invalidateQueries({
           queryKey: githubQueryKeys.attachedContexts(activeSessionId),
+        })
+        queryClient.invalidateQueries({
+          queryKey: githubQueryKeys.loadedSecurityContexts(activeSessionId),
+        })
+        queryClient.invalidateQueries({
+          queryKey: githubQueryKeys.loadedAdvisoryContexts(activeSessionId),
         })
       }
       queryClient.invalidateQueries({ queryKey: ['session-context'] })
@@ -167,6 +194,8 @@ export function LoadContextModal({
     queryClient,
     data.hasLoadedIssueContexts,
     data.hasLoadedPRContexts,
+    data.hasLoadedSecurityContexts,
+    data.hasLoadedAdvisoryContexts,
     data.hasAttachedContexts,
     handlers.resetState,
   ])
@@ -310,6 +339,52 @@ export function LoadContextModal({
             />
           )}
 
+          {activeTab === 'security' && (
+            <SecurityAlertsTab
+              loadedContexts={data.loadedSecurityContexts ?? []}
+              filteredAlerts={data.filteredSecurityAlerts}
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+              includeClosed={includeClosed}
+              setIncludeClosed={setIncludeClosed}
+              searchInputRef={searchInputRef}
+              isLoadingContexts={data.isLoadingSecurityContexts}
+              isLoading={data.isLoadingSecurityAlerts}
+              isRefetching={data.isRefetchingSecurityAlerts}
+              error={data.securityError}
+              onRefresh={() => {
+                data.refetchSecurityAlerts()
+                data.refetchAdvisories()
+              }}
+              selectedIndex={selectedIndex}
+              setSelectedIndex={setSelectedIndex}
+              loadingNumbers={handlers.loadingNumbers}
+              removingNumbers={handlers.removingNumbers}
+              hasLoadedContexts={data.hasLoadedSecurityContexts}
+              onSelectAlert={handlers.handleSelectSecurityAlert}
+              onViewAlert={handlers.handleViewSecurityAlert}
+              onPreviewAlert={handlers.handlePreviewSecurityAlert}
+              onRemoveAlert={handlers.handleRemoveSecurityAlert}
+              onLoadAlert={(num, refresh) => handlers.handleLoadSecurityAlert(num, refresh)}
+              onGhLogin={triggerGhLogin}
+              isGhInstalled={isGhInstalled}
+              // Advisory props
+              loadedAdvisoryContexts={data.loadedAdvisoryContexts}
+              filteredAdvisories={data.filteredAdvisories}
+              isLoadingAdvisories={data.isLoadingAdvisories}
+              isRefetchingAdvisories={data.isRefetchingAdvisories}
+              hasLoadedAdvisoryContexts={data.hasLoadedAdvisoryContexts}
+              isLoadingAdvisoryContexts={data.isLoadingAdvisoryContexts}
+              loadingAdvisoryGhsaIds={handlers.loadingAdvisoryGhsaIds}
+              removingAdvisoryGhsaIds={handlers.removingAdvisoryGhsaIds}
+              onSelectAdvisory={handlers.handleSelectAdvisory}
+              onViewAdvisory={handlers.handleViewAdvisory}
+              onPreviewAdvisory={handlers.handlePreviewAdvisory}
+              onRemoveAdvisory={handlers.handleRemoveAdvisory}
+              onLoadAdvisory={(ghsaId, refresh) => handlers.handleLoadAdvisory(ghsaId, refresh)}
+            />
+          )}
+
           {activeTab === 'contexts' && (
             <ContextsTab
               searchQuery={searchQuery}
@@ -347,7 +422,7 @@ export function LoadContextModal({
 
         {/* GitHub issue/PR preview modal */}
         {handlers.viewingContext &&
-          handlers.viewingContext.type !== 'saved' &&
+          (handlers.viewingContext.type === 'issue' || handlers.viewingContext.type === 'pr') &&
           handlers.viewingContext.number &&
           worktreePath && (
             <IssuePreviewModal
@@ -361,8 +436,11 @@ export function LoadContextModal({
             />
           )}
 
-        {/* Saved context viewer modal */}
-        {handlers.viewingContext && handlers.viewingContext.type === 'saved' && (
+        {/* Security/Advisory/Saved context viewer modal */}
+        {handlers.viewingContext &&
+          (handlers.viewingContext.type === 'saved' ||
+            handlers.viewingContext.type === 'security' ||
+            handlers.viewingContext.type === 'advisory') && (
           <Dialog
             open={true}
             onOpenChange={() => handlers.setViewingContext(null)}
@@ -370,7 +448,13 @@ export function LoadContextModal({
             <DialogContent className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none sm:!w-[calc(100vw-8rem)] sm:!max-w-[calc(100vw-8rem)] sm:!h-[calc(100vh-8rem)] sm:!rounded-lg flex flex-col">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
-                  <FolderOpen className="h-4 w-4 text-blue-500" />
+                  {handlers.viewingContext.type === 'security' ? (
+                    <Shield className="h-4 w-4 text-orange-500" />
+                  ) : handlers.viewingContext.type === 'advisory' ? (
+                    <ShieldAlert className="h-4 w-4 text-orange-500" />
+                  ) : (
+                    <FolderOpen className="h-4 w-4 text-blue-500" />
+                  )}
                   {handlers.viewingContext.title}
                 </DialogTitle>
               </DialogHeader>

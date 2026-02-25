@@ -9,8 +9,12 @@ import { projectsQueryKeys } from '@/services/projects'
 import type {
   GitHubIssue,
   GitHubPullRequest,
+  DependabotAlert,
+  RepositoryAdvisory,
   IssueContext,
   PullRequestContext,
+  SecurityAlertContext,
+  AdvisoryContext,
 } from '@/types/github'
 import type { useNewWorktreeData } from './useNewWorktreeData'
 import type { TabId } from '../NewWorktreeModal'
@@ -46,11 +50,15 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
   const [creatingFromBranch, setCreatingFromBranch] = useState<string | null>(
     null
   )
+  const [creatingFromGhsaId, setCreatingFromGhsaId] = useState<string | null>(
+    null
+  )
 
   const handleOpenChange = useCallback(
     (open: boolean) => {
       setCreatingFromNumber(null)
       setCreatingFromBranch(null)
+      setCreatingFromGhsaId(null)
       setSearchQuery('')
       setSelectedItemIndex(0)
 
@@ -77,6 +85,18 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
           })
           queryClient.invalidateQueries({
             queryKey: githubQueryKeys.prs(projectPath, 'all'),
+          })
+          queryClient.invalidateQueries({
+            queryKey: githubQueryKeys.securityAlerts(projectPath, 'open'),
+          })
+          queryClient.invalidateQueries({
+            queryKey: githubQueryKeys.securityAlerts(projectPath, 'all'),
+          })
+          queryClient.invalidateQueries({
+            queryKey: githubQueryKeys.advisories(projectPath, 'published'),
+          })
+          queryClient.invalidateQueries({
+            queryKey: githubQueryKeys.advisories(projectPath, 'all'),
           })
         }
         if (selectedProjectId) {
@@ -425,9 +445,226 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
     [selectedProjectId, selectedProject, createWorktree, handleOpenChange]
   )
 
+  const handleSelectSecurityAlert = useCallback(
+    async (alert: DependabotAlert, background = false) => {
+      const projectPath = selectedProject?.path
+      if (!selectedProjectId || !projectPath) {
+        toast.error('No project selected')
+        return
+      }
+
+      setCreatingFromNumber(alert.number)
+
+      try {
+        const alertDetail = await invoke<DependabotAlert>(
+          'get_dependabot_alert',
+          {
+            projectPath,
+            alertNumber: alert.number,
+          }
+        )
+
+        const securityContext: SecurityAlertContext = {
+          number: alertDetail.number,
+          packageName: alertDetail.packageName,
+          packageEcosystem: alertDetail.packageEcosystem,
+          severity: alertDetail.severity,
+          summary: alertDetail.summary,
+          description: alertDetail.description,
+          ghsaId: alertDetail.ghsaId,
+          cveId: alertDetail.cveId,
+          manifestPath: alertDetail.manifestPath,
+        }
+
+        if (background)
+          useUIStore.getState().incrementPendingBackgroundCreations()
+        createWorktree.mutate({
+          projectId: selectedProjectId,
+          securityContext,
+          background,
+        })
+
+        if (background) {
+          setCreatingFromNumber(null)
+        } else {
+          handleOpenChange(false)
+        }
+      } catch (error) {
+        toast.error(`Failed to fetch security alert details: ${error}`)
+        setCreatingFromNumber(null)
+      }
+    },
+    [selectedProjectId, selectedProject, createWorktree, handleOpenChange]
+  )
+
+  const handleSelectSecurityAlertAndInvestigate = useCallback(
+    async (alert: DependabotAlert, background = false) => {
+      const projectPath = selectedProject?.path
+      if (!selectedProjectId || !projectPath) {
+        toast.error('No project selected')
+        return
+      }
+
+      setCreatingFromNumber(alert.number)
+
+      try {
+        const alertDetail = await invoke<DependabotAlert>(
+          'get_dependabot_alert',
+          {
+            projectPath,
+            alertNumber: alert.number,
+          }
+        )
+
+        const securityContext: SecurityAlertContext = {
+          number: alertDetail.number,
+          packageName: alertDetail.packageName,
+          packageEcosystem: alertDetail.packageEcosystem,
+          severity: alertDetail.severity,
+          summary: alertDetail.summary,
+          description: alertDetail.description,
+          ghsaId: alertDetail.ghsaId,
+          cveId: alertDetail.cveId,
+          manifestPath: alertDetail.manifestPath,
+        }
+
+        if (background)
+          useUIStore.getState().incrementPendingBackgroundCreations()
+
+        const worktree = await createWorktree.mutateAsync({
+          projectId: selectedProjectId,
+          securityContext,
+          background,
+        })
+        useUIStore.getState().markWorktreeForAutoInvestigateSecurityAlert(worktree.id)
+
+        if (background) {
+          setCreatingFromNumber(null)
+        } else {
+          handleOpenChange(false)
+        }
+      } catch (error) {
+        toast.error(`Failed to fetch security alert details: ${error}`)
+        setCreatingFromNumber(null)
+      }
+    },
+    [selectedProjectId, selectedProject, createWorktree, handleOpenChange]
+  )
+
+  const handleSelectAdvisory = useCallback(
+    async (advisory: RepositoryAdvisory, background = false) => {
+      const projectPath = selectedProject?.path
+      if (!selectedProjectId || !projectPath) {
+        toast.error('No project selected')
+        return
+      }
+
+      setCreatingFromGhsaId(advisory.ghsaId)
+
+      try {
+        const advisoryDetail = await invoke<RepositoryAdvisory>(
+          'get_repository_advisory',
+          {
+            projectPath,
+            ghsaId: advisory.ghsaId,
+          }
+        )
+
+        const advisoryContext: AdvisoryContext = {
+          ghsaId: advisoryDetail.ghsaId,
+          severity: advisoryDetail.severity,
+          summary: advisoryDetail.summary,
+          description: advisoryDetail.description,
+          cveId: advisoryDetail.cveId,
+          vulnerabilities: advisoryDetail.vulnerabilities.map(v => ({
+            packageName: v.packageName,
+            packageEcosystem: v.packageEcosystem,
+            vulnerableVersionRange: v.vulnerableVersionRange,
+            patchedVersions: v.patchedVersions,
+          })),
+        }
+
+        if (background)
+          useUIStore.getState().incrementPendingBackgroundCreations()
+        createWorktree.mutate({
+          projectId: selectedProjectId,
+          advisoryContext,
+          background,
+        })
+
+        if (background) {
+          setCreatingFromGhsaId(null)
+        } else {
+          handleOpenChange(false)
+        }
+      } catch (error) {
+        toast.error(`Failed to fetch advisory details: ${error}`)
+        setCreatingFromGhsaId(null)
+      }
+    },
+    [selectedProjectId, selectedProject, createWorktree, handleOpenChange]
+  )
+
+  const handleSelectAdvisoryAndInvestigate = useCallback(
+    async (advisory: RepositoryAdvisory, background = false) => {
+      const projectPath = selectedProject?.path
+      if (!selectedProjectId || !projectPath) {
+        toast.error('No project selected')
+        return
+      }
+
+      setCreatingFromGhsaId(advisory.ghsaId)
+
+      try {
+        const advisoryDetail = await invoke<RepositoryAdvisory>(
+          'get_repository_advisory',
+          {
+            projectPath,
+            ghsaId: advisory.ghsaId,
+          }
+        )
+
+        const advisoryContext: AdvisoryContext = {
+          ghsaId: advisoryDetail.ghsaId,
+          severity: advisoryDetail.severity,
+          summary: advisoryDetail.summary,
+          description: advisoryDetail.description,
+          cveId: advisoryDetail.cveId,
+          vulnerabilities: advisoryDetail.vulnerabilities.map(v => ({
+            packageName: v.packageName,
+            packageEcosystem: v.packageEcosystem,
+            vulnerableVersionRange: v.vulnerableVersionRange,
+            patchedVersions: v.patchedVersions,
+          })),
+        }
+
+        if (background)
+          useUIStore.getState().incrementPendingBackgroundCreations()
+
+        const worktree = await createWorktree.mutateAsync({
+          projectId: selectedProjectId,
+          advisoryContext,
+          background,
+        })
+        useUIStore.getState().markWorktreeForAutoInvestigateAdvisory(worktree.id)
+
+        if (background) {
+          setCreatingFromGhsaId(null)
+        } else {
+          handleOpenChange(false)
+        }
+      } catch (error) {
+        toast.error(`Failed to fetch advisory details: ${error}`)
+        setCreatingFromGhsaId(null)
+      }
+    },
+    [selectedProjectId, selectedProject, createWorktree, handleOpenChange]
+  )
+
   return {
     creatingFromNumber,
     creatingFromBranch,
+    creatingFromGhsaId,
     handleOpenChange,
     handleCreateWorktree,
     handleBaseSession,
@@ -436,5 +673,9 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
     handleSelectIssueAndInvestigate,
     handleSelectPR,
     handleSelectPRAndInvestigate,
+    handleSelectSecurityAlert,
+    handleSelectSecurityAlertAndInvestigate,
+    handleSelectAdvisory,
+    handleSelectAdvisoryAndInvestigate,
   }
 }

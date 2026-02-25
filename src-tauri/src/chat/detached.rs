@@ -95,6 +95,15 @@ pub fn spawn_detached_claude(
     log::trace!("Shell command: {shell_cmd}");
     log::trace!("Working directory: {working_dir:?}");
 
+    // Verify working directory exists before spawn (otherwise sh returns
+    // a cryptic "No such file or directory" from current_dir).
+    if !working_dir.exists() {
+        return Err(format!(
+            "Working directory does not exist: {}. The worktree may still be initializing.",
+            working_dir.display()
+        ));
+    }
+
     // Spawn the shell command
     let mut child = silent_command("sh")
         .arg("-c")

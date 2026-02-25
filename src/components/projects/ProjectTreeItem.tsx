@@ -26,6 +26,7 @@ import {
 import { NewIssuesBadge } from '@/components/shared/NewIssuesBadge'
 import { OpenPRsBadge } from '@/components/shared/OpenPRsBadge'
 import { FailedRunsBadge } from '@/components/shared/FailedRunsBadge'
+import { SecurityAlertsBadge } from '@/components/shared/SecurityAlertsBadge'
 import {
   Tooltip,
   TooltipTrigger,
@@ -236,6 +237,7 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
           {/* New issues indicator */}
           <NewIssuesBadge projectPath={project.path} projectId={project.id} />
           <OpenPRsBadge projectPath={project.path} projectId={project.id} />
+          <SecurityAlertsBadge projectPath={project.path} projectId={project.id} />
           <FailedRunsBadge projectPath={project.path} />
 
           {/* Settings */}

@@ -9,11 +9,17 @@ import { resolveBackend, supportsAdaptiveThinking } from '@/lib/model-utils'
 import {
   DEFAULT_INVESTIGATE_ISSUE_PROMPT,
   DEFAULT_INVESTIGATE_PR_PROMPT,
+  DEFAULT_INVESTIGATE_SECURITY_ALERT_PROMPT,
+  DEFAULT_INVESTIGATE_ADVISORY_PROMPT,
   resolveMagicPromptProvider,
 } from '@/types/preferences'
 import type { WorktreeSessions, QueuedMessage } from '@/types/chat'
 import { logger } from '@/lib/logger'
 import { useQueryClient } from '@tanstack/react-query'
+import { projectsQueryKeys } from '@/services/projects'
+import type { Worktree } from '@/types/projects'
+
+type InvestigationType = 'issue' | 'pr' | 'security-alert' | 'advisory'
 
 /**
  * Headless hook for starting investigations on background-created worktrees.
@@ -34,7 +40,9 @@ export function useBackgroundInvestigation(): void {
   // Subscribe to auto-investigate flags — re-run effect when they change
   const hasAutoInvestigate = useUIStore(state =>
     state.autoInvestigateWorktreeIds.size > 0 ||
-    state.autoInvestigatePRWorktreeIds.size > 0
+    state.autoInvestigatePRWorktreeIds.size > 0 ||
+    state.autoInvestigateSecurityAlertWorktreeIds.size > 0 ||
+    state.autoInvestigateAdvisoryWorktreeIds.size > 0
   )
 
   // Re-trigger effect when new worktree paths are registered.
@@ -50,18 +58,33 @@ export function useBackgroundInvestigation(): void {
     const {
       autoInvestigateWorktreeIds,
       autoInvestigatePRWorktreeIds,
+      autoInvestigateSecurityAlertWorktreeIds,
+      autoInvestigateAdvisoryWorktreeIds,
     } = useUIStore.getState()
 
     const { worktreePaths, activeWorktreeId } = useChatStore.getState()
 
+    // Helper: check if worktree is ready (directory exists on disk).
+    // Only worktrees marked 'ready' by handleWorktreeReady have their
+    // git directory created. Without this check, worktreePaths may be
+    // populated early by setActiveWorktree before the directory exists.
+    const isWorktreeReady = (worktreeId: string): boolean => {
+      const cached = queryClient.getQueryData<Worktree>(
+        [...projectsQueryKeys.all, 'worktree', worktreeId]
+      )
+      return cached?.status === 'ready'
+    }
+
     // Collect all worktree IDs that need background investigation
-    const candidates: { worktreeId: string; type: 'issue' | 'pr' }[] = []
+    const candidates: { worktreeId: string; type: InvestigationType }[] = []
 
     for (const worktreeId of autoInvestigateWorktreeIds) {
       // Skip foreground worktrees — ChatWindow handles those
       if (worktreeId === activeWorktreeId) continue
       // Skip if worktree path not yet registered (still pending)
       if (!worktreePaths[worktreeId]) continue
+      // Skip if worktree directory not yet created (status !== 'ready')
+      if (!isWorktreeReady(worktreeId)) continue
       // Skip if already being processed
       if (processingRef.current.has(worktreeId)) continue
       candidates.push({ worktreeId, type: 'issue' })
@@ -70,10 +93,28 @@ export function useBackgroundInvestigation(): void {
     for (const worktreeId of autoInvestigatePRWorktreeIds) {
       if (worktreeId === activeWorktreeId) continue
       if (!worktreePaths[worktreeId]) continue
+      if (!isWorktreeReady(worktreeId)) continue
       if (processingRef.current.has(worktreeId)) continue
-      // Don't duplicate if already queued as issue
       if (candidates.some(c => c.worktreeId === worktreeId)) continue
       candidates.push({ worktreeId, type: 'pr' })
+    }
+
+    for (const worktreeId of autoInvestigateSecurityAlertWorktreeIds) {
+      if (worktreeId === activeWorktreeId) continue
+      if (!worktreePaths[worktreeId]) continue
+      if (!isWorktreeReady(worktreeId)) continue
+      if (processingRef.current.has(worktreeId)) continue
+      if (candidates.some(c => c.worktreeId === worktreeId)) continue
+      candidates.push({ worktreeId, type: 'security-alert' })
+    }
+
+    for (const worktreeId of autoInvestigateAdvisoryWorktreeIds) {
+      if (worktreeId === activeWorktreeId) continue
+      if (!worktreePaths[worktreeId]) continue
+      if (!isWorktreeReady(worktreeId)) continue
+      if (processingRef.current.has(worktreeId)) continue
+      if (candidates.some(c => c.worktreeId === worktreeId)) continue
+      candidates.push({ worktreeId, type: 'advisory' })
     }
 
     if (candidates.length === 0) return
@@ -86,8 +127,12 @@ export function useBackgroundInvestigation(): void {
       const uiStore = useUIStore.getState()
       if (type === 'issue') {
         uiStore.consumeAutoInvestigate(worktreeId)
-      } else {
+      } else if (type === 'pr') {
         uiStore.consumeAutoInvestigatePR(worktreeId)
+      } else if (type === 'security-alert') {
+        uiStore.consumeAutoInvestigateSecurityAlert(worktreeId)
+      } else {
+        uiStore.consumeAutoInvestigateAdvisory(worktreeId)
       }
 
       processBackgroundInvestigation(
@@ -106,11 +151,103 @@ export function useBackgroundInvestigation(): void {
 }
 
 /**
+ * Build the investigation prompt for a given type and worktree.
+ */
+async function buildPrompt(
+  worktreeId: string,
+  type: InvestigationType,
+  preferences: ReturnType<typeof usePreferences>['data'],
+): Promise<string> {
+  if (type === 'issue') {
+    const contexts = await invoke<{ number: number }[]>(
+      'list_loaded_issue_contexts',
+      { sessionId: worktreeId }
+    )
+    const refs = (contexts ?? []).map(c => `#${c.number}`).join(', ')
+    const word = (contexts ?? []).length === 1 ? 'issue' : 'issues'
+    const customPrompt = preferences?.magic_prompts?.investigate_issue
+    const template =
+      customPrompt && customPrompt.trim()
+        ? customPrompt
+        : DEFAULT_INVESTIGATE_ISSUE_PROMPT
+    return template
+      .replace(/\{issueWord\}/g, word)
+      .replace(/\{issueRefs\}/g, refs)
+  }
+
+  if (type === 'pr') {
+    const contexts = await invoke<{ number: number }[]>(
+      'list_loaded_pr_contexts',
+      { sessionId: worktreeId }
+    )
+    const refs = (contexts ?? []).map(c => `#${c.number}`).join(', ')
+    const word = (contexts ?? []).length === 1 ? 'PR' : 'PRs'
+    const customPrompt = preferences?.magic_prompts?.investigate_pr
+    const template =
+      customPrompt && customPrompt.trim()
+        ? customPrompt
+        : DEFAULT_INVESTIGATE_PR_PROMPT
+    return template
+      .replace(/\{prWord\}/g, word)
+      .replace(/\{prRefs\}/g, refs)
+  }
+
+  if (type === 'security-alert') {
+    const contexts = await invoke<{ number: number; packageName: string; severity: string }[]>(
+      'list_loaded_security_contexts',
+      { sessionId: worktreeId }
+    )
+    const refs = (contexts ?? []).map(c => `#${c.number} ${c.packageName} (${c.severity})`).join(', ')
+    const word = (contexts ?? []).length === 1 ? 'alert' : 'alerts'
+    const customPrompt = preferences?.magic_prompts?.investigate_security_alert
+    const template =
+      customPrompt && customPrompt.trim()
+        ? customPrompt
+        : DEFAULT_INVESTIGATE_SECURITY_ALERT_PROMPT
+    return template
+      .replace(/\{alertWord\}/g, word)
+      .replace(/\{alertRefs\}/g, refs)
+  }
+
+  // advisory
+  const contexts = await invoke<{ ghsaId: string; severity: string; summary: string }[]>(
+    'list_loaded_advisory_contexts',
+    { sessionId: worktreeId }
+  )
+  const refs = (contexts ?? []).map(c => `${c.ghsaId} (${c.severity})`).join(', ')
+  const word = (contexts ?? []).length === 1 ? 'advisory' : 'advisories'
+  const customPrompt = preferences?.magic_prompts?.investigate_advisory
+  const template =
+    customPrompt && customPrompt.trim()
+      ? customPrompt
+      : DEFAULT_INVESTIGATE_ADVISORY_PROMPT
+  return template
+    .replace(/\{advisoryWord\}/g, word)
+    .replace(/\{advisoryRefs\}/g, refs)
+}
+
+/**
+ * Resolve model/provider keys for the given investigation type.
+ */
+function resolveModelProviderKeys(type: InvestigationType) {
+  switch (type) {
+    case 'issue':
+      return { modelKey: 'investigate_issue_model' as const, providerKey: 'investigate_issue_provider' as const }
+    case 'pr':
+      return { modelKey: 'investigate_pr_model' as const, providerKey: 'investigate_pr_provider' as const }
+    case 'security-alert':
+      return { modelKey: 'investigate_security_alert_model' as const, providerKey: 'investigate_security_alert_provider' as const }
+    case 'advisory':
+      return { modelKey: 'investigate_advisory_model' as const, providerKey: 'investigate_advisory_provider' as const }
+  }
+}
+
+/**
  * Process a single background investigation: fetch session, build prompt, enqueue message.
  */
 async function processBackgroundInvestigation(
   worktreeId: string,
-  type: 'issue' | 'pr',
+  type: InvestigationType,
   preferences: ReturnType<typeof usePreferences>['data'],
   cliVersion: string | null,
   queryClient: ReturnType<typeof useQueryClient>,
@@ -143,45 +280,10 @@ async function processBackgroundInvestigation(
   })
 
   // Build the investigation prompt
-  let prompt: string
-
-  if (type === 'issue') {
-    const contexts = await invoke<{ number: number }[]>(
-      'list_loaded_issue_contexts',
-      { sessionId: worktreeId }
-    )
-    const refs = (contexts ?? []).map(c => `#${c.number}`).join(', ')
-    const word = (contexts ?? []).length === 1 ? 'issue' : 'issues'
-    const customPrompt = preferences?.magic_prompts?.investigate_issue
-    const template =
-      customPrompt && customPrompt.trim()
-        ? customPrompt
-        : DEFAULT_INVESTIGATE_ISSUE_PROMPT
-    prompt = template
-      .replace(/\{issueWord\}/g, word)
-      .replace(/\{issueRefs\}/g, refs)
-  } else {
-    const contexts = await invoke<{ number: number }[]>(
-      'list_loaded_pr_contexts',
-      { sessionId: worktreeId }
-    )
-    const refs = (contexts ?? []).map(c => `#${c.number}`).join(', ')
-    const word = (contexts ?? []).length === 1 ? 'PR' : 'PRs'
-    const customPrompt = preferences?.magic_prompts?.investigate_pr
-    const template =
-      customPrompt && customPrompt.trim()
-        ? customPrompt
-        : DEFAULT_INVESTIGATE_PR_PROMPT
-    prompt = template
-      .replace(/\{prWord\}/g, word)
-      .replace(/\{prRefs\}/g, refs)
-  }
+  const prompt = await buildPrompt(worktreeId, type, preferences)
 
   // Resolve model, provider, backend
-  const modelKey =
-    type === 'issue' ? 'investigate_issue_model' : 'investigate_pr_model'
-  const providerKey =
-    type === 'issue' ? 'investigate_issue_provider' : 'investigate_pr_provider'
+  const { modelKey, providerKey } = resolveModelProviderKeys(type)
 
   const selectedModel =
     preferences?.magic_prompt_models?.[modelKey] ??

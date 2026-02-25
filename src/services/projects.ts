@@ -25,6 +25,7 @@ import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 
 import type { AppPreferences } from '@/types/preferences'
+import type { AdvisoryContext } from '@/types/github'
 import { hasBackend } from '@/lib/environment'
 import { openExternal } from '@/lib/platform'
 
@@ -450,6 +451,8 @@ export function useCreateWorktree() {
       baseBranch,
       issueContext,
       prContext,
+      securityContext,
+      advisoryContext,
       customName,
       background: _background,
     }: {
@@ -484,6 +487,20 @@ export function useCreateWorktree() {
           submittedAt?: string
         }[]
       }
+      /** Security alert context to pass when creating a worktree from a security alert */
+      securityContext?: {
+        number: number
+        packageName: string
+        packageEcosystem: string
+        severity: string
+        summary: string
+        description: string
+        ghsaId: string
+        cveId?: string
+        manifestPath: string
+      }
+      /** Advisory context to pass when creating a worktree from a repository advisory */
+      advisoryContext?: AdvisoryContext
       /** Custom worktree name (used when retrying after path conflict) */
       customName?: string
       /** When true, skip auto-navigation (CMD+Click from new session modal) */
@@ -498,6 +515,8 @@ export function useCreateWorktree() {
         baseBranch,
         issueNumber: issueContext?.number,
         prNumber: prContext?.number,
+        securityAlertNumber: securityContext?.number,
+        advisoryGhsaId: advisoryContext?.ghsaId,
         customName,
       })
       const worktree = await invoke<Worktree>('create_worktree', {
@@ -505,6 +524,8 @@ export function useCreateWorktree() {
         baseBranch,
         issueContext,
         prContext,
+        securityContext,
+        advisoryContext,
         customName,
       })
       return worktree
@@ -599,6 +620,8 @@ export function useCreateWorktreeFromExistingBranch() {
       branchName,
       issueContext,
       prContext,
+      securityContext,
+      advisoryContext,
       background: _background,
     }: {
       projectId: string
@@ -633,6 +656,19 @@ export function useCreateWorktreeFromExistingBranch() {
           submittedAt?: string
         }[]
       }
+      securityContext?: {
+        number: number
+        packageName: string
+        packageEcosystem: string
+        severity: string
+        summary: string
+        description: string
+        ghsaId: string
+        cveId?: string
+        manifestPath: string
+      }
+      /** Advisory context to pass when creating a worktree from a repository advisory */
+      advisoryContext?: AdvisoryContext
     }): Promise<Worktree> => {
       if (!isTauri()) {
         throw new Error('Not in Tauri context')
@@ -649,6 +685,8 @@ export function useCreateWorktreeFromExistingBranch() {
           branchName,
           issueContext,
           prContext,
+          securityContext,
+          advisoryContext,
         }
       )
       return { ...worktree, status: 'pending' as const }

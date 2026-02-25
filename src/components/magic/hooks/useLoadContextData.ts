@@ -12,9 +12,15 @@ import {
   useGetGitHubPRByNumber,
   useLoadedIssueContexts,
   useLoadedPRContexts,
+  useDependabotAlerts,
+  useLoadedSecurityContexts,
+  useRepositoryAdvisories,
+  useLoadedAdvisoryContexts,
   useAttachedSavedContexts,
   filterIssues,
   filterPRs,
+  filterSecurityAlerts,
+  filterAdvisories,
   mergeWithSearchResults,
   prependExactMatch,
 } from '@/services/github'
@@ -52,6 +58,20 @@ export function useLoadContextData({
     refetch: refetchPRContexts,
   } = useLoadedPRContexts(activeSessionId)
 
+  // Security alert contexts for this session
+  const {
+    data: loadedSecurityContexts,
+    isLoading: isLoadingSecurityContexts,
+    refetch: refetchSecurityContexts,
+  } = useLoadedSecurityContexts(activeSessionId)
+
+  // Advisory contexts for this session
+  const {
+    data: loadedAdvisoryContexts,
+    isLoading: isLoadingAdvisoryContexts,
+    refetch: refetchAdvisoryContexts,
+  } = useLoadedAdvisoryContexts(activeSessionId)
+
   // Attached saved contexts for this session
   const {
     data: attachedSavedContexts,
@@ -69,6 +89,24 @@ export function useLoadContextData({
     refetch: refetchIssues,
   } = useGitHubIssues(worktreePath, issueState)
   const issues = issueResult?.issues
+
+  // GitHub security alerts query
+  const securityState = includeClosed ? 'all' : 'open'
+  const {
+    data: securityAlerts,
+    isLoading: isLoadingSecurityAlerts,
+    isFetching: isRefetchingSecurityAlerts,
+    error: securityError,
+    refetch: refetchSecurityAlerts,
+  } = useDependabotAlerts(worktreePath, securityState)
+
+  // Repository advisories query — fetch all states, filter closed on frontend
+  const {
+    data: advisories,
+    isLoading: isLoadingAdvisories,
+    isFetching: isRefetchingAdvisories,
+    refetch: refetchAdvisories,
+  } = useRepositoryAdvisories(worktreePath)
 
   // GitHub PRs query
   const prState = includeClosed ? 'all' : 'open'
@@ -134,6 +172,39 @@ export function useLoadContextData({
     const withExact = prependExactMatch(merged, exactPR)
     return withExact.filter(pr => !loadedNumbers.has(pr.number))
   }, [prs, searchQuery, searchedPRs, loadedPRContexts, exactPR])
+
+  // Filter security alerts locally, exclude already loaded ones, sort by state
+  const filteredSecurityAlerts = useMemo(() => {
+    const ALERT_STATE_ORDER = ['open', 'dismissed', 'fixed', 'auto_dismissed']
+    const loadedNumbers = new Set(
+      loadedSecurityContexts?.map(c => c.number) ?? []
+    )
+    const localFiltered = filterSecurityAlerts(securityAlerts ?? [], searchQuery)
+    return localFiltered
+      .filter(alert => !loadedNumbers.has(alert.number))
+      .sort(
+        (a, b) =>
+          (ALERT_STATE_ORDER.indexOf(a.state) ?? 99) -
+          (ALERT_STATE_ORDER.indexOf(b.state) ?? 99)
+      )
+  }, [securityAlerts, searchQuery, loadedSecurityContexts])
+
+  // Filter advisories locally, exclude already loaded ones, hide closed unless includeClosed, sort by state
+  const filteredAdvisories = useMemo(() => {
+    const ADVISORY_STATE_ORDER = ['triage', 'draft', 'published', 'closed']
+    const loadedGhsaIds = new Set(
+      loadedAdvisoryContexts?.map(c => c.ghsaId) ?? []
+    )
+    const localFiltered = filterAdvisories(advisories ?? [], searchQuery)
+    return localFiltered
+      .filter(advisory => !loadedGhsaIds.has(advisory.ghsaId))
+      .filter(advisory => includeClosed || (advisory.state !== 'closed' && advisory.state !== 'published'))
+      .sort(
+        (a, b) =>
+          (ADVISORY_STATE_ORDER.indexOf(a.state) ?? 99) -
+          (ADVISORY_STATE_ORDER.indexOf(b.state) ?? 99)
+      )
+  }, [advisories, searchQuery, loadedAdvisoryContexts, includeClosed])
 
   // Filter contexts by search query, excluding already attached ones
   const filteredContexts = useMemo(() => {
@@ -206,6 +277,12 @@ export function useLoadContextData({
     loadedPRContexts,
     isLoadingPRContexts,
     refetchPRContexts,
+    loadedSecurityContexts,
+    isLoadingSecurityContexts,
+    refetchSecurityContexts,
+    loadedAdvisoryContexts,
+    isLoadingAdvisoryContexts,
+    refetchAdvisoryContexts,
     attachedSavedContexts,
     isLoadingAttachedContexts,
     refetchAttachedContexts,
@@ -222,6 +299,17 @@ export function useLoadContextData({
     prsError,
     refetchPRs,
 
+    // Security alerts states
+    isLoadingSecurityAlerts,
+    isRefetchingSecurityAlerts,
+    securityError,
+    refetchSecurityAlerts,
+
+    // Advisory states
+    isLoadingAdvisories,
+    isRefetchingAdvisories,
+    refetchAdvisories,
+
     // Contexts/sessions states
     isLoadingContexts,
     isLoadingSessions,
@@ -231,6 +319,8 @@ export function useLoadContextData({
     // Filtered data
     filteredIssues,
     filteredPRs,
+    filteredSecurityAlerts,
+    filteredAdvisories,
     filteredContexts,
     filteredEntries,
 
@@ -240,6 +330,8 @@ export function useLoadContextData({
     // Derived booleans
     hasLoadedIssueContexts: (loadedIssueContexts?.length ?? 0) > 0,
     hasLoadedPRContexts: (loadedPRContexts?.length ?? 0) > 0,
+    hasLoadedSecurityContexts: (loadedSecurityContexts?.length ?? 0) > 0,
+    hasLoadedAdvisoryContexts: (loadedAdvisoryContexts?.length ?? 0) > 0,
     hasAttachedContexts: (attachedSavedContexts?.length ?? 0) > 0,
     hasContexts: filteredContexts.length > 0,
     hasSessions: filteredEntries.length > 0,

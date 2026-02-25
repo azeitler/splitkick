@@ -6,6 +6,12 @@ import {
   removeIssueContext,
   loadPRContext,
   removePRContext,
+  loadSecurityContext,
+  removeSecurityContext,
+  getSecurityContextContent,
+  loadAdvisoryContext,
+  removeAdvisoryContext,
+  getAdvisoryContextContent,
   attachSavedContext,
   removeSavedContext,
   getSavedContextContent,
@@ -15,6 +21,10 @@ import type { SavedContext, SaveContextResponse } from '@/types/chat'
 import type {
   LoadedIssueContext,
   LoadedPullRequestContext,
+  LoadedSecurityAlertContext,
+  LoadedAdvisoryContext,
+  DependabotAlert,
+  RepositoryAdvisory,
   GitHubIssue,
   GitHubPullRequest,
   AttachedSavedContext,
@@ -23,8 +33,9 @@ import type { MagicPromptProviders } from '@/types/preferences'
 import type { SessionWithContext } from '../LoadContextItems'
 
 export interface ViewingContext {
-  type: 'issue' | 'pr' | 'saved'
+  type: 'issue' | 'pr' | 'security' | 'advisory' | 'saved'
   number?: number
+  ghsaId?: string
   slug?: string
   title: string
   content: string
@@ -35,6 +46,8 @@ interface UseLoadContextHandlersOptions {
   worktreePath: string | null
   refetchIssueContexts: () => void
   refetchPRContexts: () => void
+  refetchSecurityContexts: () => void
+  refetchAdvisoryContexts: () => void
   refetchAttachedContexts: () => void
   refetchContexts: () => void
   renameMutation: { mutate: (args: { filename: string; newName: string }) => void }
@@ -54,6 +67,8 @@ export function useLoadContextHandlers({
   worktreePath,
   refetchIssueContexts,
   refetchPRContexts,
+  refetchSecurityContexts,
+  refetchAdvisoryContexts,
   refetchAttachedContexts,
   refetchContexts,
   renameMutation,
@@ -65,6 +80,8 @@ export function useLoadContextHandlers({
   const [removingNumbers, setRemovingNumbers] = useState<Set<number>>(new Set())
   const [loadingSlugs, setLoadingSlugs] = useState<Set<string>>(new Set())
   const [removingSlugs, setRemovingSlugs] = useState<Set<string>>(new Set())
+  const [loadingAdvisoryGhsaIds, setLoadingAdvisoryGhsaIds] = useState<Set<string>>(new Set())
+  const [removingAdvisoryGhsaIds, setRemovingAdvisoryGhsaIds] = useState<Set<string>>(new Set())
   const [generatingSessionId, setGeneratingSessionId] = useState<string | null>(null)
 
   // Inline edit state
@@ -79,6 +96,8 @@ export function useLoadContextHandlers({
   const resetState = useCallback(() => {
     setLoadingNumbers(new Set())
     setRemovingNumbers(new Set())
+    setLoadingAdvisoryGhsaIds(new Set())
+    setRemovingAdvisoryGhsaIds(new Set())
     setLoadingSlugs(new Set())
     setRemovingSlugs(new Set())
     setGeneratingSessionId(null)
@@ -231,6 +250,198 @@ export function useLoadContextHandlers({
     },
     [handleLoadPR, onClearSearch]
   )
+
+  // Security alert handlers
+  const handleLoadSecurityAlert = useCallback(
+    async (alertNumber: number, isRefresh = false) => {
+      if (!activeSessionId || !worktreePath) {
+        toast.error('No active session')
+        return
+      }
+
+      setLoadingNumbers(prev => new Set(prev).add(alertNumber))
+      const toastId = toast.loading(
+        isRefresh
+          ? `Refreshing alert #${alertNumber}...`
+          : `Loading alert #${alertNumber}...`
+      )
+
+      try {
+        const result = await loadSecurityContext(activeSessionId, alertNumber, worktreePath)
+        await refetchSecurityContexts()
+        toast.success(
+          `Alert #${result.number}: ${result.packageName} (${result.severity})`,
+          { id: toastId }
+        )
+      } catch (error) {
+        toast.error(`${error}`, { id: toastId })
+      } finally {
+        setLoadingNumbers(prev => {
+          const next = new Set(prev)
+          next.delete(alertNumber)
+          return next
+        })
+      }
+    },
+    [activeSessionId, worktreePath, refetchSecurityContexts]
+  )
+
+  const handleRemoveSecurityAlert = useCallback(
+    async (alertNumber: number) => {
+      if (!activeSessionId || !worktreePath) return
+
+      setRemovingNumbers(prev => new Set(prev).add(alertNumber))
+      try {
+        await removeSecurityContext(activeSessionId, alertNumber, worktreePath)
+        await refetchSecurityContexts()
+        toast.success(`Removed alert #${alertNumber} from context`)
+      } catch (error) {
+        toast.error(`Failed to remove alert: ${error}`)
+      } finally {
+        setRemovingNumbers(prev => {
+          const next = new Set(prev)
+          next.delete(alertNumber)
+          return next
+        })
+      }
+    },
+    [activeSessionId, worktreePath, refetchSecurityContexts]
+  )
+
+  const handleSelectSecurityAlert = useCallback(
+    (alert: DependabotAlert) => {
+      handleLoadSecurityAlert(alert.number, false)
+      onClearSearch()
+    },
+    [handleLoadSecurityAlert, onClearSearch]
+  )
+
+  const handleViewSecurityAlert = useCallback(
+    async (ctx: LoadedSecurityAlertContext) => {
+      if (!activeSessionId || !worktreePath) return
+      try {
+        const content = await getSecurityContextContent(
+          activeSessionId,
+          ctx.number,
+          worktreePath
+        )
+        setViewingContext({
+          type: 'security',
+          number: ctx.number,
+          title: `${ctx.packageName} - ${ctx.summary}`,
+          content,
+        })
+      } catch (error) {
+        toast.error(`Failed to load context: ${error}`)
+      }
+    },
+    [activeSessionId, worktreePath]
+  )
+
+  const handlePreviewSecurityAlert = useCallback((alert: DependabotAlert) => {
+    setViewingContext({
+      type: 'security',
+      number: alert.number,
+      title: `${alert.packageName} - ${alert.summary}`,
+      content: '',
+    })
+  }, [])
+
+  // Advisory handlers
+  const handleLoadAdvisory = useCallback(
+    async (ghsaId: string, isRefresh = false) => {
+      if (!activeSessionId || !worktreePath) {
+        toast.error('No active session')
+        return
+      }
+
+      setLoadingAdvisoryGhsaIds(prev => new Set(prev).add(ghsaId))
+      const toastId = toast.loading(
+        isRefresh
+          ? `Refreshing advisory ${ghsaId}...`
+          : `Loading advisory ${ghsaId}...`
+      )
+
+      try {
+        const result = await loadAdvisoryContext(activeSessionId, ghsaId, worktreePath)
+        await refetchAdvisoryContexts()
+        toast.success(
+          `Advisory ${result.ghsaId}: ${result.summary} (${result.severity})`,
+          { id: toastId }
+        )
+      } catch (error) {
+        toast.error(`${error}`, { id: toastId })
+      } finally {
+        setLoadingAdvisoryGhsaIds(prev => {
+          const next = new Set(prev)
+          next.delete(ghsaId)
+          return next
+        })
+      }
+    },
+    [activeSessionId, worktreePath, refetchAdvisoryContexts]
+  )
+
+  const handleRemoveAdvisory = useCallback(
+    async (ghsaId: string) => {
+      if (!activeSessionId || !worktreePath) return
+
+      setRemovingAdvisoryGhsaIds(prev => new Set(prev).add(ghsaId))
+      try {
+        await removeAdvisoryContext(activeSessionId, ghsaId, worktreePath)
+        await refetchAdvisoryContexts()
+        toast.success(`Removed advisory ${ghsaId} from context`)
+      } catch (error) {
+        toast.error(`Failed to remove advisory: ${error}`)
+      } finally {
+        setRemovingAdvisoryGhsaIds(prev => {
+          const next = new Set(prev)
+          next.delete(ghsaId)
+          return next
+        })
+      }
+    },
+    [activeSessionId, worktreePath, refetchAdvisoryContexts]
+  )
+
+  const handleSelectAdvisory = useCallback(
+    (advisory: RepositoryAdvisory) => {
+      handleLoadAdvisory(advisory.ghsaId, false)
+      onClearSearch()
+    },
+    [handleLoadAdvisory, onClearSearch]
+  )
+
+  const handleViewAdvisory = useCallback(
+    async (ctx: LoadedAdvisoryContext) => {
+      if (!activeSessionId || !worktreePath) return
+      try {
+        const content = await getAdvisoryContextContent(
+          activeSessionId,
+          ctx.ghsaId,
+          worktreePath
+        )
+        setViewingContext({
+          type: 'advisory',
+          ghsaId: ctx.ghsaId,
+          title: `${ctx.ghsaId} - ${ctx.summary}`,
+          content,
+        })
+      } catch (error) {
+        toast.error(`Failed to load context: ${error}`)
+      }
+    },
+    [activeSessionId, worktreePath]
+  )
+
+  const handlePreviewAdvisory = useCallback((advisory: RepositoryAdvisory) => {
+    setViewingContext({
+      type: 'advisory',
+      ghsaId: advisory.ghsaId,
+      title: `${advisory.ghsaId} - ${advisory.summary}`,
+      content: '',
+    })
+  }, [])
 
   // Context handlers
   const handleDeleteContext = useCallback(
@@ -419,6 +630,8 @@ export function useLoadContextHandlers({
     // In-flight tracking
     loadingNumbers,
     removingNumbers,
+    loadingAdvisoryGhsaIds,
+    removingAdvisoryGhsaIds,
     loadingSlugs,
     removingSlugs,
     generatingSessionId,
@@ -449,6 +662,20 @@ export function useLoadContextHandlers({
     handleViewPR,
     handlePreviewPR,
     handleSelectPR,
+
+    // Security alert handlers
+    handleLoadSecurityAlert,
+    handleRemoveSecurityAlert,
+    handleSelectSecurityAlert,
+    handleViewSecurityAlert,
+    handlePreviewSecurityAlert,
+
+    // Advisory handlers
+    handleLoadAdvisory,
+    handleRemoveAdvisory,
+    handleSelectAdvisory,
+    handleViewAdvisory,
+    handlePreviewAdvisory,
 
     // Context/session handlers
     handleDeleteContext,

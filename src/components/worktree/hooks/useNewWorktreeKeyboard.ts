@@ -1,12 +1,18 @@
 import { useCallback, useEffect } from 'react'
 import type { TabId } from '../NewWorktreeModal'
-import type { GitHubIssue, GitHubPullRequest } from '@/types/github'
+import type {
+  GitHubIssue,
+  GitHubPullRequest,
+  DependabotAlert,
+  RepositoryAdvisory,
+} from '@/types/github'
 
 interface Params {
   activeTab: TabId
   setActiveTab: (tab: TabId) => void
   filteredIssues: GitHubIssue[]
   filteredPRs: GitHubPullRequest[]
+  filteredSecurityAlerts: DependabotAlert[]
   filteredBranches: string[]
   selectedItemIndex: number
   setSelectedItemIndex: (i: number | ((prev: number) => number)) => void
@@ -25,6 +31,25 @@ interface Params {
     background?: boolean
   ) => void
   handlePreviewPR: (pr: GitHubPullRequest) => void
+  handleSelectSecurityAlert: (
+    alert: DependabotAlert,
+    background?: boolean
+  ) => void
+  handleSelectSecurityAlertAndInvestigate: (
+    alert: DependabotAlert,
+    background?: boolean
+  ) => void
+  handlePreviewSecurityAlert: (alert: DependabotAlert) => void
+  filteredAdvisories: RepositoryAdvisory[]
+  handleSelectAdvisory: (
+    advisory: RepositoryAdvisory,
+    background?: boolean
+  ) => void
+  handleSelectAdvisoryAndInvestigate: (
+    advisory: RepositoryAdvisory,
+    background?: boolean
+  ) => void
+  handlePreviewAdvisory: (advisory: RepositoryAdvisory) => void
   handleSelectBranch: (branchName: string, background?: boolean) => void
 }
 
@@ -33,6 +58,7 @@ export function useNewWorktreeKeyboard({
   setActiveTab,
   filteredIssues,
   filteredPRs,
+  filteredSecurityAlerts,
   filteredBranches,
   selectedItemIndex,
   setSelectedItemIndex,
@@ -45,6 +71,13 @@ export function useNewWorktreeKeyboard({
   handleSelectPR,
   handleSelectPRAndInvestigate,
   handlePreviewPR,
+  handleSelectSecurityAlert,
+  handleSelectSecurityAlertAndInvestigate,
+  handlePreviewSecurityAlert,
+  filteredAdvisories,
+  handleSelectAdvisory,
+  handleSelectAdvisoryAndInvestigate,
+  handlePreviewAdvisory,
   handleSelectBranch,
 }: Params) {
   // Scroll selected item into view
@@ -77,6 +110,11 @@ export function useNewWorktreeKeyboard({
           return
         }
         if (key === '4') {
+          e.preventDefault()
+          setActiveTab('security')
+          return
+        }
+        if (key === '5') {
           e.preventDefault()
           setActiveTab('branches')
           return
@@ -192,6 +230,80 @@ export function useNewWorktreeKeyboard({
         }
       }
 
+      // Security tab navigation (Dependabot alerts + Repository advisories)
+      const totalSecurityItems =
+        filteredSecurityAlerts.length + filteredAdvisories.length
+      if (activeTab === 'security' && totalSecurityItems > 0) {
+        if (key === 'arrowdown') {
+          e.preventDefault()
+          setSelectedItemIndex((prev: number) =>
+            Math.min(prev + 1, totalSecurityItems - 1)
+          )
+          return
+        }
+        if (key === 'arrowup') {
+          e.preventDefault()
+          setSelectedItemIndex((prev: number) => Math.max(prev - 1, 0))
+          return
+        }
+        if (key === 'enter') {
+          e.preventDefault()
+          if (selectedItemIndex < filteredSecurityAlerts.length) {
+            const alert = filteredSecurityAlerts[selectedItemIndex]
+            if (alert) handleSelectSecurityAlert(alert, e.metaKey)
+          } else {
+            const advisory =
+              filteredAdvisories[
+                selectedItemIndex - filteredSecurityAlerts.length
+              ]
+            if (advisory) handleSelectAdvisory(advisory, e.metaKey)
+          }
+          return
+        }
+        if (key === 'o' && (e.metaKey || e.ctrlKey)) {
+          e.preventDefault()
+          e.nativeEvent.stopImmediatePropagation()
+          if (selectedItemIndex < filteredSecurityAlerts.length) {
+            const alert = filteredSecurityAlerts[selectedItemIndex]
+            if (alert) handlePreviewSecurityAlert(alert)
+          } else {
+            const advisory =
+              filteredAdvisories[
+                selectedItemIndex - filteredSecurityAlerts.length
+              ]
+            if (advisory) handlePreviewAdvisory(advisory)
+          }
+          return
+        }
+        if (
+          key === 'm' &&
+          (e.metaKey || e.ctrlKey) &&
+          creatingFromNumber === null
+        ) {
+          e.preventDefault()
+          e.nativeEvent.stopImmediatePropagation()
+          if (selectedItemIndex < filteredSecurityAlerts.length) {
+            const alert = filteredSecurityAlerts[selectedItemIndex]
+            if (alert)
+              handleSelectSecurityAlertAndInvestigate(
+                alert,
+                e.metaKey || e.ctrlKey
+              )
+          } else {
+            const advisory =
+              filteredAdvisories[
+                selectedItemIndex - filteredSecurityAlerts.length
+              ]
+            if (advisory)
+              handleSelectAdvisoryAndInvestigate(
+                advisory,
+                e.metaKey || e.ctrlKey
+              )
+          }
+          return
+        }
+      }
+
       // Branches tab navigation
       if (activeTab === 'branches' && filteredBranches.length > 0) {
         if (key === 'arrowdown') {
@@ -217,6 +329,8 @@ export function useNewWorktreeKeyboard({
       activeTab,
       filteredIssues,
       filteredPRs,
+      filteredSecurityAlerts,
+      filteredAdvisories,
       filteredBranches,
       selectedItemIndex,
       handleCreateWorktree,
@@ -227,6 +341,12 @@ export function useNewWorktreeKeyboard({
       handleSelectPR,
       handleSelectPRAndInvestigate,
       handlePreviewPR,
+      handleSelectSecurityAlert,
+      handleSelectSecurityAlertAndInvestigate,
+      handlePreviewSecurityAlert,
+      handleSelectAdvisory,
+      handleSelectAdvisoryAndInvestigate,
+      handlePreviewAdvisory,
       handleSelectBranch,
       creatingFromNumber,
       setActiveTab,

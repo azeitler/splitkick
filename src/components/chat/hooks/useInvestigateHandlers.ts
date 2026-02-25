@@ -13,6 +13,8 @@ import { resolveBackend, supportsAdaptiveThinking } from '@/lib/model-utils'
 import {
   DEFAULT_INVESTIGATE_ISSUE_PROMPT,
   DEFAULT_INVESTIGATE_PR_PROMPT,
+  DEFAULT_INVESTIGATE_SECURITY_ALERT_PROMPT,
+  DEFAULT_INVESTIGATE_ADVISORY_PROMPT,
   DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT,
   DEFAULT_PARALLEL_EXECUTION_PROMPT,
   resolveMagicPromptProvider,
@@ -95,15 +97,19 @@ export function useInvestigateHandlers({
   const queryClient = useQueryClient()
 
   const handleInvestigate = useCallback(
-    async (type: 'issue' | 'pr') => {
+    async (type: 'issue' | 'pr' | 'security-alert' | 'advisory') => {
       if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
 
       const modelKey =
-        type === 'issue' ? 'investigate_issue_model' : 'investigate_pr_model'
+        type === 'issue' ? 'investigate_issue_model'
+          : type === 'pr' ? 'investigate_pr_model'
+          : type === 'security-alert' ? 'investigate_security_alert_model'
+          : 'investigate_advisory_model' as const
       const providerKey =
-        type === 'issue'
-          ? 'investigate_issue_provider'
-          : 'investigate_pr_provider'
+        type === 'issue' ? 'investigate_issue_provider'
+          : type === 'pr' ? 'investigate_pr_provider'
+          : type === 'security-alert' ? 'investigate_security_alert_provider'
+          : 'investigate_advisory_provider' as const
       const investigateModel =
         preferences?.magic_prompt_models?.[modelKey] ?? selectedModelRef.current
       const investigateProvider = resolveMagicPromptProvider(
@@ -135,7 +141,7 @@ export function useInvestigateHandlers({
         prompt = template
           .replace(/\{issueWord\}/g, word)
           .replace(/\{issueRefs\}/g, refs)
-      } else {
+      } else if (type === 'pr') {
         const contexts = await queryClient.fetchQuery({
           queryKey: ['investigate-contexts', 'pr', activeWorktreeId],
           queryFn: () =>
@@ -154,6 +160,46 @@ export function useInvestigateHandlers({
         prompt = template
           .replace(/\{prWord\}/g, word)
           .replace(/\{prRefs\}/g, refs)
+      } else if (type === 'security-alert') {
+        const contexts = await queryClient.fetchQuery({
+          queryKey: ['investigate-contexts', 'security-alert', activeWorktreeId],
+          queryFn: () =>
+            invoke<{ number: number; packageName: string; severity: string }[]>(
+              'list_loaded_security_contexts',
+              { sessionId: activeWorktreeId }
+            ),
+          staleTime: 0,
+        })
+        const refs = (contexts ?? []).map(c => `#${c.number} ${c.packageName} (${c.severity})`).join(', ')
+        const word = (contexts ?? []).length === 1 ? 'alert' : 'alerts'
+        const customPrompt = preferences?.magic_prompts?.investigate_security_alert
+        const template =
+          customPrompt && customPrompt.trim()
+            ? customPrompt
+            : DEFAULT_INVESTIGATE_SECURITY_ALERT_PROMPT
+        prompt = template
+          .replace(/\{alertWord\}/g, word)
+          .replace(/\{alertRefs\}/g, refs)
+      } else {
+        const contexts = await queryClient.fetchQuery({
+          queryKey: ['investigate-contexts', 'advisory', activeWorktreeId],
+          queryFn: () =>
+            invoke<{ ghsaId: string; severity: string; summary: string }[]>(
+              'list_loaded_advisory_contexts',
+              { sessionId: activeWorktreeId }
+            ),
+          staleTime: 0,
+        })
+        const refs = (contexts ?? []).map(c => `${c.ghsaId} (${c.severity})`).join(', ')
+        const word = (contexts ?? []).length === 1 ? 'advisory' : 'advisories'
+        const customPrompt = preferences?.magic_prompts?.investigate_advisory
+        const template =
+          customPrompt && customPrompt.trim()
+            ? customPrompt
+            : DEFAULT_INVESTIGATE_ADVISORY_PROMPT
+        prompt = template
+          .replace(/\{advisoryWord\}/g, word)
+          .replace(/\{advisoryRefs\}/g, refs)
       }
 
       const {
@@ -256,6 +302,8 @@ export function useInvestigateHandlers({
       queryClient,
       preferences?.magic_prompts?.investigate_issue,
       preferences?.magic_prompts?.investigate_pr,
+      preferences?.magic_prompts?.investigate_security_alert,
+      preferences?.magic_prompts?.investigate_advisory,
       preferences?.default_provider,
       preferences?.parallel_execution_prompt_enabled,
       preferences?.magic_prompts?.parallel_execution,

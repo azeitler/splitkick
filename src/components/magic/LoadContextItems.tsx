@@ -7,6 +7,8 @@ import {
   MessageSquare,
   Pencil,
   RefreshCw,
+  Shield,
+  ShieldAlert,
   Trash2,
   X,
 } from 'lucide-react'
@@ -20,8 +22,12 @@ import { cn } from '@/lib/utils'
 import type {
   GitHubIssue,
   GitHubPullRequest,
+  DependabotAlert,
+  RepositoryAdvisory,
   LoadedIssueContext,
   LoadedPullRequestContext,
+  LoadedSecurityAlertContext,
+  LoadedAdvisoryContext,
   AttachedSavedContext,
 } from '@/types/github'
 import type { SavedContext, AllSessionsEntry, Session } from '@/types/chat'
@@ -243,6 +249,411 @@ export function LoadedPRItem({
           <TooltipContent>Remove from context</TooltipContent>
         </Tooltip>
       </div>
+    </div>
+  )
+}
+
+// =============================================================================
+// Severity Badge (shared)
+// =============================================================================
+
+const SEVERITY_COLORS: Record<string, string> = {
+  critical: 'bg-red-500/10 text-red-600 border-red-500/20',
+  high: 'bg-orange-500/10 text-orange-600 border-orange-500/20',
+  medium: 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20',
+  low: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+}
+
+function SeverityBadge({ severity }: { severity: string }) {
+  const colorClasses = SEVERITY_COLORS[severity.toLowerCase()] ?? 'bg-muted text-muted-foreground border-border'
+  return (
+    <span
+      className={cn(
+        'px-1.5 py-0.5 text-[10px] rounded-full border capitalize flex-shrink-0',
+        colorClasses
+      )}
+    >
+      {severity}
+    </span>
+  )
+}
+
+// =============================================================================
+// Loaded Security Item
+// =============================================================================
+
+interface LoadedSecurityItemProps {
+  context: LoadedSecurityAlertContext
+  isLoading: boolean
+  isRemoving: boolean
+  onRefresh: () => void
+  onRemove: () => void
+  onView: () => void
+}
+
+export function LoadedSecurityItem({
+  context,
+  isLoading,
+  isRemoving,
+  onRefresh,
+  onRemove,
+  onView,
+}: LoadedSecurityItemProps) {
+  const isDisabled = isLoading || isRemoving
+
+  return (
+    <div
+      className={cn(
+        'flex items-center gap-2 px-4 py-2 hover:bg-accent/50 transition-colors',
+        isDisabled && 'opacity-50'
+      )}
+    >
+      <Shield className="h-4 w-4 text-orange-500 flex-shrink-0" />
+      <SeverityBadge severity={context.severity} />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium truncate">
+            {context.packageName}
+          </span>
+          <span className="text-xs text-muted-foreground truncate">
+            {context.summary}
+          </span>
+        </div>
+      </div>
+      <div className="flex items-center gap-1 flex-shrink-0">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={onView}
+              disabled={isDisabled}
+              className={cn(
+                'p-1 rounded hover:bg-accent focus:outline-none focus:ring-1 focus:ring-ring',
+                'transition-colors'
+              )}
+            >
+              <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>View context</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={onRefresh}
+              disabled={isDisabled}
+              className={cn(
+                'p-1 rounded hover:bg-accent focus:outline-none focus:ring-1 focus:ring-ring',
+                'transition-colors'
+              )}
+            >
+              {isLoading ? (
+                <Loader2 className="h-3.5 w-3.5 text-muted-foreground animate-spin" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />
+              )}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Refresh alert</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={onRemove}
+              disabled={isDisabled}
+              className={cn(
+                'p-1 rounded hover:bg-destructive/10 focus:outline-none focus:ring-1 focus:ring-ring',
+                'transition-colors'
+              )}
+            >
+              {isRemoving ? (
+                <Loader2 className="h-3.5 w-3.5 text-muted-foreground animate-spin" />
+              ) : (
+                <X className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+              )}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Remove from context</TooltipContent>
+        </Tooltip>
+      </div>
+    </div>
+  )
+}
+
+// =============================================================================
+// Security Alert Item (search result)
+// =============================================================================
+
+interface SecurityAlertItemProps {
+  alert: DependabotAlert
+  index: number
+  isSelected: boolean
+  isLoading: boolean
+  onMouseEnter: () => void
+  onClick: () => void
+  onPreview: () => void
+}
+
+export function SecurityAlertItem({
+  alert,
+  index,
+  isSelected,
+  isLoading,
+  onMouseEnter,
+  onClick,
+  onPreview,
+}: SecurityAlertItemProps) {
+  return (
+    <div
+      data-load-item-index={index}
+      onMouseEnter={onMouseEnter}
+      className={cn(
+        'w-full flex items-start gap-3 px-3 py-2 text-left transition-colors',
+        'hover:bg-accent',
+        isSelected && 'bg-accent',
+        isLoading && 'opacity-50'
+      )}
+    >
+      <button
+        onClick={onClick}
+        disabled={isLoading}
+        className="flex items-start gap-3 flex-1 min-w-0 focus:outline-none"
+      >
+        {isLoading ? (
+          <Loader2 className="h-4 w-4 mt-0.5 animate-spin text-muted-foreground flex-shrink-0" />
+        ) : (
+          <Shield
+            className={cn(
+              'h-4 w-4 mt-0.5 flex-shrink-0',
+              alert.state === 'open' ? 'text-orange-500' : 'text-muted-foreground'
+            )}
+          />
+        )}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <SeverityBadge severity={alert.severity} />
+            <span className="text-xs text-muted-foreground shrink-0">
+              #{alert.number}
+            </span>
+            <span className="text-sm font-medium truncate">
+              {alert.packageName}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
+            <span className="text-xs text-muted-foreground truncate">
+              {alert.summary}
+            </span>
+            <span className="text-xs text-muted-foreground/60 shrink-0">
+              {alert.cveId ?? alert.ghsaId}
+            </span>
+          </div>
+        </div>
+      </button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            onClick={e => {
+              e.stopPropagation()
+              onPreview()
+            }}
+            className="inline-flex h-6 w-6 items-center justify-center rounded px-1 text-foreground/80 hover:bg-accent hover:text-foreground focus:outline-none focus:ring-1 focus:ring-ring transition-colors mt-0.5 flex-shrink-0"
+          >
+            <Eye className="h-3.5 w-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>
+          Preview alert ({getModifierSymbol()}O)
+        </TooltipContent>
+      </Tooltip>
+    </div>
+  )
+}
+
+// =============================================================================
+// Loaded Advisory Item
+// =============================================================================
+
+interface LoadedAdvisoryItemProps {
+  context: LoadedAdvisoryContext
+  isLoading: boolean
+  isRemoving: boolean
+  onRefresh: () => void
+  onRemove: () => void
+  onView: () => void
+}
+
+export function LoadedAdvisoryItem({
+  context,
+  isLoading,
+  isRemoving,
+  onRefresh,
+  onRemove,
+  onView,
+}: LoadedAdvisoryItemProps) {
+  const isDisabled = isLoading || isRemoving
+
+  return (
+    <div
+      className={cn(
+        'flex items-center gap-2 px-4 py-2 hover:bg-accent/50 transition-colors',
+        isDisabled && 'opacity-50'
+      )}
+    >
+      <ShieldAlert className="h-4 w-4 text-orange-500 flex-shrink-0" />
+      <SeverityBadge severity={context.severity} />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium truncate">
+            {context.ghsaId}
+          </span>
+          <span className="text-xs text-muted-foreground truncate">
+            {context.summary}
+          </span>
+        </div>
+      </div>
+      <div className="flex items-center gap-1 flex-shrink-0">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={onView}
+              disabled={isDisabled}
+              className={cn(
+                'p-1 rounded hover:bg-accent focus:outline-none focus:ring-1 focus:ring-ring',
+                'transition-colors'
+              )}
+            >
+              <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>View context</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={onRefresh}
+              disabled={isDisabled}
+              className={cn(
+                'p-1 rounded hover:bg-accent focus:outline-none focus:ring-1 focus:ring-ring',
+                'transition-colors'
+              )}
+            >
+              {isLoading ? (
+                <Loader2 className="h-3.5 w-3.5 text-muted-foreground animate-spin" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />
+              )}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Refresh advisory</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={onRemove}
+              disabled={isDisabled}
+              className={cn(
+                'p-1 rounded hover:bg-destructive/10 focus:outline-none focus:ring-1 focus:ring-ring',
+                'transition-colors'
+              )}
+            >
+              {isRemoving ? (
+                <Loader2 className="h-3.5 w-3.5 text-muted-foreground animate-spin" />
+              ) : (
+                <X className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+              )}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Remove from context</TooltipContent>
+        </Tooltip>
+      </div>
+    </div>
+  )
+}
+
+// =============================================================================
+// Advisory Item (search result)
+// =============================================================================
+
+interface AdvisoryItemProps {
+  advisory: RepositoryAdvisory
+  index: number
+  isSelected: boolean
+  isLoading: boolean
+  onMouseEnter: () => void
+  onClick: () => void
+  onPreview: () => void
+}
+
+export function AdvisoryItem({
+  advisory,
+  index,
+  isSelected,
+  isLoading,
+  onMouseEnter,
+  onClick,
+  onPreview,
+}: AdvisoryItemProps) {
+  const vulnCount = advisory.vulnerabilities.length
+  return (
+    <div
+      data-load-item-index={index}
+      onMouseEnter={onMouseEnter}
+      className={cn(
+        'w-full flex items-start gap-3 px-3 py-2 text-left transition-colors',
+        'hover:bg-accent',
+        isSelected && 'bg-accent',
+        isLoading && 'opacity-50'
+      )}
+    >
+      <button
+        onClick={onClick}
+        disabled={isLoading}
+        className="flex items-start gap-3 flex-1 min-w-0 focus:outline-none"
+      >
+        {isLoading ? (
+          <Loader2 className="h-4 w-4 mt-0.5 animate-spin text-muted-foreground flex-shrink-0" />
+        ) : (
+          <ShieldAlert
+            className={cn(
+              'h-4 w-4 mt-0.5 flex-shrink-0',
+              advisory.state === 'published' ? 'text-orange-500' : 'text-muted-foreground'
+            )}
+          />
+        )}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <SeverityBadge severity={advisory.severity} />
+            <span className="text-sm font-medium truncate">
+              {advisory.summary}
+            </span>
+            {vulnCount > 0 && (
+              <span className="shrink-0 text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full border border-border">
+                {vulnCount} {vulnCount === 1 ? 'pkg' : 'pkgs'}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <span className="text-xs text-muted-foreground/60 shrink-0">
+              {advisory.cveId ?? advisory.ghsaId}
+            </span>
+          </div>
+        </div>
+      </button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            onClick={e => {
+              e.stopPropagation()
+              onPreview()
+            }}
+            className="inline-flex h-6 w-6 items-center justify-center rounded px-1 text-foreground/80 hover:bg-accent hover:text-foreground focus:outline-none focus:ring-1 focus:ring-ring transition-colors mt-0.5 flex-shrink-0"
+          >
+            <Eye className="h-3.5 w-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>
+          Preview advisory ({getModifierSymbol()}O)
+        </TooltipContent>
+      </Tooltip>
     </div>
   )
 }

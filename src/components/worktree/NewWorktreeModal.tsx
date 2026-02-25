@@ -4,6 +4,7 @@ import {
   Zap,
   CircleDot,
   GitPullRequest,
+  Shield,
   GitBranch,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -22,10 +23,11 @@ import { SessionTabBar } from './NewWorktreeItems'
 import { QuickActionsTab } from './QuickActionsTab'
 import { GitHubIssuesTab } from './GitHubIssuesTab'
 import { GitHubPRsTab } from './GitHubPRsTab'
+import { SecurityAlertsTab } from './SecurityAlertsTab'
 import { BranchesTab } from './BranchesTab'
 import { IssuePreviewModal } from './IssuePreviewModal'
 
-export type TabId = 'quick' | 'issues' | 'prs' | 'branches'
+export type TabId = 'quick' | 'issues' | 'prs' | 'security' | 'branches'
 
 export interface Tab {
   id: TabId
@@ -39,7 +41,8 @@ export const TABS: Tab[] = [
   { id: 'quick', label: 'Actions', key: '1', icon: Zap },
   { id: 'issues', label: 'Issues', key: '2', icon: CircleDot },
   { id: 'prs', label: 'PRs', key: '3', icon: GitPullRequest },
-  { id: 'branches', label: 'Branches', key: '4', icon: GitBranch },
+  { id: 'security', label: 'Security', key: '4', icon: Shield },
+  { id: 'branches', label: 'Branches', key: '5', icon: GitBranch },
 ]
 
 export function NewWorktreeModal() {
@@ -52,8 +55,9 @@ export function NewWorktreeModal() {
   const [includeClosed, setIncludeClosed] = useState(false)
   const [selectedItemIndex, setSelectedItemIndex] = useState(0)
   const [previewItem, setPreviewItem] = useState<{
-    type: 'issue' | 'pr'
+    type: 'issue' | 'pr' | 'security' | 'advisory'
     number: number
+    ghsaId?: string
   } | null>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
@@ -74,11 +78,21 @@ export function NewWorktreeModal() {
     setPreviewItem({ type: 'pr', number: pr.number })
   }
 
+  const handlePreviewSecurityAlert = (alert: { number: number }) => {
+    setPreviewItem({ type: 'security', number: alert.number })
+  }
+
+  const handlePreviewAdvisory = (advisory: { ghsaId: string }) => {
+    // Advisories use ghsaId as identifier; we pass number=0 since it's not number-based
+    setPreviewItem({ type: 'advisory', number: 0, ghsaId: advisory.ghsaId })
+  }
+
   const { handleKeyDown } = useNewWorktreeKeyboard({
     activeTab,
     setActiveTab,
     filteredIssues: data.filteredIssues,
     filteredPRs: data.filteredPRs,
+    filteredSecurityAlerts: data.filteredSecurityAlerts,
     filteredBranches: data.filteredBranches,
     selectedItemIndex,
     setSelectedItemIndex,
@@ -91,6 +105,15 @@ export function NewWorktreeModal() {
     handleSelectPR: handlers.handleSelectPR,
     handleSelectPRAndInvestigate: handlers.handleSelectPRAndInvestigate,
     handlePreviewPR,
+    handleSelectSecurityAlert: handlers.handleSelectSecurityAlert,
+    handleSelectSecurityAlertAndInvestigate:
+      handlers.handleSelectSecurityAlertAndInvestigate,
+    handlePreviewSecurityAlert,
+    filteredAdvisories: data.filteredAdvisories,
+    handleSelectAdvisory: handlers.handleSelectAdvisory,
+    handleSelectAdvisoryAndInvestigate:
+      handlers.handleSelectAdvisoryAndInvestigate,
+    handlePreviewAdvisory,
     handleSelectBranch: handlers.handleSelectBranch,
   })
 
@@ -112,6 +135,7 @@ export function NewWorktreeModal() {
     if (
       (activeTab === 'issues' ||
         activeTab === 'prs' ||
+        activeTab === 'security' ||
         activeTab === 'branches') &&
       newWorktreeModalOpen
     ) {
@@ -215,6 +239,43 @@ export function NewWorktreeModal() {
             />
           )}
 
+          {activeTab === 'security' && (
+            <SecurityAlertsTab
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+              includeClosed={includeClosed}
+              setIncludeClosed={setIncludeClosed}
+              alerts={data.filteredSecurityAlerts}
+              isLoading={data.isLoadingSecurityAlerts}
+              isRefetching={data.isRefetchingSecurityAlerts}
+              error={data.securityError}
+              onRefresh={() => {
+                data.refetchSecurityAlerts()
+                data.refetchAdvisories()
+              }}
+              selectedIndex={selectedItemIndex}
+              setSelectedIndex={setSelectedItemIndex}
+              onSelectAlert={handlers.handleSelectSecurityAlert}
+              onInvestigateAlert={
+                handlers.handleSelectSecurityAlertAndInvestigate
+              }
+              onPreviewAlert={handlePreviewSecurityAlert}
+              creatingFromNumber={handlers.creatingFromNumber}
+              searchInputRef={searchInputRef}
+              onGhLogin={triggerGhLogin}
+              isGhInstalled={isGhInstalled}
+              filteredAdvisories={data.filteredAdvisories}
+              isLoadingAdvisories={data.isLoadingAdvisories}
+              isRefetchingAdvisories={data.isRefetchingAdvisories}
+              onSelectAdvisory={handlers.handleSelectAdvisory}
+              onInvestigateAdvisory={
+                handlers.handleSelectAdvisoryAndInvestigate
+              }
+              onPreviewAdvisory={handlePreviewAdvisory}
+              creatingFromGhsaId={handlers.creatingFromGhsaId}
+            />
+          )}
+
           {activeTab === 'branches' && (
             <BranchesTab
               searchQuery={searchQuery}
@@ -255,6 +316,7 @@ export function NewWorktreeModal() {
           projectPath={data.selectedProject.path}
           type={previewItem.type}
           number={previewItem.number}
+          ghsaId={previewItem.ghsaId}
         />
       )}
     </Dialog>

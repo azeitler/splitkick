@@ -36,7 +36,7 @@ interface UIState {
   loadContextModalOpen: boolean
   magicModalOpen: boolean
   newWorktreeModalOpen: boolean
-  newWorktreeModalDefaultTab: 'quick' | 'issues' | 'prs' | null
+  newWorktreeModalDefaultTab: 'quick' | 'issues' | 'prs' | 'security' | null
   releaseNotesModalOpen: boolean
   updatePrModalOpen: boolean
   workflowRunsModalOpen: boolean
@@ -51,6 +51,10 @@ interface UIState {
   autoInvestigateWorktreeIds: Set<string>
   /** Worktree IDs that should auto-trigger investigate-pr when created */
   autoInvestigatePRWorktreeIds: Set<string>
+  /** Worktree IDs that should auto-trigger investigate-security-alert when created */
+  autoInvestigateSecurityAlertWorktreeIds: Set<string>
+  /** Worktree IDs that should auto-trigger investigate-advisory when created */
+  autoInvestigateAdvisoryWorktreeIds: Set<string>
   /** Counter for background worktree creations (CMD+Click) — skip auto-navigation */
   pendingBackgroundCreations: number
   /** Worktree IDs that should auto-open first session modal when canvas mounts */
@@ -97,7 +101,7 @@ interface UIState {
   setMagicModalOpen: (open: boolean) => void
   setNewWorktreeModalOpen: (open: boolean) => void
   setNewWorktreeModalDefaultTab: (
-    tab: 'quick' | 'issues' | 'prs' | null
+    tab: 'quick' | 'issues' | 'prs' | 'security' | null
   ) => void
   setReleaseNotesModalOpen: (open: boolean) => void
   setUpdatePrModalOpen: (open: boolean) => void
@@ -119,6 +123,10 @@ interface UIState {
   consumeAutoInvestigate: (worktreeId: string) => boolean
   markWorktreeForAutoInvestigatePR: (worktreeId: string) => void
   consumeAutoInvestigatePR: (worktreeId: string) => boolean
+  markWorktreeForAutoInvestigateSecurityAlert: (worktreeId: string) => void
+  consumeAutoInvestigateSecurityAlert: (worktreeId: string) => boolean
+  markWorktreeForAutoInvestigateAdvisory: (worktreeId: string) => void
+  consumeAutoInvestigateAdvisory: (worktreeId: string) => boolean
   markWorktreeForAutoOpenSession: (
     worktreeId: string,
     sessionId?: string
@@ -170,6 +178,8 @@ export const useUIStore = create<UIState>()(
       cliLoginModalCommand: null,
       autoInvestigateWorktreeIds: new Set(),
       autoInvestigatePRWorktreeIds: new Set(),
+      autoInvestigateSecurityAlertWorktreeIds: new Set(),
+      autoInvestigateAdvisoryWorktreeIds: new Set(),
       pendingBackgroundCreations: 0,
       autoOpenSessionWorktreeIds: new Set(),
       pendingAutoOpenSessionIds: {},
@@ -438,6 +448,62 @@ export const useUIStore = create<UIState>()(
             },
             undefined,
             'consumeAutoInvestigatePR'
+          )
+          return true
+        }
+        return false
+      },
+
+      markWorktreeForAutoInvestigateSecurityAlert: worktreeId =>
+        set(
+          state => ({
+            autoInvestigateSecurityAlertWorktreeIds: new Set([
+              ...state.autoInvestigateSecurityAlertWorktreeIds,
+              worktreeId,
+            ]),
+          }),
+          undefined,
+          'markWorktreeForAutoInvestigateSecurityAlert'
+        ),
+
+      consumeAutoInvestigateSecurityAlert: worktreeId => {
+        if (get().autoInvestigateSecurityAlertWorktreeIds.has(worktreeId)) {
+          set(
+            state => {
+              const newSet = new Set(state.autoInvestigateSecurityAlertWorktreeIds)
+              newSet.delete(worktreeId)
+              return { autoInvestigateSecurityAlertWorktreeIds: newSet }
+            },
+            undefined,
+            'consumeAutoInvestigateSecurityAlert'
+          )
+          return true
+        }
+        return false
+      },
+
+      markWorktreeForAutoInvestigateAdvisory: worktreeId =>
+        set(
+          state => ({
+            autoInvestigateAdvisoryWorktreeIds: new Set([
+              ...state.autoInvestigateAdvisoryWorktreeIds,
+              worktreeId,
+            ]),
+          }),
+          undefined,
+          'markWorktreeForAutoInvestigateAdvisory'
+        ),
+
+      consumeAutoInvestigateAdvisory: worktreeId => {
+        if (get().autoInvestigateAdvisoryWorktreeIds.has(worktreeId)) {
+          set(
+            state => {
+              const newSet = new Set(state.autoInvestigateAdvisoryWorktreeIds)
+              newSet.delete(worktreeId)
+              return { autoInvestigateAdvisoryWorktreeIds: newSet }
+            },
+            undefined,
+            'consumeAutoInvestigateAdvisory'
           )
           return true
         }
