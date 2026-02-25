@@ -73,6 +73,10 @@ pub async fn dispatch_command(
             let base_branch: Option<String> = field_opt(&args, "baseBranch", "base_branch")?;
             let issue_context = field_opt(&args, "issueContext", "issue_context")?;
             let pr_context = field_opt(&args, "prContext", "pr_context")?;
+            let security_context =
+                field_opt(&args, "securityContext", "security_context")?;
+            let advisory_context =
+                field_opt(&args, "advisoryContext", "advisory_context")?;
             let custom_name = field_opt(&args, "customName", "custom_name")?;
             let result = crate::projects::create_worktree(
                 app.clone(),
@@ -80,6 +84,8 @@ pub async fn dispatch_command(
                 base_branch,
                 issue_context,
                 pr_context,
+                security_context,
+                advisory_context,
                 custom_name,
             )
             .await?;
@@ -433,6 +439,139 @@ pub async fn dispatch_command(
                 app.clone(),
                 session_id,
                 pr_number,
+                project_path,
+            )
+            .await?;
+            to_value(result)
+        }
+
+        // =====================================================================
+        // Security Alerts (Dependabot)
+        // =====================================================================
+        "list_dependabot_alerts" => {
+            let project_path: String = field(&args, "projectPath", "project_path")?;
+            let state: Option<String> = field_opt(&args, "state", "state")?;
+            let result =
+                crate::projects::list_dependabot_alerts(app.clone(), project_path, state).await?;
+            to_value(result)
+        }
+        "get_dependabot_alert" => {
+            let project_path: String = field(&args, "projectPath", "project_path")?;
+            let alert_number: u32 = field(&args, "alertNumber", "alert_number")?;
+            let result =
+                crate::projects::get_dependabot_alert(app.clone(), project_path, alert_number)
+                    .await?;
+            to_value(result)
+        }
+        "load_security_alert_context" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let alert_number: u32 = field(&args, "alertNumber", "alert_number")?;
+            let project_path: String = field(&args, "projectPath", "project_path")?;
+            let result = crate::projects::load_security_alert_context(
+                app.clone(),
+                session_id,
+                alert_number,
+                project_path,
+            )
+            .await?;
+            to_value(result)
+        }
+        "list_loaded_security_contexts" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let worktree_id: Option<String> = field_opt(&args, "worktreeId", "worktree_id")?;
+            let result = crate::projects::list_loaded_security_contexts(
+                app.clone(),
+                session_id,
+                worktree_id,
+            )
+            .await?;
+            to_value(result)
+        }
+        "remove_security_context" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let alert_number: u32 = field(&args, "alertNumber", "alert_number")?;
+            let project_path: String = field(&args, "projectPath", "project_path")?;
+            crate::projects::remove_security_context(
+                app.clone(),
+                session_id,
+                alert_number,
+                project_path,
+            )
+            .await?;
+            emit_cache_invalidation(app, &["contexts"]);
+            Ok(Value::Null)
+        }
+        "get_security_context_content" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let alert_number: u32 = field(&args, "alertNumber", "alert_number")?;
+            let project_path: String = field(&args, "projectPath", "project_path")?;
+            let result = crate::projects::get_security_context_content(
+                app.clone(),
+                session_id,
+                alert_number,
+                project_path,
+            )
+            .await?;
+            to_value(result)
+        }
+
+        // =====================================================================
+        // Repository Advisories
+        // =====================================================================
+        "list_repository_advisories" => {
+            let project_path: String = field(&args, "projectPath", "project_path")?;
+            let state: Option<String> = field_opt(&args, "state", "state")?;
+            let result =
+                crate::projects::list_repository_advisories(app.clone(), project_path, state)
+                    .await?;
+            to_value(result)
+        }
+        "load_advisory_context" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let ghsa_id: String = field(&args, "ghsaId", "ghsa_id")?;
+            let project_path: String = field(&args, "projectPath", "project_path")?;
+            let result = crate::projects::load_advisory_context(
+                app.clone(),
+                session_id,
+                ghsa_id,
+                project_path,
+            )
+            .await?;
+            to_value(result)
+        }
+        "list_loaded_advisory_contexts" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let worktree_id: Option<String> = field_opt(&args, "worktreeId", "worktree_id")?;
+            let result = crate::projects::list_loaded_advisory_contexts(
+                app.clone(),
+                session_id,
+                worktree_id,
+            )
+            .await?;
+            to_value(result)
+        }
+        "remove_advisory_context" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let ghsa_id: String = field(&args, "ghsaId", "ghsa_id")?;
+            let project_path: String = field(&args, "projectPath", "project_path")?;
+            crate::projects::remove_advisory_context(
+                app.clone(),
+                session_id,
+                ghsa_id,
+                project_path,
+            )
+            .await?;
+            emit_cache_invalidation(app, &["contexts"]);
+            Ok(Value::Null)
+        }
+        "get_advisory_context_content" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let ghsa_id: String = field(&args, "ghsaId", "ghsa_id")?;
+            let project_path: String = field(&args, "projectPath", "project_path")?;
+            let result = crate::projects::get_advisory_context_content(
+                app.clone(),
+                session_id,
+                ghsa_id,
                 project_path,
             )
             .await?;
@@ -899,12 +1038,18 @@ pub async fn dispatch_command(
             let branch_name: String = field(&args, "branchName", "branch_name")?;
             let issue_context = field_opt(&args, "issueContext", "issue_context")?;
             let pr_context = field_opt(&args, "prContext", "pr_context")?;
+            let security_context =
+                field_opt(&args, "securityContext", "security_context")?;
+            let advisory_context =
+                field_opt(&args, "advisoryContext", "advisory_context")?;
             let result = crate::projects::create_worktree_from_existing_branch(
                 app.clone(),
                 project_id,
                 branch_name,
                 issue_context,
                 pr_context,
+                security_context,
+                advisory_context,
             )
             .await?;
             to_value(result)

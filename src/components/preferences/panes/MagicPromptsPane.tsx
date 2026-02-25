@@ -35,6 +35,8 @@ import {
   DEFAULT_CONTEXT_SUMMARY_PROMPT,
   DEFAULT_RESOLVE_CONFLICTS_PROMPT,
   DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT,
+  DEFAULT_INVESTIGATE_SECURITY_ALERT_PROMPT,
+  DEFAULT_INVESTIGATE_ADVISORY_PROMPT,
   DEFAULT_RELEASE_NOTES_PROMPT,
   DEFAULT_SESSION_NAMING_PROMPT,
   DEFAULT_SESSION_RECAP_PROMPT,
@@ -143,6 +145,48 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT,
+        defaultModel: 'opus',
+      },
+      {
+        key: 'investigate_security_alert',
+        modelKey: 'investigate_security_alert_model',
+        providerKey: 'investigate_security_alert_provider',
+        label: 'Investigate Dependabot Alert',
+        description:
+          'Prompt for investigating Dependabot vulnerability alerts in dependencies.',
+        variables: [
+          {
+            name: '{alertRefs}',
+            description:
+              'Alert references (e.g., #42 lodash (critical), #43 express (high))',
+          },
+          {
+            name: '{alertWord}',
+            description: '"alert" or "alerts" based on count',
+          },
+        ],
+        defaultValue: DEFAULT_INVESTIGATE_SECURITY_ALERT_PROMPT,
+        defaultModel: 'opus',
+      },
+      {
+        key: 'investigate_advisory',
+        modelKey: 'investigate_advisory_model',
+        providerKey: 'investigate_advisory_provider',
+        label: 'Investigate Security Advisory',
+        description:
+          'Prompt for investigating repository security advisories.',
+        variables: [
+          {
+            name: '{advisoryRefs}',
+            description:
+              'Advisory references (e.g., GHSA-xxxx-yyyy (high))',
+          },
+          {
+            name: '{advisoryWord}',
+            description: '"advisory" or "advisories" based on count',
+          },
+        ],
+        defaultValue: DEFAULT_INVESTIGATE_ADVISORY_PROMPT,
         defaultModel: 'opus',
       },
     ],

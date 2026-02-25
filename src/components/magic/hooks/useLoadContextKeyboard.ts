@@ -1,22 +1,28 @@
 import { useCallback, useEffect } from 'react'
 import type { SavedContext, AllSessionsEntry } from '@/types/chat'
-import type { GitHubIssue, GitHubPullRequest } from '@/types/github'
+import type { GitHubIssue, GitHubPullRequest, DependabotAlert, RepositoryAdvisory } from '@/types/github'
 import type { SessionWithContext } from '../LoadContextItems'
 
-type TabId = 'issues' | 'prs' | 'contexts'
+type TabId = 'issues' | 'prs' | 'security' | 'contexts'
 
 interface UseLoadContextKeyboardOptions {
   activeTab: TabId
   filteredIssues: GitHubIssue[]
   filteredPRs: GitHubPullRequest[]
+  filteredSecurityAlerts: DependabotAlert[]
+  filteredAdvisories: RepositoryAdvisory[]
   filteredContexts: SavedContext[]
   filteredEntries: AllSessionsEntry[]
   selectedIndex: number
   setSelectedIndex: (i: number) => void
   onSelectIssue: (issue: GitHubIssue) => void
   onSelectPR: (pr: GitHubPullRequest) => void
+  onSelectSecurityAlert: (alert: DependabotAlert) => void
   onPreviewIssue: (issue: GitHubIssue) => void
   onPreviewPR: (pr: GitHubPullRequest) => void
+  onPreviewSecurityAlert: (alert: DependabotAlert) => void
+  onSelectAdvisory: (advisory: RepositoryAdvisory) => void
+  onPreviewAdvisory: (advisory: RepositoryAdvisory) => void
   onAttachContext: (ctx: SavedContext) => void
   onSessionClick: (s: SessionWithContext) => void
   onTabChange: (tab: TabId) => void
@@ -26,14 +32,20 @@ export function useLoadContextKeyboard({
   activeTab,
   filteredIssues,
   filteredPRs,
+  filteredSecurityAlerts,
+  filteredAdvisories,
   filteredContexts,
   filteredEntries,
   selectedIndex,
   setSelectedIndex,
   onSelectIssue,
   onSelectPR,
+  onSelectSecurityAlert,
   onPreviewIssue,
   onPreviewPR,
+  onPreviewSecurityAlert,
+  onSelectAdvisory,
+  onPreviewAdvisory,
   onAttachContext,
   onSessionClick,
   onTabChange,
@@ -57,6 +69,11 @@ export function useLoadContextKeyboard({
         if (key === '3') {
           e.preventDefault()
           onTabChange('prs')
+          return
+        }
+        if (key === '4') {
+          e.preventDefault()
+          onTabChange('security')
           return
         }
       }
@@ -111,6 +128,46 @@ export function useLoadContextKeyboard({
         }
       }
 
+      // List navigation for security tab (combined alerts + advisories)
+      if (activeTab === 'security') {
+        const totalSecurityItems = filteredSecurityAlerts.length + filteredAdvisories.length
+        if (totalSecurityItems > 0) {
+          if (key === 'arrowdown') {
+            e.preventDefault()
+            setSelectedIndex(Math.min(selectedIndex + 1, totalSecurityItems - 1))
+            return
+          }
+          if (key === 'arrowup') {
+            e.preventDefault()
+            setSelectedIndex(Math.max(selectedIndex - 1, 0))
+            return
+          }
+          if (key === 'enter') {
+            e.preventDefault()
+            if (selectedIndex < filteredSecurityAlerts.length) {
+              const alert = filteredSecurityAlerts[selectedIndex]
+              if (alert) onSelectSecurityAlert(alert)
+            } else {
+              const advisory = filteredAdvisories[selectedIndex - filteredSecurityAlerts.length]
+              if (advisory) onSelectAdvisory(advisory)
+            }
+            return
+          }
+          if (key === 'o' && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault()
+            e.nativeEvent.stopImmediatePropagation()
+            if (selectedIndex < filteredSecurityAlerts.length) {
+              const alert = filteredSecurityAlerts[selectedIndex]
+              if (alert) onPreviewSecurityAlert(alert)
+            } else {
+              const advisory = filteredAdvisories[selectedIndex - filteredSecurityAlerts.length]
+              if (advisory) onPreviewAdvisory(advisory)
+            }
+            return
+          }
+        }
+      }
+
       // List navigation for contexts tab (saved contexts + sessions)
       if (activeTab === 'contexts') {
         const totalItems =
@@ -159,14 +216,20 @@ export function useLoadContextKeyboard({
       activeTab,
       filteredIssues,
       filteredPRs,
+      filteredSecurityAlerts,
+      filteredAdvisories,
       filteredContexts,
       filteredEntries,
       selectedIndex,
       setSelectedIndex,
       onSelectIssue,
       onSelectPR,
+      onSelectSecurityAlert,
       onPreviewIssue,
       onPreviewPR,
+      onPreviewSecurityAlert,
+      onSelectAdvisory,
+      onPreviewAdvisory,
       onAttachContext,
       onSessionClick,
       onTabChange,

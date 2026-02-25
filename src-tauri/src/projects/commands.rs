@@ -17,10 +17,13 @@ use rand::Rng;
 use super::git;
 use super::git::get_repo_identifier;
 use super::github_issues::{
-    add_issue_reference, add_pr_reference, format_issue_context_markdown,
-    format_pr_context_markdown, generate_branch_name_from_issue, generate_branch_name_from_pr,
-    get_github_contexts_dir, get_github_pr, get_pr_diff, get_session_context_content,
-    get_session_context_numbers, IssueContext, PullRequestContext,
+    add_advisory_reference, add_issue_reference, add_pr_reference, add_security_reference,
+    format_advisory_context_markdown, format_issue_context_markdown, format_pr_context_markdown,
+    format_security_context_markdown, generate_branch_name_from_advisory,
+    generate_branch_name_from_issue, generate_branch_name_from_pr,
+    generate_branch_name_from_security_alert, get_github_contexts_dir, get_github_pr,
+    get_pr_diff, get_session_context_content, get_session_context_numbers, AdvisoryContext,
+    IssueContext, PullRequestContext, SecurityAlertContext,
 };
 use super::names::generate_unique_workspace_name;
 use super::storage::{get_project_worktrees_dir, load_projects_data, save_projects_data};
@@ -529,6 +532,8 @@ pub async fn create_worktree(
     base_branch: Option<String>,
     issue_context: Option<IssueContext>,
     pr_context: Option<PullRequestContext>,
+    security_context: Option<SecurityAlertContext>,
+    advisory_context: Option<AdvisoryContext>,
     custom_name: Option<String>,
 ) -> Result<Worktree, String> {
     log::trace!("Creating worktree for project: {project_id}");
@@ -572,6 +577,36 @@ pub async fn create_worktree(
             }
         } else {
             pr_branch
+        }
+    } else if let Some(ref ctx) = security_context {
+        let security_branch =
+            generate_branch_name_from_security_alert(ctx.number, &ctx.package_name, &ctx.summary);
+        if data.worktree_name_exists(&project_id, &security_branch) {
+            let mut counter = 2;
+            loop {
+                let candidate = format!("{security_branch}-{counter}");
+                if !data.worktree_name_exists(&project_id, &candidate) {
+                    break candidate;
+                }
+                counter += 1;
+            }
+        } else {
+            security_branch
+        }
+    } else if let Some(ref ctx) = advisory_context {
+        let advisory_branch =
+            generate_branch_name_from_advisory(&ctx.ghsa_id, &ctx.summary);
+        if data.worktree_name_exists(&project_id, &advisory_branch) {
+            let mut counter = 2;
+            loop {
+                let candidate = format!("{advisory_branch}-{counter}");
+                if !data.worktree_name_exists(&project_id, &candidate) {
+                    break candidate;
+                }
+                counter += 1;
+            }
+        } else {
+            advisory_branch
         }
     } else if let Some(ref ctx) = issue_context {
         let issue_branch = generate_branch_name_from_issue(ctx.number, &ctx.title);
@@ -663,6 +698,8 @@ pub async fn create_worktree(
     let base_clone = base.clone();
     let issue_context_clone = issue_context.clone();
     let pr_context_clone = pr_context.clone();
+    let security_context_clone = security_context.clone();
+    let advisory_context_clone = advisory_context.clone();
 
     // Spawn background thread for git operations
     thread::spawn(move || {
@@ -997,6 +1034,94 @@ pub async fn create_worktree(
                 }
             }
 
+            // Write security context file if provided (to shared git-context directory)
+            if let Some(ctx) = &security_context_clone {
+                log::trace!(
+                    "Background: Writing security context file for alert #{}",
+                    ctx.number
+                );
+                if let Ok(repo_id) = get_repo_identifier(&project_path) {
+                    let repo_key = repo_id.to_key();
+                    if let Ok(contexts_dir) = get_github_contexts_dir(&app_clone) {
+                        if let Err(e) = std::fs::create_dir_all(&contexts_dir) {
+                            log::warn!("Background: Failed to create git-context directory: {e}");
+                        } else {
+                            let context_file = contexts_dir
+                                .join(format!("{repo_key}-security-{}.md", ctx.number));
+                            let context_content = format_security_context_markdown(ctx);
+                            if let Err(e) = std::fs::write(&context_file, context_content) {
+                                log::warn!(
+                                    "Background: Failed to write security context file: {e}"
+                                );
+                            } else {
+                                if let Err(e) = add_security_reference(
+                                    &app_clone,
+                                    &repo_key,
+                                    ctx.number,
+                                    &worktree_id_clone,
+                                ) {
+                                    log::warn!(
+                                        "Background: Failed to add security reference: {e}"
+                                    );
+                                }
+                                log::trace!(
+                                    "Background: Security context file written to {:?}",
+                                    context_file
+                                );
+                            }
+                        }
+                    }
+                } else {
+                    log::warn!(
+                        "Background: Could not get repo identifier for security context"
+                    );
+                }
+            }
+
+            // Write advisory context file if provided (to shared git-context directory)
+            if let Some(ctx) = &advisory_context_clone {
+                log::trace!(
+                    "Background: Writing advisory context file for {}",
+                    ctx.ghsa_id
+                );
+                if let Ok(repo_id) = get_repo_identifier(&project_path) {
+                    let repo_key = repo_id.to_key();
+                    if let Ok(contexts_dir) = get_github_contexts_dir(&app_clone) {
+                        if let Err(e) = std::fs::create_dir_all(&contexts_dir) {
+                            log::warn!("Background: Failed to create git-context directory: {e}");
+                        } else {
+                            let context_file = contexts_dir
+                                .join(format!("{repo_key}-advisory-{}.md", ctx.ghsa_id));
+                            let context_content = format_advisory_context_markdown(ctx);
+                            if let Err(e) = std::fs::write(&context_file, context_content) {
+                                log::warn!(
+                                    "Background: Failed to write advisory context file: {e}"
+                                );
+                            } else {
+                                if let Err(e) = add_advisory_reference(
+                                    &app_clone,
+                                    &repo_key,
+                                    &ctx.ghsa_id,
+                                    &worktree_id_clone,
+                                ) {
+                                    log::warn!(
+                                        "Background: Failed to add advisory reference: {e}"
+                                    );
+                                }
+                                log::trace!(
+                                    "Background: Advisory context file written to {:?}",
+                                    context_file
+                                );
+                            }
+                        }
+                    }
+                } else {
+                    log::warn!(
+                        "Background: Could not get repo identifier for advisory context"
+                    );
+                }
+            }
+
             // Check for jean.json and run setup script
             let (setup_output, setup_script) =
                 if let Some(config) = git::read_jean_config(&project_path) {
@@ -1141,6 +1266,8 @@ pub async fn create_worktree_from_existing_branch(
     branch_name: String,
     issue_context: Option<IssueContext>,
     pr_context: Option<PullRequestContext>,
+    security_context: Option<SecurityAlertContext>,
+    advisory_context: Option<AdvisoryContext>,
 ) -> Result<Worktree, String> {
     log::trace!("Creating worktree from existing branch {branch_name} for project: {project_id}");
 
@@ -1223,6 +1350,8 @@ pub async fn create_worktree_from_existing_branch(
     let branch_name_clone = branch_name.clone();
     let issue_context_clone = issue_context.clone();
     let pr_context_clone = pr_context.clone();
+    let security_context_clone = security_context.clone();
+    let advisory_context_clone = advisory_context.clone();
 
     // Spawn background thread for git operations
     thread::spawn(move || {
@@ -1354,6 +1483,94 @@ pub async fn create_worktree_from_existing_branch(
                             }
                         }
                     }
+                }
+            }
+
+            // Write security context file if provided (to shared git-context directory)
+            if let Some(ctx) = &security_context_clone {
+                log::trace!(
+                    "Background: Writing security context file for alert #{}",
+                    ctx.number
+                );
+                if let Ok(repo_id) = get_repo_identifier(&project_path) {
+                    let repo_key = repo_id.to_key();
+                    if let Ok(contexts_dir) = get_github_contexts_dir(&app_clone) {
+                        if let Err(e) = std::fs::create_dir_all(&contexts_dir) {
+                            log::warn!("Background: Failed to create git-context directory: {e}");
+                        } else {
+                            let context_file = contexts_dir
+                                .join(format!("{repo_key}-security-{}.md", ctx.number));
+                            let context_content = format_security_context_markdown(ctx);
+                            if let Err(e) = std::fs::write(&context_file, context_content) {
+                                log::warn!(
+                                    "Background: Failed to write security context file: {e}"
+                                );
+                            } else {
+                                if let Err(e) = add_security_reference(
+                                    &app_clone,
+                                    &repo_key,
+                                    ctx.number,
+                                    &worktree_id_clone,
+                                ) {
+                                    log::warn!(
+                                        "Background: Failed to add security reference: {e}"
+                                    );
+                                }
+                                log::trace!(
+                                    "Background: Security context file written to {:?}",
+                                    context_file
+                                );
+                            }
+                        }
+                    }
+                } else {
+                    log::warn!(
+                        "Background: Could not get repo identifier for security context"
+                    );
+                }
+            }
+
+            // Write advisory context file if provided (to shared git-context directory)
+            if let Some(ctx) = &advisory_context_clone {
+                log::trace!(
+                    "Background: Writing advisory context file for {}",
+                    ctx.ghsa_id
+                );
+                if let Ok(repo_id) = get_repo_identifier(&project_path) {
+                    let repo_key = repo_id.to_key();
+                    if let Ok(contexts_dir) = get_github_contexts_dir(&app_clone) {
+                        if let Err(e) = std::fs::create_dir_all(&contexts_dir) {
+                            log::warn!("Background: Failed to create git-context directory: {e}");
+                        } else {
+                            let context_file = contexts_dir
+                                .join(format!("{repo_key}-advisory-{}.md", ctx.ghsa_id));
+                            let context_content = format_advisory_context_markdown(ctx);
+                            if let Err(e) = std::fs::write(&context_file, context_content) {
+                                log::warn!(
+                                    "Background: Failed to write advisory context file: {e}"
+                                );
+                            } else {
+                                if let Err(e) = add_advisory_reference(
+                                    &app_clone,
+                                    &repo_key,
+                                    &ctx.ghsa_id,
+                                    &worktree_id_clone,
+                                ) {
+                                    log::warn!(
+                                        "Background: Failed to add advisory reference: {e}"
+                                    );
+                                }
+                                log::trace!(
+                                    "Background: Advisory context file written to {:?}",
+                                    context_file
+                                );
+                            }
+                        }
+                    }
+                } else {
+                    log::warn!(
+                        "Background: Could not get repo identifier for advisory context"
+                    );
                 }
             }
 
@@ -4705,13 +4922,13 @@ pub async fn create_pr_with_ai_content(
     let effective_session_id = session_id.as_deref().unwrap_or("");
     let worktree_id = &worktree.id;
 
-    let (mut issue_nums, mut pr_nums) =
+    let (mut issue_nums, mut pr_nums, _security_nums) =
         get_session_context_numbers(&app, effective_session_id).unwrap_or_default();
     let mut context_content =
         get_session_context_content(&app, effective_session_id, &project.path).unwrap_or_default();
 
     if worktree_id != effective_session_id {
-        let (wt_issue_nums, wt_pr_nums) =
+        let (wt_issue_nums, wt_pr_nums, _wt_security_nums) =
             get_session_context_numbers(&app, worktree_id).unwrap_or_default();
         for n in wt_issue_nums {
             if !issue_nums.contains(&n) {
@@ -4881,13 +5098,13 @@ pub async fn generate_pr_update_content(
     let effective_session_id = session_id.as_deref().unwrap_or("");
     let worktree_id = &worktree.id;
 
-    let (mut issue_nums, mut pr_nums) =
+    let (mut issue_nums, mut pr_nums, _security_nums) =
         get_session_context_numbers(&app, effective_session_id).unwrap_or_default();
     let mut context_content =
         get_session_context_content(&app, effective_session_id, &project.path).unwrap_or_default();
 
     if worktree_id != effective_session_id {
-        let (wt_issue_nums, wt_pr_nums) =
+        let (wt_issue_nums, wt_pr_nums, _wt_security_nums) =
             get_session_context_numbers(&app, worktree_id).unwrap_or_default();
         for n in wt_issue_nums {
             if !issue_nums.contains(&n) {

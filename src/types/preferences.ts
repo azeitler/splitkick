@@ -59,6 +59,10 @@ export interface MagicPrompts {
   global_system_prompt: string | null
   /** Prompt for generating session recaps (digests) when returning to unfocused sessions */
   session_recap: string | null
+  /** Prompt for investigating Dependabot vulnerability alerts */
+  investigate_security_alert: string | null
+  /** Prompt for investigating repository security advisories */
+  investigate_advisory: string | null
 }
 
 /** Default prompt for investigating GitHub issues */
@@ -303,6 +307,90 @@ Investigate the failed GitHub Actions workflow run for "{workflowName}" on branc
 
 </guidelines>`
 
+/** Default prompt for investigating Dependabot vulnerability alerts */
+export const DEFAULT_INVESTIGATE_SECURITY_ALERT_PROMPT = `<task>
+
+Investigate the loaded Dependabot {alertWord} ({alertRefs})
+
+</task>
+
+
+<instructions>
+
+1. Read the security alert context file(s) for vulnerability details (CVE, GHSA, severity, affected versions)
+2. Identify the affected dependency and vulnerable version range
+3. Search the codebase for usage of the affected package:
+   - Find import/require statements and lock file entries
+   - Identify which features/APIs of the package are used
+   - Check if the vulnerable code path is actually exercised
+4. Assess actual impact:
+   - Is the vulnerable function/API used in this project?
+   - Is it reachable from user input or external data?
+   - What is the blast radius if exploited?
+5. Evaluate remediation options:
+   - Is a patched version available? What breaking changes does it introduce?
+   - Can the vulnerable code path be mitigated without upgrading?
+   - Are there workarounds or configuration changes?
+6. Propose fix:
+   - Specific version bump or dependency change
+   - Any code changes needed for compatibility
+   - Test cases to verify the fix doesn't break functionality
+
+</instructions>
+
+
+<guidelines>
+
+- Focus on whether the vulnerability is actually exploitable in this codebase
+- Don't just recommend "upgrade" — assess compatibility impact
+- Reference specific file paths where the affected package is used
+- If multiple alerts are loaded, address each one separately
+
+</guidelines>`
+
+/** Default prompt for investigating repository security advisories */
+export const DEFAULT_INVESTIGATE_ADVISORY_PROMPT = `<task>
+
+Investigate the loaded security {advisoryWord} ({advisoryRefs})
+
+</task>
+
+
+<instructions>
+
+1. Read the advisory context file(s) for full vulnerability details (GHSA ID, CVE, severity, affected versions, CWE)
+2. Understand the vulnerability:
+   - What type of vulnerability is it (injection, auth bypass, XSS, etc.)?
+   - What are the preconditions for exploitation?
+   - What is the severity and potential impact?
+3. Locate the vulnerable code:
+   - Search for the affected components, endpoints, or functions
+   - Trace the vulnerable code path from entry point to impact
+   - Identify all locations where the same pattern exists
+4. Develop a fix:
+   - Address the root cause, not just the symptom
+   - Ensure the fix covers all affected code paths
+   - Consider edge cases and bypass attempts
+5. Verify completeness:
+   - Are there similar patterns elsewhere that need the same fix?
+   - Does the fix introduce any regressions?
+   - What test cases would prove the vulnerability is resolved?
+6. Document:
+   - Summarize the vulnerability and fix for the advisory
+   - Note any affected versions and migration steps
+
+</instructions>
+
+
+<guidelines>
+
+- Think like an attacker — consider bypass attempts for any proposed fix
+- Check for the same vulnerability pattern across the entire codebase, not just the reported location
+- Reference specific file paths and line numbers
+- If multiple advisories are loaded, address each one separately
+
+</guidelines>`
+
 /** Default prompt for generating release notes */
 export const DEFAULT_RELEASE_NOTES_PROMPT = `Generate release notes for changes since the \`{tag}\` release ({previous_release_name}).
 
@@ -429,6 +517,8 @@ export const DEFAULT_MAGIC_PROMPTS: MagicPrompts = {
   parallel_execution: null,
   global_system_prompt: null,
   session_recap: null,
+  investigate_security_alert: null,
+  investigate_advisory: null,
 }
 
 /**
@@ -446,6 +536,8 @@ export interface MagicPromptModels {
   release_notes_model: MagicPromptModel
   session_naming_model: MagicPromptModel
   session_recap_model: MagicPromptModel
+  investigate_security_alert_model: MagicPromptModel
+  investigate_advisory_model: MagicPromptModel
 }
 
 /** Default models for each magic prompt */
@@ -461,6 +553,8 @@ export const DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
   release_notes_model: 'haiku',
   session_naming_model: 'haiku',
   session_recap_model: 'haiku',
+  investigate_security_alert_model: 'opus',
+  investigate_advisory_model: 'opus',
 }
 
 /** Codex preset: heavy tasks use top model, light tasks use mini */
@@ -476,6 +570,8 @@ export const CODEX_DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
   release_notes_model: 'gpt-5.1-codex-mini',
   session_naming_model: 'gpt-5.1-codex-mini',
   session_recap_model: 'gpt-5.1-codex-mini',
+  investigate_security_alert_model: 'gpt-5.3-codex',
+  investigate_advisory_model: 'gpt-5.3-codex',
 }
 
 /** OpenCode preset for all magic prompts */
@@ -491,6 +587,8 @@ export const OPENCODE_DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
   release_notes_model: 'opencode/gpt-5.2-codex',
   session_naming_model: 'opencode/gpt-5.2-codex',
   session_recap_model: 'opencode/gpt-5.2-codex',
+  investigate_security_alert_model: 'opencode/gpt-5.2-codex',
+  investigate_advisory_model: 'opencode/gpt-5.2-codex',
 }
 
 /**
@@ -509,6 +607,8 @@ export interface MagicPromptProviders {
   release_notes_provider: string | null
   session_naming_provider: string | null
   session_recap_provider: string | null
+  investigate_security_alert_provider: string | null
+  investigate_advisory_provider: string | null
 }
 
 /** Default providers for each magic prompt (null = use global default_provider) */
@@ -524,6 +624,8 @@ export const DEFAULT_MAGIC_PROMPT_PROVIDERS: MagicPromptProviders = {
   release_notes_provider: null,
   session_naming_provider: null,
   session_recap_provider: null,
+  investigate_security_alert_provider: null,
+  investigate_advisory_provider: null,
 }
 
 /**

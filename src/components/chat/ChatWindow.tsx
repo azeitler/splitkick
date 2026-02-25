@@ -1020,15 +1020,23 @@ export function ChatWindow({
   // Pick up per-worktree auto-investigate flags (set by useNewWorktreeHandlers
   // when worktree is created with auto-investigate). Uses per-worktree Sets so
   // multiple concurrent worktree creations each get their own investigation.
+  // Guard: wait for worktree status === 'ready' to ensure the git directory
+  // exists on disk before spawning Claude CLI (which uses current_dir).
+  const worktreeStatus = worktree?.status
   useEffect(() => {
     if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
+    if (worktreeStatus !== 'ready') return
     const uiStore = useUIStore.getState()
     if (uiStore.consumeAutoInvestigate(activeWorktreeId)) {
       handleInvestigate('issue')
     } else if (uiStore.consumeAutoInvestigatePR(activeWorktreeId)) {
       handleInvestigate('pr')
+    } else if (uiStore.consumeAutoInvestigateSecurityAlert(activeWorktreeId)) {
+      handleInvestigate('security-alert')
+    } else if (uiStore.consumeAutoInvestigateAdvisory(activeWorktreeId)) {
+      handleInvestigate('advisory')
     }
-  }, [activeSessionId, activeWorktreeId, activeWorktreePath, handleInvestigate])
+  }, [activeSessionId, activeWorktreeId, activeWorktreePath, worktreeStatus, handleInvestigate])
 
   // Message handlers hook - handles questions, plan approval, permission approval, finding fixes
   const {
@@ -1332,7 +1340,8 @@ export function ChatWindow({
                               </div>
                             ) : !session || session.messages.length === 0 ? (
                               <div className="text-muted-foreground">
-                                No messages yet. Image something useful!
+                                    No messages yet.<br/><br/>
+                                    <p>Lets release your imagination! ✨</p>
                               </div>
                             ) : (
                               // Virtualized message list - only renders visible messages for performance

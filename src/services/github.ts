@@ -9,6 +9,10 @@ import type {
   GitHubPullRequestDetail,
   LoadedIssueContext,
   LoadedPullRequestContext,
+  DependabotAlert,
+  LoadedSecurityAlertContext,
+  RepositoryAdvisory,
+  LoadedAdvisoryContext,
   AttachedSavedContext,
   WorkflowRunsResult,
 } from '@/types/github'
@@ -66,6 +70,18 @@ export const githubQueryKeys = {
       projectPath,
       branch ?? '',
     ] as const,
+  securityAlerts: (projectPath: string, state: string) =>
+    [...githubQueryKeys.all, 'security-alerts', projectPath, state] as const,
+  securityAlert: (projectPath: string, alertNumber: number) =>
+    [...githubQueryKeys.all, 'security-alert', projectPath, alertNumber] as const,
+  loadedSecurityContexts: (sessionId: string) =>
+    [...githubQueryKeys.all, 'loaded-security-contexts', sessionId] as const,
+  advisories: (projectPath: string, state: string) =>
+    [...githubQueryKeys.all, 'advisories', projectPath, state] as const,
+  advisory: (projectPath: string, ghsaId: string) =>
+    [...githubQueryKeys.all, 'advisory', projectPath, ghsaId] as const,
+  loadedAdvisoryContexts: (sessionId: string) =>
+    [...githubQueryKeys.all, 'loaded-advisory-contexts', sessionId] as const,
 }
 
 /**
@@ -682,6 +698,424 @@ export function useGetGitHubPRByNumber(
     gcTime: 1000 * 60 * 5,
     retry: 0,
   })
+}
+
+// =============================================================================
+// Dependabot Alert / Security Hooks and Functions
+// =============================================================================
+
+/**
+ * Hook to list Dependabot alerts for a project
+ *
+ * @param projectPath - Path to the git repository
+ * @param state - Alert state filter: "open" or "all"
+ */
+export function useDependabotAlerts(
+  projectPath: string | null,
+  state: 'open' | 'all' = 'open',
+  options?: { enabled?: boolean; staleTime?: number }
+) {
+  return useQuery({
+    queryKey: githubQueryKeys.securityAlerts(projectPath ?? '', state),
+    queryFn: async (): Promise<DependabotAlert[]> => {
+      if (!isTauri() || !projectPath) {
+        return []
+      }
+
+      try {
+        logger.debug('Fetching Dependabot alerts', { projectPath, state })
+        const stateParam =
+          state === 'all' ? 'open,dismissed,fixed,auto_dismissed' : state
+        const alerts = await invoke<DependabotAlert[]>(
+          'list_dependabot_alerts',
+          {
+            projectPath,
+            state: stateParam,
+          }
+        )
+        logger.info('Dependabot alerts loaded', { count: alerts.length })
+        return alerts
+      } catch (error) {
+        // Auth errors should propagate so GhAuthError UI is shown
+        if (isGhAuthError(error)) throw error
+        // Other errors (permissions, feature not available) — treat as empty
+        logger.debug('Dependabot alerts not available', {
+          error,
+          projectPath,
+        })
+        return []
+      }
+    },
+    enabled: (options?.enabled ?? true) && !!projectPath,
+    staleTime: options?.staleTime ?? 1000 * 60 * 2, // 2 minutes
+    gcTime: 1000 * 60 * 10, // 10 minutes
+    retry: 1,
+  })
+}
+
+/**
+ * Hook to fetch a single Dependabot alert by number
+ *
+ * @param projectPath - The project path
+ * @param alertNumber - The alert number, or null to skip
+ */
+export function useDependabotAlert(
+  projectPath: string | null,
+  alertNumber: number | null
+) {
+  return useQuery({
+    queryKey: githubQueryKeys.securityAlert(
+      projectPath ?? '',
+      alertNumber ?? 0
+    ),
+    queryFn: async (): Promise<DependabotAlert> => {
+      if (!isTauri() || !projectPath || !alertNumber) {
+        throw new Error('Missing required parameters')
+      }
+
+      try {
+        logger.debug('Fetching Dependabot alert', {
+          projectPath,
+          alertNumber,
+        })
+        const alert = await invoke<DependabotAlert>('get_dependabot_alert', {
+          projectPath,
+          alertNumber,
+        })
+        logger.info('Dependabot alert loaded', {
+          number: alert.number,
+          severity: alert.severity,
+        })
+        return alert
+      } catch (error) {
+        logger.error('Failed to load Dependabot alert', {
+          error,
+          projectPath,
+          alertNumber,
+        })
+        throw error
+      }
+    },
+    enabled: !!projectPath && !!alertNumber,
+    staleTime: 1000 * 60 * 5, // 5 minutes
+    gcTime: 1000 * 60 * 15, // 15 minutes
+  })
+}
+
+/**
+ * Hook to list loaded security alert contexts for a session
+ */
+export function useLoadedSecurityContexts(
+  sessionId: string | null,
+  worktreeId?: string | null
+) {
+  return useQuery({
+    queryKey: githubQueryKeys.loadedSecurityContexts(sessionId ?? ''),
+    queryFn: async (): Promise<LoadedSecurityAlertContext[]> => {
+      if (!isTauri() || !sessionId) {
+        return []
+      }
+
+      try {
+        logger.debug('Fetching loaded security contexts', { sessionId })
+        const contexts = await invoke<LoadedSecurityAlertContext[]>(
+          'list_loaded_security_contexts',
+          {
+            sessionId,
+            worktreeId: worktreeId ?? undefined,
+          }
+        )
+        logger.info('Loaded security contexts fetched', {
+          count: contexts.length,
+        })
+        return contexts
+      } catch (error) {
+        logger.debug('Failed to load security contexts', {
+          error,
+          sessionId,
+        })
+        return []
+      }
+    },
+    enabled: !!sessionId,
+    staleTime: 1000 * 60, // 1 minute
+    gcTime: 1000 * 60 * 5, // 5 minutes
+  })
+}
+
+/**
+ * Load security alert context for a session (fetch from GitHub and save)
+ */
+export async function loadSecurityContext(
+  sessionId: string,
+  alertNumber: number,
+  projectPath: string
+): Promise<LoadedSecurityAlertContext> {
+  return invoke<LoadedSecurityAlertContext>('load_security_alert_context', {
+    sessionId,
+    alertNumber,
+    projectPath,
+  })
+}
+
+/**
+ * Remove a loaded security alert context from a session
+ */
+export async function removeSecurityContext(
+  sessionId: string,
+  alertNumber: number,
+  projectPath: string
+): Promise<void> {
+  return invoke('remove_security_context', {
+    sessionId,
+    alertNumber,
+    projectPath,
+  })
+}
+
+/**
+ * Get the content of a loaded security context file
+ */
+export async function getSecurityContextContent(
+  sessionId: string,
+  alertNumber: number,
+  projectPath: string
+): Promise<string> {
+  return invoke<string>('get_security_context_content', {
+    sessionId,
+    alertNumber,
+    projectPath,
+  })
+}
+
+/**
+ * Filter Dependabot alerts by search query
+ */
+export function filterSecurityAlerts(
+  alerts: DependabotAlert[],
+  query: string
+): DependabotAlert[] {
+  if (!query.trim()) return alerts
+
+  const lowerQuery = query.toLowerCase().trim()
+
+  return alerts.filter(alert => {
+    const numberQuery = lowerQuery.replace(/^#/, '')
+    if (alert.number.toString().includes(numberQuery)) return true
+    if (alert.packageName.toLowerCase().includes(lowerQuery)) return true
+    if (alert.summary.toLowerCase().includes(lowerQuery)) return true
+    if (alert.ghsaId.toLowerCase().includes(lowerQuery)) return true
+    if (alert.cveId?.toLowerCase().includes(lowerQuery)) return true
+    if (alert.severity.toLowerCase().includes(lowerQuery)) return true
+    return false
+  })
+}
+
+// =============================================================================
+// Repository Security Advisory Hooks and Functions
+// =============================================================================
+
+/**
+ * Hook to list repository security advisories for a project
+ *
+ * @param projectPath - Path to the git repository
+ * @param state - Advisory state filter: "published" or "all"
+ */
+export function useRepositoryAdvisories(
+  projectPath: string | null,
+  state?: string,
+  options?: { enabled?: boolean; staleTime?: number }
+) {
+  return useQuery({
+    queryKey: githubQueryKeys.advisories(projectPath ?? '', state ?? 'all'),
+    queryFn: async (): Promise<RepositoryAdvisory[]> => {
+      if (!isTauri() || !projectPath) {
+        return []
+      }
+
+      try {
+        logger.debug('Fetching repository advisories', { projectPath, state })
+        const advisories = await invoke<RepositoryAdvisory[]>(
+          'list_repository_advisories',
+          {
+            projectPath,
+            state: state ?? null,
+          }
+        )
+        logger.info('Repository advisories loaded', {
+          count: advisories.length,
+        })
+        return advisories
+      } catch (error) {
+        // Auth errors should propagate so GhAuthError UI is shown
+        if (isGhAuthError(error)) throw error
+        // Other errors (permissions, feature not available) — treat as empty
+        logger.debug('Repository advisories not available', {
+          error,
+          projectPath,
+        })
+        return []
+      }
+    },
+    enabled: (options?.enabled ?? true) && !!projectPath,
+    staleTime: options?.staleTime ?? 1000 * 60 * 2, // 2 minutes
+    gcTime: 1000 * 60 * 10, // 10 minutes
+    retry: 1,
+  })
+}
+
+/**
+ * Hook to fetch a single repository advisory by GHSA ID
+ *
+ * @param projectPath - The project path
+ * @param ghsaId - The GHSA ID, or null to skip
+ */
+export function useRepositoryAdvisory(
+  projectPath: string | null,
+  ghsaId: string | null
+) {
+  return useQuery({
+    queryKey: githubQueryKeys.advisory(projectPath ?? '', ghsaId ?? ''),
+    queryFn: async (): Promise<RepositoryAdvisory> => {
+      if (!isTauri() || !projectPath || !ghsaId) {
+        throw new Error('Missing required parameters')
+      }
+
+      try {
+        logger.debug('Fetching repository advisory', { projectPath, ghsaId })
+        const advisory = await invoke<RepositoryAdvisory>(
+          'get_repository_advisory',
+          {
+            projectPath,
+            ghsaId,
+          }
+        )
+        logger.info('Repository advisory loaded', {
+          ghsaId: advisory.ghsaId,
+          severity: advisory.severity,
+        })
+        return advisory
+      } catch (error) {
+        logger.error('Failed to load repository advisory', {
+          error,
+          projectPath,
+          ghsaId,
+        })
+        throw error
+      }
+    },
+    enabled: !!projectPath && !!ghsaId,
+    staleTime: 1000 * 60 * 5, // 5 minutes
+  })
+}
+
+/**
+ * Hook to list loaded advisory contexts for a session
+ */
+export function useLoadedAdvisoryContexts(
+  sessionId: string | null,
+  worktreeId?: string | null
+) {
+  return useQuery({
+    queryKey: githubQueryKeys.loadedAdvisoryContexts(sessionId ?? ''),
+    queryFn: async (): Promise<LoadedAdvisoryContext[]> => {
+      if (!isTauri() || !sessionId) {
+        return []
+      }
+
+      try {
+        logger.debug('Fetching loaded advisory contexts', { sessionId })
+        const contexts = await invoke<LoadedAdvisoryContext[]>(
+          'list_loaded_advisory_contexts',
+          {
+            sessionId,
+            worktreeId: worktreeId ?? undefined,
+          }
+        )
+        logger.info('Loaded advisory contexts fetched', {
+          count: contexts.length,
+        })
+        return contexts
+      } catch (error) {
+        logger.debug('Failed to load advisory contexts', {
+          error,
+          sessionId,
+        })
+        return []
+      }
+    },
+    enabled: !!sessionId,
+    staleTime: 1000 * 60, // 1 minute
+    gcTime: 1000 * 60 * 5, // 5 minutes
+  })
+}
+
+/**
+ * Load advisory context for a session (fetch from GitHub and save)
+ */
+export async function loadAdvisoryContext(
+  sessionId: string,
+  ghsaId: string,
+  projectPath: string
+): Promise<LoadedAdvisoryContext> {
+  return invoke<LoadedAdvisoryContext>('load_advisory_context', {
+    sessionId,
+    ghsaId,
+    projectPath,
+  })
+}
+
+/**
+ * Remove a loaded advisory context from a session
+ */
+export async function removeAdvisoryContext(
+  sessionId: string,
+  ghsaId: string,
+  projectPath: string
+): Promise<void> {
+  return invoke('remove_advisory_context', {
+    sessionId,
+    ghsaId,
+    projectPath,
+  })
+}
+
+/**
+ * Get the content of a loaded advisory context file
+ */
+export async function getAdvisoryContextContent(
+  sessionId: string,
+  ghsaId: string,
+  projectPath: string
+): Promise<string> {
+  return invoke<string>('get_advisory_context_content', {
+    sessionId,
+    ghsaId,
+    projectPath,
+  })
+}
+
+/**
+ * Filter repository advisories by search query
+ */
+export function filterAdvisories(
+  advisories: RepositoryAdvisory[],
+  query: string
+): RepositoryAdvisory[] {
+  if (!query.trim()) return advisories
+  const lower = query.toLowerCase()
+  return advisories.filter(
+    a =>
+      a.ghsaId.toLowerCase().includes(lower) ||
+      (a.cveId && a.cveId.toLowerCase().includes(lower)) ||
+      a.summary.toLowerCase().includes(lower) ||
+      a.severity.toLowerCase().includes(lower) ||
+      a.vulnerabilities.some(
+        v =>
+          v.packageName.toLowerCase().includes(lower) ||
+          v.packageEcosystem.toLowerCase().includes(lower)
+      )
+  )
 }
 
 // =============================================================================

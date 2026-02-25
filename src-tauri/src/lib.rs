@@ -439,6 +439,10 @@ pub struct MagicPrompts {
     pub global_system_prompt: Option<String>,
     #[serde(default)]
     pub session_recap: Option<String>,
+    #[serde(default)]
+    pub investigate_security_alert: Option<String>,
+    #[serde(default)]
+    pub investigate_advisory: Option<String>,
 }
 
 fn default_investigate_issue_prompt() -> String {
@@ -643,6 +647,94 @@ fn default_investigate_workflow_run_prompt() -> String {
         .to_string()
 }
 
+fn default_investigate_security_alert_prompt() -> String {
+    r#"<task>
+
+Investigate the loaded Dependabot {alertWord} ({alertRefs})
+
+</task>
+
+
+<instructions>
+
+1. Read the security alert context file(s) for vulnerability details (CVE, GHSA, severity, affected versions)
+2. Identify the affected dependency and vulnerable version range
+3. Search the codebase for usage of the affected package:
+   - Find import/require statements and lock file entries
+   - Identify which features/APIs of the package are used
+   - Check if the vulnerable code path is actually exercised
+4. Assess actual impact:
+   - Is the vulnerable function/API used in this project?
+   - Is it reachable from user input or external data?
+   - What is the blast radius if exploited?
+5. Evaluate remediation options:
+   - Is a patched version available? What breaking changes does it introduce?
+   - Can the vulnerable code path be mitigated without upgrading?
+   - Are there workarounds or configuration changes?
+6. Propose fix:
+   - Specific version bump or dependency change
+   - Any code changes needed for compatibility
+   - Test cases to verify the fix doesn't break functionality
+
+</instructions>
+
+
+<guidelines>
+
+- Focus on whether the vulnerability is actually exploitable in this codebase
+- Don't just recommend "upgrade" — assess compatibility impact
+- Reference specific file paths where the affected package is used
+- If multiple alerts are loaded, address each one separately
+
+</guidelines>"#
+        .to_string()
+}
+
+fn default_investigate_advisory_prompt() -> String {
+    r#"<task>
+
+Investigate the loaded security {advisoryWord} ({advisoryRefs})
+
+</task>
+
+
+<instructions>
+
+1. Read the advisory context file(s) for full vulnerability details (GHSA ID, CVE, severity, affected versions, CWE)
+2. Understand the vulnerability:
+   - What type of vulnerability is it (injection, auth bypass, XSS, etc.)?
+   - What are the preconditions for exploitation?
+   - What is the severity and potential impact?
+3. Locate the vulnerable code:
+   - Search for the affected components, endpoints, or functions
+   - Trace the vulnerable code path from entry point to impact
+   - Identify all locations where the same pattern exists
+4. Develop a fix:
+   - Address the root cause, not just the symptom
+   - Ensure the fix covers all affected code paths
+   - Consider edge cases and bypass attempts
+5. Verify completeness:
+   - Are there similar patterns elsewhere that need the same fix?
+   - Does the fix introduce any regressions?
+   - What test cases would prove the vulnerability is resolved?
+6. Document:
+   - Summarize the vulnerability and fix for the advisory
+   - Note any affected versions and migration steps
+
+</instructions>
+
+
+<guidelines>
+
+- Think like an attacker — consider bypass attempts for any proposed fix
+- Check for the same vulnerability pattern across the entire codebase, not just the reported location
+- Reference specific file paths and line numbers
+- If multiple advisories are loaded, address each one separately
+
+</guidelines>"#
+        .to_string()
+}
+
 fn default_parallel_execution_prompt() -> String {
     r#"In plan mode, structure plans so subagents can work simultaneously. In build/execute mode, use subagents in parallel for faster implementation.
 
@@ -679,6 +771,10 @@ pub struct MagicPromptModels {
     pub session_naming_model: String,
     #[serde(default = "default_haiku_model")]
     pub session_recap_model: String,
+    #[serde(default = "default_model")]
+    pub investigate_security_alert_model: String,
+    #[serde(default = "default_model")]
+    pub investigate_advisory_model: String,
 }
 
 fn default_haiku_model() -> String {
@@ -699,6 +795,8 @@ impl Default for MagicPromptModels {
             release_notes_model: default_haiku_model(),
             session_naming_model: default_haiku_model(),
             session_recap_model: default_haiku_model(),
+            investigate_security_alert_model: default_model(),
+            investigate_advisory_model: default_model(),
         }
     }
 }
@@ -740,6 +838,10 @@ pub struct MagicPromptProviders {
     pub session_naming_provider: Option<String>,
     #[serde(default)]
     pub session_recap_provider: Option<String>,
+    #[serde(default)]
+    pub investigate_security_alert_provider: Option<String>,
+    #[serde(default)]
+    pub investigate_advisory_provider: Option<String>,
 }
 
 impl MagicPrompts {
@@ -747,7 +849,7 @@ impl MagicPrompts {
     /// This ensures users who never customized a prompt get auto-updated defaults.
     fn migrate_defaults(&mut self) {
         type DefaultEntry<'a> = (fn() -> String, &'a mut Option<String>);
-        let defaults: [DefaultEntry; 9] = [
+        let defaults: [DefaultEntry; 11] = [
             (
                 default_investigate_issue_prompt,
                 &mut self.investigate_issue,
@@ -768,6 +870,14 @@ impl MagicPrompts {
             (
                 default_parallel_execution_prompt,
                 &mut self.parallel_execution,
+            ),
+            (
+                default_investigate_security_alert_prompt,
+                &mut self.investigate_security_alert,
+            ),
+            (
+                default_investigate_advisory_prompt,
+                &mut self.investigate_advisory,
             ),
         ];
 
@@ -2073,6 +2183,20 @@ pub fn run() {
             projects::remove_pr_context,
             projects::get_pr_context_content,
             projects::get_issue_context_content,
+            // Dependabot / Security commands
+            projects::list_dependabot_alerts,
+            projects::get_dependabot_alert,
+            projects::load_security_alert_context,
+            projects::list_loaded_security_contexts,
+            projects::remove_security_context,
+            projects::get_security_context_content,
+            // Repository Security Advisory commands
+            projects::list_repository_advisories,
+            projects::get_repository_advisory,
+            projects::load_advisory_context,
+            projects::list_loaded_advisory_contexts,
+            projects::remove_advisory_context,
+            projects::get_advisory_context_content,
             // GitHub Actions commands
             projects::list_workflow_runs,
             // Saved context commands

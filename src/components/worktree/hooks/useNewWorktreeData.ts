@@ -8,8 +8,12 @@ import {
   useSearchGitHubPRs,
   useGetGitHubIssueByNumber,
   useGetGitHubPRByNumber,
+  useDependabotAlerts,
+  useRepositoryAdvisories,
   filterIssues,
   filterPRs,
+  filterSecurityAlerts,
+  filterAdvisories,
   mergeWithSearchResults,
   prependExactMatch,
 } from '@/services/github'
@@ -133,6 +137,44 @@ export function useNewWorktreeData(
     return filtered.filter(b => b.toLowerCase().includes(q))
   }, [branches, searchQuery, selectedProject?.default_branch])
 
+  // Security alerts (Dependabot)
+  const securityState = includeClosed ? 'all' : ('open' as const)
+  const {
+    data: securityAlerts,
+    isLoading: isLoadingSecurityAlerts,
+    isFetching: isRefetchingSecurityAlerts,
+    error: securityError,
+    refetch: refetchSecurityAlerts,
+  } = useDependabotAlerts(selectedProject?.path ?? null, securityState)
+
+  const filteredSecurityAlerts = useMemo(() => {
+    const ALERT_STATE_ORDER = ['open', 'dismissed', 'fixed', 'auto_dismissed']
+    return filterSecurityAlerts(securityAlerts ?? [], searchQuery).sort(
+      (a, b) =>
+        (ALERT_STATE_ORDER.indexOf(a.state) ?? 99) -
+        (ALERT_STATE_ORDER.indexOf(b.state) ?? 99)
+    )
+  }, [securityAlerts, searchQuery])
+
+  // Repository advisories — fetch all states, filter closed on frontend
+  const {
+    data: advisories,
+    isLoading: isLoadingAdvisories,
+    isFetching: isRefetchingAdvisories,
+    refetch: refetchAdvisories,
+  } = useRepositoryAdvisories(selectedProject?.path ?? null)
+
+  const filteredAdvisories = useMemo(() => {
+    const ADVISORY_STATE_ORDER = ['triage', 'draft', 'published', 'closed']
+    return filterAdvisories(advisories ?? [], searchQuery)
+      .filter(advisory => includeClosed || (advisory.state !== 'closed' && advisory.state !== 'published'))
+      .sort(
+        (a, b) =>
+          (ADVISORY_STATE_ORDER.indexOf(a.state) ?? 99) -
+          (ADVISORY_STATE_ORDER.indexOf(b.state) ?? 99)
+      )
+  }, [advisories, searchQuery, includeClosed])
+
   // Jean config
   const { data: jeanConfig } = useJeanConfig(selectedProject?.path ?? null)
 
@@ -171,6 +213,19 @@ export function useNewWorktreeData(
     isRefetchingBranches,
     branchesError,
     refetchBranches,
+
+    // Security alerts
+    filteredSecurityAlerts,
+    isLoadingSecurityAlerts,
+    isRefetchingSecurityAlerts,
+    securityError,
+    refetchSecurityAlerts,
+
+    // Repository advisories
+    filteredAdvisories,
+    isLoadingAdvisories,
+    isRefetchingAdvisories,
+    refetchAdvisories,
 
     // Mutations
     createWorktree,
