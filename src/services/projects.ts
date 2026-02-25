@@ -327,6 +327,67 @@ export function useInitGitInFolder() {
 }
 
 /**
+ * Hook to clone a remote git repository and add it as a project
+ */
+export function useCloneProject() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      url,
+      path,
+      parentId,
+    }: {
+      url: string
+      path: string
+      parentId?: string
+    }): Promise<Project> => {
+      if (!isTauri()) {
+        throw new Error('Not in Tauri context')
+      }
+
+      logger.debug('Cloning project', { url, path, parentId })
+      const project = await invoke<Project>('clone_project', {
+        url,
+        path,
+        parentId,
+      })
+      logger.info('Project cloned successfully', { project })
+      return project
+    },
+    onSuccess: (project, { parentId }) => {
+      queryClient.invalidateQueries({ queryKey: projectsQueryKeys.list() })
+      toast.success(`Cloned project: ${project.name}`)
+
+      // Auto-expand the new project and parent folder if applicable
+      const { expandProject, expandFolder, selectProject } =
+        useProjectsStore.getState()
+      if (parentId) {
+        expandFolder(parentId)
+      }
+      expandProject(project.id)
+      selectProject(project.id)
+
+      // Show jean.json wizard if not seen yet
+      maybeShowJeanConfigWizard(project.id, queryClient)
+
+      // Auto-create and open the base session for immediate use
+      openBaseSessionForProject(project.id, queryClient)
+    },
+    onError: error => {
+      const message =
+        typeof error === 'string'
+          ? error
+          : error instanceof Error
+            ? error.message
+            : 'Unknown error occurred'
+      logger.error('Failed to clone project', { error })
+      toast.error('Failed to clone project', { description: message })
+    },
+  })
+}
+
+/**
  * Hook to remove a project
  */
 export function useRemoveProject() {

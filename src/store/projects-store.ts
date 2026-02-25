@@ -34,6 +34,9 @@ interface ProjectsUIState {
   gitInitModalOpen: boolean
   gitInitModalPath: string | null
 
+  // Clone project modal state
+  cloneModalOpen: boolean
+
   // Jean.json config wizard state
   jeanConfigWizardOpen: boolean
   jeanConfigWizardProjectId: string | null
@@ -74,6 +77,8 @@ interface ProjectsUIState {
   closeProjectSettings: () => void
   openGitInitModal: (path: string) => void
   closeGitInitModal: () => void
+  openCloneModal: () => void
+  closeCloneModal: () => void
   openJeanConfigWizard: (projectId: string) => void
   closeJeanConfigWizard: () => void
   setEditingFolderId: (id: string | null) => void
@@ -98,6 +103,7 @@ export const useProjectsStore = create<ProjectsUIState>()(
       projectSettingsInitialPane: null,
       gitInitModalOpen: false,
       gitInitModalPath: null,
+      cloneModalOpen: false,
       jeanConfigWizardOpen: false,
       jeanConfigWizardProjectId: null,
       editingFolderId: null,
@@ -296,6 +302,12 @@ export const useProjectsStore = create<ProjectsUIState>()(
           undefined,
           'closeGitInitModal'
         ),
+
+      openCloneModal: () =>
+        set({ cloneModalOpen: true }, undefined, 'openCloneModal'),
+
+      closeCloneModal: () =>
+        set({ cloneModalOpen: false }, undefined, 'closeCloneModal'),
 
       openJeanConfigWizard: projectId =>
         set(

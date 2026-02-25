@@ -2,7 +2,7 @@ import { useCallback, useEffect } from 'react'
 import { toast } from 'sonner'
 import { isNativeApp } from '@/lib/environment'
 import { invoke } from '@/lib/transport'
-import { FolderOpen, FolderPlus } from 'lucide-react'
+import { FolderOpen, FolderPlus, Globe } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -22,6 +22,11 @@ export function AddProjectDialog() {
   } = useProjectsStore()
   const addProject = useAddProject()
   const initProject = useInitProject()
+
+  const handleCloneRemote = useCallback(() => {
+    const { openCloneModal } = useProjectsStore.getState()
+    openCloneModal()
+  }, [])
 
   const isPending = addProject.isPending || initProject.isPending
 
@@ -138,11 +143,14 @@ export function AddProjectDialog() {
       } else if (e.key === 'i' || e.key === 'I') {
         e.preventDefault()
         handleInitNew()
+      } else if (e.key === 'c' || e.key === 'C') {
+        e.preventDefault()
+        handleCloneRemote()
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [addProjectDialogOpen, isPending, handleAddExisting, handleInitNew])
+  }, [addProjectDialogOpen, isPending, handleAddExisting, handleInitNew, handleCloneRemote])
 
   return (
     <Dialog open={addProjectDialogOpen} onOpenChange={setAddProjectDialogOpen}>
@@ -191,6 +199,25 @@ export function AddProjectDialog() {
               </p>
             </div>
             <Kbd className="mt-1 h-6 px-1.5 text-xs shrink-0">I</Kbd>
+          </button>
+
+          <button
+            onClick={handleCloneRemote}
+            disabled={isPending}
+            className="flex items-start gap-4 rounded-lg border border-border p-4 text-left transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+          >
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+              <Globe className="h-5 w-5 text-muted-foreground" />
+            </div>
+            <div className="flex-1 space-y-1">
+              <p className="text-sm font-medium leading-none">
+                Clone from Remote
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Clone a repository from a git URL
+              </p>
+            </div>
+            <Kbd className="mt-1 h-6 px-1.5 text-xs shrink-0">C</Kbd>
           </button>
         </div>
       </DialogContent>

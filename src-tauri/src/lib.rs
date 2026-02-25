@@ -1986,6 +1986,7 @@ pub fn run() {
             projects::add_project,
             projects::init_git_in_folder,
             projects::init_project,
+            projects::clone_project,
             projects::remove_project,
             projects::list_worktrees,
             projects::get_worktree,
