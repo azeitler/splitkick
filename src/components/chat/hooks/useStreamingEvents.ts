@@ -138,6 +138,11 @@ export default function useStreamingEvents({
     const unlistenToolUse = listen<ToolUseEvent>('chat:tool_use', event => {
       const { session_id, id, name, input, parent_tool_use_id } = event.payload
       addToolCall(session_id, { id, name, input, parent_tool_use_id })
+
+      // Auto-switch Jean's mode when Claude enters plan mode
+      if (name === 'EnterPlanMode') {
+        useChatStore.getState().setExecutionMode(session_id, 'plan')
+      }
     })
 
     const unlistenToolBlock = listen<ToolBlockEvent>(

@@ -47,6 +47,7 @@ function isSpecialTool(toolCall: ToolCall): boolean {
   return (
     toolCall.name === 'AskUserQuestion' ||
     toolCall.name === 'ExitPlanMode' ||
+    toolCall.name === 'EnterPlanMode' ||
     toolCall.name === 'TodoWrite' ||
     toolCall.name === 'CodexTodoList'
   )
@@ -304,6 +305,14 @@ export function buildTimeline(
           type: 'exitPlanMode',
           tool: toolCall,
           key: `exit-${toolCall.id}`,
+        })
+        continue
+      }
+      if (toolCall.name === 'EnterPlanMode') {
+        result.push({
+          type: 'standalone',
+          tool: toolCall,
+          key: `enter-plan-${toolCall.id}`,
         })
         continue
       }

@@ -740,6 +740,15 @@ function getToolDisplay(toolCall: ToolCall): ToolDisplay {
       }
     }
 
+    case 'EnterPlanMode': {
+      return {
+        icon: <Brain className="h-4 w-4 shrink-0" />,
+        label: 'Entered plan mode',
+        detail: undefined,
+        expandedContent: 'Switched to plan mode',
+      }
+    }
+
     default: {
       const isMcpTool = toolCall.name.startsWith('mcp__')
       return {
