@@ -43,6 +43,7 @@ export function useOpencodeCliStatus() {
     },
     staleTime: 1000 * 60 * 5,
     gcTime: 1000 * 60 * 10,
+    refetchInterval: 1000 * 60 * 60,
   })
 }
 export const useOpenCodeCliStatus = useOpencodeCliStatus
