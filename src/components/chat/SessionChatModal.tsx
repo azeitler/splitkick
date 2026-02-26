@@ -42,6 +42,7 @@ import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { CloseWorktreeDialog } from './CloseWorktreeDialog'
 import { useChatStore } from '@/store/chat-store'
 import { useTerminalStore } from '@/store/terminal-store'
+import { useUIStore } from '@/store/ui-store'
 import {
   useSessions,
   useCreateSession,
@@ -647,6 +648,9 @@ export function SessionChatModal({
     if (!isOpen) return
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        // Don't close if PlanDialog is open — let it handle ESC
+        if (useUIStore.getState().planDialogOpen) return
+
         const target = e.target as HTMLElement
         const portalAncestor = target?.closest?.(
           '[data-slot="dialog-portal"], [data-slot="alert-dialog-portal"], [data-slot="sheet-portal"]'
