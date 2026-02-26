@@ -361,6 +361,10 @@ export const MessageItem = memo(function MessageItem({
                             toolCallId={item.tool.id}
                             questions={input.questions}
                             introText={item.introText}
+                            hasFollowUpMessage={hasFollowUpMessage}
+                            isSkipped={areQuestionsSkipped(
+                              message.session_id
+                            )}
                             onSubmit={(toolCallId, answers) =>
                               onQuestionAnswer(
                                 toolCallId,
