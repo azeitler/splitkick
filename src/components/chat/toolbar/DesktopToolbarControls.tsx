@@ -572,9 +572,9 @@ export function DesktopToolbarControls({
                     </button>
                   </DropdownMenuTrigger>
                 </TooltipTrigger>
-                <TooltipContent>Provider (⌥P)</TooltipContent>
+                <TooltipContent>Provider (⌘⇧P)</TooltipContent>
               </Tooltip>
-              <DropdownMenuContent align="start" className="min-w-40">
+              <DropdownMenuContent align="start" className="min-w-40" onEscapeKeyDown={e => e.stopPropagation()}>
                 <DropdownMenuRadioGroup
                   value={selectedProvider ?? '__anthropic__'}
                   onValueChange={handleProviderChange}
@@ -626,20 +626,21 @@ export function DesktopToolbarControls({
               <button
                 type="button"
                 disabled={hasPendingQuestions}
-                className="hidden @xl:flex h-8 items-center gap-1.5 rounded-none bg-transparent px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+                className="hidden @xl:flex h-8 min-w-0 items-center gap-1.5 rounded-none bg-transparent px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
               >
-                <Sparkles className="h-3.5 w-3.5" />
-                <span>{selectedModelLabel}</span>
-                <ChevronDown className="h-3 w-3 opacity-50" />
+                <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                <span className="max-w-48 truncate">{selectedModelLabel}</span>
+                <ChevronDown className="h-3 w-3 shrink-0 opacity-50" />
               </button>
             </DropdownMenuTrigger>
           </TooltipTrigger>
-          <TooltipContent>Model (⌥M)</TooltipContent>
+          <TooltipContent>Model (⌘⇧M)</TooltipContent>
         </Tooltip>
         <DropdownMenuContent
           align="start"
           className="min-w-40"
           enableNumberSelection={false}
+          onEscapeKeyDown={e => e.stopPropagation()}
         >
           {providerLocked && customCliProfiles.length > 0 && (
             <>
@@ -708,10 +709,10 @@ export function DesktopToolbarControls({
               </DropdownMenuTrigger>
             </TooltipTrigger>
             <TooltipContent>
-              {`Effort: ${EFFORT_LEVEL_OPTIONS.find(o => o.value === selectedEffortLevel)?.label} (⌥E)`}
+              {`Effort: ${EFFORT_LEVEL_OPTIONS.find(o => o.value === selectedEffortLevel)?.label} (⌘⇧E)`}
             </TooltipContent>
           </Tooltip>
-          <DropdownMenuContent align="start">
+          <DropdownMenuContent align="start" onEscapeKeyDown={e => e.stopPropagation()}>
             <DropdownMenuRadioGroup
               value={selectedEffortLevel}
               onValueChange={handleEffortLevelChange}
@@ -761,10 +762,10 @@ export function DesktopToolbarControls({
               </DropdownMenuTrigger>
             </TooltipTrigger>
             <TooltipContent>
-              {`Thinking: ${THINKING_LEVEL_OPTIONS.find(o => o.value === selectedThinkingLevel)?.label} (⌥E)`}
+              {`Thinking: ${THINKING_LEVEL_OPTIONS.find(o => o.value === selectedThinkingLevel)?.label} (⌘⇧E)`}
             </TooltipContent>
           </Tooltip>
-          <DropdownMenuContent align="start">
+          <DropdownMenuContent align="start" onEscapeKeyDown={e => e.stopPropagation()}>
             <DropdownMenuRadioGroup
               value={selectedThinkingLevel}
               onValueChange={handleThinkingLevelChange}

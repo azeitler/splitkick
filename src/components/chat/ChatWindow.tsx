@@ -1592,7 +1592,7 @@ export function ChatWindow({
                               />
                             </div>
 
-                            {/* Bottom toolbar - memoized to prevent re-renders */}
+                            {/* Bottom toolbar */}
                             <ChatToolbar
                               isSending={isSending}
                               hasPendingQuestions={hasPendingQuestions}

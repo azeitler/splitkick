@@ -61,6 +61,10 @@ function SheetContent({
       {modal && <SheetOverlay />}
       <SheetPrimitive.Content
         data-slot="sheet-content"
+        onEscapeKeyDown={e => {
+          // Stop ESC from reaching window-level handlers (e.g. SessionChatModal)
+          e.stopPropagation()
+        }}
         className={cn(
           'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out fixed z-[80] flex flex-col gap-4 shadow-lg transition ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500',
           side === 'right' &&

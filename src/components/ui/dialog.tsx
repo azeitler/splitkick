@@ -58,6 +58,7 @@ const DialogContent = React.forwardRef<
       showCloseButton = true,
       preventClose = false,
       ['aria-describedby']: ariaDescribedBy,
+      onEscapeKeyDown: onEscapeKeyDownProp,
       ...props
     },
     ref
@@ -71,7 +72,32 @@ const DialogContent = React.forwardRef<
           'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-[70] grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-lg duration-200 sm:max-w-lg',
           className
         )}
-        onEscapeKeyDown={preventClose ? e => e.preventDefault() : undefined}
+        onEscapeKeyDown={e => {
+          // Stop ESC from reaching window-level handlers (e.g. SessionChatModal)
+          // Radix listens on document, so stopPropagation prevents bubbling to window
+          e.stopPropagation()
+          console.log('[ESC-DEBUG] DialogContent onEscapeKeyDown', {
+            preventClose,
+            hasPopover: !!document.querySelector('[data-slot="popover-content"]'),
+            hasSelect: !!document.querySelector('[data-slot="select-content"]'),
+            hasCustomHandler: !!onEscapeKeyDownProp,
+          })
+          if (preventClose) {
+            e.preventDefault()
+            return
+          }
+          // Don't close dialog if a child popover/select dropdown is open
+          if (
+            document.querySelector(
+              '[data-slot="popover-content"], [data-slot="select-content"]'
+            )
+          ) {
+            console.log('[ESC-DEBUG] DialogContent: BLOCKED (child popup open)')
+            e.preventDefault()
+            return
+          }
+          onEscapeKeyDownProp?.(e)
+        }}
         onInteractOutside={preventClose ? e => e.preventDefault() : undefined}
         onPointerDownOutside={e => {
           const target = e.target as HTMLElement

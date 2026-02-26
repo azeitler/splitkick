@@ -439,7 +439,15 @@ export function WorktreeCanvasView({
           <div className="flex items-center gap-2 shrink-0">
             <div className="flex items-center gap-1">
               <h2 className="text-lg font-semibold">
-                {project?.name}
+                {project?.name && (
+                  <button
+                    type="button"
+                    className="hover:text-foreground/70 transition-colors cursor-pointer"
+                    onClick={() => useChatStore.getState().clearActiveWorktree()}
+                  >
+                    {project.name}
+                  </button>
+                )}
                 {(() => {
                   const displayBranch =
                     gitStatus?.current_branch ?? worktree?.branch
@@ -594,8 +602,6 @@ export function WorktreeCanvasView({
         <KeybindingHints
           hints={[
             { shortcut: 'Enter', label: 'open' },
-            { shortcut: 'P', label: 'plan' },
-            { shortcut: 'R', label: 'recap' },
             {
               shortcut: DEFAULT_KEYBINDINGS.open_in_modal as string,
               label: 'open in...',

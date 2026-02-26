@@ -647,6 +647,22 @@ export function SessionChatModal({
     if (!isOpen) return
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        const target = e.target as HTMLElement
+        const portalAncestor = target?.closest?.(
+          '[data-slot="dialog-portal"], [data-slot="alert-dialog-portal"], [data-slot="sheet-portal"]'
+        )
+        console.log('[ESC-DEBUG] SessionChatModal handler', {
+          target: target?.tagName,
+          targetDataSlot: target?.getAttribute?.('data-slot'),
+          portalAncestor: portalAncestor?.getAttribute?.('data-slot'),
+          targetOuterHTML: target?.outerHTML?.slice(0, 200),
+        })
+        // Don't close if ESC originated inside a child dialog/sheet portal
+        if (portalAncestor) {
+          console.log('[ESC-DEBUG] SessionChatModal: SKIPPED (child portal open)')
+          return
+        }
+        console.log('[ESC-DEBUG] SessionChatModal: CLOSING')
         handleClose()
       }
     }
@@ -660,7 +676,7 @@ export function SessionChatModal({
     <>
       <div
         key={worktreeId}
-        className="absolute inset-0 z-10 flex flex-col overflow-hidden bg-background pb-14"
+        className="absolute inset-0 z-10 flex flex-col overflow-hidden bg-background pb-2 pt-[3px]"
       >
           <div className="flex shrink-0 flex-col gap-2 border-b px-4 py-2 sm:text-left">
             <div className="flex items-center justify-between gap-2">
@@ -676,7 +692,13 @@ export function SessionChatModal({
                 <h2 className="text-sm font-medium shrink-0">
                   {project && (
                     <span className="text-muted-foreground font-normal">
-                      {project.name}
+                      <button
+                        type="button"
+                        className="hover:text-foreground transition-colors cursor-pointer text-foreground text-lg font-semibold"
+                        onClick={handleClose}
+                      >
+                        {project.name}
+                      </button>
                       <span className="mx-1.5 text-muted-foreground/50">›</span>
                     </span>
                   )}

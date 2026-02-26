@@ -355,15 +355,18 @@ export const ChatToolbar = memo(function ChatToolbar({
           handleViewSavedContext={handleViewSavedContext}
         />
 
-        <div className="h-4 w-px bg-border/50" />
+        <div className="h-4 w-px shrink-0 bg-border/50" />
 
-        <SendCancelButton
-          isSending={isSending}
-          hasPendingQuestions={hasPendingQuestions}
-          canSend={canSend}
-          queuedMessageCount={queuedMessageCount}
-          onCancel={onCancel}
-        />
+        <div className="shrink-0">
+          <SendCancelButton
+            isSending={isSending}
+            hasPendingQuestions={hasPendingQuestions}
+            canSend={canSend}
+            executionMode={executionMode}
+            queuedMessageCount={queuedMessageCount}
+            onCancel={onCancel}
+          />
+        </div>
       </div>
 
       <ContextViewerDialog

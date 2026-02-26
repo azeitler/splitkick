@@ -1,4 +1,4 @@
-import { Send } from 'lucide-react'
+import { Rocket } from 'lucide-react'
 import { getModifierSymbol, isMacOS } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 import { Kbd } from '@/components/ui/kbd'
@@ -8,14 +8,22 @@ interface SendCancelButtonProps {
   isSending: boolean
   hasPendingQuestions: boolean
   canSend: boolean
+  executionMode: string
   queuedMessageCount?: number
   onCancel: () => void
+}
+
+const MODE_LABELS: Record<string, string> = {
+  plan: 'Plan',
+  build: 'Build',
+  yolo: 'Yolo',
 }
 
 export function SendCancelButton({
   isSending,
   hasPendingQuestions,
   canSend,
+  executionMode,
   queuedMessageCount,
   onCancel,
 }: SendCancelButtonProps) {
@@ -56,7 +64,8 @@ export function SendCancelButton({
               : 'text-muted-foreground hover:bg-muted/80 hover:text-foreground'
           )}
         >
-          <Send className="h-3.5 w-3.5" />
+          <span className="w-9 text-center">{MODE_LABELS[executionMode] ?? executionMode}</span>
+          <Rocket className="h-3.5 w-3.5" />
         </button>
       </TooltipTrigger>
       <TooltipContent>Send message (Enter)</TooltipContent>

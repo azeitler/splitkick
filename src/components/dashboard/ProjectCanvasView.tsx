@@ -2112,8 +2112,6 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
         <KeybindingHints
           hints={[
             { shortcut: 'Enter', label: 'open' },
-            { shortcut: 'P', label: 'plan' },
-            { shortcut: 'R', label: 'recap' },
             {
               shortcut: DEFAULT_KEYBINDINGS.open_in_modal as string,
               label: 'open in...',

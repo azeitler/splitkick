@@ -23,6 +23,7 @@ import {
   filterAdvisories,
   mergeWithSearchResults,
   prependExactMatch,
+  parseItemNumber,
 } from '@/services/github'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import type { SavedContextsResponse } from '@/types/chat'
@@ -158,6 +159,9 @@ export function useLoadContextData({
   // Filter issues locally, merge with search results, exclude already loaded ones
   const filteredIssues = useMemo(() => {
     const loadedNumbers = new Set(loadedIssueContexts?.map(c => c.number) ?? [])
+    if (parseItemNumber(searchQuery) !== null) {
+      return exactIssue && !loadedNumbers.has(exactIssue.number) ? [exactIssue] : []
+    }
     const localFiltered = filterIssues(issues ?? [], searchQuery)
     const merged = mergeWithSearchResults(localFiltered, searchedIssues)
     const withExact = prependExactMatch(merged, exactIssue)
@@ -167,6 +171,9 @@ export function useLoadContextData({
   // Filter PRs locally, merge with search results, exclude already loaded ones
   const filteredPRs = useMemo(() => {
     const loadedNumbers = new Set(loadedPRContexts?.map(c => c.number) ?? [])
+    if (parseItemNumber(searchQuery) !== null) {
+      return exactPR && !loadedNumbers.has(exactPR.number) ? [exactPR] : []
+    }
     const localFiltered = filterPRs(prs ?? [], searchQuery)
     const merged = mergeWithSearchResults(localFiltered, searchedPRs)
     const withExact = prependExactMatch(merged, exactPR)

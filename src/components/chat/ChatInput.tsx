@@ -168,8 +168,6 @@ export const ChatInput = memo(function ChatInput({
       if (!prevDraft && draft && inputRef.current && !inputRef.current.value) {
         inputRef.current.value = draft
         valueRef.current = draft
-        inputRef.current.style.height = 'auto'
-        inputRef.current.style.height = `${inputRef.current.scrollHeight}px`
         setShowHint(false)
         onHasValueChangeRef.current?.(true)
       }
@@ -314,10 +312,6 @@ export const ChatInput = memo(function ChatInput({
         }
       }
 
-      // Auto-resize textarea based on content
-      const textarea = e.target
-      textarea.style.height = 'auto'
-      textarea.style.height = `${textarea.scrollHeight}px`
     },
     [
       activeSessionId,
@@ -428,7 +422,6 @@ export const ChatInput = memo(function ChatInput({
         setShowHint(true)
         const textarea = e.target as HTMLTextAreaElement
         textarea.value = ''
-        textarea.style.height = 'auto'
       }
       // Shift+Enter adds a new line (default behavior)
     },
@@ -477,9 +470,6 @@ export const ChatInput = memo(function ChatInput({
               valueRef.current = textarea.value
               textarea.selectionStart = textarea.selectionEnd =
                 start + text.length
-              // Auto-resize
-              textarea.style.height = 'auto'
-              textarea.style.height = `${textarea.scrollHeight}px`
               // Save draft
               useChatStore
                 .getState()
@@ -899,7 +889,7 @@ export const ChatInput = memo(function ChatInput({
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
         disabled={false}
-        className="custom-scrollbar field-sizing-fixed min-h-[40px] max-h-[200px] w-full resize-none border-0 bg-transparent dark:bg-transparent p-0 font-mono text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+        className="custom-scrollbar field-sizing-content min-h-[40px] max-h-[200px] w-full resize-none overflow-y-auto border-0 bg-transparent dark:bg-transparent p-0 font-mono text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
         rows={1}
         autoFocus
       />

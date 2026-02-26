@@ -68,10 +68,6 @@ function executeKeybindingAction(
       logger.debug('Keybinding: open_commit_modal')
       commandContext.openCommitModal()
       break
-    case 'open_pull_request':
-      logger.debug('Keybinding: open_pull_request')
-      commandContext.openPullRequest()
-      break
     case 'open_git_diff':
       logger.debug('Keybinding: open_git_diff')
       window.dispatchEvent(new CustomEvent('open-git-diff'))
@@ -181,12 +177,7 @@ function executeKeybindingAction(
       logger.debug('Keybinding: open_magic_modal')
       const chatStore = useChatStore.getState()
       const uiStore = useUIStore.getState()
-      const {
-        activeWorktreeId,
-        activeSessionIds,
-        sendingSessionIds,
-        activeWorktreePath,
-      } = chatStore
+      const { activeWorktreeId, activeWorktreePath } = chatStore
 
       // Block only when there's no worktree context at all (e.g., project dashboard with nothing selected)
       const selectedWorktreeId = useProjectsStore.getState().selectedWorktreeId
@@ -199,15 +190,7 @@ function executeKeybindingAction(
         break
       }
 
-      const activeSessionId = activeWorktreeId
-        ? activeSessionIds[activeWorktreeId]
-        : null
-      const isSending = activeSessionId
-        ? (sendingSessionIds[activeSessionId] ?? false)
-        : false
-      if (!isSending) {
-        uiStore.setMagicModalOpen(true)
-      }
+      uiStore.setMagicModalOpen(true)
       break
     }
     case 'new_session': {
@@ -304,6 +287,10 @@ function executeKeybindingAction(
     case 'focus_canvas_search':
       logger.debug('Keybinding: focus_canvas_search')
       window.dispatchEvent(new CustomEvent('focus-canvas-search'))
+      break
+    case 'open_unread_sessions':
+      logger.debug('Keybinding: open_unread_sessions')
+      window.dispatchEvent(new CustomEvent('command:open-unread-sessions'))
       break
     case 'toggle_terminal': {
       logger.debug('Keybinding: toggle_terminal')
@@ -415,7 +402,7 @@ export function useMainWindowEventListeners() {
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
         // Use e.code (physical key) since e.key can vary with CMD held on macOS
         const digitMatch = e.code.match(/^Digit(\d)$/)
-        const digit = digitMatch ? parseInt(digitMatch[1], 10) : NaN
+        const digit = digitMatch ? parseInt(digitMatch[1]!, 10) : NaN
         if (digit >= 1 && digit <= 9) {
           e.preventDefault()
           e.stopPropagation()
@@ -426,7 +413,7 @@ export function useMainWindowEventListeners() {
               const termStore = useTerminalStore.getState()
               const terms = termStore.terminals[wId] ?? []
               if (digit - 1 < terms.length) {
-                termStore.setActiveTerminal(wId, terms[digit - 1].id)
+                termStore.setActiveTerminal(wId, terms[digit - 1]!.id)
               }
             }
           } else if (useUIStore.getState().sessionChatModalOpen) {

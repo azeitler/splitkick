@@ -16,6 +16,7 @@ import {
   filterAdvisories,
   mergeWithSearchResults,
   prependExactMatch,
+  parseItemNumber,
 } from '@/services/github'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import {
@@ -97,27 +98,29 @@ export function useNewWorktreeData(
   )
 
   // Filtered issues
-  const filteredIssues = useMemo(
-    () =>
-      prependExactMatch(
-        mergeWithSearchResults(
-          filterIssues(issues ?? [], searchQuery),
-          searchedIssues
-        ),
-        exactIssue
+  const filteredIssues = useMemo(() => {
+    if (parseItemNumber(searchQuery) !== null) {
+      return exactIssue ? [exactIssue] : []
+    }
+    return prependExactMatch(
+      mergeWithSearchResults(
+        filterIssues(issues ?? [], searchQuery),
+        searchedIssues
       ),
-    [issues, searchQuery, searchedIssues, exactIssue]
-  )
+      exactIssue
+    )
+  }, [issues, searchQuery, searchedIssues, exactIssue])
 
   // Filtered PRs
-  const filteredPRs = useMemo(
-    () =>
-      prependExactMatch(
-        mergeWithSearchResults(filterPRs(prs ?? [], searchQuery), searchedPRs),
-        exactPR
-      ),
-    [prs, searchQuery, searchedPRs, exactPR]
-  )
+  const filteredPRs = useMemo(() => {
+    if (parseItemNumber(searchQuery) !== null) {
+      return exactPR ? [exactPR] : []
+    }
+    return prependExactMatch(
+      mergeWithSearchResults(filterPRs(prs ?? [], searchQuery), searchedPRs),
+      exactPR
+    )
+  }, [prs, searchQuery, searchedPRs, exactPR])
 
   // Branches
   const {

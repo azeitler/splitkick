@@ -4,7 +4,6 @@ export type KeybindingAction =
   | 'toggle_left_sidebar'
   | 'open_preferences'
   | 'open_commit_modal'
-  | 'open_pull_request'
   | 'open_git_diff'
   | 'execute_run'
   | 'open_in_modal'
@@ -26,6 +25,7 @@ export type KeybindingAction =
   | 'open_provider_dropdown'
   | 'open_model_dropdown'
   | 'open_thinking_dropdown'
+  | 'open_unread_sessions'
   | 'cancel_prompt'
 
 // Shortcut string format: "mod+key" where mod is cmd/ctrl
@@ -50,7 +50,6 @@ export const DEFAULT_KEYBINDINGS: KeybindingsMap = {
   toggle_left_sidebar: 'mod+b',
   open_preferences: 'mod+comma',
   open_commit_modal: 'mod+shift+c',
-  open_pull_request: 'mod+shift+p',
   open_git_diff: 'mod+g',
   execute_run: 'mod+r',
   open_in_modal: 'mod+o',
@@ -69,9 +68,10 @@ export const DEFAULT_KEYBINDINGS: KeybindingsMap = {
   focus_canvas_search: 'slash',
   toggle_terminal: 'mod+backquote',
   toggle_session_label: 'mod+s',
-  open_provider_dropdown: 'alt+p',
-  open_model_dropdown: 'alt+m',
-  open_thinking_dropdown: 'alt+e',
+  open_provider_dropdown: 'mod+shift+p',
+  open_model_dropdown: 'mod+shift+m',
+  open_thinking_dropdown: 'mod+shift+e',
+  open_unread_sessions: 'mod+shift+f',
   cancel_prompt: 'mod+alt+backspace',
 }
 
@@ -103,13 +103,6 @@ export const KEYBINDING_DEFINITIONS: KeybindingDefinition[] = [
     label: 'Open commit modal',
     description: 'Open the git commit dialog',
     default_shortcut: 'mod+shift+c',
-    category: 'git',
-  },
-  {
-    action: 'open_pull_request',
-    label: 'Open pull request',
-    description: 'Open the pull request dialog',
-    default_shortcut: 'mod+shift+p',
     category: 'git',
   },
   {
@@ -243,22 +236,29 @@ export const KEYBINDING_DEFINITIONS: KeybindingDefinition[] = [
     action: 'open_provider_dropdown',
     label: 'Open provider dropdown',
     description: 'Open the provider selector dropdown',
-    default_shortcut: 'alt+p',
+    default_shortcut: 'mod+shift+p',
     category: 'chat',
   },
   {
     action: 'open_model_dropdown',
     label: 'Open model dropdown',
     description: 'Open the model selector dropdown',
-    default_shortcut: 'alt+m',
+    default_shortcut: 'mod+shift+m',
     category: 'chat',
   },
   {
     action: 'open_thinking_dropdown',
     label: 'Open thinking dropdown',
     description: 'Open the thinking/effort level dropdown',
-    default_shortcut: 'alt+e',
+    default_shortcut: 'mod+shift+e',
     category: 'chat',
+  },
+  {
+    action: 'open_unread_sessions',
+    label: 'Finished sessions',
+    description: 'Open the finished/unread sessions popover',
+    default_shortcut: 'mod+shift+f',
+    category: 'navigation',
   },
   {
     action: 'cancel_prompt',

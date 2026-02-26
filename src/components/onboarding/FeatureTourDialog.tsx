@@ -28,6 +28,7 @@ const steps = [
       },
       { shortcut: 'mod+t' as ShortcutString, label: 'New session in worktree' },
       { shortcut: 'mod+k' as ShortcutString, label: 'Command palette' },
+      { shortcut: 'mod+l' as ShortcutString, label: 'Focus chat input' },
     ] satisfies ShortcutRow[],
   },
   {
@@ -50,10 +51,10 @@ const steps = [
     title: 'Session Shortcuts',
     description: 'Quick actions on selected sessions',
     shortcuts: [
-      { shortcut: 'r' as ShortcutString, label: 'View session recap' },
-      { shortcut: 'p' as ShortcutString, label: 'View session plan' },
       { shortcut: 'mod+Enter' as ShortcutString, label: 'Approve plan' },
       { shortcut: 'mod+y' as ShortcutString, label: 'Approve plan (YOLO)' },
+      { shortcut: 'mod+s' as ShortcutString, label: 'Toggle session label' },
+      { shortcut: 'mod+w' as ShortcutString, label: 'Close session or worktree' },
     ] satisfies ShortcutRow[],
   },
   {
@@ -65,9 +66,9 @@ const steps = [
         label: 'Open magic commands menu',
       },
       { shortcut: 'mod+shift+c' as ShortcutString, label: 'Commit' },
-      { shortcut: 'mod+shift+p' as ShortcutString, label: 'Pull request' },
       { shortcut: 'mod+g' as ShortcutString, label: 'Git diff' },
       { shortcut: 'mod+r' as ShortcutString, label: 'Run script' },
+      { shortcut: 'mod+o' as ShortcutString, label: 'Open in...' },
     ] satisfies ShortcutRow[],
   },
   {
