@@ -66,6 +66,14 @@ export const ChatInput = memo(function ChatInput({
   // PERFORMANCE: Use uncontrolled input pattern - track value in ref, not state
   // This avoids React re-renders on every keystroke
   const valueRef = useRef<string>('')
+
+  // Auto-resize textarea to fit content, up to ~10 rows
+  const resizeTextarea = useCallback(() => {
+    const el = inputRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }, [inputRef])
   const debouncedSaveRef = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined
   )
@@ -195,6 +203,9 @@ export const ChatInput = memo(function ChatInput({
       // Notify parent of hasValue change for send button styling
       onHasValueChangeRef.current?.(!isEmpty)
 
+      // Auto-resize to fit content
+      resizeTextarea()
+
       // Sync pending files with @mentions in input
       // Remove any pending files whose @filename is no longer in the text
       const { getPendingFiles, removePendingFile } = useChatStore.getState()
@@ -319,6 +330,7 @@ export const ChatInput = memo(function ChatInput({
       fileMentionOpen,
       slashTriggerIndex,
       slashPopoverOpen,
+      resizeTextarea,
     ]
   )
 
@@ -747,8 +759,11 @@ export const ChatInput = memo(function ChatInput({
           }
         }
       }
+
+      // Auto-resize after paste content is inserted
+      requestAnimationFrame(() => resizeTextarea())
     },
-    [activeSessionId, activeWorktreePath, inputRef]
+    [activeSessionId, activeWorktreePath, inputRef, resizeTextarea]
   )
 
   // Handle file selection from @ mention popover
@@ -889,7 +904,7 @@ export const ChatInput = memo(function ChatInput({
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
         disabled={false}
-        className="custom-scrollbar field-sizing-content min-h-[40px] max-h-[200px] w-full resize-none overflow-y-auto border-0 bg-transparent dark:bg-transparent p-0 font-mono text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+        className="custom-scrollbar min-h-[40px] max-h-[240px] w-full resize-none overflow-y-auto border-0 bg-transparent dark:bg-transparent p-0 font-mono text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
         rows={1}
         autoFocus
       />

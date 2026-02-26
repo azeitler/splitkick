@@ -35,7 +35,6 @@ function executeKeybindingAction(
 ) {
   // Canvas-only actions: blocked when the session chat modal is open
   const CANVAS_ONLY_ACTIONS = new Set<KeybindingAction>([
-    'new_worktree',
     'open_plan',
     'open_recap',
     'restore_last_archived',
