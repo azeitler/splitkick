@@ -27,12 +27,19 @@ interface UseScrollManagementReturn {
   areFindingsVisible: boolean
   /** Scroll to bottom with auto-scroll flag. Pass `true` for instant (no animation). */
   scrollToBottom: (instant?: boolean) => void
+  /** Mark scroll state as "at bottom" without performing any physical scroll.
+   *  Lets VirtualizedMessageList's gentle scrollIntoView handle actual scrolling. */
+  markAtBottom: () => void
   /** Scroll to findings element */
   scrollToFindings: () => void
   /** Handler for onScroll event */
   handleScroll: (e: React.UIEvent<HTMLDivElement>) => void
   /** Callback when scroll-to-bottom is handled */
   handleScrollToBottomHandled: () => void
+  /** Begin a user-initiated keyboard scroll: cancels auto-scroll, blocks handleScroll updates */
+  beginKeyboardScroll: () => void
+  /** End a user-initiated keyboard scroll: unblocks handleScroll updates */
+  endKeyboardScroll: () => void
 }
 
 export function useScrollManagement({
@@ -162,6 +169,42 @@ export function useScrollManagement({
     }, 350)
   }, [])
 
+  // Mark scroll state as "at bottom" without performing any physical scroll.
+  // Used when sending a message so VirtualizedMessageList's gentle
+  // scrollIntoView({ block: 'end' }) handles the actual scrolling,
+  // keeping prior content (e.g. a long plan) partially visible.
+  const markAtBottom = useCallback(() => {
+    isAtBottomRef.current = true
+    setIsAtBottom(true)
+  }, [])
+
+  // Begin a user-initiated keyboard scroll.
+  // Cancels any pending auto-scroll timeout AND keeps isAutoScrollingRef=true
+  // so that handleScroll is blocked during the animation (prevents it from
+  // re-setting isAtBottom=true on early frames when still near bottom).
+  const beginKeyboardScroll = useCallback(() => {
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current)
+      scrollTimeoutRef.current = null
+    }
+    isAutoScrollingRef.current = true
+    isAtBottomRef.current = false
+    setIsAtBottom(false)
+  }, [])
+
+  // End a user-initiated keyboard scroll.
+  // Unblocks handleScroll and syncs isAtBottom with actual scroll position.
+  const endKeyboardScroll = useCallback(() => {
+    isAutoScrollingRef.current = false
+    const viewport = scrollViewportRef.current
+    if (viewport) {
+      const { scrollTop, scrollHeight, clientHeight } = viewport
+      const atBottom = scrollHeight - scrollTop - clientHeight < 100
+      isAtBottomRef.current = atBottom
+      setIsAtBottom(prev => (prev === atBottom ? prev : atBottom))
+    }
+  }, [])
+
   // Scroll to findings helper
   // First scroll to the message containing findings using virtualizer, then to the element
   const scrollToFindings = useCallback(() => {
@@ -205,6 +248,9 @@ export function useScrollManagement({
     isAtBottom,
     areFindingsVisible,
     scrollToBottom,
+    markAtBottom,
+    beginKeyboardScroll,
+    endKeyboardScroll,
     scrollToFindings,
     handleScroll,
     handleScrollToBottomHandled,

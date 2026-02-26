@@ -27,6 +27,8 @@ export type KeybindingAction =
   | 'open_thinking_dropdown'
   | 'open_unread_sessions'
   | 'cancel_prompt'
+  | 'scroll_chat_up'
+  | 'scroll_chat_down'
 
 // Shortcut string format: "mod+key" where mod is cmd/ctrl
 // Examples: "mod+l", "mod+shift+p", "mod+1"
@@ -73,6 +75,8 @@ export const DEFAULT_KEYBINDINGS: KeybindingsMap = {
   open_thinking_dropdown: 'mod+shift+e',
   open_unread_sessions: 'mod+shift+f',
   cancel_prompt: 'mod+alt+backspace',
+  scroll_chat_up: 'mod+arrowup',
+  scroll_chat_down: 'mod+arrowdown',
 }
 
 // UI definitions for the settings pane
@@ -265,6 +269,20 @@ export const KEYBINDING_DEFINITIONS: KeybindingDefinition[] = [
     label: 'Cancel prompt',
     description: 'Cancel the running Claude process for the current session',
     default_shortcut: 'mod+alt+backspace',
+    category: 'chat',
+  },
+  {
+    action: 'scroll_chat_up',
+    label: 'Scroll chat up',
+    description: 'Scroll the chat message list up by one page',
+    default_shortcut: 'mod+arrowup',
+    category: 'chat',
+  },
+  {
+    action: 'scroll_chat_down',
+    label: 'Scroll chat down',
+    description: 'Scroll the chat message list down by one page',
+    default_shortcut: 'mod+arrowdown',
     category: 'chat',
   },
 ]

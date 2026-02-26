@@ -128,7 +128,7 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
   useEffect(() => {
     if (open) {
       queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
-      setFocusedIndex(-1)
+      setFocusedIndex(0)
     }
   }, [open, queryClient])
 

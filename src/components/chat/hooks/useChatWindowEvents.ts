@@ -70,6 +70,12 @@ interface UseChatWindowEventsParams {
   handlePlanApprovalYolo: (messageId: string) => void
   /** Whether the active session uses Codex backend (no native approval flow) */
   isCodexBackend: boolean
+  /** Ref to the chat scroll viewport for keyboard scrolling */
+  scrollViewportRef: RefObject<HTMLDivElement | null>
+  /** Begin a user-initiated keyboard scroll: cancels auto-scroll, blocks handleScroll */
+  beginKeyboardScroll: () => void
+  /** End a user-initiated keyboard scroll: unblocks handleScroll */
+  endKeyboardScroll: () => void
 }
 
 /**
@@ -115,6 +121,9 @@ export function useChatWindowEvents({
   handlePlanApproval,
   handlePlanApprovalYolo,
   isCodexBackend,
+  scrollViewportRef,
+  beginKeyboardScroll,
+  endKeyboardScroll,
 }: UseChatWindowEventsParams) {
   // Focus input on mount, session change, or worktree change
   useEffect(() => {
@@ -426,6 +435,51 @@ export function useChatWindowEvents({
     handleStreamingPlanApproval,
     handlePlanApproval,
   ])
+
+  // CMD+Up/Down: Scroll chat by one page with eased animation
+  const scrollAnimationRef = useRef<number | null>(null)
+  useEffect(() => {
+    const easeOut = (t: number) => 1 - (1 - t) ** 3
+    const handler = (e: CustomEvent<{ direction: 'up' | 'down' }>) => {
+      const viewport = scrollViewportRef.current
+      if (!viewport) return
+      const { scrollTop, scrollHeight, clientHeight } = viewport
+      // Skip if already at the boundary
+      if (e.detail.direction === 'down' && scrollHeight - scrollTop - clientHeight < 2) return
+      if (e.detail.direction === 'up' && scrollTop < 2) return
+      beginKeyboardScroll()
+      // Cancel any ongoing keyboard scroll animation
+      if (scrollAnimationRef.current) {
+        cancelAnimationFrame(scrollAnimationRef.current)
+      }
+      const delta =
+        e.detail.direction === 'up'
+          ? -viewport.clientHeight * 0.75
+          : viewport.clientHeight * 0.75
+      const start = viewport.scrollTop
+      const startTime = performance.now()
+      const duration = 250
+      const step = (now: number) => {
+        const progress = Math.min((now - startTime) / duration, 1)
+        viewport.scrollTop = start + delta * easeOut(progress)
+        if (progress < 1) {
+          scrollAnimationRef.current = requestAnimationFrame(step)
+        } else {
+          scrollAnimationRef.current = null
+          endKeyboardScroll()
+        }
+      }
+      scrollAnimationRef.current = requestAnimationFrame(step)
+    }
+    window.addEventListener('scroll-chat', handler as EventListener)
+    return () => {
+      window.removeEventListener('scroll-chat', handler as EventListener)
+      if (scrollAnimationRef.current) {
+        cancelAnimationFrame(scrollAnimationRef.current)
+        endKeyboardScroll()
+      }
+    }
+  }, [scrollViewportRef, beginKeyboardScroll, endKeyboardScroll])
 
   // Approve plan yolo keyboard shortcut (no-op for Codex)
   useEffect(() => {

@@ -726,6 +726,9 @@ export function ChatWindow({
     isAtBottom,
     areFindingsVisible,
     scrollToBottom,
+    markAtBottom,
+    beginKeyboardScroll,
+    endKeyboardScroll,
     scrollToFindings,
     handleScroll,
     handleScrollToBottomHandled,
@@ -845,7 +848,7 @@ export function ChatWindow({
     preferences,
     sendMessage,
     queryClient,
-    scrollToBottom,
+    markAtBottom,
     sessionsData,
     setInputDraft,
     clearInputDraft,
@@ -1161,6 +1164,9 @@ export function ChatWindow({
     handlePlanApproval,
     handlePlanApprovalYolo,
     isCodexBackend,
+    scrollViewportRef,
+    beginKeyboardScroll,
+    endKeyboardScroll,
   })
 
   // Pending attachment removal, slash command execution, queue management

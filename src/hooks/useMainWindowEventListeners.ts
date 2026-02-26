@@ -323,6 +323,16 @@ function executeKeybindingAction(
       logger.debug('Keybinding: cancel_prompt')
       window.dispatchEvent(new CustomEvent('cancel-prompt'))
       break
+    case 'scroll_chat_up':
+      window.dispatchEvent(
+        new CustomEvent('scroll-chat', { detail: { direction: 'up' } })
+      )
+      break
+    case 'scroll_chat_down':
+      window.dispatchEvent(
+        new CustomEvent('scroll-chat', { detail: { direction: 'down' } })
+      )
+      break
     case 'toggle_session_label': {
       logger.debug('Keybinding: toggle_session_label')
       // Works when a session is active (modal open or in session view) or on project canvas

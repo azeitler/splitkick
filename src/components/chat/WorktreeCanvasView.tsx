@@ -149,8 +149,10 @@ export function WorktreeCanvasView({
     })
   }, [isBase, worktreePath, defaultBranch])
 
-  // CMD+G: Open git diff from canvas
+  // CMD+G: Open git diff from canvas (skip when session modal is open — ChatWindow handles it)
   useEffect(() => {
+    if (selectedSessionId) return
+
     const handler = () => {
       setDiffRequest(prev => {
         if (prev) {
@@ -168,7 +170,7 @@ export function WorktreeCanvasView({
     }
     window.addEventListener('open-git-diff', handler)
     return () => window.removeEventListener('open-git-diff', handler)
-  }, [isBase, worktreePath, defaultBranch])
+  }, [isBase, worktreePath, defaultBranch, selectedSessionId])
 
   // Preferences for keybinding hints and layout
   const { data: preferences } = usePreferences()
