@@ -38,6 +38,7 @@ import {
   extractImagePaths,
   extractTextFilePaths,
   extractFileMentionPaths,
+  extractDirectoryMentionPaths,
   extractSkillPaths,
   stripAllMarkers,
 } from './message-content-utils'
@@ -145,6 +146,8 @@ export const MessageItem = memo(function MessageItem({
     message.role === 'user' ? extractTextFilePaths(message.content) : []
   const fileMentionPaths =
     message.role === 'user' ? extractFileMentionPaths(message.content) : []
+  const directoryMentionPaths =
+    message.role === 'user' ? extractDirectoryMentionPaths(message.content) : []
   const skillPaths =
     message.role === 'user' ? extractSkillPaths(message.content) : []
   const displayContent =
@@ -206,9 +209,17 @@ export const MessageItem = memo(function MessageItem({
         </div>
       )}
 
-      {/* Show attached file mentions (@ mentions) for user messages */}
-      {fileMentionPaths.length > 0 && (
+      {/* Show attached file and directory mentions (@ mentions) for user messages */}
+      {(fileMentionPaths.length > 0 || directoryMentionPaths.length > 0) && (
         <div className="flex flex-wrap gap-2 mb-2">
+          {directoryMentionPaths.map((path, idx) => (
+            <FileMentionBadge
+              key={`${message.id}-dir-${idx}`}
+              path={path}
+              worktreePath={worktreePath}
+              isDirectory
+            />
+          ))}
           {fileMentionPaths.map((path, idx) => (
             <FileMentionBadge
               key={`${message.id}-file-${idx}`}

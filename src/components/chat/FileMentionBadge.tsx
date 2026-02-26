@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { FileIcon, Loader2 } from 'lucide-react'
+import { FileIcon, FolderIcon, Loader2 } from 'lucide-react'
 import { invoke } from '@/lib/transport'
 import {
   Dialog,
@@ -24,10 +24,12 @@ function isMarkdownFile(filename: string): boolean {
 }
 
 interface FileMentionBadgeProps {
-  /** Relative path to the file (from @ mention) */
+  /** Relative path to the file or directory (from @ mention) */
   path: string
   /** Worktree path to resolve absolute path */
   worktreePath: string
+  /** Whether this is a directory mention */
+  isDirectory?: boolean
 }
 
 /**
@@ -37,6 +39,7 @@ interface FileMentionBadgeProps {
 export function FileMentionBadge({
   path,
   worktreePath,
+  isDirectory = false,
 }: FileMentionBadgeProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [content, setContent] = useState<string | null>(null)
@@ -47,6 +50,9 @@ export function FileMentionBadge({
   const extension = getExtension(path)
 
   const handleOpen = useCallback(async () => {
+    // Directories don't have a preview dialog
+    if (isDirectory) return
+
     setIsOpen(true)
 
     // Load content on-demand if not already loaded
@@ -66,7 +72,7 @@ export function FileMentionBadge({
         setIsLoading(false)
       }
     }
-  }, [content, isLoading, path, worktreePath])
+  }, [content, isLoading, isDirectory, path, worktreePath])
 
   return (
     <>
@@ -75,16 +81,23 @@ export function FileMentionBadge({
           <button
             type="button"
             onClick={handleOpen}
-            className="flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-border/50 bg-muted/50 cursor-pointer hover:border-primary/50 transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+            className={cn(
+              'flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-border/50 bg-muted/50 transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
+              isDirectory ? 'cursor-default' : 'cursor-pointer hover:border-primary/50'
+            )}
           >
-            <FileIcon
-              className={cn(
-                'h-3.5 w-3.5 shrink-0',
-                getExtensionColor(extension)
-              )}
-            />
+            {isDirectory ? (
+              <FolderIcon className="h-3.5 w-3.5 shrink-0 text-blue-400" />
+            ) : (
+              <FileIcon
+                className={cn(
+                  'h-3.5 w-3.5 shrink-0',
+                  getExtensionColor(extension)
+                )}
+              />
+            )}
             <span className="text-xs font-medium truncate max-w-[120px]">
-              {filename}
+              {isDirectory ? `${filename}/` : filename}
             </span>
           </button>
         </TooltipTrigger>
@@ -94,7 +107,11 @@ export function FileMentionBadge({
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogContent className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none p-0 sm:!w-[calc(100vw-4rem)] sm:!max-w-[calc(100vw-4rem)] sm:!h-auto sm:max-h-[85vh] sm:!rounded-lg sm:p-4 bg-background/95 backdrop-blur-sm">
           <DialogTitle className="text-sm font-medium flex items-center gap-2">
-            <FileIcon className={cn('h-4 w-4', getExtensionColor(extension))} />
+            {isDirectory ? (
+              <FolderIcon className="h-4 w-4 text-blue-400" />
+            ) : (
+              <FileIcon className={cn('h-4 w-4', getExtensionColor(extension))} />
+            )}
             {path}
           </DialogTitle>
           <DialogDescription className="sr-only">

@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { FileIcon } from 'lucide-react'
+import { FileIcon, FolderIcon } from 'lucide-react'
 import { DismissButton } from '@/components/ui/dismiss-button'
 import type { PendingFile } from '@/types/chat'
 import { cn } from '@/lib/utils'
@@ -42,18 +42,24 @@ export function FilePreview({ files, onRemove, disabled }: FilePreviewProps) {
         <Tooltip key={file.id}>
           <TooltipTrigger asChild>
             <div className="group relative flex items-center gap-1.5 rounded-md bg-muted/50 px-2 py-1 text-sm">
-              <FileIcon
-                className={cn(
-                  'h-3.5 w-3.5 shrink-0',
-                  getExtensionColor(file.extension)
-                )}
-              />
+              {file.isDirectory ? (
+                <FolderIcon className="h-3.5 w-3.5 shrink-0 text-blue-400" />
+              ) : (
+                <FileIcon
+                  className={cn(
+                    'h-3.5 w-3.5 shrink-0',
+                    getExtensionColor(file.extension)
+                  )}
+                />
+              )}
               <span className="max-w-32 truncate">
-                {getFilename(file.relativePath)}
+                {file.isDirectory
+                  ? `${getFilename(file.relativePath)}/`
+                  : getFilename(file.relativePath)}
               </span>
               {!disabled && (
                 <DismissButton
-                  tooltip="Remove file"
+                  tooltip={file.isDirectory ? 'Remove directory' : 'Remove file'}
                   onClick={e => handleRemove(e, file)}
                   className="ml-1"
                 />

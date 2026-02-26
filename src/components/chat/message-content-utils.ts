@@ -10,6 +10,10 @@ const TEXT_FILE_ATTACHMENT_REGEX =
 const FILE_MENTION_REGEX =
   /\[File: (.+?) - Use the Read tool to view this file\]/g
 
+/** Regex to extract directory mention paths from message content */
+const DIRECTORY_MENTION_REGEX =
+  /\[Directory: (.+?) - Use Glob and Read tools to explore this directory\]/g
+
 /** Regex to extract skill paths from message content */
 const SKILL_ATTACHMENT_REGEX =
   /\[Skill: (.+?) - Read and use this skill to guide your response\]/g
@@ -71,6 +75,24 @@ export function stripFileMentionMarkers(content: string): string {
   return content.replace(FILE_MENTION_REGEX, '').trim()
 }
 
+/** Extract directory mention paths from message content (deduplicated) */
+export function extractDirectoryMentionPaths(content: string): string[] {
+  const paths = new Set<string>()
+  let match
+  while ((match = DIRECTORY_MENTION_REGEX.exec(content)) !== null) {
+    if (match[1]) {
+      paths.add(match[1])
+    }
+  }
+  DIRECTORY_MENTION_REGEX.lastIndex = 0
+  return Array.from(paths)
+}
+
+/** Remove directory mention markers from content for cleaner display */
+export function stripDirectoryMentionMarkers(content: string): string {
+  return content.replace(DIRECTORY_MENTION_REGEX, '').trim()
+}
+
 /** Extract skill paths from message content (deduplicated) */
 export function extractSkillPaths(content: string): string[] {
   const paths = new Set<string>()
@@ -93,6 +115,8 @@ export function stripSkillMarkers(content: string): string {
 /** Strip all attachment markers from message content */
 export function stripAllMarkers(content: string): string {
   return stripSkillMarkers(
-    stripFileMentionMarkers(stripTextFileMarkers(stripImageMarkers(content)))
+    stripDirectoryMentionMarkers(
+      stripFileMentionMarkers(stripTextFileMarkers(stripImageMarkers(content)))
+    )
   )
 }

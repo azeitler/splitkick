@@ -616,10 +616,12 @@ export interface WorktreeFile {
   relative_path: string
   /** File extension (e.g., "tsx", "rs") or empty for no extension */
   extension: string
+  /** Whether this entry is a directory */
+  is_dir: boolean
 }
 
 /**
- * Represents a pending file attachment before sending
+ * Represents a pending file or directory attachment before sending
  */
 export interface PendingFile {
   /** Unique ID for this pending file */
@@ -628,6 +630,8 @@ export interface PendingFile {
   relativePath: string
   /** File extension */
   extension: string
+  /** Whether this is a directory mention */
+  isDirectory: boolean
 }
 
 // ============================================================================

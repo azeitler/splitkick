@@ -528,6 +528,7 @@ export const ChatInput = memo(function ChatInput({
                 id: generateId(),
                 relativePath: path,
                 extension: getExtension(path),
+                isDirectory: false,
               })
             }
 
@@ -749,6 +750,7 @@ export const ChatInput = memo(function ChatInput({
                   id: generateId(),
                   relativePath: resolved.relative_path,
                   extension: resolved.extension,
+                  isDirectory: resolved.is_dir,
                 })
               }
             }

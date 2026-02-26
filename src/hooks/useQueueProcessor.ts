@@ -18,11 +18,13 @@ const GIT_ALLOWED_TOOLS = ['Bash', 'Read', 'Glob', 'Grep']
 function buildMessageWithRefs(queuedMsg: QueuedMessage): string {
   let message = queuedMsg.message
 
-  // Add file references (from @ mentions)
+  // Add file/directory references (from @ mentions)
   if (queuedMsg.pendingFiles.length > 0) {
     const fileRefs = queuedMsg.pendingFiles
-      .map(
-        f => `[File: ${f.relativePath} - Use the Read tool to view this file]`
+      .map(f =>
+        f.isDirectory
+          ? `[Directory: ${f.relativePath} - Use Glob and Read tools to explore this directory]`
+          : `[File: ${f.relativePath} - Use the Read tool to view this file]`
       )
       .join('\n')
     message = message ? `${message}\n\n${fileRefs}` : fileRefs

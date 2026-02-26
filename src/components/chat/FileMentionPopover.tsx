@@ -7,7 +7,7 @@ import {
   useState,
 } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { FileIcon } from 'lucide-react'
+import { FileIcon, FolderIcon } from 'lucide-react'
 import {
   Command,
   CommandEmpty,
@@ -94,6 +94,7 @@ export function FileMentionPopover({
         id: generateId(),
         relativePath: file.relative_path,
         extension: file.extension,
+        isDirectory: file.is_dir,
       }
       onSelectFile(pendingFile)
       onOpenChange(false)
@@ -170,14 +171,18 @@ export function FileMentionPopover({
                         isSelected && '!bg-accent !text-accent-foreground'
                       )}
                     >
-                      <FileIcon
-                        className={cn(
-                          'h-4 w-4 shrink-0',
-                          getExtensionColor(file.extension)
-                        )}
-                      />
+                      {file.is_dir ? (
+                        <FolderIcon className="h-4 w-4 shrink-0 text-blue-400" />
+                      ) : (
+                        <FileIcon
+                          className={cn(
+                            'h-4 w-4 shrink-0',
+                            getExtensionColor(file.extension)
+                          )}
+                        />
+                      )}
                       <span className="truncate text-sm">
-                        {file.relative_path}
+                        {file.is_dir ? `${file.relative_path}/` : file.relative_path}
                       </span>
                     </CommandItem>
                   )

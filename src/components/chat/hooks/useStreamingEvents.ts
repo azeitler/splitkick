@@ -257,6 +257,16 @@ export default function useStreamingEvents({
 
       const isCurrentlyViewing = isViewingInFullView || isViewingInModal
 
+      // If user is currently viewing this session, bump last_opened_at so it
+      // doesn't appear as "unread" (updated_at will be newer after the run ends)
+      if (isCurrentlyViewing) {
+        invoke('set_session_last_opened', { sessionId })
+          .then(() =>
+            window.dispatchEvent(new CustomEvent('session-opened'))
+          )
+          .catch(() => undefined)
+      }
+
       // Check if session recap is enabled in preferences
       const preferences = queryClient.getQueryData<AppPreferences>(
         preferencesQueryKeys.preferences()
@@ -610,6 +620,16 @@ export default function useStreamingEvents({
 
       const isCurrentlyViewing = isViewingInFullView || isViewingInModal
 
+      // If user is currently viewing this session, bump last_opened_at so it
+      // doesn't appear as "unread" (updated_at will be newer after the run ends)
+      if (isCurrentlyViewing) {
+        invoke('set_session_last_opened', { sessionId: session_id })
+          .then(() =>
+            window.dispatchEvent(new CustomEvent('session-opened'))
+          )
+          .catch(() => undefined)
+      }
+
       // Check if session recap is enabled in preferences
       const preferences = queryClient.getQueryData<AppPreferences>(
         preferencesQueryKeys.preferences()
@@ -773,6 +793,16 @@ export default function useStreamingEvents({
           isActiveSession
 
         const isCurrentlyViewing = isViewingInFullView || isViewingInModal
+
+        // If user is currently viewing this session, bump last_opened_at so it
+        // doesn't appear as "unread" (updated_at will be newer after the run ends)
+        if (isCurrentlyViewing) {
+          invoke('set_session_last_opened', { sessionId: session_id })
+            .then(() =>
+              window.dispatchEvent(new CustomEvent('session-opened'))
+            )
+            .catch(() => undefined)
+        }
 
         // Check if session recap is enabled in preferences
         const preferences = queryClient.getQueryData<AppPreferences>(

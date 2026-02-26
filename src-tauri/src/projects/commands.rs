@@ -3658,6 +3658,8 @@ pub struct WorktreeFile {
     pub relative_path: String,
     /// File extension (e.g., "tsx", "rs") or empty for no extension
     pub extension: String,
+    /// Whether this entry is a directory
+    pub is_dir: bool,
 }
 
 /// List files in a worktree, respecting .gitignore
@@ -3708,10 +3710,7 @@ pub async fn list_worktree_files(
             continue;
         }
 
-        // Skip directories - only include files
-        if path.is_dir() {
-            continue;
-        }
+        let entry_is_dir = path.is_dir();
 
         // Get relative path
         let relative = match path.strip_prefix(worktree_path_ref) {
@@ -3726,20 +3725,26 @@ pub async fn list_worktree_files(
             continue;
         }
 
-        let extension = path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("")
-            .to_string();
+        let extension = if entry_is_dir {
+            String::new()
+        } else {
+            path.extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_string()
+        };
 
         files.push(WorktreeFile {
             relative_path: relative_str,
             extension,
+            is_dir: entry_is_dir,
         });
     }
 
-    // Sort alphabetically for consistent ordering
-    files.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+    // Sort: directories first, then alphabetically within each group
+    files.sort_by(|a, b| {
+        b.is_dir.cmp(&a.is_dir).then_with(|| a.relative_path.cmp(&b.relative_path))
+    });
 
     log::trace!("Found {} files in worktree", files.len());
     Ok(files)
