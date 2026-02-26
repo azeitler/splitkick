@@ -118,15 +118,21 @@ export function getOrCreateTerminal(
     if (event.payload.terminal_id === terminalId) {
       setTerminalRunning(terminalId, false)
       const exitCode = event.payload.exit_code
-      terminal.writeln(
-        `\r\n\x1b[90m[Process exited with code ${exitCode ?? 'unknown'}]\x1b[0m`
-      )
+      const signal = event.payload.signal
+      const exitLabel =
+        signal != null
+          ? `signal ${signal}`
+          : `code ${exitCode ?? 'unknown'}`
+      terminal.writeln(`\r\n\x1b[90m[Process exited with ${exitLabel}]\x1b[0m`)
       const inst = instances.get(terminalId)
       inst?.onStopped?.(exitCode)
 
-      // Auto-close terminal tab only on successful exit — keep open on
-      // failure so the user can read error output
-      if (inst && exitCode === 0) {
+      // Auto-close terminal tab on:
+      // 1. Successful exit (code 0) — any terminal
+      // 2. SIGINT (Ctrl+C) — only for "run" terminals (have a command)
+      const isInterrupt = signal != null && signal.includes('Interrupt')
+      const isRunTerminal = inst?.command != null
+      if (inst && (exitCode === 0 || (isInterrupt && isRunTerminal))) {
         const wId = inst.worktreeId
         setTimeout(() => {
           if (!instances.has(terminalId)) return // Already disposed
