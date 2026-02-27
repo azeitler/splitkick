@@ -1347,7 +1347,7 @@ export function ChatWindow({
                             ) : !session || session.messages.length === 0 ? (
                               <div className="text-muted-foreground">
                                     No messages yet.<br/><br/>
-                                    <p>Lets release your imagination! ✨</p>
+                                    <p>Release your imagination! ✨</p>
                               </div>
                             ) : (
                               // Virtualized message list - only renders visible messages for performance
