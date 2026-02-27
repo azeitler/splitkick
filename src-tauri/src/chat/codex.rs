@@ -2440,7 +2440,10 @@ pub fn execute_one_shot_codex(
         return Err("Codex CLI not installed".to_string());
     }
 
-    log::trace!("Executing one-shot Codex CLI with output-schema, model: {model}");
+    log::info!(
+        "Executing one-shot Codex CLI: model={model}, working_dir={:?}",
+        working_dir
+    );
 
     // Write schema to a temp file since --output-schema expects a file path
     let schema_file =
@@ -2485,9 +2488,42 @@ pub fn execute_one_shot_codex(
         // stdin is dropped here, closing the pipe
     }
 
-    let output = child
-        .wait_with_output()
-        .map_err(|e| format!("Failed to wait for Codex CLI: {e}"))?;
+    log::debug!("Codex CLI one-shot spawned, waiting for output (timeout: 120s)...");
+
+    // Wait with timeout to avoid hanging indefinitely (e.g. MCP server connection issues)
+    let timeout = std::time::Duration::from_secs(120);
+    let start = std::time::Instant::now();
+    let output = loop {
+        match child.try_wait() {
+            Ok(Some(_status)) => {
+                // Process exited — collect output
+                break child
+                    .wait_with_output()
+                    .map_err(|e| format!("Failed to collect Codex CLI output: {e}"))?;
+            }
+            Ok(None) => {
+                // Still running
+                if start.elapsed() > timeout {
+                    let _ = child.kill();
+                    return Err(
+                        "Codex CLI timed out after 120s. This often happens when an MCP server \
+                         is stuck connecting. Check your Codex MCP server configuration."
+                            .to_string(),
+                    );
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            Err(e) => {
+                return Err(format!("Failed to check Codex CLI status: {e}"));
+            }
+        }
+    };
+
+    log::debug!(
+        "Codex CLI one-shot completed in {:.1}s, exit: {}",
+        start.elapsed().as_secs_f64(),
+        output.status
+    );
 
     // Clean up temp schema file
     let _ = std::fs::remove_file(&schema_file);
@@ -2495,12 +2531,37 @@ pub fn execute_one_shot_codex(
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
-        return Err(format!(
-            "Codex CLI failed (exit {}): stderr={}, stdout={}",
+
+        // Full details for developer logs
+        log::warn!(
+            "Codex CLI one-shot failed (exit {}): stderr={}, stdout={}",
             output.status,
             stderr.trim(),
             stdout.trim()
-        ));
+        );
+
+        // User-facing error: detect common patterns and provide actionable hints
+        let user_msg =
+            if stderr.contains("AuthRequired") || stderr.contains("invalid_token") {
+                "Codex CLI failed: an MCP server requires authentication. \
+                 Check your Codex MCP server configuration."
+                    .to_string()
+            } else {
+                let trimmed = stderr.trim();
+                if trimmed.len() > 200 {
+                    format!(
+                        "Codex CLI failed (exit {}): {}…",
+                        output.status,
+                        &trimmed[..200]
+                    )
+                } else if trimmed.is_empty() {
+                    format!("Codex CLI failed (exit {})", output.status)
+                } else {
+                    format!("Codex CLI failed (exit {}): {trimmed}", output.status)
+                }
+            };
+
+        return Err(user_msg);
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
