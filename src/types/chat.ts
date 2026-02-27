@@ -304,6 +304,8 @@ export interface ToolUseEvent {
 export interface DoneEvent {
   session_id: string
   worktree_id: string // Kept for backward compatibility
+  /** True when a Codex/Opencode plan-mode run completed with content */
+  waiting_for_plan?: boolean
 }
 
 /**

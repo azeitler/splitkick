@@ -494,6 +494,115 @@ export default function useStreamingEvents({
             playNotificationSound(waitingSound)
           }
         }
+      } else if (event.payload.waiting_for_plan && !isCurrentlyViewing) {
+        // Codex/Opencode plan-mode run completed with content — enter plan-waiting state.
+        // The backend signals this via the waiting_for_plan field in chat:done.
+        // Skip if user is currently viewing this session — go straight to review instead.
+
+        // 1. Add optimistic assistant message to cache
+        let planMessageId: string | undefined
+        if (content || (effectiveToolCalls && effectiveToolCalls.length > 0)) {
+          const pendingIdKey = `__pendingMessageId_${sessionId}`
+          const preGeneratedId = (
+            window as unknown as Record<string, string>
+          )[pendingIdKey]
+          planMessageId = preGeneratedId ?? generateId()
+          if (preGeneratedId) {
+            // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+            delete (window as unknown as Record<string, string>)[pendingIdKey]
+          }
+
+          queryClient.setQueryData<Session>(
+            chatQueryKeys.session(sessionId),
+            old => {
+              if (!old) return old
+              return {
+                ...old,
+                messages: upsertAssistantMessage(old.messages, {
+                  id: planMessageId as string,
+                  session_id: sessionId,
+                  role: 'assistant' as const,
+                  content: content ?? '',
+                  timestamp: Math.floor(Date.now() / 1000),
+                  tool_calls: effectiveToolCalls ?? [],
+                  content_blocks: effectiveContentBlocks ?? [],
+                }),
+              }
+            }
+          )
+        }
+
+        // 2. Update caches with plan-waiting state
+        queryClient.setQueryData<Session>(
+          chatQueryKeys.session(sessionId),
+          old =>
+            old
+              ? {
+                  ...old,
+                  last_run_status: 'completed',
+                  waiting_for_input: true,
+                  waiting_for_input_type: 'plan' as const,
+                  is_reviewing: false,
+                  pending_plan_message_id: planMessageId,
+                }
+              : old
+        )
+        queryClient.setQueryData<WorktreeSessions>(
+          chatQueryKeys.sessions(worktreeId),
+          old => {
+            if (!old) return old
+            return {
+              ...old,
+              sessions: old.sessions.map(s =>
+                s.id === sessionId
+                  ? {
+                      ...s,
+                      last_run_status: 'completed' as const,
+                      waiting_for_input: true,
+                      waiting_for_input_type: 'plan' as const,
+                      is_reviewing: false,
+                      pending_plan_message_id: planMessageId,
+                    }
+                  : s
+              ),
+            }
+          }
+        )
+
+        // 3. Transition to waiting state in Zustand
+        pauseSession(sessionId)
+        if (planMessageId) {
+          useChatStore
+            .getState()
+            .setPendingPlanMessageId(sessionId, planMessageId)
+        }
+
+        // 4. Persist to disk BEFORE invalidating queries
+        const { worktreePaths: wtPaths2 } = useChatStore.getState()
+        const wtPath2 = wtPaths2[worktreeId]
+        if (wtPath2) {
+          persistencePromise = invoke('update_session_state', {
+            worktreeId,
+            worktreePath: wtPath2,
+            sessionId,
+            isReviewing: false,
+            waitingForInput: true,
+            waitingForInputType: 'plan',
+            pendingPlanMessageId: planMessageId ?? null,
+          }).catch(err =>
+            console.error(
+              '[useStreamingEvents] Failed to persist plan-waiting state:',
+              err
+            )
+          )
+        }
+
+        // Play waiting sound if not currently viewing this session
+        if (!isCurrentlyViewing) {
+          const waitingSound = (preferences?.waiting_sound ??
+            'none') as NotificationSound
+          playNotificationSound(waitingSound)
+        }
       } else {
         // No blocking tools — add optimistic message FIRST, then batch-clear state.
         // This eliminates the flicker gap where neither streaming nor persisted content is visible.

@@ -200,13 +200,6 @@ export function WorktreeCanvasView({
     worktreeId,
     worktreePath,
   })
-  const { handleArchiveSession, handleDeleteSession } = useSessionArchive({
-    worktreeId,
-    worktreePath,
-    sessions: sessionsData?.sessions,
-    removalBehavior: preferences?.removal_behavior,
-  })
-
   // Worktree close (CMD+W on canvas)
   const [closeWorktreeDialogOpen, setCloseWorktreeDialogOpen] = useState(false)
   const archiveWorktree = useArchiveWorktree()
@@ -256,6 +249,15 @@ export function WorktreeCanvasView({
       setCloseWorktreeDialogOpen(true)
     }
   }, [preferences?.confirm_session_close, handleCloseWorktree])
+
+  // Session archive/delete — closing the last session closes the worktree
+  const { handleArchiveSession, handleDeleteSession } = useSessionArchive({
+    worktreeId,
+    worktreePath,
+    sessions: sessionsData?.sessions,
+    removalBehavior: preferences?.removal_behavior,
+    onLastSessionDeleted: handleCloseWorktree,
+  })
 
   // Session creation
   const createSession = useCreateSession()

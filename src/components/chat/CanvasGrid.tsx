@@ -384,6 +384,7 @@ export function CanvasGrid({
         worktreePath={worktreePath}
         isOpen={!!selectedSessionId}
         onClose={() => onSelectedSessionIdChange(null)}
+        onCloseWorktree={onCloseWorktree}
       />
       <CloseWorktreeDialog
         open={closeConfirmOpen}

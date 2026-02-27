@@ -49,6 +49,8 @@ struct ThinkingEvent {
 struct DoneEvent {
     session_id: String,
     worktree_id: String,
+    /// True when a plan-mode run completed with content (Codex/Opencode only)
+    waiting_for_plan: bool,
 }
 
 #[derive(serde::Serialize, Clone)]
@@ -534,6 +536,7 @@ pub fn execute_opencode_http(
         &DoneEvent {
             session_id: session_id.to_string(),
             worktree_id: worktree_id.to_string(),
+            waiting_for_plan: execution_mode == Some("plan") && !content.is_empty(),
         },
     );
 

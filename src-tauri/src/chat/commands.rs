@@ -2380,23 +2380,10 @@ pub async fn send_chat_message(
         Ok(())
     })?;
 
-    // For Codex plan mode: persist waiting state so frontend shows plan approval UI
-    if (response_backend == Backend::Codex || response_backend == Backend::Opencode)
-        && execution_mode.as_deref() == Some("plan")
-        && !unified_response.cancelled
-        && has_content
-    {
-        let plan_session_id = session_id.clone();
-        let plan_msg_id = assistant_msg_id.clone();
-        with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
-            if let Some(session) = sessions.find_session_mut(&plan_session_id) {
-                session.waiting_for_input = true;
-                session.waiting_for_input_type = Some("plan".to_string());
-                session.pending_plan_message_id = Some(plan_msg_id);
-            }
-            Ok(())
-        })?;
-    }
+    // NOTE: Plan-waiting state for Codex/Opencode is now signaled via the
+    // `waiting_for_plan` field in the chat:done event, and persisted by the
+    // frontend's chat:done handler. The previous approach of setting it here
+    // raced with the frontend (chat:done fires before this code runs).
 
     if unified_response.cancelled {
         log::trace!("Chat message cancelled but partial response saved for session: {session_id}");
@@ -4312,6 +4299,7 @@ pub async fn resume_session(
         let worktree_id_clone = worktree_id.clone();
         let run_id_clone = run_id.clone();
         let is_codex = metadata.backend == Backend::Codex;
+        let is_plan_mode = run.execution_mode.as_deref() == Some("plan");
 
         // Spawn a task to tail the output file
         tauri::async_runtime::spawn(async move {
@@ -4321,7 +4309,7 @@ pub async fn resume_session(
             let emit_done = |app: &tauri::AppHandle, sid: &str, wid: &str| {
                 let _ = app.emit_all(
                     "chat:done",
-                    &serde_json::json!({ "session_id": sid, "worktree_id": wid }),
+                    &serde_json::json!({ "session_id": sid, "worktree_id": wid, "waiting_for_plan": false }),
                 );
             };
 
@@ -4333,6 +4321,7 @@ pub async fn resume_session(
                     &worktree_id_clone,
                     &output_file,
                     pid,
+                    is_plan_mode,
                 ) {
                     Ok(response) => (response.thread_id, response.usage, response.cancelled),
                     Err(e) => {

@@ -9,12 +9,18 @@ interface UseSessionArchiveParams {
   worktreePath: string
   sessions: Session[] | undefined
   removalBehavior?: RemovalBehavior
+  /** Called when the last session is deleted/archived.
+   *  When provided, the worktree is closed instead of creating a fresh fallback session.
+   *  The individual session mutation is skipped — the worktree close handles cleanup. */
+  onLastSessionDeleted?: () => void
 }
 
 /**
  * Provides archive and delete handlers for sessions.
- * When closing the last session, navigates to canvas instead of deleting the worktree.
- * The Rust backend automatically creates a fresh default session when the last one is removed.
+ *
+ * When `onLastSessionDeleted` is provided and the last session is removed,
+ * the callback fires (typically closing the worktree) instead of navigating
+ * to canvas and letting Rust auto-create a fallback session.
  *
  * - handleArchiveSession: always archives (context menu "Archive Session")
  * - handleDeleteSession: respects removalBehavior preference (context menu "Delete Session")
@@ -26,6 +32,7 @@ export function useSessionArchive({
   worktreePath,
   sessions,
   removalBehavior = 'archive',
+  onLastSessionDeleted,
 }: UseSessionArchiveParams) {
   const archiveSession = useArchiveSession()
   const closeSession = useCloseSession()
@@ -40,6 +47,11 @@ export function useSessionArchive({
       const activeSessions = sessions?.filter(s => !s.archived_at) ?? []
       const isLastSession = activeSessions.length <= 1
 
+      if (isLastSession && onLastSessionDeleted) {
+        onLastSessionDeleted()
+        return
+      }
+
       archiveSession.mutate({
         worktreeId,
         worktreePath,
@@ -50,7 +62,7 @@ export function useSessionArchive({
         navigateToCanvas()
       }
     },
-    [sessions, worktreeId, worktreePath, archiveSession, navigateToCanvas]
+    [sessions, worktreeId, worktreePath, archiveSession, navigateToCanvas, onLastSessionDeleted]
   )
 
   // Respects removalBehavior preference — used by context menu "Delete Session"
@@ -58,6 +70,11 @@ export function useSessionArchive({
     (sessionId: string) => {
       const activeSessions = sessions?.filter(s => !s.archived_at) ?? []
       const isLastSession = activeSessions.length <= 1
+
+      if (isLastSession && onLastSessionDeleted) {
+        onLastSessionDeleted()
+        return
+      }
 
       if (removalBehavior === 'delete') {
         closeSession.mutate({
@@ -85,6 +102,7 @@ export function useSessionArchive({
       closeSession,
       archiveSession,
       navigateToCanvas,
+      onLastSessionDeleted,
     ]
   )
 

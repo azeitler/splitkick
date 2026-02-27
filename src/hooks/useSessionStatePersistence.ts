@@ -348,6 +348,34 @@ export function useSessionStatePersistence() {
       }
     }
 
+    // When opening a session that's in plan-waiting state (Codex/Opencode plan mode),
+    // transition it to review — viewing the session acts as acknowledgment.
+    if (
+      session.waiting_for_input &&
+      session.waiting_for_input_type === 'plan'
+    ) {
+      updates.waitingForInputSessionIds = {
+        ...(updates.waitingForInputSessionIds ??
+          currentState.waitingForInputSessionIds),
+        [activeSessionId]: false,
+      }
+      updates.reviewingSessions = {
+        ...(updates.reviewingSessions ?? currentState.reviewingSessions),
+        [activeSessionId]: true,
+      }
+      // Persist the transition to disk
+      if (effectiveWorktreeId && effectiveWorktreePath) {
+        updateSessionState({
+          worktreeId: effectiveWorktreeId,
+          worktreePath: effectiveWorktreePath,
+          sessionId: activeSessionId,
+          isReviewing: true,
+          waitingForInput: false,
+          waitingForInputType: null,
+        })
+      }
+    }
+
     // Apply all updates at once
     if (Object.keys(updates).length > 0) {
       useChatStore.setState(updates)

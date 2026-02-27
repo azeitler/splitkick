@@ -161,6 +161,8 @@ struct ThinkingEvent {
 struct DoneEvent {
     session_id: String,
     worktree_id: String,
+    /// True when a plan-mode run completed with content (Codex/Opencode only)
+    waiting_for_plan: bool,
 }
 
 #[derive(serde::Serialize, Clone)]
@@ -363,6 +365,7 @@ pub fn execute_codex_detached(
             existing_thread_id.is_some(),
         )
     } else {
+        let is_plan_mode = execution_mode.unwrap_or("plan") == "plan";
         // Detached process: file-based tailing (plan/yolo modes)
         execute_codex_detached_inner(
             app,
@@ -375,6 +378,7 @@ pub fn execute_codex_detached(
             working_dir,
             prompt,
             pid_callback,
+            is_plan_mode,
         )
     }
 }
@@ -392,6 +396,7 @@ fn execute_codex_detached_inner(
     working_dir: &std::path::Path,
     prompt: Option<&str>,
     pid_callback: Option<Box<dyn FnOnce(u32) + Send>>,
+    is_plan_mode: bool,
 ) -> Result<(u32, CodexResponse), String> {
     use super::detached::spawn_detached_codex;
 
@@ -427,7 +432,7 @@ fn execute_codex_detached_inner(
     super::registry::register_process(session_id.to_string(), pid);
 
     super::increment_tailer_count();
-    let response = match tail_codex_output(app, session_id, worktree_id, output_file, pid) {
+    let response = match tail_codex_output(app, session_id, worktree_id, output_file, pid, is_plan_mode) {
         Ok(resp) => {
             super::decrement_tailer_count();
             super::registry::unregister_process(session_id);
@@ -1292,6 +1297,7 @@ fn tail_codex_attached(
             &DoneEvent {
                 session_id: session_id.to_string(),
                 worktree_id: worktree_id.to_string(),
+                waiting_for_plan: false, // Attached path is always build mode
             },
         );
     }
@@ -1876,6 +1882,7 @@ pub fn tail_codex_output(
     worktree_id: &str,
     output_file: &std::path::Path,
     pid: u32,
+    is_plan_mode: bool,
 ) -> Result<CodexResponse, String> {
     use super::detached::is_process_alive;
     use super::tail::{NdjsonTailer, POLL_INTERVAL};
@@ -2057,6 +2064,7 @@ pub fn tail_codex_output(
             &DoneEvent {
                 session_id: session_id.to_string(),
                 worktree_id: worktree_id.to_string(),
+                waiting_for_plan: is_plan_mode && !full_content.is_empty(),
             },
         );
     }

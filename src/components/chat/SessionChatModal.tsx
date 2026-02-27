@@ -161,6 +161,7 @@ interface SessionChatModalProps {
   worktreePath: string
   isOpen: boolean
   onClose: () => void
+  onCloseWorktree?: () => void
 }
 
 function getSessionStatus(
@@ -212,6 +213,7 @@ export function SessionChatModal({
   worktreePath,
   isOpen,
   onClose,
+  onCloseWorktree,
 }: SessionChatModalProps) {
   const { data: sessionsData } = useSessions(
     worktreeId || null,
@@ -412,11 +414,17 @@ export function SessionChatModal({
   }, [])
 
   // Session archive/delete handlers
+  const handleCloseWorktreeFromModal = useCallback(() => {
+    onCloseWorktree?.()
+    onClose()
+  }, [onCloseWorktree, onClose])
+
   const { handleArchiveSession, handleDeleteSession } = useSessionArchive({
     worktreeId,
     worktreePath,
     sessions,
     removalBehavior: preferences?.removal_behavior,
+    onLastSessionDeleted: onCloseWorktree ? handleCloseWorktreeFromModal : undefined,
   })
 
   // CMD+W: close the active session tab, or close modal if last tab

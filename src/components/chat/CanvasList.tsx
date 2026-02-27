@@ -371,6 +371,7 @@ export function CanvasList({
         worktreePath={worktreePath}
         isOpen={!!selectedSessionId}
         onClose={() => onSelectedSessionIdChange(null)}
+        onCloseWorktree={onCloseWorktree}
       />
       <CloseWorktreeDialog
         open={closeConfirmOpen}

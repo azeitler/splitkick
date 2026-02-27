@@ -116,6 +116,8 @@ struct ToolUseEvent {
 struct DoneEvent {
     session_id: String,
     worktree_id: String, // Kept for backward compatibility
+    /// Always false for Claude (uses ExitPlanMode tool calls instead)
+    waiting_for_plan: bool,
 }
 
 /// Payload for error events sent to frontend
@@ -1028,6 +1030,7 @@ pub fn tail_claude_output(
                                             let done_event = DoneEvent {
                                                 session_id: session_id.to_string(),
                                                 worktree_id: worktree_id.to_string(),
+                                                waiting_for_plan: false,
                                             };
                                             if let Err(e) = app.emit_all("chat:done", &done_event) {
                                                 log::error!("Failed to emit done event: {e}");
@@ -1366,6 +1369,7 @@ pub fn tail_claude_output(
         let done_event = DoneEvent {
             session_id: session_id.to_string(),
             worktree_id: worktree_id.to_string(),
+            waiting_for_plan: false,
         };
         if let Err(e) = app.emit_all("chat:done", &done_event) {
             log::error!("Failed to emit done event: {e}");
