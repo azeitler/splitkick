@@ -19,6 +19,7 @@ import { useClaudeSkills, useClaudeCommands } from '@/services/skills'
 import type { ClaudeSkill, ClaudeCommand, PendingSkill } from '@/types/chat'
 import { cn } from '@/lib/utils'
 import { generateId } from '@/lib/uuid'
+import { fuzzySearchItems } from '@/lib/fuzzy-search'
 
 export interface SlashPopoverHandle {
   moveUp: () => void
@@ -67,36 +68,19 @@ export function SlashPopover({
   const listRef = useRef<HTMLDivElement>(null)
   const [selectedIndex, setSelectedIndex] = useState(0)
 
-  // Filter and combine items based on search query and context
+  // Filter and combine items based on search query and context (fuzzy match)
   const filteredItems = useMemo(() => {
-    const query = searchQuery.toLowerCase()
     const items: ListItem[] = []
 
     // Add commands first (only if at prompt start)
     if (isAtPromptStart) {
-      const filteredCommands = query
-        ? commands.filter(
-            c =>
-              c.name.toLowerCase().includes(query) ||
-              c.description?.toLowerCase().includes(query)
-          )
-        : commands
-
-      filteredCommands.slice(0, 10).forEach(cmd => {
+      fuzzySearchItems(commands, searchQuery, 10).forEach(cmd => {
         items.push({ type: 'command', data: cmd })
       })
     }
 
     // Add skills
-    const filteredSkills = query
-      ? skills.filter(
-          s =>
-            s.name.toLowerCase().includes(query) ||
-            s.description?.toLowerCase().includes(query)
-        )
-      : skills
-
-    filteredSkills.slice(0, 10).forEach(skill => {
+    fuzzySearchItems(skills, searchQuery, 10).forEach(skill => {
       items.push({ type: 'skill', data: skill })
     })
 

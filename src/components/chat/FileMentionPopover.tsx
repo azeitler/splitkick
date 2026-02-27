@@ -21,6 +21,7 @@ import type { WorktreeFile, PendingFile } from '@/types/chat'
 import { cn } from '@/lib/utils'
 import { generateId } from '@/lib/uuid'
 import { getExtensionColor } from '@/lib/file-colors'
+import { fuzzySearchFiles } from '@/lib/fuzzy-search'
 
 export interface FileMentionPopoverHandle {
   moveUp: () => void
@@ -70,17 +71,11 @@ export function FileMentionPopover({
     }
   }, [open, worktreePath, queryClient])
 
-  // Filter files based on search query (case-insensitive substring match)
-  const filteredFiles = useMemo(() => {
-    if (!searchQuery) {
-      return files.slice(0, 15) // Show first 15 when no search
-    }
-
-    const query = searchQuery.toLowerCase()
-    return files
-      .filter(f => f.relative_path.toLowerCase().includes(query))
-      .slice(0, 15) // Limit to 15 results
-  }, [files, searchQuery])
+  // Filter files based on search query (fuzzy match)
+  const filteredFiles = useMemo(
+    () => fuzzySearchFiles(files, searchQuery, 15),
+    [files, searchQuery]
+  )
 
   // Clamp selectedIndex to valid range (handles case when filter reduces results)
   const clampedSelectedIndex = Math.min(
