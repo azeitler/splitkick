@@ -282,6 +282,8 @@ export function useSession(
   worktreeId: string | null,
   worktreePath: string | null
 ) {
+  const queryClient = useQueryClient()
+
   return useQuery({
     queryKey: chatQueryKeys.session(sessionId ?? ''),
     queryFn: async (): Promise<Session | null> => {
@@ -297,6 +299,20 @@ export function useSession(
           sessionId,
         })
         logger.info('Session loaded', { messageCount: session.messages.length })
+
+        // Preserve optimistic messages from sendMessage.onMutate that the
+        // backend hasn't persisted yet (race: refetchOnMount fires before
+        // the send_chat_message invoke writes the user message to disk).
+        const cached = queryClient.getQueryData<Session>(
+          chatQueryKeys.session(sessionId)
+        )
+        if (
+          cached &&
+          cached.messages.length > session.messages.length
+        ) {
+          return { ...session, messages: cached.messages }
+        }
+
         return session
       } catch (error) {
         logger.error('Failed to load session', { error, sessionId })
@@ -1177,10 +1193,34 @@ export function useSendMessage() {
       )
 
       // Optimistically add user message immediately (skip if last message is same content)
+      const optimisticUserMessage: ChatMessage = {
+        id: generateId(),
+        session_id: sessionId,
+        role: 'user' as const,
+        content: message,
+        timestamp: Math.floor(Date.now() / 1000),
+        tool_calls: [],
+        model,
+        execution_mode: executionMode,
+        thinking_level: thinkingLevel,
+      }
+
       queryClient.setQueryData<Session>(
         chatQueryKeys.session(sessionId),
         old => {
-          if (!old) return old
+          if (!old) {
+            // Seed cache for new/unfetched sessions so the user message
+            // appears immediately (e.g., automated prompts from workflow runs)
+            const now = Math.floor(Date.now() / 1000)
+            return {
+              id: sessionId,
+              name: '',
+              order: 0,
+              created_at: now,
+              updated_at: now,
+              messages: [optimisticUserMessage],
+            }
+          }
 
           const lastMessage = old.messages?.at(-1)
           const isDuplicate =
@@ -1193,20 +1233,7 @@ export function useSendMessage() {
 
           return {
             ...old,
-            messages: [
-              ...old.messages,
-              {
-                id: generateId(),
-                session_id: sessionId,
-                role: 'user' as const,
-                content: message,
-                timestamp: Math.floor(Date.now() / 1000),
-                tool_calls: [],
-                model,
-                execution_mode: executionMode,
-                thinking_level: thinkingLevel,
-              },
-            ],
+            messages: [...old.messages, optimisticUserMessage],
           }
         }
       )

@@ -32,22 +32,27 @@ import { ModalCloseButton } from '@/components/ui/modal-close-button'
 import { toast } from 'sonner'
 import { invoke } from '@/lib/transport'
 import { useUIStore } from '@/store/ui-store'
-import { useChatStore, DEFAULT_MODEL } from '@/store/chat-store'
+import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useWorkflowRuns, githubQueryKeys } from '@/services/github'
 import { projectsQueryKeys } from '@/services/projects'
 import {
   useCreateSession,
   useSendMessage,
+  useSetSessionBackend,
+  useSetSessionModel,
+  useSetSessionProvider,
   chatQueryKeys,
 } from '@/services/chat'
 import type { WorktreeSessions } from '@/types/chat'
 import { usePreferences } from '@/services/preferences'
 import { openExternal } from '@/lib/platform'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { resolveBackend } from '@/lib/model-utils'
 import {
   DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT,
   DEFAULT_PARALLEL_EXECUTION_PROMPT,
+  resolveMagicPromptProvider,
 } from '@/types/preferences'
 import type { WorkflowRun } from '@/types/github'
 import type { Project, Worktree } from '@/types/projects'
@@ -143,6 +148,9 @@ export function WorkflowRunsModal() {
   const queryClient = useQueryClient()
   const createSession = useCreateSession()
   const sendMessage = useSendMessage()
+  const setSessionBackend = useSetSessionBackend()
+  const setSessionModel = useSetSessionModel()
+  const setSessionProvider = useSetSessionProvider()
   const { data: preferences } = usePreferences()
 
   const workflowRunsModalOpen = useUIStore(state => state.workflowRunsModalOpen)
@@ -293,9 +301,22 @@ export function WorkflowRunsModal() {
         .replace(/\{branch\}/g, run.headBranch)
         .replace(/\{displayTitle\}/g, run.displayTitle)
 
+      // Fall back to the user's currently-selected model (like useInvestigateHandlers does)
+      const storeState = useChatStore.getState()
+      const currentActiveSessionId = storeState.activeSessionIds[storeState.activeWorktreeId ?? ''] ?? ''
+      const currentModel = storeState.selectedModels[currentActiveSessionId] ?? 'sonnet'
       const investigateModel =
         preferences?.magic_prompt_models?.investigate_workflow_run_model ??
-        DEFAULT_MODEL
+        currentModel
+      const investigateProvider = resolveMagicPromptProvider(
+        preferences?.magic_prompt_providers,
+        'investigate_workflow_run_provider',
+        preferences?.default_provider
+      )
+      const investigateBackend = resolveBackend(investigateModel)
+      const investigateCustomProfile = investigateProvider && investigateProvider !== '__anthropic__'
+        ? preferences?.custom_cli_profiles?.find(p => p.name === investigateProvider)?.name
+        : undefined
 
       // --- Find/create the target worktree ---
       let targetWorktreeId: string | null = null
@@ -380,11 +401,19 @@ export function WorkflowRunsModal() {
       const worktreeId = targetWorktreeId
       const worktreePath = targetWorktreePath
 
-      // Switch to the target worktree
-      const { setActiveWorktree, setActiveSession } = useChatStore.getState()
+      // Check if we're currently on the project canvas (no active worktree path)
+      const { activeWorktreePath, setActiveWorktree, setActiveSession } = useChatStore.getState()
       const { selectWorktree } = useProjectsStore.getState()
-      setActiveWorktree(worktreeId, worktreePath)
-      selectWorktree(worktreeId)
+      const isOnProjectCanvas = !activeWorktreePath
+
+      if (isOnProjectCanvas) {
+        // Stay on project canvas — just select worktree in sidebar
+        selectWorktree(worktreeId)
+      } else {
+        // Already inside a worktree — navigate to target worktree
+        setActiveWorktree(worktreeId, worktreePath)
+        selectWorktree(worktreeId)
+      }
 
       const sendInvestigateToSession = (sessionId: string) => {
         setActiveSession(worktreeId, sessionId)
@@ -394,6 +423,9 @@ export function WorkflowRunsModal() {
           setLastSentMessage,
           setError,
           setSelectedModel,
+          setSelectedProvider,
+          setSelectedBackend,
+          setExecutionMode,
           setExecutingMode,
         } = useChatStore.getState()
 
@@ -401,7 +433,15 @@ export function WorkflowRunsModal() {
         setError(sessionId, null)
         addSendingSession(sessionId)
         setSelectedModel(sessionId, investigateModel)
+        setSelectedProvider(sessionId, investigateProvider)
+        setSelectedBackend(sessionId, investigateBackend)
+        setExecutionMode(sessionId, 'build')
         setExecutingMode(sessionId, 'build')
+
+        // Persist model/backend/provider to session on disk
+        setSessionBackend.mutate({ sessionId, worktreeId, worktreePath, backend: investigateBackend })
+        setSessionModel.mutate({ sessionId, worktreeId, worktreePath, model: investigateModel })
+        setSessionProvider.mutate({ sessionId, worktreeId, worktreePath, provider: investigateProvider })
 
         sendMessage.mutate({
           sessionId,
@@ -411,6 +451,8 @@ export function WorkflowRunsModal() {
           model: investigateModel,
           executionMode: 'build',
           thinkingLevel: 'think',
+          backend: investigateBackend,
+          customProfileName: investigateCustomProfile,
           parallelExecutionPrompt:
             preferences?.parallel_execution_prompt_enabled
               ? (preferences.magic_prompts?.parallel_execution ??
@@ -420,12 +462,18 @@ export function WorkflowRunsModal() {
           aiLanguage: preferences?.ai_language,
         })
 
-        // Open the session chat modal so the user sees the chat (not just the canvas)
-        window.dispatchEvent(
-          new CustomEvent('open-session-modal', {
-            detail: { sessionId },
-          })
-        )
+        // Open the session chat modal
+        if (isOnProjectCanvas) {
+          // On project canvas — let ProjectCanvasView auto-open the session modal overlay
+          useUIStore.getState().markWorktreeForAutoOpenSession(worktreeId, sessionId)
+        } else {
+          // Inside a worktree — dispatch event for WorktreeCanvasView to handle
+          window.dispatchEvent(
+            new CustomEvent('open-session-modal', {
+              detail: { sessionId },
+            })
+          )
+        }
       }
 
       // Check if worktree already has an empty session we can reuse
@@ -472,6 +520,9 @@ export function WorkflowRunsModal() {
       queryClient,
       createSession,
       sendMessage,
+      setSessionBackend,
+      setSessionModel,
+      setSessionProvider,
       preferences,
     ]
   )

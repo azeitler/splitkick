@@ -38,6 +38,9 @@ import {
 import { DismissButton } from '@/components/ui/dismiss-button'
 import { StatusIndicator } from '@/components/ui/status-indicator'
 import { GitStatusBadges } from '@/components/ui/git-status-badges'
+import { NewIssuesBadge } from '@/components/shared/NewIssuesBadge'
+import { OpenPRsBadge } from '@/components/shared/OpenPRsBadge'
+import { FailedRunsBadge } from '@/components/shared/FailedRunsBadge'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { CloseWorktreeDialog } from './CloseWorktreeDialog'
 import { useChatStore } from '@/store/chat-store'
@@ -700,12 +703,6 @@ export function SessionChatModal({
                   )}
                   {isBase ? 'Base Session' : (worktree?.name ?? 'Worktree')}
                 </h2>
-                {worktree && project && (
-                  <WorktreeDropdownMenu
-                    worktree={worktree}
-                    projectId={project.id}
-                  />
-                )}
                 <GitStatusBadges
                   behindCount={behindCount}
                   unpushedCount={unpushedCount}
@@ -718,6 +715,19 @@ export function SessionChatModal({
                   onDiffClick={handleUncommittedDiffClick}
                   onBranchDiffClick={handleBranchDiffClick}
                 />
+                {project && (
+                  <>
+                    <NewIssuesBadge projectPath={project.path} projectId={project.id} />
+                    <OpenPRsBadge projectPath={project.path} projectId={project.id} />
+                    <FailedRunsBadge projectPath={project.path} />
+                  </>
+                )}
+                {worktree && project && (
+                  <WorktreeDropdownMenu
+                    worktree={worktree}
+                    projectId={project.id}
+                  />
+                )}
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 {/* Desktop: inline action buttons */}

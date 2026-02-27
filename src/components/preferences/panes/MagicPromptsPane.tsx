@@ -613,6 +613,35 @@ export const MagicPromptsPane: React.FC = () => {
     })
   }, [preferences, savePreferences])
 
+  // Flush pending save when switching prompts
+  const prevSelectedKeyRef = useRef(selectedKey)
+  useEffect(() => {
+    if (prevSelectedKeyRef.current !== selectedKey) {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current)
+        saveTimeoutRef.current = null
+      }
+      // Save pending changes for previous prompt
+      const prevKey = prevSelectedKeyRef.current
+      const prevConfig = PROMPT_CONFIGS.find(c => c.key === prevKey)
+      if (prevConfig && preferences) {
+        const prevValue = currentPrompts[prevKey] ?? prevConfig.defaultValue
+        if (localValue !== prevValue) {
+          const valueToSave =
+            localValue === prevConfig.defaultValue ? null : localValue
+          savePreferences.mutate({
+            ...preferences,
+            magic_prompts: {
+              ...currentPrompts,
+              [prevKey]: valueToSave,
+            },
+          })
+        }
+      }
+      prevSelectedKeyRef.current = selectedKey
+    }
+  }, [selectedKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div className="flex flex-col min-h-0 flex-1">
       {/* Preset buttons */}
@@ -644,81 +673,51 @@ export const MagicPromptsPane: React.FC = () => {
         </Button>
       </div>
 
-      {/* Prompt selector grid grouped by section */}
-      <div className="mb-4 shrink-0 space-y-3">
-        {PROMPT_SECTIONS.map(section => (
-          <div key={section.label}>
-            <h4 className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
-              {section.label}
-            </h4>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+      {/* Master-detail layout */}
+      <div className="flex flex-1 min-h-0 gap-4">
+        {/* Sidebar list */}
+        <div className="w-[260px] shrink-0 overflow-y-auto pr-1">
+          {PROMPT_SECTIONS.map((section, sectionIdx) => (
+            <div key={section.label} className={sectionIdx > 0 ? 'mt-3' : ''}>
+              <h4 className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1 px-2">
+                {section.label}
+              </h4>
               {section.configs.map(config => {
                 const promptIsModified = currentPrompts[config.key] !== null
-                const promptModel = config.modelKey
-                  ? (currentModels[config.modelKey] ?? config.defaultModel)
-                  : undefined
-                const promptProvider = config.providerKey
-                  ? (currentProviders[config.providerKey] ?? null)
-                  : undefined
                 return (
                   <button
                     key={config.key}
                     onClick={() => setSelectedKey(config.key)}
                     className={cn(
-                      'px-3 py-2 rounded-lg border text-left transition-colors',
-                      'hover:bg-muted/50',
+                      'w-full px-2 py-1.5 rounded-md text-left text-sm transition-colors truncate',
                       selectedKey === config.key
-                        ? 'border-primary bg-primary/5'
-                        : 'border-border bg-card'
+                        ? 'bg-accent text-accent-foreground'
+                        : 'hover:bg-muted/50 text-foreground'
                     )}
                   >
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="text-sm font-medium truncate">
-                        {config.label}
-                        {promptIsModified && (
-                          <span className="text-muted-foreground ml-1">*</span>
-                        )}
-                      </span>
-                      <div className="flex items-center gap-1 shrink-0">
-                        {promptProvider && (
-                          <span
-                            className={cn(
-                              'text-[10px] px-1.5 py-0.5 rounded font-medium',
-                              'bg-primary/10 text-primary'
-                            )}
-                          >
-                            {promptProvider}
-                          </span>
-                        )}
-                        {promptModel && (
-                          <span
-                            className={cn(
-                              'text-[10px] px-1.5 py-0.5 rounded font-medium',
-                              'bg-muted text-muted-foreground'
-                            )}
-                          >
-                            {promptModel}
-                          </span>
-                        )}
-                      </div>
-                    </div>
+                    {config.label}
+                    {promptIsModified && (
+                      <span className="text-muted-foreground ml-1">*</span>
+                    )}
                   </button>
                 )
               })}
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
 
-      {/* Selected prompt details */}
-      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-        {/* Header */}
-        <div className="mb-3 shrink-0">
-          <h3 className="text-sm font-medium">{selectedConfig.label}</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {selectedConfig.description}
-          </p>
-          <div className="flex items-center gap-2 mt-2">
+        {/* Detail panel */}
+        <div className="flex-1 flex flex-col min-h-0">
+          {/* Header */}
+          <div className="mb-2 shrink-0">
+            <h3 className="text-sm font-medium">{selectedConfig.label}</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {selectedConfig.description}
+            </p>
+          </div>
+
+          {/* Model / Provider / Reset row */}
+          <div className="flex items-center gap-2 mb-2 shrink-0">
             {currentProvider !== undefined &&
               profiles.length > 0 &&
               !currentModelIsCodex &&
@@ -731,7 +730,7 @@ export const MagicPromptsPane: React.FC = () => {
                     value={currentProvider ?? 'anthropic'}
                     onValueChange={handleProviderChange}
                   >
-                    <SelectTrigger className="w-[130px] h-8 text-xs">
+                    <SelectTrigger className="w-[130px] h-7 text-xs">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -757,7 +756,7 @@ export const MagicPromptsPane: React.FC = () => {
                       variant="outline"
                       role="combobox"
                       aria-expanded={modelPopoverOpen}
-                      className="w-[220px] h-8 text-xs justify-between font-normal"
+                      className="w-[200px] h-7 text-xs justify-between font-normal"
                     >
                       <span className="truncate">
                         {(() => {
@@ -866,34 +865,42 @@ export const MagicPromptsPane: React.FC = () => {
               size="sm"
               onClick={handleReset}
               disabled={!isModified}
-              className="gap-1.5 h-8"
+              className="gap-1.5 h-7"
             >
               <RotateCcw className="h-3 w-3" />
               Reset
             </Button>
           </div>
-        </div>
 
-        {/* Variables */}
-        <div className="flex flex-wrap gap-x-3 gap-y-1 mb-3 shrink-0">
-          {selectedConfig.variables.map(v => (
-            <div key={v.name} className="flex items-baseline gap-1 text-xs">
-              <code className="bg-muted px-1 py-0.5 rounded font-mono text-[11px]">
-                {v.name}
-              </code>
-              <span className="text-muted-foreground">{v.description}</span>
+          {/* Variables (compact horizontal flow) */}
+          {selectedConfig.variables.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-2 shrink-0">
+              {selectedConfig.variables.map(v => (
+                <span
+                  key={v.name}
+                  className="inline-flex items-center gap-1 text-[11px]"
+                  title={v.description}
+                >
+                  <code className="bg-muted px-1 py-0.5 rounded font-mono">
+                    {v.name}
+                  </code>
+                  <span className="text-muted-foreground">
+                    {v.description}
+                  </span>
+                </span>
+              ))}
             </div>
-          ))}
-        </div>
+          )}
 
-        {/* Textarea - fills remaining space */}
-        <Textarea
-          value={localValue}
-          onChange={e => handleChange(e.target.value)}
-          onBlur={handleBlur}
-          className="flex-1 min-h-0 h-full font-mono text-xs resize-none"
-          placeholder={selectedConfig.defaultValue}
-        />
+          {/* Textarea - fills remaining space */}
+          <Textarea
+            value={localValue}
+            onChange={e => handleChange(e.target.value)}
+            onBlur={handleBlur}
+            className="flex-1 min-h-0 h-full font-mono text-xs resize-none"
+            placeholder={selectedConfig.defaultValue}
+          />
+        </div>
       </div>
     </div>
   )
