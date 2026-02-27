@@ -1350,7 +1350,42 @@ pub async fn create_worktree_from_existing_branch(
             // Check if path already exists
             let worktree_path = std::path::Path::new(&worktree_path_clone);
             if worktree_path.exists() {
-                log::error!("Background: Path already exists: {worktree_path_clone}");
+                log::trace!("Background: Path already exists: {worktree_path_clone}");
+
+                // Check if this path matches an archived worktree
+                let archived_info = load_projects_data(&app_clone).ok().and_then(|data| {
+                    data.worktrees
+                        .iter()
+                        .find(|w| w.path == worktree_path_clone && w.archived_at.is_some())
+                        .map(|w| (w.id.clone(), w.name.clone()))
+                });
+
+                // Generate a suggested alternative name with random suffix
+                let suggested_name = {
+                    let data = load_projects_data(&app_clone).ok();
+                    generate_unique_suffix_name(
+                        &name_clone,
+                        &project_path,
+                        &project_id_clone,
+                        data.as_ref(),
+                    )
+                };
+
+                // Emit path_exists event with archived worktree info if available
+                let path_exists_event = WorktreePathExistsEvent {
+                    id: worktree_id_clone.clone(),
+                    project_id: project_id_clone.clone(),
+                    path: worktree_path_clone.clone(),
+                    suggested_name,
+                    archived_worktree_id: archived_info.as_ref().map(|(id, _)| id.clone()),
+                    archived_worktree_name: archived_info.map(|(_, name)| name),
+                    issue_context: issue_context_clone.clone(),
+                };
+                if let Err(e) = app_clone.emit_all("worktree:path_exists", &path_exists_event) {
+                    log::error!("Failed to emit worktree:path_exists event: {e}");
+                }
+
+                // Also emit error event to remove the pending worktree from UI
                 let error_event = WorktreeCreateErrorEvent {
                     id: worktree_id_clone,
                     project_id: project_id_clone,
@@ -6310,7 +6345,7 @@ fn generate_release_notes_content(
 ) -> Result<ReleaseNotesResponse, String> {
     // Fetch tags to ensure we have the tag locally
     let fetch_output = silent_command("git")
-        .args(["fetch", "--tags"])
+        .args(["fetch", "--tags", "--force"])
         .current_dir(project_path)
         .output()
         .map_err(|e| format!("Failed to fetch tags: {e}"))?;
