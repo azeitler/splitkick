@@ -4,6 +4,7 @@ import {
   useImperativeHandle,
   forwardRef,
   memo,
+  useMemo,
   useState,
   useCallback,
 } from 'react'
@@ -44,8 +45,6 @@ interface VirtualizedMessageListProps {
   totalMessages: number
   /** Index of the last message with ExitPlanMode tool */
   lastPlanMessageIndex: number
-  /** Pre-computed map of hasFollowUpMessage for each message index */
-  hasFollowUpMap: Map<number, boolean>
   /** Current session ID */
   sessionId: string
   /** Worktree path for resolving file mentions */
@@ -114,7 +113,6 @@ export const VirtualizedMessageList = memo(
         scrollContainerRef,
         totalMessages,
         lastPlanMessageIndex,
-        hasFollowUpMap,
         sessionId,
         worktreePath,
         approveShortcut,
@@ -160,6 +158,20 @@ export const VirtualizedMessageList = memo(
           prevSessionRef.current = sessionId
         }
       }, [sessionId])
+
+      // Pre-compute hasFollowUpMessage for all messages in O(n) instead of O(n²)
+      // Computed inside the component to avoid an unstable Map prop breaking memo()
+      const hasFollowUpMap = useMemo(() => {
+        const map = new Map<number, boolean>()
+        let foundUserMessage = false
+        for (let i = messages.length - 1; i >= 0; i--) {
+          map.set(i, foundUserMessage)
+          if (messages[i]?.role === 'user') {
+            foundUserMessage = true
+          }
+        }
+        return map
+      }, [messages])
 
       // Load more messages when scrolling near the top
       // Uses flushSync to make state update + DOM commit + scroll correction

@@ -249,7 +249,22 @@ export function SessionChatModal({
   const currentSessionId = activeSessionId ?? sessions[0]?.id ?? null
   const currentSession = sessions.find(s => s.id === currentSessionId) ?? null
 
-  // Auto-scroll active tab into view, including when modal opens
+  // Store state for tab status indicators
+  const sendingSessionIds = useChatStore(state => state.sendingSessionIds)
+  const executionModes = useChatStore(state => state.executionModes)
+  const executingModes = useChatStore(state => state.executingModes)
+  const reviewingSessions = useChatStore(state => state.reviewingSessions)
+  const storeState = useMemo(
+    () => ({ sendingSessionIds, executionModes, executingModes, reviewingSessions }),
+    [sendingSessionIds, executionModes, executingModes, reviewingSessions]
+  )
+
+  // Track focused session's status so scroll fires when it changes position
+  const currentSessionStatus = currentSession
+    ? getSessionStatus(currentSession, storeState)
+    : null
+
+  // Auto-scroll active tab into view, including when modal opens or status changes
   useEffect(() => {
     if (!isOpen) return
     if (!currentSessionId) return
@@ -268,17 +283,7 @@ export function SessionChatModal({
       }
     })
     return () => cancelAnimationFrame(scrollId)
-  }, [isOpen, currentSessionId, sessions.length])
-
-  // Store state for tab status indicators
-  const sendingSessionIds = useChatStore(state => state.sendingSessionIds)
-  const executionModes = useChatStore(state => state.executionModes)
-  const executingModes = useChatStore(state => state.executingModes)
-  const reviewingSessions = useChatStore(state => state.reviewingSessions)
-  const storeState = useMemo(
-    () => ({ sendingSessionIds, executionModes, executingModes, reviewingSessions }),
-    [sendingSessionIds, executionModes, executingModes, reviewingSessions]
-  )
+  }, [isOpen, currentSessionId, sessions.length, currentSessionStatus])
 
   // Plan/recap indicators for tab bar buttons
   const hasPlan =
@@ -510,7 +515,9 @@ export function SessionChatModal({
     return [...sessions].sort((a, b) => {
       const pa = priority[getSessionStatus(a, storeState)] ?? 2
       const pb = priority[getSessionStatus(b, storeState)] ?? 2
-      return pa - pb
+      if (pa !== pb) return pa - pb
+      // Stable secondary sort: oldest first (consistent across refetches)
+      return a.created_at - b.created_at
     })
   }, [sessions, storeState])
 

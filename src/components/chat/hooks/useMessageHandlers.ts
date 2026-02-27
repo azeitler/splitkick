@@ -721,6 +721,7 @@ export function useMessageHandlers({
         setError,
         setSelectedModel,
         setExecutingMode,
+        setExecutionMode,
         setWaitingForInput,
         selectedBackends,
       } = useChatStore.getState()
@@ -733,6 +734,7 @@ export function useMessageHandlers({
         clearPendingDenials(sessionId)
         clearDeniedMessageContext(sessionId)
         setWaitingForInput(sessionId, false)
+        setExecutionMode(sessionId, 'build')
 
         requestAnimationFrame(() => {
           scrollToBottom(true)
@@ -776,6 +778,7 @@ export function useMessageHandlers({
       clearPendingDenials(sessionId)
       clearDeniedMessageContext(sessionId)
       setWaitingForInput(sessionId, false)
+      setExecutionMode(sessionId, 'build')
 
       requestAnimationFrame(() => {
         scrollToBottom(true)

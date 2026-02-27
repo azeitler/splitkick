@@ -362,7 +362,9 @@ export function useCreateSession() {
       return session
     },
     onSuccess: (newSession, { worktreeId }) => {
-      // Optimistically update cache with new session at end (matches backend order)
+      // Pre-populate individual session cache to prevent loading flash for empty sessions
+      queryClient.setQueryData(chatQueryKeys.session(newSession.id), newSession)
+      // Optimistically update sessions list cache with new session at end (matches backend order)
       queryClient.setQueryData<WorktreeSessions>(
         chatQueryKeys.sessions(worktreeId),
         old => (old ? { ...old, sessions: [...old.sessions, newSession] } : old)
@@ -1241,16 +1243,12 @@ export function useSendMessage() {
       return { previous, worktreeId }
     },
     onSuccess: (response, { sessionId, worktreeId, executionMode }) => {
-      // Handle undo_send: cancelled with no meaningful content
-      // Keep the message list stable to avoid flicker; cancellation state is
-      // handled by chat:cancelled event and backend session refresh.
-      if (
-        response.cancelled &&
-        !response.content &&
-        response.tool_calls.length === 0
-      ) {
-        // Keep cache stable here to avoid a stale refetch briefly re-adding
-        // the optimistically removed user message during cancel undo flow.
+      // All cancelled responses are handled by the chat:cancelled event handler,
+      // which already correctly restores the user message (undo path) or preserves
+      // the partial assistant response (preserve path). Letting onSuccess proceed
+      // for cancelled responses with content would corrupt history by replacing
+      // a pre-existing assistant message from a previous turn.
+      if (response.cancelled) {
         return
       }
 

@@ -910,20 +910,35 @@ export function useWorktreeEvents() {
         })
 
         clearPendingTimeout(worktree.id)
-        toast.success('Worktree ready', {
-          id: `worktree-creating-${worktree.id}`,
-          action: {
-            label: 'Open',
-            onClick: () => {
-              const { selectWorktree, selectProject } =
-                useProjectsStore.getState()
-              selectProject(worktree.project_id)
-              selectWorktree(worktree.id)
-              const { setActiveWorktree } = useChatStore.getState()
-              setActiveWorktree(worktree.id, worktree.path)
-            },
+
+        const setupFailed =
+          worktree.setup_output && worktree.setup_success === false
+
+        const openWorktreeAction = {
+          label: 'Open',
+          onClick: () => {
+            const { selectWorktree, selectProject } =
+              useProjectsStore.getState()
+            selectProject(worktree.project_id)
+            selectWorktree(worktree.id)
+            const { setActiveWorktree } = useChatStore.getState()
+            setActiveWorktree(worktree.id, worktree.path)
           },
-        })
+        }
+
+        if (setupFailed) {
+          toast.error('Setup script failed', {
+            id: `worktree-creating-${worktree.id}`,
+            description: 'Worktree was created but the setup script exited with an error.',
+            action: openWorktreeAction,
+          })
+        } else {
+          toast.success('Worktree ready', {
+            id: `worktree-creating-${worktree.id}`,
+            action: openWorktreeAction,
+          })
+        }
+
         handleWorktreeReady(worktree, queryClient)
 
         // Add setup script output to chat store if present
@@ -934,7 +949,7 @@ export function useWorktreeEvents() {
             worktreePath: worktree.path,
             script: worktree.setup_script ?? '',
             output: worktree.setup_output,
-            success: true,
+            success: worktree.setup_success !== false,
           })
         }
       })

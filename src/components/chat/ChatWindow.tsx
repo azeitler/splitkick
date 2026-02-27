@@ -1214,21 +1214,6 @@ export function ChatWindow({
   // Messages for rendering - memoize to ensure stable reference
   const messages = useMemo(() => session?.messages ?? [], [session?.messages])
 
-  // Pre-compute hasFollowUpMessage for all messages in O(n) instead of O(n²)
-  // Maps message index to whether a user message follows it
-  const hasFollowUpMap = useMemo(() => {
-    const map = new Map<number, boolean>()
-    let foundUserMessage = false
-    // Walk backwards through messages
-    for (let i = messages.length - 1; i >= 0; i--) {
-      map.set(i, foundUserMessage)
-      if (messages[i]?.role === 'user') {
-        foundUserMessage = true
-      }
-    }
-    return map
-  }, [messages])
-
   // Virtualizer for message list - always use virtualization for consistent performance
   // Even small conversations benefit from virtualization when messages have heavy content
   // Note: MainWindowContent handles the case when no worktree is selected
@@ -1344,11 +1329,6 @@ export function ChatWindow({
                               <div className="text-muted-foreground">
                                 Loading...
                               </div>
-                            ) : !session || session.messages.length === 0 ? (
-                              <div className="text-muted-foreground">
-                                    No messages yet.<br/><br/>
-                                    <p>Release your imagination! ✨</p>
-                              </div>
                             ) : (
                               // Virtualized message list - only renders visible messages for performance
                               <VirtualizedMessageList
@@ -1357,7 +1337,6 @@ export function ChatWindow({
                                 scrollContainerRef={scrollViewportRef}
                                 totalMessages={messages.length}
                                 lastPlanMessageIndex={lastPlanMessageIndex}
-                                hasFollowUpMap={hasFollowUpMap}
                                 sessionId={deferredSessionId ?? ''}
                                 worktreePath={activeWorktreePath ?? ''}
                                 approveShortcut={approveShortcut}

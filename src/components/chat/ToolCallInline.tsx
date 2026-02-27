@@ -40,8 +40,8 @@ interface ToolCallInlineProps {
   onFileClick?: (filePath: string) => void
   /** Whether the message is currently streaming */
   isStreaming?: boolean
-  /** Whether this is the last incomplete item (shows spinner only on last) */
-  isLastIncomplete?: boolean
+  /** Whether this item is still in progress (shows spinner) */
+  isIncomplete?: boolean
 }
 
 /**
@@ -53,7 +53,7 @@ export function ToolCallInline({
   className,
   onFileClick,
   isStreaming,
-  isLastIncomplete,
+  isIncomplete,
 }: ToolCallInlineProps) {
   const [isOpen, setIsOpen] = useState(false)
   const { icon, label, detail, filePath, expandedContent } =
@@ -100,7 +100,7 @@ export function ToolCallInline({
               {detail}
             </code>
           ) : null}
-          {isStreaming && isLastIncomplete ? (
+          {isStreaming && isIncomplete ? (
             <Loader2 className="ml-auto h-3 w-3 shrink-0 animate-spin text-muted-foreground/50" />
           ) : (
             <ChevronRight
@@ -144,8 +144,8 @@ interface TaskCallInlineProps {
   onFileClick?: (filePath: string) => void
   /** Whether the message is currently streaming */
   isStreaming?: boolean
-  /** Whether this is the last incomplete item (shows spinner only on last) */
-  isLastIncomplete?: boolean
+  /** Whether this item is still in progress (shows spinner) */
+  isIncomplete?: boolean
 }
 
 /**
@@ -159,7 +159,7 @@ export function TaskCallInline({
   className,
   onFileClick,
   isStreaming,
-  isLastIncomplete,
+  isIncomplete,
 }: TaskCallInlineProps) {
   const [isOpen, setIsOpen] = useState(false)
   const input = taskToolCall.input as Record<string, unknown>
@@ -195,7 +195,7 @@ export function TaskCallInline({
               {subToolCalls.length} tool{subToolCalls.length === 1 ? '' : 's'}
             </span>
           )}
-          {isStreaming && isLastIncomplete ? (
+          {isStreaming && isIncomplete ? (
             <Loader2
               className={cn(
                 subToolCalls.length === 0 && 'ml-auto',
@@ -262,8 +262,8 @@ interface StackedGroupProps {
   onFileClick?: (filePath: string) => void
   /** Whether the message is currently streaming */
   isStreaming?: boolean
-  /** Whether this is the last incomplete item (shows spinner only on last) */
-  isLastIncomplete?: boolean
+  /** Whether this item is still in progress (shows spinner) */
+  isIncomplete?: boolean
 }
 
 /**
@@ -275,7 +275,7 @@ export function StackedGroup({
   className,
   onFileClick,
   isStreaming,
-  isLastIncomplete,
+  isIncomplete,
 }: StackedGroupProps) {
   const [isOpen, setIsOpen] = useState(false)
 
@@ -321,7 +321,7 @@ export function StackedGroup({
         <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50 cursor-pointer select-none min-w-0">
           <Layers className="h-4 w-4 shrink-0" />
           <span className="font-medium">{summary}</span>
-          {isStreaming && isLastIncomplete ? (
+          {isStreaming && isIncomplete ? (
             <Loader2 className="ml-auto h-3 w-3 shrink-0 animate-spin text-muted-foreground/50" />
           ) : (
             <ChevronRight

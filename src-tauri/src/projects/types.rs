@@ -110,6 +110,9 @@ pub struct Worktree {
     /// The setup script that was executed (if any)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub setup_script: Option<String>,
+    /// Whether the setup script succeeded (None = no script, Some(true) = success, Some(false) = failed)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub setup_success: Option<bool>,
     /// Type of session (defaults to Worktree for backward compatibility)
     #[serde(default)]
     pub session_type: SessionType,

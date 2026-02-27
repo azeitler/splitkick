@@ -221,8 +221,12 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
   const handleSelect = useCallback((item: UnreadItem) => {
     const { selectedProjectId, selectProject, selectWorktree } =
       useProjectsStore.getState()
-    const { setActiveWorktree, setActiveSession, setViewingCanvasTab } =
-      useChatStore.getState()
+    const {
+      setActiveWorktree,
+      setActiveSession,
+      setViewingCanvasTab,
+      setLastOpenedForProject,
+    } = useChatStore.getState()
 
     if (selectedProjectId !== item.projectId) {
       selectProject(item.projectId)
@@ -232,6 +236,7 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
     setActiveWorktree(item.worktreeId, item.worktreePath)
     setActiveSession(item.worktreeId, item.session.id)
     setViewingCanvasTab(item.worktreeId, true)
+    setLastOpenedForProject(item.projectId, item.worktreeId, item.session.id)
     setOpen(false)
 
     setTimeout(() => {

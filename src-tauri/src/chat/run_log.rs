@@ -97,11 +97,17 @@ impl RunLogWriter {
         Ok(())
     }
 
-    /// Mark the run as cancelled and update the metadata
-    pub fn cancel(&mut self, assistant_message_id: Option<&str>) -> Result<(), String> {
+    /// Mark the run as cancelled and update the metadata.
+    /// If a `claude_session_id` is provided, persist it so the next run can resume context.
+    pub fn cancel(
+        &mut self,
+        assistant_message_id: Option<&str>,
+        claude_session_id: Option<&str>,
+    ) -> Result<(), String> {
         let now = now_timestamp();
         let run_id = self.run_id.clone();
         let asst_id = assistant_message_id.map(|s| s.to_string());
+        let claude_sid = claude_session_id.map(|s| s.to_string());
 
         with_metadata_mut(
             &self.app,
@@ -115,7 +121,14 @@ impl RunLogWriter {
                     run.ended_at = Some(now);
                     run.cancelled = true;
                     run.assistant_message_id = asst_id;
+                    run.claude_session_id = claude_sid.clone();
                 }
+
+                // Persist session ID so the next run can --resume with full context
+                if let Some(sid) = claude_sid {
+                    metadata.claude_session_id = Some(sid);
+                }
+
                 Ok(())
             },
         )?;

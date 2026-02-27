@@ -214,6 +214,20 @@ export function PermissionApproval({
       window.removeEventListener('answer-question', handleAnswerQuestion)
   }, [readOnly, selectedIndices.size, handleApprove])
 
+  // Listen for CMD+Y to approve with yolo mode
+  useEffect(() => {
+    if (readOnly || !onApproveYolo) return
+
+    const handler = () => {
+      if (selectedIndices.size > 0) {
+        handleApproveYolo()
+      }
+    }
+
+    window.addEventListener('approve-plan-yolo', handler)
+    return () => window.removeEventListener('approve-plan-yolo', handler)
+  }, [readOnly, selectedIndices.size, handleApproveYolo, onApproveYolo])
+
   // Read-only collapsed view (after approval)
   if (readOnly && approvedPatterns) {
     return (

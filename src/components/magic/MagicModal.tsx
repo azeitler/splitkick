@@ -496,14 +496,20 @@ export function MagicModal() {
               setActiveSession,
               setInputDraft,
               setViewingCanvasTab,
+              copySessionSettings,
+              activeSessionIds,
               activeWorktreePath,
             } = useChatStore.getState()
+            const currentSessionId = activeSessionIds[selectedWorktreeId]
 
             const newSession = await invoke<Session>('create_session', {
               worktreeId: selectedWorktreeId,
               worktreePath: worktree.path,
               name: 'Resolve conflicts',
             })
+
+            // Inherit model/mode/thinking settings from current session
+            if (currentSessionId) copySessionSettings(currentSessionId, newSession.id)
 
             // Navigate to session
             useProjectsStore.getState().selectWorktree(selectedWorktreeId)
@@ -610,9 +616,15 @@ ${resolveInstructions}`
               setActiveWorktree,
               setViewingCanvasTab,
               registerWorktreePath,
+              copySessionSettings,
+              activeSessionIds,
               activeWorktreePath,
             } = useChatStore.getState()
+            const currentReviewSessionId = activeSessionIds[selectedWorktreeId]
             setReviewResults(newSession.id, result)
+
+            // Inherit model/mode/thinking settings from current session
+            if (currentReviewSessionId) copySessionSettings(currentReviewSessionId, newSession.id)
 
             setActiveSession(selectedWorktreeId, newSession.id)
 

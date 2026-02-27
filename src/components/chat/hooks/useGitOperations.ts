@@ -438,8 +438,14 @@ export function useGitOperations({
           setActiveWorktree,
           setViewingCanvasTab,
           registerWorktreePath,
+          copySessionSettings,
+          activeSessionIds,
         } = useChatStore.getState()
+        const currentReviewSessionId = activeSessionIds[activeWorktreeId]
         setReviewResults(targetSessionId, result)
+
+        // Inherit model/mode/thinking settings from current session
+        if (currentReviewSessionId) copySessionSettings(currentReviewSessionId, targetSessionId)
 
         // Switch to the new review session
         setActiveSession(activeWorktreeId, targetSessionId)
@@ -582,7 +588,8 @@ export function useGitOperations({
         description: 'Opening conflict resolution session...',
       })
 
-      const { setActiveSession, setInputDraft } = useChatStore.getState()
+      const { setActiveSession, setInputDraft, copySessionSettings, activeSessionIds } = useChatStore.getState()
+      const currentSessionId = activeSessionIds[activeWorktreeId]
 
       // Create a NEW session tab for conflict resolution
       const newSession = await invoke<Session>('create_session', {
@@ -590,6 +597,9 @@ export function useGitOperations({
         worktreePath: worktree.path,
         name: 'Resolve conflicts',
       })
+
+      // Inherit model/mode/thinking settings from current session
+      if (currentSessionId) copySessionSettings(currentSessionId, newSession.id)
 
       // Set the new session as active
       setActiveSession(activeWorktreeId, newSession.id)
@@ -655,7 +665,8 @@ ${resolveInstructions}`
         description: 'Opening conflict resolution session...',
       })
 
-      const { setActiveSession, setInputDraft } = useChatStore.getState()
+      const { setActiveSession, setInputDraft, copySessionSettings, activeSessionIds } = useChatStore.getState()
+      const currentSessionId = activeSessionIds[activeWorktreeId]
 
       // Create a NEW session tab for conflict resolution
       const newSession = await invoke<Session>('create_session', {
@@ -663,6 +674,9 @@ ${resolveInstructions}`
         worktreePath: worktree.path,
         name: 'PR: resolve conflicts',
       })
+
+      // Inherit model/mode/thinking settings from current session
+      if (currentSessionId) copySessionSettings(currentSessionId, newSession.id)
 
       // Set the new session as active
       setActiveSession(activeWorktreeId, newSession.id)
@@ -785,7 +799,8 @@ ${resolveInstructions}`
             }
           )
 
-          const { setActiveSession, setInputDraft } = useChatStore.getState()
+          const { setActiveSession, setInputDraft, copySessionSettings, activeSessionIds } = useChatStore.getState()
+          const currentSessionId = activeSessionIds[activeWorktreeId]
 
           // Create a NEW session tab on the CURRENT worktree for conflict resolution
           const newSession = await invoke<Session>('create_session', {
@@ -793,6 +808,9 @@ ${resolveInstructions}`
             worktreePath: worktreeData.path,
             name: 'Merge: resolve conflicts',
           })
+
+          // Inherit model/mode/thinking settings from current session
+          if (currentSessionId) copySessionSettings(currentSessionId, newSession.id)
 
           // Set the new session as active
           setActiveSession(activeWorktreeId, newSession.id)

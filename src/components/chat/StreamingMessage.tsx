@@ -111,24 +111,24 @@ export const StreamingMessage = memo(function StreamingMessage({
               </div>
             )
           }
-          // Find last incomplete item index for spinner (only show spinner on last one)
-          const lastIncompleteIndex = timeline.reduce((lastIdx, item, idx) => {
-            if (item.type === 'task' && !item.taskTool.output) return idx
-            if (item.type === 'standalone' && !item.tool.output) return idx
-            if (
+          // Find all incomplete item indices for spinner (show on all in-progress tools)
+          const incompleteIndices = new Set<number>()
+          timeline.forEach((item, idx) => {
+            if (item.type === 'task' && !item.taskTool.output) incompleteIndices.add(idx)
+            else if (item.type === 'standalone' && !item.tool.output) incompleteIndices.add(idx)
+            else if (
               item.type === 'stackedGroup' &&
               item.items.some(i => i.type === 'tool' && !i.tool.output)
             )
-              return idx
-            return lastIdx
-          }, -1)
+              incompleteIndices.add(idx)
+          })
 
           return (
             <>
               {/* Build timeline preserving order of text and tools */}
               <div className="space-y-4">
                 {timeline.map((item, index) => {
-                  const isLastIncomplete = index === lastIncompleteIndex
+                  const isIncomplete = incompleteIndices.has(index)
                   return (
                     <ErrorBoundary
                       key={item.key}
@@ -157,7 +157,7 @@ export const StreamingMessage = memo(function StreamingMessage({
                                 allToolCalls={toolCalls}
                                 onFileClick={onFileClick}
                                 isStreaming={true}
-                                isLastIncomplete={isLastIncomplete}
+                                isIncomplete={isIncomplete}
                               />
                             )
                           case 'standalone':
@@ -166,7 +166,7 @@ export const StreamingMessage = memo(function StreamingMessage({
                                 toolCall={item.tool}
                                 onFileClick={onFileClick}
                                 isStreaming={true}
-                                isLastIncomplete={isLastIncomplete}
+                                isIncomplete={isIncomplete}
                               />
                             )
                           case 'stackedGroup':
@@ -175,7 +175,7 @@ export const StreamingMessage = memo(function StreamingMessage({
                                 items={item.items}
                                 onFileClick={onFileClick}
                                 isStreaming={true}
-                                isLastIncomplete={isLastIncomplete}
+                                isIncomplete={isIncomplete}
                               />
                             )
                           case 'askUserQuestion': {

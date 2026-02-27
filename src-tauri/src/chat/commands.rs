@@ -830,6 +830,7 @@ pub async fn restore_session_with_base(
         created_at: now(),
         setup_output: None,
         setup_script: None,
+        setup_success: None,
         session_type: SessionType::Base,
         pr_number: None,
         pr_url: None,
@@ -2224,7 +2225,7 @@ pub async fn send_chat_message(
     // Handle error_emitted: backend emitted chat:error during execution (e.g., Codex usage limit).
     // Treat like undo_send so the user message doesn't persist in history.
     if unified_response.error_emitted {
-        if let Err(e) = run_log_writer.cancel(None) {
+        if let Err(e) = run_log_writer.cancel(None, None) {
             log::warn!("Failed to cancel run log after error: {e}");
         }
         log::trace!("Run cancelled after chat:error for session: {session_id}");
@@ -2249,16 +2250,33 @@ pub async fn send_chat_message(
 
     if unified_response.cancelled && !has_meaningful_content && !has_tool_calls {
         // Instant cancellation with no content
-        // Cancel the run log (no assistant message to save)
-        if let Err(e) = run_log_writer.cancel(None) {
+        let resume_sid = if response_backend != Backend::Claude || resume_id_for_log.is_empty() {
+            None
+        } else {
+            Some(resume_id_for_log.as_str())
+        };
+        // Cancel the run log, persisting session ID if available so next run can --resume
+        if let Err(e) = run_log_writer.cancel(None, resume_sid) {
             log::warn!("Failed to cancel run log: {e}");
         }
 
-        // Atomically update session (remove last user message for undo send)
-        // NOTE: Do NOT persist claude_session_id here — a cancelled run with no content
-        // means the CLI session is invalid/incomplete and would break future --resume
+        // Atomically update session: persist resume ID and remove user message for undo send
         with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
             if let Some(session) = sessions.find_session_mut(&session_id) {
+                // Persist resume ID so next run can resume context even after cancellation
+                if !resume_id_for_log.is_empty() {
+                    match response_backend {
+                        Backend::Claude => {
+                            session.claude_session_id = Some(resume_id_for_log.clone());
+                        }
+                        Backend::Codex => {
+                            session.codex_thread_id = Some(resume_id_for_log.clone());
+                        }
+                        Backend::Opencode => {
+                            session.opencode_session_id = Some(resume_id_for_log.clone());
+                        }
+                    }
+                }
                 // Remove user message (undo send) - allows frontend to restore to input field
                 if session
                     .messages
@@ -2318,7 +2336,13 @@ pub async fn send_chat_message(
 
     // Finalize run log (complete or cancel based on response status)
     if unified_response.cancelled {
-        if let Err(e) = run_log_writer.cancel(Some(&assistant_msg_id)) {
+        let cancel_resume_sid =
+            if response_backend != Backend::Claude || resume_id_for_log.is_empty() {
+                None
+            } else {
+                Some(resume_id_for_log.as_str())
+            };
+        if let Err(e) = run_log_writer.cancel(Some(&assistant_msg_id), cancel_resume_sid) {
             log::warn!("Failed to cancel run log: {e}");
         }
     } else {

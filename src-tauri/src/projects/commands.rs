@@ -665,6 +665,7 @@ pub async fn create_worktree(
         created_at,
         setup_output: None,
         setup_script: None,
+        setup_success: None,
         session_type: SessionType::Worktree,
         pr_number: pr_context.as_ref().map(|ctx| ctx.number),
         pr_url: None,
@@ -1115,7 +1116,7 @@ pub async fn create_worktree(
             }
 
             // Check for jean.json and run setup script
-            let (setup_output, setup_script) =
+            let (setup_output, setup_script, setup_success) =
                 if let Some(config) = git::read_jean_config(&project_path) {
                     if let Some(script) = config.scripts.setup {
                         log::trace!("Background: Found jean.json with setup script, executing...");
@@ -1125,30 +1126,17 @@ pub async fn create_worktree(
                             &final_branch,
                             &script,
                         ) {
-                            Ok(output) => (Some(output), Some(script)),
+                            Ok(output) => (Some(output), Some(script), Some(true)),
                             Err(e) => {
-                                log::error!("Background: Setup script failed: {e}");
-                                // Clean up: remove the worktree since setup failed
-                                let _ = git::remove_worktree(&project_path, &worktree_path_clone);
-                                let _ = git::delete_branch(&project_path, &final_branch);
-                                let error_event = WorktreeCreateErrorEvent {
-                                    id: worktree_id_clone,
-                                    project_id: project_id_clone,
-                                    error: format!("Setup script failed: {e}"),
-                                };
-                                if let Err(emit_err) =
-                                    app_clone.emit_all("worktree:error", &error_event)
-                                {
-                                    log::error!("Failed to emit worktree:error event: {emit_err}");
-                                }
-                                return;
+                                log::warn!("Background: Setup script failed (continuing): {e}");
+                                (Some(e), Some(script), Some(false))
                             }
                         }
                     } else {
-                        (None, None)
+                        (None, None, None)
                     }
                 } else {
-                    (None, None)
+                    (None, None, None)
                 };
 
             // Save to storage
@@ -1172,6 +1160,7 @@ pub async fn create_worktree(
                     created_at,
                     setup_output,
                     setup_script,
+                    setup_success,
                     session_type: SessionType::Worktree,
                     pr_number: pr_context_clone.as_ref().map(|ctx| ctx.number),
                     pr_url: None,
@@ -1311,6 +1300,7 @@ pub async fn create_worktree_from_existing_branch(
         created_at,
         setup_output: None,
         setup_script: None,
+        setup_success: None,
         session_type: SessionType::Worktree,
         pr_number: pr_context.as_ref().map(|ctx| ctx.number),
         pr_url: None,
@@ -1561,7 +1551,7 @@ pub async fn create_worktree_from_existing_branch(
             }
 
             // Check for jean.json and run setup script
-            let (setup_output, setup_script) =
+            let (setup_output, setup_script, setup_success) =
                 if let Some(config) = git::read_jean_config(&project_path) {
                     if let Some(script) = config.scripts.setup {
                         log::trace!("Background: Found jean.json with setup script, executing...");
@@ -1571,30 +1561,17 @@ pub async fn create_worktree_from_existing_branch(
                             &name_clone,
                             &script,
                         ) {
-                            Ok(output) => (Some(output), Some(script)),
+                            Ok(output) => (Some(output), Some(script), Some(true)),
                             Err(e) => {
-                                log::error!("Background: Setup script failed: {e}");
-                                // Clean up: remove the worktree since setup failed
-                                // Note: Don't delete the branch since it's an existing branch
-                                let _ = git::remove_worktree(&project_path, &worktree_path_clone);
-                                let error_event = WorktreeCreateErrorEvent {
-                                    id: worktree_id_clone,
-                                    project_id: project_id_clone,
-                                    error: format!("Setup script failed: {e}"),
-                                };
-                                if let Err(emit_err) =
-                                    app_clone.emit_all("worktree:error", &error_event)
-                                {
-                                    log::error!("Failed to emit worktree:error event: {emit_err}");
-                                }
-                                return;
+                                log::warn!("Background: Setup script failed (continuing): {e}");
+                                (Some(e), Some(script), Some(false))
                             }
                         }
                     } else {
-                        (None, None)
+                        (None, None, None)
                     }
                 } else {
-                    (None, None)
+                    (None, None, None)
                 };
 
             // Save to storage
@@ -1618,6 +1595,7 @@ pub async fn create_worktree_from_existing_branch(
                     created_at,
                     setup_output,
                     setup_script,
+                    setup_success,
                     session_type: SessionType::Worktree,
                     pr_number: None,
                     pr_url: None,
@@ -1837,6 +1815,7 @@ pub async fn checkout_pr(
         created_at,
         setup_output: None,
         setup_script: None,
+        setup_success: None,
         session_type: SessionType::Worktree,
         pr_number: Some(pr_number),
         pr_url: None,
@@ -2026,7 +2005,7 @@ pub async fn checkout_pr(
             );
 
             // Check for jean.json and run setup script
-            let (setup_output, setup_script) =
+            let (setup_output, setup_script, setup_success) =
                 if let Some(config) = git::read_jean_config(&worktree_path_clone) {
                     if let Some(script) = config.scripts.setup {
                         log::trace!("Background: Found jean.json with setup script, executing...");
@@ -2036,30 +2015,17 @@ pub async fn checkout_pr(
                             &actual_branch,
                             &script,
                         ) {
-                            Ok(output) => (Some(output), Some(script)),
+                            Ok(output) => (Some(output), Some(script), Some(true)),
                             Err(e) => {
-                                log::error!("Background: Setup script failed: {e}");
-                                // Clean up: remove the worktree since setup failed
-                                let _ = git::remove_worktree(&project_path, &worktree_path_clone);
-                                let _ = git::delete_branch(&project_path, &actual_branch);
-                                let error_event = WorktreeCreateErrorEvent {
-                                    id: worktree_id_clone,
-                                    project_id: project_id_clone,
-                                    error: format!("Setup script failed: {e}"),
-                                };
-                                if let Err(emit_err) =
-                                    app_clone.emit_all("worktree:error", &error_event)
-                                {
-                                    log::error!("Failed to emit worktree:error event: {emit_err}");
-                                }
-                                return;
+                                log::warn!("Background: Setup script failed (continuing): {e}");
+                                (Some(e), Some(script), Some(false))
                             }
                         }
                     } else {
-                        (None, None)
+                        (None, None, None)
                     }
                 } else {
-                    (None, None)
+                    (None, None, None)
                 };
 
             // Write PR context file to shared git-context directory
@@ -2150,6 +2116,7 @@ pub async fn checkout_pr(
                     created_at,
                     setup_output,
                     setup_script,
+                    setup_success,
                     session_type: SessionType::Worktree,
                     pr_number: Some(pr_number),
                     pr_url: None,
@@ -2427,6 +2394,7 @@ pub async fn create_base_session(app: AppHandle, project_id: String) -> Result<W
         created_at: now(),
         setup_output: None,
         setup_script: None,
+        setup_success: None,
         session_type: SessionType::Base,
         pr_number: None,
         pr_url: None,
@@ -2816,6 +2784,7 @@ pub async fn import_worktree(
         created_at: now(),
         setup_output: None,
         setup_script: None,
+        setup_success: None,
         session_type: SessionType::Worktree,
         pr_number: None,
         pr_url: None,
@@ -4941,6 +4910,47 @@ pub async fn create_pr_with_ai_content(
         }
     }
 
+    // Check if a PR already exists for this branch before spending time/tokens on AI generation
+    let gh = resolve_gh_binary(&app);
+    let view_output = silent_command(&gh)
+        .args(["pr", "view", "--json", "number,url,title"])
+        .current_dir(&worktree_path)
+        .output();
+
+    if let Ok(view_out) = view_output {
+        if view_out.status.success() {
+            if let Ok(view_json) =
+                serde_json::from_slice::<serde_json::Value>(&view_out.stdout)
+            {
+                let pr_number = view_json["number"].as_u64().unwrap_or(0) as u32;
+                let pr_url = view_json["url"].as_str().unwrap_or("").to_string();
+                let title = view_json["title"].as_str().unwrap_or("").to_string();
+
+                if pr_number > 0 && !pr_url.is_empty() {
+                    log::trace!("Found existing PR #{pr_number}, skipping AI generation");
+
+                    // Save PR info to worktree
+                    if let Ok(mut data) = load_projects_data(&app) {
+                        if let Some(wt) =
+                            data.worktrees.iter_mut().find(|w| w.path == worktree_path)
+                        {
+                            wt.pr_number = Some(pr_number);
+                            wt.pr_url = Some(pr_url.clone());
+                            let _ = save_projects_data(&app, &data);
+                        }
+                    }
+
+                    return Ok(CreatePrResponse {
+                        pr_number,
+                        pr_url,
+                        title,
+                        existing: true,
+                    });
+                }
+            }
+        }
+    }
+
     // Gather issue/PR context for this session AND worktree.
     // References may be stored under the session ID (manually loaded issues) or
     // the worktree ID (issues attached at worktree creation time), so we look up both.
@@ -5005,7 +5015,6 @@ pub async fn create_pr_with_ai_content(
 
     // Create the PR using gh CLI
     log::trace!("Creating PR with gh CLI");
-    let gh = resolve_gh_binary(&app);
     let output = silent_command(&gh)
         .args([
             "pr",

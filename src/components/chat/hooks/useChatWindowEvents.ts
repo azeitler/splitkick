@@ -245,9 +245,10 @@ export function useChatWindowEvents({
     setIsGeneratingRecap,
   ])
 
-  // CMD+T: Create new session
+  // CMD+T: Create new session (canvas view handles its own creation)
   useEffect(() => {
     const handler = () => {
+      if (!isModal && isViewingCanvasTab) return
       if (!activeWorktreeId || !activeWorktreePath) return
       createSession.mutate(
         { worktreeId: activeWorktreeId, worktreePath: activeWorktreePath },
@@ -267,7 +268,7 @@ export function useChatWindowEvents({
     }
     window.addEventListener('create-new-session', handler)
     return () => window.removeEventListener('create-new-session', handler)
-  }, [activeWorktreeId, activeWorktreePath, createSession])
+  }, [activeWorktreeId, activeWorktreePath, isModal, isViewingCanvasTab, createSession])
 
   // SHIFT+TAB: Cycle execution mode
   useEffect(() => {

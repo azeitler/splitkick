@@ -24,6 +24,7 @@ const GitDiffModal = lazy(() =>
 )
 import type { DiffRequest } from '@/types/git-diff'
 import { toast } from 'sonner'
+import { Kbd } from '@/components/ui/kbd'
 import {
   computeSessionCardData,
   groupCardsByStatus,
@@ -59,6 +60,10 @@ import { Input } from '@/components/ui/input'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { useProjectsStore } from '@/store/projects-store'
 import { OpenInButton } from '@/components/open-in/OpenInButton'
+import { NewIssuesBadge } from '@/components/shared/NewIssuesBadge'
+import { OpenPRsBadge } from '@/components/shared/OpenPRsBadge'
+import { SecurityAlertsBadge } from '@/components/shared/SecurityAlertsBadge'
+import { FailedRunsBadge } from '@/components/shared/FailedRunsBadge'
 
 interface WorktreeCanvasViewProps {
   worktreeId: string
@@ -433,7 +438,7 @@ export function WorktreeCanvasView({
     <div className="relative flex h-full flex-col">
       <div className="flex-1 flex flex-col overflow-auto">
         {/* Header with Search - sticky over content */}
-        <div className="sticky top-0 z-10 flex items-center justify-between gap-4 bg-background/60 backdrop-blur-md px-4 py-3 border-b border-border/30">
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-4 bg-background/60 backdrop-blur-md px-4 py-[10px] border-b border-border/30">
           <div className="flex items-center gap-2 shrink-0">
             <div className="flex items-center gap-1">
               <h2 className="text-lg font-semibold">
@@ -456,6 +461,23 @@ export function WorktreeCanvasView({
                   ) : null
                 })()}
               </h2>
+              <GitStatusBadges
+                behindCount={behindCount}
+                unpushedCount={unpushedCount}
+                diffAdded={diffAdded}
+                diffRemoved={diffRemoved}
+                onPull={handlePull}
+                onPush={handlePush}
+                onDiffClick={handleDiffClick}
+              />
+              {project && (
+                <>
+                  <NewIssuesBadge projectPath={project.path} projectId={project.id} />
+                  <OpenPRsBadge projectPath={project.path} projectId={project.id} />
+                  <SecurityAlertsBadge projectPath={project.path} projectId={project.id} />
+                  <FailedRunsBadge projectPath={project.path} />
+                </>
+              )}
               {worktree?.project_id && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -492,15 +514,6 @@ export function WorktreeCanvasView({
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
-              <GitStatusBadges
-                behindCount={behindCount}
-                unpushedCount={unpushedCount}
-                diffAdded={diffAdded}
-                diffRemoved={diffRemoved}
-                onPull={handlePull}
-                onPush={handlePush}
-                onDiffClick={handleDiffClick}
-              />
             </div>
           </div>
 
@@ -512,7 +525,7 @@ export function WorktreeCanvasView({
                 placeholder="Search sessions..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="pl-9 bg-transparent border-border/30"
+                className="h-8 pl-9 bg-transparent border-border/30"
               />
             </div>
           </div>
@@ -557,7 +570,15 @@ export function WorktreeCanvasView({
             <div className="flex h-full items-center justify-center text-muted-foreground">
               {searchQuery
                 ? 'No sessions match your search'
-                : 'No sessions yet'}
+                : (
+                  <span className="flex items-center gap-2">
+                    Add new session
+                    <span className="flex items-center gap-0.5">
+                      <Kbd>⌘</Kbd>
+                      <Kbd>T</Kbd>
+                    </span>
+                  </span>
+                )}
             </div>
           ) : canvasLayout === 'list' ? (
             <CanvasList

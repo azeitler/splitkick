@@ -330,6 +330,9 @@ interface ChatUIState {
   // Actions - Selected provider (session-based)
   setSelectedProvider: (sessionId: string, provider: string | null) => void
 
+  // Actions - Copy all per-session settings from one session to another
+  copySessionSettings: (fromSessionId: string, toSessionId: string) => void
+
   // Actions - MCP servers (session-based)
   setEnabledMcpServers: (sessionId: string, servers: string[]) => void
   toggleMcpServer: (
@@ -470,6 +473,14 @@ interface ChatUIState {
         thinkingLevel?: ThinkingLevel
       }
     | undefined
+
+  // Actions - Batch state transitions (single set() to avoid render cascades)
+  /** Atomically clear all streaming state and mark session as reviewing */
+  completeSession: (sessionId: string) => void
+  /** Atomically clear streaming state and mark session as waiting for input */
+  pauseSession: (sessionId: string) => void
+  /** Atomically clear streaming state after an error, mark as reviewing */
+  failSession: (sessionId: string) => void
 
   // Actions - Unified session state cleanup (for close/archive)
   clearSessionState: (sessionId: string) => void
@@ -1275,6 +1286,46 @@ export const useChatStore = create<ChatUIState>()(
           'setSelectedProvider'
         ),
 
+      // Copy all per-session settings from one session to another
+      copySessionSettings: (fromId, toId) =>
+        set(
+          state => {
+            const updates: Partial<ChatUIState> = {}
+            const em = state.executionModes[fromId]
+            if (em !== undefined) {
+              updates.executionModes = { ...state.executionModes, [toId]: em }
+            }
+            const sm = state.selectedModels[fromId]
+            if (sm !== undefined) {
+              updates.selectedModels = { ...state.selectedModels, [toId]: sm }
+            }
+            const tl = state.thinkingLevels[fromId]
+            if (tl !== undefined) {
+              updates.thinkingLevels = { ...state.thinkingLevels, [toId]: tl }
+            }
+            const el = state.effortLevels[fromId]
+            if (el !== undefined) {
+              updates.effortLevels = { ...state.effortLevels, [toId]: el }
+            }
+            const sb = state.selectedBackends[fromId]
+            if (sb !== undefined) {
+              updates.selectedBackends = { ...state.selectedBackends, [toId]: sb }
+            }
+            const sp = state.selectedProviders[fromId]
+            if (sp !== undefined) {
+              updates.selectedProviders = { ...state.selectedProviders, [toId]: sp }
+            }
+            const ms = state.enabledMcpServers[fromId]
+            if (ms !== undefined) {
+              updates.enabledMcpServers = { ...state.enabledMcpServers, [toId]: ms }
+            }
+            if (Object.keys(updates).length === 0) return state
+            return updates
+          },
+          undefined,
+          'copySessionSettings'
+        ),
+
       // MCP servers (session-based)
       setEnabledMcpServers: (sessionId, servers) =>
         set(
@@ -1948,6 +1999,95 @@ export const useChatStore = create<ChatUIState>()(
 
       getDeniedMessageContext: sessionId =>
         get().deniedMessageContext[sessionId],
+
+      // Batch state transitions — single set() to avoid render cascades
+      // Used by useStreamingEvents to atomically transition session state
+      completeSession: sessionId =>
+        set(
+          state => {
+            const { [sessionId]: _sc, ...streamingContents } =
+              state.streamingContents
+            const { [sessionId]: _sb, ...streamingContentBlocks } =
+              state.streamingContentBlocks
+            const { [sessionId]: _tc, ...activeToolCalls } =
+              state.activeToolCalls
+            const { [sessionId]: _ss, ...sendingSessionIds } =
+              state.sendingSessionIds
+            const { [sessionId]: _wi, ...waitingForInputSessionIds } =
+              state.waitingForInputSessionIds
+            const { [sessionId]: _sp, ...streamingPlanApprovals } =
+              state.streamingPlanApprovals
+            const { [sessionId]: _em, ...executingModes } =
+              state.executingModes
+            return {
+              streamingContents,
+              streamingContentBlocks,
+              activeToolCalls,
+              sendingSessionIds,
+              waitingForInputSessionIds,
+              streamingPlanApprovals,
+              executingModes,
+              reviewingSessions: {
+                ...state.reviewingSessions,
+                [sessionId]: true,
+              },
+            }
+          },
+          undefined,
+          'completeSession'
+        ),
+
+      pauseSession: sessionId =>
+        set(
+          state => {
+            const { [sessionId]: _sc, ...streamingContents } =
+              state.streamingContents
+            const { [sessionId]: _ss, ...sendingSessionIds } =
+              state.sendingSessionIds
+            const { [sessionId]: _em, ...executingModes } =
+              state.executingModes
+            return {
+              streamingContents,
+              sendingSessionIds,
+              executingModes,
+              waitingForInputSessionIds: {
+                ...state.waitingForInputSessionIds,
+                [sessionId]: true,
+              },
+            }
+          },
+          undefined,
+          'pauseSession'
+        ),
+
+      failSession: sessionId =>
+        set(
+          state => {
+            const { [sessionId]: _sc, ...streamingContents } =
+              state.streamingContents
+            const { [sessionId]: _sb, ...streamingContentBlocks } =
+              state.streamingContentBlocks
+            const { [sessionId]: _tc, ...activeToolCalls } =
+              state.activeToolCalls
+            const { [sessionId]: _ss, ...sendingSessionIds } =
+              state.sendingSessionIds
+            const { [sessionId]: _wi, ...waitingForInputSessionIds } =
+              state.waitingForInputSessionIds
+            return {
+              streamingContents,
+              streamingContentBlocks,
+              activeToolCalls,
+              sendingSessionIds,
+              waitingForInputSessionIds,
+              reviewingSessions: {
+                ...state.reviewingSessions,
+                [sessionId]: true,
+              },
+            }
+          },
+          undefined,
+          'failSession'
+        ),
 
       // Unified session state cleanup (for close/archive)
       clearSessionState: sessionId =>

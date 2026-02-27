@@ -80,6 +80,8 @@ export interface Worktree {
   setup_output?: string
   /** The setup script that was executed (if any) */
   setup_script?: string
+  /** Whether the setup script succeeded (undefined = no script, true = success, false = failed) */
+  setup_success?: boolean
   /** Type of session (defaults to 'worktree' for backward compatibility) */
   session_type?: SessionType
   /** Status of worktree creation (pending while being created in background) */

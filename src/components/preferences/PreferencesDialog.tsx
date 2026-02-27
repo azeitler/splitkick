@@ -229,7 +229,7 @@ export function PreferencesDialog() {
               </div>
             </header>
 
-            <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4 pt-0 min-h-0">
+            <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4 pt-0 min-h-0 custom-scrollbar">
               {activePane === 'general' && <GeneralPane />}
               {activePane === 'appearance' && <AppearancePane />}
               {activePane === 'keybindings' && <KeybindingsPane />}

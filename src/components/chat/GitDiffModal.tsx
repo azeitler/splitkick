@@ -722,6 +722,49 @@ export function GitDiffModal({
     return flattenedFiles.filter(f => f.fileName.toLowerCase().includes(lower))
   }, [flattenedFiles, fileFilter])
 
+  // Compute display names: show minimal disambiguating path for duplicate basenames
+  const displayNameMap = useMemo(() => {
+    const map = new Map<string, string>()
+    // Group by basename
+    const groups = new Map<string, typeof filteredFiles>()
+    for (const file of filteredFiles) {
+      const base = getFilename(file.fileName)
+      const group = groups.get(base)
+      if (group) group.push(file)
+      else groups.set(base, [file])
+    }
+    for (const [base, group] of groups) {
+      if (group.length === 1) {
+        map.set(group[0]!.key, base)
+      } else {
+        // Add parent segments until all names are unique
+        const segments = group.map(f =>
+          f.fileName.replace(/\\/g, '/').split('/')
+        )
+        let depth = 1
+        while (depth < 10) {
+          depth++
+          const names = segments.map(s =>
+            s.slice(Math.max(0, s.length - depth)).join('/')
+          )
+          if (new Set(names).size === names.length) {
+            group.forEach((f, i) => {
+              const name = names[i]!
+              const isPartial = name !== f.fileName.replace(/\\/g, '/')
+              map.set(f.key, isPartial ? `\u2026/${name}` : name)
+            })
+            break
+          }
+        }
+        // Fallback: full path
+        if (!map.has(group[0]!.key)) {
+          group.forEach(f => map.set(f.key, f.fileName))
+        }
+      }
+    }
+    return map
+  }, [filteredFiles])
+
   // Get currently selected file
   const selectedFile =
     filteredFiles.length > 0 && selectedFileIndex < filteredFiles.length
@@ -1108,7 +1151,9 @@ export function GitDiffModal({
                 <div>
                   {filteredFiles.map((file, index) => {
                     const isSelected = index === selectedFileIndex
-                    const displayName = getFilename(file.fileName)
+                    const displayName =
+                      displayNameMap.get(file.key) ??
+                      getFilename(file.fileName)
 
                     const fileButton = (
                       <button
