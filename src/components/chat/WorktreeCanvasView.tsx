@@ -149,6 +149,12 @@ export function WorktreeCanvasView({
     })
   }, [isBase, worktreePath, defaultBranch])
 
+  // Selection state (declared early — used by git diff effect below)
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
+    null
+  )
+
   // CMD+G: Open git diff from canvas (skip when session modal is open — ChatWindow handles it)
   useEffect(() => {
     if (selectedSessionId) return
@@ -180,12 +186,6 @@ export function WorktreeCanvasView({
   // Search state
   const [searchQuery, setSearchQuery] = useState('')
   const searchInputRef = useRef<HTMLInputElement>(null)
-
-  // Selection state
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
-    null
-  )
   // Track highlighted session to survive card reordering
   const highlightedSessionIdRef = useRef<string | null>(null)
 
