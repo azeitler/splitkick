@@ -828,6 +828,8 @@ export interface SavedContext {
   created_at: number
   /** Optional custom display name (from metadata file) */
   name?: string
+  /** Source session ID that generated this context */
+  source_session_id?: string
 }
 
 /**
@@ -849,6 +851,8 @@ export interface SaveContextResponse {
   path: string
   /** File size in bytes */
   size: number
+  /** Whether this was an update to an existing context vs a new save */
+  updated: boolean
 }
 
 // ============================================================================

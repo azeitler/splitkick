@@ -411,6 +411,10 @@ export function LoadContextModal({
               editInputRef={handlers.editInputRef}
               generatingSessionId={handlers.generatingSessionId}
               onAttachContext={handlers.handleAttachContext}
+              onViewContext={(e, ctx) => {
+                e.stopPropagation()
+                handlers.handleViewContext(ctx)
+              }}
               onStartEdit={handlers.handleStartEdit}
               onRenameSubmit={handlers.handleRenameSubmit}
               onRenameKeyDown={handlers.handleRenameKeyDown}

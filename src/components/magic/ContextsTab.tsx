@@ -37,6 +37,7 @@ interface ContextsTabProps {
   editInputRef: React.RefObject<HTMLInputElement | null>
   generatingSessionId: string | null
   onAttachContext: (context: SavedContext) => void
+  onViewContext: (e: React.MouseEvent, context: SavedContext) => void
   onStartEdit: (e: React.MouseEvent, context: SavedContext) => void
   onRenameSubmit: (filename: string) => void
   onRenameKeyDown: (e: React.KeyboardEvent, filename: string) => void
@@ -71,6 +72,7 @@ export function ContextsTab({
   editInputRef,
   generatingSessionId,
   onAttachContext,
+  onViewContext,
   onStartEdit,
   onRenameSubmit,
   onRenameKeyDown,
@@ -165,6 +167,7 @@ export function ContextsTab({
                     editInputRef={editInputRef}
                     onMouseEnter={() => setSelectedIndex(index)}
                     onClick={() => onAttachContext(context)}
+                    onView={e => onViewContext(e, context)}
                     onStartEdit={e => onStartEdit(e, context)}
                     onRenameSubmit={() => onRenameSubmit(context.filename)}
                     onRenameKeyDown={e => onRenameKeyDown(e, context.filename)}

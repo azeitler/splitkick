@@ -529,6 +529,25 @@ export function useLoadContextHandlers({
     [activeSessionId]
   )
 
+  const handleViewContext = useCallback(
+    async (ctx: SavedContext) => {
+      try {
+        const content = await invoke<string>('read_context_file', {
+          path: ctx.path,
+        })
+        setViewingContext({
+          type: 'saved',
+          slug: ctx.slug,
+          title: ctx.name || ctx.slug || 'Untitled',
+          content,
+        })
+      } catch (error) {
+        toast.error(`Failed to load context: ${error}`)
+      }
+    },
+    []
+  )
+
   const handleStartEdit = useCallback(
     (e: React.MouseEvent, context: SavedContext) => {
       e.stopPropagation()
@@ -605,7 +624,8 @@ export function useLoadContextHandlers({
         await attachSavedContext(activeSessionId, result.path, slug)
         await refetchAttachedContexts()
 
-        toast.success(`Context created and attached: ${result.filename}`)
+        const verb = result.updated ? 'updated' : 'created'
+        toast.success(`Context ${verb} and attached: ${result.filename}`)
         onClearSearch()
       } catch (err) {
         console.error('Failed to generate context:', err)
@@ -682,6 +702,7 @@ export function useLoadContextHandlers({
     handleAttachContext,
     handleRemoveAttachedContext,
     handleViewAttachedContext,
+    handleViewContext,
     handleStartEdit,
     handleRenameSubmit,
     handleRenameKeyDown,

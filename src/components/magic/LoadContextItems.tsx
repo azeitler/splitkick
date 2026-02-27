@@ -883,6 +883,7 @@ interface ContextItemProps {
   editInputRef: React.RefObject<HTMLInputElement | null>
   onMouseEnter: () => void
   onClick: () => void
+  onView: (e: React.MouseEvent) => void
   onStartEdit: (e: React.MouseEvent) => void
   onRenameSubmit: () => void
   onRenameKeyDown: (e: React.KeyboardEvent) => void
@@ -900,6 +901,7 @@ export function ContextItem({
   editInputRef,
   onMouseEnter,
   onClick,
+  onView,
   onStartEdit,
   onRenameSubmit,
   onRenameKeyDown,
@@ -956,16 +958,28 @@ export function ContextItem({
             {context.name || context.slug || 'Untitled'}
           </span>
         </div>
-        <div className="flex items-center gap-2 mt-0.5">
-          <span className="text-xs text-muted-foreground truncate">
+        <div className="flex items-center gap-1.5 mt-0.5">
+          <span className="text-xs text-muted-foreground font-medium truncate">
             {context.project_name}
           </span>
+          <span className="text-xs text-muted-foreground/50">·</span>
           <span className="text-xs text-muted-foreground">
             {formatSize(context.size)}
           </span>
         </div>
       </div>
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={onView}
+              className="p-1 rounded hover:bg-muted focus:outline-none"
+            >
+              <Eye className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Preview</TooltipContent>
+        </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
             <button

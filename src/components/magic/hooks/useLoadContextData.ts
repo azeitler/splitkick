@@ -240,6 +240,7 @@ export function useLoadContextData({
     return allSessionsData.entries
       .map(entry => {
         const filteredSessions = entry.sessions
+          .filter(s => s.messages.length > 0)
           .filter(s => s.id !== activeSessionId)
           .filter(s => {
             if (!searchQuery) return true

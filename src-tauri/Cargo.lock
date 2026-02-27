@@ -2443,7 +2443,7 @@ dependencies = [
 
 [[package]]
 name = "jean"
-version = "0.1.23"
+version = "0.1.25"
 dependencies = [
  "axum",
  "base64 0.22.1",

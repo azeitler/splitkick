@@ -3,7 +3,7 @@ import { invoke } from '@/lib/transport'
 import { useUIStore } from '@/store/ui-store'
 import type { QueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import type { SaveContextResponse } from '@/types/chat'
+import type { SaveContextResponse, SavedContextsResponse } from '@/types/chat'
 import type { Worktree } from '@/types/projects'
 import {
   resolveMagicPromptProvider,
@@ -57,7 +57,18 @@ export function useContextOperations({
     // Get project name from worktree
     const projectName = worktree?.name ?? 'unknown-project'
 
-    const toastId = toast.loading('Saving context...')
+    // Check if this session already has a saved context
+    const cachedContexts = queryClient.getQueryData<SavedContextsResponse>([
+      'session-context',
+    ])
+    const existingContext = cachedContexts?.contexts.find(
+      c => c.source_session_id === activeSessionId
+    )
+    const toastId = toast.loading(
+      existingContext
+        ? `Updating context: ${existingContext.name || existingContext.slug}...`
+        : 'Saving context...'
+    )
 
     try {
       // Call background summarization command
@@ -78,7 +89,8 @@ export function useContextOperations({
         }
       )
 
-      toast.success(`Context saved: ${result.filename}`, { id: toastId })
+      const verb = result.updated ? 'Context updated' : 'Context saved'
+      toast.success(`${verb}: ${result.filename}`, { id: toastId })
 
       // Invalidate saved contexts query so Load Context modal shows the new context
       queryClient.invalidateQueries({ queryKey: ['session-context'] })

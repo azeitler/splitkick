@@ -3375,7 +3375,8 @@ fn parse_context_filename(path: &std::path::Path) -> Option<SavedContext> {
             slug,
             size,
             created_at: parsed_timestamp,
-            name: None, // Custom name loaded separately from metadata
+            name: None,
+            source_session_id: None, // Populated from metadata in list_saved_contexts
         })
     } else {
         // Non-standard format: use filename as slug, unknown project
@@ -3388,7 +3389,8 @@ fn parse_context_filename(path: &std::path::Path) -> Option<SavedContext> {
             slug: name_without_ext.to_string(),
             size,
             created_at: file_created_at,
-            name: None, // Custom name loaded separately from metadata
+            name: None,
+            source_session_id: None,
         })
     }
 }
@@ -3403,8 +3405,15 @@ pub async fn list_saved_contexts(app: AppHandle) -> Result<SavedContextsResponse
 
     let contexts_dir = get_saved_contexts_dir(&app)?;
 
-    // Load metadata for custom names
+    // Load metadata for custom names and session mappings
     let metadata = load_saved_contexts_metadata(&app);
+
+    // Build reverse map: filename -> session_id
+    let filename_to_session: std::collections::HashMap<&str, &str> = metadata
+        .sessions
+        .iter()
+        .map(|(session_id, filename)| (filename.as_str(), session_id.as_str()))
+        .collect();
 
     let mut contexts = Vec::new();
 
@@ -3420,6 +3429,9 @@ pub async fn list_saved_contexts(app: AppHandle) -> Result<SavedContextsResponse
             if let Some(mut context) = parse_context_filename(&path) {
                 // Merge custom name from metadata if present
                 context.name = metadata.names.get(&context.filename).cloned();
+                context.source_session_id = filename_to_session
+                    .get(context.filename.as_str())
+                    .map(|s| s.to_string());
                 contexts.push(context);
             }
         }
@@ -3476,6 +3488,7 @@ pub async fn save_context_file(
         filename,
         path: path_str,
         size,
+        updated: false,
     })
 }
 
@@ -3546,8 +3559,19 @@ pub async fn delete_context_file(app: AppHandle, path: String) -> Result<(), Str
     // Remove from metadata if present
     if let Some(filename) = filename {
         let mut metadata = load_saved_contexts_metadata(&app);
-        if metadata.names.remove(&filename).is_some() {
-            // Only save if we actually removed something
+        let mut changed = metadata.names.remove(&filename).is_some();
+
+        // Remove any session mapping pointing to this filename
+        metadata.sessions.retain(|_session_id, mapped_filename| {
+            if mapped_filename == &filename {
+                changed = true;
+                false
+            } else {
+                true
+            }
+        });
+
+        if changed {
             if let Err(e) = save_saved_contexts_metadata(&app, &metadata) {
                 log::warn!("Failed to update metadata after delete: {e}");
             }
@@ -3983,13 +4007,36 @@ pub async fn generate_context_from_session(
         }
     };
 
-    // 5. Save context file
+    // 5. Determine target file (update existing or create new)
     let contexts_dir = get_saved_contexts_dir(&app)?;
-    let timestamp = now();
-    let safe_project = sanitize_for_filename(&project_name);
-    let safe_slug = sanitize_for_filename(&slug);
-    let filename = format!("{safe_project}-{timestamp}-{safe_slug}.md");
-    let file_path = contexts_dir.join(&filename);
+    let mut metadata = load_saved_contexts_metadata(&app);
+
+    let (filename, file_path, is_update) =
+        if let Some(existing_filename) = metadata.sessions.get(&source_session_id) {
+            let existing_path = contexts_dir.join(existing_filename);
+            if existing_path.exists() {
+                // Update existing file
+                log::trace!("Updating existing context file: {existing_filename}");
+                (existing_filename.clone(), existing_path, true)
+            } else {
+                // Mapped file was deleted, create new
+                log::trace!("Mapped file gone, creating new context file");
+                let timestamp = now();
+                let safe_project = sanitize_for_filename(&project_name);
+                let safe_slug = sanitize_for_filename(&slug);
+                let new_filename = format!("{safe_project}-{timestamp}-{safe_slug}.md");
+                let new_path = contexts_dir.join(&new_filename);
+                (new_filename, new_path, false)
+            }
+        } else {
+            // No existing mapping, create new
+            let timestamp = now();
+            let safe_project = sanitize_for_filename(&project_name);
+            let safe_slug = sanitize_for_filename(&slug);
+            let new_filename = format!("{safe_project}-{timestamp}-{safe_slug}.md");
+            let new_path = contexts_dir.join(&new_filename);
+            (new_filename, new_path, false)
+        };
 
     // Write content atomically
     let temp_path = file_path.with_extension("tmp");
@@ -3998,6 +4045,14 @@ pub async fn generate_context_from_session(
 
     std::fs::rename(&temp_path, &file_path)
         .map_err(|e| format!("Failed to finalize context file: {e}"))?;
+
+    // Update session mapping in metadata
+    metadata
+        .sessions
+        .insert(source_session_id.clone(), filename.clone());
+    if let Err(e) = save_saved_contexts_metadata(&app, &metadata) {
+        log::warn!("Failed to save context metadata: {e}");
+    }
 
     let path_str = file_path
         .to_str()
@@ -4013,6 +4068,7 @@ pub async fn generate_context_from_session(
         filename,
         path: path_str,
         size,
+        updated: is_update,
     })
 }
 

@@ -90,21 +90,6 @@ export function JeanJsonPane({
             </p>
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="teardown-script" className="text-sm">
-              Teardown
-            </Label>
-            <Input
-              id="teardown-script"
-              placeholder="e.g. docker compose down"
-              value={localTeardown}
-              onChange={e => setLocalTeardown(e.target.value)}
-              className="font-mono text-sm"
-            />
-            <p className="text-xs text-muted-foreground">
-              Runs automatically before a worktree is deleted/archived
-            </p>
-          </div>
-          <div className="space-y-1.5">
             <Label htmlFor="run-script" className="text-sm">
               Run
             </Label>
@@ -117,6 +102,21 @@ export function JeanJsonPane({
             />
             <p className="text-xs text-muted-foreground">
               Launches via the run command in the toolbar
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="teardown-script" className="text-sm">
+              Teardown
+            </Label>
+            <Input
+              id="teardown-script"
+              placeholder="e.g. docker compose down"
+              value={localTeardown}
+              onChange={e => setLocalTeardown(e.target.value)}
+              className="font-mono text-sm"
+            />
+            <p className="text-xs text-muted-foreground">
+              Runs automatically before a worktree is deleted/archived
             </p>
           </div>
           <div className="space-y-0.5 text-xs text-muted-foreground">

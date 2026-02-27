@@ -800,14 +800,20 @@ pub struct SavedContext {
     /// Optional custom display name (from metadata file)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// Source session ID that generated this context (from metadata)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_session_id: Option<String>,
 }
 
 /// Metadata for saved contexts (stored in session-context-metadata.json)
-/// Maps context filename -> custom name
+/// Maps context filename -> custom name, and tracks session -> context mappings
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SavedContextsMetadata {
     /// Map of filename to custom name
     pub names: HashMap<String, String>,
+    /// Map of source session_id to context filename (for update-on-save)
+    #[serde(default)]
+    pub sessions: HashMap<String, String>,
 }
 
 /// Response for listing saved contexts
@@ -827,6 +833,9 @@ pub struct SaveContextResponse {
     pub path: String,
     /// File size in bytes
     pub size: u64,
+    /// Whether this was an update to an existing context (true) or a new save (false)
+    #[serde(default)]
+    pub updated: bool,
 }
 
 // ============================================================================
