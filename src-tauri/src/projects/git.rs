@@ -714,6 +714,20 @@ pub struct PushResult {
     pub output: String,
     /// true when we tried to push to the PR branch but failed and fell back to a regular push
     pub fell_back: bool,
+    /// true when push failed due to permission/authentication errors (e.g. fork PR without write access)
+    pub permission_denied: bool,
+}
+
+/// Check if a git push stderr indicates a permission/authentication error
+fn is_permission_error(stderr: &str) -> bool {
+    let lower = stderr.to_lowercase();
+    lower.contains("permission")
+        || lower.contains("denied")
+        || lower.contains("403")
+        || lower.contains("could not read username")
+        || lower.contains("write access")
+        || lower.contains("authentication failed")
+        || lower.contains("not allowed")
 }
 
 /// Push to a PR's remote branch, handling fork PRs by adding the fork remote if needed.
@@ -751,6 +765,7 @@ pub fn git_push_to_pr(
         return Ok(PushResult {
             output,
             fell_back: true,
+            permission_denied: false,
         });
     }
 
@@ -780,9 +795,18 @@ pub fn git_push_to_pr(
             return Ok(PushResult {
                 output: result,
                 fell_back: false,
+                permission_denied: false,
             });
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            if is_permission_error(&stderr) {
+                log::warn!("Permission denied pushing to origin/{head_ref_name}: {stderr}");
+                return Ok(PushResult {
+                    output: stderr,
+                    fell_back: false,
+                    permission_denied: true,
+                });
+            }
             log::warn!(
                 "Failed to push to origin/{head_ref_name}, falling back to regular push: {stderr}"
             );
@@ -790,6 +814,7 @@ pub fn git_push_to_pr(
             return Ok(PushResult {
                 output: fallback_output,
                 fell_back: true,
+                permission_denied: false,
             });
         }
     }
@@ -887,14 +912,24 @@ pub fn git_push_to_pr(
         Ok(PushResult {
             output: result,
             fell_back: false,
+            permission_denied: false,
         })
     } else {
         let stderr = String::from_utf8_lossy(&push_output.stderr).to_string();
+        if is_permission_error(&stderr) {
+            log::warn!("Permission denied pushing to {remote_name}/{head_ref_name}: {stderr}");
+            return Ok(PushResult {
+                output: stderr,
+                fell_back: false,
+                permission_denied: true,
+            });
+        }
         log::warn!("Failed to push to {remote_name}/{head_ref_name}, falling back to regular push: {stderr}");
         let fallback_output = git_push(repo_path, None)?;
         Ok(PushResult {
             output: fallback_output,
             fell_back: true,
+            permission_denied: false,
         })
     }
 }

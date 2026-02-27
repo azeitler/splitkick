@@ -46,7 +46,7 @@ export function CanvasGrid({
   onDeleteSession,
   onPlanApproval,
   onPlanApprovalYolo,
-  onCloseWorktree: _onCloseWorktree,
+  onCloseWorktree,
   searchInputRef,
 }: CanvasGridProps) {
   // Track session modal open state for magic command keybindings
@@ -195,9 +195,16 @@ export function CanvasGrid({
       // If modal is open, SessionChatModal intercepts CMD+W and closes itself — skip here
       if (selectedSessionId) return
 
-      // Close the selected session (not the whole worktree)
+      e.stopImmediatePropagation()
+
+      // Close the selected session card, or the worktree if no card selected
       if (selectedIndex !== null && cards[selectedIndex]) {
-        e.stopImmediatePropagation()
+        const activeCards = cards.filter(c => !c.session.archived_at)
+        // Last session: route to worktree close (always confirms)
+        if (activeCards.length <= 1) {
+          onCloseWorktree()
+          return
+        }
         const card = cards[selectedIndex]
         const sessionId = card.session.id
         const sessionIsEmpty = !card.session.message_count
@@ -207,6 +214,8 @@ export function CanvasGrid({
         } else {
           onDeleteSession(sessionId)
         }
+      } else {
+        onCloseWorktree()
       }
     }
 
@@ -228,6 +237,7 @@ export function CanvasGrid({
     selectedIndex,
     cards,
     onDeleteSession,
+    onCloseWorktree,
     preferences?.confirm_session_close,
   ])
 

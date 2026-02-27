@@ -408,8 +408,6 @@ export function SessionChatModal({
     worktreeId,
     worktreePath,
     sessions,
-    worktree: worktree ?? null,
-    project: project ?? null,
     removalBehavior: preferences?.removal_behavior,
   })
 
@@ -648,31 +646,25 @@ export function SessionChatModal({
     if (!isOpen) return
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        // Don't close if PlanDialog is open — let it handle ESC
-        if (useUIStore.getState().planDialogOpen) return
-
         const target = e.target as HTMLElement
         const portalAncestor = target?.closest?.(
           '[data-slot="dialog-portal"], [data-slot="alert-dialog-portal"], [data-slot="sheet-portal"]'
         )
-        console.log('[ESC-DEBUG] SessionChatModal handler', {
-          target: target?.tagName,
-          targetDataSlot: target?.getAttribute?.('data-slot'),
-          portalAncestor: portalAncestor?.getAttribute?.('data-slot'),
-          targetOuterHTML: target?.outerHTML?.slice(0, 200),
-        })
+        const planDialogOpen = useUIStore.getState().planDialogOpen
+
+        // Don't close if PlanDialog is open — let it handle ESC
+        if (planDialogOpen) return
+        // Don't close if CloseWorktreeDialog is open — let it handle ESC
+        if (closeConfirmOpen) return
         // Don't close if ESC originated inside a child dialog/sheet portal
-        if (portalAncestor) {
-          console.log('[ESC-DEBUG] SessionChatModal: SKIPPED (child portal open)')
-          return
-        }
-        console.log('[ESC-DEBUG] SessionChatModal: CLOSING')
+        if (portalAncestor) return
+
         handleClose()
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, handleClose])
+  }, [isOpen, handleClose, closeConfirmOpen])
 
   if (!isOpen || !worktreeId) return null
 
@@ -1209,7 +1201,7 @@ export function SessionChatModal({
         onOpenChange={setCloseConfirmOpen}
         onConfirm={executeCloseAction}
         branchName={worktree?.branch}
-        mode={sessions.filter(s => !s.archived_at).length > 1 ? 'session' : 'worktree'}
+        mode="session"
       />
     </>
   )

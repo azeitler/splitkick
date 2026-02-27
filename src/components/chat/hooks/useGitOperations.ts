@@ -176,7 +176,23 @@ export function useGitOperations({
         // Trigger git status refresh
         triggerImmediateGitPoll()
 
-        if (result.push_fell_back) {
+        if (result.push_permission_denied) {
+          toast.error(
+            `${prefix}: No permission to push to PR #${worktree?.pr_number}. Create a separate PR instead.`,
+            {
+              id: toastId,
+              action: {
+                label: 'Open PR',
+                onClick: () =>
+                  window.dispatchEvent(
+                    new CustomEvent('magic-command', {
+                      detail: { command: 'open-pr' },
+                    })
+                  ),
+              },
+            }
+          )
+        } else if (result.push_fell_back) {
           toast.warning(
             `${prefix}: Could not push to PR branch, pushed to new branch instead`,
             { id: toastId }
@@ -250,7 +266,23 @@ export function useGitOperations({
       try {
         const result = await gitPush(activeWorktreePath, worktree?.pr_number, remote)
         triggerImmediateGitPoll()
-        if (result.fellBack) {
+        if (result.permissionDenied) {
+          toast.error(
+            `No permission to push to PR #${worktree?.pr_number}. Create a separate PR instead.`,
+            {
+              id: toastId,
+              action: {
+                label: 'Open PR',
+                onClick: () =>
+                  window.dispatchEvent(
+                    new CustomEvent('magic-command', {
+                      detail: { command: 'open-pr' },
+                    })
+                  ),
+              },
+            }
+          )
+        } else if (result.fellBack) {
           toast.warning('Could not push to PR branch, pushed to new branch instead', { id: toastId })
         } else {
           toast.success('Changes pushed', { id: toastId })

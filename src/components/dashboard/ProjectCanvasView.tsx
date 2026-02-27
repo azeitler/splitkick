@@ -1522,8 +1522,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
         const section = worktreeSections.find(
           s => s.worktree.id === item.worktreeId
         )
-        const allEmpty = section?.cards.every(c => !c.session.message_count) ?? true
-        if (preferences?.confirm_session_close === false || allEmpty) {
+        if (preferences?.confirm_session_close === false) {
           closeWorktreeDirectly(item.worktreeId)
         } else {
           setCloseWorktreeTarget({

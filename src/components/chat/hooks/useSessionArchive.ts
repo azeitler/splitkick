@@ -1,12 +1,6 @@
 import { useCallback } from 'react'
-import {
-  useArchiveWorktree,
-  useCloseBaseSessionClean,
-  useCloseBaseSessionArchive,
-  useDeleteWorktree,
-} from '@/services/projects'
 import { useArchiveSession, useCloseSession } from '@/services/chat'
-import { isBaseSession, type Worktree, type Project } from '@/types/projects'
+import { useChatStore } from '@/store/chat-store'
 import type { Session } from '@/types/chat'
 import type { RemovalBehavior } from '@/types/preferences'
 
@@ -14,102 +8,58 @@ interface UseSessionArchiveParams {
   worktreeId: string
   worktreePath: string
   sessions: Session[] | undefined
-  worktree: Worktree | null | undefined
-  project: Project | null | undefined
   removalBehavior?: RemovalBehavior
 }
 
 /**
  * Provides archive and delete handlers for sessions.
- * Handles the "last session" case by archiving/deleting the worktree.
+ * When closing the last session, navigates to canvas instead of deleting the worktree.
+ * The Rust backend automatically creates a fresh default session when the last one is removed.
  *
  * - handleArchiveSession: always archives (context menu "Archive Session")
  * - handleDeleteSession: respects removalBehavior preference (context menu "Delete Session")
- *   - 'archive' (default): archives session/worktree
- *   - 'delete': permanently deletes session/worktree
+ *   - 'archive' (default): archives session
+ *   - 'delete': permanently deletes session
  */
 export function useSessionArchive({
   worktreeId,
   worktreePath,
   sessions,
-  worktree,
-  project,
   removalBehavior = 'archive',
 }: UseSessionArchiveParams) {
   const archiveSession = useArchiveSession()
   const closeSession = useCloseSession()
-  const archiveWorktree = useArchiveWorktree()
-  const deleteWorktree = useDeleteWorktree()
-  const closeBaseSessionClean = useCloseBaseSessionClean()
-  const closeBaseSessionArchive = useCloseBaseSessionArchive()
+
+  const navigateToCanvas = useCallback(() => {
+    useChatStore.getState().setViewingCanvasTab(worktreeId, true)
+  }, [worktreeId])
 
   // Always archives — used by context menu "Archive Session"
   const handleArchiveSession = useCallback(
     (sessionId: string) => {
       const activeSessions = sessions?.filter(s => !s.archived_at) ?? []
+      const isLastSession = activeSessions.length <= 1
 
-      if (activeSessions.length <= 1 && worktree && project) {
-        if (isBaseSession(worktree)) {
-          closeBaseSessionArchive.mutate({
-            worktreeId,
-            projectId: project.id,
-          })
-        } else {
-          archiveWorktree.mutate({
-            worktreeId,
-            projectId: project.id,
-          })
-        }
-      } else {
-        archiveSession.mutate({
-          worktreeId,
-          worktreePath,
-          sessionId,
-        })
+      archiveSession.mutate({
+        worktreeId,
+        worktreePath,
+        sessionId,
+      })
+
+      if (isLastSession) {
+        navigateToCanvas()
       }
     },
-    [
-      sessions,
-      worktree,
-      project,
-      worktreeId,
-      worktreePath,
-      archiveSession,
-      archiveWorktree,
-      closeBaseSessionArchive,
-    ]
+    [sessions, worktreeId, worktreePath, archiveSession, navigateToCanvas]
   )
 
   // Respects removalBehavior preference — used by context menu "Delete Session"
   const handleDeleteSession = useCallback(
     (sessionId: string) => {
       const activeSessions = sessions?.filter(s => !s.archived_at) ?? []
+      const isLastSession = activeSessions.length <= 1
 
-      if (activeSessions.length <= 1 && worktree && project) {
-        if (isBaseSession(worktree)) {
-          if (removalBehavior === 'delete') {
-            closeBaseSessionClean.mutate({
-              worktreeId,
-              projectId: project.id,
-            })
-          } else {
-            closeBaseSessionArchive.mutate({
-              worktreeId,
-              projectId: project.id,
-            })
-          }
-        } else if (removalBehavior === 'delete') {
-          deleteWorktree.mutate({
-            worktreeId,
-            projectId: project.id,
-          })
-        } else {
-          archiveWorktree.mutate({
-            worktreeId,
-            projectId: project.id,
-          })
-        }
-      } else if (removalBehavior === 'delete') {
+      if (removalBehavior === 'delete') {
         closeSession.mutate({
           worktreeId,
           worktreePath,
@@ -122,20 +72,19 @@ export function useSessionArchive({
           sessionId,
         })
       }
+
+      if (isLastSession) {
+        navigateToCanvas()
+      }
     },
     [
       sessions,
-      worktree,
-      project,
       worktreeId,
       worktreePath,
       removalBehavior,
       closeSession,
       archiveSession,
-      archiveWorktree,
-      deleteWorktree,
-      closeBaseSessionClean,
-      closeBaseSessionArchive,
+      navigateToCanvas,
     ]
   )
 

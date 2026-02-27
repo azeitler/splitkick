@@ -1206,15 +1206,23 @@ pub async fn send_chat_message(
     // Spawn unified naming task if either condition is met
     if is_first_worktree_message || is_first_session_message {
         if let Ok(prefs) = crate::load_preferences(app.clone()).await {
-            // Check if this is a base session - don't rename the default branch
-            let is_base_session = load_projects_data(&app)
+            // Check if this is a base session or PR worktree - don't rename the branch
+            let worktree_record = load_projects_data(&app)
                 .ok()
-                .and_then(|data| data.find_worktree(&worktree_id).cloned())
+                .and_then(|data| data.find_worktree(&worktree_id).cloned());
+            let is_base_session = worktree_record
+                .as_ref()
                 .map(|w| w.session_type == SessionType::Base)
                 .unwrap_or(false);
+            let is_pr_worktree = worktree_record
+                .as_ref()
+                .map(|w| w.pr_number.is_some())
+                .unwrap_or(false);
 
-            let generate_branch =
-                is_first_worktree_message && prefs.auto_branch_naming && !is_base_session;
+            let generate_branch = is_first_worktree_message
+                && prefs.auto_branch_naming
+                && !is_base_session
+                && !is_pr_worktree;
             let generate_session = is_first_session_message && prefs.auto_session_naming;
 
             if generate_branch || generate_session {

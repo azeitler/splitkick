@@ -20,7 +20,7 @@ use super::github_issues::{
     add_advisory_reference, add_issue_reference, add_pr_reference, add_security_reference,
     format_advisory_context_markdown, format_issue_context_markdown, format_pr_context_markdown,
     format_security_context_markdown, generate_branch_name_from_advisory,
-    generate_branch_name_from_issue, generate_branch_name_from_pr,
+    generate_branch_name_from_issue,
     generate_branch_name_from_security_alert, get_github_contexts_dir, get_github_pr, get_pr_diff,
     get_session_context_content, get_session_context_numbers, AdvisoryContext, IssueContext,
     PullRequestContext, SecurityAlertContext,
@@ -564,7 +564,7 @@ pub async fn create_worktree(
         // Use the provided custom name directly (already validated as unique by caller)
         custom
     } else if let Some(ref ctx) = pr_context {
-        let pr_branch = generate_branch_name_from_pr(ctx.number, &ctx.title);
+        let pr_branch = ctx.head_ref_name.clone();
         // Check if this branch name already exists, if so, add a suffix
         if data.worktree_name_exists(&project_id, &pr_branch) {
             let mut counter = 2;
@@ -1736,7 +1736,7 @@ pub async fn checkout_pr(
     let base_branch = git::get_valid_base_branch(&project.path, &project.default_branch)?;
 
     // Generate worktree name from PR (for the directory/worktree name, not the branch)
-    let worktree_name = generate_branch_name_from_pr(pr_number, &pr_detail.title);
+    let worktree_name = pr_detail.head_ref_name.clone();
     log::info!("[checkout_pr] Generated base worktree name: '{worktree_name}'");
 
     // Remove any archived worktree records for this PR from data so they don't
@@ -5256,6 +5256,7 @@ pub struct CreateCommitResponse {
     pub message: String,
     pub pushed: bool,
     pub push_fell_back: bool,
+    pub push_permission_denied: bool,
 }
 
 /// Check if there are unpushed commits (commits ahead of upstream).
@@ -5391,21 +5392,21 @@ fn push_to_remote(repo_path: &str, remote: Option<&str>) -> Result<(), String> {
 }
 
 /// Push to remote, routing through PR-aware push when a PR number is provided.
-/// Returns whether the push fell back to creating a new branch.
+/// Returns (fell_back, permission_denied).
 fn push_for_commit(
     app: &AppHandle,
     repo_path: &str,
     remote: Option<&str>,
     pr_number: Option<u32>,
-) -> Result<bool, String> {
+) -> Result<(bool, bool), String> {
     match pr_number {
         Some(pr) => {
             let result = git::git_push_to_pr(repo_path, pr, &resolve_gh_binary(app))?;
-            Ok(result.fell_back)
+            Ok((result.fell_back, result.permission_denied))
         }
         None => {
             push_to_remote(repo_path, remote)?;
-            Ok(false)
+            Ok((false, false))
         }
     }
 }
@@ -5547,13 +5548,15 @@ pub async fn create_commit_with_ai(
             if !has_unpushed_commits(&worktree_path)? {
                 return Err("Nothing to commit or push".to_string());
             }
-            let fell_back = push_for_commit(&app, &worktree_path, remote.as_deref(), pr_number)?;
+            let (fell_back, perm_denied) =
+                push_for_commit(&app, &worktree_path, remote.as_deref(), pr_number)?;
             log::trace!("No changes to commit, pushed existing commits");
             return Ok(CreateCommitResponse {
                 commit_hash: String::new(),
                 message: String::new(),
                 pushed: true,
                 push_fell_back: fell_back,
+                push_permission_denied: perm_denied,
             });
         }
         return Err("No changes to commit".to_string());
@@ -5605,12 +5608,13 @@ pub async fn create_commit_with_ai(
     log::trace!("Created commit: {commit_hash}");
 
     // 8. Push if requested
-    let (pushed, push_fell_back) = if push {
-        let fell_back = push_for_commit(&app, &worktree_path, remote.as_deref(), pr_number)?;
-        log::trace!("Pushed to remote (fell_back={fell_back})");
-        (true, fell_back)
+    let (pushed, push_fell_back, push_permission_denied) = if push {
+        let (fell_back, perm_denied) =
+            push_for_commit(&app, &worktree_path, remote.as_deref(), pr_number)?;
+        log::trace!("Pushed to remote (fell_back={fell_back}, permission_denied={perm_denied})");
+        (true, fell_back, perm_denied)
     } else {
-        (false, false)
+        (false, false, false)
     };
 
     Ok(CreateCommitResponse {
@@ -5618,6 +5622,7 @@ pub async fn create_commit_with_ai(
         message: response.message,
         pushed,
         push_fell_back,
+        push_permission_denied,
     })
 }
 
@@ -6164,6 +6169,7 @@ pub async fn git_stash_pop(worktree_path: String) -> Result<String, String> {
 pub struct GitPushResponse {
     pub output: String,
     pub fell_back: bool,
+    pub permission_denied: bool,
 }
 
 /// Push current branch to remote. If pr_number is provided, uses PR-aware push
@@ -6182,6 +6188,7 @@ pub async fn git_push(
             Ok(GitPushResponse {
                 output: result.output,
                 fell_back: result.fell_back,
+                permission_denied: result.permission_denied,
             })
         }
         None => {
@@ -6189,6 +6196,7 @@ pub async fn git_push(
             Ok(GitPushResponse {
                 output,
                 fell_back: false,
+                permission_denied: false,
             })
         }
     }

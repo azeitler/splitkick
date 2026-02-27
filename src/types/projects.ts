@@ -298,6 +298,8 @@ export interface CreateCommitResponse {
   pushed: boolean
   /** Whether the push fell back to creating a new branch (couldn't push to PR branch) */
   push_fell_back: boolean
+  /** Whether the push failed due to permission/authentication errors */
+  push_permission_denied: boolean
 }
 
 /** Response from git push */
@@ -305,6 +307,8 @@ export interface GitPushResponse {
   output: string
   /** Whether the push fell back to creating a new branch (couldn't push to PR branch) */
   fellBack: boolean
+  /** Whether the push failed due to permission/authentication errors */
+  permissionDenied: boolean
 }
 
 // =============================================================================

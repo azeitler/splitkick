@@ -20,16 +20,11 @@ import type {
 import {
   isTauri,
   projectsQueryKeys,
-  useArchiveWorktree,
-  useDeleteWorktree,
-  useCloseBaseSessionClean,
 } from '@/services/projects'
 import { preferencesQueryKeys } from '@/services/preferences'
 import type { AppPreferences } from '@/types/preferences'
 import { useChatStore } from '@/store/chat-store'
-import { useProjectsStore } from '@/store/projects-store'
 import type { ReviewResponse, Worktree } from '@/types/projects'
-import { isBaseSession } from '@/types/projects'
 
 // Query keys for chat
 export const chatQueryKeys = {
@@ -822,17 +817,13 @@ export function useAllArchivedSessions() {
  *
  * Listens for 'close-session-or-worktree' custom event and either:
  * - Removes the current session (archive or delete based on removal_behavior preference)
- * - Closes the base session cleanly (if it's a base session with last session)
- * - Removes the worktree (archive or delete based on removal_behavior preference)
+ * - When closing the last session, navigates to canvas instead of deleting the worktree
  */
 export function useCloseSessionOrWorktreeKeybinding(
   onConfirmRequired?: (branchName?: string, mode?: 'worktree' | 'session') => void
 ) {
   const archiveSession = useArchiveSession()
   const closeSession = useCloseSession()
-  const archiveWorktree = useArchiveWorktree()
-  const deleteWorktree = useDeleteWorktree()
-  const closeBaseSessionClean = useCloseBaseSessionClean()
   const queryClient = useQueryClient()
 
   const executeClose = useCallback(() => {
@@ -871,144 +862,39 @@ export function useCloseSessionOrWorktreeKeybinding(
     )
     const shouldDelete = preferences?.removal_behavior === 'delete'
 
-    if (sessionCount > 1) {
-      // Multiple sessions: remove the current one
-      if (shouldDelete) {
-        logger.debug('Deleting session (multiple sessions exist)', {
-          sessionId: activeSessionId,
-          sessionCount,
-        })
-        closeSession.mutate({
-          worktreeId: activeWorktreeId,
-          worktreePath: activeWorktreePath,
-          sessionId: activeSessionId,
-        })
-      } else {
-        logger.debug('Archiving session (multiple sessions exist)', {
-          sessionId: activeSessionId,
-          sessionCount,
-        })
-        archiveSession.mutate({
-          worktreeId: activeWorktreeId,
-          worktreePath: activeWorktreePath,
-          sessionId: activeSessionId,
-        })
-      }
+    // Close the current session (archive or delete)
+    if (shouldDelete) {
+      logger.debug('Deleting session', {
+        sessionId: activeSessionId,
+        sessionCount,
+      })
+      closeSession.mutate({
+        worktreeId: activeWorktreeId,
+        worktreePath: activeWorktreePath,
+        sessionId: activeSessionId,
+      })
     } else {
-      // Last session: archive the worktree (which archives sessions automatically)
-      // First, find the worktree to get project info
-      const worktreeQueries = queryClient
-        .getQueryCache()
-        .findAll({ queryKey: [...projectsQueryKeys.all, 'worktrees'] })
+      logger.debug('Archiving session', {
+        sessionId: activeSessionId,
+        sessionCount,
+      })
+      archiveSession.mutate({
+        worktreeId: activeWorktreeId,
+        worktreePath: activeWorktreePath,
+        sessionId: activeSessionId,
+      })
+    }
 
-      let worktree: Worktree | undefined
-      let projectId: string | undefined
-
-      for (const query of worktreeQueries) {
-        const worktrees = query.state.data as Worktree[] | undefined
-        if (worktrees) {
-          const found = worktrees.find(w => w.id === activeWorktreeId)
-          if (found) {
-            worktree = found
-            projectId = found.project_id
-            break
-          }
-        }
-      }
-
-      if (!worktree || !projectId) {
-        logger.warn('Cannot archive worktree: worktree not found in cache')
-        return
-      }
-
-      // For both base sessions and regular worktrees, archive the worktree
-      // First, find the previous worktree to select after archiving
-      const projectWorktrees = queryClient.getQueryData<Worktree[]>(
-        projectsQueryKeys.worktrees(projectId)
-      )
-
-      if (projectWorktrees && projectWorktrees.length > 1) {
-        // Sort worktrees same as WorktreeList: base sessions first, then by created_at (newest first)
-        const sortedWorktrees = [...projectWorktrees]
-          .filter(w => w.status !== 'pending' && w.status !== 'deleting')
-          .sort((a, b) => {
-            const aIsBase = isBaseSession(a)
-            const bIsBase = isBaseSession(b)
-            if (aIsBase && !bIsBase) return -1
-            if (!aIsBase && bIsBase) return 1
-            return b.created_at - a.created_at
-          })
-
-        const currentIndex = sortedWorktrees.findIndex(
-          w => w.id === activeWorktreeId
-        )
-
-        if (currentIndex !== -1) {
-          // Select the previous worktree, or the next one if we're at the beginning
-          const newIndex =
-            currentIndex > 0 ? currentIndex - 1 : currentIndex + 1
-          const newWorktree = sortedWorktrees[newIndex]
-
-          if (newWorktree) {
-            logger.debug('Pre-selecting worktree before archiving', {
-              newWorktreeId: newWorktree.id,
-            })
-            const { selectWorktree } = useProjectsStore.getState()
-            selectWorktree(newWorktree.id)
-            const { setActiveWorktree } = useChatStore.getState()
-            setActiveWorktree(newWorktree.id, newWorktree.path)
-          }
-        }
-      } else {
-        // No other worktrees, select the project
-        logger.debug(
-          'Pre-selecting project before archiving (no other worktrees)',
-          {
-            projectId,
-          }
-        )
-        const { selectProject } = useProjectsStore.getState()
-        selectProject(projectId)
-        const { clearActiveWorktree } = useChatStore.getState()
-        clearActiveWorktree()
-      }
-
-      // For base sessions, close cleanly (no session preservation)
-      if (isBaseSession(worktree)) {
-        logger.debug('Closing base session cleanly (last session)', {
-          worktreeId: activeWorktreeId,
-          projectId,
-        })
-        closeBaseSessionClean.mutate({
-          worktreeId: activeWorktreeId,
-          projectId,
-        })
-      } else if (shouldDelete) {
-        logger.debug('Deleting worktree (last session)', {
-          worktreeId: activeWorktreeId,
-          projectId,
-        })
-        deleteWorktree.mutate({
-          worktreeId: activeWorktreeId,
-          projectId,
-        })
-      } else {
-        logger.debug('Archiving worktree (last session)', {
-          worktreeId: activeWorktreeId,
-          projectId,
-        })
-        archiveWorktree.mutate({
-          worktreeId: activeWorktreeId,
-          projectId,
-        })
-      }
+    // Last session: navigate to canvas instead of deleting the worktree
+    if (sessionCount <= 1) {
+      logger.debug('Last session closed, navigating to canvas', {
+        worktreeId: activeWorktreeId,
+      })
+      useChatStore.getState().setViewingCanvasTab(activeWorktreeId, true)
     }
   }, [
     archiveSession,
     closeSession,
-    archiveWorktree,
-    deleteWorktree,
-    closeBaseSessionClean,
     queryClient,
   ])
 
@@ -1024,18 +910,6 @@ export function useCloseSessionOrWorktreeKeybinding(
         // Find branch name and session count for the dialog
         const { activeWorktreeId } = useChatStore.getState()
         if (activeWorktreeId) {
-          // Try both with and without 'with-counts' suffix
-          const sessionsData =
-            queryClient.getQueryData<WorktreeSessions>(
-              chatQueryKeys.sessions(activeWorktreeId)
-            ) ??
-            queryClient.getQueryData<WorktreeSessions>([
-              ...chatQueryKeys.sessions(activeWorktreeId),
-              'with-counts',
-            ])
-          const activeSessions = sessionsData?.sessions.filter(s => !s.archived_at) ?? []
-          const mode: 'worktree' | 'session' = activeSessions.length > 1 ? 'session' : 'worktree'
-
           const worktreeQueries = queryClient
             .getQueryCache()
             .findAll({ queryKey: [...projectsQueryKeys.all, 'worktrees'] })
@@ -1043,7 +917,7 @@ export function useCloseSessionOrWorktreeKeybinding(
             const worktrees = query.state.data as Worktree[] | undefined
             const found = worktrees?.find(w => w.id === activeWorktreeId)
             if (found) {
-              onConfirmRequired(found.branch, mode)
+              onConfirmRequired(found.branch, 'session')
               return
             }
           }

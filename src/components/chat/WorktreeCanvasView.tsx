@@ -199,8 +199,6 @@ export function WorktreeCanvasView({
     worktreeId,
     worktreePath,
     sessions: sessionsData?.sessions,
-    worktree,
-    project,
     removalBehavior: preferences?.removal_behavior,
   })
 
@@ -247,14 +245,12 @@ export function WorktreeCanvasView({
   ])
 
   const handleCloseWorktreeOrConfirm = useCallback(() => {
-    const activeSessions = sessionsData?.sessions.filter(s => !s.archived_at) ?? []
-    const allEmpty = activeSessions.every(s => !s.message_count)
-    if (preferences?.confirm_session_close === false || allEmpty) {
+    if (preferences?.confirm_session_close === false) {
       handleCloseWorktree()
     } else {
       setCloseWorktreeDialogOpen(true)
     }
-  }, [preferences?.confirm_session_close, handleCloseWorktree, sessionsData?.sessions])
+  }, [preferences?.confirm_session_close, handleCloseWorktree])
 
   // Session creation
   const createSession = useCreateSession()
