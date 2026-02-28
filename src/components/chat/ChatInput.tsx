@@ -661,8 +661,31 @@ export const ChatInput = memo(function ChatInput({
       // If we handled an image, don't also process text
       if (hasImage) return
 
+      // Native clipboard fallback (Linux/WebKitGTK doesn't expose image items via Web API)
+      const clipboardText = e.clipboardData?.getData('text/plain')
+      const clipboardHtml = e.clipboardData?.getData('text/html')
+      if (!clipboardText && !clipboardHtml) {
+        e.preventDefault()
+        try {
+          const result = await invoke<SaveImageResponse | null>(
+            'read_clipboard_image'
+          )
+          if (result) {
+            const { addPendingImage } = useChatStore.getState()
+            addPendingImage(activeSessionId, {
+              id: result.id,
+              path: result.path,
+              filename: result.filename,
+            })
+            return
+          }
+        } catch (error) {
+          console.error('Failed to read clipboard image natively:', error)
+        }
+      }
+
       // Check for large text paste
-      const text = e.clipboardData?.getData('text/plain')
+      const text = clipboardText
       if (text && text.length >= TEXT_PASTE_THRESHOLD) {
         // Prevent default paste (we're handling it as a file)
         e.preventDefault()

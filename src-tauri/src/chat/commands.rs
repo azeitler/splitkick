@@ -2782,6 +2782,78 @@ pub async fn save_pasted_image(
     Ok(result)
 }
 
+/// Read an image from the native system clipboard (fallback for Linux/WebKitGTK).
+///
+/// WebKitGTK doesn't expose image/* clipboard items via the Web API,
+/// so this command reads the clipboard natively using arboard.
+/// Returns None if no image is available in the clipboard.
+#[tauri::command]
+pub async fn read_clipboard_image(
+    app: AppHandle,
+) -> Result<Option<SaveImageResponse>, String> {
+    log::trace!("Attempting to read image from native clipboard");
+
+    let images_dir = get_images_dir(&app)?;
+
+    let result = tokio::task::spawn_blocking(move || -> Result<Option<SaveImageResponse>, String> {
+        let mut clipboard = arboard::Clipboard::new()
+            .map_err(|e| format!("Failed to access clipboard: {e}"))?;
+
+        let image_data = match clipboard.get_image() {
+            Ok(data) => data,
+            Err(arboard::Error::ContentNotAvailable) => return Ok(None),
+            Err(e) => return Err(format!("Failed to read clipboard image: {e}")),
+        };
+
+        // Convert RGBA ImageData to PNG bytes
+        let rgba = image::RgbaImage::from_raw(
+            image_data.width as u32,
+            image_data.height as u32,
+            image_data.bytes.into_owned(),
+        )
+        .ok_or_else(|| "Failed to create image from clipboard data".to_string())?;
+
+        let mut png_buf = std::io::Cursor::new(Vec::new());
+        rgba.write_to(&mut png_buf, image::ImageFormat::Png)
+            .map_err(|e| format!("Failed to encode clipboard image as PNG: {e}"))?;
+
+        let png_bytes = png_buf.into_inner();
+
+        // Process through existing pipeline (resize, PNG→JPEG conversion)
+        let (processed_data, final_ext) = process_image(&png_bytes, "png")?;
+
+        let timestamp = now();
+        let short_uuid = &Uuid::new_v4().to_string()[..8];
+        let filename = format!("image-{timestamp}-{short_uuid}.{final_ext}");
+        let file_path = images_dir.join(&filename);
+
+        // Write file atomically (temp file + rename)
+        let temp_path = file_path.with_extension("tmp");
+        std::fs::write(&temp_path, &processed_data)
+            .map_err(|e| format!("Failed to write image file: {e}"))?;
+
+        std::fs::rename(&temp_path, &file_path)
+            .map_err(|e| format!("Failed to finalize image file: {e}"))?;
+
+        let path_str = file_path
+            .to_str()
+            .ok_or_else(|| "Failed to convert path to string".to_string())?
+            .to_string();
+
+        log::trace!("Clipboard image saved to: {path_str}");
+
+        Ok(Some(SaveImageResponse {
+            id: Uuid::new_v4().to_string(),
+            filename,
+            path: path_str,
+        }))
+    })
+    .await
+    .map_err(|e| format!("Clipboard image task failed: {e}"))??;
+
+    Ok(result)
+}
+
 /// Save a dropped image file to the app data directory
 ///
 /// Takes a source file path (from Tauri's drag-drop event) and copies it
