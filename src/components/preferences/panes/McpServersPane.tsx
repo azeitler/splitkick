@@ -18,6 +18,7 @@ import {
 } from '@/services/mcp'
 import { useChatStore } from '@/store/chat-store'
 import type { McpHealthStatus } from '@/types/chat'
+import type { CliBackend } from '@/types/preferences'
 
 const SettingsSection: React.FC<{
   title: string
@@ -32,12 +33,72 @@ const SettingsSection: React.FC<{
   </div>
 )
 
+function mcpAuthHint(backend: CliBackend): string {
+  switch (backend) {
+    case 'codex':
+      return "Run 'codex mcp auth' in your terminal to authenticate"
+    case 'opencode':
+      return "Run 'opencode mcp auth' in your terminal to authenticate"
+    default:
+      return "Run 'claude /mcp' in your terminal to authenticate"
+  }
+}
+
+function mcpConfigHint(backend: CliBackend): React.ReactNode {
+  switch (backend) {
+    case 'codex':
+      return (
+        <>
+          No MCP servers found. Configure servers in{' '}
+          <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
+            ~/.codex/config.toml
+          </code>{' '}
+          or{' '}
+          <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
+            .codex/config.toml
+          </code>{' '}
+          in your project root.
+        </>
+      )
+    case 'opencode':
+      return (
+        <>
+          No MCP servers found. Configure servers in{' '}
+          <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
+            ~/.config/opencode/opencode.json
+          </code>{' '}
+          or{' '}
+          <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
+            opencode.json
+          </code>{' '}
+          in your project root.
+        </>
+      )
+    default:
+      return (
+        <>
+          No MCP servers found. Configure servers in{' '}
+          <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
+            ~/.claude.json
+          </code>{' '}
+          or{' '}
+          <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
+            .mcp.json
+          </code>{' '}
+          in your project root.
+        </>
+      )
+  }
+}
+
 function HealthIndicator({
   status,
   isChecking,
+  backend,
 }: {
   status: McpHealthStatus | undefined
   isChecking: boolean
+  backend: CliBackend
 }) {
   if (isChecking) {
     return (
@@ -72,9 +133,7 @@ function HealthIndicator({
               needs auth
             </span>
           </TooltipTrigger>
-          <TooltipContent>
-            {"Run 'claude /mcp' in your terminal to authenticate"}
-          </TooltipContent>
+          <TooltipContent>{mcpAuthHint(backend)}</TooltipContent>
         </Tooltip>
       )
     case 'couldNotConnect':
@@ -102,22 +161,24 @@ export const McpServersPane: React.FC = () => {
   const { data: preferences } = usePreferences()
   const savePreferences = useSavePreferences()
 
-  // Get worktree path for project-scope .mcp.json discovery
-  const activeWorktreePath = useChatStore(state => state.activeWorktreePath)
-  const { data: mcpServers, isLoading } = useMcpServers(activeWorktreePath)
+  const backend: CliBackend = (preferences?.default_backend ?? 'claude') as CliBackend
 
-  // Health check — triggered on mount
+  // Get worktree path for project-scope discovery
+  const activeWorktreePath = useChatStore(state => state.activeWorktreePath)
+  const { data: mcpServers, isLoading } = useMcpServers(activeWorktreePath, backend)
+
+  // Health check — triggered on mount and when backend changes
   const {
     data: healthResult,
     isFetching: isHealthChecking,
     refetch: checkHealth,
-  } = useMcpHealthCheck()
+  } = useMcpHealthCheck(backend)
 
   // Re-read MCP config from disk and trigger health check every time this pane is opened
   useEffect(() => {
-    invalidateMcpServers()
+    invalidateMcpServers(undefined, backend)
     checkHealth()
-  }, [checkHealth])
+  }, [checkHealth, backend])
 
   const enabledServers = preferences?.default_enabled_mcp_servers ?? []
   const knownServers = preferences?.known_mcp_servers ?? []
@@ -168,15 +229,7 @@ export const McpServersPane: React.FC = () => {
           </div>
         ) : !mcpServers || mcpServers.length === 0 ? (
           <div className="py-4 text-sm text-muted-foreground">
-            No MCP servers found. Configure servers in{' '}
-            <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
-              ~/.claude.json
-            </code>{' '}
-            or{' '}
-            <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
-              .mcp.json
-            </code>{' '}
-            in your project root.
+            {mcpConfigHint(backend)}
           </div>
         ) : (
           <div className="space-y-3">
@@ -208,6 +261,7 @@ export const McpServersPane: React.FC = () => {
                 <HealthIndicator
                   status={healthResult?.statuses[server.name]}
                   isChecking={isHealthChecking}
+                  backend={backend}
                 />
                 <span className="text-xs text-muted-foreground">
                   {server.disabled ? 'disabled' : server.scope}

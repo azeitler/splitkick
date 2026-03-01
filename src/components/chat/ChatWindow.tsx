@@ -89,10 +89,7 @@ import { logger } from '@/lib/logger'
 import { saveCrashState } from '@/lib/recovery'
 import { ErrorBanner } from './ErrorBanner'
 import { SessionDigestReminder } from './SessionDigestReminder'
-import {
-  VirtualizedMessageList,
-  type VirtualizedMessageListHandle,
-} from './VirtualizedMessageList'
+import { MessageList } from './MessageList'
 import {
   extractImagePaths,
   extractTextFilePaths,
@@ -515,6 +512,7 @@ export function ChatWindow({
     deferredSessionId,
     project,
     preferences,
+    selectedBackend,
   })
 
   // CLI version for adaptive thinking feature detection
@@ -669,8 +667,6 @@ export function ChatWindow({
 
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const formRef = useRef<HTMLFormElement>(null)
-  const virtualizedListRef = useRef<VirtualizedMessageListHandle>(null)
-
   // PERFORMANCE: Refs for session/worktree IDs and settings to avoid recreating callbacks when session changes
   // This enables stable callback references that read current values from refs
   const activeSessionIdRef = useRef(activeSessionId)
@@ -712,7 +708,7 @@ export function ChatWindow({
     []
   )
 
-  // Ref for approve button (passed to VirtualizedMessageList)
+  // Ref for approve button (passed to MessageList)
   const approveButtonRef = useRef<HTMLButtonElement>(null)
 
   // Terminal panel ref for imperative collapse/expand
@@ -726,15 +722,11 @@ export function ChatWindow({
     isAtBottom,
     areFindingsVisible,
     scrollToBottom,
-    markAtBottom,
     beginKeyboardScroll,
     endKeyboardScroll,
     scrollToFindings,
     handleScroll,
-    handleScrollToBottomHandled,
   } = useScrollManagement({
-    messages: session?.messages,
-    virtualizedListRef,
     activeWorktreeId,
   })
 
@@ -848,7 +840,7 @@ export function ChatWindow({
     preferences,
     sendMessage,
     queryClient,
-    markAtBottom,
+    scrollToBottom,
     sessionsData,
     setInputDraft,
     clearInputDraft,
@@ -1330,11 +1322,8 @@ export function ChatWindow({
                                 Loading...
                               </div>
                             ) : (
-                              // Virtualized message list - only renders visible messages for performance
-                              <VirtualizedMessageList
-                                ref={virtualizedListRef}
+                              <MessageList
                                 messages={messages}
-                                scrollContainerRef={scrollViewportRef}
                                 totalMessages={messages.length}
                                 lastPlanMessageIndex={lastPlanMessageIndex}
                                 sessionId={deferredSessionId ?? ''}
@@ -1357,10 +1346,6 @@ export function ChatWindow({
                                 isFindingFixed={isFindingFixed}
                                 onCopyToInput={handleCopyToInput}
                                 hideApproveButtons={isCodexBackend}
-                                shouldScrollToBottom={isAtBottom}
-                                onScrollToBottomHandled={
-                                  handleScrollToBottomHandled
-                                }
                               />
                             )}
                             {isSending && activeSessionId && (

@@ -3,6 +3,7 @@ import { invoke } from '@/lib/transport'
 import { isTauri } from '@/services/projects'
 import { queryClient } from '@/lib/query-client'
 import type { McpServerInfo, McpHealthResult } from '@/types/chat'
+import type { CliBackend } from '@/types/preferences'
 
 /** Query key prefix for MCP server queries */
 export const MCP_SERVERS_KEY = 'mcp-servers'
@@ -12,25 +13,40 @@ export const MCP_SERVERS_KEY = 'mcp-servers'
  * If worktreePath is provided, only that specific query is invalidated.
  * Otherwise all mcp-servers queries are invalidated.
  */
-export function invalidateMcpServers(worktreePath?: string | null) {
-  if (worktreePath) {
-    queryClient.invalidateQueries({ queryKey: [MCP_SERVERS_KEY, worktreePath] })
+export function invalidateMcpServers(
+  worktreePath?: string | null,
+  backend?: CliBackend
+) {
+  if (worktreePath && backend) {
+    queryClient.invalidateQueries({
+      queryKey: [MCP_SERVERS_KEY, worktreePath, backend],
+    })
+  } else if (worktreePath) {
+    queryClient.invalidateQueries({
+      queryKey: [MCP_SERVERS_KEY, worktreePath],
+    })
   } else {
     queryClient.invalidateQueries({ queryKey: [MCP_SERVERS_KEY] })
   }
 }
 
 /**
- * Fetch available MCP servers from all configuration sources.
- * Reads user-scope (~/.claude.json), local-scope (per-project in ~/.claude.json),
- * and project-scope (.mcp.json) servers.
+ * Fetch available MCP servers for the given backend.
+ * Reads from backend-specific config files:
+ * - Claude:   ~/.claude.json + .mcp.json
+ * - Codex:    ~/.codex/config.toml + .codex/config.toml
+ * - OpenCode: ~/.config/opencode/opencode.json + opencode.json
  */
-export function useMcpServers(worktreePath: string | null | undefined) {
+export function useMcpServers(
+  worktreePath: string | null | undefined,
+  backend: CliBackend = 'claude'
+) {
   return useQuery({
-    queryKey: [MCP_SERVERS_KEY, worktreePath ?? ''],
+    queryKey: [MCP_SERVERS_KEY, worktreePath ?? '', backend],
     queryFn: async () => {
       if (!isTauri()) return []
       return invoke<McpServerInfo[]>('get_mcp_servers', {
+        backend,
         worktreePath: worktreePath ?? null,
       })
     },
@@ -43,16 +59,16 @@ export function useMcpServers(worktreePath: string | null | undefined) {
 export const MCP_HEALTH_KEY = 'mcp-health'
 
 /**
- * Check health status of all MCP servers via `claude mcp list`.
+ * Check health status of all MCP servers via the backend's CLI.
  * Manual trigger only (enabled: false) — call refetch() to run.
  * Results are cached for 30s to avoid redundant health checks.
  */
-export function useMcpHealthCheck() {
+export function useMcpHealthCheck(backend: CliBackend = 'claude') {
   return useQuery({
-    queryKey: [MCP_HEALTH_KEY],
+    queryKey: [MCP_HEALTH_KEY, backend],
     queryFn: async () => {
       if (!isTauri()) return { statuses: {} } as McpHealthResult
-      return invoke<McpHealthResult>('check_mcp_health')
+      return invoke<McpHealthResult>('check_mcp_health', { backend })
     },
     enabled: false,
     staleTime: 30_000,

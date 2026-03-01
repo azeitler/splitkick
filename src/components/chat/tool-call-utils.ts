@@ -1,6 +1,11 @@
 import type { ToolCall, ContentBlock, Todo } from '@/types/chat'
 import { isTodoWrite, isCollabToolCall } from '@/types/chat'
 
+/** Check if a tool is a task/agent container (Claude CLI uses both names) */
+function isAgentTool(name: string): boolean {
+  return name === 'Task' || name === 'Agent'
+}
+
 /**
  * Normalize todos for display - marks in_progress as completed when message is done
  * During streaming, keeps in_progress status to show active work
@@ -70,7 +75,7 @@ export function groupToolCalls(toolCalls: ToolCall[]): GroupedToolCall[] {
       continue
     }
 
-    if (tool.name === 'Task') {
+    if (isAgentTool(tool.name)) {
       // Finish previous task if any
       if (currentTask) {
         result.push({ type: 'task', ...currentTask })
@@ -204,7 +209,7 @@ export function buildTimeline(
     if (tc.parent_tool_use_id && !isSpecialTool(tc)) {
       // Only set if parent is a Task tool (not just any tool)
       const parentTool = toolCallMap.get(tc.parent_tool_use_id)
-      if (parentTool?.name === 'Task') {
+      if (parentTool && isAgentTool(parentTool.name)) {
         subToolParent.set(tc.id, tc.parent_tool_use_id)
       }
     }
@@ -222,7 +227,7 @@ export function buildTimeline(
       const tool = toolCallMap.get(block.tool_call_id)
       if (!tool || isSpecialTool(tool)) continue
 
-      if (tool.name === 'Task') {
+      if (isAgentTool(tool.name)) {
         currentTaskId = tool.id
       } else if (currentTaskId && !subToolParent.has(tool.id)) {
         // Only set if not already set by parent_tool_use_id (backward compat)
@@ -335,7 +340,7 @@ export function buildTimeline(
       }
 
       // Handle Task tools - collect their sub-tools
-      if (toolCall.name === 'Task') {
+      if (isAgentTool(toolCall.name)) {
         if (renderedTasks.has(toolCall.id)) continue
         renderedTasks.add(toolCall.id)
 

@@ -4729,105 +4729,22 @@ pub struct McpHealthResult {
     pub statuses: std::collections::HashMap<String, McpHealthStatus>,
 }
 
-/// Discover MCP servers from all configuration sources:
-/// - User scope: ~/.claude.json top-level mcpServers
-/// - Local scope: ~/.claude.json under projects[worktreePath].mcpServers
-/// - Project scope: <worktree_path>/.mcp.json mcpServers
+/// Discover MCP servers from all configuration sources for the active backend.
+///
+/// - Claude:   ~/.claude.json (user + local scope) + <worktree>/.mcp.json (project scope)
+/// - Codex:    ~/.codex/config.toml (global) + <worktree>/.codex/config.toml (project)
+/// - OpenCode: ~/.config/opencode/opencode.json (global) + <worktree>/opencode.json (project)
 #[tauri::command]
-pub async fn get_mcp_servers(worktree_path: Option<String>) -> Result<Vec<McpServerInfo>, String> {
-    let mut servers = Vec::new();
-    let mut seen_names = std::collections::HashSet::new();
-
-    // Read ~/.claude.json once for both user and local scope
-    let claude_json_data = if let Some(home) = dirs::home_dir() {
-        let claude_json = home.join(".claude.json");
-        if claude_json.exists() {
-            std::fs::read_to_string(&claude_json)
-                .ok()
-                .and_then(|content| serde_json::from_str::<serde_json::Value>(&content).ok())
-        } else {
-            None
-        }
-    } else {
-        None
+pub async fn get_mcp_servers(
+    backend: Option<String>,
+    worktree_path: Option<String>,
+) -> Result<Vec<McpServerInfo>, String> {
+    let wt = worktree_path.as_deref();
+    let servers = match backend.as_deref() {
+        Some("codex") => crate::codex_cli::mcp::get_mcp_servers(wt),
+        Some("opencode") => crate::opencode_cli::mcp::get_mcp_servers(wt),
+        _ => crate::claude_cli::mcp::get_mcp_servers(wt),
     };
-
-    // 1. Local scope (highest precedence): project-specific servers in ~/.claude.json
-    if let (Some(ref json), Some(ref wt_path)) = (&claude_json_data, &worktree_path) {
-        if let Some(projects) = json.get("projects").and_then(|v| v.as_object()) {
-            // Look for the worktree path key (may need to check with/without trailing slash)
-            let path_key = wt_path.trim_end_matches('/');
-            for (key, project_val) in projects {
-                let key_normalized = key.trim_end_matches('/');
-                if key_normalized == path_key {
-                    if let Some(mcp) = project_val.get("mcpServers").and_then(|v| v.as_object()) {
-                        for (name, config) in mcp {
-                            if seen_names.insert(name.clone()) {
-                                let disabled = config
-                                    .get("disabled")
-                                    .and_then(|v| v.as_bool())
-                                    .unwrap_or(false);
-                                servers.push(McpServerInfo {
-                                    name: name.clone(),
-                                    config: config.clone(),
-                                    scope: "local".to_string(),
-                                    disabled,
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // 2. Project scope: .mcp.json in worktree root
-    if let Some(ref wt_path) = worktree_path {
-        let mcp_json_path = std::path::PathBuf::from(wt_path).join(".mcp.json");
-        if mcp_json_path.exists() {
-            if let Ok(content) = std::fs::read_to_string(&mcp_json_path) {
-                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                    if let Some(mcp) = json.get("mcpServers").and_then(|v| v.as_object()) {
-                        for (name, config) in mcp {
-                            if seen_names.insert(name.clone()) {
-                                let disabled = config
-                                    .get("disabled")
-                                    .and_then(|v| v.as_bool())
-                                    .unwrap_or(false);
-                                servers.push(McpServerInfo {
-                                    name: name.clone(),
-                                    config: config.clone(),
-                                    scope: "project".to_string(),
-                                    disabled,
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // 3. User scope (lowest precedence): top-level mcpServers in ~/.claude.json
-    if let Some(ref json) = claude_json_data {
-        if let Some(mcp) = json.get("mcpServers").and_then(|v| v.as_object()) {
-            for (name, config) in mcp {
-                if seen_names.insert(name.clone()) {
-                    let disabled = config
-                        .get("disabled")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false);
-                    servers.push(McpServerInfo {
-                        name: name.clone(),
-                        config: config.clone(),
-                        scope: "user".to_string(),
-                        disabled,
-                    });
-                }
-            }
-        }
-    }
-
     Ok(servers)
 }
 
@@ -4875,11 +4792,25 @@ fn parse_mcp_list_output(output: &str) -> std::collections::HashMap<String, McpH
     statuses
 }
 
-/// Check health status of all MCP servers by running `claude mcp list`.
+/// Check health status of all MCP servers using the appropriate backend CLI.
+///
+/// - Claude:   `claude mcp list` (text output)
+/// - Codex:    `codex mcp list --json` (JSON output)
+/// - OpenCode: `opencode mcp list` (text output)
 #[tauri::command]
-pub async fn check_mcp_health(app: AppHandle) -> Result<McpHealthResult, String> {
-    let cli_path = resolve_cli_binary(&app);
+pub async fn check_mcp_health(
+    app: AppHandle,
+    backend: Option<String>,
+) -> Result<McpHealthResult, String> {
+    match backend.as_deref() {
+        Some("codex") => check_mcp_health_codex(&app),
+        Some("opencode") => check_mcp_health_opencode(&app),
+        _ => check_mcp_health_claude(&app),
+    }
+}
 
+fn check_mcp_health_claude(app: &AppHandle) -> Result<McpHealthResult, String> {
+    let cli_path = resolve_cli_binary(app);
     if !cli_path.exists() {
         return Err("Claude CLI not installed".to_string());
     }
@@ -4900,10 +4831,90 @@ pub async fn check_mcp_health(app: AppHandle) -> Result<McpHealthResult, String>
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let statuses = parse_mcp_list_output(&stdout);
-
-    log::debug!("MCP health check: {} servers", statuses.len());
-
+    log::debug!("MCP health check (Claude): {} servers", statuses.len());
     Ok(McpHealthResult { statuses })
+}
+
+fn check_mcp_health_codex(app: &AppHandle) -> Result<McpHealthResult, String> {
+    let cli_path = crate::codex_cli::resolve_cli_binary(app);
+    if !cli_path.exists() {
+        return Err("Codex CLI not installed".to_string());
+    }
+
+    log::debug!("Running: codex mcp list --json");
+
+    let output = silent_command(&cli_path)
+        .args(["mcp", "list", "--json"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| format!("Failed to run codex mcp list: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("codex mcp list failed: {stderr}"));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let statuses = parse_codex_mcp_list_json(&stdout);
+    log::debug!("MCP health check (Codex): {} servers", statuses.len());
+    Ok(McpHealthResult { statuses })
+}
+
+fn check_mcp_health_opencode(app: &AppHandle) -> Result<McpHealthResult, String> {
+    let cli_path = crate::opencode_cli::resolve_cli_binary(app);
+    if !cli_path.exists() {
+        return Err("OpenCode CLI not installed".to_string());
+    }
+
+    log::debug!("Running: opencode mcp list");
+
+    let output = silent_command(&cli_path)
+        .args(["mcp", "list"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| format!("Failed to run opencode mcp list: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("opencode mcp list failed: {stderr}"));
+    }
+
+    // Reuse the same text parser — OpenCode uses a similar line format
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let statuses = parse_mcp_list_output(&stdout);
+    log::debug!("MCP health check (OpenCode): {} servers", statuses.len());
+    Ok(McpHealthResult { statuses })
+}
+
+/// Parse `codex mcp list --json` output into health statuses.
+fn parse_codex_mcp_list_json(
+    output: &str,
+) -> std::collections::HashMap<String, McpHealthStatus> {
+    // Try to parse as array of objects with name + status fields
+    if let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(output) {
+        return arr
+            .iter()
+            .filter_map(|item| {
+                let name = item.get("name")?.as_str()?.to_string();
+                let status_str = item
+                    .get("status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let status = match status_str {
+                    "connected" | "ok" | "ready" => McpHealthStatus::Connected,
+                    "disabled" => McpHealthStatus::Disabled,
+                    "error" | "failed" => McpHealthStatus::CouldNotConnect,
+                    s if s.contains("auth") => McpHealthStatus::NeedsAuthentication,
+                    _ => McpHealthStatus::Unknown,
+                };
+                Some((name, status))
+            })
+            .collect();
+    }
+    log::warn!("Could not parse codex mcp list --json output");
+    std::collections::HashMap::new()
 }
 
 /// Approve or decline a Codex command execution approval request.

@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { useProjects, useUpdateProjectSettings } from '@/services/projects'
+import { usePreferences } from '@/services/preferences'
 import {
   useMcpServers,
   invalidateMcpServers,
@@ -17,6 +18,7 @@ import {
   useMcpHealthCheck,
 } from '@/services/mcp'
 import type { McpHealthStatus } from '@/types/chat'
+import type { CliBackend } from '@/types/preferences'
 
 const SettingsSection: React.FC<{
   title: string
@@ -31,12 +33,25 @@ const SettingsSection: React.FC<{
   </div>
 )
 
+function mcpAuthHint(backend: CliBackend): string {
+  switch (backend) {
+    case 'codex':
+      return "Run 'codex mcp auth' in your terminal to authenticate"
+    case 'opencode':
+      return "Run 'opencode mcp auth' in your terminal to authenticate"
+    default:
+      return "Run 'claude /mcp' in your terminal to authenticate"
+  }
+}
+
 function HealthIndicator({
   status,
   isChecking,
+  backend,
 }: {
   status: McpHealthStatus | undefined
   isChecking: boolean
+  backend: CliBackend
 }) {
   if (isChecking) {
     return <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
@@ -63,9 +78,7 @@ function HealthIndicator({
               <ShieldAlert className="size-3.5 text-amber-600 dark:text-amber-400" />
             </span>
           </TooltipTrigger>
-          <TooltipContent>
-            {"Run 'claude /mcp' in your terminal to authenticate"}
-          </TooltipContent>
+          <TooltipContent>{mcpAuthHint(backend)}</TooltipContent>
         </Tooltip>
       )
     case 'couldNotConnect':
@@ -95,23 +108,29 @@ export function McpServersPane({
 }) {
   const { data: projects = [] } = useProjects()
   const project = projects.find(p => p.id === projectId)
+  const { data: preferences } = usePreferences()
+
+  // Resolve backend: project override → global default
+  const backend: CliBackend = (project?.default_backend ??
+    preferences?.default_backend ??
+    'claude') as CliBackend
 
   const { data: mcpServers = [], isLoading: mcpLoading } =
-    useMcpServers(projectPath)
+    useMcpServers(projectPath, backend)
 
   const {
     data: healthResult,
     isFetching: isHealthChecking,
     refetch: checkHealth,
-  } = useMcpHealthCheck()
+  } = useMcpHealthCheck(backend)
 
   const updateSettings = useUpdateProjectSettings()
 
-  // Re-read MCP config and trigger health check on mount
+  // Re-read MCP config and trigger health check on mount / backend change
   useEffect(() => {
-    invalidateMcpServers(projectPath)
+    invalidateMcpServers(projectPath, backend)
     checkHealth()
-  }, [projectPath, checkHealth])
+  }, [projectPath, checkHealth, backend])
 
   // Auto-enable newly discovered servers (but not ones the user has previously disabled)
   const enabledServers = useMemo(
@@ -212,6 +231,7 @@ export function McpServersPane({
                 <HealthIndicator
                   status={healthResult?.statuses[server.name]}
                   isChecking={isHealthChecking}
+                  backend={backend}
                 />
                 <span className="text-xs text-muted-foreground">
                   {server.disabled ? 'disabled' : server.scope}

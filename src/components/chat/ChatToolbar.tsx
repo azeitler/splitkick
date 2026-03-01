@@ -102,7 +102,7 @@ export const ChatToolbar = memo(function ChatToolbar({
     data: healthResult,
     isFetching: isHealthChecking,
     refetch: checkHealth,
-  } = useMcpHealthCheck()
+  } = useMcpHealthCheck(selectedBackend)
 
   const [providerDropdownOpen, setProviderDropdownOpen] = useState(false)
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false)

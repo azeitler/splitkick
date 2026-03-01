@@ -2,6 +2,7 @@ import { useCallback, useEffect, type RefObject } from 'react'
 import { generateId } from '@/lib/uuid'
 import { toast } from 'sonner'
 import { useChatStore } from '@/store/chat-store'
+import { useUIStore } from '@/store/ui-store'
 import { chatQueryKeys, cancelChatMessage } from '@/services/chat'
 import { buildMcpConfigJson } from '@/services/mcp'
 import { DEFAULT_PARALLEL_EXECUTION_PROMPT } from '@/types/preferences'
@@ -43,7 +44,7 @@ interface UseMessageSendingParams {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sendMessage: { mutate: (args: any, opts?: any) => void }
   queryClient: QueryClient
-  markAtBottom: () => void
+  scrollToBottom: (instant?: boolean) => void
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sessionsData: any
   setInputDraft: (sessionId: string, draft: string) => void
@@ -74,7 +75,7 @@ export function useMessageSending({
   preferences,
   sendMessage,
   queryClient,
-  markAtBottom,
+  scrollToBottom,
   sessionsData,
   setInputDraft,
   clearInputDraft,
@@ -425,7 +426,7 @@ export function useMessageSending({
         queuedAt: Date.now(),
       }
 
-      markAtBottom()
+      scrollToBottom(true)
 
       if (checkIsSendingNow(activeSessionId)) {
         enqueueMessage(activeSessionId, queuedMessage)
@@ -439,7 +440,7 @@ export function useMessageSending({
       activeWorktreeId,
       activeWorktreePath,
       clearInputDraft,
-      markAtBottom,
+      scrollToBottom,
       sendMessageNow,
       sessionsData,
     ]
@@ -461,7 +462,9 @@ export function useMessageSending({
   // Listen for review-fix-message events from ReviewResultsPanel
   useEffect(() => {
     const handleReviewFixMessage = (e: CustomEvent) => {
-      if (isModal) return
+      // When a session modal is open, only the modal's listener should handle it
+      // (prevents duplicate sends from both main + modal ChatWindow listeners)
+      if (!isModal && useUIStore.getState().sessionChatModalOpen) return
 
       const {
         sessionId,

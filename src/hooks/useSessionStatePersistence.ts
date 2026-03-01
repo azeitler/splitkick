@@ -352,7 +352,8 @@ export function useSessionStatePersistence() {
     // transition it to review — viewing the session acts as acknowledgment.
     if (
       session.waiting_for_input &&
-      session.waiting_for_input_type === 'plan'
+      session.waiting_for_input_type === 'plan' &&
+      session.backend !== 'claude'
     ) {
       updates.waitingForInputSessionIds = {
         ...(updates.waitingForInputSessionIds ??
