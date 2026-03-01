@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
 use once_cell::sync::Lazy;
@@ -15,8 +15,28 @@ use crate::http_server::EmitExt;
 static PROCESS_REGISTRY: Lazy<Mutex<HashMap<String, u32>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
-/// Register a running Claude process PID for a session
-pub fn register_process(session_id: String, pid: u32) {
+/// Sessions where cancel was requested before the CLI process was registered.
+/// When `register_process` is called for a pending session, the process is killed immediately.
+static PENDING_CANCELS: Lazy<Mutex<HashSet<String>>> =
+    Lazy::new(|| Mutex::new(HashSet::new()));
+
+/// Register a running Claude process PID for a session.
+/// Returns `false` if the session was cancelled before registration (process is killed immediately).
+pub fn register_process(session_id: String, pid: u32) -> bool {
+    // Check pending cancels first
+    {
+        let mut pending = PENDING_CANCELS.lock().unwrap();
+        if pending.remove(&session_id) {
+            log::warn!(
+                "Session {session_id} was cancelled before process registered, killing PID {pid}"
+            );
+            use crate::platform::{kill_process, kill_process_tree};
+            let _ = kill_process_tree(pid);
+            let _ = kill_process(pid);
+            return false;
+        }
+    }
+
     let mut registry = PROCESS_REGISTRY.lock().unwrap();
     log::trace!("Registering Claude process pid={pid} for session: {session_id}");
     log::trace!(
@@ -24,6 +44,14 @@ pub fn register_process(session_id: String, pid: u32) {
         registry.keys().collect::<Vec<_>>()
     );
     registry.insert(session_id, pid);
+    true
+}
+
+/// Remove a session from the pending cancellation set.
+/// Called when send_chat_message fails before reaching register_process,
+/// to prevent stale entries in the pending set.
+pub fn clear_pending_cancel(session_id: &str) {
+    PENDING_CANCELS.lock().unwrap().remove(session_id);
 }
 
 /// Remove a process from the registry (called after completion or cancellation)
@@ -115,8 +143,28 @@ pub fn cancel_process(
 
         Ok(true)
     } else {
-        log::warn!("No running process found for session: {session_id}");
-        Ok(false)
+        // Process not yet registered — queue for pending cancellation.
+        // When register_process is called later, the process will be killed immediately.
+        log::warn!("No PID for session {session_id}, queuing pending cancellation");
+        {
+            let mut pending = PENDING_CANCELS.lock().unwrap();
+            pending.insert(session_id.to_string());
+        }
+
+        // Try to mark run as cancelled (may not exist yet if still preparing, that's ok)
+        let _ = run_log::mark_running_run_cancelled(app, session_id);
+
+        // Emit cancelled event so frontend handles it immediately
+        let event = CancelledEvent {
+            session_id: session_id.to_string(),
+            worktree_id: worktree_id.to_string(),
+            undo_send: true, // No content was streamed yet
+        };
+        if let Err(e) = app.emit_all("chat:cancelled", &event) {
+            log::error!("Failed to emit chat:cancelled event: {e}");
+        }
+
+        Ok(true)
     }
 }
 

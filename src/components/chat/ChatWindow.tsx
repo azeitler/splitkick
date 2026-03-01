@@ -513,7 +513,7 @@ export function ChatWindow({
     deferredSessionId,
     project,
     preferences,
-    installedBackends,
+    selectedBackend,
   })
 
   // CLI version for adaptive thinking feature detection

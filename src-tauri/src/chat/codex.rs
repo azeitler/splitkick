@@ -429,7 +429,21 @@ fn execute_codex_detached_inner(
         cb(pid);
     }
 
-    super::registry::register_process(session_id.to_string(), pid);
+    if !super::registry::register_process(session_id.to_string(), pid) {
+        // Process was killed by pending cancel — return cancelled response
+        return Ok((
+            pid,
+            CodexResponse {
+                content: String::new(),
+                thread_id: String::new(),
+                tool_calls: vec![],
+                content_blocks: vec![],
+                cancelled: true,
+                error_emitted: false,
+                usage: None,
+            },
+        ));
+    }
 
     super::increment_tailer_count();
     let response = match tail_codex_output(app, session_id, worktree_id, output_file, pid, is_plan_mode) {
@@ -523,8 +537,22 @@ fn execute_codex_attached(
     let (approval_tx, approval_rx) = std::sync::mpsc::channel::<(u64, String)>();
     register_approval_channel(session_id, approval_tx, stdin_handle);
 
-    // Register process for cancellation
-    super::registry::register_process(session_id.to_string(), pid);
+    // Register process for cancellation (returns false if pending cancel exists)
+    if !super::registry::register_process(session_id.to_string(), pid) {
+        cleanup_approval_channel(session_id);
+        return Ok((
+            pid,
+            CodexResponse {
+                content: String::new(),
+                thread_id: String::new(),
+                tool_calls: vec![],
+                content_blocks: vec![],
+                cancelled: true,
+                error_emitted: false,
+                usage: None,
+            },
+        ));
+    }
 
     // Take stdout for reading
     let stdout = child

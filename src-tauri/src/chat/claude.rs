@@ -798,8 +798,21 @@ pub fn execute_claude_detached(
         cb(pid);
     }
 
-    // Register the process for cancellation
-    super::registry::register_process(session_id.to_string(), pid);
+    // Register the process for cancellation (returns false if pending cancel exists)
+    if !super::registry::register_process(session_id.to_string(), pid) {
+        // Process was killed by pending cancel — return cancelled response
+        return Ok((
+            pid,
+            ClaudeResponse {
+                content: String::new(),
+                session_id: String::new(),
+                tool_calls: vec![],
+                content_blocks: vec![],
+                cancelled: true,
+                usage: None,
+            },
+        ));
+    }
 
     // Tail the output file for real-time updates
     // Use match to ensure unregister_process is always called, even on error

@@ -13,7 +13,7 @@ interface UseMcpServerResolutionParams {
   deferredSessionId: string | undefined
   project: Project | undefined | null
   preferences: AppPreferences | undefined
-  installedBackends: CliBackend[]
+  selectedBackend: CliBackend
 }
 
 /**
@@ -21,16 +21,16 @@ interface UseMcpServerResolutionParams {
  * session override → project setting → global default, then auto-enabling
  * any newly discovered servers.
  *
- * Uses only the first installed backend (typically 'claude') for MCP server discovery.
+ * Uses the selected backend for MCP server discovery so the server list
+ * updates when switching backends in the toolbar.
  */
 export function useMcpServerResolution({
   activeWorktreePath,
   deferredSessionId,
   project,
   preferences,
-  installedBackends,
+  selectedBackend,
 }: UseMcpServerResolutionParams) {
-  const selectedBackend = installedBackends[0] ?? 'claude'
   const { data: mcpServersData } = useMcpServers(activeWorktreePath, selectedBackend)
   const availableMcpServers = useMemo(
     () => mcpServersData ?? [],

@@ -2185,9 +2185,21 @@ pub async fn send_chat_message(
         let _ = tx.send(result);
     });
 
-    let (_pid, unified_response) = rx.await.map_err(|_| {
-        "CLI execution thread closed unexpectedly (possible crash or panic)".to_string()
-    })??;
+    let (_pid, unified_response) = match rx.await {
+        Ok(Ok(result)) => result,
+        Ok(Err(e)) => {
+            // Thread completed with an error before register_process was called —
+            // clear any pending cancel to prevent stale entries
+            super::registry::clear_pending_cancel(&session_id);
+            return Err(e);
+        }
+        Err(_) => {
+            super::registry::clear_pending_cancel(&session_id);
+            return Err(
+                "CLI execution thread closed unexpectedly (possible crash or panic)".to_string(),
+            );
+        }
+    };
 
     // PID is now persisted via pid_callback immediately after spawn (before tailing).
     // No need to set_pid here — it was already saved for crash recovery.
@@ -4291,7 +4303,14 @@ pub async fn resume_session(
         save_metadata(&app, &metadata)?;
 
         // Register the PID in the in-memory process registry so cancel works
-        super::registry::register_process(session_id.clone(), pid);
+        // Returns false if a pending cancel was queued (process killed immediately)
+        if !super::registry::register_process(session_id.clone(), pid) {
+            log::warn!("Resume session {session_id} was cancelled before tailing started");
+            return Ok(ResumeSessionResponse {
+                resumed: false,
+                run_count: 0,
+            });
+        }
 
         // Clone values for the async task
         let app_clone = app.clone();
