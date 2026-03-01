@@ -58,8 +58,8 @@ pub fn cancel_process(
     worktree_id: &str,
 ) -> Result<bool, String> {
     let mut registry = PROCESS_REGISTRY.lock().unwrap();
-    log::trace!("cancel_process called for session: {session_id}");
-    log::trace!("Registry state: {:?}", registry.iter().collect::<Vec<_>>());
+    log::warn!("cancel_process called for session: {session_id}");
+    log::warn!("Registry state: {:?}", registry.iter().collect::<Vec<_>>());
 
     if let Some(pid) = registry.remove(session_id) {
         // SAFETY: Never kill PID 0 (would kill our own process group) or PID 1 (init/launchd)
@@ -115,7 +115,7 @@ pub fn cancel_process(
 
         Ok(true)
     } else {
-        log::trace!("No running process found for session: {session_id}");
+        log::warn!("No running process found for session: {session_id}");
         Ok(false)
     }
 }

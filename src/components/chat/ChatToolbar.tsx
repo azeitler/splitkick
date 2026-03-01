@@ -8,7 +8,7 @@ import {
 } from '@/services/git-status'
 import { useChatStore } from '@/store/chat-store'
 import { useRemotePicker } from '@/hooks/useRemotePicker'
-import { useMcpHealthCheck } from '@/services/mcp'
+import { useAllBackendsMcpHealth } from '@/services/mcp'
 import type { ClaudeModel } from '@/types/preferences'
 import type { EffortLevel, ThinkingLevel } from '@/types/chat'
 import type { ChatToolbarProps } from '@/components/chat/toolbar/types'
@@ -99,10 +99,10 @@ export const ChatToolbar = memo(function ChatToolbar({
   onOpenProjectSettings,
 }: ChatToolbarProps) {
   const {
-    data: healthResult,
+    statuses: mcpStatuses,
     isFetching: isHealthChecking,
-    refetch: checkHealth,
-  } = useMcpHealthCheck(selectedBackend)
+    refetchAll: checkHealth,
+  } = useAllBackendsMcpHealth(installedBackends)
 
   const [providerDropdownOpen, setProviderDropdownOpen] = useState(false)
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false)
@@ -249,7 +249,6 @@ export const ChatToolbar = memo(function ChatToolbar({
   }, [activeWorktreePath, baseBranch, onSetDiffRequest])
 
   const canSend = hasInputValue || hasPendingAttachments
-  const mcpStatuses = healthResult?.statuses
 
   return (
     <div className="@container flex justify-start px-4 py-2 md:px-6">

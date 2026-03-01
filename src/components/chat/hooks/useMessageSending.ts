@@ -1,8 +1,7 @@
-import { useCallback, useEffect, type RefObject } from 'react'
+import { useCallback, type RefObject } from 'react'
 import { generateId } from '@/lib/uuid'
 import { toast } from 'sonner'
 import { useChatStore } from '@/store/chat-store'
-import { useUIStore } from '@/store/ui-store'
 import { chatQueryKeys, cancelChatMessage } from '@/services/chat'
 import { buildMcpConfigJson } from '@/services/mcp'
 import { DEFAULT_PARALLEL_EXECUTION_PROMPT } from '@/types/preferences'
@@ -31,7 +30,6 @@ interface UseMessageSendingParams {
   mcpServersDataRef: RefObject<McpServerInfo[] | undefined>
   enabledMcpServersRef: RefObject<string[]>
   selectedBackendRef: RefObject<'claude' | 'codex' | 'opencode'>
-  activeWorktreeIdRef: RefObject<string | null | undefined>
   preferences:
     | {
         custom_cli_profiles?: { name: string }[]
@@ -49,7 +47,6 @@ interface UseMessageSendingParams {
   sessionsData: any
   setInputDraft: (sessionId: string, draft: string) => void
   clearInputDraft: (sessionId: string) => void
-  isModal: boolean
 }
 
 /**
@@ -71,7 +68,6 @@ export function useMessageSending({
   mcpServersDataRef,
   enabledMcpServersRef,
   selectedBackendRef,
-  activeWorktreeIdRef,
   preferences,
   sendMessage,
   queryClient,
@@ -79,7 +75,6 @@ export function useMessageSending({
   sessionsData,
   setInputDraft,
   clearInputDraft,
-  isModal,
 }: UseMessageSendingParams) {
   // Helper to resolve custom CLI profile name for the active provider
   const resolveCustomProfile = useCallback(
@@ -448,142 +443,98 @@ export function useMessageSending({
 
   // Handle cancellation of running Claude process
   const handleCancel = useCallback(async () => {
+    console.log('[Cancel] handleCancel called', { activeSessionId, activeWorktreeId })
     if (!activeSessionId || !activeWorktreeId) return
     const sending =
       useChatStore.getState().sendingSessionIds[activeSessionId] ?? false
+    console.log('[Cancel] sendingSessionIds check', { sending, allSending: Object.keys(useChatStore.getState().sendingSessionIds) })
     if (!sending) return
 
     const cancelled = await cancelChatMessage(activeSessionId, activeWorktreeId)
+    console.log('[Cancel] cancelChatMessage result', { cancelled })
     if (!cancelled) {
-      toast.info('No active request to cancel')
+      // Race condition: process already completed but chat:done hasn't been processed yet.
+      // Force-clear the stale sending state so the UI doesn't stay stuck.
+      const stillSending =
+        useChatStore.getState().sendingSessionIds[activeSessionId] ?? false
+      if (stillSending) {
+        console.log('[Cancel] Force-clearing stale sending state')
+        useChatStore.getState().completeSession(activeSessionId)
+      }
     }
   }, [activeSessionId, activeWorktreeId])
 
-  // Listen for review-fix-message events from ReviewResultsPanel
-  useEffect(() => {
-    const handleReviewFixMessage = (e: CustomEvent) => {
-      // When a session modal is open, only the modal's listener should handle it
-      // (prevents duplicate sends from both main + modal ChatWindow listeners)
-      if (!isModal && useUIStore.getState().sessionChatModalOpen) return
+  // Direct callback for ReviewResultsPanel fix buttons — goes through sendMessageNow
+  // Mirrors handleSubmit's state cleanup to ensure proper session lifecycle
+  const sendReviewFix = useCallback(
+    (message: string, executionMode: 'plan' | 'yolo') => {
+      if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
 
+      // State cleanup (same as handleSubmit) — transition session out of reviewing/waiting
       const {
-        sessionId,
-        worktreeId,
-        worktreePath,
-        message,
-        executionMode: fixExecutionMode,
-      } = e.detail
-      if (!sessionId || !worktreeId || !worktreePath || !message) return
-      const fixMode = fixExecutionMode ?? 'plan'
-      if (worktreeId !== activeWorktreeIdRef.current) return
-
-      const {
-        addSendingSession,
-        setSelectedModel,
-        setExecutingMode,
-        setLastSentMessage,
-        setError,
+        setExecutionMode,
         isSending,
         enqueueMessage,
+        setSessionReviewing,
+        setQuestionsSkipped,
+        setWaitingForInput,
+        clearPendingDigest,
       } = useChatStore.getState()
 
-      const thinkingLvl = selectedThinkingLevelRef.current
-      const fixResolved = resolveCustomProfile(
-        selectedModelRef.current,
-        selectedProviderRef.current
-      )
+      setExecutionMode(activeSessionId, executionMode)
+      setSessionReviewing(activeSessionId, false)
+      setQuestionsSkipped(activeSessionId, false)
+      setWaitingForInput(activeSessionId, false)
+      clearPendingDigest(activeSessionId)
 
-      if (isSending(sessionId)) {
-        enqueueMessage(sessionId, {
-          id: generateId(),
-          message,
-          pendingImages: [],
-          pendingFiles: [],
-          pendingSkills: [],
-          pendingTextFiles: [],
-          model: fixResolved.model,
-          provider: fixResolved.customProfileName ?? null,
-          executionMode: fixMode,
-          thinkingLevel: thinkingLvl,
-          effortLevel:
-            useAdaptiveThinkingRef.current || isCodexBackendRef.current
-              ? selectedEffortLevelRef.current
-              : undefined,
-          mcpConfig: buildMcpConfigJson(
-            mcpServersDataRef.current ?? [],
-            enabledMcpServersRef.current
-          ),
-          queuedAt: Date.now(),
-        })
+      const queuedMsg: QueuedMessage = {
+        id: generateId(),
+        message,
+        pendingImages: [],
+        pendingFiles: [],
+        pendingSkills: [],
+        pendingTextFiles: [],
+        model: selectedModelRef.current,
+        provider: selectedProviderRef.current,
+        executionMode,
+        thinkingLevel: selectedThinkingLevelRef.current,
+        effortLevel:
+          useAdaptiveThinkingRef.current || isCodexBackendRef.current
+            ? selectedEffortLevelRef.current
+            : undefined,
+        mcpConfig: buildMcpConfigJson(
+          mcpServersDataRef.current ?? [],
+          enabledMcpServersRef.current
+        ),
+        backend:
+          selectedBackendRef.current !== 'claude'
+            ? selectedBackendRef.current
+            : undefined,
+        queuedAt: Date.now(),
+      }
+
+      if (isSending(activeSessionId)) {
+        enqueueMessage(activeSessionId, queuedMsg)
         toast.info('Fix queued — will start when current task completes')
         return
       }
 
-      setLastSentMessage(sessionId, message)
-      setError(sessionId, null)
-      addSendingSession(sessionId)
-      setSelectedModel(sessionId, selectedModelRef.current)
-      setExecutingMode(sessionId, fixMode)
-      sendMessage.mutate(
-        {
-          sessionId,
-          worktreeId,
-          worktreePath,
-          message,
-          model: fixResolved.model,
-          customProfileName: fixResolved.customProfileName,
-          executionMode: fixMode,
-          thinkingLevel: thinkingLvl,
-          effortLevel:
-            useAdaptiveThinkingRef.current || isCodexBackendRef.current
-              ? selectedEffortLevelRef.current
-              : undefined,
-          mcpConfig: buildMcpConfigJson(
-            mcpServersDataRef.current ?? [],
-            enabledMcpServersRef.current
-          ),
-          parallelExecutionPrompt:
-            preferences?.parallel_execution_prompt_enabled
-              ? (preferences.magic_prompts?.parallel_execution ??
-                DEFAULT_PARALLEL_EXECUTION_PROMPT)
-              : undefined,
-          chromeEnabled: preferences?.chrome_enabled ?? false,
-          aiLanguage: preferences?.ai_language,
-          backend:
-            selectedBackendRef.current !== 'claude'
-              ? selectedBackendRef.current
-              : undefined,
-        },
-        {
-          onSettled: () => {
-            inputRef.current?.focus()
-          },
-        }
-      )
-    }
-
-    window.addEventListener(
-      'review-fix-message',
-      handleReviewFixMessage as EventListener
-    )
-    return () =>
-      window.removeEventListener(
-        'review-fix-message',
-        handleReviewFixMessage as EventListener
-      )
-  }, [
-    sendMessage,
-    preferences?.parallel_execution_prompt_enabled,
-    preferences?.magic_prompts?.parallel_execution,
-    resolveCustomProfile,
-    preferences?.chrome_enabled,
-    preferences?.ai_language,
-    isModal,
-  ])
+      scrollToBottom(true)
+      sendMessageNow(queuedMsg)
+    },
+    [
+      activeSessionId,
+      activeWorktreeId,
+      activeWorktreePath,
+      scrollToBottom,
+      sendMessageNow,
+    ]
+  )
 
   return {
     resolveCustomProfile,
     sendMessageNow,
+    sendReviewFix,
     handleSubmit,
     handleCancel,
     handleGitDiffAddToPrompt,

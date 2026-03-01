@@ -10,13 +10,15 @@ import {
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { useProjects, useUpdateProjectSettings } from '@/services/projects'
-import { usePreferences } from '@/services/preferences'
 import {
-  useMcpServers,
-  invalidateMcpServers,
+  useAllBackendsMcpServers,
+  invalidateAllMcpServers,
   getNewServersToAutoEnable,
-  useMcpHealthCheck,
+  useAllBackendsMcpHealth,
+  groupServersByBackend,
+  BACKEND_LABELS,
 } from '@/services/mcp'
+import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import type { McpHealthStatus } from '@/types/chat'
 import type { CliBackend } from '@/types/preferences'
 
@@ -108,29 +110,24 @@ export function McpServersPane({
 }) {
   const { data: projects = [] } = useProjects()
   const project = projects.find(p => p.id === projectId)
-  const { data: preferences } = usePreferences()
-
-  // Resolve backend: project override → global default
-  const backend: CliBackend = (project?.default_backend ??
-    preferences?.default_backend ??
-    'claude') as CliBackend
+  const { installedBackends } = useInstalledBackends()
 
   const { data: mcpServers = [], isLoading: mcpLoading } =
-    useMcpServers(projectPath, backend)
+    useAllBackendsMcpServers(projectPath, installedBackends)
 
   const {
-    data: healthResult,
+    statuses: healthStatuses,
     isFetching: isHealthChecking,
-    refetch: checkHealth,
-  } = useMcpHealthCheck(backend)
+    refetchAll: checkHealth,
+  } = useAllBackendsMcpHealth(installedBackends)
 
   const updateSettings = useUpdateProjectSettings()
 
   // Re-read MCP config and trigger health check on mount / backend change
   useEffect(() => {
-    invalidateMcpServers(projectPath, backend)
+    invalidateAllMcpServers(projectPath, installedBackends)
     checkHealth()
-  }, [projectPath, checkHealth, backend])
+  }, [projectPath, checkHealth, installedBackends])
 
   // Auto-enable newly discovered servers (but not ones the user has previously disabled)
   const enabledServers = useMemo(
@@ -184,6 +181,11 @@ export function McpServersPane({
   }
 
   const selectedServers = project?.enabled_mcp_servers ?? []
+  const grouped = groupServersByBackend(mcpServers)
+  const backendsWithServers = installedBackends.filter(
+    b => grouped[b] && grouped[b].length > 0
+  )
+  const showSectionHeaders = backendsWithServers.length > 1
 
   return (
     <div className="space-y-6">
@@ -202,40 +204,53 @@ export function McpServersPane({
             No MCP servers found
           </div>
         ) : (
-          <div className="space-y-2">
-            {mcpServers.map(server => (
-              <div
-                key={server.name}
-                className={cn(
-                  'flex items-center gap-3 rounded-md border px-3 py-2',
-                  server.disabled && 'opacity-50'
+          <div className="space-y-3">
+            {backendsWithServers.map(backend => (
+              <div key={backend} className="space-y-2">
+                {showSectionHeaders && (
+                  <div className="flex items-center gap-2 pt-1">
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                      {BACKEND_LABELS[backend]}
+                    </span>
+                    <Separator className="flex-1" />
+                  </div>
                 )}
-              >
-                <Checkbox
-                  id={`proj-mcp-${server.name}`}
-                  checked={
-                    !server.disabled && selectedServers.includes(server.name)
-                  }
-                  onCheckedChange={() => handleToggle(server.name)}
-                  disabled={server.disabled}
-                />
-                <Label
-                  htmlFor={`proj-mcp-${server.name}`}
-                  className={cn(
-                    'flex-1 text-sm',
-                    server.disabled ? 'cursor-default' : 'cursor-pointer'
-                  )}
-                >
-                  {server.name}
-                </Label>
-                <HealthIndicator
-                  status={healthResult?.statuses[server.name]}
-                  isChecking={isHealthChecking}
-                  backend={backend}
-                />
-                <span className="text-xs text-muted-foreground">
-                  {server.disabled ? 'disabled' : server.scope}
-                </span>
+                {(grouped[backend] ?? []).map(server => (
+                  <div
+                    key={`${backend}-${server.name}`}
+                    className={cn(
+                      'flex items-center gap-3 rounded-md border px-3 py-2',
+                      server.disabled && 'opacity-50'
+                    )}
+                  >
+                    <Checkbox
+                      id={`proj-mcp-${backend}-${server.name}`}
+                      checked={
+                        !server.disabled &&
+                        selectedServers.includes(server.name)
+                      }
+                      onCheckedChange={() => handleToggle(server.name)}
+                      disabled={server.disabled}
+                    />
+                    <Label
+                      htmlFor={`proj-mcp-${backend}-${server.name}`}
+                      className={cn(
+                        'flex-1 text-sm',
+                        server.disabled ? 'cursor-default' : 'cursor-pointer'
+                      )}
+                    >
+                      {server.name}
+                    </Label>
+                    <HealthIndicator
+                      status={healthStatuses[server.name]}
+                      isChecking={isHealthChecking}
+                      backend={backend}
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      {server.disabled ? 'disabled' : server.scope}
+                    </span>
+                  </div>
+                ))}
               </div>
             ))}
           </div>

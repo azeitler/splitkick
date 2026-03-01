@@ -507,12 +507,13 @@ export function ChatWindow({
     sessionEffortLevel ?? defaultEffortLevel
 
   // MCP servers: resolve enabled servers cascade (session → project → global)
+  // Fetches from ALL installed backends so toolbar shows grouped sections
   const { availableMcpServers, enabledMcpServers } = useMcpServerResolution({
     activeWorktreePath,
     deferredSessionId,
     project,
     preferences,
-    selectedBackend,
+    installedBackends,
   })
 
   // CLI version for adaptive thinking feature detection
@@ -817,6 +818,7 @@ export function ChatWindow({
   const {
     resolveCustomProfile,
     sendMessageNow,
+    sendReviewFix,
     handleSubmit,
     handleCancel,
     handleGitDiffAddToPrompt,
@@ -836,7 +838,6 @@ export function ChatWindow({
     mcpServersDataRef,
     enabledMcpServersRef,
     selectedBackendRef,
-    activeWorktreeIdRef,
     preferences,
     sendMessage,
     queryClient,
@@ -844,7 +845,6 @@ export function ChatWindow({
     sessionsData,
     setInputDraft,
     clearInputDraft,
-    isModal,
   })
 
   // Note: Queue processing moved to useQueueProcessor hook in App.tsx
@@ -914,6 +914,28 @@ export function ChatWindow({
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [showMergeDialog, executeMerge])
+
+  // Global cancel keyboard shortcut (Cmd+Option+Backspace / Ctrl+Alt+Backspace)
+  // ChatInput handles this when focused, but we need a global handler for when
+  // focus is elsewhere (e.g., ReviewResultsPanel after clicking Fix)
+  useEffect(() => {
+    if (!isSending) return
+
+    const handleGlobalCancel = (e: KeyboardEvent) => {
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        e.altKey &&
+        (e.key === 'Backspace' || e.key === 'Delete')
+      ) {
+        e.preventDefault()
+        e.stopPropagation()
+        handleCancel()
+      }
+    }
+
+    document.addEventListener('keydown', handleGlobalCancel)
+    return () => document.removeEventListener('keydown', handleGlobalCancel)
+  }, [isSending, handleCancel])
 
   // Context operations hook - handles save/load context
   const {
@@ -1721,7 +1743,7 @@ export function ChatWindow({
                   onExpand={handleReviewSidebarExpand}
                 >
                   {activeSessionId && (
-                    <ReviewResultsPanel sessionId={activeSessionId} />
+                    <ReviewResultsPanel sessionId={activeSessionId} onSendFix={sendReviewFix} />
                   )}
                 </ResizablePanel>
               </>

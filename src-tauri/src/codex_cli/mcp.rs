@@ -97,6 +97,7 @@ fn collect_from_toml(
                 config: config_json,
                 scope: scope.to_string(),
                 disabled: !entry.enabled,
+                backend: "codex".to_string(),
             });
         }
     }

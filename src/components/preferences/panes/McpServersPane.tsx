@@ -11,11 +11,14 @@ import {
 import { cn } from '@/lib/utils'
 import { usePreferences, useSavePreferences } from '@/services/preferences'
 import {
-  useMcpServers,
-  invalidateMcpServers,
+  useAllBackendsMcpServers,
+  invalidateAllMcpServers,
   getNewServersToAutoEnable,
-  useMcpHealthCheck,
+  useAllBackendsMcpHealth,
+  groupServersByBackend,
+  BACKEND_LABELS,
 } from '@/services/mcp'
+import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { useChatStore } from '@/store/chat-store'
 import type { McpHealthStatus } from '@/types/chat'
 import type { CliBackend } from '@/types/preferences'
@@ -41,53 +44,6 @@ function mcpAuthHint(backend: CliBackend): string {
       return "Run 'opencode mcp auth' in your terminal to authenticate"
     default:
       return "Run 'claude /mcp' in your terminal to authenticate"
-  }
-}
-
-function mcpConfigHint(backend: CliBackend): React.ReactNode {
-  switch (backend) {
-    case 'codex':
-      return (
-        <>
-          No MCP servers found. Configure servers in{' '}
-          <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
-            ~/.codex/config.toml
-          </code>{' '}
-          or{' '}
-          <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
-            .codex/config.toml
-          </code>{' '}
-          in your project root.
-        </>
-      )
-    case 'opencode':
-      return (
-        <>
-          No MCP servers found. Configure servers in{' '}
-          <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
-            ~/.config/opencode/opencode.json
-          </code>{' '}
-          or{' '}
-          <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
-            opencode.json
-          </code>{' '}
-          in your project root.
-        </>
-      )
-    default:
-      return (
-        <>
-          No MCP servers found. Configure servers in{' '}
-          <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
-            ~/.claude.json
-          </code>{' '}
-          or{' '}
-          <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
-            .mcp.json
-          </code>{' '}
-          in your project root.
-        </>
-      )
   }
 }
 
@@ -151,7 +107,7 @@ function HealthIndicator({
         </Tooltip>
       )
     case 'disabled':
-      return null // Already shown via opacity + "disabled" label
+      return null
     default:
       return null
   }
@@ -160,25 +116,27 @@ function HealthIndicator({
 export const McpServersPane: React.FC = () => {
   const { data: preferences } = usePreferences()
   const savePreferences = useSavePreferences()
-
-  const backend: CliBackend = (preferences?.default_backend ?? 'claude') as CliBackend
+  const { installedBackends } = useInstalledBackends()
 
   // Get worktree path for project-scope discovery
   const activeWorktreePath = useChatStore(state => state.activeWorktreePath)
-  const { data: mcpServers, isLoading } = useMcpServers(activeWorktreePath, backend)
+  const { data: mcpServers, isLoading } = useAllBackendsMcpServers(
+    activeWorktreePath,
+    installedBackends
+  )
 
-  // Health check — triggered on mount and when backend changes
+  // Health check — triggered on mount and when backends change
   const {
-    data: healthResult,
+    statuses: healthStatuses,
     isFetching: isHealthChecking,
-    refetch: checkHealth,
-  } = useMcpHealthCheck(backend)
+    refetchAll: checkHealth,
+  } = useAllBackendsMcpHealth(installedBackends)
 
   // Re-read MCP config from disk and trigger health check every time this pane is opened
   useEffect(() => {
-    invalidateMcpServers(undefined, backend)
+    invalidateAllMcpServers(undefined, installedBackends)
     checkHealth()
-  }, [checkHealth, backend])
+  }, [checkHealth, installedBackends])
 
   const enabledServers = preferences?.default_enabled_mcp_servers ?? []
   const knownServers = preferences?.known_mcp_servers ?? []
@@ -214,6 +172,12 @@ export const McpServersPane: React.FC = () => {
     })
   }
 
+  const grouped = groupServersByBackend(mcpServers ?? [])
+  const backendsWithServers = installedBackends.filter(
+    b => grouped[b] && grouped[b].length > 0
+  )
+  const showSectionHeaders = backendsWithServers.length > 1
+
   return (
     <div className="space-y-6">
       <SettingsSection title="Default MCP Servers">
@@ -229,43 +193,56 @@ export const McpServersPane: React.FC = () => {
           </div>
         ) : !mcpServers || mcpServers.length === 0 ? (
           <div className="py-4 text-sm text-muted-foreground">
-            {mcpConfigHint(backend)}
+            No MCP servers found across installed backends.
           </div>
         ) : (
-          <div className="space-y-3">
-            {mcpServers.map(server => (
-              <div
-                key={server.name}
-                className={cn(
-                  'flex items-center gap-3 rounded-md border px-4 py-3',
-                  server.disabled && 'opacity-50'
+          <div className="space-y-4">
+            {backendsWithServers.map(backend => (
+              <div key={backend} className="space-y-2">
+                {showSectionHeaders && (
+                  <div className="flex items-center gap-2 pt-1">
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                      {BACKEND_LABELS[backend]}
+                    </span>
+                    <Separator className="flex-1" />
+                  </div>
                 )}
-              >
-                <Checkbox
-                  id={`mcp-${server.name}`}
-                  checked={
-                    !server.disabled && enabledServers.includes(server.name)
-                  }
-                  onCheckedChange={() => handleToggle(server.name)}
-                  disabled={server.disabled}
-                />
-                <Label
-                  htmlFor={`mcp-${server.name}`}
-                  className={cn(
-                    'flex-1 text-sm font-medium',
-                    server.disabled ? 'cursor-default' : 'cursor-pointer'
-                  )}
-                >
-                  {server.name}
-                </Label>
-                <HealthIndicator
-                  status={healthResult?.statuses[server.name]}
-                  isChecking={isHealthChecking}
-                  backend={backend}
-                />
-                <span className="text-xs text-muted-foreground">
-                  {server.disabled ? 'disabled' : server.scope}
-                </span>
+                {(grouped[backend] ?? []).map(server => (
+                  <div
+                    key={`${backend}-${server.name}`}
+                    className={cn(
+                      'flex items-center gap-3 rounded-md border px-4 py-3',
+                      server.disabled && 'opacity-50'
+                    )}
+                  >
+                    <Checkbox
+                      id={`mcp-${backend}-${server.name}`}
+                      checked={
+                        !server.disabled &&
+                        enabledServers.includes(server.name)
+                      }
+                      onCheckedChange={() => handleToggle(server.name)}
+                      disabled={server.disabled}
+                    />
+                    <Label
+                      htmlFor={`mcp-${backend}-${server.name}`}
+                      className={cn(
+                        'flex-1 text-sm font-medium',
+                        server.disabled ? 'cursor-default' : 'cursor-pointer'
+                      )}
+                    >
+                      {server.name}
+                    </Label>
+                    <HealthIndicator
+                      status={healthStatuses[server.name]}
+                      isChecking={isHealthChecking}
+                      backend={backend}
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      {server.disabled ? 'disabled' : server.scope}
+                    </span>
+                  </div>
+                ))}
               </div>
             ))}
           </div>

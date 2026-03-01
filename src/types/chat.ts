@@ -780,16 +780,18 @@ export interface QueuedMessage {
 // MCP Server Types
 // ============================================================================
 
-/** Information about a configured MCP server (from Claude CLI config) */
+/** Information about a configured MCP server */
 export interface McpServerInfo {
   /** Server name (key in mcpServers config) */
   name: string
   /** Full server config object (type, command, args, env, url, etc.) */
   config: unknown
-  /** Configuration scope: user (~/.claude.json global), local (~/.claude.json per-project), project (.mcp.json) */
+  /** Configuration scope: user (global config), local (per-project in global config), project (project root) */
   scope: 'user' | 'local' | 'project'
   /** Whether the server has "disabled": true in its config */
   disabled: boolean
+  /** Which backend this server belongs to: "claude", "codex", or "opencode" */
+  backend: string
 }
 
 /** Health status of an MCP server as reported by `claude mcp list` */

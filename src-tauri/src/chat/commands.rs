@@ -4709,6 +4709,8 @@ pub struct McpServerInfo {
     pub scope: String, // "user", "local", "project"
     /// Whether the server is disabled in its config (has "disabled": true)
     pub disabled: bool,
+    /// Which backend this server belongs to: "claude", "codex", or "opencode"
+    pub backend: String,
 }
 
 /// Health status of an MCP server as reported by `claude mcp list`

@@ -40,6 +40,7 @@ pub fn get_mcp_servers(worktree_path: Option<&str>) -> Vec<McpServerInfo> {
                                     config: config.clone(),
                                     scope: "local".to_string(),
                                     disabled,
+                                    backend: "claude".to_string(),
                                 });
                             }
                         }
@@ -67,6 +68,7 @@ pub fn get_mcp_servers(worktree_path: Option<&str>) -> Vec<McpServerInfo> {
                                     config: config.clone(),
                                     scope: "project".to_string(),
                                     disabled,
+                                    backend: "claude".to_string(),
                                 });
                             }
                         }
@@ -90,6 +92,7 @@ pub fn get_mcp_servers(worktree_path: Option<&str>) -> Vec<McpServerInfo> {
                         config: config.clone(),
                         scope: "user".to_string(),
                         disabled,
+                        backend: "claude".to_string(),
                     });
                 }
             }

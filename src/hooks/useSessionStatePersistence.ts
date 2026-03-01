@@ -112,6 +112,8 @@ export function useSessionStatePersistence() {
 
   // Track if we're loading from session (to avoid save loop)
   const isLoadingRef = useRef(false)
+  // Track which session has been loaded from disk (skip re-loads on sessionsData refetch)
+  const loadedSessionRef = useRef<string | null>(null)
   // Track last saved state to detect actual changes
   const lastSavedStateRef = useRef<SessionState | null>(null)
 
@@ -218,8 +220,17 @@ export function useSessionStatePersistence() {
   useEffect(() => {
     if (!activeSessionId || !sessionsData) return
 
+    // Only load from disk when switching to a new session.
+    // Re-loading on every sessionsData refetch would overwrite in-memory
+    // Zustand state with stale on-disk data (due to 500ms debounced saves),
+    // causing answered questions / fixed findings to flicker.
+    if (loadedSessionRef.current === activeSessionId) return
+
     const session = sessionsData.sessions.find(s => s.id === activeSessionId)
     if (!session) return
+
+    // Mark as loaded only after finding the session (retry on next refetch if not found)
+    loadedSessionRef.current = activeSessionId
 
     isLoadingRef.current = true
 

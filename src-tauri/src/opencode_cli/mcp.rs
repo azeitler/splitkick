@@ -72,6 +72,7 @@ fn collect_from_opencode_json(
                 config: config.clone(),
                 scope: scope.to_string(),
                 disabled,
+                backend: "opencode".to_string(),
             });
         }
     }
