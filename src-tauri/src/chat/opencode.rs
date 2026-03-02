@@ -133,6 +133,64 @@ fn parse_provider_model(model: Option<&str>) -> Option<(String, String)> {
     Some((provider.to_string(), model_id.to_string()))
 }
 
+/// Returns the bare model ID from a model string (strips `opencode/` prefix if present).
+/// Returns `None` if the string is empty.
+fn bare_model_id(model: &str) -> Option<&str> {
+    let raw = model.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    Some(raw.strip_prefix("opencode/").unwrap_or(raw))
+}
+
+/// Search the provider list for a provider that owns `target_model_id`.
+/// Prefers connected providers. Returns `(provider_id, model_id)` or `None`.
+pub(crate) fn find_provider_for_model(
+    all_providers: &serde_json::Value,
+    target_model_id: &str,
+) -> Option<(String, String)> {
+    let connected = all_providers
+        .get("connected")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    let providers = all_providers
+        .get("all")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    // Search connected providers first
+    for provider_id in connected.iter().filter_map(|v| v.as_str()) {
+        for provider in &providers {
+            if provider.get("id").and_then(|v| v.as_str()) != Some(provider_id) {
+                continue;
+            }
+            if let Some(models) = provider.get("models").and_then(|v| v.as_object()) {
+                if models.contains_key(target_model_id) {
+                    return Some((provider_id.to_string(), target_model_id.to_string()));
+                }
+            }
+        }
+    }
+
+    // Fall back to any provider
+    for provider in &providers {
+        let provider_id = match provider.get("id").and_then(|v| v.as_str()) {
+            Some(v) => v,
+            None => continue,
+        };
+        if let Some(models) = provider.get("models").and_then(|v| v.as_object()) {
+            if models.contains_key(target_model_id) {
+                return Some((provider_id.to_string(), target_model_id.to_string()));
+            }
+        }
+    }
+
+    None
+}
+
 fn agent_for_execution_mode(execution_mode: Option<&str>) -> &'static str {
     match execution_mode.unwrap_or("plan") {
         "plan" => "plan",
@@ -335,7 +393,11 @@ pub fn execute_opencode_http(
             .json()
             .map_err(|e| format!("Failed to parse OpenCode providers response: {e}"))?;
 
-        choose_model(&providers)
+        // Try to find the bare model ID across providers before picking any random model
+        model
+            .and_then(bare_model_id)
+            .and_then(|bare| find_provider_for_model(&providers, bare))
+            .or_else(|| choose_model(&providers))
             .ok_or("No OpenCode models available. Authenticate a provider first.")?
     };
 
@@ -657,7 +719,10 @@ fn one_shot_opencode_blocking(
         let providers: serde_json::Value = providers_resp
             .json()
             .map_err(|e| format!("Failed to parse OpenCode providers response: {e}"))?;
-        choose_model(&providers)
+        // Try to find the bare model ID across providers before picking any random model
+        bare_model_id(model)
+            .and_then(|bare| find_provider_for_model(&providers, bare))
+            .or_else(|| choose_model(&providers))
             .ok_or("No OpenCode models available. Authenticate a provider first.")?
     };
 

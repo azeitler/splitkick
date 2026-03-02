@@ -363,7 +363,7 @@ fn default_codex_model() -> String {
 }
 
 fn default_opencode_model() -> String {
-    "opencode/gpt-5.2-codex".to_string()
+    "opencode/gpt-5.3-codex".to_string()
 }
 
 fn default_codex_reasoning_effort() -> String {

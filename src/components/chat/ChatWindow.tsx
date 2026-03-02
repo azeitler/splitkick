@@ -479,7 +479,7 @@ export function ChatWindow({
   const defaultModel: string = isCodexBackend
     ? (preferences?.selected_codex_model ?? 'gpt-5.3-codex')
     : isOpencodeBackend
-      ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.2-codex')
+      ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
       : ((preferences?.selected_model as ClaudeModel) ?? DEFAULT_MODEL)
   const selectedModel: string = session?.selected_model ?? defaultModel
 

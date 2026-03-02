@@ -576,19 +576,19 @@ export const CODEX_DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
 
 /** OpenCode preset for all magic prompts */
 export const OPENCODE_DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
-  investigate_issue_model: 'opencode/gpt-5.2-codex',
-  investigate_pr_model: 'opencode/gpt-5.2-codex',
-  investigate_workflow_run_model: 'opencode/gpt-5.2-codex',
-  pr_content_model: 'opencode/gpt-5.2-codex',
-  commit_message_model: 'opencode/gpt-5.2-codex',
-  code_review_model: 'opencode/gpt-5.2-codex',
-  context_summary_model: 'opencode/gpt-5.2-codex',
-  resolve_conflicts_model: 'opencode/gpt-5.2-codex',
-  release_notes_model: 'opencode/gpt-5.2-codex',
-  session_naming_model: 'opencode/gpt-5.2-codex',
-  session_recap_model: 'opencode/gpt-5.2-codex',
-  investigate_security_alert_model: 'opencode/gpt-5.2-codex',
-  investigate_advisory_model: 'opencode/gpt-5.2-codex',
+  investigate_issue_model: 'opencode/gpt-5.3-codex',
+  investigate_pr_model: 'opencode/gpt-5.3-codex',
+  investigate_workflow_run_model: 'opencode/gpt-5.3-codex',
+  pr_content_model: 'opencode/gpt-5.3-codex',
+  commit_message_model: 'opencode/gpt-5.3-codex',
+  code_review_model: 'opencode/gpt-5.3-codex',
+  context_summary_model: 'opencode/gpt-5.3-codex',
+  resolve_conflicts_model: 'opencode/gpt-5.3-codex',
+  release_notes_model: 'opencode/gpt-5.3-codex',
+  session_naming_model: 'opencode/gpt-5.3-codex',
+  session_recap_model: 'opencode/gpt-5.3-codex',
+  investigate_security_alert_model: 'opencode/gpt-5.3-codex',
+  investigate_advisory_model: 'opencode/gpt-5.3-codex',
 }
 
 /**
@@ -1259,7 +1259,7 @@ export const defaultPreferences: AppPreferences = {
   confirm_session_close: true, // Default: enabled (show confirmation)
   default_backend: 'claude', // Default: Claude
   selected_codex_model: 'gpt-5.3-codex', // Default: latest Codex model
-  selected_opencode_model: 'opencode/gpt-5.2-codex', // Default OpenCode model
+  selected_opencode_model: 'opencode/gpt-5.3-codex', // Default OpenCode model
   default_codex_reasoning_effort: 'high', // Default: high reasoning
   codex_multi_agent_enabled: false, // Default: disabled
   codex_max_agent_threads: 3, // Default: 3 threads
