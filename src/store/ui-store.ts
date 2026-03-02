@@ -8,6 +8,7 @@ export type PreferencePane =
   | 'magic-prompts'
   | 'mcp-servers'
   | 'providers'
+  | 'integrations'
   | 'experimental'
   | 'web-access'
 

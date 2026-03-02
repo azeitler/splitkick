@@ -88,6 +88,7 @@ import { WorktreeSetupCard } from '@/components/chat/WorktreeSetupCard'
 import { OpenInButton } from '@/components/open-in/OpenInButton'
 import { useCanvasStoreState } from '@/components/chat/hooks/useCanvasStoreState'
 import { usePlanApproval } from '@/components/chat/hooks/usePlanApproval'
+import { useClearContextApproval } from '@/components/chat/hooks/useClearContextApproval'
 import { useCanvasKeyboardNav } from '@/components/chat/hooks/useCanvasKeyboardNav'
 import { useCanvasShortcutEvents } from '@/components/chat/hooks/useCanvasShortcutEvents'
 import {
@@ -723,6 +724,10 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     worktreeId: selectedFlatCard?.worktreeId ?? '',
     worktreePath: selectedFlatCard?.worktreePath ?? '',
   })
+  const { handleClearContextApproval } = useClearContextApproval({
+    worktreeId: selectedFlatCard?.worktreeId ?? '',
+    worktreePath: selectedFlatCard?.worktreePath ?? '',
+  })
 
   // Archive mutations - need to handle per-worktree
   const archiveSession = useArchiveSession()
@@ -1223,6 +1228,8 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       handlePlanApproval(card, updatedPlan),
     onPlanApprovalYolo: (card, updatedPlan) =>
       handlePlanApprovalYolo(card, updatedPlan),
+    onClearContextApproval: (card, updatedPlan) =>
+      handleClearContextApproval(card, updatedPlan),
     skipLabelHandling: true,
   })
 
@@ -1369,6 +1376,15 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       }
     },
     [planDialogCard, handlePlanApprovalYolo]
+  )
+
+  const handleDialogClearContextApprove = useCallback(
+    (updatedPlan: string) => {
+      if (planDialogCard) {
+        handleClearContextApproval(planDialogCard, updatedPlan)
+      }
+    },
+    [planDialogCard, handleClearContextApproval]
   )
 
   // Handle archive session for a specific worktree
@@ -1598,10 +1614,27 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       })
   }, [selectedWorktreeModal, selectedIndex, flatCards, createSession])
 
-  // Listen for open-session-modal event (fired by ChatWindow when creating new session inside modal)
+  // Listen for open-session-modal event (fired by ChatWindow when creating new session inside modal,
+  // or by UnreadBell/UnreadSessionsModal to open a session on the project canvas)
   useEffect(() => {
-    const handleOpenSessionModal = (e: CustomEvent<{ sessionId: string }>) => {
-      // The modal manages session tabs internally, just set active session in store
+    const handleOpenSessionModal = (
+      e: CustomEvent<{
+        sessionId: string
+        worktreeId?: string
+        worktreePath?: string
+      }>
+    ) => {
+      const { sessionId, worktreeId, worktreePath } = e.detail
+
+      // If worktreeId/worktreePath provided, open the modal for that worktree
+      // (e.g. from UnreadBell navigating to a session on the project canvas)
+      if (worktreeId && worktreePath) {
+        useChatStore.getState().setActiveSession(worktreeId, sessionId)
+        setSelectedWorktreeModal({ worktreeId, worktreePath })
+        return
+      }
+
+      // Otherwise, the modal is already open — just switch tab
       if (selectedWorktreeModal) {
         useChatStore
           .getState()
@@ -1998,6 +2031,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                                   onRecapView={() => handleRecapView(card)}
                                   onApprove={() => handlePlanApproval(card)}
                                   onYolo={() => handlePlanApprovalYolo(card)}
+                                  onClearContextApprove={() => handleClearContextApproval(card)}
                                   onToggleLabel={() =>
                                     handleOpenWorktreeLabelModal(card)
                                   }
@@ -2052,6 +2086,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
           approvalContext={planApprovalContext ?? undefined}
           onApprove={handleDialogApprove}
           onApproveYolo={handleDialogApproveYolo}
+          onClearContextApprove={handleDialogClearContextApprove}
         />
       ) : planDialogContent ? (
         <PlanDialog
@@ -2062,6 +2097,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
           approvalContext={planApprovalContext ?? undefined}
           onApprove={handleDialogApprove}
           onApproveYolo={handleDialogApproveYolo}
+          onClearContextApprove={handleDialogClearContextApprove}
         />
       ) : null}
 

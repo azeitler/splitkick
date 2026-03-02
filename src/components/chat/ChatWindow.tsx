@@ -33,6 +33,8 @@ import {
   useSetSessionBackend,
   useSetSessionProvider,
   useCreateSession,
+  markPlanApproved as markPlanApprovedService,
+  chatQueryKeys,
 } from '@/services/chat'
 import { useWorktree, useProjects, useRunScript } from '@/services/projects'
 import {
@@ -107,7 +109,7 @@ import { supportsAdaptiveThinking } from '@/lib/model-utils'
 import { useClaudeCliStatus } from '@/services/claude-cli'
 import { usePrStatus, usePrStatusEvents } from '@/services/pr-status'
 import type { PrDisplayStatus, CheckStatus } from '@/types/pr-status'
-import type { QueuedMessage, SessionDigest } from '@/types/chat'
+import type { QueuedMessage, Session, SessionDigest } from '@/types/chat'
 import type { DiffRequest } from '@/types/git-diff'
 import { FileDiffModal } from './FileDiffModal'
 
@@ -365,6 +367,10 @@ export function ChatWindow({
   const approveShortcutYolo = formatShortcutDisplay(
     (preferences?.keybindings?.approve_plan_yolo ??
       DEFAULT_KEYBINDINGS.approve_plan_yolo) as string
+  )
+  const approveShortcutClearContext = formatShortcutDisplay(
+    (preferences?.keybindings?.approve_plan_clear_context ??
+      DEFAULT_KEYBINDINGS.approve_plan_clear_context) as string
   )
   const sendMessage = useSendMessage()
   const createSession = useCreateSession()
@@ -674,6 +680,8 @@ export function ChatWindow({
   const activeWorktreeIdRef = useRef(activeWorktreeId)
   const activeWorktreePathRef = useRef(activeWorktreePath)
   const selectedModelRef = useRef(selectedModel)
+  const buildModelRef = useRef<string | null>(preferences?.build_model ?? null)
+  const yoloModelRef = useRef<string | null>(preferences?.yolo_model ?? null)
   const selectedProviderRef = useRef(selectedProvider)
   const selectedThinkingLevelRef = useRef(selectedThinkingLevel)
   const selectedEffortLevelRef = useRef(selectedEffortLevel)
@@ -689,6 +697,8 @@ export function ChatWindow({
   activeWorktreeIdRef.current = activeWorktreeId
   activeWorktreePathRef.current = activeWorktreePath
   selectedModelRef.current = selectedModel
+  buildModelRef.current = preferences?.build_model ?? null
+  yoloModelRef.current = preferences?.yolo_model ?? null
   selectedProviderRef.current = selectedProvider
   selectedThinkingLevelRef.current = selectedThinkingLevel
   selectedEffortLevelRef.current = selectedEffortLevel
@@ -802,6 +812,8 @@ export function ChatWindow({
       activeWorktreePath,
       pendingPlanMessage,
       selectedModelRef,
+      buildModelRef,
+      yoloModelRef,
       selectedProviderRef,
       selectedThinkingLevelRef,
       selectedEffortLevelRef,
@@ -810,6 +822,97 @@ export function ChatWindow({
       mcpServersDataRef,
       enabledMcpServersRef,
     })
+
+  // Clear context approval handler for PlanDialog
+  const handlePlanDialogClearContextApprove = useCallback(
+    async (editedPlanContent: string) => {
+      if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
+
+      // Mark pending plan approved if exists
+      if (pendingPlanMessage) {
+        markPlanApprovedService(
+          activeWorktreeId,
+          activeWorktreePath,
+          activeSessionId,
+          pendingPlanMessage.id
+        )
+        queryClient.setQueryData<Session>(
+          chatQueryKeys.session(activeSessionId),
+          old => {
+            if (!old) return old
+            return {
+              ...old,
+              approved_plan_message_ids: [
+                ...(old.approved_plan_message_ids ?? []),
+                pendingPlanMessage.id,
+              ],
+              messages: old.messages.map(msg =>
+                msg.id === pendingPlanMessage.id
+                  ? { ...msg, plan_approved: true }
+                  : msg
+              ),
+            }
+          }
+        )
+      }
+
+      const store = useChatStore.getState()
+      store.clearToolCalls(activeSessionId)
+      store.clearStreamingContentBlocks(activeSessionId)
+      store.setSessionReviewing(activeSessionId, false)
+      store.setWaitingForInput(activeSessionId, false)
+
+      // Create new session
+      let newSession: Session
+      try {
+        newSession = await createSession.mutateAsync({
+          worktreeId: activeWorktreeId,
+          worktreePath: activeWorktreePath,
+        })
+      } catch (err) {
+        toast.error(`Failed to create session: ${err}`)
+        return
+      }
+
+      // Switch to new session
+      store.setActiveSession(activeWorktreeId, newSession.id)
+
+      // Send plan as first message in YOLO mode
+      const yoloModel = yoloModelRef.current ?? selectedModelRef.current
+      if (yoloModelRef.current && yoloModelRef.current !== selectedModelRef.current) {
+        toast.info(`Using ${yoloModelRef.current} model for yolo`)
+      }
+      const message = `Execute this plan. Implement all changes described.\n\n<plan>\n${editedPlanContent}\n</plan>`
+      store.setExecutionMode(newSession.id, 'yolo')
+      store.setLastSentMessage(newSession.id, message)
+      store.setError(newSession.id, null)
+      store.addSendingSession(newSession.id)
+      store.setSelectedModel(newSession.id, yoloModel)
+      store.setExecutingMode(newSession.id, 'yolo')
+
+      sendMessage.mutate({
+        sessionId: newSession.id,
+        worktreeId: activeWorktreeId,
+        worktreePath: activeWorktreePath,
+        message,
+        model: yoloModel,
+        executionMode: 'yolo',
+        thinkingLevel: selectedThinkingLevelRef.current,
+      })
+    },
+    [
+      activeSessionId,
+      activeWorktreeId,
+      activeWorktreePath,
+      pendingPlanMessage,
+      queryClient,
+      createSession,
+      sendMessage,
+      selectedModelRef,
+      yoloModelRef,
+      selectedThinkingLevelRef,
+    ]
+  )
 
   // Note: Streaming event listeners are in App.tsx, not here
   // This ensures they stay active even when ChatWindow is unmounted
@@ -1063,6 +1166,8 @@ export function ChatWindow({
     handlePlanApprovalYolo,
     handleStreamingPlanApproval,
     handleStreamingPlanApprovalYolo,
+    handleClearContextApproval,
+    handleStreamingClearContextApproval,
     handlePendingPlanApprovalCallback,
     handlePermissionApproval,
     handlePermissionApprovalYolo,
@@ -1074,6 +1179,8 @@ export function ChatWindow({
     activeWorktreeIdRef,
     activeWorktreePathRef,
     selectedModelRef,
+    buildModelRef,
+    yoloModelRef,
     getCustomProfileName: () => {
       return selectedProviderRef.current ?? undefined
     },
@@ -1083,6 +1190,7 @@ export function ChatWindow({
     useAdaptiveThinkingRef,
     getMcpConfig,
     sendMessage,
+    createSession,
     queryClient,
     scrollToBottom,
     inputRef,
@@ -1177,6 +1285,8 @@ export function ChatWindow({
     handleStreamingPlanApprovalYolo,
     handlePlanApproval,
     handlePlanApprovalYolo,
+    handleClearContextApproval,
+    handleStreamingClearContextApproval,
     isCodexBackend,
     scrollViewportRef,
     beginKeyboardScroll,
@@ -1352,10 +1462,12 @@ export function ChatWindow({
                                 worktreePath={activeWorktreePath ?? ''}
                                 approveShortcut={approveShortcut}
                                 approveShortcutYolo={approveShortcutYolo}
+                                approveShortcutClearContext={approveShortcutClearContext}
                                 approveButtonRef={approveButtonRef}
                                 isSending={isSending}
                                 onPlanApproval={handlePlanApproval}
                                 onPlanApprovalYolo={handlePlanApprovalYolo}
+                                onClearContextApproval={handleClearContextApproval}
                                 onQuestionAnswer={handleQuestionAnswer}
                                 onQuestionSkip={handleSkipQuestion}
                                 onFileClick={setViewingFilePath}
@@ -1380,6 +1492,7 @@ export function ChatWindow({
                                 selectedThinkingLevel={selectedThinkingLevel}
                                 approveShortcut={approveShortcut}
                                 approveShortcutYolo={approveShortcutYolo}
+                                approveShortcutClearContext={approveShortcutClearContext}
                                 onQuestionAnswer={handleQuestionAnswer}
                                 onQuestionSkip={handleSkipQuestion}
                                 onFileClick={setViewingFilePath}
@@ -1395,6 +1508,9 @@ export function ChatWindow({
                                 }
                                 onStreamingPlanApprovalYolo={
                                   handleStreamingPlanApprovalYolo
+                                }
+                                onStreamingClearContextApproval={
+                                  handleStreamingClearContextApproval
                                 }
                                 hideApproveButtons={isCodexBackend}
                               />
@@ -1788,6 +1904,7 @@ export function ChatWindow({
             worktreePath={activeWorktreePath ?? null}
             activeSessionId={activeSessionId ?? null}
             projectName={worktree?.name ?? 'unknown-project'}
+            projectId={worktree?.project_id ?? null}
           />
         </Suspense>
 
@@ -1814,6 +1931,7 @@ export function ChatWindow({
               }
               onApprove={handlePlanDialogApprove}
               onApproveYolo={handlePlanDialogApproveYolo}
+              onClearContextApprove={handlePlanDialogClearContextApprove}
               hideApproveButtons={isCodexBackend}
             />
           ) : latestPlanFilePath ? (
@@ -1834,6 +1952,7 @@ export function ChatWindow({
               }
               onApprove={handlePlanDialogApprove}
               onApproveYolo={handlePlanDialogApproveYolo}
+              onClearContextApprove={handlePlanDialogClearContextApprove}
               hideApproveButtons={isCodexBackend}
             />
           ) : null)}

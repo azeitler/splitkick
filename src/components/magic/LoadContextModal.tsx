@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { getModifierSymbol } from '@/lib/platform'
 import { Bookmark, CircleDot, FolderOpen, GitPullRequest, Shield, ShieldAlert } from 'lucide-react'
+import { LinearIcon } from '@/components/icons/LinearIcon'
 import type { LucideIcon } from 'lucide-react'
 import {
   Dialog,
@@ -16,14 +17,16 @@ import { usePreferences } from '@/services/preferences'
 import { useGhLogin } from '@/hooks/useGhLogin'
 import { IssuePreviewModal } from '@/components/worktree/IssuePreviewModal'
 import { githubQueryKeys } from '@/services/github'
+import { linearQueryKeys } from '@/services/linear'
 import { GitHubItemsTab } from './GitHubItemsTab'
 import { SecurityAlertsTab } from './SecurityAlertsTab'
+import { LinearItemsTab } from './LinearItemsTab'
 import { ContextsTab } from './ContextsTab'
 import { useLoadContextData } from './hooks/useLoadContextData'
 import { useLoadContextHandlers } from './hooks/useLoadContextHandlers'
 import { useLoadContextKeyboard } from './hooks/useLoadContextKeyboard'
 
-type TabId = 'issues' | 'prs' | 'security' | 'contexts'
+type TabId = 'issues' | 'prs' | 'security' | 'contexts' | 'linear'
 
 interface Tab {
   id: TabId
@@ -37,6 +40,7 @@ const TABS: Tab[] = [
   { id: 'issues', label: 'Issues', key: '2', icon: CircleDot },
   { id: 'prs', label: 'PRs', key: '3', icon: GitPullRequest },
   { id: 'security', label: 'Security', key: '4', icon: Shield },
+  { id: 'linear', label: 'Linear', key: '5', icon: LinearIcon },
 ]
 
 interface LoadContextModalProps {
@@ -46,15 +50,17 @@ interface LoadContextModalProps {
   worktreePath: string | null
   activeSessionId: string | null
   projectName: string
+  projectId: string | null
 }
 
 export function LoadContextModal({
   open,
   onOpenChange,
-  worktreeId: _worktreeId,
+  worktreeId,
   worktreePath,
   activeSessionId,
   projectName: _projectName,
+  projectId,
 }: LoadContextModalProps) {
   const queryClient = useQueryClient()
   const { triggerLogin: triggerGhLogin, isGhInstalled } = useGhLogin()
@@ -71,6 +77,8 @@ export function LoadContextModal({
   const data = useLoadContextData({
     open,
     worktreePath,
+    worktreeId,
+    projectId,
     activeSessionId,
     searchQuery,
     includeClosed,
@@ -86,11 +94,14 @@ export function LoadContextModal({
   const handlers = useLoadContextHandlers({
     activeSessionId,
     worktreePath,
+    worktreeId,
+    projectId,
     refetchIssueContexts: data.refetchIssueContexts,
     refetchPRContexts: data.refetchPRContexts,
     refetchSecurityContexts: data.refetchSecurityContexts,
     refetchAdvisoryContexts: data.refetchAdvisoryContexts,
     refetchAttachedContexts: data.refetchAttachedContexts,
+    refetchLinearContexts: data.refetchLinearContexts,
     refetchContexts: data.refetchContexts,
     renameMutation: data.renameMutation,
     preferences,
@@ -104,6 +115,7 @@ export function LoadContextModal({
     filteredPRs: data.filteredPRs,
     filteredSecurityAlerts: data.filteredSecurityAlerts,
     filteredAdvisories: data.filteredAdvisories,
+    filteredLinearIssues: data.filteredLinearIssues,
     filteredContexts: data.filteredContexts,
     filteredEntries: data.filteredEntries,
     selectedIndex,
@@ -116,6 +128,7 @@ export function LoadContextModal({
     onPreviewSecurityAlert: handlers.handlePreviewSecurityAlert,
     onSelectAdvisory: handlers.handleSelectAdvisory,
     onPreviewAdvisory: handlers.handlePreviewAdvisory,
+    onSelectLinearIssue: handlers.handleSelectLinearIssue,
     onAttachContext: handlers.handleAttachContext,
     onSessionClick: handlers.handleSessionClick,
     onTabChange: setActiveTab,
@@ -134,6 +147,8 @@ export function LoadContextModal({
         setActiveTab('prs')
       } else if (data.hasLoadedSecurityContexts || data.hasLoadedAdvisoryContexts) {
         setActiveTab('security')
+      } else if (data.hasLoadedLinearContexts) {
+        setActiveTab('linear')
       } else {
         setActiveTab('contexts')
       }
@@ -183,6 +198,14 @@ export function LoadContextModal({
         queryClient.invalidateQueries({
           queryKey: githubQueryKeys.loadedAdvisoryContexts(activeSessionId),
         })
+        queryClient.invalidateQueries({
+          queryKey: linearQueryKeys.loadedContexts(activeSessionId),
+        })
+      }
+      if (projectId) {
+        queryClient.invalidateQueries({
+          queryKey: linearQueryKeys.issues(projectId),
+        })
       }
       queryClient.invalidateQueries({ queryKey: ['session-context'] })
     }
@@ -191,11 +214,13 @@ export function LoadContextModal({
     open,
     worktreePath,
     activeSessionId,
+    projectId,
     queryClient,
     data.hasLoadedIssueContexts,
     data.hasLoadedPRContexts,
     data.hasLoadedSecurityContexts,
     data.hasLoadedAdvisoryContexts,
+    data.hasLoadedLinearContexts,
     data.hasAttachedContexts,
     handlers.resetState,
   ])
@@ -382,6 +407,33 @@ export function LoadContextModal({
               onPreviewAdvisory={handlers.handlePreviewAdvisory}
               onRemoveAdvisory={handlers.handleRemoveAdvisory}
               onLoadAdvisory={(ghsaId, refresh) => handlers.handleLoadAdvisory(ghsaId, refresh)}
+            />
+          )}
+
+          {activeTab === 'linear' && (
+            <LinearItemsTab
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+              searchInputRef={searchInputRef}
+              loadedContexts={data.loadedLinearContexts ?? []}
+              isLoadingContexts={data.isLoadingLinearContexts}
+              hasLoadedContexts={data.hasLoadedLinearContexts}
+              loadingLinearIds={handlers.loadingLinearIds}
+              removingLinearIds={handlers.removingLinearIds}
+              onViewLoaded={handlers.handleViewLinearIssue}
+              onRemoveLoaded={handlers.handleRemoveLinearIssue}
+              onRefreshLoaded={(issueId, identifier) =>
+                handlers.handleLoadLinearIssue(issueId, identifier, true)
+              }
+              filteredIssues={data.filteredLinearIssues}
+              isLoading={data.isLoadingLinearIssues}
+              isRefetching={data.isRefetchingLinearIssues}
+              isSearching={data.isSearchingLinearIssues}
+              error={data.linearIssuesError}
+              onRefresh={() => data.refetchLinearIssues()}
+              selectedIndex={selectedIndex}
+              setSelectedIndex={setSelectedIndex}
+              onSelectIssue={handlers.handleSelectLinearIssue}
             />
           )}
 

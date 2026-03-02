@@ -25,12 +25,20 @@ import {
   prependExactMatch,
   parseItemNumber,
 } from '@/services/github'
+import {
+  useLinearIssues,
+  useSearchLinearIssues,
+  useLoadedLinearIssueContexts,
+  filterLinearIssues,
+} from '@/services/linear'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import type { SavedContextsResponse } from '@/types/chat'
 
 interface UseLoadContextDataOptions {
   open: boolean
   worktreePath: string | null
+  worktreeId: string | null
+  projectId: string | null
   activeSessionId: string | null
   searchQuery: string
   includeClosed: boolean
@@ -39,6 +47,8 @@ interface UseLoadContextDataOptions {
 export function useLoadContextData({
   open,
   worktreePath,
+  worktreeId,
+  projectId,
   activeSessionId,
   searchQuery,
   includeClosed,
@@ -79,6 +89,22 @@ export function useLoadContextData({
     isLoading: isLoadingAttachedContexts,
     refetch: refetchAttachedContexts,
   } = useAttachedSavedContexts(activeSessionId)
+
+  // Linear issue contexts for this session
+  const {
+    data: loadedLinearContexts,
+    isLoading: isLoadingLinearContexts,
+    refetch: refetchLinearContexts,
+  } = useLoadedLinearIssueContexts(activeSessionId, worktreeId, projectId)
+
+  // Linear issues query
+  const {
+    data: linearIssueResult,
+    isLoading: isLoadingLinearIssues,
+    isFetching: isRefetchingLinearIssues,
+    error: linearIssuesError,
+    refetch: refetchLinearIssues,
+  } = useLinearIssues(projectId, { enabled: open })
 
   // GitHub issues query
   const issueState = includeClosed ? 'all' : 'open'
@@ -145,6 +171,9 @@ export function useLoadContextData({
 
   const { data: searchedPRs, isFetching: isSearchingPRs } =
     useSearchGitHubPRs(worktreePath, debouncedSearchQuery)
+
+  const { data: searchedLinearIssues, isFetching: isSearchingLinearIssues } =
+    useSearchLinearIssues(projectId, debouncedSearchQuery)
 
   // Exact number lookups (finds any issue/PR regardless of age or state)
   const { data: exactIssue } = useGetGitHubIssueByNumber(
@@ -258,6 +287,34 @@ export function useLoadContextData({
       .filter(entry => entry.sessions.length > 0)
   }, [allSessionsData, searchQuery, activeSessionId])
 
+  // Filter Linear issues locally, merge with search results, exclude already loaded ones
+  const filteredLinearIssues = useMemo(() => {
+    const loadedIdentifiers = new Set(
+      loadedLinearContexts?.map(c => c.identifier) ?? []
+    )
+    const localFiltered = filterLinearIssues(
+      linearIssueResult?.issues ?? [],
+      searchQuery
+    )
+    // Merge search results
+    if (searchedLinearIssues && searchedLinearIssues.length > 0) {
+      const existingIds = new Set(localFiltered.map(i => i.id))
+      for (const issue of searchedLinearIssues) {
+        if (!existingIds.has(issue.id)) {
+          localFiltered.push(issue)
+        }
+      }
+    }
+    return localFiltered.filter(
+      issue => !loadedIdentifiers.has(issue.identifier)
+    )
+  }, [
+    linearIssueResult,
+    searchQuery,
+    searchedLinearIssues,
+    loadedLinearContexts,
+  ])
+
   // Mutation for renaming contexts
   const renameMutation = useMutation({
     mutationFn: async ({
@@ -324,11 +381,22 @@ export function useLoadContextData({
     contextsError,
     refetchContexts,
 
+    // Linear data states
+    loadedLinearContexts,
+    isLoadingLinearContexts,
+    refetchLinearContexts,
+    isLoadingLinearIssues,
+    isRefetchingLinearIssues,
+    isSearchingLinearIssues,
+    linearIssuesError,
+    refetchLinearIssues,
+
     // Filtered data
     filteredIssues,
     filteredPRs,
     filteredSecurityAlerts,
     filteredAdvisories,
+    filteredLinearIssues,
     filteredContexts,
     filteredEntries,
 
@@ -340,6 +408,7 @@ export function useLoadContextData({
     hasLoadedPRContexts: (loadedPRContexts?.length ?? 0) > 0,
     hasLoadedSecurityContexts: (loadedSecurityContexts?.length ?? 0) > 0,
     hasLoadedAdvisoryContexts: (loadedAdvisoryContexts?.length ?? 0) > 0,
+    hasLoadedLinearContexts: (loadedLinearContexts?.length ?? 0) > 0,
     hasAttachedContexts: (attachedSavedContexts?.length ?? 0) > 0,
     hasContexts: filteredContexts.length > 0,
     hasSessions: filteredEntries.length > 0,

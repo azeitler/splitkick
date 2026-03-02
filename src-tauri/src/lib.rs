@@ -192,6 +192,14 @@ pub struct AppPreferences {
     pub codex_max_agent_threads: u32, // Max concurrent agent threads (1-8)
     #[serde(default)]
     pub restore_last_session: bool, // Restore last session when switching projects (default: false)
+    #[serde(default)]
+    pub close_original_on_clear_context: bool, // Close original session when using Clear Context and yolo (default: false)
+    #[serde(default)]
+    pub build_model: Option<String>, // Model override for plan approval (build mode), None = use session model
+    #[serde(default)]
+    pub yolo_model: Option<String>, // Model override for yolo plan approval, None = use session model
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub linear_api_key: Option<String>, // Global Linear personal API key (inherited by all projects)
 }
 
 fn default_true() -> Option<bool> {
@@ -953,6 +961,10 @@ impl Default for AppPreferences {
             codex_multi_agent_enabled: false,
             codex_max_agent_threads: default_codex_max_agent_threads(),
             restore_last_session: false,
+            close_original_on_clear_context: false,
+            build_model: None,
+            yolo_model: None,
+            linear_api_key: None,
         }
     }
 }
@@ -1079,6 +1091,19 @@ pub fn get_preferences_path(app: &AppHandle) -> Result<PathBuf, String> {
         .map_err(|e| format!("Failed to create app data directory: {e}"))?;
 
     Ok(app_data_dir.join("preferences.json"))
+}
+
+/// Synchronous helper to load AppPreferences (for use in non-async Rust code).
+pub fn load_preferences_sync(app: &AppHandle) -> Result<AppPreferences, String> {
+    let prefs_path = get_preferences_path(app)?;
+    if !prefs_path.exists() {
+        return Ok(AppPreferences::default());
+    }
+    let contents = std::fs::read_to_string(&prefs_path)
+        .map_err(|e| format!("Failed to read preferences file: {e}"))?;
+    let preferences: AppPreferences = serde_json::from_str(&contents)
+        .map_err(|e| format!("Failed to parse preferences: {e}"))?;
+    Ok(preferences)
 }
 
 #[tauri::command]
@@ -2135,6 +2160,7 @@ pub fn run() {
             projects::commit_changes,
             projects::open_project_on_github,
             projects::open_branch_on_github,
+            projects::remove_git_remote,
             projects::get_git_remotes,
             projects::get_github_remotes,
             projects::get_github_branch_url,
@@ -2174,6 +2200,14 @@ pub fn run() {
             projects::load_issue_context,
             projects::list_loaded_issue_contexts,
             projects::remove_issue_context,
+            // Linear issues commands
+            projects::list_linear_teams,
+            projects::list_linear_issues,
+            projects::search_linear_issues,
+            projects::get_linear_issue,
+            projects::load_linear_issue_context,
+            projects::list_loaded_linear_issue_contexts,
+            projects::remove_linear_issue_context,
             // GitHub PR commands
             projects::list_github_prs,
             projects::search_github_prs,
@@ -2257,6 +2291,7 @@ pub fn run() {
             chat::mark_plan_approved,
             chat::approve_codex_command,
             // Chat commands - Image handling
+            chat::read_clipboard_image,
             chat::save_pasted_image,
             chat::save_dropped_image,
             chat::delete_pasted_image,

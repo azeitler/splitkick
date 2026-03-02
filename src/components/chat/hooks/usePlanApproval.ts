@@ -142,7 +142,7 @@ export function usePlanApproval({
       const isCodex = card.session.backend === 'codex'
       const baseMsg = isCodex
         ? 'Execute the plan you created. Implement all changes described.'
-        : 'Approved'
+        : 'Plan approved. Begin implementing the changes now. Do not re-explain the plan — start writing code.'
       const message = messageId
         ? formatApprovalMessage(baseMsg, updatedPlan, originalPlan)
         : `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
@@ -264,7 +264,7 @@ export function usePlanApproval({
       const isCodexYolo = card.session.backend === 'codex'
       const baseMsgYolo = isCodexYolo
         ? 'Execute the plan you created. Implement all changes described.'
-        : 'Approved - yolo'
+        : 'Plan approved (yolo mode). Begin implementing all changes immediately without asking for confirmation. Do not re-explain the plan — start writing code.'
       const message = messageId
         ? formatApprovalMessage(baseMsgYolo, updatedPlan, originalPlan)
         : `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`

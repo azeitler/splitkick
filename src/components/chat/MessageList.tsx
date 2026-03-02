@@ -15,10 +15,12 @@ interface MessageListProps {
   worktreePath: string
   approveShortcut: string
   approveShortcutYolo?: string
+  approveShortcutClearContext?: string
   approveButtonRef?: React.RefObject<HTMLButtonElement | null>
   isSending: boolean
   onPlanApproval: (messageId: string) => void
   onPlanApprovalYolo?: (messageId: string) => void
+  onClearContextApproval?: (messageId: string) => void
   onQuestionAnswer: (
     toolCallId: string,
     answers: QuestionAnswer[],
@@ -54,10 +56,12 @@ export const MessageList = memo(function MessageList({
   worktreePath,
   approveShortcut,
   approveShortcutYolo,
+  approveShortcutClearContext,
   approveButtonRef,
   isSending,
   onPlanApproval,
   onPlanApprovalYolo,
+  onClearContextApproval,
   onQuestionAnswer,
   onQuestionSkip,
   onFileClick,
@@ -104,12 +108,14 @@ export const MessageList = memo(function MessageList({
               worktreePath={worktreePath}
               approveShortcut={approveShortcut}
               approveShortcutYolo={approveShortcutYolo}
+              approveShortcutClearContext={approveShortcutClearContext}
               approveButtonRef={
                 index === lastPlanMessageIndex ? approveButtonRef : undefined
               }
               isSending={isSending}
               onPlanApproval={onPlanApproval}
               onPlanApprovalYolo={onPlanApprovalYolo}
+              onClearContextApproval={onClearContextApproval}
               onQuestionAnswer={onQuestionAnswer}
               onQuestionSkip={onQuestionSkip}
               onFileClick={onFileClick}

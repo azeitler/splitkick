@@ -16,6 +16,7 @@ import type {
   SecurityAlertContext,
   AdvisoryContext,
 } from '@/types/github'
+import type { LinearIssue, LinearIssueDetail } from '@/types/linear'
 import type { useNewWorktreeData } from './useNewWorktreeData'
 import type { TabId } from '../NewWorktreeModal'
 
@@ -47,6 +48,9 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
   const [creatingFromNumber, setCreatingFromNumber] = useState<number | null>(
     null
   )
+  const [creatingFromLinearId, setCreatingFromLinearId] = useState<string | null>(
+    null
+  )
   const [creatingFromBranch, setCreatingFromBranch] = useState<string | null>(
     null
   )
@@ -57,6 +61,7 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
   const handleOpenChange = useCallback(
     (open: boolean) => {
       setCreatingFromNumber(null)
+      setCreatingFromLinearId(null)
       setCreatingFromBranch(null)
       setCreatingFromGhsaId(null)
       setSearchQuery('')
@@ -105,6 +110,10 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
               ...projectsQueryKeys.detail(selectedProjectId),
               'branches',
             ],
+          })
+          // Invalidate Linear issues cache
+          queryClient.invalidateQueries({
+            queryKey: ['linear', 'issues', selectedProjectId],
           })
         }
       }
@@ -661,8 +670,115 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
     [selectedProjectId, selectedProject, createWorktree, handleOpenChange]
   )
 
+  // =========================================================================
+  // Linear issue handlers
+  // =========================================================================
+
+  const handleSelectLinearIssue = useCallback(
+    async (issue: LinearIssue, background = false) => {
+      if (!selectedProjectId) {
+        toast.error('No project selected')
+        return
+      }
+
+      setCreatingFromLinearId(issue.id)
+
+      try {
+        const detail = await invoke<LinearIssueDetail>('get_linear_issue', {
+          projectId: selectedProjectId,
+          issueId: issue.id,
+        })
+
+        const issueContext: IssueContext = {
+          number: parseInt(detail.identifier.split('-').pop() ?? '0', 10),
+          title: detail.title,
+          body: detail.description,
+          comments: (detail.comments ?? []).map(c => ({
+            body: c.body ?? '',
+            author: {
+              login: c.user?.displayName ?? 'Unknown',
+            },
+            createdAt: c.createdAt,
+          })),
+        }
+
+        if (background)
+          useUIStore.getState().incrementPendingBackgroundCreations()
+        createWorktree.mutate({
+          projectId: selectedProjectId,
+          issueContext,
+          background,
+        })
+
+        if (background) {
+          setCreatingFromLinearId(null)
+        } else {
+          handleOpenChange(false)
+        }
+      } catch (error) {
+        toast.error(`Failed to fetch Linear issue details: ${error}`)
+        setCreatingFromLinearId(null)
+      }
+    },
+    [selectedProjectId, createWorktree, handleOpenChange]
+  )
+
+  const handleSelectLinearIssueAndInvestigate = useCallback(
+    async (issue: LinearIssue, background = false) => {
+      if (!selectedProjectId) {
+        toast.error('No project selected')
+        return
+      }
+
+      setCreatingFromLinearId(issue.id)
+
+      try {
+        const detail = await invoke<LinearIssueDetail>('get_linear_issue', {
+          projectId: selectedProjectId,
+          issueId: issue.id,
+        })
+
+        const issueContext: IssueContext = {
+          number: parseInt(detail.identifier.split('-').pop() ?? '0', 10),
+          title: detail.title,
+          body: detail.description,
+          comments: (detail.comments ?? []).map(c => ({
+            body: c.body ?? '',
+            author: {
+              login: c.user?.displayName ?? 'Unknown',
+            },
+            createdAt: c.createdAt,
+          })),
+        }
+
+        if (background)
+          useUIStore.getState().incrementPendingBackgroundCreations()
+        const worktree = await createWorktree.mutateAsync({
+          projectId: selectedProjectId,
+          issueContext,
+          background,
+        })
+
+        if (worktree) {
+          useUIStore.getState().markWorktreeForAutoInvestigate(worktree.id)
+        }
+
+        if (background) {
+          setCreatingFromLinearId(null)
+        } else {
+          handleOpenChange(false)
+        }
+      } catch (error) {
+        toast.error(`Failed to create worktree from Linear issue: ${error}`)
+        setCreatingFromLinearId(null)
+      }
+    },
+    [selectedProjectId, createWorktree, handleOpenChange]
+  )
+
   return {
     creatingFromNumber,
+    creatingFromLinearId,
     creatingFromBranch,
     creatingFromGhsaId,
     handleOpenChange,
@@ -677,5 +793,7 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
     handleSelectSecurityAlertAndInvestigate,
     handleSelectAdvisory,
     handleSelectAdvisoryAndInvestigate,
+    handleSelectLinearIssue,
+    handleSelectLinearIssueAndInvestigate,
   }
 }

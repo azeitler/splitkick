@@ -87,6 +87,12 @@ pub struct Project {
     /// When set, worktrees go to <worktrees_dir>/<project-name>/<worktree-name>.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worktrees_dir: Option<String>,
+    /// Linear personal API key for fetching issues (per-project)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub linear_api_key: Option<String>,
+    /// Linear team ID to filter issues (None = show all teams)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub linear_team_id: Option<String>,
 }
 
 /// A git worktree created for a project

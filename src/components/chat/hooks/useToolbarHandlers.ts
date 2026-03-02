@@ -87,6 +87,7 @@ export function useToolbarHandlers({
           value: model,
         }).catch(() => undefined)
       }
+      window.dispatchEvent(new CustomEvent('focus-chat-input'))
     },
     [activeSessionId, activeWorktreeId, activeWorktreePath, setSessionModel]
   )
@@ -125,6 +126,7 @@ export function useToolbarHandlers({
           }
         )
       }
+      window.dispatchEvent(new CustomEvent('focus-chat-input'))
     },
     [
       activeSessionId,
@@ -161,6 +163,7 @@ export function useToolbarHandlers({
           })
         }
       }
+      window.dispatchEvent(new CustomEvent('focus-chat-input'))
     },
     [activeSessionId, activeWorktreeId, activeWorktreePath, setSessionProvider]
   )
@@ -184,6 +187,7 @@ export function useToolbarHandlers({
         key: 'thinkingLevel',
         value: level,
       }).catch(() => undefined)
+      window.dispatchEvent(new CustomEvent('focus-chat-input'))
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mutate is stable, refs used for IDs
     []
@@ -193,6 +197,7 @@ export function useToolbarHandlers({
     const sessionId = activeSessionIdRef.current
     if (!sessionId) return
     useChatStore.getState().setEffortLevel(sessionId, level)
+    window.dispatchEvent(new CustomEvent('focus-chat-input'))
   }, [])
 
   const handleToggleMcpServer = useCallback((serverName: string) => {
@@ -218,6 +223,7 @@ export function useToolbarHandlers({
           value: mode,
         }).catch(() => undefined)
       }
+      window.dispatchEvent(new CustomEvent('focus-chat-input'))
     },
     [activeSessionId, setExecutionMode]
   )

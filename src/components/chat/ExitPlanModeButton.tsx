@@ -14,12 +14,16 @@ interface ExitPlanModeButtonProps {
   onPlanApproval?: () => void
   /** Callback for approving with yolo mode (auto-approve all future tools) */
   onPlanApprovalYolo?: () => void
+  /** Callback for clear context approval (new session with plan in yolo mode) */
+  onClearContextApproval?: () => void
   /** Ref to attach to the approve button for visibility tracking */
   buttonRef?: React.RefObject<HTMLButtonElement | null>
   /** Keyboard shortcut to display on the button */
   shortcut?: string
   /** Keyboard shortcut to display on the yolo button */
   shortcutYolo?: string
+  /** Keyboard shortcut to display on the clear context button */
+  shortcutClearContext?: string
   /** Hide approve buttons (e.g. for Codex which has no native approval flow) */
   hideApproveButtons?: boolean
 }
@@ -39,9 +43,11 @@ export function ExitPlanModeButton({
   hasFollowUpMessage = false,
   onPlanApproval,
   onPlanApprovalYolo,
+  onClearContextApproval,
   buttonRef,
   shortcut,
   shortcutYolo,
+  shortcutClearContext,
   hideApproveButtons,
 }: ExitPlanModeButtonProps) {
   if (!toolCalls) return null
@@ -83,6 +89,19 @@ export function ExitPlanModeButton({
           </Kbd>
         )}
       </Button>
+      {onClearContextApproval && (
+        <Button
+          variant="destructive"
+          onClick={() => onClearContextApproval()}
+        >
+          Clear Context and yolo
+          {shortcutClearContext && (
+            <Kbd className="ml-1.5 h-4 text-[10px] bg-destructive-foreground/20 text-destructive-foreground">
+              {shortcutClearContext}
+            </Kbd>
+          )}
+        </Button>
+      )}
     </div>
   )
 }

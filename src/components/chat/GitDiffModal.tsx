@@ -1131,7 +1131,7 @@ export function GitDiffModal({
                   (isSwitching || isLoading) && 'opacity-60'
                 )}
               >
-                {flattenedFiles.length > 1 && (
+                {flattenedFiles.length > 0 && (
                   <div className="sticky top-0 z-10 bg-background border-b border-border pb-2">
                     <div className="relative">
                       <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-[1em] w-[1em] text-muted-foreground pointer-events-none" />

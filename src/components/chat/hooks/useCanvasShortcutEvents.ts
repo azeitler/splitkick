@@ -19,6 +19,8 @@ interface UseCanvasShortcutEventsOptions {
   onPlanApproval: (card: SessionCardData, updatedPlan?: string) => void
   /** Callback for YOLO plan approval */
   onPlanApprovalYolo: (card: SessionCardData, updatedPlan?: string) => void
+  /** Callback for clear context approval (new session with plan in yolo mode) */
+  onClearContextApproval: (card: SessionCardData, updatedPlan?: string) => void
   /** If true, skip handling toggle-session-label event (caller handles it) */
   skipLabelHandling?: boolean
 }
@@ -71,6 +73,7 @@ export function useCanvasShortcutEvents({
   worktreePath,
   onPlanApproval,
   onPlanApprovalYolo,
+  onClearContextApproval,
   skipLabelHandling,
 }: UseCanvasShortcutEventsOptions): UseCanvasShortcutEventsResult {
   // Plan dialog state
@@ -304,6 +307,16 @@ export function useCanvasShortcutEvents({
       }
     }
 
+    const handleClearContextApproveEvent = () => {
+      if (
+        selectedCard.hasExitPlanMode &&
+        !selectedCard.hasQuestion &&
+        !selectedCard.isSending
+      ) {
+        onClearContextApproval(selectedCard)
+      }
+    }
+
     const handleOpenPlanEvent = () => {
       if (selectedCard.planFilePath || selectedCard.planContent) {
         handlePlanView(selectedCard)
@@ -323,6 +336,7 @@ export function useCanvasShortcutEvents({
 
     window.addEventListener('approve-plan', handleApprovePlanEvent)
     window.addEventListener('approve-plan-yolo', handleApprovePlanYoloEvent)
+    window.addEventListener('approve-plan-clear-context', handleClearContextApproveEvent)
     window.addEventListener('open-plan', handleOpenPlanEvent)
     window.addEventListener('open-recap', handleOpenRecapEvent)
     if (!skipLabelHandling) {
@@ -335,6 +349,10 @@ export function useCanvasShortcutEvents({
         'approve-plan-yolo',
         handleApprovePlanYoloEvent
       )
+      window.removeEventListener(
+        'approve-plan-clear-context',
+        handleClearContextApproveEvent
+      )
       window.removeEventListener('open-plan', handleOpenPlanEvent)
       window.removeEventListener('open-recap', handleOpenRecapEvent)
       if (!skipLabelHandling) {
@@ -346,6 +364,7 @@ export function useCanvasShortcutEvents({
     selectedCard,
     onPlanApproval,
     onPlanApprovalYolo,
+    onClearContextApproval,
     handlePlanView,
     handleRecapView,
     skipLabelHandling,

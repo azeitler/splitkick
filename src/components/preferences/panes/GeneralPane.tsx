@@ -244,6 +244,24 @@ export const GeneralPane: React.FC = () => {
     }
   }
 
+  const handleBuildModelChange = (value: string) => {
+    if (preferences) {
+      savePreferences.mutate({
+        ...preferences,
+        build_model: value === 'default' ? null : value,
+      })
+    }
+  }
+
+  const handleYoloModelChange = (value: string) => {
+    if (preferences) {
+      savePreferences.mutate({
+        ...preferences,
+        yolo_model: value === 'default' ? null : value,
+      })
+    }
+  }
+
   const handleBackendChange = (value: CliBackend) => {
     if (preferences) {
       savePreferences.mutate({ ...preferences, default_backend: value })
@@ -920,6 +938,50 @@ export const GeneralPane: React.FC = () => {
           </InlineField>
 
           <InlineField
+            label="Build model"
+            description="Model override when approving plans"
+          >
+            <Select
+              value={preferences?.build_model ?? 'default'}
+              onValueChange={handleBuildModelChange}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default">Default (session model)</SelectItem>
+                {modelOptions.map(option => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </InlineField>
+
+          <InlineField
+            label="Yolo model"
+            description="Model override when yolo-approving plans"
+          >
+            <Select
+              value={preferences?.yolo_model ?? 'default'}
+              onValueChange={handleYoloModelChange}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default">Default (session model)</SelectItem>
+                {modelOptions.map(option => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </InlineField>
+
+          <InlineField
             label="Chrome browser integration"
             description="Enable browser automation via Chrome extension"
           >
@@ -1343,6 +1405,23 @@ export const GeneralPane: React.FC = () => {
                   savePreferences.mutate({
                     ...preferences,
                     confirm_session_close: checked,
+                  })
+                }
+              }}
+            />
+          </InlineField>
+
+          <InlineField
+            label="Close original session on clear context"
+            description="Automatically close the original session when using Clear Context and yolo"
+          >
+            <Switch
+              checked={preferences?.close_original_on_clear_context ?? false}
+              onCheckedChange={checked => {
+                if (preferences) {
+                  savePreferences.mutate({
+                    ...preferences,
+                    close_original_on_clear_context: checked,
                   })
                 }
               }}

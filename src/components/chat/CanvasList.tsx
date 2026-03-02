@@ -26,6 +26,7 @@ interface CanvasListProps {
   onDeleteSession: (sessionId: string) => void
   onPlanApproval: (card: SessionCardData, updatedPlan?: string) => void
   onPlanApprovalYolo: (card: SessionCardData, updatedPlan?: string) => void
+  onClearContextApproval: (card: SessionCardData, updatedPlan?: string) => void
   onCloseWorktree: () => void
   searchInputRef?: React.RefObject<HTMLInputElement | null>
 }
@@ -45,6 +46,7 @@ export function CanvasList({
   onDeleteSession,
   onPlanApproval,
   onPlanApprovalYolo,
+  onClearContextApproval,
   onCloseWorktree,
   searchInputRef,
 }: CanvasListProps) {
@@ -123,6 +125,7 @@ export function CanvasList({
     worktreePath,
     onPlanApproval,
     onPlanApprovalYolo,
+    onClearContextApproval,
   })
 
   const isModalOpen =
@@ -158,6 +161,15 @@ export function CanvasList({
       }
     },
     [planDialogCard, onPlanApprovalYolo]
+  )
+
+  const handleDialogClearContextApprove = useCallback(
+    (updatedPlan: string) => {
+      if (planDialogCard) {
+        onClearContextApproval(planDialogCard, updatedPlan)
+      }
+    },
+    [planDialogCard, onClearContextApproval]
   )
 
   useEffect(() => {
@@ -298,6 +310,7 @@ export function CanvasList({
                       onRecapView={() => handleRecapView(card)}
                       onApprove={() => onPlanApproval(card)}
                       onYolo={() => onPlanApprovalYolo(card)}
+                      onClearContextApprove={() => onClearContextApproval(card)}
                       onToggleLabel={() => handleOpenLabelModal(card)}
                       onToggleReview={() => {
                         const { reviewingSessions, setSessionReviewing } =
@@ -333,6 +346,7 @@ export function CanvasList({
           approvalContext={planApprovalContext ?? undefined}
           onApprove={handleDialogApprove}
           onApproveYolo={handleDialogApproveYolo}
+          onClearContextApprove={handleDialogClearContextApprove}
         />
       ) : planDialogContent ? (
         <PlanDialog
@@ -344,6 +358,7 @@ export function CanvasList({
           approvalContext={planApprovalContext ?? undefined}
           onApprove={handleDialogApprove}
           onApproveYolo={handleDialogApproveYolo}
+          onClearContextApprove={handleDialogClearContextApprove}
         />
       ) : null}
 

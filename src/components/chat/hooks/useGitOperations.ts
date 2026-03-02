@@ -12,8 +12,11 @@ import { saveWorktreePr, projectsQueryKeys } from '@/services/projects'
 import {
   gitPush,
   triggerImmediateGitPoll,
+  triggerImmediateRemotePoll,
   performGitPull,
 } from '@/services/git-status'
+import { prStatusQueryKeys } from '@/services/pr-status'
+import type { PrStatusEvent } from '@/types/pr-status'
 import { isBaseSession } from '@/types/projects'
 import type {
   CreatePrResponse,
@@ -657,6 +660,18 @@ ${resolveInstructions}`
           id: toastId,
         })
         triggerImmediateGitPoll()
+
+        // Optimistically clear "Conflicts" button by updating cached PR status
+        const cached = queryClient.getQueryData<PrStatusEvent>(
+          prStatusQueryKeys.worktree(activeWorktreeId)
+        )
+        if (cached) {
+          queryClient.setQueryData(
+            prStatusQueryKeys.worktree(activeWorktreeId),
+            { ...cached, mergeable: 'mergeable' }
+          )
+        }
+        triggerImmediateRemotePoll()
         return
       }
 

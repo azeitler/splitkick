@@ -68,6 +68,8 @@ interface UseChatWindowEventsParams {
   handleStreamingPlanApprovalYolo: () => void
   handlePlanApproval: (messageId: string) => void
   handlePlanApprovalYolo: (messageId: string) => void
+  handleClearContextApproval: (messageId: string) => void
+  handleStreamingClearContextApproval: () => void
   /** Whether the active session uses Codex backend (no native approval flow) */
   isCodexBackend: boolean
   /** Ref to the chat scroll viewport for keyboard scrolling */
@@ -120,6 +122,8 @@ export function useChatWindowEvents({
   handleStreamingPlanApprovalYolo,
   handlePlanApproval,
   handlePlanApprovalYolo,
+  handleClearContextApproval,
+  handleStreamingClearContextApproval,
   isCodexBackend,
   scrollViewportRef,
   beginKeyboardScroll,
@@ -150,7 +154,7 @@ export function useChatWindowEvents({
     currentQueuedMessages.length,
   ])
 
-  // CMD+L: Focus chat input
+  // CMD+L / toolbar selection: Focus chat input
   useEffect(() => {
     const handler = () => inputRef.current?.focus()
     window.addEventListener('focus-chat-input', handler)
@@ -505,5 +509,30 @@ export function useChatWindowEvents({
     pendingPlanMessage,
     handleStreamingPlanApprovalYolo,
     handlePlanApprovalYolo,
+  ])
+
+  // Clear context and yolo keyboard shortcut (no-op for Codex)
+  useEffect(() => {
+    if (!isModal && isViewingCanvasTab) return
+    if (isCodexBackend) return
+    const handler = () => {
+      if (hasStreamingPlan) {
+        handleStreamingClearContextApproval()
+        return
+      }
+      if (pendingPlanMessage) {
+        handleClearContextApproval(pendingPlanMessage.id)
+      }
+    }
+    window.addEventListener('approve-plan-clear-context', handler)
+    return () => window.removeEventListener('approve-plan-clear-context', handler)
+  }, [
+    isModal,
+    isViewingCanvasTab,
+    isCodexBackend,
+    hasStreamingPlan,
+    pendingPlanMessage,
+    handleStreamingClearContextApproval,
+    handleClearContextApproval,
   ])
 }

@@ -1198,7 +1198,7 @@ export default function useStreamingEvents({
             isReviewing: isNowReviewing,
           })
             .catch(err =>
-              console.error(
+              console.debug(
                 '[useStreamingEvents] Failed to persist cancel state:',
                 err
               )

@@ -5,6 +5,7 @@ import { invoke } from '@/lib/transport'
 import {
   chatQueryKeys,
   markPlanApproved as markPlanApprovedService,
+  readPlanFile,
 } from '@/services/chat'
 import { useChatStore } from '@/store/chat-store'
 import type {
@@ -20,7 +21,10 @@ import type {
 import type { ReviewFinding } from '@/types/chat'
 import { formatAnswersAsNaturalLanguage } from '@/services/chat'
 import { parseReviewFindings, getFindingKey } from '../review-finding-utils'
+import { findPlanContent, findPlanFilePath } from '../tool-call-utils'
 import { generateId } from '@/lib/uuid'
+import { preferencesQueryKeys } from '@/services/preferences'
+import type { AppPreferences } from '@/types/preferences'
 
 /** Git commands to auto-approve for magic prompts (no permission prompts needed) */
 export const GIT_ALLOWED_TOOLS = [
@@ -50,6 +54,15 @@ interface SendMessageMutation {
   ) => void
 }
 
+/** Type for the createSession mutation */
+interface CreateSessionMutation {
+  mutateAsync: (params: {
+    worktreeId: string
+    worktreePath: string
+    name?: string
+  }) => Promise<Session>
+}
+
 interface UseMessageHandlersParams {
   // Refs for session/worktree IDs (stable across re-renders)
   activeSessionIdRef: RefObject<string | null | undefined>
@@ -57,6 +70,8 @@ interface UseMessageHandlersParams {
   activeWorktreePathRef: RefObject<string | null | undefined>
   // Refs for settings (stable across re-renders)
   selectedModelRef: RefObject<string>
+  buildModelRef: RefObject<string | null>
+  yoloModelRef: RefObject<string | null>
   getCustomProfileName: () => string | undefined
   executionModeRef: RefObject<ExecutionMode>
   selectedThinkingLevelRef: RefObject<ThinkingLevel>
@@ -66,6 +81,7 @@ interface UseMessageHandlersParams {
   getMcpConfig: () => string | undefined
   // Actions
   sendMessage: SendMessageMutation
+  createSession: CreateSessionMutation
   queryClient: QueryClient
   // Callbacks
   scrollToBottom: (instant?: boolean) => void
@@ -85,6 +101,8 @@ interface MessageHandlers {
   handlePlanApprovalYolo: (messageId: string, updatedPlan?: string) => void
   handleStreamingPlanApproval: () => void
   handleStreamingPlanApprovalYolo: () => void
+  handleClearContextApproval: (messageId: string) => void
+  handleStreamingClearContextApproval: () => void
   handlePendingPlanApprovalCallback: () => void
   handlePermissionApproval: (
     sessionId: string,
@@ -114,6 +132,8 @@ export function useMessageHandlers({
   activeWorktreeIdRef,
   activeWorktreePathRef,
   selectedModelRef,
+  buildModelRef,
+  yoloModelRef,
   getCustomProfileName,
   executionModeRef,
   selectedThinkingLevelRef,
@@ -121,6 +141,7 @@ export function useMessageHandlers({
   useAdaptiveThinkingRef,
   getMcpConfig,
   sendMessage,
+  createSession,
   queryClient,
   scrollToBottom,
   inputRef,
@@ -361,14 +382,18 @@ export function useMessageHandlers({
         ? `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
         : isCodex
           ? 'Execute the plan you created. Implement all changes described.'
-          : 'Approved'
+          : 'Plan approved. Begin implementing the changes now. Do not re-explain the plan — start writing code.'
       // Send approval message so the backend continues with execution
       // NOTE: setLastSentMessage is critical for permission denial flow - without it,
       // the denied message context won't be set and approval UI won't work
+      const buildModel = buildModelRef.current ?? selectedModelRef.current
+      if (buildModelRef.current && buildModelRef.current !== selectedModelRef.current) {
+        toast.info(`Using ${buildModelRef.current} model for build`)
+      }
       setLastSentMessage(sessionId, message)
       setError(sessionId, null)
       addSendingSession(sessionId)
-      setSelectedModel(sessionId, selectedModelRef.current)
+      setSelectedModel(sessionId, buildModel)
       setExecutingMode(sessionId, 'build')
 
       sendMessage.mutate(
@@ -377,7 +402,7 @@ export function useMessageHandlers({
           worktreeId,
           worktreePath,
           message,
-          model: selectedModelRef.current,
+          model: buildModel,
           executionMode: 'build',
           thinkingLevel: selectedThinkingLevelRef.current,
           effortLevel: useAdaptiveThinkingRef.current
@@ -398,6 +423,7 @@ export function useMessageHandlers({
       activeWorktreeIdRef,
       activeWorktreePathRef,
       selectedModelRef,
+      buildModelRef,
       selectedThinkingLevelRef,
       selectedEffortLevelRef,
       useAdaptiveThinkingRef,
@@ -483,12 +509,16 @@ export function useMessageHandlers({
         ? `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
         : isCodexYolo
           ? 'Execute the plan you created. Implement all changes described.'
-          : 'Approved - yolo'
+          : 'Plan approved (yolo mode). Begin implementing all changes immediately without asking for confirmation. Do not re-explain the plan — start writing code.'
       // Send approval message so the backend continues with execution
+      const yoloModel = yoloModelRef.current ?? selectedModelRef.current
+      if (yoloModelRef.current && yoloModelRef.current !== selectedModelRef.current) {
+        toast.info(`Using ${yoloModelRef.current} model for yolo`)
+      }
       setLastSentMessage(sessionId, message)
       setError(sessionId, null)
       addSendingSession(sessionId)
-      setSelectedModel(sessionId, selectedModelRef.current)
+      setSelectedModel(sessionId, yoloModel)
       setExecutingMode(sessionId, 'yolo')
 
       sendMessage.mutate(
@@ -497,7 +527,7 @@ export function useMessageHandlers({
           worktreeId,
           worktreePath,
           message,
-          model: selectedModelRef.current,
+          model: yoloModel,
           executionMode: 'yolo',
           thinkingLevel: selectedThinkingLevelRef.current,
           effortLevel: useAdaptiveThinkingRef.current
@@ -518,6 +548,7 @@ export function useMessageHandlers({
       activeWorktreeIdRef,
       activeWorktreePathRef,
       selectedModelRef,
+      yoloModelRef,
       selectedThinkingLevelRef,
       selectedEffortLevelRef,
       useAdaptiveThinkingRef,
@@ -573,13 +604,18 @@ export function useMessageHandlers({
     })
 
     // Explicitly set to build mode (not toggle, to avoid switching back to plan if already in build)
+    const buildModel = buildModelRef.current ?? selectedModelRef.current
+    if (buildModelRef.current && buildModelRef.current !== selectedModelRef.current) {
+      toast.info(`Using ${buildModelRef.current} model for build`)
+    }
     setMode(sessionId, 'build')
-    setSelectedModel(sessionId, selectedModelRef.current)
+    setSelectedModel(sessionId, buildModel)
 
     // Send approval message to Claude so it continues with execution
     // NOTE: setLastSentMessage is critical for permission denial flow - without it,
     // the denied message context won't be set and approval UI won't work
-    setLastSentMessage(sessionId, 'Approved')
+    const buildApprovalMsg = 'Plan approved. Begin implementing the changes now. Do not re-explain the plan — start writing code.'
+    setLastSentMessage(sessionId, buildApprovalMsg)
     setError(sessionId, null)
     addSendingSession(sessionId)
     setExecutingMode(sessionId, 'build')
@@ -589,8 +625,8 @@ export function useMessageHandlers({
         sessionId,
         worktreeId,
         worktreePath,
-        message: 'Approved',
-        model: selectedModelRef.current,
+        message: buildApprovalMsg,
+        model: buildModel,
         executionMode: 'build',
         thinkingLevel: selectedThinkingLevelRef.current,
         effortLevel: useAdaptiveThinkingRef.current
@@ -610,6 +646,7 @@ export function useMessageHandlers({
     activeWorktreeIdRef,
     activeWorktreePathRef,
     selectedModelRef,
+    buildModelRef,
     selectedThinkingLevelRef,
     selectedEffortLevelRef,
     useAdaptiveThinkingRef,
@@ -656,11 +693,16 @@ export function useMessageHandlers({
     })
 
     // Set to yolo mode for auto-approval of all future tools
+    const yoloModel = yoloModelRef.current ?? selectedModelRef.current
+    if (yoloModelRef.current && yoloModelRef.current !== selectedModelRef.current) {
+      toast.info(`Using ${yoloModelRef.current} model for yolo`)
+    }
     setMode(sessionId, 'yolo')
-    setSelectedModel(sessionId, selectedModelRef.current)
+    setSelectedModel(sessionId, yoloModel)
 
     // Send approval message to Claude so it continues with execution
-    setLastSentMessage(sessionId, 'Approved - yolo')
+    const yoloApprovalMsg = 'Plan approved (yolo mode). Begin implementing all changes immediately without asking for confirmation. Do not re-explain the plan — start writing code.'
+    setLastSentMessage(sessionId, yoloApprovalMsg)
     setError(sessionId, null)
     addSendingSession(sessionId)
     setExecutingMode(sessionId, 'yolo')
@@ -670,8 +712,8 @@ export function useMessageHandlers({
         sessionId,
         worktreeId,
         worktreePath,
-        message: 'Approved - yolo',
-        model: selectedModelRef.current,
+        message: yoloApprovalMsg,
+        model: yoloModel,
         executionMode: 'yolo',
         thinkingLevel: selectedThinkingLevelRef.current,
         effortLevel: useAdaptiveThinkingRef.current
@@ -691,6 +733,7 @@ export function useMessageHandlers({
     activeWorktreeIdRef,
     activeWorktreePathRef,
     selectedModelRef,
+    yoloModelRef,
     selectedThinkingLevelRef,
     selectedEffortLevelRef,
     useAdaptiveThinkingRef,
@@ -699,6 +742,273 @@ export function useMessageHandlers({
     scrollToBottom,
     sendMessage,
     inputRef,
+  ])
+
+  // Handle clear context approval for persisted messages
+  // Resolves plan content from message tool calls, marks approved, creates new session, sends plan
+  const handleClearContextApproval = useCallback(
+    async (messageId: string) => {
+      const sessionId = activeSessionIdRef.current
+      const worktreeId = activeWorktreeIdRef.current
+      const worktreePath = activeWorktreePathRef.current
+      if (!sessionId || !worktreeId || !worktreePath) return
+
+      // Get the message to extract plan content
+      const sessionData = queryClient.getQueryData<Session>(
+        chatQueryKeys.session(sessionId)
+      )
+      const message = sessionData?.messages.find(m => m.id === messageId)
+      if (!message?.tool_calls) {
+        toast.error('No plan content available')
+        return
+      }
+
+      // Resolve plan content from tool calls
+      let planContent = findPlanContent(message.tool_calls)
+      if (!planContent) {
+        const planFilePath = findPlanFilePath(message.tool_calls)
+        if (planFilePath) {
+          try {
+            planContent = await readPlanFile(planFilePath)
+          } catch (err) {
+            toast.error(`Failed to read plan file: ${err}`)
+            return
+          }
+        }
+      }
+      if (!planContent) {
+        toast.error('No plan content available')
+        return
+      }
+
+      // Mark plan approved on original session
+      markPlanApprovedService(worktreeId, worktreePath, sessionId, messageId)
+      queryClient.setQueryData<Session>(
+        chatQueryKeys.session(sessionId),
+        old => {
+          if (!old) return old
+          return {
+            ...old,
+            approved_plan_message_ids: [
+              ...(old.approved_plan_message_ids ?? []),
+              messageId,
+            ],
+            messages: old.messages.map(msg =>
+              msg.id === messageId ? { ...msg, plan_approved: true } : msg
+            ),
+          }
+        }
+      )
+      queryClient.invalidateQueries({
+        queryKey: chatQueryKeys.sessions(worktreeId),
+      })
+
+      const store = useChatStore.getState()
+      store.clearToolCalls(sessionId)
+      store.clearStreamingContentBlocks(sessionId)
+      store.setSessionReviewing(sessionId, false)
+      store.setWaitingForInput(sessionId, false)
+
+      // Create new session
+      let newSession: Session
+      try {
+        newSession = await createSession.mutateAsync({
+          worktreeId,
+          worktreePath,
+        })
+      } catch (err) {
+        toast.error(`Failed to create session: ${err}`)
+        return
+      }
+
+      // Switch to new session
+      store.setActiveSession(worktreeId, newSession.id)
+
+      // Send plan as first message in YOLO mode
+      const yoloModel = yoloModelRef.current ?? selectedModelRef.current
+      if (yoloModelRef.current && yoloModelRef.current !== selectedModelRef.current) {
+        toast.info(`Using ${yoloModelRef.current} model for yolo`)
+      }
+      const planMessage = `Execute this plan. Implement all changes described.\n\n<plan>\n${planContent}\n</plan>`
+      store.setExecutionMode(newSession.id, 'yolo')
+      store.setLastSentMessage(newSession.id, planMessage)
+      store.setError(newSession.id, null)
+      store.addSendingSession(newSession.id)
+      store.setSelectedModel(newSession.id, yoloModel)
+      store.setExecutingMode(newSession.id, 'yolo')
+
+      sendMessage.mutate({
+        sessionId: newSession.id,
+        worktreeId,
+        worktreePath,
+        message: planMessage,
+        model: yoloModel,
+        executionMode: 'yolo',
+        thinkingLevel: selectedThinkingLevelRef.current,
+        effortLevel: useAdaptiveThinkingRef.current
+          ? selectedEffortLevelRef.current
+          : undefined,
+        mcpConfig: getMcpConfig(),
+        customProfileName: getCustomProfileName(),
+      })
+
+      // Optionally close the original session
+      const prefs = queryClient.getQueryData<AppPreferences>(
+        preferencesQueryKeys.preferences()
+      )
+      if (prefs?.close_original_on_clear_context) {
+        const command =
+          prefs.removal_behavior === 'archive'
+            ? 'archive_session'
+            : 'close_session'
+        invoke(command, { worktreeId, worktreePath, sessionId }).catch(err => {
+          console.error(
+            '[useMessageHandlers] Failed to close original session:',
+            err
+          )
+        })
+      }
+    },
+    [
+      activeSessionIdRef,
+      activeWorktreeIdRef,
+      activeWorktreePathRef,
+      selectedModelRef,
+      yoloModelRef,
+      selectedThinkingLevelRef,
+      selectedEffortLevelRef,
+      useAdaptiveThinkingRef,
+      getMcpConfig,
+      getCustomProfileName,
+      createSession,
+      sendMessage,
+      queryClient,
+    ]
+  )
+
+  // Handle clear context approval during streaming
+  const handleStreamingClearContextApproval = useCallback(async () => {
+    const sessionId = activeSessionIdRef.current
+    const worktreeId = activeWorktreeIdRef.current
+    const worktreePath = activeWorktreePathRef.current
+    if (!sessionId || !worktreeId || !worktreePath) return
+
+    // Get streaming content blocks to extract plan content
+    const store = useChatStore.getState()
+    const contentBlocks = store.streamingContentBlocks[sessionId]
+    const toolCalls = store.activeToolCalls[sessionId]
+
+    // Try to get plan content from tool calls first, then from streaming blocks
+    let planContent: string | null = null
+    if (toolCalls) {
+      planContent = findPlanContent(toolCalls)
+      if (!planContent) {
+        const planFilePath = findPlanFilePath(toolCalls)
+        if (planFilePath) {
+          try {
+            planContent = await readPlanFile(planFilePath)
+          } catch {
+            // Fall through to content blocks
+          }
+        }
+      }
+    }
+
+    if (!planContent && contentBlocks) {
+      // Try to extract from streaming content blocks (text content)
+      for (const block of contentBlocks) {
+        if ('text' in block && block.text) {
+          planContent = block.text
+          break
+        }
+      }
+    }
+
+    if (!planContent) {
+      toast.error('No plan content available')
+      return
+    }
+
+    // Mark as approved in streaming state
+    store.setStreamingPlanApproved(sessionId, true)
+    store.clearToolCalls(sessionId)
+    store.clearStreamingContentBlocks(sessionId)
+    store.setSessionReviewing(sessionId, false)
+    store.setWaitingForInput(sessionId, false)
+
+    // Create new session
+    let newSession: Session
+    try {
+      newSession = await createSession.mutateAsync({
+        worktreeId,
+        worktreePath,
+      })
+    } catch (err) {
+      toast.error(`Failed to create session: ${err}`)
+      return
+    }
+
+    // Switch to new session
+    store.setActiveSession(worktreeId, newSession.id)
+
+    // Send plan as first message in YOLO mode
+    const yoloModel = yoloModelRef.current ?? selectedModelRef.current
+    if (yoloModelRef.current && yoloModelRef.current !== selectedModelRef.current) {
+      toast.info(`Using ${yoloModelRef.current} model for yolo`)
+    }
+    const planMessage = `Execute this plan. Implement all changes described.\n\n<plan>\n${planContent}\n</plan>`
+    store.setExecutionMode(newSession.id, 'yolo')
+    store.setLastSentMessage(newSession.id, planMessage)
+    store.setError(newSession.id, null)
+    store.addSendingSession(newSession.id)
+    store.setSelectedModel(newSession.id, yoloModel)
+    store.setExecutingMode(newSession.id, 'yolo')
+
+    sendMessage.mutate({
+      sessionId: newSession.id,
+      worktreeId,
+      worktreePath,
+      message: planMessage,
+      model: yoloModel,
+      executionMode: 'yolo',
+      thinkingLevel: selectedThinkingLevelRef.current,
+      effortLevel: useAdaptiveThinkingRef.current
+        ? selectedEffortLevelRef.current
+        : undefined,
+      mcpConfig: getMcpConfig(),
+      customProfileName: getCustomProfileName(),
+    })
+
+    // Optionally close the original session
+    const prefs = queryClient.getQueryData<AppPreferences>(
+      preferencesQueryKeys.preferences()
+    )
+    if (prefs?.close_original_on_clear_context) {
+      const command =
+        prefs.removal_behavior === 'archive'
+          ? 'archive_session'
+          : 'close_session'
+      invoke(command, { worktreeId, worktreePath, sessionId }).catch(err => {
+        console.error(
+          '[useMessageHandlers] Failed to close original session:',
+          err
+        )
+      })
+    }
+  }, [
+    activeSessionIdRef,
+    activeWorktreeIdRef,
+    activeWorktreePathRef,
+    selectedModelRef,
+    yoloModelRef,
+    selectedThinkingLevelRef,
+    selectedEffortLevelRef,
+    useAdaptiveThinkingRef,
+    getMcpConfig,
+    getCustomProfileName,
+    createSession,
+    sendMessage,
+    queryClient,
   ])
 
   // Handle permission approval (when tools require user approval)
@@ -1326,6 +1636,8 @@ Please apply all these fixes to the respective files.`
     handlePlanApprovalYolo,
     handleStreamingPlanApproval,
     handleStreamingPlanApprovalYolo,
+    handleClearContextApproval,
+    handleStreamingClearContextApproval,
     handlePendingPlanApprovalCallback,
     handlePermissionApproval,
     handlePermissionApprovalYolo,
