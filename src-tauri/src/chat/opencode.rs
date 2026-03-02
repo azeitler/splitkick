@@ -121,6 +121,8 @@ fn parse_provider_model(model: Option<&str>) -> Option<(String, String)> {
         return None;
     }
 
+    // Strip "opencode/" prefix if present (e.g. "opencode/ollama/Qwen" → "ollama/Qwen")
+    let raw = raw.strip_prefix("opencode/").unwrap_or(raw);
     // Expect provider/model; if not present, let backend pick default.
     let (provider, model_id) = raw.split_once('/')?;
     let provider = provider.trim();

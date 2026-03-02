@@ -31,6 +31,8 @@ pub struct NamingRequest {
     pub custom_session_prompt: Option<String>,
     /// Optional custom CLI profile name for alternative providers (e.g., OpenRouter)
     pub custom_profile_name: Option<String>,
+    /// Per-operation backend override from magic prompt settings (None = use project/global default)
+    pub backend_override: Option<String>,
 }
 
 /// Successful session rename result (for event emission)
@@ -341,13 +343,17 @@ fn generate_names(app: &AppHandle, request: &NamingRequest) -> Result<NamingOutp
         (false, false, false) => base_prompt,
     };
 
-    // Route OpenCode models through OpenCode HTTP API.
-    if request.model.starts_with("opencode/") {
+    // Per-operation backend > project/global default_backend
+    let backend = super::commands::resolve_magic_prompt_backend(
+        app,
+        request.backend_override.as_deref(),
+        Some(&request.worktree_id),
+    );
+
+    if backend == super::types::Backend::Opencode {
         return generate_names_opencode(app, &prompt, &request.model, request);
     }
-
-    // Route to Codex CLI if model is a Codex model
-    if crate::is_codex_model(&request.model) {
+    if backend == super::types::Backend::Codex {
         return generate_names_codex(app, &prompt, &request.model, request);
     }
 
@@ -578,6 +584,8 @@ fn parse_opencode_provider_model(model: Option<&str>) -> Option<(String, String)
     if raw.is_empty() {
         return None;
     }
+    // Strip "opencode/" prefix if present (e.g. "opencode/ollama/Qwen" → "ollama/Qwen")
+    let raw = raw.strip_prefix("opencode/").unwrap_or(raw);
     let (provider, model_id) = raw.split_once('/')?;
     let provider = provider.trim();
     let model_id = model_id.trim();

@@ -4730,6 +4730,8 @@ fn generate_pr_content(
     model: Option<&str>,
     context: &str,
     custom_profile_name: Option<&str>,
+    worktree_id: Option<&str>,
+    magic_backend: Option<&str>,
 ) -> Result<PrContentResponse, String> {
     // Get diff and commits
     let diff = get_branch_diff(repo_path, target_branch)?;
@@ -4755,8 +4757,10 @@ fn generate_pr_content(
 
     let model_str = model.unwrap_or("haiku");
 
-    // Route to OpenCode if model is an OpenCode model
-    if crate::is_opencode_model(model_str) {
+    // Per-operation backend > project/global default_backend
+    let backend = crate::chat::resolve_magic_prompt_backend(app, magic_backend, worktree_id);
+
+    if backend == crate::chat::types::Backend::Opencode {
         log::trace!("Generating PR content with OpenCode");
         let json_str = crate::chat::opencode::execute_one_shot_opencode(
             app,
@@ -4771,8 +4775,7 @@ fn generate_pr_content(
         });
     }
 
-    // Route to Codex CLI if model is a Codex model
-    if crate::is_codex_model(model_str) {
+    if backend == crate::chat::types::Backend::Codex {
         log::trace!("Generating PR content with Codex CLI (output-schema)");
         let json_str = crate::chat::codex::execute_one_shot_codex(
             app,
@@ -5050,6 +5053,11 @@ pub async fn create_pr_with_ai_content(
 
     // Generate PR content using Claude CLI
     log::trace!("Generating PR content with AI");
+    let pr_magic_backend = crate::get_preferences_path(&app)
+        .ok()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|c| serde_json::from_str::<crate::AppPreferences>(&c).ok())
+        .and_then(|p| p.magic_prompt_backends.pr_content_backend);
     let mut pr_content = generate_pr_content(
         &app,
         &worktree_path,
@@ -5059,6 +5067,8 @@ pub async fn create_pr_with_ai_content(
         model.as_deref(),
         &context_content,
         custom_profile_name.as_deref(),
+        Some(worktree_id),
+        pr_magic_backend.as_deref(),
     )?;
 
     // Append unconditional issue/PR references to the body
@@ -5224,6 +5234,11 @@ pub async fn generate_pr_update_content(
     }
 
     // Generate PR content using Claude CLI
+    let pr_magic_backend = crate::get_preferences_path(&app)
+        .ok()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|c| serde_json::from_str::<crate::AppPreferences>(&c).ok())
+        .and_then(|p| p.magic_prompt_backends.pr_content_backend);
     let mut pr_content = generate_pr_content(
         &app,
         &worktree_path,
@@ -5233,6 +5248,8 @@ pub async fn generate_pr_update_content(
         model.as_deref(),
         &context_content,
         custom_profile_name.as_deref(),
+        Some(worktree_id),
+        pr_magic_backend.as_deref(),
     )?;
 
     // Append unconditional issue/PR references to the body
@@ -5489,11 +5506,15 @@ fn generate_commit_message(
     model: Option<&str>,
     custom_profile_name: Option<&str>,
     working_dir: Option<&std::path::Path>,
+    worktree_id: Option<&str>,
+    magic_backend: Option<&str>,
 ) -> Result<CommitMessageResponse, String> {
     let model_str = model.unwrap_or("haiku");
 
-    // Route to OpenCode if model is an OpenCode model
-    if crate::is_opencode_model(model_str) {
+    // Per-operation backend > project/global default_backend
+    let backend = crate::chat::resolve_magic_prompt_backend(app, magic_backend, worktree_id);
+
+    if backend == crate::chat::types::Backend::Opencode {
         log::trace!("Generating commit message with OpenCode");
         let json_str = crate::chat::opencode::execute_one_shot_opencode(
             app,
@@ -5508,8 +5529,7 @@ fn generate_commit_message(
         });
     }
 
-    // Route to Codex CLI if model is a Codex model
-    if crate::is_codex_model(model_str) {
+    if backend == crate::chat::types::Backend::Codex {
         log::trace!("Generating commit message with Codex CLI (output-schema)");
         let json_str = crate::chat::codex::execute_one_shot_codex(
             app,
@@ -5660,12 +5680,27 @@ pub async fn create_commit_with_ai(
         .replace("{remote_info}", &remote_info);
 
     // 6. Generate commit message with Claude CLI
+    let commit_magic_backend = crate::get_preferences_path(&app)
+        .ok()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|c| serde_json::from_str::<crate::AppPreferences>(&c).ok())
+        .and_then(|p| p.magic_prompt_backends.commit_message_backend);
+    let worktree_id = load_projects_data(&app)
+        .ok()
+        .and_then(|d| {
+            d.worktrees
+                .iter()
+                .find(|w| w.path == worktree_path)
+                .map(|w| w.id.clone())
+        });
     let response = generate_commit_message(
         &app,
         &prompt,
         model.as_deref(),
         custom_profile_name.as_deref(),
         Some(std::path::Path::new(&worktree_path)),
+        worktree_id.as_deref(),
+        commit_magic_backend.as_deref(),
     )?;
 
     log::trace!(
@@ -5926,11 +5961,15 @@ fn generate_review(
     custom_profile_name: Option<&str>,
     working_dir: Option<&std::path::Path>,
     review_run_id: Option<&str>,
+    worktree_id: Option<&str>,
+    magic_backend: Option<&str>,
 ) -> Result<ReviewResponse, String> {
     let model_str = model.unwrap_or("haiku");
 
-    // Route to OpenCode if model is an OpenCode model
-    if crate::is_opencode_model(model_str) {
+    // Per-operation backend > project/global default_backend
+    let backend = crate::chat::resolve_magic_prompt_backend(app, magic_backend, worktree_id);
+
+    if backend == crate::chat::types::Backend::Opencode {
         log::trace!("Running code review with OpenCode");
         let json_str = crate::chat::opencode::execute_one_shot_opencode(
             app,
@@ -5945,8 +5984,7 @@ fn generate_review(
         });
     }
 
-    // Route to Codex CLI if model is a Codex model
-    if crate::is_codex_model(model_str) {
+    if backend == crate::chat::types::Backend::Codex {
         log::trace!("Running code review with Codex CLI (output-schema)");
         let json_str = execute_codex_review(app, prompt, model_str, working_dir, review_run_id)?;
         return serde_json::from_str(&json_str).map_err(|e| {
@@ -6172,6 +6210,11 @@ pub async fn run_review_with_ai(
         .replace("{uncommitted_section}", &uncommitted_section);
 
     // Run review with Claude CLI
+    let review_magic_backend = crate::get_preferences_path(&app)
+        .ok()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|c| serde_json::from_str::<crate::AppPreferences>(&c).ok())
+        .and_then(|p| p.magic_prompt_backends.code_review_backend);
     let response = generate_review(
         &app,
         &prompt,
@@ -6179,6 +6222,8 @@ pub async fn run_review_with_ai(
         custom_profile_name.as_deref(),
         Some(std::path::Path::new(&worktree_path)),
         review_run_id.as_deref(),
+        None,
+        review_magic_backend.as_deref(),
     )?;
 
     log::trace!(
@@ -6369,6 +6414,7 @@ fn generate_release_notes_content(
     custom_prompt: Option<&str>,
     model: Option<&str>,
     custom_profile_name: Option<&str>,
+    magic_backend: Option<&str>,
 ) -> Result<ReleaseNotesResponse, String> {
     // Fetch tags to ensure we have the tag locally
     let fetch_output = silent_command("git")
@@ -6428,8 +6474,10 @@ fn generate_release_notes_content(
 
     let model_str = model.unwrap_or("haiku");
 
-    // Route to OpenCode if model is an OpenCode model
-    if crate::is_opencode_model(model_str) {
+    // Per-operation backend > global default_backend (no worktree for release notes)
+    let backend = crate::chat::resolve_magic_prompt_backend(app, magic_backend, None);
+
+    if backend == crate::chat::types::Backend::Opencode {
         log::trace!("Generating release notes with OpenCode");
         let json_str = crate::chat::opencode::execute_one_shot_opencode(
             app,
@@ -6444,8 +6492,7 @@ fn generate_release_notes_content(
         });
     }
 
-    // Route to Codex CLI if model is a Codex model
-    if crate::is_codex_model(model_str) {
+    if backend == crate::chat::types::Backend::Codex {
         log::trace!("Generating release notes with Codex CLI (output-schema)");
         let json_str = crate::chat::codex::execute_one_shot_codex(
             app,
@@ -6545,6 +6592,11 @@ pub async fn generate_release_notes(
 ) -> Result<ReleaseNotesResponse, String> {
     log::trace!("Generating release notes for {project_path} since {tag}");
 
+    let release_magic_backend = crate::get_preferences_path(&app)
+        .ok()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|c| serde_json::from_str::<crate::AppPreferences>(&c).ok())
+        .and_then(|p| p.magic_prompt_backends.release_notes_backend);
     generate_release_notes_content(
         &app,
         &project_path,
@@ -6553,6 +6605,7 @@ pub async fn generate_release_notes(
         custom_prompt.as_deref(),
         model.as_deref(),
         custom_profile_name.as_deref(),
+        release_magic_backend.as_deref(),
     )
 }
 
@@ -6640,12 +6693,19 @@ pub async fn merge_worktree_to_base(
             .replace("{recent_commits}", &recent_commits)
             .replace("{remote_info}", &remote_info);
 
+        let merge_magic_backend = crate::get_preferences_path(&app)
+            .ok()
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .and_then(|c| serde_json::from_str::<crate::AppPreferences>(&c).ok())
+            .and_then(|p| p.magic_prompt_backends.commit_message_backend);
         match generate_commit_message(
             &app,
             &prompt,
             None,
             None,
             Some(std::path::Path::new(&worktree.path)),
+            Some(&worktree_id),
+            merge_magic_backend.as_deref(),
         ) {
             Ok(response) => {
                 // Create the commit with AI-generated message

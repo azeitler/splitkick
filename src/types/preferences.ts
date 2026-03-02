@@ -629,6 +629,44 @@ export const DEFAULT_MAGIC_PROMPT_PROVIDERS: MagicPromptProviders = {
 }
 
 /**
+ * Per-prompt backend overrides for magic prompts.
+ * null = use project/global default_backend.
+ * Field names use snake_case to match Rust struct exactly.
+ */
+export interface MagicPromptBackends {
+  investigate_issue_backend: string | null
+  investigate_pr_backend: string | null
+  investigate_workflow_run_backend: string | null
+  pr_content_backend: string | null
+  commit_message_backend: string | null
+  code_review_backend: string | null
+  context_summary_backend: string | null
+  resolve_conflicts_backend: string | null
+  release_notes_backend: string | null
+  session_naming_backend: string | null
+  session_recap_backend: string | null
+  investigate_security_alert_backend: string | null
+  investigate_advisory_backend: string | null
+}
+
+/** Default backends for each magic prompt (null = use project/global default_backend) */
+export const DEFAULT_MAGIC_PROMPT_BACKENDS: MagicPromptBackends = {
+  investigate_issue_backend: null,
+  investigate_pr_backend: null,
+  investigate_workflow_run_backend: null,
+  pr_content_backend: null,
+  commit_message_backend: null,
+  code_review_backend: null,
+  context_summary_backend: null,
+  resolve_conflicts_backend: null,
+  release_notes_backend: null,
+  session_naming_backend: null,
+  session_recap_backend: null,
+  investigate_security_alert_backend: null,
+  investigate_advisory_backend: null,
+}
+
+/**
  * Resolve a magic prompt provider for a given key.
  * The settings UI stores null = "Anthropic" (explicit choice).
  * When the key is missing from saved prefs (undefined), we fall back to
@@ -680,6 +718,7 @@ export interface AppPreferences {
   magic_prompts: MagicPrompts // Customizable prompts for AI-powered features
   magic_prompt_models: MagicPromptModels // Per-prompt model overrides
   magic_prompt_providers: MagicPromptProviders // Per-prompt provider overrides (null = use default_provider)
+  magic_prompt_backends: MagicPromptBackends // Per-prompt backend overrides (null = use project/global default_backend)
   file_edit_mode: FileEditMode // How to edit files: inline (CodeMirror) or external (VS Code, etc.)
   ai_language: string // Preferred language for AI responses (empty = default)
   allow_web_tools_in_plan_mode: boolean // Allow WebFetch/WebSearch in plan mode without prompts
@@ -1167,6 +1206,7 @@ export const defaultPreferences: AppPreferences = {
   magic_prompts: DEFAULT_MAGIC_PROMPTS,
   magic_prompt_models: DEFAULT_MAGIC_PROMPT_MODELS,
   magic_prompt_providers: DEFAULT_MAGIC_PROMPT_PROVIDERS,
+  magic_prompt_backends: DEFAULT_MAGIC_PROMPT_BACKENDS,
   file_edit_mode: 'external',
   ai_language: '', // Default: empty (Claude's default behavior)
   allow_web_tools_in_plan_mode: true, // Default: enabled

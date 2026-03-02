@@ -69,6 +69,24 @@ pub(crate) fn resolve_default_backend(app: &AppHandle, worktree_id: Option<&str>
     resolved
 }
 
+/// Resolve backend for a magic prompt operation.
+/// Priority: per-operation backend > project default > global default > Claude.
+pub(crate) fn resolve_magic_prompt_backend(
+    app: &AppHandle,
+    magic_backend: Option<&str>,
+    worktree_id: Option<&str>,
+) -> Backend {
+    if let Some(b) = magic_backend.filter(|s| !s.is_empty()) {
+        match b {
+            "opencode" => return Backend::Opencode,
+            "codex" => return Backend::Codex,
+            "claude" => return Backend::Claude,
+            _ => {}
+        }
+    }
+    resolve_default_backend(app, worktree_id)
+}
+
 /// Get current Unix timestamp in seconds
 fn now() -> u64 {
     SystemTime::now()
@@ -394,6 +412,13 @@ pub async fn regenerate_session_name(
 
     let naming_model = model.unwrap_or_else(|| "haiku".to_string());
 
+    // Read per-operation backend from prefs
+    let backend_override = crate::get_preferences_path(&app)
+        .ok()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|c| serde_json::from_str::<crate::AppPreferences>(&c).ok())
+        .and_then(|p| p.magic_prompt_backends.session_naming_backend);
+
     let request = NamingRequest {
         session_id,
         worktree_id,
@@ -405,6 +430,7 @@ pub async fn regenerate_session_name(
         generate_branch_name: false,
         custom_session_prompt: custom_prompt,
         custom_profile_name,
+        backend_override,
     };
 
     spawn_naming_task(app, request);
@@ -1263,6 +1289,10 @@ pub async fn send_chat_message(
                     custom_profile_name: prefs
                         .magic_prompt_providers
                         .session_naming_provider
+                        .clone(),
+                    backend_override: prefs
+                        .magic_prompt_backends
+                        .session_naming_backend
                         .clone(),
                 };
 
@@ -3864,11 +3894,15 @@ fn execute_summarization_claude(
     model: Option<&str>,
     custom_profile_name: Option<&str>,
     working_dir: Option<&std::path::Path>,
+    worktree_id: Option<&str>,
+    magic_backend: Option<&str>,
 ) -> Result<ContextSummaryResponse, String> {
     let model_str = model.unwrap_or("opus");
 
-    // Route to OpenCode if model is an OpenCode model
-    if crate::is_opencode_model(model_str) {
+    // Per-operation backend > project/global default_backend
+    let backend = resolve_magic_prompt_backend(app, magic_backend, worktree_id);
+
+    if backend == super::types::Backend::Opencode {
         log::trace!("Executing one-shot OpenCode summarization");
         let json_str = super::opencode::execute_one_shot_opencode(
             app,
@@ -3883,8 +3917,7 @@ fn execute_summarization_claude(
         });
     }
 
-    // Route to Codex CLI if model is a Codex model
-    if crate::is_codex_model(model_str) {
+    if backend == super::types::Backend::Codex {
         log::trace!("Executing one-shot Codex summarization with output-schema");
         let json_str = super::codex::execute_one_shot_codex(
             app,
@@ -4042,12 +4075,19 @@ pub async fn generate_context_from_session(
 
     // 4. Call Claude CLI with JSON schema (non-streaming)
     // If JSON parsing fails, use fallback slug from project + session name
+    let magic_backend = crate::get_preferences_path(&app)
+        .ok()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|c| serde_json::from_str::<crate::AppPreferences>(&c).ok())
+        .and_then(|p| p.magic_prompt_backends.context_summary_backend);
     let (summary, slug) = match execute_summarization_claude(
         &app,
         &prompt,
         model.as_deref(),
         custom_profile_name.as_deref(),
         Some(std::path::Path::new(&worktree_path)),
+        Some(&worktree_id),
+        magic_backend.as_deref(),
     ) {
         Ok(response) => {
             // Validate slug is not empty
@@ -4522,9 +4562,13 @@ fn execute_digest_claude(
     model: &str,
     custom_profile_name: Option<&str>,
     working_dir: Option<&std::path::Path>,
+    worktree_id: Option<&str>,
+    magic_backend: Option<&str>,
 ) -> Result<SessionDigestResponse, String> {
-    // Route to OpenCode if model is an OpenCode model
-    if crate::is_opencode_model(model) {
+    // Per-operation backend > project/global default_backend
+    let backend = resolve_magic_prompt_backend(app, magic_backend, worktree_id);
+
+    if backend == super::types::Backend::Opencode {
         log::trace!("Executing one-shot OpenCode digest");
         let json_str = super::opencode::execute_one_shot_opencode(
             app,
@@ -4539,8 +4583,7 @@ fn execute_digest_claude(
         });
     }
 
-    // Route to Codex CLI if model is a Codex model
-    if crate::is_codex_model(model) {
+    if backend == super::types::Backend::Codex {
         log::trace!("Executing one-shot Codex digest with output-schema");
         let json_str = super::codex::execute_one_shot_codex(
             app,
@@ -4683,15 +4726,20 @@ pub async fn generate_session_digest(
         .unwrap_or(SESSION_DIGEST_PROMPT);
     let prompt = prompt_template.replace("{conversation}", &conversation_history);
 
-    // Use magic prompt model/provider
+    // Use magic prompt model/provider/backend
     let model = &prefs.magic_prompt_models.session_recap_model;
     let provider = prefs
         .magic_prompt_providers
         .session_recap_provider
         .as_deref();
+    let magic_backend = prefs
+        .magic_prompt_backends
+        .session_recap_backend
+        .as_deref();
 
     // Call Claude CLI with JSON schema (non-streaming)
-    let response = execute_digest_claude(&app, &prompt, model, provider, None)?;
+    let response =
+        execute_digest_claude(&app, &prompt, model, provider, None, None, magic_backend)?;
 
     Ok(SessionDigest {
         chat_summary: response.chat_summary,
