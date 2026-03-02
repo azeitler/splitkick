@@ -116,6 +116,7 @@ export type TimelineItem =
   | { type: 'standalone'; tool: ToolCall; key: string }
   | { type: 'stackedGroup'; items: StackableItem[]; key: string }
   | { type: 'askUserQuestion'; tool: ToolCall; introText?: string; key: string }
+  | { type: 'enterPlanMode'; tool: ToolCall; key: string }
   | { type: 'exitPlanMode'; tool: ToolCall; key: string }
   | { type: 'unknown'; rawType: string; rawData: unknown; key: string }
 
@@ -315,7 +316,7 @@ export function buildTimeline(
       }
       if (toolCall.name === 'EnterPlanMode') {
         result.push({
-          type: 'standalone',
+          type: 'enterPlanMode',
           tool: toolCall,
           key: `enter-plan-${toolCall.id}`,
         })

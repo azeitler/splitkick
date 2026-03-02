@@ -34,6 +34,7 @@ interface PlanDialogBaseProps {
   approvalContext?: ApprovalContext
   onApprove?: (updatedPlan: string) => void
   onApproveYolo?: (updatedPlan: string) => void
+  onClearContextApprove?: (updatedPlan: string) => void
   /** Hide approve buttons (e.g. for Codex which has no native approval flow) */
   hideApproveButtons?: boolean
 }
@@ -60,6 +61,7 @@ export function PlanDialog({
   approvalContext: _approvalContext,
   onApprove,
   onApproveYolo,
+  onClearContextApprove,
   hideApproveButtons,
 }: PlanDialogProps) {
   const filename = filePath ? getFilename(filePath) : null
@@ -137,6 +139,11 @@ export function PlanDialog({
     onClose()
   }, [editedContent, onApproveYolo, onClose])
 
+  const handleClearContextApprove = useCallback(() => {
+    onClearContextApprove?.(editedContent)
+    onClose()
+  }, [editedContent, onClearContextApprove, onClose])
+
   // Keyboard shortcuts for approve actions
   useEffect(() => {
     if (!isOpen || !editable) return
@@ -152,6 +159,15 @@ export function PlanDialog({
         }
       }
 
+      // Mod+Shift+Y = Clear Context and yolo (check before Mod+Y since Shift+Y = 'Y')
+      if (isMod && e.shiftKey && (e.key === 'Y' || e.key === 'y')) {
+        e.preventDefault()
+        if (canApprove && onClearContextApprove) {
+          handleClearContextApprove()
+        }
+        return
+      }
+
       // Mod+Y = Approve Yolo
       if (isMod && e.key === 'y') {
         e.preventDefault()
@@ -163,7 +179,7 @@ export function PlanDialog({
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, editable, canApprove, handleApprove, handleApproveYolo])
+  }, [isOpen, editable, canApprove, handleApprove, handleApproveYolo, onClearContextApprove, handleClearContextApprove])
 
   return (
     <Dialog open={isOpen} onOpenChange={open => !open && onClose()}>
@@ -249,6 +265,18 @@ export function PlanDialog({
                   {formatShortcutDisplay(DEFAULT_KEYBINDINGS.approve_plan_yolo)}
                 </Kbd>
               </Button>
+              {onClearContextApprove && (
+                <Button
+                  variant="destructive"
+                  onClick={handleClearContextApprove}
+                  disabled={!canApprove}
+                >
+                  Clear Context and yolo
+                  <Kbd className="ml-1.5 h-4 text-[10px] bg-destructive-foreground/20 text-destructive-foreground">
+                    {formatShortcutDisplay(DEFAULT_KEYBINDINGS.approve_plan_clear_context)}
+                  </Kbd>
+                </Button>
+              )}
             </div>
           </DialogFooter>
         )}

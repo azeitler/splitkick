@@ -113,7 +113,7 @@ export function ToolCallInline({
         </CollapsibleTrigger>
         <CollapsibleContent>
           <div className="border-t border-border/50 px-3 py-2">
-            <div className="max-h-64 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">
+            <div className="whitespace-pre-wrap text-xs text-muted-foreground">
               {expandedContent}
             </div>
             {toolCall.output && (
@@ -122,7 +122,7 @@ export function ToolCallInline({
                 <div className="text-xs text-muted-foreground/60 mb-1">
                   Output:
                 </div>
-                <pre className="max-h-64 overflow-auto whitespace-pre-wrap text-xs text-foreground/80 bg-muted/50 rounded p-2">
+                <pre className="max-h-64 overflow-auto whitespace-pre-wrap text-xs font-mono text-foreground/80 bg-muted/50 rounded p-2">
                   {toolCall.output}
                 </pre>
               </>
@@ -456,7 +456,7 @@ function SubToolItem({ toolCall, onFileClick }: SubToolItemProps) {
         </CollapsibleTrigger>
         <CollapsibleContent>
           <div className="border-t border-border/30 px-2 py-1.5">
-            <div className="max-h-40 overflow-auto whitespace-pre-wrap text-[0.625rem] text-muted-foreground/70">
+            <div className="whitespace-pre-wrap text-[0.625rem] text-muted-foreground/70">
               {expandedContent}
             </div>
             {toolCall.output && (
@@ -465,7 +465,7 @@ function SubToolItem({ toolCall, onFileClick }: SubToolItemProps) {
                 <div className="text-[0.625rem] text-muted-foreground/50 mb-0.5">
                   Output:
                 </div>
-                <pre className="max-h-40 overflow-auto whitespace-pre-wrap text-[0.625rem] text-foreground/70 bg-muted/30 rounded p-1.5">
+                <pre className="max-h-40 overflow-auto whitespace-pre-wrap text-[0.625rem] font-mono text-foreground/70 bg-muted/30 rounded p-1.5">
                   {toolCall.output}
                 </pre>
               </>
@@ -505,7 +505,7 @@ function DiffView({
 
   return (
     <div className={className}>
-      <div className="text-muted-foreground mb-1.5">Path: {filePath}</div>
+      <div className="text-muted-foreground mb-1.5 font-mono">Path: {filePath}</div>
       <div className="rounded border border-border/30 overflow-auto max-h-64">
         {parts.map((part, i) => {
           const lines = part.value.replace(/\n$/, '').split('\n')

@@ -1,5 +1,5 @@
 import { useCallback, useState, useRef } from 'react'
-import { GitBranch } from 'lucide-react'
+import { GitBranch, Delete } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -7,8 +7,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { useUIStore } from '@/store/ui-store'
-import { useQuery } from '@tanstack/react-query'
-import { getGitRemotes } from '@/services/git-status'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { getGitRemotes, removeGitRemote } from '@/services/git-status'
 import { cn } from '@/lib/utils'
 
 export function RemotePickerModal() {
@@ -20,6 +20,7 @@ export function RemotePickerModal() {
   } = useUIStore()
   const contentRef = useRef<HTMLDivElement>(null)
   const [selectedIndex, setSelectedIndex] = useState(0)
+  const queryClient = useQueryClient()
 
   const { data: remotes = [] } = useQuery({
     queryKey: ['git-remotes', remotePickerRepoPath],
@@ -43,6 +44,22 @@ export function RemotePickerModal() {
     [remotes, remotePickerCallback, closeRemotePicker]
   )
 
+  const handleRemoveRemote = useCallback(
+    async (index: number) => {
+      const remote = remotes[index]
+      if (!remote || !remotePickerRepoPath || remote.name === 'origin') return
+
+      await removeGitRemote(remotePickerRepoPath, remote.name)
+      await queryClient.invalidateQueries({
+        queryKey: ['git-remotes', remotePickerRepoPath],
+      })
+
+      // Adjust selection if we removed the last item
+      setSelectedIndex(i => Math.min(i, remotes.length - 2))
+    },
+    [remotes, remotePickerRepoPath, queryClient]
+  )
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       const key = e.key
@@ -56,7 +73,11 @@ export function RemotePickerModal() {
         return
       }
 
-      if (key === 'Enter') {
+      if (key === 'Backspace') {
+        e.preventDefault()
+        e.stopPropagation()
+        handleRemoveRemote(selectedIndex)
+      } else if (key === 'Enter') {
         e.preventDefault()
         e.stopPropagation()
         selectRemote(selectedIndex)
@@ -68,7 +89,7 @@ export function RemotePickerModal() {
         setSelectedIndex(i => (i - 1 + remotes.length) % remotes.length)
       }
     },
-    [remotes.length, selectedIndex, selectRemote]
+    [remotes.length, selectedIndex, selectRemote, handleRemoveRemote]
   )
 
   const handleOpenChange = useCallback(
@@ -112,11 +133,19 @@ export function RemotePickerModal() {
                 <GitBranch className="h-4 w-4 text-muted-foreground shrink-0" />
                 <span className="truncate">{remote.name}</span>
               </div>
-              {i < 9 && (
-                <kbd className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded ml-2 shrink-0">
-                  {i + 1}
-                </kbd>
-              )}
+              <div className="flex items-center gap-1.5 ml-2 shrink-0">
+                {remote.name !== 'origin' && selectedIndex === i && (
+                  <Delete
+                    className="h-3.5 w-3.5 text-muted-foreground/50"
+                    aria-label="Press backspace to remove"
+                  />
+                )}
+                {i < 9 && (
+                  <kbd className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                    {i + 1}
+                  </kbd>
+                )}
+              </div>
             </button>
           ))}
         </div>

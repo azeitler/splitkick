@@ -271,6 +271,13 @@ function executeKeybindingAction(
       window.dispatchEvent(new CustomEvent('approve-plan-yolo'))
       break
     }
+    case 'approve_plan_clear_context': {
+      logger.debug('Keybinding: approve_plan_clear_context')
+      const planDialogOpenClear = useUIStore.getState().planDialogOpen
+      if (planDialogOpenClear) break // Let PlanDialog handle it directly
+      window.dispatchEvent(new CustomEvent('approve-plan-clear-context'))
+      break
+    }
     case 'open_plan':
       logger.debug('Keybinding: open_plan')
       window.dispatchEvent(new CustomEvent('open-plan'))

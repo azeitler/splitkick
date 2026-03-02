@@ -40,6 +40,7 @@ export interface SessionCardProps {
   onRecapView: () => void
   onApprove?: () => void
   onYolo?: () => void
+  onClearContextApprove?: () => void
   onToggleLabel?: () => void
   onToggleReview?: () => void
   onRename?: (sessionId: string, newName: string) => void
@@ -63,6 +64,7 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
       onRecapView,
       onApprove,
       onYolo,
+      onClearContextApprove,
       onToggleLabel,
       onToggleReview,
       isRenaming,
@@ -261,6 +263,24 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
                         )}
                       </Kbd>
                     </Button>
+                    {onClearContextApprove && (
+                      <Button
+                        variant="destructive"
+                        className="h-6 px-2 text-xs rounded"
+                        disabled={card.isSending}
+                        onClick={e => {
+                          e.stopPropagation()
+                          onClearContextApprove()
+                        }}
+                      >
+                        Clear Context and yolo
+                        <Kbd className="ml-1.5 h-4 text-[10px] bg-destructive-foreground/20 text-destructive-foreground">
+                          {formatShortcutDisplay(
+                            DEFAULT_KEYBINDINGS.approve_plan_clear_context
+                          )}
+                        </Kbd>
+                      </Button>
+                    )}
                   </div>
                 )}
             </div>

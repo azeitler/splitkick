@@ -26,6 +26,7 @@ interface CanvasGridProps {
   onDeleteSession: (sessionId: string) => void
   onPlanApproval: (card: SessionCardData, updatedPlan?: string) => void
   onPlanApprovalYolo: (card: SessionCardData, updatedPlan?: string) => void
+  onClearContextApproval: (card: SessionCardData, updatedPlan?: string) => void
   onCloseWorktree: () => void
   searchInputRef?: React.RefObject<HTMLInputElement | null>
 }
@@ -46,6 +47,7 @@ export function CanvasGrid({
   onDeleteSession,
   onPlanApproval,
   onPlanApprovalYolo,
+  onClearContextApproval,
   onCloseWorktree,
   searchInputRef,
 }: CanvasGridProps) {
@@ -132,6 +134,7 @@ export function CanvasGrid({
     worktreePath,
     onPlanApproval,
     onPlanApprovalYolo,
+    onClearContextApproval,
   })
 
   // Keyboard navigation - disable when any modal/dialog is open
@@ -167,6 +170,15 @@ export function CanvasGrid({
       }
     },
     [planDialogCard, onPlanApprovalYolo]
+  )
+
+  const handleDialogClearContextApprove = useCallback(
+    (updatedPlan: string) => {
+      if (planDialogCard) {
+        onClearContextApproval(planDialogCard, updatedPlan)
+      }
+    },
+    [planDialogCard, onClearContextApproval]
   )
 
   // Listen for focus-canvas-search event
@@ -311,6 +323,7 @@ export function CanvasGrid({
                       onRecapView={() => handleRecapView(card)}
                       onApprove={() => onPlanApproval(card)}
                       onYolo={() => onPlanApprovalYolo(card)}
+                      onClearContextApprove={() => onClearContextApproval(card)}
                       onToggleLabel={() => handleOpenLabelModal(card)}
                       onToggleReview={() => {
                         const { reviewingSessions, setSessionReviewing } =
@@ -346,6 +359,7 @@ export function CanvasGrid({
           approvalContext={planApprovalContext ?? undefined}
           onApprove={handleDialogApprove}
           onApproveYolo={handleDialogApproveYolo}
+          onClearContextApprove={handleDialogClearContextApprove}
         />
       ) : planDialogContent ? (
         <PlanDialog
@@ -357,6 +371,7 @@ export function CanvasGrid({
           approvalContext={planApprovalContext ?? undefined}
           onApprove={handleDialogApprove}
           onApproveYolo={handleDialogApproveYolo}
+          onClearContextApprove={handleDialogClearContextApprove}
         />
       ) : null}
 

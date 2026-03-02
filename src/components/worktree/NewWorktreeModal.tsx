@@ -7,6 +7,7 @@ import {
   Shield,
   GitBranch,
 } from 'lucide-react'
+import { LinearIcon } from '@/components/icons/LinearIcon'
 import type { LucideIcon } from 'lucide-react'
 import { useGhLogin } from '@/hooks/useGhLogin'
 import {
@@ -25,9 +26,10 @@ import { GitHubIssuesTab } from './GitHubIssuesTab'
 import { GitHubPRsTab } from './GitHubPRsTab'
 import { SecurityAlertsTab } from './SecurityAlertsTab'
 import { BranchesTab } from './BranchesTab'
+import { LinearIssuesTab } from './LinearIssuesTab'
 import { IssuePreviewModal } from './IssuePreviewModal'
 
-export type TabId = 'quick' | 'issues' | 'prs' | 'security' | 'branches'
+export type TabId = 'quick' | 'issues' | 'prs' | 'security' | 'branches' | 'linear'
 
 export interface Tab {
   id: TabId
@@ -43,6 +45,7 @@ export const TABS: Tab[] = [
   { id: 'prs', label: 'PRs', key: '3', icon: GitPullRequest },
   { id: 'security', label: 'Security', key: '4', icon: Shield },
   { id: 'branches', label: 'Branches', key: '5', icon: GitBranch },
+  { id: 'linear', label: 'Linear', key: '6', icon: LinearIcon },
 ]
 
 export function NewWorktreeModal() {
@@ -115,6 +118,10 @@ export function NewWorktreeModal() {
       handlers.handleSelectAdvisoryAndInvestigate,
     handlePreviewAdvisory,
     handleSelectBranch: handlers.handleSelectBranch,
+    filteredLinearIssues: data.filteredLinearIssues,
+    handleSelectLinearIssue: handlers.handleSelectLinearIssue,
+    handleSelectLinearIssueAndInvestigate:
+      handlers.handleSelectLinearIssueAndInvestigate,
   })
 
   // Apply store-provided default tab when modal opens
@@ -136,7 +143,8 @@ export function NewWorktreeModal() {
       (activeTab === 'issues' ||
         activeTab === 'prs' ||
         activeTab === 'security' ||
-        activeTab === 'branches') &&
+        activeTab === 'branches' ||
+        activeTab === 'linear') &&
       newWorktreeModalOpen
     ) {
       const timer = setTimeout(() => {
@@ -273,6 +281,25 @@ export function NewWorktreeModal() {
               }
               onPreviewAdvisory={handlePreviewAdvisory}
               creatingFromGhsaId={handlers.creatingFromGhsaId}
+            />
+          )}
+
+          {activeTab === 'linear' && (
+            <LinearIssuesTab
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+              issues={data.filteredLinearIssues}
+              isLoading={data.isLoadingLinearIssues}
+              isRefetching={data.isRefetchingLinearIssues}
+              isSearching={data.isSearchingLinearIssues}
+              error={data.linearIssuesError}
+              onRefresh={() => data.refetchLinearIssues()}
+              selectedIndex={selectedItemIndex}
+              setSelectedIndex={setSelectedItemIndex}
+              onSelectIssue={handlers.handleSelectLinearIssue}
+              onInvestigateIssue={handlers.handleSelectLinearIssueAndInvestigate}
+              creatingFromId={handlers.creatingFromLinearId}
+              searchInputRef={searchInputRef}
             />
           )}
 

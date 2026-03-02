@@ -6,6 +6,7 @@ import {
   Wand2,
   Plug,
   Blocks,
+  Puzzle,
   FlaskConical,
   Globe,
 } from 'lucide-react'
@@ -48,6 +49,7 @@ import { KeybindingsPane } from './panes/KeybindingsPane'
 import { MagicPromptsPane } from './panes/MagicPromptsPane'
 import { McpServersPane } from './panes/McpServersPane'
 import { ProvidersPane } from './panes/ProvidersPane'
+import { IntegrationsPane } from './panes/IntegrationsPane'
 import { ExperimentalPane } from './panes/ExperimentalPane'
 import { WebAccessPane } from './panes/WebAccessPane'
 
@@ -84,6 +86,11 @@ const navigationItems = [
     icon: Plug,
   },
   {
+    id: 'integrations' as const,
+    name: 'Integrations',
+    icon: Puzzle,
+  },
+  {
     id: 'experimental' as const,
     name: 'Experimental',
     icon: FlaskConical,
@@ -110,6 +117,8 @@ const getPaneTitle = (pane: PreferencePane): string => {
       return 'MCP Servers'
     case 'providers':
       return 'Providers'
+    case 'integrations':
+      return 'Integrations'
     case 'experimental':
       return 'Experimental'
     case 'web-access':
@@ -236,6 +245,7 @@ export function PreferencesDialog() {
               {activePane === 'magic-prompts' && <MagicPromptsPane />}
               {activePane === 'mcp-servers' && <McpServersPane />}
               {activePane === 'providers' && <ProvidersPane />}
+              {activePane === 'integrations' && <IntegrationsPane />}
               {activePane === 'experimental' && <ExperimentalPane />}
               {activePane === 'web-access' && <WebAccessPane />}
             </div>

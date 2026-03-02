@@ -1,5 +1,6 @@
 import { useCallback, type RefObject } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { useChatStore } from '@/store/chat-store'
 import {
   chatQueryKeys,
@@ -22,6 +23,8 @@ interface UsePlanDialogApprovalParams {
   activeWorktreePath: string | null | undefined
   pendingPlanMessage: ChatMessage | null | undefined
   selectedModelRef: RefObject<string>
+  buildModelRef: RefObject<string | null>
+  yoloModelRef: RefObject<string | null>
   selectedProviderRef: RefObject<string | null>
   selectedThinkingLevelRef: RefObject<ThinkingLevel>
   selectedEffortLevelRef: RefObject<EffortLevel>
@@ -41,6 +44,8 @@ export function usePlanDialogApproval({
   activeWorktreePath,
   pendingPlanMessage,
   selectedModelRef,
+  buildModelRef,
+  yoloModelRef,
   selectedProviderRef,
   selectedThinkingLevelRef,
   selectedEffortLevelRef,
@@ -85,7 +90,10 @@ export function usePlanDialogApproval({
       }
 
       // Build approval message
-      const defaultText = mode === 'yolo' ? 'Approved - yolo' : 'Approved'
+      const defaultText =
+        mode === 'yolo'
+          ? 'Plan approved (yolo mode). Begin implementing all changes immediately without asking for confirmation. Do not re-explain the plan — start writing code.'
+          : 'Plan approved. Begin implementing the changes now. Do not re-explain the plan — start writing code.'
       const message = updatedPlan
         ? `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
         : defaultText
@@ -94,6 +102,12 @@ export function usePlanDialogApproval({
       const { enqueueMessage, setExecutionMode } = useChatStore.getState()
       setExecutionMode(activeSessionId, mode)
 
+      const modelOverride = mode === 'yolo' ? yoloModelRef.current : buildModelRef.current
+      const model = modelOverride ?? selectedModelRef.current
+      if (modelOverride && modelOverride !== selectedModelRef.current) {
+        toast.info(`Using ${modelOverride} model for ${mode}`)
+      }
+
       const queuedMessage: QueuedMessage = {
         id: generateId(),
         message,
@@ -101,7 +115,7 @@ export function usePlanDialogApproval({
         pendingFiles: [],
         pendingSkills: [],
         pendingTextFiles: [],
-        model: selectedModelRef.current,
+        model,
         provider: selectedProviderRef.current,
         executionMode: mode,
         thinkingLevel: selectedThinkingLevelRef.current,
@@ -125,6 +139,8 @@ export function usePlanDialogApproval({
       pendingPlanMessage,
       queryClient,
       selectedModelRef,
+      buildModelRef,
+      yoloModelRef,
       selectedProviderRef,
       selectedThinkingLevelRef,
       selectedEffortLevelRef,

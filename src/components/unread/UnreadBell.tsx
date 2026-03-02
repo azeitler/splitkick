@@ -20,6 +20,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useAllSessions } from '@/services/chat'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
+import { useUIStore } from '@/store/ui-store'
 import { useUnreadCount } from './useUnreadCount'
 import { formatShortcutDisplay } from '@/types/keybindings'
 import type { Session } from '@/types/chat'
@@ -222,30 +223,56 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
     const { selectedProjectId, selectProject, selectWorktree } =
       useProjectsStore.getState()
     const {
+      activeWorktreePath,
       setActiveWorktree,
       setActiveSession,
       setViewingCanvasTab,
       setLastOpenedForProject,
     } = useChatStore.getState()
 
-    if (selectedProjectId !== item.projectId) {
+    const crossProject = selectedProjectId !== item.projectId
+    if (crossProject) {
       selectProject(item.projectId)
     }
 
-    selectWorktree(item.worktreeId)
-    setActiveWorktree(item.worktreeId, item.worktreePath)
+    // If no active worktree, user is on ProjectCanvasView (or home screen).
+    // Stay there and open session modal overlay instead of navigating away.
+    const onProjectCanvas = !activeWorktreePath
+
+    if (!onProjectCanvas) {
+      selectWorktree(item.worktreeId)
+      setActiveWorktree(item.worktreeId, item.worktreePath)
+      setViewingCanvasTab(item.worktreeId, true)
+    }
+
     setActiveSession(item.worktreeId, item.session.id)
-    setViewingCanvasTab(item.worktreeId, true)
     setLastOpenedForProject(item.projectId, item.worktreeId, item.session.id)
     setOpen(false)
 
-    setTimeout(() => {
-      window.dispatchEvent(
-        new CustomEvent('open-session-modal', {
-          detail: { sessionId: item.session.id },
-        })
-      )
-    }, 50)
+    if (onProjectCanvas) {
+      if (crossProject) {
+        // Component remounts with new projectId key — use store-based auto-open
+        useUIStore
+          .getState()
+          .markWorktreeForAutoOpenSession(
+            item.worktreeId,
+            item.session.id
+          )
+      } else {
+        // Same project, component stays mounted — use event
+        setTimeout(() => {
+          window.dispatchEvent(
+            new CustomEvent('open-session-modal', {
+              detail: {
+                sessionId: item.session.id,
+                worktreeId: item.worktreeId,
+                worktreePath: item.worktreePath,
+              },
+            })
+          )
+        }, 50)
+      }
+    }
   }, [])
 
   const handleKeyDown = useCallback(

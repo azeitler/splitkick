@@ -16,6 +16,7 @@ export type KeybindingAction =
   | 'cycle_execution_mode'
   | 'approve_plan'
   | 'approve_plan_yolo'
+  | 'approve_plan_clear_context'
   | 'open_plan'
   | 'open_recap'
   | 'restore_last_archived'
@@ -64,6 +65,7 @@ export const DEFAULT_KEYBINDINGS: KeybindingsMap = {
   cycle_execution_mode: 'shift+tab',
   approve_plan: 'mod+enter',
   approve_plan_yolo: 'mod+y',
+  approve_plan_clear_context: 'mod+shift+y',
   open_plan: 'p',
   open_recap: 'r',
   restore_last_archived: 'mod+shift+t',
@@ -185,6 +187,13 @@ export const KEYBINDING_DEFINITIONS: KeybindingDefinition[] = [
     label: 'Approve plan (YOLO)',
     description: 'Approve the current plan with YOLO mode',
     default_shortcut: 'mod+y',
+    category: 'chat',
+  },
+  {
+    action: 'approve_plan_clear_context',
+    label: 'Clear context and yolo',
+    description: 'Approve plan, clear context, and start a new yolo session',
+    default_shortcut: 'mod+shift+y',
     category: 'chat',
   },
   {

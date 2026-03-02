@@ -318,7 +318,7 @@ export function useSession(
 
         return session
       } catch (error) {
-        logger.error('Failed to load session', { error, sessionId })
+        logger.warn('Failed to load session', { error, sessionId })
         return null
       }
     },

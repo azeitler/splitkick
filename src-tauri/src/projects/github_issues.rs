@@ -422,6 +422,8 @@ pub struct ContextReferences {
     pub security: std::collections::HashMap<String, ContextRef>,
     #[serde(default)]
     pub advisories: std::collections::HashMap<String, ContextRef>,
+    #[serde(default)]
+    pub linear: std::collections::HashMap<String, ContextRef>,
 }
 
 /// Get the directory for shared GitHub contexts

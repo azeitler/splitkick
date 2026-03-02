@@ -62,6 +62,8 @@ interface MessageItemProps {
   approveShortcut: string
   /** Keyboard shortcut to display on approve yolo button */
   approveShortcutYolo?: string
+  /** Keyboard shortcut to display on clear context button */
+  approveShortcutClearContext?: string
   /** Ref to attach to approve button for visibility tracking */
   approveButtonRef?: React.RefObject<HTMLButtonElement | null>
   /** Whether Claude is currently streaming (affects last message rendering) */
@@ -70,6 +72,8 @@ interface MessageItemProps {
   onPlanApproval: (messageId: string) => void
   /** Callback when user approves a plan with yolo mode */
   onPlanApprovalYolo?: (messageId: string) => void
+  /** Callback for clear context approval (new session with plan in yolo mode) */
+  onClearContextApproval?: (messageId: string) => void
   /** Callback when user answers a question */
   onQuestionAnswer: (
     toolCallId: string,
@@ -119,10 +123,12 @@ export const MessageItem = memo(function MessageItem({
   worktreePath,
   approveShortcut,
   approveShortcutYolo,
+  approveShortcutClearContext,
   approveButtonRef,
   isSending,
   onPlanApproval,
   onPlanApprovalYolo,
+  onClearContextApproval,
   onQuestionAnswer,
   onQuestionSkip,
   onFileClick,
@@ -171,6 +177,11 @@ export const MessageItem = memo(function MessageItem({
   const handlePlanApprovalYolo = useCallback(() => {
     onPlanApprovalYolo?.(message.id)
   }, [onPlanApprovalYolo, message.id])
+
+  // Stable callback for clear context approval
+  const handleClearContextApproval = useCallback(() => {
+    onClearContextApproval?.(message.id)
+  }, [onClearContextApproval, message.id])
 
   // Stable callback for checking if finding is fixed
   const handleIsFindingFixed = useCallback(
@@ -385,6 +396,14 @@ export const MessageItem = memo(function MessageItem({
                           />
                         )
                       }
+                      case 'enterPlanMode':
+                        return (
+                          <ToolCallInline
+                            toolCall={item.tool}
+                            onFileClick={onFileClick}
+                            isStreaming={false}
+                          />
+                        )
                       case 'exitPlanMode': {
                         const toolInput = item.tool.input as
                           | { plan?: string }
@@ -436,9 +455,11 @@ export const MessageItem = memo(function MessageItem({
             hasFollowUpMessage={hasFollowUpMessage}
             onPlanApproval={handlePlanApproval}
             onPlanApprovalYolo={handlePlanApprovalYolo}
+            onClearContextApproval={handleClearContextApproval}
             buttonRef={isLatestPlanRequest ? approveButtonRef : undefined}
             shortcut={approveShortcut}
             shortcutYolo={approveShortcutYolo}
+            shortcutClearContext={approveShortcutClearContext}
             hideApproveButtons={hideApproveButtons}
           />
         </>
@@ -498,6 +519,7 @@ export const MessageItem = memo(function MessageItem({
                 buttonRef={isLatestPlanRequest ? approveButtonRef : undefined}
                 shortcut={approveShortcut}
                 shortcutYolo={approveShortcutYolo}
+                shortcutClearContext={approveShortcutClearContext}
               />
             )}
         </>

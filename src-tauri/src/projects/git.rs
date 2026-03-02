@@ -344,6 +344,22 @@ pub fn get_github_remotes(repo_path: &str) -> Result<Vec<GitHubRemote>, String> 
     Ok(result)
 }
 
+/// Remove a git remote from a repository
+pub fn remove_git_remote(repo_path: &str, remote_name: &str) -> Result<(), String> {
+    let output = silent_command("git")
+        .args(["remote", "remove", remote_name])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to remove remote: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to remove remote: {stderr}"));
+    }
+
+    Ok(())
+}
+
 /// Get all git remotes for a repository (not filtered to GitHub)
 pub fn get_git_remotes(repo_path: &str) -> Result<Vec<GitRemote>, String> {
     let output = silent_command("git")

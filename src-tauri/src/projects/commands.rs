@@ -204,6 +204,8 @@ pub async fn add_project(
         default_provider: None,
         default_backend: None,
         worktrees_dir: None,
+        linear_api_key: None,
+        linear_team_id: None,
     };
 
     data.add_project(project.clone());
@@ -360,6 +362,8 @@ pub async fn init_project(
         default_provider: None,
         default_backend: None,
         worktrees_dir: None,
+        linear_api_key: None,
+        linear_team_id: None,
     };
 
     data.add_project(project.clone());
@@ -410,6 +414,8 @@ pub async fn clone_project(
         default_provider: None,
         default_backend: None,
         worktrees_dir: None,
+        linear_api_key: None,
+        linear_team_id: None,
     };
 
     data.add_project(project.clone());
@@ -3390,6 +3396,13 @@ pub async fn open_worktree_in_editor(
     Ok(())
 }
 
+/// Remove a git remote from a repository
+#[tauri::command]
+pub async fn remove_git_remote(repo_path: String, remote_name: String) -> Result<(), String> {
+    log::trace!("Removing git remote '{remote_name}' from: {repo_path}");
+    git::remove_git_remote(&repo_path, &remote_name)
+}
+
 /// Get all git remotes for a repository
 #[tauri::command]
 pub async fn get_git_remotes(repo_path: String) -> Result<Vec<git::GitRemote>, String> {
@@ -3814,6 +3827,8 @@ pub async fn update_project_settings(
     default_provider: Option<Option<String>>,
     default_backend: Option<Option<String>>,
     worktrees_dir: Option<String>,
+    linear_api_key: Option<String>,
+    linear_team_id: Option<String>,
 ) -> Result<Project, String> {
     log::trace!("Updating settings for project: {project_id}");
 
@@ -3866,6 +3881,18 @@ pub async fn update_project_settings(
         let dir = dir.trim().to_string();
         log::trace!("Updating worktrees dir: {dir:?}");
         project.worktrees_dir = if dir.is_empty() { None } else { Some(dir) };
+    }
+
+    if let Some(key) = linear_api_key {
+        let key = key.trim().to_string();
+        log::trace!("Updating Linear API key ({} chars)", key.len());
+        project.linear_api_key = if key.is_empty() { None } else { Some(key) };
+    }
+
+    if let Some(team_id) = linear_team_id {
+        let team_id = team_id.trim().to_string();
+        log::trace!("Updating Linear team ID: {team_id:?}");
+        project.linear_team_id = if team_id.is_empty() { None } else { Some(team_id) };
     }
 
     let updated_project = project.clone();
@@ -7280,6 +7307,8 @@ pub async fn create_folder(
         default_provider: None,
         default_backend: None,
         worktrees_dir: None,
+        linear_api_key: None,
+        linear_team_id: None,
     };
 
     data.add_project(folder.clone());

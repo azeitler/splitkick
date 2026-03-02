@@ -331,6 +331,16 @@ export async function getGitRemotes(repoPath: string): Promise<GitRemote[]> {
 }
 
 /**
+ * Remove a git remote from a repository.
+ */
+export async function removeGitRemote(
+  repoPath: string,
+  remoteName: string
+): Promise<void> {
+  await invoke('remove_git_remote', { repoPath, remoteName })
+}
+
+/**
  * Fetch git status for all worktrees in a project.
  *
  * This is used to populate status indicators in the sidebar without requiring

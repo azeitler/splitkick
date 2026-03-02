@@ -18,6 +18,11 @@ import {
   prependExactMatch,
   parseItemNumber,
 } from '@/services/github'
+import {
+  useLinearIssues,
+  useSearchLinearIssues,
+  filterLinearIssues,
+} from '@/services/linear'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import {
   useProjects,
@@ -178,6 +183,28 @@ export function useNewWorktreeData(
       )
   }, [advisories, searchQuery, includeClosed])
 
+  // Linear issues
+  const {
+    data: linearIssueResult,
+    isLoading: isLoadingLinearIssues,
+    isFetching: isRefetchingLinearIssues,
+    error: linearIssuesError,
+    refetch: refetchLinearIssues,
+  } = useLinearIssues(selectedProjectId)
+  const linearIssues = linearIssueResult?.issues
+
+  const { data: searchedLinearIssues, isFetching: isSearchingLinearIssues } =
+    useSearchLinearIssues(selectedProjectId, debouncedSearchQuery)
+
+  const filteredLinearIssues = useMemo(() => {
+    const local = filterLinearIssues(linearIssues ?? [], searchQuery)
+    if (!searchedLinearIssues?.length) return local
+    // Merge search results, dedup by id
+    const ids = new Set(local.map(i => i.id))
+    const extra = searchedLinearIssues.filter(i => !ids.has(i.id))
+    return [...local, ...extra]
+  }, [linearIssues, searchQuery, searchedLinearIssues])
+
   // Jean config
   const { data: jeanConfig } = useJeanConfig(selectedProject?.path ?? null)
 
@@ -229,6 +256,14 @@ export function useNewWorktreeData(
     isLoadingAdvisories,
     isRefetchingAdvisories,
     refetchAdvisories,
+
+    // Linear issues
+    filteredLinearIssues,
+    isLoadingLinearIssues,
+    isRefetchingLinearIssues,
+    isSearchingLinearIssues,
+    linearIssuesError,
+    refetchLinearIssues,
 
     // Mutations
     createWorktree,

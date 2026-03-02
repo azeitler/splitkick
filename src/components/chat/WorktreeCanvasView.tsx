@@ -32,6 +32,7 @@ import {
 } from './session-card-utils'
 import { useCanvasStoreState } from './hooks/useCanvasStoreState'
 import { usePlanApproval } from './hooks/usePlanApproval'
+import { useClearContextApproval } from './hooks/useClearContextApproval'
 import { useSessionArchive } from './hooks/useSessionArchive'
 import { CanvasGrid } from './CanvasGrid'
 import { CloseWorktreeDialog } from './CloseWorktreeDialog'
@@ -197,6 +198,10 @@ export function WorktreeCanvasView({
   // Use shared hooks
   const storeState = useCanvasStoreState()
   const { handlePlanApproval, handlePlanApprovalYolo } = usePlanApproval({
+    worktreeId,
+    worktreePath,
+  })
+  const { handleClearContextApproval } = useClearContextApproval({
     worktreeId,
     worktreePath,
   })
@@ -595,6 +600,7 @@ export function WorktreeCanvasView({
               onDeleteSession={handleDeleteSession}
               onPlanApproval={handlePlanApproval}
               onPlanApprovalYolo={handlePlanApprovalYolo}
+              onClearContextApproval={handleClearContextApproval}
               onCloseWorktree={handleCloseWorktreeOrConfirm}
               searchInputRef={searchInputRef}
             />
@@ -611,6 +617,7 @@ export function WorktreeCanvasView({
               onDeleteSession={handleDeleteSession}
               onPlanApproval={handlePlanApproval}
               onPlanApprovalYolo={handlePlanApprovalYolo}
+              onClearContextApproval={handleClearContextApproval}
               onCloseWorktree={handleCloseWorktreeOrConfirm}
               searchInputRef={searchInputRef}
             />

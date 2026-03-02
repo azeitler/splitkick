@@ -2293,6 +2293,8 @@ export function useUpdateProjectSettings() {
       defaultProvider,
       defaultBackend,
       worktreesDir,
+      linearApiKey,
+      linearTeamId,
     }: {
       projectId: string
       defaultBranch?: string
@@ -2302,6 +2304,8 @@ export function useUpdateProjectSettings() {
       defaultProvider?: string | null
       defaultBackend?: string | null
       worktreesDir?: string
+      linearApiKey?: string
+      linearTeamId?: string
     }): Promise<Project> => {
       if (!isTauri()) {
         throw new Error('Not in Tauri context')
@@ -2317,6 +2321,8 @@ export function useUpdateProjectSettings() {
         defaultProvider,
         defaultBackend,
         worktreesDir,
+        linearApiKey,
+        linearTeamId,
       })
       logger.info('Project settings updated', { project })
       return project

@@ -14,7 +14,7 @@ import {
   Wand2,
   Zap,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Input } from '@/components/ui/input'
 import { Kbd } from '@/components/ui/kbd'
 import {
@@ -184,6 +184,13 @@ export function DesktopToolbarControls({
   handleViewPR,
   handleViewSavedContext,
 }: DesktopToolbarControlsProps) {
+  // Prevent Radix from restoring focus to the trigger button;
+  // redirect focus to the chat input instead.
+  const focusChatInput = useCallback((e: Event) => {
+    e.preventDefault()
+    window.dispatchEvent(new CustomEvent('focus-chat-input'))
+  }, [])
+
   const loadedIssueCount = loadedIssueContexts.length
   const loadedPRCount = loadedPRContexts.length
   const loadedContextCount = attachedSavedContexts.length
@@ -536,7 +543,7 @@ export function DesktopToolbarControls({
               </TooltipTrigger>
               <TooltipContent>Switch backend (Tab)</TooltipContent>
             </Tooltip>
-            <DropdownMenuContent align="start" className="min-w-40">
+            <DropdownMenuContent align="start" className="min-w-40" onCloseAutoFocus={focusChatInput}>
               <DropdownMenuRadioGroup
                 value={selectedBackend}
                 onValueChange={v =>
@@ -594,7 +601,7 @@ export function DesktopToolbarControls({
                 </TooltipTrigger>
                 <TooltipContent>Provider (⌘⇧P)</TooltipContent>
               </Tooltip>
-              <DropdownMenuContent align="start" className="min-w-40" onEscapeKeyDown={e => e.stopPropagation()}>
+              <DropdownMenuContent align="start" className="min-w-40" onEscapeKeyDown={e => e.stopPropagation()} onCloseAutoFocus={focusChatInput}>
                 <DropdownMenuRadioGroup
                   value={selectedProvider ?? '__anthropic__'}
                   onValueChange={handleProviderChange}
@@ -661,6 +668,7 @@ export function DesktopToolbarControls({
           className="min-w-40"
           enableNumberSelection={false}
           onEscapeKeyDown={e => e.stopPropagation()}
+          onCloseAutoFocus={focusChatInput}
         >
           {providerLocked && customCliProfiles.length > 0 && (
             <>
@@ -675,7 +683,28 @@ export function DesktopToolbarControls({
               ref={modelSearchInputRef}
               value={modelSearchQuery}
               onChange={event => setModelSearchQuery(event.target.value)}
-              onKeyDown={event => event.stopPropagation()}
+              onKeyDown={event => {
+                const items = event.currentTarget
+                  .closest('[role="menu"]')
+                  ?.querySelectorAll<HTMLElement>('[role="menuitemradio"]')
+                if (event.key === 'ArrowDown' || event.key === 'Tab') {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  items?.[0]?.focus()
+                } else if (event.key === 'ArrowUp') {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  items?.[items.length - 1]?.focus()
+                } else if (event.key === 'Enter') {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  if (visibleModelOptions.length > 0) {
+                    handleModelChange(visibleModelOptions[0].value)
+                  }
+                } else {
+                  event.stopPropagation()
+                }
+              }}
               placeholder="Search models..."
               className="h-8 text-xs"
             />
@@ -732,7 +761,7 @@ export function DesktopToolbarControls({
               {`Effort: ${EFFORT_LEVEL_OPTIONS.find(o => o.value === selectedEffortLevel)?.label} (⌘⇧E)`}
             </TooltipContent>
           </Tooltip>
-          <DropdownMenuContent align="start" onEscapeKeyDown={e => e.stopPropagation()}>
+          <DropdownMenuContent align="start" onEscapeKeyDown={e => e.stopPropagation()} onCloseAutoFocus={focusChatInput}>
             <DropdownMenuRadioGroup
               value={selectedEffortLevel}
               onValueChange={handleEffortLevelChange}
@@ -785,7 +814,7 @@ export function DesktopToolbarControls({
               {`Thinking: ${THINKING_LEVEL_OPTIONS.find(o => o.value === selectedThinkingLevel)?.label} (⌘⇧E)`}
             </TooltipContent>
           </Tooltip>
-          <DropdownMenuContent align="start" onEscapeKeyDown={e => e.stopPropagation()}>
+          <DropdownMenuContent align="start" onEscapeKeyDown={e => e.stopPropagation()} onCloseAutoFocus={focusChatInput}>
             <DropdownMenuRadioGroup
               value={selectedThinkingLevel}
               onValueChange={handleThinkingLevelChange}
@@ -833,7 +862,7 @@ export function DesktopToolbarControls({
             {`${executionMode.charAt(0).toUpperCase() + executionMode.slice(1)} mode (Shift+Tab to cycle)`}
           </TooltipContent>
         </Tooltip>
-        <DropdownMenuContent align="start">
+        <DropdownMenuContent align="start" onCloseAutoFocus={focusChatInput}>
           <DropdownMenuRadioGroup
             value={executionMode}
             onValueChange={v => onSetExecutionMode(v as ExecutionMode)}

@@ -29,11 +29,12 @@ import type {
   GitHubPullRequest,
   AttachedSavedContext,
 } from '@/types/github'
+import type { LinearIssue, LoadedLinearIssueContext } from '@/types/linear'
 import type { MagicPromptProviders } from '@/types/preferences'
 import type { SessionWithContext } from '../LoadContextItems'
 
 export interface ViewingContext {
-  type: 'issue' | 'pr' | 'security' | 'advisory' | 'saved'
+  type: 'issue' | 'pr' | 'security' | 'advisory' | 'saved' | 'linear'
   number?: number
   ghsaId?: string
   slug?: string
@@ -44,11 +45,14 @@ export interface ViewingContext {
 interface UseLoadContextHandlersOptions {
   activeSessionId: string | null
   worktreePath: string | null
+  worktreeId: string | null
+  projectId: string | null
   refetchIssueContexts: () => void
   refetchPRContexts: () => void
   refetchSecurityContexts: () => void
   refetchAdvisoryContexts: () => void
   refetchAttachedContexts: () => void
+  refetchLinearContexts: () => void
   refetchContexts: () => void
   renameMutation: { mutate: (args: { filename: string; newName: string }) => void }
   preferences:
@@ -65,11 +69,14 @@ interface UseLoadContextHandlersOptions {
 export function useLoadContextHandlers({
   activeSessionId,
   worktreePath,
+  worktreeId,
+  projectId,
   refetchIssueContexts,
   refetchPRContexts,
   refetchSecurityContexts,
   refetchAdvisoryContexts,
   refetchAttachedContexts,
+  refetchLinearContexts,
   refetchContexts,
   renameMutation,
   preferences,
@@ -82,6 +89,8 @@ export function useLoadContextHandlers({
   const [removingSlugs, setRemovingSlugs] = useState<Set<string>>(new Set())
   const [loadingAdvisoryGhsaIds, setLoadingAdvisoryGhsaIds] = useState<Set<string>>(new Set())
   const [removingAdvisoryGhsaIds, setRemovingAdvisoryGhsaIds] = useState<Set<string>>(new Set())
+  const [loadingLinearIds, setLoadingLinearIds] = useState<Set<string>>(new Set())
+  const [removingLinearIds, setRemovingLinearIds] = useState<Set<string>>(new Set())
   const [generatingSessionId, setGeneratingSessionId] = useState<string | null>(null)
 
   // Inline edit state
@@ -98,6 +107,8 @@ export function useLoadContextHandlers({
     setRemovingNumbers(new Set())
     setLoadingAdvisoryGhsaIds(new Set())
     setRemovingAdvisoryGhsaIds(new Set())
+    setLoadingLinearIds(new Set())
+    setRemovingLinearIds(new Set())
     setLoadingSlugs(new Set())
     setRemovingSlugs(new Set())
     setGeneratingSessionId(null)
@@ -443,6 +454,92 @@ export function useLoadContextHandlers({
     })
   }, [])
 
+  // Linear issue handlers
+  const handleLoadLinearIssue = useCallback(
+    async (issueId: string, identifier: string, isRefresh = false) => {
+      if (!activeSessionId || !projectId) {
+        toast.error('No active session')
+        return
+      }
+
+      setLoadingLinearIds(prev => new Set(prev).add(identifier))
+      const toastId = toast.loading(
+        isRefresh
+          ? `Refreshing ${identifier}...`
+          : `Loading ${identifier}...`
+      )
+
+      try {
+        const result = await invoke<LoadedLinearIssueContext>(
+          'load_linear_issue_context',
+          { sessionId: activeSessionId, worktreeId, projectId, issueId }
+        )
+        await refetchLinearContexts()
+        toast.success(
+          `${result.identifier}: ${result.title}${result.commentCount > 0 ? ` (${result.commentCount} comments)` : ''}`,
+          { id: toastId }
+        )
+      } catch (error) {
+        toast.error(`${error}`, { id: toastId })
+      } finally {
+        setLoadingLinearIds(prev => {
+          const next = new Set(prev)
+          next.delete(identifier)
+          return next
+        })
+      }
+    },
+    [activeSessionId, worktreeId, projectId, refetchLinearContexts]
+  )
+
+  const handleRemoveLinearIssue = useCallback(
+    async (identifier: string) => {
+      if (!activeSessionId || !projectId) return
+
+      setRemovingLinearIds(prev => new Set(prev).add(identifier))
+      try {
+        await invoke('remove_linear_issue_context', {
+          sessionId: activeSessionId,
+          worktreeId,
+          projectId,
+          identifier,
+        })
+        await refetchLinearContexts()
+        toast.success(`Removed ${identifier} from context`)
+      } catch (error) {
+        toast.error(`Failed to remove Linear issue: ${error}`)
+      } finally {
+        setRemovingLinearIds(prev => {
+          const next = new Set(prev)
+          next.delete(identifier)
+          return next
+        })
+      }
+    },
+    [activeSessionId, worktreeId, projectId, refetchLinearContexts]
+  )
+
+  const handleViewLinearIssue = useCallback(
+    async (ctx: LoadedLinearIssueContext) => {
+      if (!activeSessionId || !projectId) return
+      // Show the identifier and title in a simple viewer
+      setViewingContext({
+        type: 'linear',
+        title: `${ctx.identifier}: ${ctx.title}`,
+        content: '',
+      })
+    },
+    [activeSessionId, projectId]
+  )
+
+  const handleSelectLinearIssue = useCallback(
+    (issue: LinearIssue) => {
+      handleLoadLinearIssue(issue.id, issue.identifier, false)
+      onClearSearch()
+    },
+    [handleLoadLinearIssue, onClearSearch]
+  )
+
   // Context handlers
   const handleDeleteContext = useCallback(
     async (e: React.MouseEvent, context: SavedContext) => {
@@ -652,6 +749,8 @@ export function useLoadContextHandlers({
     removingNumbers,
     loadingAdvisoryGhsaIds,
     removingAdvisoryGhsaIds,
+    loadingLinearIds,
+    removingLinearIds,
     loadingSlugs,
     removingSlugs,
     generatingSessionId,
@@ -696,6 +795,12 @@ export function useLoadContextHandlers({
     handleSelectAdvisory,
     handleViewAdvisory,
     handlePreviewAdvisory,
+
+    // Linear handlers
+    handleLoadLinearIssue,
+    handleRemoveLinearIssue,
+    handleViewLinearIssue,
+    handleSelectLinearIssue,
 
     // Context/session handlers
     handleDeleteContext,

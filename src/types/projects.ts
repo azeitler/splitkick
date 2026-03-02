@@ -51,6 +51,10 @@ export interface Project {
   default_backend?: string | null
   /** Custom base directory for worktrees (undefined = use default ~/jean) */
   worktrees_dir?: string | null
+  /** Linear personal API key for fetching issues (per-project) */
+  linear_api_key?: string | null
+  /** Linear team ID to filter issues (undefined/null = show all teams) */
+  linear_team_id?: string | null
 }
 
 /**

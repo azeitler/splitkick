@@ -486,7 +486,8 @@ pub async fn update_session_state(
             }
             Ok(())
         } else {
-            Err(format!("Session not found: {session_id}"))
+            log::trace!("Session already removed, skipping update: {session_id}");
+            Ok(())
         }
     })
 }
@@ -2457,13 +2458,8 @@ pub async fn set_session_model(
 
     with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
         if let Some(session) = sessions.find_session_mut(&session_id) {
-            // Clear CLI session ID so next message starts a fresh CLI session.
-            // Claude CLI's --resume ignores --model, so we must not resume
-            // when the model changes.
-            if session.selected_model.as_deref() != Some(&model) {
-                session.claude_session_id = None;
-                log::trace!("Model changed — cleared claude_session_id for fresh CLI session");
-            }
+            // Keep claude_session_id intact — CLI's --resume respects --model,
+            // so switching models mid-session preserves conversation context.
             session.selected_model = Some(model);
             log::trace!("Model selection saved");
             Ok(())

@@ -138,6 +138,10 @@ describe('preferences service', () => {
         codex_multi_agent_enabled: false,
         codex_max_agent_threads: 3,
         restore_last_session: false,
+        close_original_on_clear_context: false,
+        build_model: null,
+        yolo_model: null,
+        linear_api_key: null,
       }
       vi.mocked(invoke).mockResolvedValueOnce(mockPreferences)
 
@@ -243,6 +247,10 @@ describe('preferences service', () => {
         codex_multi_agent_enabled: false,
         codex_max_agent_threads: 3,
         restore_last_session: false,
+        close_original_on_clear_context: false,
+        build_model: null,
+        yolo_model: null,
+        linear_api_key: null,
       }
       vi.mocked(invoke).mockResolvedValueOnce(prefsWithOldBinding)
 
@@ -324,6 +332,10 @@ describe('preferences service', () => {
         codex_multi_agent_enabled: false,
         codex_max_agent_threads: 3,
         restore_last_session: false,
+        close_original_on_clear_context: false,
+        build_model: null,
+        yolo_model: null,
+        linear_api_key: null,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -404,6 +416,10 @@ describe('preferences service', () => {
         codex_multi_agent_enabled: false,
         codex_max_agent_threads: 3,
         restore_last_session: false,
+        close_original_on_clear_context: false,
+        build_model: null,
+        yolo_model: null,
+        linear_api_key: null,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -484,6 +500,10 @@ describe('preferences service', () => {
         codex_multi_agent_enabled: false,
         codex_max_agent_threads: 3,
         restore_last_session: false,
+        close_original_on_clear_context: false,
+        build_model: null,
+        yolo_model: null,
+        linear_api_key: null,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -562,6 +582,10 @@ describe('preferences service', () => {
         codex_multi_agent_enabled: false,
         codex_max_agent_threads: 3,
         restore_last_session: false,
+        close_original_on_clear_context: false,
+        build_model: null,
+        yolo_model: null,
+        linear_api_key: null,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {

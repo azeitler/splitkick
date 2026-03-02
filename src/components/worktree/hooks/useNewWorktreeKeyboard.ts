@@ -6,6 +6,7 @@ import type {
   DependabotAlert,
   RepositoryAdvisory,
 } from '@/types/github'
+import type { LinearIssue } from '@/types/linear'
 
 interface Params {
   activeTab: TabId
@@ -51,6 +52,12 @@ interface Params {
   ) => void
   handlePreviewAdvisory: (advisory: RepositoryAdvisory) => void
   handleSelectBranch: (branchName: string, background?: boolean) => void
+  filteredLinearIssues: LinearIssue[]
+  handleSelectLinearIssue: (issue: LinearIssue, background?: boolean) => void
+  handleSelectLinearIssueAndInvestigate: (
+    issue: LinearIssue,
+    background?: boolean
+  ) => void
 }
 
 export function useNewWorktreeKeyboard({
@@ -79,6 +86,9 @@ export function useNewWorktreeKeyboard({
   handleSelectAdvisoryAndInvestigate,
   handlePreviewAdvisory,
   handleSelectBranch,
+  filteredLinearIssues,
+  handleSelectLinearIssue,
+  handleSelectLinearIssueAndInvestigate,
 }: Params) {
   // Scroll selected item into view
   useEffect(() => {
@@ -117,6 +127,11 @@ export function useNewWorktreeKeyboard({
         if (key === '5') {
           e.preventDefault()
           setActiveTab('branches')
+          return
+        }
+        if (key === '6') {
+          e.preventDefault()
+          setActiveTab('linear')
           return
         }
       }
@@ -304,6 +319,43 @@ export function useNewWorktreeKeyboard({
         }
       }
 
+      // Linear tab navigation
+      if (activeTab === 'linear' && filteredLinearIssues.length > 0) {
+        if (key === 'arrowdown') {
+          e.preventDefault()
+          setSelectedItemIndex((prev: number) =>
+            Math.min(prev + 1, filteredLinearIssues.length - 1)
+          )
+          return
+        }
+        if (key === 'arrowup') {
+          e.preventDefault()
+          setSelectedItemIndex((prev: number) => Math.max(prev - 1, 0))
+          return
+        }
+        if (key === 'enter' && filteredLinearIssues[selectedItemIndex]) {
+          e.preventDefault()
+          handleSelectLinearIssue(
+            filteredLinearIssues[selectedItemIndex],
+            e.metaKey
+          )
+          return
+        }
+        if (
+          key === 'm' &&
+          (e.metaKey || e.ctrlKey) &&
+          filteredLinearIssues[selectedItemIndex]
+        ) {
+          e.preventDefault()
+          e.nativeEvent.stopImmediatePropagation()
+          handleSelectLinearIssueAndInvestigate(
+            filteredLinearIssues[selectedItemIndex],
+            e.metaKey || e.ctrlKey
+          )
+          return
+        }
+      }
+
       // Branches tab navigation
       if (activeTab === 'branches' && filteredBranches.length > 0) {
         if (key === 'arrowdown') {
@@ -348,6 +400,9 @@ export function useNewWorktreeKeyboard({
       handleSelectAdvisoryAndInvestigate,
       handlePreviewAdvisory,
       handleSelectBranch,
+      filteredLinearIssues,
+      handleSelectLinearIssue,
+      handleSelectLinearIssueAndInvestigate,
       creatingFromNumber,
       setActiveTab,
       setSelectedItemIndex,

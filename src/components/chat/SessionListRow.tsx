@@ -43,6 +43,7 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
       onRecapView,
       onApprove,
       onYolo,
+      onClearContextApprove,
       onToggleLabel,
       onToggleReview,
       isRenaming,
@@ -215,6 +216,24 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
                       )}
                     </Kbd>
                   </Button>
+                  {onClearContextApprove && (
+                    <Button
+                      variant="destructive"
+                      className="h-5 px-1.5 text-[10px] rounded"
+                      disabled={card.isSending}
+                      onClick={e => {
+                        e.stopPropagation()
+                        onClearContextApprove()
+                      }}
+                    >
+                      Clear Context and yolo
+                      <Kbd className="ml-1 h-3.5 text-[9px] bg-destructive-foreground/20 text-destructive-foreground">
+                        {formatShortcutDisplay(
+                          DEFAULT_KEYBINDINGS.approve_plan_clear_context
+                        )}
+                      </Kbd>
+                    </Button>
+                  )}
                 </div>
               )}
           </div>

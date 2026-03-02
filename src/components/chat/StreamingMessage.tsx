@@ -37,6 +37,8 @@ interface StreamingMessageProps {
   approveShortcut: string
   /** Keyboard shortcut for approve yolo button */
   approveShortcutYolo?: string
+  /** Keyboard shortcut for clear context button */
+  approveShortcutClearContext?: string
   /** Callback when user answers a question */
   onQuestionAnswer: (
     toolCallId: string,
@@ -64,6 +66,8 @@ interface StreamingMessageProps {
   onStreamingPlanApproval: () => void
   /** Callback when user approves streaming plan with yolo mode */
   onStreamingPlanApprovalYolo?: () => void
+  /** Callback for clear context approval during streaming */
+  onStreamingClearContextApproval?: () => void
   /** Hide approve buttons (e.g. for Codex which has no native approval flow) */
   hideApproveButtons?: boolean
 }
@@ -80,6 +84,7 @@ export const StreamingMessage = memo(function StreamingMessage({
   streamingExecutionMode,
   approveShortcut,
   approveShortcutYolo,
+  approveShortcutClearContext,
   onQuestionAnswer,
   onQuestionSkip,
   onFileClick,
@@ -90,6 +95,7 @@ export const StreamingMessage = memo(function StreamingMessage({
   isStreamingPlanApproved,
   onStreamingPlanApproval,
   onStreamingPlanApprovalYolo,
+  onStreamingClearContextApproval,
   hideApproveButtons,
 }: StreamingMessageProps) {
   return (
@@ -211,6 +217,15 @@ export const StreamingMessage = memo(function StreamingMessage({
                               />
                             )
                           }
+                          case 'enterPlanMode':
+                            return (
+                              <ToolCallInline
+                                toolCall={item.tool}
+                                onFileClick={onFileClick}
+                                isStreaming={true}
+                                isIncomplete={false}
+                              />
+                            )
                           case 'exitPlanMode': {
                             const toolInput = item.tool.input as
                               | { plan?: string }
@@ -242,8 +257,12 @@ export const StreamingMessage = memo(function StreamingMessage({
                                   onPlanApprovalYolo={
                                     onStreamingPlanApprovalYolo
                                   }
+                                  onClearContextApproval={
+                                    onStreamingClearContextApproval
+                                  }
                                   shortcut={approveShortcut}
                                   shortcutYolo={approveShortcutYolo}
+                                  shortcutClearContext={approveShortcutClearContext}
                                   hideApproveButtons={hideApproveButtons}
                                 />
                               </div>
