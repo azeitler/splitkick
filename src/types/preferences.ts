@@ -666,6 +666,30 @@ export const DEFAULT_MAGIC_PROMPT_BACKENDS: MagicPromptBackends = {
   investigate_advisory_backend: null,
 }
 
+function makeBackendsPreset(backend: string): MagicPromptBackends {
+  return {
+    investigate_issue_backend: backend,
+    investigate_pr_backend: backend,
+    investigate_workflow_run_backend: backend,
+    pr_content_backend: backend,
+    commit_message_backend: backend,
+    code_review_backend: backend,
+    context_summary_backend: backend,
+    resolve_conflicts_backend: backend,
+    release_notes_backend: backend,
+    session_naming_backend: backend,
+    session_recap_backend: backend,
+    investigate_security_alert_backend: backend,
+    investigate_advisory_backend: backend,
+  }
+}
+
+export const CLAUDE_DEFAULT_MAGIC_PROMPT_BACKENDS =
+  makeBackendsPreset('claude')
+export const CODEX_DEFAULT_MAGIC_PROMPT_BACKENDS = makeBackendsPreset('codex')
+export const OPENCODE_DEFAULT_MAGIC_PROMPT_BACKENDS =
+  makeBackendsPreset('opencode')
+
 /**
  * Resolve a magic prompt provider for a given key.
  * The settings UI stores null = "Anthropic" (explicit choice).

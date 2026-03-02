@@ -23,6 +23,7 @@ import {
   CommandList,
 } from '@/components/ui/command'
 import { usePreferences, useSavePreferences } from '@/services/preferences'
+import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { useAvailableOpencodeModels } from '@/services/opencode-cli'
 import { formatOpencodeModelLabel } from '@/components/chat/toolbar/toolbar-utils'
 import { OPENCODE_MODEL_OPTIONS as OPENCODE_FALLBACK_OPTIONS } from '@/components/chat/toolbar/toolbar-options'
@@ -46,6 +47,9 @@ import {
   DEFAULT_MAGIC_PROMPT_MODELS,
   DEFAULT_MAGIC_PROMPT_PROVIDERS,
   DEFAULT_MAGIC_PROMPT_BACKENDS,
+  CLAUDE_DEFAULT_MAGIC_PROMPT_BACKENDS,
+  CODEX_DEFAULT_MAGIC_PROMPT_BACKENDS,
+  OPENCODE_DEFAULT_MAGIC_PROMPT_BACKENDS,
   CODEX_DEFAULT_MAGIC_PROMPT_MODELS,
   OPENCODE_DEFAULT_MAGIC_PROMPT_MODELS,
   codexModelOptions,
@@ -417,6 +421,7 @@ export const MagicPromptsPane: React.FC = () => {
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const { data: availableOpencodeModels } = useAvailableOpencodeModels()
+  const { installedBackends } = useInstalledBackends()
 
   const formatOpenCodeLabel = (value: string) => {
     const formatted = formatOpencodeModelLabel(value)
@@ -459,6 +464,9 @@ export const MagicPromptsPane: React.FC = () => {
   const currentBackend = selectedConfig.backendKey
     ? (currentBackends[selectedConfig.backendKey] ?? null)
     : undefined
+  // Resolve effective backend for model filtering: per-operation override > global default_backend
+  const effectiveBackend =
+    currentBackend ?? preferences?.default_backend ?? 'claude'
   const currentModelIsCodex = currentModel ? isCodexModel(currentModel) : false
   const currentModelIsOpenCode = currentModel
     ? currentModel.startsWith('opencode/')
@@ -612,16 +620,43 @@ export const MagicPromptsPane: React.FC = () => {
   const handleBackendChange = useCallback(
     (backend: string) => {
       if (!preferences || !selectedConfig.backendKey) return
+      // Pick a sensible default model for the new backend
+      let defaultModel: MagicPromptModel | undefined
+      if (selectedConfig.modelKey) {
+        if (backend === 'claude') {
+          defaultModel = selectedConfig.defaultModel ?? 'haiku'
+        } else if (backend === 'codex') {
+          defaultModel = CODEX_MODEL_OPTIONS[0]?.value
+        } else if (backend === 'opencode') {
+          defaultModel = opencodeModelOptions[0]?.value
+        }
+      }
       savePreferences.mutate({
         ...preferences,
         magic_prompt_backends: {
           ...currentBackends,
-          [selectedConfig.backendKey]:
-            backend === 'default' ? null : backend,
+          [selectedConfig.backendKey]: backend,
         },
+        ...(defaultModel && selectedConfig.modelKey
+          ? {
+              magic_prompt_models: {
+                ...currentModels,
+                [selectedConfig.modelKey]: defaultModel,
+              },
+            }
+          : {}),
       })
     },
-    [preferences, savePreferences, currentBackends, selectedConfig.backendKey]
+    [
+      preferences,
+      savePreferences,
+      currentBackends,
+      currentModels,
+      selectedConfig.backendKey,
+      selectedConfig.modelKey,
+      selectedConfig.defaultModel,
+      opencodeModelOptions,
+    ]
   )
 
   const handleApplyClaudeDefaults = useCallback(() => {
@@ -630,7 +665,7 @@ export const MagicPromptsPane: React.FC = () => {
       ...preferences,
       magic_prompt_models: DEFAULT_MAGIC_PROMPT_MODELS,
       magic_prompt_providers: DEFAULT_MAGIC_PROMPT_PROVIDERS,
-      magic_prompt_backends: DEFAULT_MAGIC_PROMPT_BACKENDS,
+      magic_prompt_backends: CLAUDE_DEFAULT_MAGIC_PROMPT_BACKENDS,
     })
   }, [preferences, savePreferences])
 
@@ -639,7 +674,7 @@ export const MagicPromptsPane: React.FC = () => {
     savePreferences.mutate({
       ...preferences,
       magic_prompt_models: CODEX_DEFAULT_MAGIC_PROMPT_MODELS,
-      magic_prompt_backends: DEFAULT_MAGIC_PROMPT_BACKENDS,
+      magic_prompt_backends: CODEX_DEFAULT_MAGIC_PROMPT_BACKENDS,
     })
   }, [preferences, savePreferences])
 
@@ -648,7 +683,7 @@ export const MagicPromptsPane: React.FC = () => {
     savePreferences.mutate({
       ...preferences,
       magic_prompt_models: OPENCODE_DEFAULT_MAGIC_PROMPT_MODELS,
-      magic_prompt_backends: DEFAULT_MAGIC_PROMPT_BACKENDS,
+      magic_prompt_backends: OPENCODE_DEFAULT_MAGIC_PROMPT_BACKENDS,
     })
   }, [preferences, savePreferences])
 
@@ -761,17 +796,22 @@ export const MagicPromptsPane: React.FC = () => {
               <>
                 <span className="text-xs text-muted-foreground">Backend</span>
                 <Select
-                  value={currentBackend ?? 'default'}
+                  value={effectiveBackend}
                   onValueChange={handleBackendChange}
                 >
-                  <SelectTrigger className="w-[120px] h-7 text-xs">
+                  <SelectTrigger size="sm" className="w-[120px] text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="default">Default</SelectItem>
-                    <SelectItem value="claude">Claude</SelectItem>
-                    <SelectItem value="opencode">OpenCode</SelectItem>
-                    <SelectItem value="codex">Codex</SelectItem>
+                    {installedBackends.includes('claude') && (
+                      <SelectItem value="claude">Claude</SelectItem>
+                    )}
+                    {installedBackends.includes('opencode') && (
+                      <SelectItem value="opencode">OpenCode</SelectItem>
+                    )}
+                    {installedBackends.includes('codex') && (
+                      <SelectItem value="codex">Codex</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </>
@@ -779,7 +819,9 @@ export const MagicPromptsPane: React.FC = () => {
             {currentProvider !== undefined &&
               profiles.length > 0 &&
               !currentModelIsCodex &&
-              !currentModelIsOpenCode && (
+              !currentModelIsOpenCode &&
+              effectiveBackend !== 'opencode' &&
+              effectiveBackend !== 'codex' && (
                 <>
                   <span className="text-xs text-muted-foreground">
                     Provider
@@ -788,7 +830,7 @@ export const MagicPromptsPane: React.FC = () => {
                     value={currentProvider ?? 'anthropic'}
                     onValueChange={handleProviderChange}
                   >
-                    <SelectTrigger className="w-[130px] h-7 text-xs">
+                    <SelectTrigger size="sm" className="w-[130px] text-xs">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -814,7 +856,7 @@ export const MagicPromptsPane: React.FC = () => {
                       variant="outline"
                       role="combobox"
                       aria-expanded={modelPopoverOpen}
-                      className="w-[200px] h-7 text-xs justify-between font-normal"
+                      className="w-[160px] h-8 text-xs justify-between font-normal"
                     >
                       <span className="truncate">
                         {(() => {
@@ -846,72 +888,78 @@ export const MagicPromptsPane: React.FC = () => {
                       />
                       <CommandList>
                         <CommandEmpty>No models found.</CommandEmpty>
-                        <CommandGroup heading="Claude">
-                          {filteredClaudeOptions.map(opt => (
-                            <CommandItem
-                              key={opt.value}
-                              value={`${opt.label} ${opt.value}`}
-                              onSelect={() => {
-                                handleModelChange(opt.value)
-                                setModelPopoverOpen(false)
-                              }}
-                            >
-                              <span className="text-xs">{opt.label}</span>
-                              <Check
-                                className={cn(
-                                  'ml-auto h-3 w-3',
-                                  currentModel === opt.value
-                                    ? 'opacity-100'
-                                    : 'opacity-0'
-                                )}
-                              />
-                            </CommandItem>
-                          ))}
-                        </CommandGroup>
-                        <CommandGroup heading="Codex">
-                          {CODEX_MODEL_OPTIONS.map(opt => (
-                            <CommandItem
-                              key={opt.value}
-                              value={`${opt.label} ${opt.value}`}
-                              onSelect={() => {
-                                handleModelChange(opt.value)
-                                setModelPopoverOpen(false)
-                              }}
-                            >
-                              <span className="text-xs">{opt.label}</span>
-                              <Check
-                                className={cn(
-                                  'ml-auto h-3 w-3',
-                                  currentModel === opt.value
-                                    ? 'opacity-100'
-                                    : 'opacity-0'
-                                )}
-                              />
-                            </CommandItem>
-                          ))}
-                        </CommandGroup>
-                        <CommandGroup heading="OpenCode">
-                          {opencodeModelOptions.map(opt => (
-                            <CommandItem
-                              key={opt.value}
-                              value={`${opt.label} ${opt.value}`}
-                              onSelect={() => {
-                                handleModelChange(opt.value)
-                                setModelPopoverOpen(false)
-                              }}
-                            >
-                              <span className="text-xs">{opt.label}</span>
-                              <Check
-                                className={cn(
-                                  'ml-auto h-3 w-3',
-                                  currentModel === opt.value
-                                    ? 'opacity-100'
-                                    : 'opacity-0'
-                                )}
-                              />
-                            </CommandItem>
-                          ))}
-                        </CommandGroup>
+                        {effectiveBackend === 'claude' && (
+                          <CommandGroup heading="Claude">
+                            {filteredClaudeOptions.map(opt => (
+                              <CommandItem
+                                key={opt.value}
+                                value={`${opt.label} ${opt.value}`}
+                                onSelect={() => {
+                                  handleModelChange(opt.value)
+                                  setModelPopoverOpen(false)
+                                }}
+                              >
+                                <span className="text-xs">{opt.label}</span>
+                                <Check
+                                  className={cn(
+                                    'ml-auto h-3 w-3',
+                                    currentModel === opt.value
+                                      ? 'opacity-100'
+                                      : 'opacity-0'
+                                  )}
+                                />
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        )}
+                        {effectiveBackend === 'codex' && (
+                          <CommandGroup heading="Codex">
+                            {CODEX_MODEL_OPTIONS.map(opt => (
+                              <CommandItem
+                                key={opt.value}
+                                value={`${opt.label} ${opt.value}`}
+                                onSelect={() => {
+                                  handleModelChange(opt.value)
+                                  setModelPopoverOpen(false)
+                                }}
+                              >
+                                <span className="text-xs">{opt.label}</span>
+                                <Check
+                                  className={cn(
+                                    'ml-auto h-3 w-3',
+                                    currentModel === opt.value
+                                      ? 'opacity-100'
+                                      : 'opacity-0'
+                                  )}
+                                />
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        )}
+                        {effectiveBackend === 'opencode' && (
+                          <CommandGroup heading="OpenCode">
+                            {opencodeModelOptions.map(opt => (
+                              <CommandItem
+                                key={opt.value}
+                                value={`${opt.label} ${opt.value}`}
+                                onSelect={() => {
+                                  handleModelChange(opt.value)
+                                  setModelPopoverOpen(false)
+                                }}
+                              >
+                                <span className="text-xs">{opt.label}</span>
+                                <Check
+                                  className={cn(
+                                    'ml-auto h-3 w-3',
+                                    currentModel === opt.value
+                                      ? 'opacity-100'
+                                      : 'opacity-0'
+                                  )}
+                                />
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        )}
                       </CommandList>
                     </Command>
                   </PopoverContent>
