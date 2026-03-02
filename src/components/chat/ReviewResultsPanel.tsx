@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils'
 
 interface ReviewResultsPanelProps {
   sessionId: string
+  onSendFix?: (message: string, executionMode: 'plan' | 'yolo') => void
 }
 
 /** Generate a unique key for a review finding */
@@ -307,7 +308,7 @@ function EmptyState() {
   )
 }
 
-export function ReviewResultsPanel({ sessionId }: ReviewResultsPanelProps) {
+export function ReviewResultsPanel({ sessionId, onSendFix }: ReviewResultsPanelProps) {
   const [fixingIndices, setFixingIndices] = useState<Set<number>>(new Set())
   const [isFixingAll, setIsFixingAll] = useState(false)
 
@@ -327,17 +328,15 @@ export function ReviewResultsPanel({ sessionId }: ReviewResultsPanelProps) {
     [fixedReviewFindings]
   )
 
-  // Handle fixing a single finding - auto-sends fix message in same session
+  // Handle fixing a single finding - sends fix message via callback
   const handleFixFinding = useCallback(
-    async (
+    (
       finding: ReviewFinding,
       index: number,
       customSuggestion?: string,
       executionMode?: 'plan' | 'yolo'
     ) => {
-      const { activeWorktreeId, activeWorktreePath, markReviewFindingFixed } =
-        useChatStore.getState()
-      if (!activeWorktreePath || !activeWorktreeId) return
+      if (!onSendFix) return
 
       setFixingIndices(prev => new Set(prev).add(index))
 
@@ -359,20 +358,9 @@ Please apply this fix to the file.`
 
         // Mark as fixed
         const findingKey = getReviewFindingKey(finding, index)
-        markReviewFindingFixed(sessionId, findingKey)
+        useChatStore.getState().markReviewFindingFixed(sessionId, findingKey)
 
-        // Dispatch event to send fix message in same session
-        window.dispatchEvent(
-          new CustomEvent('review-fix-message', {
-            detail: {
-              sessionId,
-              worktreeId: activeWorktreeId,
-              worktreePath: activeWorktreePath,
-              message,
-              executionMode: executionMode ?? 'plan',
-            },
-          })
-        )
+        onSendFix(message, executionMode ?? 'plan')
       } finally {
         setFixingIndices(prev => {
           const next = new Set(prev)
@@ -381,14 +369,13 @@ Please apply this fix to the file.`
         })
       }
     },
-    [sessionId]
+    [sessionId, onSendFix]
   )
 
   // Handle fixing all unfixed findings - auto-sends fix message in same session
   const handleFixAll = useCallback(
-    async (executionMode: 'plan' | 'yolo') => {
-      const { activeWorktreeId, activeWorktreePath } = useChatStore.getState()
-      if (!reviewResults || !activeWorktreePath || !activeWorktreeId) return
+    (executionMode: 'plan' | 'yolo') => {
+      if (!reviewResults || !onSendFix) return
 
       setIsFixingAll(true)
 
@@ -430,23 +417,12 @@ Please apply all these fixes to the codebase.`
           markReviewFindingFixed(sessionId, findingKey)
         }
 
-        // Dispatch event to send fix message in same session
-        window.dispatchEvent(
-          new CustomEvent('review-fix-message', {
-            detail: {
-              sessionId,
-              worktreeId: activeWorktreeId,
-              worktreePath: activeWorktreePath,
-              message,
-              executionMode,
-            },
-          })
-        )
+        onSendFix(message, executionMode)
       } finally {
         setIsFixingAll(false)
       }
     },
-    [reviewResults, sessionId, isFindingFixed]
+    [reviewResults, sessionId, isFindingFixed, onSendFix]
   )
 
   if (!reviewResults) {

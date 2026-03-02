@@ -6,36 +6,41 @@ import {
   getNewServersToAutoEnable,
 } from '@/services/mcp'
 import type { Project } from '@/types/projects'
-import type { AppPreferences } from '@/types/preferences'
+import type { AppPreferences, CliBackend } from '@/types/preferences'
 
 interface UseMcpServerResolutionParams {
   activeWorktreePath: string | null | undefined
   deferredSessionId: string | undefined
   project: Project | undefined | null
   preferences: AppPreferences | undefined
+  selectedBackend: CliBackend
 }
 
 /**
  * Resolves the enabled MCP servers for a session by cascading:
  * session override → project setting → global default, then auto-enabling
  * any newly discovered servers.
+ *
+ * Uses the selected backend for MCP server discovery so the server list
+ * updates when switching backends in the toolbar.
  */
 export function useMcpServerResolution({
   activeWorktreePath,
   deferredSessionId,
   project,
   preferences,
+  selectedBackend,
 }: UseMcpServerResolutionParams) {
-  const { data: mcpServersData } = useMcpServers(activeWorktreePath)
+  const { data: mcpServersData } = useMcpServers(activeWorktreePath, selectedBackend)
   const availableMcpServers = useMemo(
     () => mcpServersData ?? [],
     [mcpServersData]
   )
 
-  // Re-read MCP config when switching worktrees
+  // Re-read MCP config when switching worktrees or backends
   useEffect(() => {
-    if (activeWorktreePath) invalidateMcpServers(activeWorktreePath)
-  }, [activeWorktreePath])
+    if (activeWorktreePath) invalidateMcpServers(activeWorktreePath, selectedBackend)
+  }, [activeWorktreePath, selectedBackend])
 
   const sessionEnabledMcpServers = useChatStore(state =>
     deferredSessionId ? state.enabledMcpServers[deferredSessionId] : undefined

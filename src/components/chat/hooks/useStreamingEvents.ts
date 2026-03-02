@@ -366,7 +366,7 @@ export default function useStreamingEvents({
           )
 
         // Add optimistic assistant message BEFORE clearing streaming state.
-        // This ensures the plan/question is visible in VirtualizedMessageList
+        // This ensures the plan/question is visible in MessageList
         // before StreamingMessage unmounts (isSending becomes false).
         if (content || (effectiveToolCalls && effectiveToolCalls.length > 0)) {
           const pendingIdKey = `__pendingMessageId_${sessionId}`
@@ -607,7 +607,7 @@ export default function useStreamingEvents({
         // No blocking tools — add optimistic message FIRST, then batch-clear state.
         // This eliminates the flicker gap where neither streaming nor persisted content is visible.
         // The optimistic message lands in TanStack Query cache BEFORE isSending flips to false,
-        // so VirtualizedMessageList already has the message when StreamingMessage unmounts.
+        // so MessageList already has the message when StreamingMessage unmounts.
 
         // 1. Add optimistic assistant message to cache
         if (content || (effectiveToolCalls && effectiveToolCalls.length > 0)) {

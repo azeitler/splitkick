@@ -631,13 +631,15 @@ function getToolDisplay(toolCall: ToolCall): ToolDisplay {
       }
     }
 
+    case 'Agent':
     case 'Task': {
       const subagentType = input.subagent_type as string | undefined
       const description = input.description as string | undefined
       const prompt = input.prompt as string | undefined
+      const toolLabel = toolCall.name === 'Agent' ? 'Agent' : 'Task'
       return {
         icon: <Bot className="h-4 w-4 shrink-0" />,
-        label: subagentType ? `Task (${subagentType})` : 'Task',
+        label: subagentType ? `${toolLabel} (${subagentType})` : toolLabel,
         detail: description,
         expandedContent: prompt ?? description ?? 'No prompt specified',
       }

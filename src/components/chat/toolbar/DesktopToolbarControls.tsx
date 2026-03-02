@@ -38,6 +38,7 @@ import type {
   EffortLevel,
   ExecutionMode,
   McpHealthStatus,
+  McpServerInfo,
   ThinkingLevel,
 } from '@/types/chat'
 import type {
@@ -57,6 +58,8 @@ import {
   McpStatusDot,
   mcpStatusHint,
 } from '@/components/chat/toolbar/McpStatusDot'
+import { groupServersByBackend, BACKEND_LABELS } from '@/services/mcp'
+import type { CliBackend } from '@/types/preferences'
 import {
   EFFORT_LEVEL_OPTIONS,
   THINKING_LEVEL_OPTIONS,
@@ -90,7 +93,7 @@ interface DesktopToolbarControlsProps {
   mergeableStatus: MergeableStatus | undefined
   activeWorktreePath: string | undefined
 
-  availableMcpServers: { name: string; disabled?: boolean; scope: string }[]
+  availableMcpServers: McpServerInfo[]
   enabledMcpServers: string[]
   activeMcpCount: number
   isHealthChecking: boolean
@@ -259,36 +262,53 @@ export function DesktopToolbarControls({
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           {availableMcpServers.length > 0 ? (
-            availableMcpServers.map(server => {
-              const status = mcpStatuses?.[server.name]
-              const hint = mcpStatusHint(status)
-              const item = (
-                <DropdownMenuCheckboxItem
-                  key={server.name}
-                  checked={
-                    !server.disabled && enabledMcpServers.includes(server.name)
-                  }
-                  onCheckedChange={() => onToggleMcpServer(server.name)}
-                  disabled={server.disabled}
-                  className={server.disabled ? 'opacity-50' : undefined}
-                >
-                  <span className="flex items-center gap-1.5">
-                    <McpStatusDot status={status} />
-                    {server.name}
-                  </span>
-                  <span className="ml-auto pl-4 text-xs text-muted-foreground">
-                    {server.disabled ? 'disabled' : server.scope}
-                  </span>
-                </DropdownMenuCheckboxItem>
-              )
-              if (!hint) return item
-              return (
-                <Tooltip key={server.name}>
-                  <TooltipTrigger asChild>{item}</TooltipTrigger>
-                  <TooltipContent side="left">{hint}</TooltipContent>
-                </Tooltip>
-              )
-            })
+            (() => {
+              const grouped = groupServersByBackend(availableMcpServers)
+              const backends = Object.keys(grouped) as CliBackend[]
+              const showHeaders = backends.length > 1
+              return backends.map((backend, idx) => (
+                <div key={backend}>
+                  {showHeaders && (
+                    <>
+                      {idx > 0 && <DropdownMenuSeparator />}
+                      <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-medium py-1">
+                        {BACKEND_LABELS[backend] ?? backend}
+                      </DropdownMenuLabel>
+                    </>
+                  )}
+                  {(grouped[backend] ?? []).map(server => {
+                    const status = mcpStatuses?.[server.name]
+                    const hint = mcpStatusHint(status)
+                    const item = (
+                      <DropdownMenuCheckboxItem
+                        key={`${backend}-${server.name}`}
+                        checked={
+                          !server.disabled && enabledMcpServers.includes(server.name)
+                        }
+                        onCheckedChange={() => onToggleMcpServer(server.name)}
+                        disabled={server.disabled}
+                        className={server.disabled ? 'opacity-50' : undefined}
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <McpStatusDot status={status} />
+                          {server.name}
+                        </span>
+                        <span className="ml-auto pl-4 text-xs text-muted-foreground">
+                          {server.disabled ? 'disabled' : server.scope}
+                        </span>
+                      </DropdownMenuCheckboxItem>
+                    )
+                    if (!hint) return item
+                    return (
+                      <Tooltip key={`${backend}-${server.name}`}>
+                        <TooltipTrigger asChild>{item}</TooltipTrigger>
+                        <TooltipContent side="left">{hint}</TooltipContent>
+                      </Tooltip>
+                    )
+                  })}
+                </div>
+              ))
+            })()
           ) : (
             <DropdownMenuItem disabled>
               <span className="text-xs text-muted-foreground">

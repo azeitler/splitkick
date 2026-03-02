@@ -449,7 +449,7 @@ export function SessionChatModal({
           }
           onClose()
         } else if (currentSessionId) {
-          handleArchiveSession(currentSessionId)
+          handleDeleteSession(currentSessionId)
         }
       }
       const currentSession = sessions.find(s => s.id === currentSessionId)

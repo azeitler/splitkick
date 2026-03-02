@@ -2477,6 +2477,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tempfile",
  "tokio",
+ "toml 0.8.2",
  "tower-http",
  "uuid",
  "which",
