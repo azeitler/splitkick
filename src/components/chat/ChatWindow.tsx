@@ -1034,13 +1034,17 @@ export function ChatWindow({
   const pickRemoteOrRun = useRemotePicker(activeWorktreePath)
 
   const handlePushWithPicker = useCallback(
-    () => pickRemoteOrRun(remote => handlePush(remote)),
-    [pickRemoteOrRun, handlePush]
+    () =>
+      worktree?.pr_number ? handlePush() : pickRemoteOrRun(remote => handlePush(remote)),
+    [worktree?.pr_number, pickRemoteOrRun, handlePush]
   )
 
   const handleCommitAndPushWithPicker = useCallback(
-    () => pickRemoteOrRun(remote => handleCommitAndPush(remote)),
-    [pickRemoteOrRun, handleCommitAndPush]
+    () =>
+      worktree?.pr_number
+        ? handleCommitAndPush()
+        : pickRemoteOrRun(remote => handleCommitAndPush(remote)),
+    [worktree?.pr_number, pickRemoteOrRun, handleCommitAndPush]
   )
 
   const handlePullWithPicker = useCallback(

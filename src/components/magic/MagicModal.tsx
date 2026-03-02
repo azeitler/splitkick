@@ -375,7 +375,11 @@ export function MagicModal() {
           break
         }
         case 'commit-and-push': {
-          await pickRemoteOrRun(remote => doCommit(true, remote))
+          if (worktree.pr_number) {
+            await doCommit(true)
+          } else {
+            await pickRemoteOrRun(remote => doCommit(true, remote))
+          }
           break
         }
         case 'pull': {
@@ -393,7 +397,7 @@ export function MagicModal() {
           break
         }
         case 'push': {
-          await pickRemoteOrRun(async remote => {
+          const doPush = async (remote?: string) => {
             const toastId = toast.loading(`Pushing ${worktree.branch}...`)
             try {
               const result = await gitPush(worktree.path, worktree.pr_number, remote)
@@ -407,7 +411,12 @@ export function MagicModal() {
             } catch (error) {
               toast.error(`Push failed: ${error}`, { id: toastId })
             }
-          })
+          }
+          if (worktree.pr_number) {
+            await doPush()
+          } else {
+            await pickRemoteOrRun(doPush)
+          }
           break
         }
         case 'open-pr': {
