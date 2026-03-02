@@ -666,21 +666,36 @@ export const ChatInput = memo(function ChatInput({
       const clipboardHtml = e.clipboardData?.getData('text/html')
       if (!clipboardText && !clipboardHtml) {
         e.preventDefault()
+        const placeholderId = `clipboard-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+        const { addPendingImage, updatePendingImage, removePendingImage } =
+          useChatStore.getState()
+        addPendingImage(activeSessionId, {
+          id: placeholderId,
+          path: '',
+          filename: 'Processing...',
+          loading: true,
+        })
         try {
           const result = await invoke<SaveImageResponse | null>(
             'read_clipboard_image'
           )
           if (result) {
-            const { addPendingImage } = useChatStore.getState()
-            addPendingImage(activeSessionId, {
+            updatePendingImage(activeSessionId, placeholderId, {
               id: result.id,
               path: result.path,
               filename: result.filename,
+              loading: false,
             })
             return
           }
+          // No image in clipboard — remove placeholder
+          removePendingImage(activeSessionId, placeholderId)
         } catch (error) {
           console.error('Failed to read clipboard image natively:', error)
+          removePendingImage(activeSessionId, placeholderId)
+          toast.error('Failed to paste image', {
+            description: String(error),
+          })
         }
       }
 
