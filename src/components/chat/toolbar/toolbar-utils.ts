@@ -95,7 +95,9 @@ export function formatOpencodeModelLabel(raw: string): string {
   let modelPath: string
 
   if (parts[0] === 'openrouter' && parts.length >= 3) {
-    // openrouter/anthropic/claude-3.5-haiku → provider=anthropic, model=claude-3.5-haiku
+    // OpenRouter proxies models from other providers
+    // Format: openrouter/anthropic/claude-3.5-haiku
+    // Extract the actual provider and model path
     provider = parts[1] ?? ''
     modelPath = parts.slice(2).join('/')
   } else {

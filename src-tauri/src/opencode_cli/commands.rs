@@ -176,6 +176,8 @@ fn strip_ansi(input: &str) -> String {
     out
 }
 
+/// Validates model identifiers in the format: `provider/model` or `openrouter/provider/model`.
+/// Both support an optional `:qualifier` suffix on the model (e.g. `:free`, `:exacto`).
 fn is_model_identifier(value: &str) -> bool {
     if value.is_empty() || !value.contains('/') {
         return false;
