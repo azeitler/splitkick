@@ -138,7 +138,14 @@ export function CommitsTabView({
   // Theme
   const { theme } = useTheme()
   const { data: preferences } = usePreferences()
-  const resolvedThemeType = theme === 'dark' ? 'dark' : 'light'
+  const resolvedThemeType = useMemo((): 'dark' | 'light' => {
+    if (theme === 'system') {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches
+        ? 'dark'
+        : 'light'
+    }
+    return theme
+  }, [theme])
 
   const commitListRef = useRef<HTMLDivElement>(null)
 
@@ -324,17 +331,17 @@ export function CommitsTabView({
                   type="button"
                   className="w-full flex items-center gap-2 px-3 py-2 text-sm bg-muted rounded-md hover:bg-accent transition-colors"
                 >
-                  <GitBranch className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <GitBranch className="h-[1em] w-[1em] text-muted-foreground shrink-0" />
                   <span className="truncate flex-1 text-left">
                     {currentBranchLabel}
                   </span>
                   <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                 </button>
               </PopoverTrigger>
-              <PopoverContent className="p-0 w-64" align="start">
+              <PopoverContent className="p-0 w-64" align="start" onWheel={e => e.stopPropagation()}>
                 <Command>
                   <CommandInput placeholder="Search branches..." />
-                  <CommandList>
+                  <CommandList onWheel={e => e.stopPropagation()}>
                     <CommandEmpty>No branches found.</CommandEmpty>
                     <CommandGroup>
                       {branches.map(branch => (
@@ -385,12 +392,19 @@ export function CommitsTabView({
             ) : (
               <>
                 {commits.map(commit => (
-                  <button
+                  <div
                     key={commit.sha}
-                    type="button"
+                    role="button"
+                    tabIndex={0}
                     onClick={() => handleSelectCommit(commit.sha)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        handleSelectCommit(commit.sha)
+                      }
+                    }}
                     className={cn(
-                      'w-full text-left px-3 py-2.5 border-b border-border transition-colors hover:bg-muted/50 group',
+                      'w-full text-left px-3 py-2.5 border-b border-border transition-colors hover:bg-muted/50 group cursor-pointer',
                       selectedCommitSha === commit.sha && 'bg-accent'
                     )}
                   >
@@ -404,23 +418,16 @@ export function CommitsTabView({
                       {onExecutePrompt && (
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <span
-                              role="button"
-                              tabIndex={-1}
+                            <button
+                              type="button"
                               onClick={e => {
                                 e.stopPropagation()
                                 handleReviewCommit(commit)
                               }}
-                              onKeyDown={e => {
-                                if (e.key === 'Enter') {
-                                  e.stopPropagation()
-                                  handleReviewCommit(commit)
-                                }
-                              }}
                               className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-primary/10 transition-opacity shrink-0"
                             >
                               <Sparkles className="h-3.5 w-3.5 text-primary" />
-                            </span>
+                            </button>
                           </TooltipTrigger>
                           <TooltipContent>
                             Ask AI to review this commit
@@ -449,7 +456,7 @@ export function CommitsTabView({
                         </span>
                       )}
                     </div>
-                  </button>
+                  </div>
                 ))}
                 {hasMore && (
                   <button
@@ -474,7 +481,7 @@ export function CommitsTabView({
         </div>
       </ResizablePanel>
 
-      <ResizableHandle />
+      <ResizableHandle className="w-1.5 bg-border/50" />
 
       {/* Right panel: File list + diff for selected commit */}
       <ResizablePanel defaultSize={70} minSize={50}>
@@ -583,6 +590,7 @@ export function CommitsTabView({
                         preferences?.syntax_theme_light ?? 'github-light'
                       }
                       diffStyle={diffStyle}
+                      enableLineSelection={false}
                       onLineSelected={NOOP_LINE_SELECTED}
                       onRemoveComment={NOOP_REMOVE_COMMENT}
                     />

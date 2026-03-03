@@ -35,6 +35,7 @@ export interface MemoizedFileDiffProps {
   syntaxThemeDark: SyntaxTheme
   syntaxThemeLight: SyntaxTheme
   diffStyle: 'split' | 'unified'
+  enableLineSelection?: boolean
   onLineSelected: (range: SelectedLineRange | null) => void
   onRemoveComment: (id: string) => void
 }
@@ -65,6 +66,7 @@ export const MemoizedFileDiff = memo(
     syntaxThemeDark,
     syntaxThemeLight,
     diffStyle,
+    enableLineSelection: enableLineSelectionProp = true,
     onLineSelected,
     onRemoveComment,
   }: MemoizedFileDiffProps) {
@@ -81,7 +83,7 @@ export const MemoizedFileDiff = memo(
         themeType,
         diffStyle,
         overflow: 'wrap' as const,
-        enableLineSelection: true,
+        enableLineSelection: enableLineSelectionProp,
         onLineSelected,
         disableFileHeader: true, // We render file info in sidebar
         unsafeCSS: `
@@ -89,7 +91,7 @@ export const MemoizedFileDiff = memo(
       * { user-select: text !important; -webkit-user-select: text !important; cursor: text !important; }
     `,
       }),
-      [themeType, syntaxThemeDark, syntaxThemeLight, diffStyle, onLineSelected]
+      [themeType, syntaxThemeDark, syntaxThemeLight, diffStyle, enableLineSelectionProp, onLineSelected]
     )
 
     const renderAnnotation = useCallback(

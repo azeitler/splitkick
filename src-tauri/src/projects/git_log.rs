@@ -53,7 +53,7 @@ pub fn get_commit_history(
 
     // Get total count
     let count_output = silent_command("git")
-        .args(["rev-list", "--count", branch_ref])
+        .args(["rev-list", "--count", branch_ref, "--"])
         .current_dir(repo_path)
         .output()
         .map_err(|e| format!("Failed to count commits: {e}"))?;
@@ -86,6 +86,7 @@ pub fn get_commit_history(
             "-m",
             "--first-parent",
             branch_ref,
+            "--",
         ])
         .current_dir(repo_path)
         .output()
@@ -123,8 +124,9 @@ pub fn get_commit_history(
             }
         } else if let Some(ref mut commit) = current {
             // numstat line: "additions\tdeletions\tfilename"
+            // Binary files show "-\t-\tfilename" — skip those.
             let parts: Vec<&str> = line.split('\t').collect();
-            if parts.len() >= 3 {
+            if parts.len() >= 3 && parts[0] != "-" {
                 commit.additions += parts[0].parse::<u32>().unwrap_or(0);
                 commit.deletions += parts[1].parse::<u32>().unwrap_or(0);
             }
