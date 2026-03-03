@@ -15,6 +15,7 @@ import {
   Columns2,
   Rows3,
   GitBranch,
+  GitCommitHorizontal,
   MessageSquarePlus,
   Play,
   Pencil,
@@ -69,6 +70,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { useTheme } from '@/hooks/use-theme'
 import { usePreferences } from '@/services/preferences'
+import { CommitsTabView } from './CommitsTabView'
 import type { GitDiff, DiffRequest } from '@/types/git-diff'
 import type { SyntaxTheme } from '@/types/preferences'
 
@@ -406,7 +408,7 @@ export function GitDiffModal({
   const [isLoading, setIsLoading] = useState(false)
   const [diffStyle, setDiffStyle] = useState<DiffStyle>('split')
   const [activeDiffType, setActiveDiffType] = useState<
-    'uncommitted' | 'branch'
+    'uncommitted' | 'branch' | 'commits'
   >(diffRequest?.type ?? 'uncommitted')
   const dialogContentRef = useRef<HTMLDivElement>(null)
   const { theme } = useTheme()
@@ -501,8 +503,10 @@ export function GitDiffModal({
         revertTarget.fileName,
         revertTarget.fileStatus
       )
-      // Refresh diff to reflect reverted file
-      await loadDiff({ ...diffRequest, type: activeDiffType }, true)
+      // Refresh diff to reflect reverted file (revert only available in diff tabs)
+      if (activeDiffType !== 'commits') {
+        await loadDiff({ ...diffRequest, type: activeDiffType }, true)
+      }
     } catch (err) {
       setError(
         `Failed to revert: ${err instanceof Error ? err.message : String(err)}`
@@ -821,10 +825,7 @@ export function GitDiffModal({
           setSelectedFileIndex(i => Math.min(i + 1, filteredFiles.length - 1))
         })
         switchTimeoutRef.current = setTimeout(() => setIsSwitching(false), 150)
-      } else if (
-        e.key === 'Backspace' &&
-        activeDiffType === 'uncommitted'
-      ) {
+      } else if (e.key === 'Backspace' && activeDiffType === 'uncommitted') {
         e.preventDefault()
         const file = filteredFiles[selectedFileIndex]
         if (file) {
@@ -848,7 +849,13 @@ export function GitDiffModal({
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [diffRequest, filteredFiles, selectedFileIndex, activeDiffType, diffTypeToStatus])
+  }, [
+    diffRequest,
+    filteredFiles,
+    selectedFileIndex,
+    activeDiffType,
+    diffTypeToStatus,
+  ])
 
   // Scroll selected file into view in sidebar
   useEffect(() => {
@@ -881,14 +888,17 @@ export function GitDiffModal({
 
   // Handle switching between diff types
   const handleSwitchDiffType = useCallback(
-    (type: 'uncommitted' | 'branch') => {
+    (type: 'uncommitted' | 'branch' | 'commits') => {
       if (!diffRequest || type === activeDiffType) return
       setActiveDiffType(type)
       setSelectedFileIndex(0)
       setFileFilter('')
       setSelectedRange(null)
       setShowCommentInput(false)
-      loadDiff({ ...diffRequest, type }, false)
+      // Commits tab manages its own data — only call loadDiff for diff tabs
+      if (type !== 'commits') {
+        loadDiff({ ...diffRequest, type }, false)
+      }
     },
     [diffRequest, activeDiffType, loadDiff]
   )
@@ -900,380 +910,409 @@ export function GitDiffModal({
 
   return (
     <>
-    <Dialog open={!!diffRequest} onOpenChange={open => !open && onClose()}>
-      <DialogContent
-        ref={dialogContentRef}
-        showCloseButton={false}
-        className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none p-0 sm:!w-[calc(100vw-4rem)] sm:!max-w-[calc(100vw-4rem)] sm:!h-[85vh] sm:!rounded-lg sm:p-4 bg-background/95 backdrop-blur-sm overflow-hidden flex flex-col"
-        style={{ fontSize: 'var(--ui-font-size)' }}
-        onOpenAutoFocus={e => {
-          // Prevent Radix from focusing the first focusable element (a tooltip trigger button),
-          // which would cause the tooltip to open immediately on modal open
-          e.preventDefault()
-          dialogContentRef.current?.focus()
-        }}
-        onKeyDown={e => {
-          // Only stop Enter from propagating to canvas behind the modal
-          // (which would open a worktree/session). Other keys must propagate
-          // to reach the document-level keyboard navigation handler.
-          if (e.key === 'Enter') e.stopPropagation()
-        }}
-        onEscapeKeyDown={e => {
-          if (showCommentInput) {
+      <Dialog open={!!diffRequest} onOpenChange={open => !open && onClose()}>
+        <DialogContent
+          ref={dialogContentRef}
+          showCloseButton={false}
+          className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none p-0 sm:!w-[calc(100vw-4rem)] sm:!max-w-[calc(100vw-4rem)] sm:!h-[85vh] sm:!rounded-lg sm:p-4 bg-background/95 backdrop-blur-sm overflow-hidden flex flex-col"
+          style={{ fontSize: 'var(--ui-font-size)' }}
+          onOpenAutoFocus={e => {
+            // Prevent Radix from focusing the first focusable element (a tooltip trigger button),
+            // which would cause the tooltip to open immediately on modal open
             e.preventDefault()
-            handleCancelComment()
-          } else {
-            e.preventDefault()
-            onClose()
-          }
-        }}
-      >
-        <DialogTitle className="flex items-center gap-2 shrink-0">
-          {showSwitcher ? (
-            <div className="flex items-center bg-muted rounded-lg p-1">
-              <button
-                type="button"
-                onClick={() => handleSwitchDiffType('uncommitted')}
-                className={cn(
-                  'flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors',
-                  activeDiffType === 'uncommitted'
-                    ? 'bg-background shadow-sm text-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                )}
-              >
-                <Pencil className="h-3.5 w-3.5" />
-                Uncommitted
-                <span className="text-green-500">+{uncommittedAdded}</span>
-                <span className="text-red-500">-{uncommittedRemoved}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSwitchDiffType('branch')}
-                className={cn(
-                  'flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors',
-                  activeDiffType === 'branch'
-                    ? 'bg-background shadow-sm text-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                )}
-              >
-                <GitBranch className="h-3.5 w-3.5" />
-                Branch
-                <span className="text-green-500">+{branchAdded}</span>
-                <span className="text-red-500">-{branchRemoved}</span>
-              </button>
+            dialogContentRef.current?.focus()
+          }}
+          onKeyDown={e => {
+            // Only stop Enter from propagating to canvas behind the modal
+            // (which would open a worktree/session). Other keys must propagate
+            // to reach the document-level keyboard navigation handler.
+            if (e.key === 'Enter') e.stopPropagation()
+          }}
+          onEscapeKeyDown={e => {
+            if (showCommentInput) {
+              e.preventDefault()
+              handleCancelComment()
+            } else {
+              e.preventDefault()
+              onClose()
+            }
+          }}
+        >
+          <DialogTitle className="flex items-center gap-2 shrink-0">
+            {showSwitcher ? (
+              <div className="flex items-center bg-muted rounded-lg p-1">
+                <button
+                  type="button"
+                  onClick={() => handleSwitchDiffType('uncommitted')}
+                  className={cn(
+                    'flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors',
+                    activeDiffType === 'uncommitted'
+                      ? 'bg-background shadow-sm text-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  Uncommitted
+                  <span className="text-green-500">+{uncommittedAdded}</span>
+                  <span className="text-red-500">-{uncommittedRemoved}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSwitchDiffType('branch')}
+                  className={cn(
+                    'flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors',
+                    activeDiffType === 'branch'
+                      ? 'bg-background shadow-sm text-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  <GitBranch className="h-3.5 w-3.5" />
+                  Branch
+                  <span className="text-green-500">+{branchAdded}</span>
+                  <span className="text-red-500">-{branchRemoved}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSwitchDiffType('commits')}
+                  className={cn(
+                    'flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors',
+                    activeDiffType === 'commits'
+                      ? 'bg-background shadow-sm text-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  <GitCommitHorizontal className="h-3.5 w-3.5" />
+                  Commits
+                </button>
+              </div>
+            ) : (
+              <>
+                <FileText className="h-4 w-4" />
+                {title}
+              </>
+            )}
+            <div className="flex items-center gap-3">
+              {/* View mode toggle */}
+              <div className="flex items-center bg-muted rounded-lg p-1">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={() => setDiffStyle('split')}
+                      className={cn(
+                        'flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors',
+                        diffStyle === 'split'
+                          ? 'bg-background shadow-sm text-foreground'
+                          : 'text-muted-foreground hover:text-foreground'
+                      )}
+                    >
+                      <Columns2 className="h-3.5 w-3.5" />
+                      Split
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>Side-by-side view</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={() => setDiffStyle('unified')}
+                      className={cn(
+                        'flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors',
+                        diffStyle === 'unified'
+                          ? 'bg-background shadow-sm text-foreground'
+                          : 'text-muted-foreground hover:text-foreground'
+                      )}
+                    >
+                      <Rows3 className="h-3.5 w-3.5" />
+                      Stacked
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>Unified view</TooltipContent>
+                </Tooltip>
+              </div>
+              {/* Execute and Edit buttons */}
+              {comments.length > 0 && (onAddToPrompt || onExecutePrompt) && (
+                <div className="flex items-center gap-1">
+                  {onExecutePrompt && (
+                    <button
+                      type="button"
+                      onClick={handleExecutePrompt}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-black text-white dark:bg-yellow-500 dark:text-black hover:bg-black/80 dark:hover:bg-yellow-400 rounded-md text-xs font-medium transition-colors"
+                    >
+                      <Play className="h-3.5 w-3.5" />
+                      Execute ({comments.length})
+                    </button>
+                  )}
+                  {onAddToPrompt && (
+                    <button
+                      type="button"
+                      onClick={handleAddToPrompt}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-black text-white dark:bg-yellow-500 dark:text-black hover:bg-black/80 dark:hover:bg-yellow-400 rounded-md text-xs font-medium transition-colors"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      Add to prompt
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
-          ) : (
+            <div className="ml-auto flex items-center gap-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 shrink-0 p-0"
+                    onClick={() => {
+                      if (!diffRequest || activeDiffType === 'commits') return
+                      loadDiff({ ...diffRequest, type: activeDiffType }, true)
+                    }}
+                    disabled={isLoading}
+                  >
+                    <RefreshCw
+                      className={cn('h-4 w-4', isLoading && 'animate-spin')}
+                    />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Refresh diff</TooltipContent>
+              </Tooltip>
+              <ModalCloseButton onClick={onClose} />
+            </div>
+          </DialogTitle>
+          <DialogDescription className="sr-only">
+            Review repository diffs, switch view modes, and add line comments.
+          </DialogDescription>
+
+          {/* Commits tab — separate component with its own data */}
+          {activeDiffType === 'commits' && diffRequest && (
+            <CommitsTabView
+              worktreePath={diffRequest.worktreePath}
+              baseBranch={diffRequest.baseBranch}
+              diffStyle={diffStyle}
+              onExecutePrompt={onExecutePrompt}
+              onClose={onClose}
+            />
+          )}
+
+          {/* Diff tabs body (Uncommitted / Branch) */}
+          {activeDiffType !== 'commits' && (
             <>
-              <FileText className="h-4 w-4" />
-              {title}
+              {/* Comment bar - above sidebar and main content */}
+              {hasFiles && (
+                <div className="mt-2 shrink-0">
+                  {/* Hint when no selection */}
+                  {!selectedRange && comments.length === 0 && (
+                    <div className="flex items-center gap-2 px-3 h-10 text-muted-foreground">
+                      <MessageSquarePlus className="h-4 w-4 shrink-0" />
+                      <span className="text-sm">
+                        Click on line numbers to select code and add comments
+                      </span>
+                    </div>
+                  )}
+                  {/* Comment input bar */}
+                  {showCommentInput && (
+                    <CommentInputBar
+                      activeFileName={activeFileName}
+                      selectedRange={selectedRange}
+                      onAddComment={handleAddComment}
+                      onCancel={handleCancelComment}
+                    />
+                  )}
+                </div>
+              )}
+
+              {/* Empty state - centered across full modal */}
+              {diff && !hasFiles && !isLoading && !error && (
+                <div className="flex flex-1 items-center justify-center text-muted-foreground">
+                  No changes to display
+                </div>
+              )}
+
+              {/* Loading state - centered across full modal */}
+              {isLoading && !hasFiles && (
+                <div className="flex flex-1 items-center justify-center text-muted-foreground">
+                  <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                  Loading diff...
+                </div>
+              )}
+
+              {/* Error state - centered across full modal */}
+              {error && !isLoading && (
+                <div className="flex flex-1 items-center justify-center">
+                  <div className="flex items-center gap-2 py-4 px-3 bg-destructive/10 text-destructive rounded-md">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    <span className="text-sm">{error}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Flex container fills remaining space - only render when we have files */}
+              {hasFiles && (
+                <ResizablePanelGroup
+                  direction="horizontal"
+                  className="flex-1 min-h-0 mt-2"
+                >
+                  {/* File sidebar */}
+                  <ResizablePanel defaultSize={25} minSize={15} maxSize={50}>
+                    <div
+                      ref={fileListRef}
+                      className={cn(
+                        'h-full overflow-y-auto transition-opacity duration-150',
+                        (isSwitching || isLoading) && 'opacity-60'
+                      )}
+                    >
+                      {flattenedFiles.length > 0 && (
+                        <div className="sticky top-0 z-10 bg-background border-b border-border pb-2">
+                          <div className="relative">
+                            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-[1em] w-[1em] text-muted-foreground pointer-events-none" />
+                            <input
+                              type="text"
+                              value={fileFilter}
+                              onChange={e => {
+                                setFileFilter(e.target.value)
+                                setSelectedFileIndex(0)
+                              }}
+                              placeholder="Filter files..."
+                              className="w-full bg-muted text-sm outline-none border border-border pl-7 pr-2 py-2.5 placeholder:text-muted-foreground focus:border-ring"
+                            />
+                          </div>
+                        </div>
+                      )}
+                      <div>
+                        {filteredFiles.map((file, index) => {
+                          const isSelected = index === selectedFileIndex
+                          const displayName =
+                            displayNameMap.get(file.key) ??
+                            getFilename(file.fileName)
+
+                          const fileButton = (
+                            <button
+                              type="button"
+                              data-index={index}
+                              onClick={() => handleSelectFile(index)}
+                              className={cn(
+                                'w-full flex items-center gap-2 px-3 py-2 text-left transition-colors',
+                                'hover:bg-muted/50',
+                                isSelected && 'bg-accent'
+                              )}
+                            >
+                              <FileText
+                                className={cn(
+                                  'h-[1em] w-[1em] shrink-0',
+                                  getStatusColor(file.fileDiff.type)
+                                )}
+                              />
+                              <span className="truncate flex-1">
+                                {displayName}
+                              </span>
+                              <div className="flex items-center gap-1 shrink-0">
+                                {file.additions > 0 && (
+                                  <span className="text-green-500">
+                                    +{file.additions}
+                                  </span>
+                                )}
+                                {file.deletions > 0 && (
+                                  <span className="text-red-500">
+                                    -{file.deletions}
+                                  </span>
+                                )}
+                              </div>
+                            </button>
+                          )
+
+                          return activeDiffType === 'uncommitted' ? (
+                            <ContextMenu key={file.key}>
+                              <Tooltip>
+                                <ContextMenuTrigger asChild>
+                                  <TooltipTrigger asChild>
+                                    {fileButton}
+                                  </TooltipTrigger>
+                                </ContextMenuTrigger>
+                                <TooltipContent>{file.fileName}</TooltipContent>
+                              </Tooltip>
+                              <ContextMenuContent className="w-48">
+                                <ContextMenuItem
+                                  variant="destructive"
+                                  onSelect={() =>
+                                    setRevertTarget({
+                                      fileName: file.fileName,
+                                      fileStatus: diffTypeToStatus(
+                                        file.fileDiff.type
+                                      ),
+                                    })
+                                  }
+                                >
+                                  <Undo2 className="mr-2 h-4 w-4" />
+                                  Revert File
+                                </ContextMenuItem>
+                              </ContextMenuContent>
+                            </ContextMenu>
+                          ) : (
+                            <Tooltip key={file.key}>
+                              <TooltipTrigger asChild>
+                                {fileButton}
+                              </TooltipTrigger>
+                              <TooltipContent>{file.fileName}</TooltipContent>
+                            </Tooltip>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </ResizablePanel>
+
+                  <ResizableHandle />
+
+                  {/* Main content area */}
+                  <ResizablePanel defaultSize={75} minSize={50}>
+                    <div
+                      ref={scrollContainerRef}
+                      className={cn(
+                        'h-full min-w-0 overflow-y-auto transition-opacity duration-150',
+                        (isSwitching || isLoading) && 'opacity-60'
+                      )}
+                    >
+                      {selectedFile ? (
+                        <div className="px-2">
+                          <MemoizedFileDiff
+                            key={selectedFile.key}
+                            fileDiff={selectedFile.fileDiff}
+                            fileName={selectedFile.fileName}
+                            annotations={getAnnotationsForFile(
+                              selectedFile.fileName
+                            )}
+                            selectedLines={
+                              activeFileName === selectedFile.fileName
+                                ? selectedRange
+                                : null
+                            }
+                            themeType={resolvedThemeType}
+                            syntaxThemeDark={
+                              preferences?.syntax_theme_dark ?? 'vitesse-black'
+                            }
+                            syntaxThemeLight={
+                              preferences?.syntax_theme_light ?? 'github-light'
+                            }
+                            diffStyle={diffStyle}
+                            onLineSelected={getLineSelectedCallback(
+                              selectedFile.fileName
+                            )}
+                            onRemoveComment={handleRemoveComment}
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center h-full text-muted-foreground">
+                          Select a file to view its diff
+                        </div>
+                      )}
+                    </div>
+                  </ResizablePanel>
+                </ResizablePanelGroup>
+              )}
             </>
           )}
-          <div className="flex items-center gap-3">
-            {/* View mode toggle */}
-            <div className="flex items-center bg-muted rounded-lg p-1">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={() => setDiffStyle('split')}
-                    className={cn(
-                      'flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors',
-                      diffStyle === 'split'
-                        ? 'bg-background shadow-sm text-foreground'
-                        : 'text-muted-foreground hover:text-foreground'
-                    )}
-                  >
-                    <Columns2 className="h-3.5 w-3.5" />
-                    Split
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>Side-by-side view</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={() => setDiffStyle('unified')}
-                    className={cn(
-                      'flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors',
-                      diffStyle === 'unified'
-                        ? 'bg-background shadow-sm text-foreground'
-                        : 'text-muted-foreground hover:text-foreground'
-                    )}
-                  >
-                    <Rows3 className="h-3.5 w-3.5" />
-                    Stacked
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>Unified view</TooltipContent>
-              </Tooltip>
-            </div>
-            {/* Execute and Edit buttons */}
-            {comments.length > 0 && (onAddToPrompt || onExecutePrompt) && (
-              <div className="flex items-center gap-1">
-                {onExecutePrompt && (
-                  <button
-                    type="button"
-                    onClick={handleExecutePrompt}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-black text-white dark:bg-yellow-500 dark:text-black hover:bg-black/80 dark:hover:bg-yellow-400 rounded-md text-xs font-medium transition-colors"
-                  >
-                    <Play className="h-3.5 w-3.5" />
-                    Execute ({comments.length})
-                  </button>
-                )}
-                {onAddToPrompt && (
-                  <button
-                    type="button"
-                    onClick={handleAddToPrompt}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-black text-white dark:bg-yellow-500 dark:text-black hover:bg-black/80 dark:hover:bg-yellow-400 rounded-md text-xs font-medium transition-colors"
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                    Add to prompt
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-          <div className="ml-auto flex items-center gap-1">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 shrink-0 p-0"
-                  onClick={() =>
-                    diffRequest &&
-                    loadDiff({ ...diffRequest, type: activeDiffType }, true)
-                  }
-                  disabled={isLoading}
-                >
-                  <RefreshCw
-                    className={cn('h-4 w-4', isLoading && 'animate-spin')}
-                  />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Refresh diff</TooltipContent>
-            </Tooltip>
-            <ModalCloseButton onClick={onClose} />
-          </div>
-        </DialogTitle>
-        <DialogDescription className="sr-only">
-          Review repository diffs, switch view modes, and add line comments.
-        </DialogDescription>
-
-        {/* Comment bar - above sidebar and main content */}
-        {hasFiles && (
-          <div className="mt-2 shrink-0">
-            {/* Hint when no selection */}
-            {!selectedRange && comments.length === 0 && (
-              <div className="flex items-center gap-2 px-3 h-10 text-muted-foreground">
-                <MessageSquarePlus className="h-4 w-4 shrink-0" />
-                <span className="text-sm">
-                  Click on line numbers to select code and add comments
-                </span>
-              </div>
-            )}
-            {/* Comment input bar */}
-            {showCommentInput && (
-              <CommentInputBar
-                activeFileName={activeFileName}
-                selectedRange={selectedRange}
-                onAddComment={handleAddComment}
-                onCancel={handleCancelComment}
-              />
-            )}
-          </div>
-        )}
-
-        {/* Empty state - centered across full modal */}
-        {diff && !hasFiles && !isLoading && !error && (
-          <div className="flex flex-1 items-center justify-center text-muted-foreground">
-            No changes to display
-          </div>
-        )}
-
-        {/* Loading state - centered across full modal */}
-        {isLoading && !hasFiles && (
-          <div className="flex flex-1 items-center justify-center text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin mr-2" />
-            Loading diff...
-          </div>
-        )}
-
-        {/* Error state - centered across full modal */}
-        {error && !isLoading && (
-          <div className="flex flex-1 items-center justify-center">
-            <div className="flex items-center gap-2 py-4 px-3 bg-destructive/10 text-destructive rounded-md">
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              <span className="text-sm">{error}</span>
-            </div>
-          </div>
-        )}
-
-        {/* Flex container fills remaining space - only render when we have files */}
-        {hasFiles && (
-          <ResizablePanelGroup
-            direction="horizontal"
-            className="flex-1 min-h-0 mt-2"
-          >
-            {/* File sidebar */}
-            <ResizablePanel
-              defaultSize={25}
-              minSize={15}
-              maxSize={50}
-            >
-              <div
-                ref={fileListRef}
-                className={cn(
-                  'h-full overflow-y-auto transition-opacity duration-150',
-                  (isSwitching || isLoading) && 'opacity-60'
-                )}
-              >
-                {flattenedFiles.length > 0 && (
-                  <div className="sticky top-0 z-10 bg-background border-b border-border pb-2">
-                    <div className="relative">
-                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-[1em] w-[1em] text-muted-foreground pointer-events-none" />
-                      <input
-                        type="text"
-                        value={fileFilter}
-                        onChange={e => {
-                          setFileFilter(e.target.value)
-                          setSelectedFileIndex(0)
-                        }}
-                        placeholder="Filter files..."
-                        className="w-full bg-muted text-sm outline-none border border-border pl-7 pr-2 py-2.5 placeholder:text-muted-foreground focus:border-ring"
-                      />
-                    </div>
-                  </div>
-                )}
-                <div>
-                  {filteredFiles.map((file, index) => {
-                    const isSelected = index === selectedFileIndex
-                    const displayName =
-                      displayNameMap.get(file.key) ??
-                      getFilename(file.fileName)
-
-                    const fileButton = (
-                      <button
-                        type="button"
-                        data-index={index}
-                        onClick={() => handleSelectFile(index)}
-                        className={cn(
-                          'w-full flex items-center gap-2 px-3 py-2 text-left transition-colors',
-                          'hover:bg-muted/50',
-                          isSelected && 'bg-accent'
-                        )}
-                      >
-                        <FileText
-                          className={cn(
-                            'h-[1em] w-[1em] shrink-0',
-                            getStatusColor(file.fileDiff.type)
-                          )}
-                        />
-                        <span className="truncate flex-1">{displayName}</span>
-                        <div className="flex items-center gap-1 shrink-0">
-                          {file.additions > 0 && (
-                            <span className="text-green-500">
-                              +{file.additions}
-                            </span>
-                          )}
-                          {file.deletions > 0 && (
-                            <span className="text-red-500">
-                              -{file.deletions}
-                            </span>
-                          )}
-                        </div>
-                      </button>
-                    )
-
-                    return activeDiffType === 'uncommitted' ? (
-                      <ContextMenu key={file.key}>
-                        <Tooltip>
-                          <ContextMenuTrigger asChild>
-                            <TooltipTrigger asChild>
-                              {fileButton}
-                            </TooltipTrigger>
-                          </ContextMenuTrigger>
-                          <TooltipContent>{file.fileName}</TooltipContent>
-                        </Tooltip>
-                        <ContextMenuContent className="w-48">
-                          <ContextMenuItem
-                            variant="destructive"
-                            onSelect={() =>
-                              setRevertTarget({
-                                fileName: file.fileName,
-                                fileStatus: diffTypeToStatus(
-                                  file.fileDiff.type
-                                ),
-                              })
-                            }
-                          >
-                            <Undo2 className="mr-2 h-4 w-4" />
-                            Revert File
-                          </ContextMenuItem>
-                        </ContextMenuContent>
-                      </ContextMenu>
-                    ) : (
-                      <Tooltip key={file.key}>
-                        <TooltipTrigger asChild>
-                          {fileButton}
-                        </TooltipTrigger>
-                        <TooltipContent>{file.fileName}</TooltipContent>
-                      </Tooltip>
-                    )
-                  })}
-                </div>
-              </div>
-            </ResizablePanel>
-
-            <ResizableHandle />
-
-            {/* Main content area */}
-            <ResizablePanel defaultSize={75} minSize={50}>
-              <div
-                ref={scrollContainerRef}
-                className={cn(
-                  'h-full min-w-0 overflow-y-auto transition-opacity duration-150',
-                  (isSwitching || isLoading) && 'opacity-60'
-                )}
-              >
-                {selectedFile ? (
-                  <div className="px-2">
-                    <MemoizedFileDiff
-                      key={selectedFile.key}
-                      fileDiff={selectedFile.fileDiff}
-                      fileName={selectedFile.fileName}
-                      annotations={getAnnotationsForFile(selectedFile.fileName)}
-                      selectedLines={
-                        activeFileName === selectedFile.fileName
-                          ? selectedRange
-                          : null
-                      }
-                      themeType={resolvedThemeType}
-                      syntaxThemeDark={
-                        preferences?.syntax_theme_dark ?? 'vitesse-black'
-                      }
-                      syntaxThemeLight={
-                        preferences?.syntax_theme_light ?? 'github-light'
-                      }
-                      diffStyle={diffStyle}
-                      onLineSelected={getLineSelectedCallback(
-                        selectedFile.fileName
-                      )}
-                      onRemoveComment={handleRemoveComment}
-                    />
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-center h-full text-muted-foreground">
-                    Select a file to view its diff
-                  </div>
-                )}
-              </div>
-            </ResizablePanel>
-          </ResizablePanelGroup>
-        )}
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog
         open={!!revertTarget}
@@ -1285,8 +1324,9 @@ export function GitDiffModal({
             e.preventDefault()
             // Focus the Revert button instead of Cancel
             const container = e.target as HTMLElement | null
-            const action =
-              container?.querySelector<HTMLButtonElement>('[data-revert-action]')
+            const action = container?.querySelector<HTMLButtonElement>(
+              '[data-revert-action]'
+            )
             action?.focus()
           }}
         >
@@ -1301,9 +1341,7 @@ export function GitDiffModal({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isReverting}>
-              Cancel
-            </AlertDialogCancel>
+            <AlertDialogCancel disabled={isReverting}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               data-revert-action
               className="bg-destructive text-white hover:bg-destructive/90"

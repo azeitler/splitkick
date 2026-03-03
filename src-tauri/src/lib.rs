@@ -1214,8 +1214,8 @@ pub fn load_preferences_sync(app: &AppHandle) -> Result<AppPreferences, String> 
     }
     let contents = std::fs::read_to_string(&prefs_path)
         .map_err(|e| format!("Failed to read preferences file: {e}"))?;
-    let preferences: AppPreferences = serde_json::from_str(&contents)
-        .map_err(|e| format!("Failed to parse preferences: {e}"))?;
+    let preferences: AppPreferences =
+        serde_json::from_str(&contents).map_err(|e| format!("Failed to parse preferences: {e}"))?;
     Ok(preferences)
 }
 
@@ -2291,6 +2291,9 @@ pub fn run() {
             projects::rebase_worktree,
             projects::has_uncommitted_changes,
             projects::get_git_diff,
+            projects::get_commit_history,
+            projects::get_commit_diff,
+            projects::get_repo_branches,
             projects::revert_file,
             projects::git_pull,
             projects::git_stash,
