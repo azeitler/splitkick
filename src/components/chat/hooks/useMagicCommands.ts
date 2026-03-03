@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
+import { useChatStore } from '@/store/chat-store'
 
 export interface WorkflowRunDetail {
   workflowName: string
@@ -161,4 +162,25 @@ export function useMagicCommands({
         handleMagicCommand as EventListener
       )
   }, [isModal, isViewingCanvasTab, sessionModalOpen]) // Re-register when modal/canvas state changes
+
+  // Consume pending magic command set by MagicModal when navigating from canvas.
+  // Only the non-modal, non-canvas ChatWindow should consume it (the one that just mounted).
+  const pendingMagicCommand = useChatStore(state => state.pendingMagicCommand)
+  useEffect(() => {
+    if (!pendingMagicCommand) return
+    if (isModal) return
+    if (isViewingCanvasTab) return
+
+    useChatStore.getState().setPendingMagicCommand(null)
+
+    const handlers = handlersRef.current
+    switch (pendingMagicCommand.command) {
+      case 'merge':
+        handlers.handleMerge()
+        break
+      case 'resolve-conflicts':
+        handlers.handleResolveConflicts()
+        break
+    }
+  }, [pendingMagicCommand, isModal, isViewingCanvasTab])
 }

@@ -196,9 +196,12 @@ export function useClearContextApproval({
         if (isTauri()) {
           const newSessionId = newSession.id
           let closed = false
+          let unlisten: (() => void) | undefined
+
           const timeout = setTimeout(() => {
             if (!closed) {
               closed = true
+              unlisten?.()
               doClose()
             }
           }, 10000)
@@ -207,16 +210,23 @@ export function useClearContextApproval({
             if (event.payload.session_id === newSessionId && !closed) {
               closed = true
               clearTimeout(timeout)
-              doClose()
-            }
-          }).catch(() => {
-            // If listen fails, fall back to immediate close
-            if (!closed) {
-              closed = true
-              clearTimeout(timeout)
+              unlisten?.()
               doClose()
             }
           })
+            .then(fn => {
+              unlisten = fn
+              // If already closed by timeout before listen resolved, clean up immediately
+              if (closed) unlisten()
+            })
+            .catch(() => {
+              // If listen fails, fall back to immediate close
+              if (!closed) {
+                closed = true
+                clearTimeout(timeout)
+                doClose()
+              }
+            })
         } else {
           doClose()
         }

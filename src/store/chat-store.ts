@@ -220,6 +220,10 @@ interface ChatUIState {
   // Canvas-selected session per worktree (for magic menu targeting)
   canvasSelectedSessionIds: Record<string, string | null>
 
+  // Pending magic command to execute when ChatWindow mounts (from canvas navigation)
+  pendingMagicCommand: { command: string } | null
+  setPendingMagicCommand: (cmd: { command: string } | null) => void
+
   // Actions - Session management
   setActiveSession: (worktreeId: string, sessionId: string) => void
   getActiveSession: (worktreeId: string) => string | undefined
@@ -590,6 +594,7 @@ export const useChatStore = create<ChatUIState>()(
       worktreeLoadingOperations: {},
       sessionLabels: {},
       canvasSelectedSessionIds: {},
+      pendingMagicCommand: null,
 
       // Session management
       setActiveSession: (worktreeId, sessionId) => {
@@ -2321,6 +2326,10 @@ export const useChatStore = create<ChatUIState>()(
 
       getCanvasSelectedSession: worktreeId =>
         get().canvasSelectedSessionIds[worktreeId] ?? null,
+
+      // Pending magic command (set when navigating from canvas, consumed by ChatWindow on mount)
+      setPendingMagicCommand: cmd =>
+        set({ pendingMagicCommand: cmd }, undefined, 'setPendingMagicCommand'),
 
       // Legacy actions (deprecated - for backward compatibility)
       addSendingWorktree: worktreeId => {

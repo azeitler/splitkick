@@ -808,31 +808,29 @@ ${resolveInstructions}`
         return
       }
 
-      // Commands that need ChatWindow: navigate to worktree first, then dispatch after mount
+      // Commands that need ChatWindow: navigate to worktree first, then set pending command
       if (
         isOnCanvas &&
         CANVAS_NAVIGATE_AND_DISPATCH_OPTIONS.has(option) &&
         worktree?.path
       ) {
         setMagicModalOpen(false)
-        const { setActiveWorktree, setViewingCanvasTab } =
+        const { setActiveWorktree, setViewingCanvasTab, setPendingMagicCommand } =
           useChatStore.getState()
         // Navigate to worktree view (needed for ProjectCanvasView → worktree transition)
         useProjectsStore.getState().selectWorktree(selectedWorktreeId)
         setActiveWorktree(selectedWorktreeId, worktree.path)
         setViewingCanvasTab(selectedWorktreeId, false)
-        // Delay dispatch to allow ChatWindow to mount and register event listener
-        setTimeout(() => {
-          window.dispatchEvent(
-            new CustomEvent('magic-command', { detail: { command: option } })
-          )
-        }, 150)
+        // Store pending command — ChatWindow picks it up on mount/update (no fragile timeout)
+        setPendingMagicCommand({ command: option })
         return
       }
 
       // For canvas-allowed git ops: if no ChatWindow rendered, execute directly
+      // Exclude CANVAS_NAVIGATE_AND_DISPATCH_OPTIONS to prevent silent no-ops
       if (
         CANVAS_ALLOWED_OPTIONS.has(option) &&
+        !CANVAS_NAVIGATE_AND_DISPATCH_OPTIONS.has(option) &&
         !useChatStore.getState().activeWorktreePath
       ) {
         setMagicModalOpen(false)
