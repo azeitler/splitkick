@@ -35,6 +35,7 @@ interface PlanDialogBaseProps {
   onApprove?: (updatedPlan: string) => void
   onApproveYolo?: (updatedPlan: string) => void
   onClearContextApprove?: (updatedPlan: string) => void
+  onClearContextBuildApprove?: (updatedPlan: string) => void
   /** Hide approve buttons (e.g. for Codex which has no native approval flow) */
   hideApproveButtons?: boolean
 }
@@ -62,6 +63,7 @@ export function PlanDialog({
   onApprove,
   onApproveYolo,
   onClearContextApprove,
+  onClearContextBuildApprove,
   hideApproveButtons,
 }: PlanDialogProps) {
   const filename = filePath ? getFilename(filePath) : null
@@ -144,6 +146,11 @@ export function PlanDialog({
     onClose()
   }, [editedContent, onClearContextApprove, onClose])
 
+  const handleClearContextBuildApprove = useCallback(() => {
+    onClearContextBuildApprove?.(editedContent)
+    onClose()
+  }, [editedContent, onClearContextBuildApprove, onClose])
+
   // Keyboard shortcuts for approve actions
   useEffect(() => {
     if (!isOpen || !editable) return
@@ -157,6 +164,15 @@ export function PlanDialog({
         if (canApprove) {
           handleApprove()
         }
+      }
+
+      // Mod+Shift+Enter = Clear Context and build
+      if (isMod && e.shiftKey && e.key === 'Enter') {
+        e.preventDefault()
+        if (canApprove && onClearContextBuildApprove) {
+          handleClearContextBuildApprove()
+        }
+        return
       }
 
       // Mod+Shift+Y = Clear Context and yolo (check before Mod+Y since Shift+Y = 'Y')
@@ -179,7 +195,7 @@ export function PlanDialog({
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, editable, canApprove, handleApprove, handleApproveYolo, onClearContextApprove, handleClearContextApprove])
+  }, [isOpen, editable, canApprove, handleApprove, handleApproveYolo, onClearContextApprove, handleClearContextApprove, onClearContextBuildApprove, handleClearContextBuildApprove])
 
   return (
     <Dialog open={isOpen} onOpenChange={open => !open && onClose()}>
@@ -265,14 +281,28 @@ export function PlanDialog({
                   {formatShortcutDisplay(DEFAULT_KEYBINDINGS.approve_plan_yolo)}
                 </Kbd>
               </Button>
+              {onClearContextBuildApprove && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleClearContextBuildApprove}
+                  disabled={!canApprove}
+                >
+                  Clear Context and Build
+                  <Kbd className="ml-1.5 h-4 text-[10px]">
+                    {formatShortcutDisplay(DEFAULT_KEYBINDINGS.approve_plan_clear_context_build)}
+                  </Kbd>
+                </Button>
+              )}
               {onClearContextApprove && (
                 <Button
-                  variant="destructive"
+                  variant="outline"
+                  size="sm"
                   onClick={handleClearContextApprove}
                   disabled={!canApprove}
                 >
-                  Clear Context and yolo
-                  <Kbd className="ml-1.5 h-4 text-[10px] bg-destructive-foreground/20 text-destructive-foreground">
+                  Clear Context and YOLO
+                  <Kbd className="ml-1.5 h-4 text-[10px]">
                     {formatShortcutDisplay(DEFAULT_KEYBINDINGS.approve_plan_clear_context)}
                   </Kbd>
                 </Button>

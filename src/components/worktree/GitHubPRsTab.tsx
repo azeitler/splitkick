@@ -56,6 +56,13 @@ export function GitHubPRsTab({
   onGhLogin,
   isGhInstalled,
 }: GitHubPRsTabProps) {
+  const handleLabelClick = (labelName: string) => {
+    const token = `label:"${labelName}"`
+    if (!searchQuery.includes(token)) {
+      setSearchQuery(searchQuery ? `${searchQuery} ${token}` : token)
+    }
+  }
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
       {/* Search and filters */}
@@ -66,7 +73,7 @@ export function GitHubPRsTab({
             <Input
               ref={searchInputRef}
               type="text"
-              placeholder="Search PRs by #number, title, branch, or description..."
+              placeholder='Search by #number, title, branch, label… or label:"bug"'
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               className="pl-9 h-8 text-sm"
@@ -165,6 +172,7 @@ export function GitHubPRsTab({
                 onClick={bg => onSelectPR(pr, bg)}
                 onInvestigate={bg => onInvestigatePR(pr, bg)}
                 onPreview={() => onPreviewPR(pr)}
+                onLabelClick={handleLabelClick}
               />
             ))}
             {isSearching && (

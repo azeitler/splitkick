@@ -320,7 +320,22 @@ pub fn execute_opencode_http(
     reasoning_effort: Option<&str>,
     prompt: &str,
     system_prompt: Option<&str>,
+    cancelled: &std::sync::Arc<std::sync::atomic::AtomicBool>,
 ) -> Result<OpenCodeResponse, String> {
+    use std::sync::atomic::Ordering;
+
+    // Check for cancellation before doing any work
+    if cancelled.load(Ordering::SeqCst) {
+        return Ok(OpenCodeResponse {
+            content: String::new(),
+            session_id: existing_opencode_session_id.unwrap_or("").to_string(),
+            tool_calls: vec![],
+            content_blocks: vec![],
+            cancelled: true,
+            usage: None,
+        });
+    }
+
     let base_url = crate::opencode_server::acquire(app)?;
 
     // RAII guard: decrements the server usage count when this function exits.
@@ -400,6 +415,18 @@ pub fn execute_opencode_http(
             .or_else(|| choose_model(&providers))
             .ok_or("No OpenCode models available. Authenticate a provider first.")?
     };
+
+    // Check for cancellation before sending the (potentially long-running) message request
+    if cancelled.load(Ordering::SeqCst) {
+        return Ok(OpenCodeResponse {
+            content: String::new(),
+            session_id: opencode_session_id,
+            tool_calls: vec![],
+            content_blocks: vec![],
+            cancelled: true,
+            usage: None,
+        });
+    }
 
     let msg_url = format!("{base_url}/session/{opencode_session_id}/message");
 

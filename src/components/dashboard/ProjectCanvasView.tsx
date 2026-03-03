@@ -753,7 +753,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     worktreeId: selectedFlatCard?.worktreeId ?? '',
     worktreePath: selectedFlatCard?.worktreePath ?? '',
   })
-  const { handleClearContextApproval } = useClearContextApproval({
+  const { handleClearContextApproval, handleClearContextApprovalBuild } = useClearContextApproval({
     worktreeId: selectedFlatCard?.worktreeId ?? '',
     worktreePath: selectedFlatCard?.worktreePath ?? '',
   })
@@ -1259,6 +1259,8 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       handlePlanApprovalYolo(card, updatedPlan),
     onClearContextApproval: (card, updatedPlan) =>
       handleClearContextApproval(card, updatedPlan),
+    onClearContextApprovalBuild: (card, updatedPlan) =>
+      handleClearContextApprovalBuild(card, updatedPlan),
     skipLabelHandling: true,
   })
 
@@ -1414,6 +1416,15 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       }
     },
     [planDialogCard, handleClearContextApproval]
+  )
+
+  const handleDialogClearContextApproveBuild = useCallback(
+    (updatedPlan: string) => {
+      if (planDialogCard) {
+        handleClearContextApprovalBuild(planDialogCard, updatedPlan)
+      }
+    },
+    [planDialogCard, handleClearContextApprovalBuild]
   )
 
   // Handle archive session for a specific worktree
@@ -2061,6 +2072,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                                   onApprove={() => handlePlanApproval(card)}
                                   onYolo={() => handlePlanApprovalYolo(card)}
                                   onClearContextApprove={() => handleClearContextApproval(card)}
+                                  onClearContextBuildApprove={() => handleClearContextApprovalBuild(card)}
                                   onToggleLabel={() =>
                                     handleOpenWorktreeLabelModal(card)
                                   }
@@ -2116,6 +2128,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
           onApprove={handleDialogApprove}
           onApproveYolo={handleDialogApproveYolo}
           onClearContextApprove={handleDialogClearContextApprove}
+          onClearContextBuildApprove={handleDialogClearContextApproveBuild}
         />
       ) : planDialogContent ? (
         <PlanDialog
@@ -2127,6 +2140,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
           onApprove={handleDialogApprove}
           onApproveYolo={handleDialogApproveYolo}
           onClearContextApprove={handleDialogClearContextApprove}
+          onClearContextBuildApprove={handleDialogClearContextApproveBuild}
         />
       ) : null}
 

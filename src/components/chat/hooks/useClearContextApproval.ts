@@ -13,6 +13,11 @@ import {
 import { invoke } from '@/lib/transport'
 import type { Session, WorktreeSessions, ThinkingLevel } from '@/types/chat'
 import type { SessionCardData } from '../session-card-utils'
+import {
+  extractImagePaths,
+  extractSkillPaths,
+  extractTextFilePaths,
+} from '../message-content-utils'
 
 interface UseClearContextApprovalParams {
   worktreeId: string
@@ -34,7 +39,7 @@ export function useClearContextApproval({
   const sendMessage = useSendMessage()
 
   const handleClearContextApproval = useCallback(
-    async (card: SessionCardData, updatedPlan?: string) => {
+    async (card: SessionCardData, updatedPlan?: string, mode: 'yolo' | 'build' = 'yolo') => {
       const sessionId = card.session.id
       const messageId = card.pendingPlanMessageId
 
@@ -136,65 +141,111 @@ export function useClearContextApproval({
       store.setActiveSession(worktreeId, newSession.id)
       store.addUserInitiatedSession(newSession.id)
 
-      // Transfer pasted images, text files, and skills from the original session
-      const pendingImages = store.getPendingImages(sessionId)
-      const pendingSkills = store.getPendingSkills(sessionId)
-      const pendingTextFiles = store.getPendingTextFiles(sessionId)
+      // Extract attachment references from all user messages in the original session.
+      // Pending attachments are already cleared by handleSubmit, so we scan the
+      // actual sent messages to find image/skill/text-file references.
+      // The canvas view only uses the sessions list query (no messages), so we
+      // must fetch the full session from the backend.
+      let allUserContent = ''
+      try {
+        const fullSession = await invoke<Session>('get_session', {
+          worktreeId,
+          worktreePath,
+          sessionId,
+        })
+        allUserContent = fullSession.messages
+          .filter(m => m.role === 'user')
+          .map(m => m.content)
+          .join('\n')
+        console.log('[useClearContextApproval] Fetched session messages:', {
+          sessionId,
+          messageCount: fullSession.messages.length,
+          userMessages: fullSession.messages.filter(m => m.role === 'user').length,
+          contentLength: allUserContent.length,
+          contentPreview: allUserContent.slice(0, 200),
+        })
+      } catch (err) {
+        console.error('[useClearContextApproval] Failed to fetch session:', err)
+      }
 
-      for (const image of pendingImages) {
-        store.addPendingImage(newSession.id, image)
-      }
-      for (const skill of pendingSkills) {
-        store.addPendingSkill(newSession.id, skill)
-      }
-      for (const textFile of pendingTextFiles) {
-        store.addPendingTextFile(newSession.id, textFile)
-      }
+      const imagePaths = extractImagePaths(allUserContent)
+      const skillPaths = extractSkillPaths(allUserContent)
+      const textFilePaths = extractTextFilePaths(allUserContent)
+      console.log('[useClearContextApproval] Extracted attachment paths:', {
+        imagePaths,
+        skillPaths,
+        textFilePaths,
+      })
 
-      // Step 5: Send plan as first message in YOLO mode
-      const model = preferences?.yolo_model ?? preferences?.selected_model ?? 'opus'
-      const backend = preferences?.yolo_backend ?? undefined
-      const yoloOverride = (model || backend)
+      // Step 5: Send plan as first message using mode-specific overrides
+      // Fallback chain: mode override → original session → global default
+      const isYolo = mode === 'yolo'
+      const modeLabel = isYolo ? 'Yolo' : 'Build'
+      const originalBackend = card.session.backend as 'claude' | 'codex' | 'opencode' | undefined
+      const modeBackendPref = isYolo ? preferences?.yolo_backend : preferences?.build_backend
+      const modeModelPref = isYolo ? preferences?.yolo_model : preferences?.build_model
+      const modeThinkingPref = isYolo ? preferences?.yolo_thinking_level : preferences?.build_thinking_level
+      const backend = (modeBackendPref ?? originalBackend ?? undefined) as 'claude' | 'codex' | 'opencode' | undefined
+      const model = modeModelPref ?? card.session.selected_model ?? preferences?.selected_model ?? 'opus'
+      const modeOverride = (modeModelPref || backend)
         ? [backend, model].filter(Boolean).join(' / ')
         : ''
-      if (yoloOverride) toast.info(`Yolo: ${yoloOverride}`)
-      const thinkingLevel = (preferences?.yolo_thinking_level ?? preferences?.thinking_level ?? 'off') as ThinkingLevel
+      if (modeOverride) toast.info(`${modeLabel}: ${modeOverride}`)
+      const thinkingLevel = (modeThinkingPref ?? preferences?.thinking_level ?? 'off') as ThinkingLevel
       const resolvedPlanFilePath = card.planFilePath || store.getPlanFilePath(sessionId)
       const planFileLine = resolvedPlanFilePath ? `\nPlan file: ${resolvedPlanFilePath}\n` : ''
-      const configPrefix = yoloOverride ? `[Yolo: ${yoloOverride}]\n` : ''
+      const configPrefix = modeOverride ? `[${modeLabel}: ${modeOverride}]\n` : ''
       let message = `${configPrefix}Execute this plan. Implement all changes described.${planFileLine}\n\n<plan>\n${planContent}\n</plan>`
 
-      // Append attachment references so Claude can read them in the new session
-      if (pendingSkills.length > 0) {
-        const skillRefs = pendingSkills
-          .map(s => `[Skill: ${s.path} - Read and use this skill to guide your response]`)
+      // Re-attach references from the original session so Claude can read them
+      if (skillPaths.length > 0) {
+        const skillRefs = skillPaths
+          .map(p => `[Skill: ${p} - Read and use this skill to guide your response]`)
           .join('\n')
         message = `${message}\n\n${skillRefs}`
       }
-      if (pendingImages.length > 0) {
-        const imageRefs = pendingImages
-          .map(img => `[Image attached: ${img.path} - Use the Read tool to view this image]`)
+      if (imagePaths.length > 0) {
+        const imageRefs = imagePaths
+          .map(p => `[Image attached: ${p} - Use the Read tool to view this image]`)
           .join('\n')
         message = `${message}\n\n${imageRefs}`
       }
-      if (pendingTextFiles.length > 0) {
-        const textFileRefs = pendingTextFiles
-          .map(tf => `[Text file attached: ${tf.path} - Use the Read tool to view this file]`)
+      if (textFilePaths.length > 0) {
+        const textFileRefs = textFilePaths
+          .map(p => `[Text file attached: ${p} - Use the Read tool to view this file]`)
           .join('\n')
         message = `${message}\n\n${textFileRefs}`
       }
 
-      store.setExecutionMode(newSession.id, 'yolo')
+      store.setExecutionMode(newSession.id, mode)
       store.setLastSentMessage(newSession.id, message)
       store.setError(newSession.id, null)
       store.addSendingSession(newSession.id)
       store.setSelectedModel(newSession.id, model)
-      store.setExecutingMode(newSession.id, 'yolo')
+      store.setExecutingMode(newSession.id, mode)
       if (backend) {
         store.setSelectedBackend(
           newSession.id,
           backend as 'claude' | 'codex' | 'opencode'
         )
+      }
+      // Optimistically update TanStack Query cache so UI shows correct backend/model
+      // immediately. Without this, session?.backend (from query cache) defaults to 'claude'
+      // and overrides the Zustand value in the backend resolution chain.
+      queryClient.setQueryData<Session>(
+        chatQueryKeys.session(newSession.id),
+        old => old ? { ...old, backend: backend ?? old.backend, selected_model: model } : old
+      )
+
+      // Persist model and backend to Rust session BEFORE sending so send_chat_message
+      // reads the updated session state (both use with_sessions_mut, so ordering matters)
+      await invoke('set_session_model', {
+        worktreeId, worktreePath, sessionId: newSession.id, model,
+      }).catch(err => console.error('[useClearContextApproval] Failed to persist model:', err))
+      if (backend) {
+        await invoke('set_session_backend', {
+          worktreeId, worktreePath, sessionId: newSession.id, backend,
+        }).catch(err => console.error('[useClearContextApproval] Failed to persist backend:', err))
       }
 
       sendMessage.mutate({
@@ -203,7 +254,7 @@ export function useClearContextApproval({
         worktreePath,
         message,
         model,
-        executionMode: 'yolo',
+        executionMode: mode,
         thinkingLevel,
         customProfileName: card.session.selected_provider ?? undefined,
         backend,
@@ -261,5 +312,11 @@ export function useClearContextApproval({
     ]
   )
 
-  return { handleClearContextApproval }
+  const handleClearContextApprovalBuild = useCallback(
+    (card: SessionCardData, updatedPlan?: string) =>
+      handleClearContextApproval(card, updatedPlan, 'build'),
+    [handleClearContextApproval]
+  )
+
+  return { handleClearContextApproval, handleClearContextApprovalBuild }
 }

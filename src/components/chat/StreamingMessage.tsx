@@ -39,6 +39,8 @@ interface StreamingMessageProps {
   approveShortcutYolo?: string
   /** Keyboard shortcut for clear context button */
   approveShortcutClearContext?: string
+  /** Keyboard shortcut for clear context and build button */
+  approveShortcutClearContextBuild?: string
   /** Callback when user answers a question */
   onQuestionAnswer: (
     toolCallId: string,
@@ -68,6 +70,8 @@ interface StreamingMessageProps {
   onStreamingPlanApprovalYolo?: () => void
   /** Callback for clear context approval during streaming */
   onStreamingClearContextApproval?: () => void
+  /** Callback for clear context and build approval during streaming */
+  onStreamingClearContextApprovalBuild?: () => void
   /** Hide approve buttons (e.g. for Codex which has no native approval flow) */
   hideApproveButtons?: boolean
 }
@@ -85,6 +89,7 @@ export const StreamingMessage = memo(function StreamingMessage({
   approveShortcut,
   approveShortcutYolo,
   approveShortcutClearContext,
+  approveShortcutClearContextBuild,
   onQuestionAnswer,
   onQuestionSkip,
   onFileClick,
@@ -96,6 +101,7 @@ export const StreamingMessage = memo(function StreamingMessage({
   onStreamingPlanApproval,
   onStreamingPlanApprovalYolo,
   onStreamingClearContextApproval,
+  onStreamingClearContextApprovalBuild,
   hideApproveButtons,
 }: StreamingMessageProps) {
   return (
@@ -260,9 +266,13 @@ export const StreamingMessage = memo(function StreamingMessage({
                                   onClearContextApproval={
                                     onStreamingClearContextApproval
                                   }
+                                  onClearContextBuildApproval={
+                                    onStreamingClearContextApprovalBuild
+                                  }
                                   shortcut={approveShortcut}
                                   shortcutYolo={approveShortcutYolo}
                                   shortcutClearContext={approveShortcutClearContext}
+                                  shortcutClearContextBuild={approveShortcutClearContextBuild}
                                   hideApproveButtons={hideApproveButtons}
                                 />
                               </div>

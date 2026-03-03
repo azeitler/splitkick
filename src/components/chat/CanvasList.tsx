@@ -27,6 +27,7 @@ interface CanvasListProps {
   onPlanApproval: (card: SessionCardData, updatedPlan?: string) => void
   onPlanApprovalYolo: (card: SessionCardData, updatedPlan?: string) => void
   onClearContextApproval: (card: SessionCardData, updatedPlan?: string) => void
+  onClearContextApprovalBuild: (card: SessionCardData, updatedPlan?: string) => void
   onCloseWorktree: () => void
   searchInputRef?: React.RefObject<HTMLInputElement | null>
 }
@@ -47,6 +48,7 @@ export function CanvasList({
   onPlanApproval,
   onPlanApprovalYolo,
   onClearContextApproval,
+  onClearContextApprovalBuild,
   onCloseWorktree,
   searchInputRef,
 }: CanvasListProps) {
@@ -126,6 +128,7 @@ export function CanvasList({
     onPlanApproval,
     onPlanApprovalYolo,
     onClearContextApproval,
+    onClearContextApprovalBuild,
   })
 
   const isModalOpen =
@@ -170,6 +173,15 @@ export function CanvasList({
       }
     },
     [planDialogCard, onClearContextApproval]
+  )
+
+  const handleDialogClearContextApproveBuild = useCallback(
+    (updatedPlan: string) => {
+      if (planDialogCard) {
+        onClearContextApprovalBuild(planDialogCard, updatedPlan)
+      }
+    },
+    [planDialogCard, onClearContextApprovalBuild]
   )
 
   useEffect(() => {
@@ -311,6 +323,7 @@ export function CanvasList({
                       onApprove={() => onPlanApproval(card)}
                       onYolo={() => onPlanApprovalYolo(card)}
                       onClearContextApprove={() => onClearContextApproval(card)}
+                      onClearContextBuildApprove={() => onClearContextApprovalBuild(card)}
                       onToggleLabel={() => handleOpenLabelModal(card)}
                       onToggleReview={() => {
                         const { reviewingSessions, setSessionReviewing } =
@@ -347,6 +360,7 @@ export function CanvasList({
           onApprove={handleDialogApprove}
           onApproveYolo={handleDialogApproveYolo}
           onClearContextApprove={handleDialogClearContextApprove}
+          onClearContextBuildApprove={handleDialogClearContextApproveBuild}
         />
       ) : planDialogContent ? (
         <PlanDialog
@@ -359,6 +373,7 @@ export function CanvasList({
           onApprove={handleDialogApprove}
           onApproveYolo={handleDialogApproveYolo}
           onClearContextApprove={handleDialogClearContextApprove}
+          onClearContextBuildApprove={handleDialogClearContextApproveBuild}
         />
       ) : null}
 

@@ -41,6 +41,7 @@ export interface SessionCardProps {
   onApprove?: () => void
   onYolo?: () => void
   onClearContextApprove?: () => void
+  onClearContextBuildApprove?: () => void
   onToggleLabel?: () => void
   onToggleReview?: () => void
   onRename?: (sessionId: string, newName: string) => void
@@ -65,6 +66,7 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
       onApprove,
       onYolo,
       onClearContextApprove,
+      onClearContextBuildApprove,
       onToggleLabel,
       onToggleReview,
       isRenaming,
@@ -263,18 +265,36 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
                         )}
                       </Kbd>
                     </Button>
+                    {onClearContextBuildApprove && (
+                      <Button
+                        variant="outline"
+                        className="h-5 px-1.5 text-[10px] rounded"
+                        disabled={card.isSending}
+                        onClick={e => {
+                          e.stopPropagation()
+                          onClearContextBuildApprove()
+                        }}
+                      >
+                        CC Build
+                        <Kbd className="ml-1 h-3.5 text-[9px]">
+                          {formatShortcutDisplay(
+                            DEFAULT_KEYBINDINGS.approve_plan_clear_context_build
+                          )}
+                        </Kbd>
+                      </Button>
+                    )}
                     {onClearContextApprove && (
                       <Button
-                        variant="destructive"
-                        className="h-6 px-2 text-xs rounded"
+                        variant="outline"
+                        className="h-5 px-1.5 text-[10px] rounded"
                         disabled={card.isSending}
                         onClick={e => {
                           e.stopPropagation()
                           onClearContextApprove()
                         }}
                       >
-                        Clear Context and yolo
-                        <Kbd className="ml-1.5 h-4 text-[10px] bg-destructive-foreground/20 text-destructive-foreground">
+                        CC YOLO
+                        <Kbd className="ml-1 h-3.5 text-[9px]">
                           {formatShortcutDisplay(
                             DEFAULT_KEYBINDINGS.approve_plan_clear_context
                           )}

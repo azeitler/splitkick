@@ -70,6 +70,8 @@ interface UseChatWindowEventsParams {
   handlePlanApprovalYolo: (messageId: string) => void
   handleClearContextApproval: (messageId: string) => void
   handleStreamingClearContextApproval: () => void
+  handleClearContextApprovalBuild: (messageId: string) => void
+  handleStreamingClearContextApprovalBuild: () => void
   /** Whether the active session uses Codex backend (no native approval flow) */
   isCodexBackend: boolean
   /** Ref to the chat scroll viewport for keyboard scrolling */
@@ -124,6 +126,8 @@ export function useChatWindowEvents({
   handlePlanApprovalYolo,
   handleClearContextApproval,
   handleStreamingClearContextApproval,
+  handleClearContextApprovalBuild,
+  handleStreamingClearContextApprovalBuild,
   isCodexBackend,
   scrollViewportRef,
   beginKeyboardScroll,
@@ -534,5 +538,30 @@ export function useChatWindowEvents({
     pendingPlanMessage,
     handleStreamingClearContextApproval,
     handleClearContextApproval,
+  ])
+
+  // Clear context and build keyboard shortcut (no-op for Codex)
+  useEffect(() => {
+    if (!isModal && isViewingCanvasTab) return
+    if (isCodexBackend) return
+    const handler = () => {
+      if (hasStreamingPlan) {
+        handleStreamingClearContextApprovalBuild()
+        return
+      }
+      if (pendingPlanMessage) {
+        handleClearContextApprovalBuild(pendingPlanMessage.id)
+      }
+    }
+    window.addEventListener('approve-plan-clear-context-build', handler)
+    return () => window.removeEventListener('approve-plan-clear-context-build', handler)
+  }, [
+    isModal,
+    isViewingCanvasTab,
+    isCodexBackend,
+    hasStreamingPlan,
+    pendingPlanMessage,
+    handleStreamingClearContextApprovalBuild,
+    handleClearContextApprovalBuild,
   ])
 }

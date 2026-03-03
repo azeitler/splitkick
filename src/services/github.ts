@@ -192,6 +192,27 @@ export function countNewIssues(issues: GitHubIssue[]): number {
  *
  * Used for local filtering in the modal component
  */
+
+/**
+ * Parse a search query for `label:"name"` directives.
+ * Returns required labels (all must match) and the remaining free-text query.
+ *
+ * Examples:
+ *   'label:"bug" crash'  → { labels: ['bug'], textQuery: 'crash' }
+ *   'label:"bug" label:"high priority"' → { labels: ['bug', 'high priority'], textQuery: '' }
+ */
+export function parseLabelQuery(query: string): { labels: string[]; textQuery: string } {
+  const labels: string[] = []
+  const textQuery = query
+    .replace(/label:"([^"]+)"/gi, (_, name) => {
+      labels.push(name.toLowerCase())
+      return ''
+    })
+    .replace(/\s+/g, ' ')
+    .trim()
+  return { labels, textQuery }
+}
+
 export function filterIssues(
   issues: GitHubIssue[],
   query: string
@@ -200,9 +221,21 @@ export function filterIssues(
     return issues
   }
 
-  const lowerQuery = query.toLowerCase().trim()
+  const { labels, textQuery } = parseLabelQuery(query)
+  const lowerQuery = textQuery.toLowerCase()
 
   return issues.filter(issue => {
+    // All specified labels must be present
+    if (labels.length > 0) {
+      const issueLabels = issue.labels.map(l => l.name.toLowerCase())
+      if (!labels.every(l => issueLabels.some(il => il.includes(l)))) {
+        return false
+      }
+    }
+
+    // If no text query remains, label match is enough
+    if (!lowerQuery) return true
+
     // Match by issue number (e.g., "123" or "#123")
     const numberQuery = lowerQuery.replace(/^#/, '')
     if (issue.number.toString().includes(numberQuery)) {
@@ -216,6 +249,11 @@ export function filterIssues(
 
     // Match by body
     if (issue.body?.toLowerCase().includes(lowerQuery)) {
+      return true
+    }
+
+    // Match by label name
+    if (issue.labels.some(l => l.name.toLowerCase().includes(lowerQuery))) {
       return true
     }
 
@@ -531,9 +569,21 @@ export function filterPRs(
     return prs
   }
 
-  const lowerQuery = query.toLowerCase().trim()
+  const { labels, textQuery } = parseLabelQuery(query)
+  const lowerQuery = textQuery.toLowerCase()
 
   return prs.filter(pr => {
+    // All specified labels must be present
+    if (labels.length > 0) {
+      const prLabels = pr.labels.map(l => l.name.toLowerCase())
+      if (!labels.every(l => prLabels.some(pl => pl.includes(l)))) {
+        return false
+      }
+    }
+
+    // If no text query remains, label match is enough
+    if (!lowerQuery) return true
+
     // Match by PR number (e.g., "123" or "#123")
     const numberQuery = lowerQuery.replace(/^#/, '')
     if (pr.number.toString().includes(numberQuery)) {
@@ -552,6 +602,11 @@ export function filterPRs(
 
     // Match by branch name
     if (pr.headRefName.toLowerCase().includes(lowerQuery)) {
+      return true
+    }
+
+    // Match by label name
+    if (pr.labels.some(l => l.name.toLowerCase().includes(lowerQuery))) {
       return true
     }
 

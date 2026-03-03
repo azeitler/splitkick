@@ -339,6 +339,7 @@ export function MainWindow() {
       <Toaster
         position="bottom-right"
         offset="52px"
+        expand={true}
         toastOptions={{
           classNames: {
             toast:

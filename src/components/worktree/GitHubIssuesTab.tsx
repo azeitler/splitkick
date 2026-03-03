@@ -56,6 +56,13 @@ export function GitHubIssuesTab({
   onGhLogin,
   isGhInstalled,
 }: GitHubIssuesTabProps) {
+  const handleLabelClick = (labelName: string) => {
+    const token = `label:"${labelName}"`
+    if (!searchQuery.includes(token)) {
+      setSearchQuery(searchQuery ? `${searchQuery} ${token}` : token)
+    }
+  }
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
       {/* Search and filters */}
@@ -66,7 +73,7 @@ export function GitHubIssuesTab({
             <Input
               ref={searchInputRef}
               type="text"
-              placeholder="Search issues by #number, title, or description..."
+              placeholder='Search by #number, title, label… or label:"bug"'
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               className="pl-9 h-8 text-sm"
@@ -165,6 +172,7 @@ export function GitHubIssuesTab({
                 onClick={bg => onSelectIssue(issue, bg)}
                 onInvestigate={bg => onInvestigateIssue(issue, bg)}
                 onPreview={() => onPreviewIssue(issue)}
+                onLabelClick={handleLabelClick}
               />
             ))}
             {isSearching && (

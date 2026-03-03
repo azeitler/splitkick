@@ -16,11 +16,13 @@ interface MessageListProps {
   approveShortcut: string
   approveShortcutYolo?: string
   approveShortcutClearContext?: string
+  approveShortcutClearContextBuild?: string
   approveButtonRef?: React.RefObject<HTMLButtonElement | null>
   isSending: boolean
   onPlanApproval: (messageId: string) => void
   onPlanApprovalYolo?: (messageId: string) => void
   onClearContextApproval?: (messageId: string) => void
+  onClearContextApprovalBuild?: (messageId: string) => void
   onQuestionAnswer: (
     toolCallId: string,
     answers: QuestionAnswer[],
@@ -57,11 +59,13 @@ export const MessageList = memo(function MessageList({
   approveShortcut,
   approveShortcutYolo,
   approveShortcutClearContext,
+  approveShortcutClearContextBuild,
   approveButtonRef,
   isSending,
   onPlanApproval,
   onPlanApprovalYolo,
   onClearContextApproval,
+  onClearContextApprovalBuild,
   onQuestionAnswer,
   onQuestionSkip,
   onFileClick,
@@ -109,6 +113,7 @@ export const MessageList = memo(function MessageList({
               approveShortcut={approveShortcut}
               approveShortcutYolo={approveShortcutYolo}
               approveShortcutClearContext={approveShortcutClearContext}
+              approveShortcutClearContextBuild={approveShortcutClearContextBuild}
               approveButtonRef={
                 index === lastPlanMessageIndex ? approveButtonRef : undefined
               }
@@ -116,6 +121,7 @@ export const MessageList = memo(function MessageList({
               onPlanApproval={onPlanApproval}
               onPlanApprovalYolo={onPlanApprovalYolo}
               onClearContextApproval={onClearContextApproval}
+              onClearContextApprovalBuild={onClearContextApprovalBuild}
               onQuestionAnswer={onQuestionAnswer}
               onQuestionSkip={onQuestionSkip}
               onFileClick={onFileClick}

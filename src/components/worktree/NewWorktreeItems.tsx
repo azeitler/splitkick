@@ -73,6 +73,7 @@ export interface IssueItemProps {
   onClick: (background: boolean) => void
   onInvestigate: (background: boolean) => void
   onPreview: () => void
+  onLabelClick?: (label: string) => void
 }
 
 export function IssueItem({
@@ -84,6 +85,7 @@ export function IssueItem({
   onClick,
   onInvestigate,
   onPreview,
+  onLabelClick,
 }: IssueItemProps) {
   return (
     <div
@@ -125,12 +127,16 @@ export function IssueItem({
             {issue.labels.slice(0, 3).map(label => (
               <span
                 key={label.name}
-                className="px-1.5 py-0.5 text-xs rounded-full"
+                className={cn(
+                  'px-1.5 py-0.5 text-xs rounded-full',
+                  onLabelClick && 'cursor-pointer hover:opacity-75 transition-opacity'
+                )}
                 style={{
                   backgroundColor: `#${label.color}20`,
                   color: `#${label.color}`,
                   border: `1px solid #${label.color}40`,
                 }}
+                onClick={onLabelClick ? e => { e.stopPropagation(); onLabelClick(label.name) } : undefined}
               >
                 {label.name}
               </span>
@@ -193,6 +199,7 @@ export interface PRItemProps {
   onClick: (background: boolean) => void
   onInvestigate: (background: boolean) => void
   onPreview: () => void
+  onLabelClick?: (label: string) => void
 }
 
 export function PRItem({
@@ -204,6 +211,7 @@ export function PRItem({
   onClick,
   onInvestigate,
   onPreview,
+  onLabelClick,
 }: PRItemProps) {
   return (
     <div
@@ -254,12 +262,16 @@ export function PRItem({
             {pr.labels.slice(0, 3).map(label => (
               <span
                 key={label.name}
-                className="px-1.5 py-0.5 text-xs rounded-full"
+                className={cn(
+                  'px-1.5 py-0.5 text-xs rounded-full',
+                  onLabelClick && 'cursor-pointer hover:opacity-75 transition-opacity'
+                )}
                 style={{
                   backgroundColor: `#${label.color}20`,
                   color: `#${label.color}`,
                   border: `1px solid #${label.color}40`,
                 }}
+                onClick={onLabelClick ? e => { e.stopPropagation(); onLabelClick(label.name) } : undefined}
               >
                 {label.name}
               </span>

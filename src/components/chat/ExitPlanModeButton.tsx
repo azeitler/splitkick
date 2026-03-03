@@ -16,6 +16,8 @@ interface ExitPlanModeButtonProps {
   onPlanApprovalYolo?: () => void
   /** Callback for clear context approval (new session with plan in yolo mode) */
   onClearContextApproval?: () => void
+  /** Callback for clear context approval (new session with plan in build mode) */
+  onClearContextBuildApproval?: () => void
   /** Ref to attach to the approve button for visibility tracking */
   buttonRef?: React.RefObject<HTMLButtonElement | null>
   /** Keyboard shortcut to display on the button */
@@ -24,6 +26,8 @@ interface ExitPlanModeButtonProps {
   shortcutYolo?: string
   /** Keyboard shortcut to display on the clear context button */
   shortcutClearContext?: string
+  /** Keyboard shortcut to display on the clear context build button */
+  shortcutClearContextBuild?: string
   /** Hide approve buttons (e.g. for Codex which has no native approval flow) */
   hideApproveButtons?: boolean
 }
@@ -44,10 +48,12 @@ export function ExitPlanModeButton({
   onPlanApproval,
   onPlanApprovalYolo,
   onClearContextApproval,
+  onClearContextBuildApproval,
   buttonRef,
   shortcut,
   shortcutYolo,
   shortcutClearContext,
+  shortcutClearContextBuild,
   hideApproveButtons,
 }: ExitPlanModeButtonProps) {
   if (!toolCalls) return null
@@ -67,7 +73,7 @@ export function ExitPlanModeButton({
 
   // Only render the approve button (plan is shown inline in timeline)
   return (
-    <div className="mt-3 flex gap-2">
+    <div className="mt-3 flex flex-wrap gap-2">
       <Button ref={buttonRef} onClick={() => onPlanApproval?.()}>
         Approve
         {shortcut && (
@@ -89,14 +95,31 @@ export function ExitPlanModeButton({
           </Kbd>
         )}
       </Button>
+      {onClearContextBuildApproval && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 px-2 text-xs"
+          onClick={() => onClearContextBuildApproval()}
+        >
+          Clear Context and Build
+          {shortcutClearContextBuild && (
+            <Kbd className="ml-1.5 h-4 text-[10px]">
+              {shortcutClearContextBuild}
+            </Kbd>
+          )}
+        </Button>
+      )}
       {onClearContextApproval && (
         <Button
-          variant="destructive"
+          variant="outline"
+          size="sm"
+          className="h-7 px-2 text-xs"
           onClick={() => onClearContextApproval()}
         >
-          Clear Context and yolo
+          Clear Context and YOLO
           {shortcutClearContext && (
-            <Kbd className="ml-1.5 h-4 text-[10px] bg-destructive-foreground/20 text-destructive-foreground">
+            <Kbd className="ml-1.5 h-4 text-[10px]">
               {shortcutClearContext}
             </Kbd>
           )}

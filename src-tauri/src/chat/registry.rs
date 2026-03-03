@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use once_cell::sync::Lazy;
 use tauri::AppHandle;
@@ -19,6 +20,11 @@ static PROCESS_REGISTRY: Lazy<Mutex<HashMap<String, u32>>> =
 /// When `register_process` is called for a pending session, the process is killed immediately.
 static PENDING_CANCELS: Lazy<Mutex<HashSet<String>>> =
     Lazy::new(|| Mutex::new(HashSet::new()));
+
+/// Cancel flags for OpenCode sessions (HTTP-based, no PID to kill).
+/// When cancel is requested, the flag is set so the blocking HTTP thread can detect it.
+static CANCEL_FLAGS: Lazy<Mutex<HashMap<String, Arc<AtomicBool>>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
 /// Register a running Claude process PID for a session.
 /// Returns `false` if the session was cancelled before registration (process is killed immediately).
@@ -60,6 +66,30 @@ pub fn unregister_process(session_id: &str) {
     if let Some(pid) = registry.remove(session_id) {
         log::trace!("Unregistered Claude process {pid} for session: {session_id}");
     }
+}
+
+/// Register a cancellation flag for an OpenCode session.
+/// Returns `false` if the session was already cancelled (flag is set immediately).
+pub fn register_cancel_flag(session_id: String, flag: Arc<AtomicBool>) -> bool {
+    // Check pending cancels: if cancel was requested before we registered, cancel immediately
+    {
+        let mut pending = PENDING_CANCELS.lock().unwrap();
+        if pending.remove(&session_id) {
+            log::warn!(
+                "Session {session_id} was cancelled before cancel flag registered, setting flag"
+            );
+            flag.store(true, Ordering::SeqCst);
+            return false;
+        }
+    }
+
+    CANCEL_FLAGS.lock().unwrap().insert(session_id, flag);
+    true
+}
+
+/// Remove a session's cancel flag (called after completion).
+pub fn unregister_cancel_flag(session_id: &str) {
+    CANCEL_FLAGS.lock().unwrap().remove(session_id);
 }
 
 /// Check if a session has a running process
@@ -142,10 +172,31 @@ pub fn cancel_process(
         }
 
         Ok(true)
+    } else if let Some(flag) = CANCEL_FLAGS.lock().unwrap().get(session_id).cloned() {
+        // OpenCode session: set the cancel flag so the HTTP thread detects it
+        log::warn!("OpenCode session {session_id}: setting cancel flag");
+        flag.store(true, Ordering::SeqCst);
+
+        // Mark run as cancelled immediately (before HTTP call returns)
+        if let Err(e) = run_log::mark_running_run_cancelled(app, session_id) {
+            log::warn!("Failed to mark run as cancelled in manifest: {e}");
+        }
+
+        // Emit cancelled event with undo_send=true since no content has streamed yet
+        let event = CancelledEvent {
+            session_id: session_id.to_string(),
+            worktree_id: worktree_id.to_string(),
+            undo_send: true,
+        };
+        if let Err(e) = app.emit_all("chat:cancelled", &event) {
+            log::error!("Failed to emit chat:cancelled event: {e}");
+        }
+
+        Ok(true)
     } else {
         // Process not yet registered — queue for pending cancellation.
-        // When register_process is called later, the process will be killed immediately.
-        log::warn!("No PID for session {session_id}, queuing pending cancellation");
+        // When register_process or register_cancel_flag is called later, the cancel is applied immediately.
+        log::warn!("No PID or cancel flag for session {session_id}, queuing pending cancellation");
         {
             let mut pending = PENDING_CANCELS.lock().unwrap();
             pending.insert(session_id.to_string());
@@ -206,6 +257,25 @@ pub fn cancel_process_if_running(
             session_id: session_id.to_string(),
             worktree_id: worktree_id.to_string(),
             undo_send: false,
+        };
+        if let Err(e) = app.emit_all("chat:cancelled", &event) {
+            log::error!("Failed to emit chat:cancelled event: {e}");
+        }
+
+        Ok(true)
+    } else if let Some(flag) = CANCEL_FLAGS.lock().unwrap().get(session_id).cloned() {
+        // OpenCode session actively running — set the cancel flag
+        log::trace!("OpenCode session {session_id} is running, setting cancel flag");
+        flag.store(true, Ordering::SeqCst);
+
+        if let Err(e) = run_log::mark_running_run_cancelled(app, session_id) {
+            log::warn!("Failed to mark run as cancelled in manifest: {e}");
+        }
+
+        let event = CancelledEvent {
+            session_id: session_id.to_string(),
+            worktree_id: worktree_id.to_string(),
+            undo_send: true,
         };
         if let Err(e) = app.emit_all("chat:cancelled", &event) {
             log::error!("Failed to emit chat:cancelled event: {e}");

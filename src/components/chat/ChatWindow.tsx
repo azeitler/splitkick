@@ -23,6 +23,7 @@ import {
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
+import { invoke } from '@/lib/transport'
 import { GitBranch, GitMerge, Layers } from 'lucide-react'
 import {
   useSession,
@@ -372,6 +373,10 @@ export function ChatWindow({
     (preferences?.keybindings?.approve_plan_clear_context ??
       DEFAULT_KEYBINDINGS.approve_plan_clear_context) as string
   )
+  const approveShortcutClearContextBuild = formatShortcutDisplay(
+    (preferences?.keybindings?.approve_plan_clear_context_build ??
+      DEFAULT_KEYBINDINGS.approve_plan_clear_context_build) as string
+  )
   const sendMessage = useSendMessage()
   const createSession = useCreateSession()
   const setSessionModel = useSetSessionModel()
@@ -683,6 +688,7 @@ export function ChatWindow({
   const buildModelRef = useRef<string | null>(preferences?.build_model ?? null)
   const yoloModelRef = useRef<string | null>(preferences?.yolo_model ?? null)
   const buildBackendRef = useRef<string | null>(preferences?.build_backend ?? null)
+  const buildThinkingLevelRef = useRef<string | null>(preferences?.build_thinking_level ?? null)
   const yoloBackendRef = useRef<string | null>(preferences?.yolo_backend ?? null)
   const yoloThinkingLevelRef = useRef<string | null>(preferences?.yolo_thinking_level ?? null)
   const selectedProviderRef = useRef(selectedProvider)
@@ -703,6 +709,7 @@ export function ChatWindow({
   buildModelRef.current = preferences?.build_model ?? null
   yoloModelRef.current = preferences?.yolo_model ?? null
   buildBackendRef.current = preferences?.build_backend ?? null
+  buildThinkingLevelRef.current = preferences?.build_thinking_level ?? null
   yoloBackendRef.current = preferences?.yolo_backend ?? null
   yoloThinkingLevelRef.current = preferences?.yolo_thinking_level ?? null
   selectedProviderRef.current = selectedProvider
@@ -907,6 +914,24 @@ export function ChatWindow({
           yoloBackend as 'claude' | 'codex' | 'opencode'
         )
       }
+      // Optimistically update TanStack Query cache so UI shows correct backend/model immediately.
+      queryClient.setQueryData<Session>(
+        chatQueryKeys.session(newSession.id),
+        old => old ? { ...old, backend: yoloBackend ?? old.backend, selected_model: yoloModel } : old
+      )
+
+      // Persist model and backend to Rust session BEFORE sending so send_chat_message
+      // reads the updated session state (both use with_sessions_mut, so ordering matters)
+      await invoke('set_session_model', {
+        worktreeId: activeWorktreeId, worktreePath: activeWorktreePath,
+        sessionId: newSession.id, model: yoloModel,
+      }).catch(err => console.error('[PlanDialog CC Yolo] Failed to persist model:', err))
+      if (yoloBackend) {
+        await invoke('set_session_backend', {
+          worktreeId: activeWorktreeId, worktreePath: activeWorktreePath,
+          sessionId: newSession.id, backend: yoloBackend,
+        }).catch(err => console.error('[PlanDialog CC Yolo] Failed to persist backend:', err))
+      }
 
       const yoloThinkingLevel = yoloThinkingLevelRef.current ?? selectedThinkingLevelRef.current
       sendMessage.mutate({
@@ -932,6 +957,129 @@ export function ChatWindow({
       yoloModelRef,
       yoloBackendRef,
       yoloThinkingLevelRef,
+      selectedThinkingLevelRef,
+    ]
+  )
+
+  // Clear context approval handler for PlanDialog (build mode)
+  const handlePlanDialogClearContextBuildApprove = useCallback(
+    async (editedPlanContent: string) => {
+      if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
+
+      // Mark pending plan approved if exists
+      if (pendingPlanMessage) {
+        markPlanApprovedService(
+          activeWorktreeId,
+          activeWorktreePath,
+          activeSessionId,
+          pendingPlanMessage.id
+        )
+        queryClient.setQueryData<Session>(
+          chatQueryKeys.session(activeSessionId),
+          old => {
+            if (!old) return old
+            return {
+              ...old,
+              approved_plan_message_ids: [
+                ...(old.approved_plan_message_ids ?? []),
+                pendingPlanMessage.id,
+              ],
+              messages: old.messages.map(msg =>
+                msg.id === pendingPlanMessage.id
+                  ? { ...msg, plan_approved: true }
+                  : msg
+              ),
+            }
+          }
+        )
+      }
+
+      const store = useChatStore.getState()
+      store.clearToolCalls(activeSessionId)
+      store.clearStreamingContentBlocks(activeSessionId)
+      store.setSessionReviewing(activeSessionId, false)
+      store.setWaitingForInput(activeSessionId, false)
+
+      // Create new session
+      let newSession: Session
+      try {
+        newSession = await createSession.mutateAsync({
+          worktreeId: activeWorktreeId,
+          worktreePath: activeWorktreePath,
+        })
+      } catch (err) {
+        toast.error(`Failed to create session: ${err}`)
+        return
+      }
+
+      // Switch to new session
+      store.setActiveSession(activeWorktreeId, newSession.id)
+
+      // Send plan as first message in build mode using build overrides
+      const buildModel = buildModelRef.current ?? selectedModelRef.current
+      const buildBackend = buildBackendRef.current ?? undefined
+      const buildOverride = (buildModelRef.current || buildBackend)
+        ? [buildBackend, buildModel].filter(Boolean).join(' / ')
+        : ''
+      if (buildOverride) toast.info(`Build: ${buildOverride}`)
+      const message = buildOverride
+        ? `[Build: ${buildOverride}]\nExecute this plan. Implement all changes described.\n\n<plan>\n${editedPlanContent}\n</plan>`
+        : `Execute this plan. Implement all changes described.\n\n<plan>\n${editedPlanContent}\n</plan>`
+      store.setExecutionMode(newSession.id, 'build')
+      store.setLastSentMessage(newSession.id, message)
+      store.setError(newSession.id, null)
+      store.addSendingSession(newSession.id)
+      store.setSelectedModel(newSession.id, buildModel)
+      store.setExecutingMode(newSession.id, 'build')
+      if (buildBackend) {
+        store.setSelectedBackend(
+          newSession.id,
+          buildBackend as 'claude' | 'codex' | 'opencode'
+        )
+      }
+      // Optimistically update TanStack Query cache so UI shows correct backend/model immediately.
+      queryClient.setQueryData<Session>(
+        chatQueryKeys.session(newSession.id),
+        old => old ? { ...old, backend: buildBackend ?? old.backend, selected_model: buildModel } : old
+      )
+
+      // Persist model and backend to Rust session BEFORE sending so send_chat_message
+      // reads the updated session state (both use with_sessions_mut, so ordering matters)
+      await invoke('set_session_model', {
+        worktreeId: activeWorktreeId, worktreePath: activeWorktreePath,
+        sessionId: newSession.id, model: buildModel,
+      }).catch(err => console.error('[PlanDialog CC Build] Failed to persist model:', err))
+      if (buildBackend) {
+        await invoke('set_session_backend', {
+          worktreeId: activeWorktreeId, worktreePath: activeWorktreePath,
+          sessionId: newSession.id, backend: buildBackend,
+        }).catch(err => console.error('[PlanDialog CC Build] Failed to persist backend:', err))
+      }
+
+      const buildThinkingLevel = buildThinkingLevelRef.current ?? selectedThinkingLevelRef.current
+      sendMessage.mutate({
+        sessionId: newSession.id,
+        worktreeId: activeWorktreeId,
+        worktreePath: activeWorktreePath,
+        message,
+        model: buildModel,
+        executionMode: 'build',
+        thinkingLevel: buildThinkingLevel as ThinkingLevel,
+        backend: buildBackend,
+      })
+    },
+    [
+      activeSessionId,
+      activeWorktreeId,
+      activeWorktreePath,
+      pendingPlanMessage,
+      queryClient,
+      createSession,
+      sendMessage,
+      selectedModelRef,
+      buildModelRef,
+      buildBackendRef,
+      buildThinkingLevelRef,
       selectedThinkingLevelRef,
     ]
   )
@@ -1249,6 +1397,8 @@ export function ChatWindow({
     handleStreamingPlanApprovalYolo,
     handleClearContextApproval,
     handleStreamingClearContextApproval,
+    handleClearContextApprovalBuild,
+    handleStreamingClearContextApprovalBuild,
     handlePendingPlanApprovalCallback,
     handlePermissionApproval,
     handlePermissionApprovalYolo,
@@ -1262,6 +1412,7 @@ export function ChatWindow({
     selectedModelRef,
     buildModelRef,
     buildBackendRef,
+    buildThinkingLevelRef,
     yoloModelRef,
     yoloBackendRef,
     yoloThinkingLevelRef,
@@ -1371,6 +1522,8 @@ export function ChatWindow({
     handlePlanApprovalYolo,
     handleClearContextApproval,
     handleStreamingClearContextApproval,
+    handleClearContextApprovalBuild,
+    handleStreamingClearContextApprovalBuild,
     isCodexBackend,
     scrollViewportRef,
     beginKeyboardScroll,
@@ -1547,11 +1700,13 @@ export function ChatWindow({
                                 approveShortcut={approveShortcut}
                                 approveShortcutYolo={approveShortcutYolo}
                                 approveShortcutClearContext={approveShortcutClearContext}
+                                approveShortcutClearContextBuild={approveShortcutClearContextBuild}
                                 approveButtonRef={approveButtonRef}
                                 isSending={isSending}
                                 onPlanApproval={handlePlanApproval}
                                 onPlanApprovalYolo={handlePlanApprovalYolo}
                                 onClearContextApproval={handleClearContextApproval}
+                                onClearContextApprovalBuild={handleClearContextApprovalBuild}
                                 onQuestionAnswer={handleQuestionAnswer}
                                 onQuestionSkip={handleSkipQuestion}
                                 onFileClick={setViewingFilePath}
@@ -1577,6 +1732,7 @@ export function ChatWindow({
                                 approveShortcut={approveShortcut}
                                 approveShortcutYolo={approveShortcutYolo}
                                 approveShortcutClearContext={approveShortcutClearContext}
+                                approveShortcutClearContextBuild={approveShortcutClearContextBuild}
                                 onQuestionAnswer={handleQuestionAnswer}
                                 onQuestionSkip={handleSkipQuestion}
                                 onFileClick={setViewingFilePath}
@@ -1595,6 +1751,9 @@ export function ChatWindow({
                                 }
                                 onStreamingClearContextApproval={
                                   handleStreamingClearContextApproval
+                                }
+                                onStreamingClearContextApprovalBuild={
+                                  handleStreamingClearContextApprovalBuild
                                 }
                                 hideApproveButtons={isCodexBackend}
                               />
@@ -2016,6 +2175,7 @@ export function ChatWindow({
               onApprove={handlePlanDialogApprove}
               onApproveYolo={handlePlanDialogApproveYolo}
               onClearContextApprove={handlePlanDialogClearContextApprove}
+              onClearContextBuildApprove={handlePlanDialogClearContextBuildApprove}
               hideApproveButtons={isCodexBackend}
             />
           ) : latestPlanFilePath ? (
@@ -2037,6 +2197,7 @@ export function ChatWindow({
               onApprove={handlePlanDialogApprove}
               onApproveYolo={handlePlanDialogApproveYolo}
               onClearContextApprove={handlePlanDialogClearContextApprove}
+              onClearContextBuildApprove={handlePlanDialogClearContextBuildApprove}
               hideApproveButtons={isCodexBackend}
             />
           ) : null)}

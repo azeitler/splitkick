@@ -203,7 +203,7 @@ export function WorktreeCanvasView({
     worktreeId,
     worktreePath,
   })
-  const { handleClearContextApproval } = useClearContextApproval({
+  const { handleClearContextApproval, handleClearContextApprovalBuild } = useClearContextApproval({
     worktreeId,
     worktreePath,
   })
@@ -603,6 +603,7 @@ export function WorktreeCanvasView({
               onPlanApproval={handlePlanApproval}
               onPlanApprovalYolo={handlePlanApprovalYolo}
               onClearContextApproval={handleClearContextApproval}
+              onClearContextApprovalBuild={handleClearContextApprovalBuild}
               onCloseWorktree={handleCloseWorktreeOrConfirm}
               searchInputRef={searchInputRef}
             />
@@ -620,6 +621,7 @@ export function WorktreeCanvasView({
               onPlanApproval={handlePlanApproval}
               onPlanApprovalYolo={handlePlanApprovalYolo}
               onClearContextApproval={handleClearContextApproval}
+              onClearContextApprovalBuild={handleClearContextApprovalBuild}
               onCloseWorktree={handleCloseWorktreeOrConfirm}
               searchInputRef={searchInputRef}
             />

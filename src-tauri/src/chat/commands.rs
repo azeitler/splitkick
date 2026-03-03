@@ -1519,6 +1519,23 @@ pub async fn send_chat_message(
     let thread_codex_multi_agent = codex_multi_agent_enabled;
     let thread_codex_max_threads = codex_max_agent_threads;
 
+    // For OpenCode sessions: create a cancel flag so we can signal the blocking HTTP thread.
+    // Register it before spawning so cancel_process can find it immediately.
+    let opencode_cancel_flag = if effective_backend == Backend::Opencode {
+        let flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        if !super::registry::register_cancel_flag(session_id.clone(), flag.clone()) {
+            // Already cancelled before we even started — bail out cleanly
+            if let Err(e) = run_log_writer.cancel(None, None) {
+                log::warn!("Failed to cancel run log for pre-cancelled OpenCode session: {e}");
+            }
+            return Err("Request cancelled".to_string());
+        }
+        Some(flag)
+    } else {
+        None
+    };
+    let thread_opencode_cancel_flag = opencode_cancel_flag.clone();
+
     // Build a callback factory that persists the PID to metadata immediately after spawn
     // (before tailing starts). This is critical for crash recovery — without it,
     // metadata has pid: None and recover_incomplete_runs marks the run as Crashed.
@@ -2183,6 +2200,10 @@ pub async fn send_chat_message(
                     }
                 };
 
+                // Use a default no-op flag if somehow None (shouldn't happen for Opencode backend)
+                let default_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+                let cancel_flag = thread_opencode_cancel_flag.as_ref().unwrap_or(&default_flag);
+
                 match super::opencode::execute_opencode_http(
                     &thread_app,
                     &thread_session_id,
@@ -2194,9 +2215,13 @@ pub async fn send_chat_message(
                     opencode_reasoning_effort.as_deref(),
                     &thread_message,
                     system_prompt.as_deref(),
+                    cancel_flag,
                 ) {
                     Ok(response) => Ok((
-                        std::process::id(),
+                        // OpenCode has no child process PID; use 0 as a sentinel.
+                        // Crash recovery checks run.pid via is_process_alive — None means
+                        // the pid_callback was never called, which is correct for OpenCode.
+                        0,
                         UnifiedResponse {
                             content: response.content,
                             resume_id: response.session_id,
@@ -2221,18 +2246,45 @@ pub async fn send_chat_message(
     let (_pid, unified_response) = match rx.await {
         Ok(Ok(result)) => result,
         Ok(Err(e)) => {
-            // Thread completed with an error before register_process was called —
-            // clear any pending cancel to prevent stale entries
+            // Thread completed with an error — clean up all registrations.
             super::registry::clear_pending_cancel(&session_id);
+            if let Some(ref flag) = opencode_cancel_flag {
+                // Only unregister if the flag wasn't already set by a cancel call
+                if !flag.load(std::sync::atomic::Ordering::SeqCst) {
+                    super::registry::unregister_cancel_flag(&session_id);
+                    // Mark run as crashed so it doesn't stay in Running forever
+                    if let Err(mark_err) = run_log_writer.mark_crashed() {
+                        log::warn!("Failed to mark OpenCode run as crashed: {mark_err}");
+                    }
+                }
+                // If the flag was set, the cancel_process path already marked the run as Cancelled
+            } else {
+                // Non-OpenCode error: mark as crashed too
+                if let Err(mark_err) = run_log_writer.mark_crashed() {
+                    log::warn!("Failed to mark run as crashed after thread error: {mark_err}");
+                }
+            }
             return Err(e);
         }
         Err(_) => {
             super::registry::clear_pending_cancel(&session_id);
+            if let Some(ref _flag) = opencode_cancel_flag {
+                super::registry::unregister_cancel_flag(&session_id);
+            }
+            if let Err(mark_err) = run_log_writer.mark_crashed() {
+                log::warn!("Failed to mark run as crashed after thread panic: {mark_err}");
+            }
             return Err(
                 "CLI execution thread closed unexpectedly (possible crash or panic)".to_string(),
             );
         }
     };
+
+    // Clear any stale pending cancel entry and unregister OpenCode cancel flag now that we have a result.
+    super::registry::clear_pending_cancel(&session_id);
+    if let Some(ref _flag) = opencode_cancel_flag {
+        super::registry::unregister_cancel_flag(&session_id);
+    }
 
     // PID is now persisted via pid_callback immediately after spawn (before tailing).
     // No need to set_pid here — it was already saved for crash recovery.

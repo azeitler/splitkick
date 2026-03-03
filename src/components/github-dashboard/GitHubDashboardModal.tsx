@@ -35,7 +35,7 @@ import {
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/store/ui-store'
 import { useProjects, isTauri, useCreateWorktree } from '@/services/projects'
-import { isGhAuthError, githubQueryKeys } from '@/services/github'
+import { isGhAuthError, githubQueryKeys, parseLabelQuery } from '@/services/github'
 import { GhAuthError } from '@/components/shared/GhAuthError'
 import { IssuePreviewModal } from '@/components/worktree/IssuePreviewModal'
 import { useGhLogin } from '@/hooks/useGhLogin'
@@ -161,11 +161,13 @@ function IssueRow({
   isCreating,
   onClick,
   onInvestigate,
+  onLabelClick,
 }: {
   issue: GitHubIssue
   isCreating: boolean
   onClick: () => void
   onInvestigate: (background: boolean) => void
+  onLabelClick?: (label: string) => void
 }) {
   return (
     <div
@@ -198,12 +200,16 @@ function IssueRow({
             {issue.labels.slice(0, 3).map(label => (
               <span
                 key={label.name}
-                className="px-1.5 py-0.5 text-xs rounded-full"
+                className={cn(
+                  'px-1.5 py-0.5 text-xs rounded-full',
+                  onLabelClick && 'cursor-pointer hover:opacity-75 transition-opacity'
+                )}
                 style={{
                   backgroundColor: `#${label.color}20`,
                   color: `#${label.color}`,
                   border: `1px solid #${label.color}40`,
                 }}
+                onClick={onLabelClick ? e => { e.stopPropagation(); onLabelClick(label.name) } : undefined}
               >
                 {label.name}
               </span>
@@ -230,11 +236,13 @@ function PRRow({
   isCreating,
   onClick,
   onInvestigate,
+  onLabelClick,
 }: {
   pr: GitHubPullRequest
   isCreating: boolean
   onClick: () => void
   onInvestigate: (background: boolean) => void
+  onLabelClick?: (label: string) => void
 }) {
   return (
     <div
@@ -274,6 +282,27 @@ function PRRow({
         <span className="text-xs text-muted-foreground">
           {pr.headRefName} → {pr.baseRefName}
         </span>
+        {pr.labels.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-1">
+            {pr.labels.slice(0, 3).map(label => (
+              <span
+                key={label.name}
+                className={cn(
+                  'px-1.5 py-0.5 text-xs rounded-full',
+                  onLabelClick && 'cursor-pointer hover:opacity-75 transition-opacity'
+                )}
+                style={{
+                  backgroundColor: `#${label.color}20`,
+                  color: `#${label.color}`,
+                  border: `1px solid #${label.color}40`,
+                }}
+                onClick={onLabelClick ? e => { e.stopPropagation(); onLabelClick(label.name) } : undefined}
+              >
+                {label.name}
+              </span>
+            ))}
+          </div>
+        )}
       </button>
       <div className="shrink-0 self-center">
         <InvestigateButton
@@ -462,6 +491,11 @@ export function GitHubDashboardModal() {
   const [activeTab, setActiveTab] = useState<DashboardTab>('issues')
   const [searchQuery, setSearchQuery] = useState('')
   const [projectFilter, setProjectFilter] = useState<string>('all')
+
+  const handleLabelClick = useCallback((labelName: string) => {
+    const token = `label:"${labelName}"`
+    setSearchQuery(prev => (prev.includes(token) ? prev : prev ? `${prev} ${token}` : token))
+  }, [])
   const [preview, setPreview] = useState<PreviewState | null>(null)
   // Track which item is being created (number for issues/prs/alerts, ghsaId for advisories)
   const [creatingId, setCreatingId] = useState<string | null>(null)
@@ -717,7 +751,10 @@ export function GitHubDashboardModal() {
     [projects, projectFilter]
   )
 
-  const q = searchQuery.toLowerCase().trim()
+  const { labels: labelFilters, textQuery: q } = useMemo(
+    () => parseLabelQuery(searchQuery),
+    [searchQuery]
+  )
 
   const isLoading = activeResults.some(r => r.isLoading)
 
@@ -729,17 +766,35 @@ export function GitHubDashboardModal() {
       if (activeTab === 'issues') {
         const issueData = issueResults[projectIdx]?.data
         const issues = (Array.isArray(issueData) ? issueData : issueData?.issues ?? []) as GitHubIssue[]
-        const filtered = q
-          ? issues.filter(i => i.title.toLowerCase().includes(q) || i.number.toString().includes(q))
-          : issues
+        const filtered = issues.filter(i => {
+          if (labelFilters.length > 0) {
+            const iLabels = i.labels.map(l => l.name.toLowerCase())
+            if (!labelFilters.every(l => iLabels.some(il => il.includes(l)))) return false
+          }
+          if (!q) return true
+          return (
+            i.title.toLowerCase().includes(q) ||
+            i.number.toString().includes(q) ||
+            i.labels.some(l => l.name.toLowerCase().includes(q))
+          )
+        })
         return { project, items: filtered }
       }
 
       if (activeTab === 'prs') {
         const prs = (prResults[projectIdx]?.data ?? []) as GitHubPullRequest[]
-        const filtered = q
-          ? prs.filter(p => p.title.toLowerCase().includes(q) || p.number.toString().includes(q))
-          : prs
+        const filtered = prs.filter(p => {
+          if (labelFilters.length > 0) {
+            const pLabels = p.labels.map(l => l.name.toLowerCase())
+            if (!labelFilters.every(l => pLabels.some(pl => pl.includes(l)))) return false
+          }
+          if (!q) return true
+          return (
+            p.title.toLowerCase().includes(q) ||
+            p.number.toString().includes(q) ||
+            p.labels.some(l => l.name.toLowerCase().includes(q))
+          )
+        })
         return { project, items: filtered }
       }
 
@@ -757,7 +812,7 @@ export function GitHubDashboardModal() {
         : advisories
       return { project, items: filtered }
     })
-  }, [filteredProjects, projects, activeTab, issueResults, prResults, securityResults, advisoryResults, q])
+  }, [filteredProjects, projects, activeTab, issueResults, prResults, securityResults, advisoryResults, q, labelFilters])
 
   const totalCount = projectData.reduce((sum, { items }) => sum + items.length, 0)
 
@@ -809,7 +864,7 @@ export function GitHubDashboardModal() {
             <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-2">
               <AlertCircle className="h-5 w-5" />
               <p className="text-sm">
-                {q
+                {q || labelFilters.length > 0
                   ? 'No results match your search'
                   : `No ${activeTab === 'issues' ? 'open issues' : activeTab === 'prs' ? 'open pull requests' : activeTab === 'security' ? 'security alerts' : 'advisories'} found`}
               </p>
@@ -836,6 +891,7 @@ export function GitHubDashboardModal() {
                           onInvestigate={bg =>
                             handleInvestigateIssue(issue, project.id, project.path, bg)
                           }
+                          onLabelClick={handleLabelClick}
                         />
                       ))}
                     {activeTab === 'prs' &&
@@ -850,6 +906,7 @@ export function GitHubDashboardModal() {
                           onInvestigate={bg =>
                             handleInvestigatePR(pr, project.id, project.path, bg)
                           }
+                          onLabelClick={handleLabelClick}
                         />
                       ))}
                     {activeTab === 'security' &&
