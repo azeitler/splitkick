@@ -83,7 +83,7 @@ pub struct AppPreferences {
     #[serde(default = "default_effort_level")]
     pub default_effort_level: String, // Effort level for Opus 4.6: low, medium, high, max
     #[serde(default = "default_terminal")]
-    pub terminal: String, // Terminal app: terminal, warp, ghostty
+    pub terminal: String, // Terminal app: terminal, warp, ghostty, iterm2
     #[serde(default = "default_editor")]
     pub editor: String, // Editor app: zed, vscode, cursor, xcode
     #[serde(default = "default_open_in")]
@@ -1214,8 +1214,8 @@ pub fn load_preferences_sync(app: &AppHandle) -> Result<AppPreferences, String> 
     }
     let contents = std::fs::read_to_string(&prefs_path)
         .map_err(|e| format!("Failed to read preferences file: {e}"))?;
-    let preferences: AppPreferences = serde_json::from_str(&contents)
-        .map_err(|e| format!("Failed to parse preferences: {e}"))?;
+    let preferences: AppPreferences =
+        serde_json::from_str(&contents).map_err(|e| format!("Failed to parse preferences: {e}"))?;
     Ok(preferences)
 }
 
