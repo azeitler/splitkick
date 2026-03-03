@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle2, XCircle } from 'lucide-react'
+import { CheckCircle2, Copy, XCircle } from 'lucide-react'
+import { toast } from 'sonner'
 import {
   Dialog,
   DialogContent,
@@ -7,6 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 
 export interface TeardownOutputDetail {
@@ -23,11 +25,13 @@ export interface TeardownOutputDetail {
 export function TeardownOutputDialog() {
   const [open, setOpen] = useState(false)
   const [detail, setDetail] = useState<TeardownOutputDetail | null>(null)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     const handler = (e: Event) => {
       const data = (e as CustomEvent<TeardownOutputDetail>).detail
       setDetail(data)
+      setCopied(false)
       setOpen(true)
     }
 
@@ -37,6 +41,20 @@ export function TeardownOutputDialog() {
 
   const success = detail?.success ?? true
   const Icon = success ? CheckCircle2 : XCircle
+  const copyLabel = copied ? 'Copied' : 'Copy'
+
+  const handleCopy = async () => {
+    if (!detail?.output) return
+    try {
+      await navigator.clipboard.writeText(detail.output)
+      setCopied(true)
+      toast.success('Output copied to clipboard')
+      window.setTimeout(() => setCopied(false), 1500)
+    } catch (error) {
+      console.error('Failed to copy teardown output:', error)
+      toast.error('Failed to copy output')
+    }
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -55,8 +73,14 @@ export function TeardownOutputDialog() {
           </DialogDescription>
         </DialogHeader>
         {detail?.output && (
-          <ScrollArea className="max-h-[50vh]">
-            <pre className="whitespace-pre-wrap rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
+          <ScrollArea className="max-h-[50vh] select-text cursor-text">
+            <div className="mb-2 flex justify-end">
+              <Button size="sm" variant="outline" onClick={handleCopy}>
+                <Copy className="mr-1.5 h-3.5 w-3.5" />
+                {copyLabel}
+              </Button>
+            </div>
+            <pre className="select-text cursor-text whitespace-pre-wrap rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
               {detail.output}
             </pre>
           </ScrollArea>

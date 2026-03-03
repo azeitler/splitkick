@@ -52,6 +52,25 @@ function mapCodexReasoningToEffort(value: string | null | undefined): EffortLeve
   }
 }
 
+function getDefaultModelForBackend(
+  backend: 'claude' | 'codex' | 'opencode' | undefined,
+  preferences:
+    | {
+        selected_model?: string | null
+        selected_codex_model?: string | null
+        selected_opencode_model?: string | null
+      }
+    | undefined
+): string {
+  if (backend === 'codex') {
+    return preferences?.selected_codex_model ?? 'gpt-5.3-codex'
+  }
+  if (backend === 'opencode') {
+    return preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex'
+  }
+  return preferences?.selected_model ?? 'opus'
+}
+
 interface UseClearContextApprovalParams {
   worktreeId: string
   worktreePath: string
@@ -218,14 +237,13 @@ export function useClearContextApproval({
       const modeBackendPref = isYolo ? preferences?.yolo_backend : preferences?.build_backend
       const modeModelPref = isYolo ? preferences?.yolo_model : preferences?.build_model
       const modeThinkingPref = isYolo ? preferences?.yolo_thinking_level : preferences?.build_thinking_level
-      const backend = (modeBackendPref ?? originalBackend ?? undefined) as 'claude' | 'codex' | 'opencode' | undefined
+      const modeBackendOverride = modeBackendPref as 'claude' | 'codex' | 'opencode' | null
+      const backend = (modeBackendOverride ?? originalBackend ?? undefined) as 'claude' | 'codex' | 'opencode' | undefined
       const model = modeModelPref ??
-        (backend === 'codex'
-          ? (preferences?.selected_codex_model ?? 'gpt-5.3-codex')
-          : backend === 'opencode'
-            ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
-            : (card.session.selected_model ?? preferences?.selected_model ?? 'opus'))
-      const modeOverride = (modeModelPref || backend)
+        (modeBackendOverride
+          ? getDefaultModelForBackend(backend, preferences)
+          : (card.session.selected_model ?? getDefaultModelForBackend(backend, preferences)))
+      const modeOverride = (modeModelPref || modeBackendOverride)
         ? [backend, model].filter(Boolean).join(' / ')
         : ''
       if (modeOverride) toast.info(`${modeLabel}: ${modeOverride}`)

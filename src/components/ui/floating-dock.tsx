@@ -124,7 +124,12 @@ export function FloatingDock() {
             <kbd className="ml-1 text-[0.625rem] opacity-60">{menuShortcut}</kbd>
           </TooltipContent>
         </Tooltip>
-        <DropdownMenuContent side="top" align="start" className="min-w-[200px]">
+        <DropdownMenuContent
+          side="top"
+          align="start"
+          className="min-w-[200px]"
+          onEscapeKeyDown={e => e.stopPropagation()}
+        >
           <DropdownMenuItem onClick={() => useProjectsStore.getState().setAddProjectDialogOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Add Project

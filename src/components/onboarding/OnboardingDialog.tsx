@@ -151,30 +151,23 @@ function OnboardingDialogContent() {
   const [codexInstallFailed, setCodexInstallFailed] = useState(false)
   const [opencodeInstallFailed, setOpencodeInstallFailed] = useState(false)
   const [ghInstallFailed, setGhInstallFailed] = useState(false)
+  const [claudeLoginAttempt, setClaudeLoginAttempt] = useState(0)
+  const [codexLoginAttempt, setCodexLoginAttempt] = useState(0)
+  const [opencodeLoginAttempt, setOpencodeLoginAttempt] = useState(0)
+  const [ghLoginAttempt, setGhLoginAttempt] = useState(0)
 
   const initializedFlowRef = useRef(false)
 
-  // Stable terminal IDs for auth login steps (created once per dialog open)
-  const claudeLoginTerminalId = useMemo(
+  // Seed for terminal IDs - each retry increments an attempt counter to force a fresh PTY
+  const loginSessionSeed = useMemo(
     // eslint-disable-next-line react-hooks/purity
-    () => `onboarding-claude-login-${Date.now()}`,
+    () => Date.now(),
     []
   )
-  const codexLoginTerminalId = useMemo(
-    // eslint-disable-next-line react-hooks/purity
-    () => `onboarding-codex-login-${Date.now()}`,
-    []
-  )
-  const opencodeLoginTerminalId = useMemo(
-    // eslint-disable-next-line react-hooks/purity
-    () => `onboarding-opencode-login-${Date.now()}`,
-    []
-  )
-  const ghLoginTerminalId = useMemo(
-    // eslint-disable-next-line react-hooks/purity
-    () => `onboarding-gh-login-${Date.now()}`,
-    []
-  )
+  const claudeLoginTerminalId = `onboarding-claude-login-${loginSessionSeed}-${claudeLoginAttempt}`
+  const codexLoginTerminalId = `onboarding-codex-login-${loginSessionSeed}-${codexLoginAttempt}`
+  const opencodeLoginTerminalId = `onboarding-opencode-login-${loginSessionSeed}-${opencodeLoginAttempt}`
+  const ghLoginTerminalId = `onboarding-gh-login-${loginSessionSeed}-${ghLoginAttempt}`
 
   const stableClaudeVersions = claudeSetup.versions.filter(v => !v.prerelease)
   const stableCodexVersions = codexSetup.versions.filter(v => !v.prerelease)
@@ -319,6 +312,10 @@ function OnboardingDialogContent() {
       setCodexInstallFailed(false)
       setOpencodeInstallFailed(false)
       setGhInstallFailed(false)
+      setClaudeLoginAttempt(0)
+      setCodexLoginAttempt(0)
+      setOpencodeLoginAttempt(0)
+      setGhLoginAttempt(0)
     })
 
     if (onboardingStartStep === 'gh') {
@@ -557,6 +554,22 @@ function OnboardingDialogContent() {
     setStep('gh-auth-checking')
     await ghAuth.refetch()
   }, [ghAuth])
+
+  const handleClaudeLoginRetry = useCallback(() => {
+    setClaudeLoginAttempt(prev => prev + 1)
+  }, [])
+
+  const handleCodexLoginRetry = useCallback(() => {
+    setCodexLoginAttempt(prev => prev + 1)
+  }, [])
+
+  const handleOpencodeLoginRetry = useCallback(() => {
+    setOpencodeLoginAttempt(prev => prev + 1)
+  }, [])
+
+  const handleGhLoginRetry = useCallback(() => {
+    setGhLoginAttempt(prev => prev + 1)
+  }, [])
 
   const handleComplete = useCallback(() => {
     claudeSetup.refetchStatus()
@@ -902,6 +915,7 @@ function OnboardingDialogContent() {
               terminalId={claudeLoginTerminalId}
               command={claudeLoginCommand}
               onComplete={handleClaudeLoginComplete}
+              onRetry={handleClaudeLoginRetry}
             />
           ) : step === 'codex-auth-login' ? (
             <AuthLoginState
@@ -909,6 +923,7 @@ function OnboardingDialogContent() {
               terminalId={codexLoginTerminalId}
               command={codexLoginCommand}
               onComplete={handleCodexLoginComplete}
+              onRetry={handleCodexLoginRetry}
             />
           ) : step === 'opencode-auth-login' ? (
             <AuthLoginState
@@ -916,6 +931,7 @@ function OnboardingDialogContent() {
               terminalId={opencodeLoginTerminalId}
               command={opencodeLoginCommand}
               onComplete={handleOpencodeLoginComplete}
+              onRetry={handleOpencodeLoginRetry}
             />
           ) : step === 'gh-auth-login' ? (
             <AuthLoginState
@@ -923,6 +939,7 @@ function OnboardingDialogContent() {
               terminalId={ghLoginTerminalId}
               command={ghLoginCommand}
               onComplete={handleGhLoginComplete}
+              onRetry={handleGhLoginRetry}
             />
           ) : cliData ? (
             cliData.installError ? (
