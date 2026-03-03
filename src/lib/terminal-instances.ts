@@ -29,7 +29,7 @@ interface PersistentTerminal {
   worktreePath: string
   command: string | null
   initialized: boolean // PTY has been started
-  onStopped?: (exitCode: number | null) => void
+  onStopped?: (exitCode: number | null, signal: string | null) => void
 }
 
 // Module-level Map - persists across React mount/unmount cycles
@@ -125,7 +125,7 @@ export function getOrCreateTerminal(
           : `code ${exitCode ?? 'unknown'}`
       terminal.writeln(`\r\n\x1b[90m[Process exited with ${exitLabel}]\x1b[0m`)
       const inst = instances.get(terminalId)
-      inst?.onStopped?.(exitCode)
+      inst?.onStopped?.(exitCode, signal)
 
       // Auto-close terminal tab on:
       // 1. Successful exit (code 0) — any terminal
@@ -366,7 +366,10 @@ export function hasInstance(terminalId: string): boolean {
 }
 
 // Pending onStopped callbacks for terminals not yet created
-const pendingOnStopped = new Map<string, (exitCode: number | null) => void>()
+const pendingOnStopped = new Map<
+  string,
+  (exitCode: number | null, signal: string | null) => void
+>()
 
 /**
  * Register a callback for when a terminal's process exits.
@@ -374,7 +377,9 @@ const pendingOnStopped = new Map<string, (exitCode: number | null) => void>()
  */
 export function setOnStopped(
   terminalId: string,
-  cb: ((exitCode: number | null) => void) | undefined
+  cb:
+    | ((exitCode: number | null, signal: string | null) => void)
+    | undefined
 ): void {
   const instance = instances.get(terminalId)
   if (instance) {

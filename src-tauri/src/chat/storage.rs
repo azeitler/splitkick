@@ -497,49 +497,111 @@ pub fn with_sessions_mut<F, T>(
 where
     F: FnOnce(&mut WorktreeSessions) -> Result<T, String>,
 {
-    // Load current state
-    let mut sessions = load_sessions(app, "", worktree_id)?;
+    // Hold the index lock for the full read-modify-write sequence.
+    // This prevents lost updates when concurrent mutations run on the same worktree.
+    let index_lock = get_index_lock(worktree_id);
+    let _index_guard = index_lock.lock().unwrap();
+
+    // Load current index and hydrate sessions from metadata.
+    let mut index = load_index_internal(app, worktree_id)?;
+    let mut hydrated_sessions = Vec::new();
+    for entry in &index.sessions {
+        let session = if let Some(metadata) = load_metadata_internal(app, &entry.id)? {
+            metadata.to_session()
+        } else {
+            // No metadata found - create minimal session from index entry
+            // Use resolved backend from preferences instead of hardcoded Claude
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            Session {
+                id: entry.id.clone(),
+                name: entry.name.clone(),
+                order: entry.order,
+                created_at: now,
+                updated_at: now,
+                messages: vec![],
+                message_count: Some(entry.message_count),
+                backend: super::commands::resolve_default_backend(app, Some(worktree_id)),
+                claude_session_id: None,
+                codex_thread_id: None,
+                opencode_session_id: None,
+                selected_model: None,
+                selected_thinking_level: None,
+                selected_provider: None,
+                session_naming_completed: false,
+                archived_at: entry.archived_at,
+                last_opened_at: None,
+                answered_questions: vec![],
+                submitted_answers: std::collections::HashMap::new(),
+                fixed_findings: vec![],
+                review_results: None,
+                pending_permission_denials: vec![],
+                denied_message_context: None,
+                is_reviewing: false,
+                waiting_for_input: false,
+                waiting_for_input_type: None,
+                approved_plan_message_ids: vec![],
+                plan_file_path: None,
+                pending_plan_message_id: None,
+                enabled_mcp_servers: None,
+                digest: None,
+                last_run_status: None,
+                last_run_execution_mode: None,
+                label: None,
+            }
+        };
+        hydrated_sessions.push(session);
+    }
+
+    let mut sessions = WorktreeSessions {
+        worktree_id: index.worktree_id.clone(),
+        sessions: hydrated_sessions,
+        active_session_id: index.active_session_id.clone(),
+        default_model: None,
+        version: index.version,
+        branch_naming_completed: index.branch_naming_completed,
+    };
 
     // Apply mutation
     let result = f(&mut sessions)?;
 
-    // Save changes back to index
-    with_index_mut(app, worktree_id, |index| {
-        index.active_session_id = sessions.active_session_id.clone();
-        index.branch_naming_completed = sessions.branch_naming_completed;
+    // Save changes back to index while still holding the same lock.
+    index.active_session_id = sessions.active_session_id.clone();
+    index.branch_naming_completed = sessions.branch_naming_completed;
 
-        // Update index entries and track which sessions need metadata updates
-        let mut session_ids_in_use: std::collections::HashSet<String> =
-            std::collections::HashSet::new();
+    // Update index entries and track which sessions need metadata updates
+    let mut session_ids_in_use: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
 
-        for session in &sessions.sessions {
-            session_ids_in_use.insert(session.id.clone());
+    for session in &sessions.sessions {
+        session_ids_in_use.insert(session.id.clone());
 
-            if let Some(entry) = index.find_session_mut(&session.id) {
-                // Update existing entry
-                entry.name = session.name.clone();
-                entry.order = session.order;
-                entry.archived_at = session.archived_at;
-                entry.message_count = session.message_count.unwrap_or(0);
-            } else {
-                // Add new entry
-                index.sessions.push(SessionIndexEntry {
-                    id: session.id.clone(),
-                    name: session.name.clone(),
-                    order: session.order,
-                    message_count: session.message_count.unwrap_or(0),
-                    archived_at: session.archived_at,
-                });
-            }
+        if let Some(entry) = index.find_session_mut(&session.id) {
+            // Update existing entry
+            entry.name = session.name.clone();
+            entry.order = session.order;
+            entry.archived_at = session.archived_at;
+            entry.message_count = session.message_count.unwrap_or(0);
+        } else {
+            // Add new entry
+            index.sessions.push(SessionIndexEntry {
+                id: session.id.clone(),
+                name: session.name.clone(),
+                order: session.order,
+                message_count: session.message_count.unwrap_or(0),
+                archived_at: session.archived_at,
+            });
         }
+    }
 
-        // Remove sessions that were deleted
-        index
-            .sessions
-            .retain(|e| session_ids_in_use.contains(&e.id));
+    // Remove sessions that were deleted
+    index
+        .sessions
+        .retain(|e| session_ids_in_use.contains(&e.id));
 
-        Ok(())
-    })?;
+    save_index_internal(app, &index)?;
 
     // Save metadata for each session
     for session in &sessions.sessions {

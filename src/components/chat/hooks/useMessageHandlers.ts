@@ -159,11 +159,15 @@ function mapCodexReasoningToEffort(value: string | null | undefined): EffortLeve
 
 function getDefaultModelForBackend(
   backend: Session['backend'] | undefined,
-  selectedClaudeModel: string
+  preferences: AppPreferences | undefined
 ): string {
-  if (backend === 'codex') return 'gpt-5.3-codex'
-  if (backend === 'opencode') return 'opencode/gpt-5.3-codex'
-  return selectedClaudeModel
+  if (backend === 'codex') {
+    return preferences?.selected_codex_model ?? 'gpt-5.3-codex'
+  }
+  if (backend === 'opencode') {
+    return preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex'
+  }
+  return preferences?.selected_model ?? 'opus'
 }
 
 /**
@@ -859,11 +863,21 @@ export function useMessageHandlers({
       const modeThinkingRef = isYolo ? yoloThinkingLevelRef : buildThinkingLevelRef
       const modeLabel = isYolo ? 'Yolo' : 'Build'
 
-      const resolvedBackend = (modeBackendRef.current as Session['backend']) ?? undefined
+      const currentSessionBackend = queryClient.getQueryData<Session>(
+        chatQueryKeys.session(sessionId)
+      )?.backend
+      const prefs = queryClient.getQueryData<AppPreferences>(
+        preferencesQueryKeys.preferences()
+      )
+      const modeBackendOverride = (modeBackendRef.current as Session['backend']) ?? null
+      const resolvedBackend = modeBackendOverride ?? undefined
+      const modelBackend = resolvedBackend ?? currentSessionBackend
       const resolvedModel =
         modeModelRef.current ??
-        getDefaultModelForBackend(resolvedBackend, selectedModelRef.current)
-      const modeOverride = (modeModelRef.current || resolvedBackend)
+        (modeBackendOverride
+          ? getDefaultModelForBackend(modelBackend, prefs)
+          : selectedModelRef.current)
+      const modeOverride = (modeModelRef.current || modeBackendOverride)
         ? [resolvedBackend, resolvedModel].filter(Boolean).join(' / ')
         : ''
       if (modeOverride) toast.info(`${modeLabel}: ${modeOverride}`)
@@ -901,9 +915,6 @@ export function useMessageHandlers({
         }).catch(err => console.error('[clearContext] Failed to persist backend:', err))
       }
 
-      const currentSessionBackend = queryClient.getQueryData<Session>(
-        chatQueryKeys.session(sessionId)
-      )?.backend
       const effectiveBackend = resolvedBackend ?? currentSessionBackend
       let resolvedThinkingLevel: ThinkingLevel = selectedThinkingLevelRef.current
       let resolvedEffortLevel: EffortLevel | undefined = useAdaptiveThinkingRef.current
@@ -933,9 +944,6 @@ export function useMessageHandlers({
       // Optionally close the original session immediately.
       // cancel_process_if_running (used by close/archive) safely skips idle sessions,
       // and with_sessions_mut uses a per-worktree mutex so there's no file-level race.
-      const prefs = queryClient.getQueryData<AppPreferences>(
-        preferencesQueryKeys.preferences()
-      )
       if (prefs?.close_original_on_clear_context) {
         const command =
           prefs.removal_behavior === 'archive'
@@ -1066,11 +1074,21 @@ export function useMessageHandlers({
     const modeThinkingRef = isYolo ? yoloThinkingLevelRef : buildThinkingLevelRef
     const modeLabel = isYolo ? 'Yolo' : 'Build'
 
-    const resolvedBackend = (modeBackendRef.current as Session['backend']) ?? undefined
+    const currentSessionBackend = queryClient.getQueryData<Session>(
+      chatQueryKeys.session(sessionId)
+    )?.backend
+    const prefs = queryClient.getQueryData<AppPreferences>(
+      preferencesQueryKeys.preferences()
+    )
+    const modeBackendOverride = (modeBackendRef.current as Session['backend']) ?? null
+    const resolvedBackend = modeBackendOverride ?? undefined
+    const modelBackend = resolvedBackend ?? currentSessionBackend
     const resolvedModel =
       modeModelRef.current ??
-      getDefaultModelForBackend(resolvedBackend, selectedModelRef.current)
-    const modeOverride = (modeModelRef.current || resolvedBackend)
+      (modeBackendOverride
+        ? getDefaultModelForBackend(modelBackend, prefs)
+        : selectedModelRef.current)
+    const modeOverride = (modeModelRef.current || modeBackendOverride)
       ? [resolvedBackend, resolvedModel].filter(Boolean).join(' / ')
       : ''
     if (modeOverride) toast.info(`${modeLabel}: ${modeOverride}`)
@@ -1106,9 +1124,6 @@ export function useMessageHandlers({
       }).catch(err => console.error('[streamingClearContext] Failed to persist backend:', err))
     }
 
-    const currentSessionBackend = queryClient.getQueryData<Session>(
-      chatQueryKeys.session(sessionId)
-    )?.backend
     const effectiveBackend = resolvedBackend ?? currentSessionBackend
     let resolvedThinkingLevel: ThinkingLevel = selectedThinkingLevelRef.current
     let resolvedEffortLevel: EffortLevel | undefined = useAdaptiveThinkingRef.current
@@ -1138,9 +1153,6 @@ export function useMessageHandlers({
     // Optionally close the original session immediately.
     // cancel_process_if_running (used by close/archive) safely skips idle sessions,
     // and with_sessions_mut uses a per-worktree mutex so there's no file-level race.
-    const prefs = queryClient.getQueryData<AppPreferences>(
-      preferencesQueryKeys.preferences()
-    )
     if (prefs?.close_original_on_clear_context) {
       const command =
         prefs.removal_behavior === 'archive'

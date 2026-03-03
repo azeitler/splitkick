@@ -201,7 +201,9 @@ fn agent_for_execution_mode(execution_mode: Option<&str>) -> &'static str {
 fn variant_for_effort(reasoning_effort: Option<&str>) -> Option<&'static str> {
     match reasoning_effort {
         Some("xhigh") => Some("max"),
-        Some("high") | Some("medium") => Some("high"),
+        Some("high") => Some("high"),
+        Some("medium") => Some("medium"),
+        Some("low") => Some("low"),
         _ => None,
     }
 }

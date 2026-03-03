@@ -5,7 +5,7 @@
  * and the individual CLI reinstall modal.
  */
 
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { Download, Loader2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -232,6 +232,7 @@ export interface AuthLoginStateProps {
   terminalId: string
   command: string
   onComplete: () => void
+  onRetry?: () => void
   onSkip?: () => void
 }
 
@@ -240,10 +241,15 @@ export function AuthLoginState({
   terminalId,
   command,
   onComplete,
+  onRetry,
   onSkip,
 }: AuthLoginStateProps) {
   const observerRef = useRef<ResizeObserver | null>(null)
   const initialized = useRef(false)
+  const [exitStatus, setExitStatus] = useState<{
+    exitCode: number | null
+    signal: string | null
+  } | null>(null)
 
   const { initTerminal, fit } = useTerminal({
     terminalId,
@@ -282,14 +288,21 @@ export function AuthLoginState({
 
   // Auto-advance when the auth process exits successfully
   useEffect(() => {
-    setOnStopped(terminalId, exitCode => {
+    setOnStopped(terminalId, (exitCode, signal) => {
       if (exitCode === 0) {
         // Brief delay so user can see the success output
         setTimeout(() => onComplete(), 1500)
+        return
       }
+
+      setExitStatus({ exitCode, signal })
     })
     return () => setOnStopped(terminalId, undefined)
   }, [terminalId, onComplete])
+
+  useEffect(() => {
+    setExitStatus(null)
+  }, [terminalId])
 
   // Cleanup observer and terminal on unmount
   useEffect(() => {
@@ -318,15 +331,46 @@ export function AuthLoginState({
         className="w-full h-[300px] rounded-md bg-[#1a1a1a] overflow-hidden"
       />
 
+      {exitStatus && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3">
+          <p className="text-sm font-medium text-destructive">
+            Login process exited unexpectedly
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {exitStatus.signal
+              ? `Signal: ${exitStatus.signal}`
+              : `Exit code: ${exitStatus.exitCode ?? 'unknown'}`}
+          </p>
+        </div>
+      )}
+
       <div className="flex gap-2">
-        <Button onClick={onComplete} className="flex-1" size="lg">
-          I&apos;ve Completed Login
-        </Button>
+        {exitStatus ? (
+          <>
+            <Button onClick={onComplete} className="flex-1" size="lg">
+              Check Login Status
+            </Button>
+            {onRetry && (
+              <Button
+                onClick={onRetry}
+                variant="outline"
+                className="flex-1"
+                size="lg"
+              >
+                Retry Login
+              </Button>
+            )}
+          </>
+        ) : (
+          <Button onClick={onComplete} className="flex-1" size="lg">
+            I&apos;ve Completed Login
+          </Button>
+        )}
         {onSkip && (
           <Button
             onClick={onSkip}
             variant="outline"
-            className="flex-1"
+            className={exitStatus ? '' : 'flex-1'}
             size="lg"
           >
             Skip for Now
