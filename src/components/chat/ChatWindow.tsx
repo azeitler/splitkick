@@ -479,7 +479,7 @@ export function ChatWindow({
   const defaultModel: string = isCodexBackend
     ? (preferences?.selected_codex_model ?? 'gpt-5.3-codex')
     : isOpencodeBackend
-      ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.2-codex')
+      ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
       : ((preferences?.selected_model as ClaudeModel) ?? DEFAULT_MODEL)
   const selectedModel: string = session?.selected_model ?? defaultModel
 
@@ -1034,13 +1034,17 @@ export function ChatWindow({
   const pickRemoteOrRun = useRemotePicker(activeWorktreePath)
 
   const handlePushWithPicker = useCallback(
-    () => pickRemoteOrRun(remote => handlePush(remote)),
-    [pickRemoteOrRun, handlePush]
+    () =>
+      worktree?.pr_number ? handlePush() : pickRemoteOrRun(remote => handlePush(remote)),
+    [worktree?.pr_number, pickRemoteOrRun, handlePush]
   )
 
   const handleCommitAndPushWithPicker = useCallback(
-    () => pickRemoteOrRun(remote => handleCommitAndPush(remote)),
-    [pickRemoteOrRun, handleCommitAndPush]
+    () =>
+      worktree?.pr_number
+        ? handleCommitAndPush()
+        : pickRemoteOrRun(remote => handleCommitAndPush(remote)),
+    [worktree?.pr_number, pickRemoteOrRun, handleCommitAndPush]
   )
 
   const handlePullWithPicker = useCallback(

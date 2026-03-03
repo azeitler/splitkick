@@ -576,19 +576,19 @@ export const CODEX_DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
 
 /** OpenCode preset for all magic prompts */
 export const OPENCODE_DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
-  investigate_issue_model: 'opencode/gpt-5.2-codex',
-  investigate_pr_model: 'opencode/gpt-5.2-codex',
-  investigate_workflow_run_model: 'opencode/gpt-5.2-codex',
-  pr_content_model: 'opencode/gpt-5.2-codex',
-  commit_message_model: 'opencode/gpt-5.2-codex',
-  code_review_model: 'opencode/gpt-5.2-codex',
-  context_summary_model: 'opencode/gpt-5.2-codex',
-  resolve_conflicts_model: 'opencode/gpt-5.2-codex',
-  release_notes_model: 'opencode/gpt-5.2-codex',
-  session_naming_model: 'opencode/gpt-5.2-codex',
-  session_recap_model: 'opencode/gpt-5.2-codex',
-  investigate_security_alert_model: 'opencode/gpt-5.2-codex',
-  investigate_advisory_model: 'opencode/gpt-5.2-codex',
+  investigate_issue_model: 'opencode/gpt-5.3-codex',
+  investigate_pr_model: 'opencode/gpt-5.3-codex',
+  investigate_workflow_run_model: 'opencode/gpt-5.3-codex',
+  pr_content_model: 'opencode/gpt-5.3-codex',
+  commit_message_model: 'opencode/gpt-5.3-codex',
+  code_review_model: 'opencode/gpt-5.3-codex',
+  context_summary_model: 'opencode/gpt-5.3-codex',
+  resolve_conflicts_model: 'opencode/gpt-5.3-codex',
+  release_notes_model: 'opencode/gpt-5.3-codex',
+  session_naming_model: 'opencode/gpt-5.3-codex',
+  session_recap_model: 'opencode/gpt-5.3-codex',
+  investigate_security_alert_model: 'opencode/gpt-5.3-codex',
+  investigate_advisory_model: 'opencode/gpt-5.3-codex',
 }
 
 /**
@@ -627,6 +627,68 @@ export const DEFAULT_MAGIC_PROMPT_PROVIDERS: MagicPromptProviders = {
   investigate_security_alert_provider: null,
   investigate_advisory_provider: null,
 }
+
+/**
+ * Per-prompt backend overrides for magic prompts.
+ * null = use project/global default_backend.
+ * Field names use snake_case to match Rust struct exactly.
+ */
+export interface MagicPromptBackends {
+  investigate_issue_backend: string | null
+  investigate_pr_backend: string | null
+  investigate_workflow_run_backend: string | null
+  pr_content_backend: string | null
+  commit_message_backend: string | null
+  code_review_backend: string | null
+  context_summary_backend: string | null
+  resolve_conflicts_backend: string | null
+  release_notes_backend: string | null
+  session_naming_backend: string | null
+  session_recap_backend: string | null
+  investigate_security_alert_backend: string | null
+  investigate_advisory_backend: string | null
+}
+
+/** Default backends for each magic prompt (null = use project/global default_backend) */
+export const DEFAULT_MAGIC_PROMPT_BACKENDS: MagicPromptBackends = {
+  investigate_issue_backend: null,
+  investigate_pr_backend: null,
+  investigate_workflow_run_backend: null,
+  pr_content_backend: null,
+  commit_message_backend: null,
+  code_review_backend: null,
+  context_summary_backend: null,
+  resolve_conflicts_backend: null,
+  release_notes_backend: null,
+  session_naming_backend: null,
+  session_recap_backend: null,
+  investigate_security_alert_backend: null,
+  investigate_advisory_backend: null,
+}
+
+function makeBackendsPreset(backend: string): MagicPromptBackends {
+  return {
+    investigate_issue_backend: backend,
+    investigate_pr_backend: backend,
+    investigate_workflow_run_backend: backend,
+    pr_content_backend: backend,
+    commit_message_backend: backend,
+    code_review_backend: backend,
+    context_summary_backend: backend,
+    resolve_conflicts_backend: backend,
+    release_notes_backend: backend,
+    session_naming_backend: backend,
+    session_recap_backend: backend,
+    investigate_security_alert_backend: backend,
+    investigate_advisory_backend: backend,
+  }
+}
+
+export const CLAUDE_DEFAULT_MAGIC_PROMPT_BACKENDS =
+  makeBackendsPreset('claude')
+export const CODEX_DEFAULT_MAGIC_PROMPT_BACKENDS = makeBackendsPreset('codex')
+export const OPENCODE_DEFAULT_MAGIC_PROMPT_BACKENDS =
+  makeBackendsPreset('opencode')
 
 /**
  * Resolve a magic prompt provider for a given key.
@@ -680,6 +742,7 @@ export interface AppPreferences {
   magic_prompts: MagicPrompts // Customizable prompts for AI-powered features
   magic_prompt_models: MagicPromptModels // Per-prompt model overrides
   magic_prompt_providers: MagicPromptProviders // Per-prompt provider overrides (null = use default_provider)
+  magic_prompt_backends: MagicPromptBackends // Per-prompt backend overrides (null = use project/global default_backend)
   file_edit_mode: FileEditMode // How to edit files: inline (CodeMirror) or external (VS Code, etc.)
   ai_language: string // Preferred language for AI responses (empty = default)
   allow_web_tools_in_plan_mode: boolean // Allow WebFetch/WebSearch in plan mode without prompts
@@ -1167,6 +1230,7 @@ export const defaultPreferences: AppPreferences = {
   magic_prompts: DEFAULT_MAGIC_PROMPTS,
   magic_prompt_models: DEFAULT_MAGIC_PROMPT_MODELS,
   magic_prompt_providers: DEFAULT_MAGIC_PROMPT_PROVIDERS,
+  magic_prompt_backends: DEFAULT_MAGIC_PROMPT_BACKENDS,
   file_edit_mode: 'external',
   ai_language: '', // Default: empty (Claude's default behavior)
   allow_web_tools_in_plan_mode: true, // Default: enabled
@@ -1195,7 +1259,7 @@ export const defaultPreferences: AppPreferences = {
   confirm_session_close: true, // Default: enabled (show confirmation)
   default_backend: 'claude', // Default: Claude
   selected_codex_model: 'gpt-5.3-codex', // Default: latest Codex model
-  selected_opencode_model: 'opencode/gpt-5.2-codex', // Default OpenCode model
+  selected_opencode_model: 'opencode/gpt-5.3-codex', // Default OpenCode model
   default_codex_reasoning_effort: 'high', // Default: high reasoning
   codex_multi_agent_enabled: false, // Default: disabled
   codex_max_agent_threads: 3, // Default: 3 threads

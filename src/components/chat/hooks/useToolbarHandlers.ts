@@ -100,7 +100,7 @@ export function useToolbarHandlers({
           backend === 'codex'
             ? (preferences?.selected_codex_model ?? 'gpt-5.3-codex')
             : backend === 'opencode'
-              ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.2-codex')
+              ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
               : ((preferences?.selected_model as string) ?? DEFAULT_MODEL)
         queryClient.setQueryData(
           chatQueryKeys.session(activeSessionId),

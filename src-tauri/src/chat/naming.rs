@@ -31,6 +31,8 @@ pub struct NamingRequest {
     pub custom_session_prompt: Option<String>,
     /// Optional custom CLI profile name for alternative providers (e.g., OpenRouter)
     pub custom_profile_name: Option<String>,
+    /// Per-operation backend override from magic prompt settings (None = use project/global default)
+    pub backend_override: Option<String>,
 }
 
 /// Successful session rename result (for event emission)
@@ -341,13 +343,17 @@ fn generate_names(app: &AppHandle, request: &NamingRequest) -> Result<NamingOutp
         (false, false, false) => base_prompt,
     };
 
-    // Route OpenCode models through OpenCode HTTP API.
-    if request.model.starts_with("opencode/") {
+    // Per-operation backend > project/global default_backend
+    let backend = super::commands::resolve_magic_prompt_backend(
+        app,
+        request.backend_override.as_deref(),
+        Some(&request.worktree_id),
+    );
+
+    if backend == super::types::Backend::Opencode {
         return generate_names_opencode(app, &prompt, &request.model, request);
     }
-
-    // Route to Codex CLI if model is a Codex model
-    if crate::is_codex_model(&request.model) {
+    if backend == super::types::Backend::Codex {
         return generate_names_codex(app, &prompt, &request.model, request);
     }
 
@@ -506,7 +512,9 @@ const NAMING_SCHEMA: &str = r#"{
             "type": "string",
             "description": "A git branch name in kebab-case (e.g. feat/add-dark-mode)"
         }
-    }
+    },
+    "required": ["session_name", "branch_name"],
+    "additionalProperties": false
 }"#;
 
 /// Generate names using Codex CLI with --output-schema
@@ -578,6 +586,8 @@ fn parse_opencode_provider_model(model: Option<&str>) -> Option<(String, String)
     if raw.is_empty() {
         return None;
     }
+    // Strip "opencode/" prefix if present (e.g. "opencode/ollama/Qwen" → "ollama/Qwen")
+    let raw = raw.strip_prefix("opencode/").unwrap_or(raw);
     let (provider, model_id) = raw.split_once('/')?;
     let provider = provider.trim();
     let model_id = model_id.trim();
@@ -712,7 +722,10 @@ fn generate_names_opencode_inner(
         let providers: serde_json::Value = providers_resp
             .json()
             .map_err(|e| format!("Failed to parse OpenCode providers response: {e}"))?;
-        choose_opencode_model(&providers)
+        // Try to find the bare model ID across providers before picking any random model
+        let bare = model.strip_prefix("opencode/").unwrap_or(model);
+        crate::chat::opencode::find_provider_for_model(&providers, bare)
+            .or_else(|| choose_opencode_model(&providers))
             .ok_or("No OpenCode models available. Authenticate a provider first.")?
     };
 
