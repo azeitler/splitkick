@@ -42,7 +42,7 @@ import {
   getCommitDiff,
   getRepoBranches,
 } from '@/services/git-status'
-import { MemoizedFileDiff } from './GitDiffModal'
+import { MemoizedFileDiff, getStatusColor } from './MemoizedFileDiff'
 import type { CommitInfo, GitDiff } from '@/types/git-diff'
 
 // ============================================================================
@@ -72,21 +72,6 @@ function formatRelativeDate(isoDate: string): string {
 
   const years = Math.floor(months / 12)
   return `${years}y ago`
-}
-
-/** Get file status badge color */
-function getStatusColor(type: string) {
-  switch (type) {
-    case 'new':
-      return 'text-green-500'
-    case 'deleted':
-      return 'text-red-500'
-    case 'rename-pure':
-    case 'rename-changed':
-      return 'text-yellow-500'
-    default:
-      return 'text-blue-500'
-  }
 }
 
 // ============================================================================
