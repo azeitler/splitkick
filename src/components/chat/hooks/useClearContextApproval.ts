@@ -11,13 +11,46 @@ import {
   chatQueryKeys,
 } from '@/services/chat'
 import { invoke } from '@/lib/transport'
-import type { Session, WorktreeSessions, ThinkingLevel } from '@/types/chat'
+import type {
+  EffortLevel,
+  Session,
+  ThinkingLevel,
+  WorktreeSessions,
+} from '@/types/chat'
 import type { SessionCardData } from '../session-card-utils'
 import {
   extractImagePaths,
   extractSkillPaths,
   extractTextFilePaths,
 } from '../message-content-utils'
+
+const THINKING_LEVEL_VALUES = new Set<ThinkingLevel>([
+  'off',
+  'think',
+  'megathink',
+  'ultrathink',
+])
+
+function isThinkingLevel(value: string | null | undefined): value is ThinkingLevel {
+  if (!value) return false
+  return THINKING_LEVEL_VALUES.has(value as ThinkingLevel)
+}
+
+function mapCodexReasoningToEffort(value: string | null | undefined): EffortLevel | undefined {
+  switch (value) {
+    case 'low':
+      return 'low'
+    case 'medium':
+      return 'medium'
+    case 'high':
+      return 'high'
+    case 'xhigh':
+    case 'max':
+      return 'max'
+    default:
+      return undefined
+  }
+}
 
 interface UseClearContextApprovalParams {
   worktreeId: string
@@ -186,12 +219,31 @@ export function useClearContextApproval({
       const modeModelPref = isYolo ? preferences?.yolo_model : preferences?.build_model
       const modeThinkingPref = isYolo ? preferences?.yolo_thinking_level : preferences?.build_thinking_level
       const backend = (modeBackendPref ?? originalBackend ?? undefined) as 'claude' | 'codex' | 'opencode' | undefined
-      const model = modeModelPref ?? card.session.selected_model ?? preferences?.selected_model ?? 'opus'
+      const model = modeModelPref ??
+        (backend === 'codex'
+          ? (preferences?.selected_codex_model ?? 'gpt-5.3-codex')
+          : backend === 'opencode'
+            ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
+            : (card.session.selected_model ?? preferences?.selected_model ?? 'opus'))
       const modeOverride = (modeModelPref || backend)
         ? [backend, model].filter(Boolean).join(' / ')
         : ''
       if (modeOverride) toast.info(`${modeLabel}: ${modeOverride}`)
-      const thinkingLevel = (modeThinkingPref ?? preferences?.thinking_level ?? 'off') as ThinkingLevel
+      let thinkingLevel: ThinkingLevel = 'off'
+      let effortLevel: EffortLevel | undefined
+      if (backend === 'codex') {
+        const defaultCodexEffort = mapCodexReasoningToEffort(
+          preferences?.default_codex_reasoning_effort
+        ) ?? 'high'
+        effortLevel = mapCodexReasoningToEffort(modeThinkingPref) ?? defaultCodexEffort
+      } else {
+        const fallbackThinking = isThinkingLevel(preferences?.thinking_level)
+          ? preferences.thinking_level
+          : 'off'
+        thinkingLevel = isThinkingLevel(modeThinkingPref)
+          ? modeThinkingPref
+          : fallbackThinking
+      }
       const resolvedPlanFilePath = card.planFilePath || store.getPlanFilePath(sessionId)
       const planFileLine = resolvedPlanFilePath ? `\nPlan file: ${resolvedPlanFilePath}\n` : ''
       const configPrefix = modeOverride ? `[${modeLabel}: ${modeOverride}]\n` : ''
@@ -256,6 +308,7 @@ export function useClearContextApproval({
         model,
         executionMode: mode,
         thinkingLevel,
+        effortLevel,
         customProfileName: card.session.selected_provider ?? undefined,
         backend,
       })

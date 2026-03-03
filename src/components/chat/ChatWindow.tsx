@@ -893,8 +893,13 @@ export function ChatWindow({
       store.setActiveSession(activeWorktreeId, newSession.id)
 
       // Send plan as first message in YOLO mode
-      const yoloModel = yoloModelRef.current ?? selectedModelRef.current
-      const yoloBackend = yoloBackendRef.current ?? undefined
+      const yoloBackend = (yoloBackendRef.current as Session['backend']) ?? undefined
+      const yoloModel = yoloModelRef.current ??
+        (yoloBackend === 'codex'
+          ? (preferences?.selected_codex_model ?? 'gpt-5.3-codex')
+          : yoloBackend === 'opencode'
+            ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
+            : selectedModelRef.current)
       const yoloOverride = (yoloModelRef.current || yoloBackend)
         ? [yoloBackend, yoloModel].filter(Boolean).join(' / ')
         : ''
@@ -933,7 +938,23 @@ export function ChatWindow({
         }).catch(err => console.error('[PlanDialog CC Yolo] Failed to persist backend:', err))
       }
 
-      const yoloThinkingLevel = yoloThinkingLevelRef.current ?? selectedThinkingLevelRef.current
+      const effectiveYoloBackend = yoloBackend ?? session?.backend
+      const yoloModeThinking = yoloThinkingLevelRef.current
+      const yoloThinkingLevel: ThinkingLevel =
+        effectiveYoloBackend === 'codex'
+          ? 'off'
+          : ((yoloModeThinking ?? selectedThinkingLevelRef.current) as ThinkingLevel)
+      const yoloEffortLevel: EffortLevel | undefined =
+        effectiveYoloBackend === 'codex'
+          ? (({
+              low: 'low',
+              medium: 'medium',
+              high: 'high',
+              xhigh: 'max',
+              max: 'max',
+            } as Record<string, EffortLevel>)[yoloModeThinking ?? ''] ??
+            selectedEffortLevelRef.current)
+          : undefined
       sendMessage.mutate({
         sessionId: newSession.id,
         worktreeId: activeWorktreeId,
@@ -941,7 +962,8 @@ export function ChatWindow({
         message,
         model: yoloModel,
         executionMode: 'yolo',
-        thinkingLevel: yoloThinkingLevel as ThinkingLevel,
+        thinkingLevel: yoloThinkingLevel,
+        effortLevel: yoloEffortLevel,
         backend: yoloBackend,
       })
     },
@@ -958,6 +980,10 @@ export function ChatWindow({
       yoloBackendRef,
       yoloThinkingLevelRef,
       selectedThinkingLevelRef,
+      selectedEffortLevelRef,
+      preferences?.selected_codex_model,
+      preferences?.selected_opencode_model,
+      session?.backend,
     ]
   )
 
@@ -1016,8 +1042,13 @@ export function ChatWindow({
       store.setActiveSession(activeWorktreeId, newSession.id)
 
       // Send plan as first message in build mode using build overrides
-      const buildModel = buildModelRef.current ?? selectedModelRef.current
-      const buildBackend = buildBackendRef.current ?? undefined
+      const buildBackend = (buildBackendRef.current as Session['backend']) ?? undefined
+      const buildModel = buildModelRef.current ??
+        (buildBackend === 'codex'
+          ? (preferences?.selected_codex_model ?? 'gpt-5.3-codex')
+          : buildBackend === 'opencode'
+            ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
+            : selectedModelRef.current)
       const buildOverride = (buildModelRef.current || buildBackend)
         ? [buildBackend, buildModel].filter(Boolean).join(' / ')
         : ''
@@ -1056,7 +1087,23 @@ export function ChatWindow({
         }).catch(err => console.error('[PlanDialog CC Build] Failed to persist backend:', err))
       }
 
-      const buildThinkingLevel = buildThinkingLevelRef.current ?? selectedThinkingLevelRef.current
+      const effectiveBuildBackend = buildBackend ?? session?.backend
+      const buildModeThinking = buildThinkingLevelRef.current
+      const buildThinkingLevel: ThinkingLevel =
+        effectiveBuildBackend === 'codex'
+          ? 'off'
+          : ((buildModeThinking ?? selectedThinkingLevelRef.current) as ThinkingLevel)
+      const buildEffortLevel: EffortLevel | undefined =
+        effectiveBuildBackend === 'codex'
+          ? (({
+              low: 'low',
+              medium: 'medium',
+              high: 'high',
+              xhigh: 'max',
+              max: 'max',
+            } as Record<string, EffortLevel>)[buildModeThinking ?? ''] ??
+            selectedEffortLevelRef.current)
+          : undefined
       sendMessage.mutate({
         sessionId: newSession.id,
         worktreeId: activeWorktreeId,
@@ -1064,7 +1111,8 @@ export function ChatWindow({
         message,
         model: buildModel,
         executionMode: 'build',
-        thinkingLevel: buildThinkingLevel as ThinkingLevel,
+        thinkingLevel: buildThinkingLevel,
+        effortLevel: buildEffortLevel,
         backend: buildBackend,
       })
     },
@@ -1081,6 +1129,10 @@ export function ChatWindow({
       buildBackendRef,
       buildThinkingLevelRef,
       selectedThinkingLevelRef,
+      selectedEffortLevelRef,
+      preferences?.selected_codex_model,
+      preferences?.selected_opencode_model,
+      session?.backend,
     ]
   )
 

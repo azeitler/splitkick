@@ -14,14 +14,21 @@ export function resolveApprovalLabel(
     yolo_model?: string | null
     yolo_backend?: string | null
     selected_model?: string | null
+    selected_codex_model?: string | null
+    selected_opencode_model?: string | null
     default_backend?: string | null
   } | undefined,
 ): string | null {
   if (!preferences) return null
   const model = mode === 'yolo' ? preferences.yolo_model : preferences.build_model
   const backend = mode === 'yolo' ? preferences.yolo_backend : preferences.build_backend
-  const resolvedModel = model ?? preferences.selected_model ?? null
   const resolvedBackend = backend ?? preferences.default_backend ?? 'claude'
+  const backendDefaultModel = resolvedBackend === 'codex'
+    ? (preferences.selected_codex_model ?? 'gpt-5.3-codex')
+    : resolvedBackend === 'opencode'
+      ? (preferences.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
+      : (preferences.selected_model ?? null)
+  const resolvedModel = model ?? backendDefaultModel
   if (!resolvedModel && !resolvedBackend) return null
   const modelLabel = resolvedModel
     ? (ALL_MODEL_OPTIONS.find(o => o.value === resolvedModel)?.label ?? resolvedModel)
