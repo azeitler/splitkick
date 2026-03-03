@@ -129,6 +129,43 @@ interface MessageHandlers {
   ) => Promise<void>
 }
 
+const THINKING_LEVEL_VALUES = new Set<ThinkingLevel>([
+  'off',
+  'think',
+  'megathink',
+  'ultrathink',
+])
+
+function isThinkingLevel(value: string | null | undefined): value is ThinkingLevel {
+  if (!value) return false
+  return THINKING_LEVEL_VALUES.has(value as ThinkingLevel)
+}
+
+function mapCodexReasoningToEffort(value: string | null | undefined): EffortLevel | undefined {
+  switch (value) {
+    case 'low':
+      return 'low'
+    case 'medium':
+      return 'medium'
+    case 'high':
+      return 'high'
+    case 'xhigh':
+    case 'max':
+      return 'max'
+    default:
+      return undefined
+  }
+}
+
+function getDefaultModelForBackend(
+  backend: Session['backend'] | undefined,
+  selectedClaudeModel: string
+): string {
+  if (backend === 'codex') return 'gpt-5.3-codex'
+  if (backend === 'opencode') return 'opencode/gpt-5.3-codex'
+  return selectedClaudeModel
+}
+
 /**
  * Hook that extracts message-related handlers from ChatWindow.
  *
@@ -822,8 +859,10 @@ export function useMessageHandlers({
       const modeThinkingRef = isYolo ? yoloThinkingLevelRef : buildThinkingLevelRef
       const modeLabel = isYolo ? 'Yolo' : 'Build'
 
-      const resolvedModel = modeModelRef.current ?? selectedModelRef.current
-      const resolvedBackend = modeBackendRef.current ?? undefined
+      const resolvedBackend = (modeBackendRef.current as Session['backend']) ?? undefined
+      const resolvedModel =
+        modeModelRef.current ??
+        getDefaultModelForBackend(resolvedBackend, selectedModelRef.current)
       const modeOverride = (modeModelRef.current || resolvedBackend)
         ? [resolvedBackend, resolvedModel].filter(Boolean).join(' / ')
         : ''
@@ -862,7 +901,21 @@ export function useMessageHandlers({
         }).catch(err => console.error('[clearContext] Failed to persist backend:', err))
       }
 
-      const resolvedThinkingLevel = (modeThinkingRef.current ?? selectedThinkingLevelRef.current) as ThinkingLevel
+      const currentSessionBackend = queryClient.getQueryData<Session>(
+        chatQueryKeys.session(sessionId)
+      )?.backend
+      const effectiveBackend = resolvedBackend ?? currentSessionBackend
+      let resolvedThinkingLevel: ThinkingLevel = selectedThinkingLevelRef.current
+      let resolvedEffortLevel: EffortLevel | undefined = useAdaptiveThinkingRef.current
+        ? selectedEffortLevelRef.current
+        : undefined
+      if (effectiveBackend === 'codex') {
+        resolvedThinkingLevel = 'off'
+        resolvedEffortLevel =
+          mapCodexReasoningToEffort(modeThinkingRef.current) ?? selectedEffortLevelRef.current
+      } else if (isThinkingLevel(modeThinkingRef.current)) {
+        resolvedThinkingLevel = modeThinkingRef.current
+      }
       sendMessage.mutate({
         sessionId: newSession.id,
         worktreeId,
@@ -871,9 +924,7 @@ export function useMessageHandlers({
         model: resolvedModel,
         executionMode: mode,
         thinkingLevel: resolvedThinkingLevel,
-        effortLevel: useAdaptiveThinkingRef.current
-          ? selectedEffortLevelRef.current
-          : undefined,
+        effortLevel: resolvedEffortLevel,
         mcpConfig: getMcpConfig(),
         customProfileName: getCustomProfileName(),
         backend: resolvedBackend,
@@ -1015,8 +1066,10 @@ export function useMessageHandlers({
     const modeThinkingRef = isYolo ? yoloThinkingLevelRef : buildThinkingLevelRef
     const modeLabel = isYolo ? 'Yolo' : 'Build'
 
-    const resolvedModel = modeModelRef.current ?? selectedModelRef.current
-    const resolvedBackend = modeBackendRef.current ?? undefined
+    const resolvedBackend = (modeBackendRef.current as Session['backend']) ?? undefined
+    const resolvedModel =
+      modeModelRef.current ??
+      getDefaultModelForBackend(resolvedBackend, selectedModelRef.current)
     const modeOverride = (modeModelRef.current || resolvedBackend)
       ? [resolvedBackend, resolvedModel].filter(Boolean).join(' / ')
       : ''
@@ -1053,7 +1106,21 @@ export function useMessageHandlers({
       }).catch(err => console.error('[streamingClearContext] Failed to persist backend:', err))
     }
 
-    const resolvedThinkingLevel = (modeThinkingRef.current ?? selectedThinkingLevelRef.current) as ThinkingLevel
+    const currentSessionBackend = queryClient.getQueryData<Session>(
+      chatQueryKeys.session(sessionId)
+    )?.backend
+    const effectiveBackend = resolvedBackend ?? currentSessionBackend
+    let resolvedThinkingLevel: ThinkingLevel = selectedThinkingLevelRef.current
+    let resolvedEffortLevel: EffortLevel | undefined = useAdaptiveThinkingRef.current
+      ? selectedEffortLevelRef.current
+      : undefined
+    if (effectiveBackend === 'codex') {
+      resolvedThinkingLevel = 'off'
+      resolvedEffortLevel =
+        mapCodexReasoningToEffort(modeThinkingRef.current) ?? selectedEffortLevelRef.current
+    } else if (isThinkingLevel(modeThinkingRef.current)) {
+      resolvedThinkingLevel = modeThinkingRef.current
+    }
     sendMessage.mutate({
       sessionId: newSession.id,
       worktreeId,
@@ -1062,9 +1129,7 @@ export function useMessageHandlers({
       model: resolvedModel,
       executionMode: mode,
       thinkingLevel: resolvedThinkingLevel,
-      effortLevel: useAdaptiveThinkingRef.current
-        ? selectedEffortLevelRef.current
-        : undefined,
+      effortLevel: resolvedEffortLevel,
       mcpConfig: getMcpConfig(),
       customProfileName: getCustomProfileName(),
       backend: resolvedBackend,
