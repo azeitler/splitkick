@@ -143,6 +143,10 @@ describe('preferences service', () => {
         close_original_on_clear_context: true,
         build_model: null,
         yolo_model: null,
+        build_backend: null,
+        yolo_backend: null,
+        build_thinking_level: null,
+        yolo_thinking_level: null,
         linear_api_key: null,
       }
       vi.mocked(invoke).mockResolvedValueOnce(mockPreferences)
@@ -253,6 +257,10 @@ describe('preferences service', () => {
         close_original_on_clear_context: true,
         build_model: null,
         yolo_model: null,
+        build_backend: null,
+        yolo_backend: null,
+        build_thinking_level: null,
+        yolo_thinking_level: null,
         linear_api_key: null,
       }
       vi.mocked(invoke).mockResolvedValueOnce(prefsWithOldBinding)
@@ -339,6 +347,10 @@ describe('preferences service', () => {
         close_original_on_clear_context: true,
         build_model: null,
         yolo_model: null,
+        build_backend: null,
+        yolo_backend: null,
+        build_thinking_level: null,
+        yolo_thinking_level: null,
         linear_api_key: null,
       }
 
@@ -424,6 +436,10 @@ describe('preferences service', () => {
         close_original_on_clear_context: true,
         build_model: null,
         yolo_model: null,
+        build_backend: null,
+        yolo_backend: null,
+        build_thinking_level: null,
+        yolo_thinking_level: null,
         linear_api_key: null,
       }
 
@@ -509,6 +525,10 @@ describe('preferences service', () => {
         close_original_on_clear_context: true,
         build_model: null,
         yolo_model: null,
+        build_backend: null,
+        yolo_backend: null,
+        build_thinking_level: null,
+        yolo_thinking_level: null,
         linear_api_key: null,
       }
 
@@ -592,6 +612,10 @@ describe('preferences service', () => {
         close_original_on_clear_context: true,
         build_model: null,
         yolo_model: null,
+        build_backend: null,
+        yolo_backend: null,
+        build_thinking_level: null,
+        yolo_thinking_level: null,
         linear_api_key: null,
       }
 

@@ -24,7 +24,9 @@ interface UsePlanDialogApprovalParams {
   pendingPlanMessage: ChatMessage | null | undefined
   selectedModelRef: RefObject<string>
   buildModelRef: RefObject<string | null>
+  buildBackendRef: RefObject<string | null>
   yoloModelRef: RefObject<string | null>
+  yoloBackendRef: RefObject<string | null>
   selectedProviderRef: RefObject<string | null>
   selectedThinkingLevelRef: RefObject<ThinkingLevel>
   selectedEffortLevelRef: RefObject<EffortLevel>
@@ -45,7 +47,9 @@ export function usePlanDialogApproval({
   pendingPlanMessage,
   selectedModelRef,
   buildModelRef,
+  buildBackendRef,
   yoloModelRef,
+  yoloBackendRef,
   selectedProviderRef,
   selectedThinkingLevelRef,
   selectedEffortLevelRef,
@@ -103,14 +107,18 @@ export function usePlanDialogApproval({
       setExecutionMode(activeSessionId, mode)
 
       const modelOverride = mode === 'yolo' ? yoloModelRef.current : buildModelRef.current
+      const backendOverride = mode === 'yolo' ? yoloBackendRef.current : buildBackendRef.current
       const model = modelOverride ?? selectedModelRef.current
-      if (modelOverride && modelOverride !== selectedModelRef.current) {
-        toast.info(`Using ${modelOverride} model for ${mode}`)
-      }
+      const modeLabel = mode === 'yolo' ? 'Yolo' : 'Build'
+      const overrideStr = (modelOverride || backendOverride)
+        ? [backendOverride, model].filter(Boolean).join(' / ')
+        : ''
+      if (overrideStr) toast.info(`${modeLabel}: ${overrideStr}`)
+      const displayMessage = overrideStr ? `[${modeLabel}: ${overrideStr}]\n${message}` : message
 
       const queuedMessage: QueuedMessage = {
         id: generateId(),
-        message,
+        message: displayMessage,
         pendingImages: [],
         pendingFiles: [],
         pendingSkills: [],

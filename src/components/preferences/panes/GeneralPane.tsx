@@ -185,6 +185,8 @@ export const GeneralPane: React.FC = () => {
   const [checkingOpenCodeAuth, setCheckingOpenCodeAuth] = useState(false)
   const [openCodeModelPopoverOpen, setOpenCodeModelPopoverOpen] =
     useState(false)
+  const [buildModelPopoverOpen, setBuildModelPopoverOpen] = useState(false)
+  const [yoloModelPopoverOpen, setYoloModelPopoverOpen] = useState(false)
 
   // Use global ui-store for CLI modals
   const openCliUpdateModal = useUIStore(state => state.openCliUpdateModal)
@@ -253,11 +255,53 @@ export const GeneralPane: React.FC = () => {
     }
   }
 
+  const handleBuildBackendChange = (value: string) => {
+    if (preferences) {
+      savePreferences.mutate({
+        ...preferences,
+        build_backend: value === 'default' ? null : value,
+        // Reset model and thinking/effort when backend changes
+        build_model: null,
+        build_thinking_level: null,
+      })
+    }
+  }
+
   const handleYoloModelChange = (value: string) => {
     if (preferences) {
       savePreferences.mutate({
         ...preferences,
         yolo_model: value === 'default' ? null : value,
+      })
+    }
+  }
+
+  const handleYoloBackendChange = (value: string) => {
+    if (preferences) {
+      savePreferences.mutate({
+        ...preferences,
+        yolo_backend: value === 'default' ? null : value,
+        // Reset model and thinking/effort when backend changes
+        yolo_model: null,
+        yolo_thinking_level: null,
+      })
+    }
+  }
+
+  const handleBuildThinkingLevelChange = (value: string) => {
+    if (preferences) {
+      savePreferences.mutate({
+        ...preferences,
+        build_thinking_level: value === 'default' ? null : value,
+      })
+    }
+  }
+
+  const handleYoloThinkingLevelChange = (value: string) => {
+    if (preferences) {
+      savePreferences.mutate({
+        ...preferences,
+        yolo_thinking_level: value === 'default' ? null : value,
       })
     }
   }
@@ -938,47 +982,279 @@ export const GeneralPane: React.FC = () => {
           </InlineField>
 
           <InlineField
-            label="Build model"
-            description="Model override when approving plans"
+            label="Build execution"
+            description="Backend, model, and thinking/effort override when approving plans"
           >
-            <Select
-              value={preferences?.build_model ?? 'default'}
-              onValueChange={handleBuildModelChange}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="default">Default (session model)</SelectItem>
-                {modelOptions.map(option => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <Select
+                  value={preferences?.build_backend ?? 'default'}
+                  onValueChange={handleBuildBackendChange}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">Default</SelectItem>
+                    {backendOptions.map(option => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                {preferences?.build_backend === 'opencode' ? (
+                  <Popover
+                    open={buildModelPopoverOpen}
+                    onOpenChange={setBuildModelPopoverOpen}
+                  >
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={buildModelPopoverOpen}
+                        className="w-full justify-between"
+                      >
+                        <span className="truncate text-left">
+                          {preferences?.build_model
+                            ? (openCodeModelOptions.find(o => o.value === preferences.build_model)?.label
+                              ?? formatOpenCodeModelLabelForSettings(preferences.build_model))
+                            : 'Default model'}
+                        </span>
+                        <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      align="start"
+                      className="w-80 p-0"
+                    >
+                      <Command>
+                        <CommandInput placeholder="Search models..." />
+                        <CommandList onWheel={e => e.stopPropagation()}>
+                          <CommandEmpty>No models found.</CommandEmpty>
+                          <CommandGroup>
+                            <CommandItem
+                              value="default"
+                              onSelect={() => {
+                                handleBuildModelChange('default')
+                                setBuildModelPopoverOpen(false)
+                              }}
+                            >
+                              Default model
+                              <Check className={cn('ml-auto h-4 w-4', !preferences?.build_model || preferences.build_model === 'default' ? 'opacity-100' : 'opacity-0')} />
+                            </CommandItem>
+                            {openCodeModelOptions.map(option => (
+                              <CommandItem
+                                key={option.value}
+                                value={`${option.label} ${option.value}`}
+                                onSelect={() => {
+                                  handleBuildModelChange(option.value)
+                                  setBuildModelPopoverOpen(false)
+                                }}
+                              >
+                                <span className="truncate">{option.label}</span>
+                                <Check className={cn('ml-auto h-4 w-4', preferences?.build_model === option.value ? 'opacity-100' : 'opacity-0')} />
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                ) : (
+                  <Select
+                    value={preferences?.build_model ?? 'default'}
+                    onValueChange={handleBuildModelChange}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">Default model</SelectItem>
+                      {(preferences?.build_backend === 'codex'
+                        ? codexModelOptions
+                        : modelOptions
+                      ).map(option => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+              <div>
+                <Select
+                  value={preferences?.build_thinking_level ?? 'default'}
+                  onValueChange={handleBuildThinkingLevelChange}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {preferences?.build_backend === 'codex' ? (
+                      <>
+                        <SelectItem value="default">Default effort</SelectItem>
+                        {codexReasoningOptions.map(option => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </>
+                    ) : (
+                      <>
+                        <SelectItem value="default">Default thinking</SelectItem>
+                        {thinkingLevelOptions.map(option => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </InlineField>
 
           <InlineField
-            label="Yolo model"
-            description="Model override when yolo-approving plans"
+            label="Yolo execution"
+            description="Backend, model, and thinking/effort override when yolo-approving plans"
           >
-            <Select
-              value={preferences?.yolo_model ?? 'default'}
-              onValueChange={handleYoloModelChange}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="default">Default (session model)</SelectItem>
-                {modelOptions.map(option => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <Select
+                  value={preferences?.yolo_backend ?? 'default'}
+                  onValueChange={handleYoloBackendChange}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">Default</SelectItem>
+                    {backendOptions.map(option => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                {preferences?.yolo_backend === 'opencode' ? (
+                  <Popover
+                    open={yoloModelPopoverOpen}
+                    onOpenChange={setYoloModelPopoverOpen}
+                  >
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={yoloModelPopoverOpen}
+                        className="w-full justify-between"
+                      >
+                        <span className="truncate text-left">
+                          {preferences?.yolo_model
+                            ? (openCodeModelOptions.find(o => o.value === preferences.yolo_model)?.label
+                              ?? formatOpenCodeModelLabelForSettings(preferences.yolo_model))
+                            : 'Default model'}
+                        </span>
+                        <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      align="start"
+                      className="w-80 p-0"
+                    >
+                      <Command>
+                        <CommandInput placeholder="Search models..." />
+                        <CommandList onWheel={e => e.stopPropagation()}>
+                          <CommandEmpty>No models found.</CommandEmpty>
+                          <CommandGroup>
+                            <CommandItem
+                              value="default"
+                              onSelect={() => {
+                                handleYoloModelChange('default')
+                                setYoloModelPopoverOpen(false)
+                              }}
+                            >
+                              Default model
+                              <Check className={cn('ml-auto h-4 w-4', !preferences?.yolo_model || preferences.yolo_model === 'default' ? 'opacity-100' : 'opacity-0')} />
+                            </CommandItem>
+                            {openCodeModelOptions.map(option => (
+                              <CommandItem
+                                key={option.value}
+                                value={`${option.label} ${option.value}`}
+                                onSelect={() => {
+                                  handleYoloModelChange(option.value)
+                                  setYoloModelPopoverOpen(false)
+                                }}
+                              >
+                                <span className="truncate">{option.label}</span>
+                                <Check className={cn('ml-auto h-4 w-4', preferences?.yolo_model === option.value ? 'opacity-100' : 'opacity-0')} />
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                ) : (
+                  <Select
+                    value={preferences?.yolo_model ?? 'default'}
+                    onValueChange={handleYoloModelChange}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">Default model</SelectItem>
+                      {(preferences?.yolo_backend === 'codex'
+                        ? codexModelOptions
+                        : modelOptions
+                      ).map(option => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+              <div>
+                <Select
+                  value={preferences?.yolo_thinking_level ?? 'default'}
+                  onValueChange={handleYoloThinkingLevelChange}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {preferences?.yolo_backend === 'codex' ? (
+                      <>
+                        <SelectItem value="default">Default effort</SelectItem>
+                        {codexReasoningOptions.map(option => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </>
+                    ) : (
+                      <>
+                        <SelectItem value="default">Default thinking</SelectItem>
+                        {thinkingLevelOptions.map(option => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </InlineField>
 
           <InlineField
@@ -1114,7 +1390,7 @@ export const GeneralPane: React.FC = () => {
               >
                 <Command>
                   <CommandInput placeholder="Search models..." />
-                  <CommandList>
+                  <CommandList onWheel={e => e.stopPropagation()}>
                     <CommandEmpty>No models found.</CommandEmpty>
                     <CommandGroup>
                       {openCodeModelOptions.map(option => (

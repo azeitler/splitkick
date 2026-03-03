@@ -28,8 +28,10 @@ import {
 import {
   useLinearIssues,
   useSearchLinearIssues,
+  useGetLinearIssueByNumber,
   useLoadedLinearIssueContexts,
   filterLinearIssues,
+  parseLinearItemNumber,
 } from '@/services/linear'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import type { SavedContextsResponse } from '@/types/chat'
@@ -184,6 +186,11 @@ export function useLoadContextData({
     worktreePath,
     debouncedSearchQuery
   )
+  const { data: exactLinearIssue } = useGetLinearIssueByNumber(
+    projectId,
+    debouncedSearchQuery,
+    { enabled: open }
+  )
 
   // Filter issues locally, merge with search results, exclude already loaded ones
   const filteredIssues = useMemo(() => {
@@ -292,6 +299,11 @@ export function useLoadContextData({
     const loadedIdentifiers = new Set(
       loadedLinearContexts?.map(c => c.identifier) ?? []
     )
+    if (parseLinearItemNumber(searchQuery) !== null) {
+      return exactLinearIssue && !loadedIdentifiers.has(exactLinearIssue.identifier)
+        ? [exactLinearIssue]
+        : []
+    }
     const localFiltered = filterLinearIssues(
       linearIssueResult?.issues ?? [],
       searchQuery
@@ -313,6 +325,7 @@ export function useLoadContextData({
     searchQuery,
     searchedLinearIssues,
     loadedLinearContexts,
+    exactLinearIssue,
   ])
 
   // Mutation for renaming contexts

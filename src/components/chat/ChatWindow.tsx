@@ -682,6 +682,9 @@ export function ChatWindow({
   const selectedModelRef = useRef(selectedModel)
   const buildModelRef = useRef<string | null>(preferences?.build_model ?? null)
   const yoloModelRef = useRef<string | null>(preferences?.yolo_model ?? null)
+  const buildBackendRef = useRef<string | null>(preferences?.build_backend ?? null)
+  const yoloBackendRef = useRef<string | null>(preferences?.yolo_backend ?? null)
+  const yoloThinkingLevelRef = useRef<string | null>(preferences?.yolo_thinking_level ?? null)
   const selectedProviderRef = useRef(selectedProvider)
   const selectedThinkingLevelRef = useRef(selectedThinkingLevel)
   const selectedEffortLevelRef = useRef(selectedEffortLevel)
@@ -699,6 +702,9 @@ export function ChatWindow({
   selectedModelRef.current = selectedModel
   buildModelRef.current = preferences?.build_model ?? null
   yoloModelRef.current = preferences?.yolo_model ?? null
+  buildBackendRef.current = preferences?.build_backend ?? null
+  yoloBackendRef.current = preferences?.yolo_backend ?? null
+  yoloThinkingLevelRef.current = preferences?.yolo_thinking_level ?? null
   selectedProviderRef.current = selectedProvider
   selectedThinkingLevelRef.current = selectedThinkingLevel
   selectedEffortLevelRef.current = selectedEffortLevel
@@ -813,7 +819,9 @@ export function ChatWindow({
       pendingPlanMessage,
       selectedModelRef,
       buildModelRef,
+      buildBackendRef,
       yoloModelRef,
+      yoloBackendRef,
       selectedProviderRef,
       selectedThinkingLevelRef,
       selectedEffortLevelRef,
@@ -879,17 +887,28 @@ export function ChatWindow({
 
       // Send plan as first message in YOLO mode
       const yoloModel = yoloModelRef.current ?? selectedModelRef.current
-      if (yoloModelRef.current && yoloModelRef.current !== selectedModelRef.current) {
-        toast.info(`Using ${yoloModelRef.current} model for yolo`)
-      }
-      const message = `Execute this plan. Implement all changes described.\n\n<plan>\n${editedPlanContent}\n</plan>`
+      const yoloBackend = yoloBackendRef.current ?? undefined
+      const yoloOverride = (yoloModelRef.current || yoloBackend)
+        ? [yoloBackend, yoloModel].filter(Boolean).join(' / ')
+        : ''
+      if (yoloOverride) toast.info(`Yolo: ${yoloOverride}`)
+      const message = yoloOverride
+        ? `[Yolo: ${yoloOverride}]\nExecute this plan. Implement all changes described.\n\n<plan>\n${editedPlanContent}\n</plan>`
+        : `Execute this plan. Implement all changes described.\n\n<plan>\n${editedPlanContent}\n</plan>`
       store.setExecutionMode(newSession.id, 'yolo')
       store.setLastSentMessage(newSession.id, message)
       store.setError(newSession.id, null)
       store.addSendingSession(newSession.id)
       store.setSelectedModel(newSession.id, yoloModel)
       store.setExecutingMode(newSession.id, 'yolo')
+      if (yoloBackend) {
+        store.setSelectedBackend(
+          newSession.id,
+          yoloBackend as 'claude' | 'codex' | 'opencode'
+        )
+      }
 
+      const yoloThinkingLevel = yoloThinkingLevelRef.current ?? selectedThinkingLevelRef.current
       sendMessage.mutate({
         sessionId: newSession.id,
         worktreeId: activeWorktreeId,
@@ -897,7 +916,8 @@ export function ChatWindow({
         message,
         model: yoloModel,
         executionMode: 'yolo',
-        thinkingLevel: selectedThinkingLevelRef.current,
+        thinkingLevel: yoloThinkingLevel as ThinkingLevel,
+        backend: yoloBackend,
       })
     },
     [
@@ -910,6 +930,8 @@ export function ChatWindow({
       sendMessage,
       selectedModelRef,
       yoloModelRef,
+      yoloBackendRef,
+      yoloThinkingLevelRef,
       selectedThinkingLevelRef,
     ]
   )
@@ -1171,6 +1193,7 @@ export function ChatWindow({
       createSession,
       resolveCustomProfile,
       cliVersion: cliStatus?.version ?? null,
+      worktreeProjectId: worktree?.project_id,
     })
 
   // Listen for magic-command events from MagicModal
@@ -1211,6 +1234,8 @@ export function ChatWindow({
       handleInvestigate('security-alert')
     } else if (uiStore.consumeAutoInvestigateAdvisory(activeWorktreeId)) {
       handleInvestigate('advisory')
+    } else if (uiStore.consumeAutoInvestigateLinearIssue(activeWorktreeId)) {
+      handleInvestigate('linear-issue')
     }
   }, [activeSessionId, activeWorktreeId, activeWorktreePath, worktreeStatus, handleInvestigate])
 
@@ -1236,7 +1261,10 @@ export function ChatWindow({
     activeWorktreePathRef,
     selectedModelRef,
     buildModelRef,
+    buildBackendRef,
     yoloModelRef,
+    yoloBackendRef,
+    yoloThinkingLevelRef,
     getCustomProfileName: () => {
       return selectedProviderRef.current ?? undefined
     },

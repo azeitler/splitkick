@@ -30,10 +30,24 @@ export const linearQueryKeys = {
     [...linearQueryKeys.all, 'issues', projectId] as const,
   issueSearch: (projectId: string, query: string) =>
     [...linearQueryKeys.all, 'issue-search', projectId, query] as const,
+  issueByNumber: (projectId: string, number: number) =>
+    [...linearQueryKeys.all, 'issue-by-number', projectId, number] as const,
   loadedContexts: (sessionId: string) =>
     [...linearQueryKeys.all, 'loaded-contexts', sessionId] as const,
   teams: (projectId: string) =>
     [...linearQueryKeys.all, 'teams', projectId] as const,
+}
+
+/**
+ * Parse a query string as a Linear issue number.
+ * Accepts "#12" or "12" (pure digits only).
+ * Returns the number, or null if the query is not a bare number.
+ */
+export function parseLinearItemNumber(query: string): number | null {
+  const trimmed = query.trim().replace(/^#/, '')
+  if (!trimmed || !/^\d+$/.test(trimmed)) return null
+  const num = parseInt(trimmed, 10)
+  return num > 0 ? num : null
 }
 
 /**
@@ -168,6 +182,38 @@ export function useLoadedLinearIssueContexts(
     staleTime: 1000 * 60 * 2,
     gcTime: 1000 * 60 * 10,
     retry: 1,
+  })
+}
+
+/**
+ * Hook to fetch a single Linear issue by its number (e.g., #12).
+ * Finds the issue regardless of state — useful for exact number lookup.
+ */
+export function useGetLinearIssueByNumber(
+  projectId: string | null,
+  query: string,
+  options?: { enabled?: boolean }
+) {
+  const itemNumber = parseLinearItemNumber(query)
+  return useQuery({
+    queryKey: linearQueryKeys.issueByNumber(projectId ?? '', itemNumber ?? 0),
+    queryFn: async (): Promise<LinearIssue | null> => {
+      if (!isTauri() || !projectId || !itemNumber) return null
+      try {
+        logger.debug('Fetching Linear issue by number', { projectId, itemNumber })
+        const result = await invoke<LinearIssue | null>(
+          'get_linear_issue_by_number',
+          { projectId, issueNumber: itemNumber }
+        )
+        return result ?? null
+      } catch {
+        return null
+      }
+    },
+    enabled: (options?.enabled ?? true) && !!projectId && itemNumber !== null,
+    staleTime: 1000 * 30,
+    gcTime: 1000 * 60 * 5,
+    retry: 0,
   })
 }
 

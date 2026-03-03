@@ -38,9 +38,7 @@ import { useSessionArchive } from './hooks/useSessionArchive'
 import { CanvasGrid } from './CanvasGrid'
 import { CloseWorktreeDialog } from './CloseWorktreeDialog'
 import { CanvasList } from './CanvasList'
-import { KeybindingHints } from '@/components/ui/keybinding-hints'
 import { usePreferences, useSavePreferences } from '@/services/preferences'
-import { DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 import {
   Search,
   Loader2,
@@ -628,39 +626,6 @@ export function WorktreeCanvasView({
           )}
         </div>
       </div>
-
-      {/* Keybinding hints */}
-      {preferences?.show_keybinding_hints !== false && (
-        <KeybindingHints
-          hints={[
-            { shortcut: 'Enter', label: 'open' },
-            {
-              shortcut: DEFAULT_KEYBINDINGS.open_in_modal as string,
-              label: 'open in...',
-            },
-            {
-              shortcut: DEFAULT_KEYBINDINGS.new_worktree as string,
-              label: 'new worktree',
-            },
-            {
-              shortcut: DEFAULT_KEYBINDINGS.new_session as string,
-              label: 'new session',
-            },
-            {
-              shortcut: DEFAULT_KEYBINDINGS.toggle_session_label as string,
-              label: 'label',
-            },
-            {
-              shortcut: DEFAULT_KEYBINDINGS.open_magic_modal as string,
-              label: 'magic',
-            },
-            {
-              shortcut: DEFAULT_KEYBINDINGS.close_session_or_worktree as string,
-              label: 'close',
-            },
-          ]}
-        />
-      )}
 
       <Suspense fallback={null}>
         <GitDiffModal

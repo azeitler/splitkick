@@ -38,6 +38,7 @@ import {
   DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT,
   DEFAULT_INVESTIGATE_SECURITY_ALERT_PROMPT,
   DEFAULT_INVESTIGATE_ADVISORY_PROMPT,
+  DEFAULT_INVESTIGATE_LINEAR_ISSUE_PROMPT,
   DEFAULT_RELEASE_NOTES_PROMPT,
   DEFAULT_SESSION_NAMING_PROMPT,
   DEFAULT_SESSION_RECAP_PROMPT,
@@ -199,6 +200,31 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_INVESTIGATE_ADVISORY_PROMPT,
+        defaultModel: 'opus',
+      },
+      {
+        key: 'investigate_linear_issue',
+        modelKey: 'investigate_linear_issue_model',
+        providerKey: 'investigate_linear_issue_provider',
+        backendKey: 'investigate_linear_issue_backend',
+        label: 'Investigate Linear Issue',
+        description:
+          'Prompt for analyzing Linear issues. Issue content is embedded directly since Claude CLI cannot access the Linear API.',
+        variables: [
+          {
+            name: '{linearRefs}',
+            description: 'Issue identifiers (e.g., ENG-123, ENG-456)',
+          },
+          {
+            name: '{linearWord}',
+            description: '"issue" or "issues" based on count',
+          },
+          {
+            name: '{linearContext}',
+            description: 'Full markdown content of the loaded Linear issues',
+          },
+        ],
+        defaultValue: DEFAULT_INVESTIGATE_LINEAR_ISSUE_PROMPT,
         defaultModel: 'opus',
       },
     ],

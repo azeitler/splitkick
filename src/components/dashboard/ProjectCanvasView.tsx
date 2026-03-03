@@ -99,7 +99,6 @@ import {
 } from '@/services/projects'
 import { useArchiveSession, useCloseSession, useRenameSession } from '@/services/chat'
 import { usePreferences, useSavePreferences } from '@/services/preferences'
-import { KeybindingHints } from '@/components/ui/keybinding-hints'
 import { DEFAULT_KEYBINDINGS, formatShortcutDisplay } from '@/types/keybindings'
 import { CloseWorktreeDialog } from '@/components/chat/CloseWorktreeDialog'
 const GitDiffModal = lazy(() =>
@@ -317,6 +316,19 @@ function WorktreeSectionHeader({
     [cards]
   )
 
+  const uniqueSessionLabels = useMemo(() => {
+    if (!cards) return []
+    const seen = new Set<string>()
+    const result: LabelData[] = []
+    for (const card of cards) {
+      if (card.label && !seen.has(card.label.name)) {
+        seen.add(card.label.name)
+        result.push(card.label)
+      }
+    }
+    return result
+  }, [cards])
+
   const lastActivity = formatRelativeTime(sessionMetrics?.latestUpdatedAt)
 
   return (
@@ -432,6 +444,18 @@ function WorktreeSectionHeader({
                   {sessionMetrics.activeCount} active
                 </span>
               )}
+              {uniqueSessionLabels.map(label => (
+                <span
+                  key={label.name}
+                  className="rounded px-2 py-0.5 text-[10px] font-medium"
+                  style={{
+                    backgroundColor: label.color,
+                    color: getLabelTextColor(label.color),
+                  }}
+                >
+                  {label.name}
+                </span>
+              ))}
               {lastActivity && (
                 <span className="inline-flex items-center gap-1 rounded px-2 py-0.5">
                   <Clock3 className="h-3 w-3" />
@@ -2146,39 +2170,6 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
           onClose={() => setCanvasDiffRequest(null)}
         />
       </Suspense>
-
-      {/* Keybinding hints */}
-      {preferences?.show_keybinding_hints !== false && (
-        <KeybindingHints
-          hints={[
-            { shortcut: 'Enter', label: 'open' },
-            {
-              shortcut: DEFAULT_KEYBINDINGS.open_in_modal as string,
-              label: 'open in...',
-            },
-            {
-              shortcut: DEFAULT_KEYBINDINGS.new_worktree as string,
-              label: 'new worktree',
-            },
-            {
-              shortcut: DEFAULT_KEYBINDINGS.new_session as string,
-              label: 'new session',
-            },
-            {
-              shortcut: DEFAULT_KEYBINDINGS.toggle_session_label as string,
-              label: 'label',
-            },
-            {
-              shortcut: DEFAULT_KEYBINDINGS.open_magic_modal as string,
-              label: 'magic',
-            },
-            {
-              shortcut: DEFAULT_KEYBINDINGS.close_session_or_worktree as string,
-              label: 'close',
-            },
-          ]}
-        />
-      )}
 
       <CloseWorktreeDialog
         open={!!closeWorktreeTarget}

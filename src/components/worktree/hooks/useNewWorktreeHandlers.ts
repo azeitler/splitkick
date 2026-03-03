@@ -760,7 +760,17 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
         })
 
         if (worktree) {
-          useUIStore.getState().markWorktreeForAutoInvestigate(worktree.id)
+          // Save issue in Linear context system so the investigation prompt can find it.
+          // The worktree creation saves it as a GitHub-style IssueContext, but the Linear
+          // investigation queries the Linear-specific context refs.
+          invoke('load_linear_issue_context', {
+            sessionId: worktree.id,
+            projectId: selectedProjectId,
+            issueId: issue.id,
+          }).catch(err => {
+            console.warn('Failed to save Linear issue context for investigation:', err)
+          })
+          useUIStore.getState().markWorktreeForAutoInvestigateLinearIssue(worktree.id)
         }
 
         if (background) {

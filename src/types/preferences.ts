@@ -63,6 +63,8 @@ export interface MagicPrompts {
   investigate_security_alert: string | null
   /** Prompt for investigating repository security advisories */
   investigate_advisory: string | null
+  /** Prompt for investigating Linear issues (context embedded in prompt since Claude CLI cannot access Linear API) */
+  investigate_linear_issue: string | null
 }
 
 /** Default prompt for investigating GitHub issues */
@@ -391,6 +393,58 @@ Investigate the loaded security {advisoryWord} ({advisoryRefs})
 
 </guidelines>`
 
+/** Default prompt for investigating Linear issues */
+export const DEFAULT_INVESTIGATE_LINEAR_ISSUE_PROMPT = `<task>
+
+Investigate the loaded Linear {linearWord} ({linearRefs})
+
+</task>
+
+
+<linear_issue_context>
+
+{linearContext}
+
+</linear_issue_context>
+
+
+<instructions>
+
+1. Read the Linear issue context above carefully to understand the full problem description and comments
+2. Analyze the problem:
+   - What is the expected vs actual behavior?
+   - Are there error messages, stack traces, or reproduction steps?
+3. Explore the codebase to find relevant code:
+   - Search for files/functions mentioned in the {linearWord}
+   - Read source files to understand current implementation
+   - Trace the affected code path
+4. Identify root cause:
+   - Where does the bug originate OR where should the feature be implemented?
+   - What constraints/edge cases need handling?
+   - Any related issues or tech debt?
+5. Check for regression:
+   - If this is a bug fix, determine if this is a regression
+   - Look at git history or related code to understand if the feature previously worked
+   - Identify what change may have caused the regression
+6. Propose solution:
+   - Clear explanation of needed changes
+   - Specific files to modify
+   - Potential risks/trade-offs
+   - Test cases to verify
+
+</instructions>
+
+
+<guidelines>
+
+- The Linear issue content is included above — use it as the primary source of requirements
+- Be thorough but focused - investigate deeply without getting sidetracked
+- Ask clarifying questions if requirements are unclear
+- If multiple solutions exist, explain trade-offs
+- Reference specific file paths and line numbers
+
+</guidelines>`
+
 /** Default prompt for generating release notes */
 export const DEFAULT_RELEASE_NOTES_PROMPT = `Generate release notes for changes since the \`{tag}\` release ({previous_release_name}).
 
@@ -519,6 +573,7 @@ export const DEFAULT_MAGIC_PROMPTS: MagicPrompts = {
   session_recap: null,
   investigate_security_alert: null,
   investigate_advisory: null,
+  investigate_linear_issue: null,
 }
 
 /**
@@ -538,6 +593,7 @@ export interface MagicPromptModels {
   session_recap_model: MagicPromptModel
   investigate_security_alert_model: MagicPromptModel
   investigate_advisory_model: MagicPromptModel
+  investigate_linear_issue_model: MagicPromptModel
 }
 
 /** Default models for each magic prompt */
@@ -555,6 +611,7 @@ export const DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
   session_recap_model: 'haiku',
   investigate_security_alert_model: 'opus',
   investigate_advisory_model: 'opus',
+  investigate_linear_issue_model: 'opus',
 }
 
 /** Codex preset: heavy tasks use top model, light tasks use mini */
@@ -572,6 +629,7 @@ export const CODEX_DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
   session_recap_model: 'gpt-5.1-codex-mini',
   investigate_security_alert_model: 'gpt-5.3-codex',
   investigate_advisory_model: 'gpt-5.3-codex',
+  investigate_linear_issue_model: 'gpt-5.3-codex',
 }
 
 /** OpenCode preset for all magic prompts */
@@ -589,6 +647,7 @@ export const OPENCODE_DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
   session_recap_model: 'opencode/gpt-5.3-codex',
   investigate_security_alert_model: 'opencode/gpt-5.3-codex',
   investigate_advisory_model: 'opencode/gpt-5.3-codex',
+  investigate_linear_issue_model: 'opencode/gpt-5.3-codex',
 }
 
 /**
@@ -609,6 +668,7 @@ export interface MagicPromptProviders {
   session_recap_provider: string | null
   investigate_security_alert_provider: string | null
   investigate_advisory_provider: string | null
+  investigate_linear_issue_provider: string | null
 }
 
 /** Default providers for each magic prompt (null = use global default_provider) */
@@ -626,6 +686,7 @@ export const DEFAULT_MAGIC_PROMPT_PROVIDERS: MagicPromptProviders = {
   session_recap_provider: null,
   investigate_security_alert_provider: null,
   investigate_advisory_provider: null,
+  investigate_linear_issue_provider: null,
 }
 
 /**
@@ -647,6 +708,7 @@ export interface MagicPromptBackends {
   session_recap_backend: string | null
   investigate_security_alert_backend: string | null
   investigate_advisory_backend: string | null
+  investigate_linear_issue_backend: string | null
 }
 
 /** Default backends for each magic prompt (null = use project/global default_backend) */
@@ -664,6 +726,7 @@ export const DEFAULT_MAGIC_PROMPT_BACKENDS: MagicPromptBackends = {
   session_recap_backend: null,
   investigate_security_alert_backend: null,
   investigate_advisory_backend: null,
+  investigate_linear_issue_backend: null,
 }
 
 function makeBackendsPreset(backend: string): MagicPromptBackends {
@@ -681,6 +744,7 @@ function makeBackendsPreset(backend: string): MagicPromptBackends {
     session_recap_backend: backend,
     investigate_security_alert_backend: backend,
     investigate_advisory_backend: backend,
+    investigate_linear_issue_backend: backend,
   }
 }
 
@@ -779,6 +843,10 @@ export interface AppPreferences {
   close_original_on_clear_context: boolean // Close original session when using Clear Context and yolo (default: true)
   build_model: string | null // Model override for plan approval (build mode), null = use session model
   yolo_model: string | null // Model override for yolo plan approval, null = use session model
+  build_backend: string | null // Backend override for plan approval (build mode), null = use session backend
+  yolo_backend: string | null // Backend override for yolo plan approval, null = use session backend
+  build_thinking_level: string | null // Thinking level override for build mode, null = use session thinking level
+  yolo_thinking_level: string | null // Thinking level override for yolo mode, null = use session thinking level
   linear_api_key: string | null // Global Linear personal API key (inherited by all projects)
 }
 
@@ -1267,5 +1335,9 @@ export const defaultPreferences: AppPreferences = {
   close_original_on_clear_context: true, // Default: enabled
   build_model: null, // Default: use session model
   yolo_model: null, // Default: use session model
+  build_backend: null, // Default: use session backend
+  yolo_backend: null, // Default: use session backend
+  build_thinking_level: null, // Default: use session thinking level
+  yolo_thinking_level: null, // Default: use session thinking level
   linear_api_key: null, // Default: no global Linear API key
 }

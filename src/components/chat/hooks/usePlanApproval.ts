@@ -136,16 +136,19 @@ export function usePlanApproval({
 
       const model = preferences?.selected_model ?? 'opus'
       const thinkingLevel = preferences?.thinking_level ?? 'off'
+      const sessionBackend = card.session.backend
 
       // Format message - if no pending plan, always include the updated plan content
       // For Codex: use explicit execution instruction since it resumes a thread
-      const isCodex = card.session.backend === 'codex'
+      const isCodex = sessionBackend === 'codex'
       const baseMsg = isCodex
         ? 'Execute the plan you created. Implement all changes described.'
         : 'Plan approved. Begin implementing the changes now. Do not re-explain the plan — start writing code.'
-      const message = messageId
+      const rawMessage = messageId
         ? formatApprovalMessage(baseMsg, updatedPlan, originalPlan)
         : `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
+      const buildInfo = [sessionBackend, model].filter(Boolean).join(' / ')
+      const message = buildInfo ? `[Build: ${buildInfo}]\n${rawMessage}` : rawMessage
 
       setLastSentMessage(sessionId, message)
       setError(sessionId, null)
@@ -259,15 +262,18 @@ export function usePlanApproval({
 
       const model = preferences?.selected_model ?? 'opus'
       const thinkingLevel = preferences?.thinking_level ?? 'off'
+      const sessionBackend = card.session.backend
 
       // Format message - if no pending plan, always include the updated plan content
-      const isCodexYolo = card.session.backend === 'codex'
+      const isCodexYolo = sessionBackend === 'codex'
       const baseMsgYolo = isCodexYolo
         ? 'Execute the plan you created. Implement all changes described.'
         : 'Plan approved (yolo mode). Begin implementing all changes immediately without asking for confirmation. Do not re-explain the plan — start writing code.'
-      const message = messageId
+      const rawMessage = messageId
         ? formatApprovalMessage(baseMsgYolo, updatedPlan, originalPlan)
         : `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
+      const yoloInfo = [sessionBackend, model].filter(Boolean).join(' / ')
+      const message = yoloInfo ? `[Yolo: ${yoloInfo}]\n${rawMessage}` : rawMessage
 
       setLastSentMessage(sessionId, message)
       setError(sessionId, null)

@@ -30,6 +30,8 @@ export type KeybindingAction =
   | 'cancel_prompt'
   | 'scroll_chat_up'
   | 'scroll_chat_down'
+  | 'open_github_dashboard'
+  | 'open_quick_menu'
 
 // Shortcut string format: "mod+key" where mod is cmd/ctrl
 // Examples: "mod+l", "mod+shift+p", "mod+1"
@@ -79,6 +81,8 @@ export const DEFAULT_KEYBINDINGS: KeybindingsMap = {
   cancel_prompt: 'mod+alt+backspace',
   scroll_chat_up: 'mod+arrowup',
   scroll_chat_down: 'mod+arrowdown',
+  open_github_dashboard: 'mod+shift+d',
+  open_quick_menu: 'mod+period',
 }
 
 // UI definitions for the settings pane
@@ -293,6 +297,20 @@ export const KEYBINDING_DEFINITIONS: KeybindingDefinition[] = [
     description: 'Scroll the chat message list down by one page',
     default_shortcut: 'mod+arrowdown',
     category: 'chat',
+  },
+  {
+    action: 'open_github_dashboard',
+    label: 'GitHub Dashboard',
+    description: 'Open the GitHub Dashboard (issues, PRs, security across all projects)',
+    default_shortcut: 'mod+shift+d',
+    category: 'navigation',
+  },
+  {
+    action: 'open_quick_menu',
+    label: 'Quick menu',
+    description: 'Open the floating quick menu',
+    default_shortcut: 'mod+period',
+    category: 'navigation',
   },
 ]
 

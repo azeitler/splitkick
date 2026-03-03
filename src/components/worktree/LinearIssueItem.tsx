@@ -105,7 +105,7 @@ export function LinearIssueItem({
           )}
         </div>
       </button>
-      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+      <div className="flex items-center gap-1 flex-shrink-0">
         <Tooltip>
           <TooltipTrigger asChild>
             <button
@@ -114,9 +114,13 @@ export function LinearIssueItem({
                 onInvestigate(e.metaKey)
               }}
               disabled={isCreating}
-              className="p-1 rounded hover:bg-accent-foreground/10"
+              className="inline-flex h-6 w-6 items-center justify-center rounded px-1 text-foreground/80 transition-colors hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
             >
-              <Wand2 className="h-3.5 w-3.5 text-muted-foreground" />
+              {isCreating ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Wand2 className="h-3 w-3 text-current dark:text-yellow-400" />
+              )}
             </button>
           </TooltipTrigger>
           <TooltipContent>
@@ -124,22 +128,24 @@ export function LinearIssueItem({
           </TooltipContent>
         </Tooltip>
         {onPreview && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={e => {
-                  e.stopPropagation()
-                  onPreview()
-                }}
-                className="p-1 rounded hover:bg-accent-foreground/10"
-              >
-                <Eye className="h-3.5 w-3.5 text-muted-foreground" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>
-              Preview ({getModifierSymbol()}+O)
-            </TooltipContent>
-          </Tooltip>
+          <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={e => {
+                    e.stopPropagation()
+                    onPreview()
+                  }}
+                  className="inline-flex h-6 w-6 items-center justify-center rounded px-1 text-foreground/80 transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  <Eye className="h-3 w-3" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                Preview ({getModifierSymbol()}+O)
+              </TooltipContent>
+            </Tooltip>
+          </div>
         )}
       </div>
     </div>

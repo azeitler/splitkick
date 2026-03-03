@@ -16,6 +16,7 @@ import {
   DEFAULT_INVESTIGATE_SECURITY_ALERT_PROMPT,
   DEFAULT_INVESTIGATE_ADVISORY_PROMPT,
   DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT,
+  DEFAULT_INVESTIGATE_LINEAR_ISSUE_PROMPT,
   DEFAULT_PARALLEL_EXECUTION_PROMPT,
   resolveMagicPromptProvider,
 } from '@/types/preferences'
@@ -65,6 +66,7 @@ interface UseInvestigateHandlersParams {
   createSession: { mutate: (args: { worktreeId: string; worktreePath: string }, opts?: { onSuccess?: (session: { id: string }) => void; onError?: (error: unknown) => void }) => void }
   resolveCustomProfile: (model: string, provider: string | null) => { model: string; customProfileName: string | undefined }
   cliVersion: string | null
+  worktreeProjectId: string | null | undefined
 }
 
 /**
@@ -93,22 +95,25 @@ export function useInvestigateHandlers({
   createSession,
   resolveCustomProfile,
   cliVersion,
+  worktreeProjectId,
 }: UseInvestigateHandlersParams) {
   const queryClient = useQueryClient()
 
   const handleInvestigate = useCallback(
-    async (type: 'issue' | 'pr' | 'security-alert' | 'advisory') => {
+    async (type: 'issue' | 'pr' | 'security-alert' | 'advisory' | 'linear-issue') => {
       if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
 
       const modelKey =
         type === 'issue' ? 'investigate_issue_model'
           : type === 'pr' ? 'investigate_pr_model'
           : type === 'security-alert' ? 'investigate_security_alert_model'
+          : type === 'linear-issue' ? 'investigate_linear_issue_model'
           : 'investigate_advisory_model' as const
       const providerKey =
         type === 'issue' ? 'investigate_issue_provider'
           : type === 'pr' ? 'investigate_pr_provider'
           : type === 'security-alert' ? 'investigate_security_alert_provider'
+          : type === 'linear-issue' ? 'investigate_linear_issue_provider'
           : 'investigate_advisory_provider' as const
       const investigateModel =
         preferences?.magic_prompt_models?.[modelKey] ?? selectedModelRef.current
@@ -180,6 +185,35 @@ export function useInvestigateHandlers({
         prompt = template
           .replace(/\{alertWord\}/g, word)
           .replace(/\{alertRefs\}/g, refs)
+      } else if (type === 'linear-issue') {
+        const projectId = worktreeProjectId ?? ''
+        const [contexts, contentItems] = await Promise.all([
+          queryClient.fetchQuery({
+            queryKey: ['investigate-contexts', 'linear-issue', activeWorktreeId],
+            queryFn: () =>
+              invoke<{ identifier: string; title: string; commentCount: number; projectName: string }[]>(
+                'list_loaded_linear_issue_contexts',
+                { sessionId: activeWorktreeId, worktreeId: activeWorktreeId, projectId }
+              ),
+            staleTime: 0,
+          }),
+          invoke<{ identifier: string; title: string; content: string }[]>(
+            'get_linear_issue_context_contents',
+            { sessionId: activeWorktreeId, worktreeId: activeWorktreeId, projectId }
+          ),
+        ])
+        const refs = (contexts ?? []).map(c => c.identifier).join(', ')
+        const word = (contexts ?? []).length === 1 ? 'issue' : 'issues'
+        const linearContext = (contentItems ?? []).map(c => c.content).join('\n\n---\n\n')
+        const customPrompt = preferences?.magic_prompts?.investigate_linear_issue
+        const template =
+          customPrompt && customPrompt.trim()
+            ? customPrompt
+            : DEFAULT_INVESTIGATE_LINEAR_ISSUE_PROMPT
+        prompt = template
+          .replace(/\{linearWord\}/g, word)
+          .replace(/\{linearRefs\}/g, refs)
+          .replace(/\{linearContext\}/g, linearContext)
       } else {
         const contexts = await queryClient.fetchQuery({
           queryKey: ['investigate-contexts', 'advisory', activeWorktreeId],
@@ -304,6 +338,7 @@ export function useInvestigateHandlers({
       preferences?.magic_prompts?.investigate_pr,
       preferences?.magic_prompts?.investigate_security_alert,
       preferences?.magic_prompts?.investigate_advisory,
+      preferences?.magic_prompts?.investigate_linear_issue,
       preferences?.default_provider,
       preferences?.parallel_execution_prompt_enabled,
       preferences?.magic_prompts?.parallel_execution,
@@ -323,6 +358,7 @@ export function useInvestigateHandlers({
       executionModeRef,
       mcpServersDataRef,
       enabledMcpServersRef,
+      worktreeProjectId,
     ]
   )
 

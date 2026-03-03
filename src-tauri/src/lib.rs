@@ -200,6 +200,14 @@ pub struct AppPreferences {
     pub build_model: Option<String>, // Model override for plan approval (build mode), None = use session model
     #[serde(default)]
     pub yolo_model: Option<String>, // Model override for yolo plan approval, None = use session model
+    #[serde(default)]
+    pub build_backend: Option<String>, // Backend override for plan approval (build mode), None = use session backend
+    #[serde(default)]
+    pub yolo_backend: Option<String>, // Backend override for yolo plan approval, None = use session backend
+    #[serde(default)]
+    pub build_thinking_level: Option<String>, // Thinking level override for build mode, None = use session thinking level
+    #[serde(default)]
+    pub yolo_thinking_level: Option<String>, // Thinking level override for yolo mode, None = use session thinking level
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub linear_api_key: Option<String>, // Global Linear personal API key (inherited by all projects)
 }
@@ -453,6 +461,8 @@ pub struct MagicPrompts {
     pub investigate_security_alert: Option<String>,
     #[serde(default)]
     pub investigate_advisory: Option<String>,
+    #[serde(default)]
+    pub investigate_linear_issue: Option<String>,
 }
 
 fn default_investigate_issue_prompt() -> String {
@@ -745,6 +755,60 @@ Investigate the loaded security {advisoryWord} ({advisoryRefs})
         .to_string()
 }
 
+fn default_investigate_linear_issue_prompt() -> String {
+    r#"<task>
+
+Investigate the loaded Linear {linearWord} ({linearRefs})
+
+</task>
+
+
+<linear_issue_context>
+
+{linearContext}
+
+</linear_issue_context>
+
+
+<instructions>
+
+1. Read the Linear issue context above carefully to understand the full problem description and comments
+2. Analyze the problem:
+   - What is the expected vs actual behavior?
+   - Are there error messages, stack traces, or reproduction steps?
+3. Explore the codebase to find relevant code:
+   - Search for files/functions mentioned in the {linearWord}
+   - Read source files to understand current implementation
+   - Trace the affected code path
+4. Identify root cause:
+   - Where does the bug originate OR where should the feature be implemented?
+   - What constraints/edge cases need handling?
+   - Any related issues or tech debt?
+5. Check for regression:
+   - If this is a bug fix, determine if this is a regression
+   - Look at git history or related code to understand if the feature previously worked
+   - Identify what change may have caused the regression
+6. Propose solution:
+   - Clear explanation of needed changes
+   - Specific files to modify
+   - Potential risks/trade-offs
+   - Test cases to verify
+
+</instructions>
+
+
+<guidelines>
+
+- The Linear issue content is included above — use it as the primary source of requirements
+- Be thorough but focused - investigate deeply without getting sidetracked
+- Ask clarifying questions if requirements are unclear
+- If multiple solutions exist, explain trade-offs
+- Reference specific file paths and line numbers
+
+</guidelines>"#
+        .to_string()
+}
+
 fn default_parallel_execution_prompt() -> String {
     r#"In plan mode, structure plans so subagents can work simultaneously. In build/execute mode, use subagents in parallel for faster implementation.
 
@@ -785,6 +849,8 @@ pub struct MagicPromptModels {
     pub investigate_security_alert_model: String,
     #[serde(default = "default_model")]
     pub investigate_advisory_model: String,
+    #[serde(default = "default_model")]
+    pub investigate_linear_issue_model: String,
 }
 
 fn default_haiku_model() -> String {
@@ -807,6 +873,7 @@ impl Default for MagicPromptModels {
             session_recap_model: default_haiku_model(),
             investigate_security_alert_model: default_model(),
             investigate_advisory_model: default_model(),
+            investigate_linear_issue_model: default_model(),
         }
     }
 }
@@ -852,6 +919,8 @@ pub struct MagicPromptProviders {
     pub investigate_security_alert_provider: Option<String>,
     #[serde(default)]
     pub investigate_advisory_provider: Option<String>,
+    #[serde(default)]
+    pub investigate_linear_issue_provider: Option<String>,
 }
 
 /// Per-prompt backend overrides for magic prompts (None = use project/global default_backend)
@@ -883,6 +952,8 @@ pub struct MagicPromptBackends {
     pub investigate_security_alert_backend: Option<String>,
     #[serde(default)]
     pub investigate_advisory_backend: Option<String>,
+    #[serde(default)]
+    pub investigate_linear_issue_backend: Option<String>,
 }
 
 impl MagicPrompts {
@@ -890,7 +961,7 @@ impl MagicPrompts {
     /// This ensures users who never customized a prompt get auto-updated defaults.
     fn migrate_defaults(&mut self) {
         type DefaultEntry<'a> = (fn() -> String, &'a mut Option<String>);
-        let defaults: [DefaultEntry; 11] = [
+        let defaults: [DefaultEntry; 12] = [
             (
                 default_investigate_issue_prompt,
                 &mut self.investigate_issue,
@@ -919,6 +990,10 @@ impl MagicPrompts {
             (
                 default_investigate_advisory_prompt,
                 &mut self.investigate_advisory,
+            ),
+            (
+                default_investigate_linear_issue_prompt,
+                &mut self.investigate_linear_issue,
             ),
         ];
 
@@ -998,6 +1073,10 @@ impl Default for AppPreferences {
             close_original_on_clear_context: true,
             build_model: None,
             yolo_model: None,
+            build_backend: None,
+            yolo_backend: None,
+            build_thinking_level: None,
+            yolo_thinking_level: None,
             linear_api_key: None,
         }
     }
@@ -2239,8 +2318,10 @@ pub fn run() {
             projects::list_linear_issues,
             projects::search_linear_issues,
             projects::get_linear_issue,
+            projects::get_linear_issue_by_number,
             projects::load_linear_issue_context,
             projects::list_loaded_linear_issue_contexts,
+            projects::get_linear_issue_context_contents,
             projects::remove_linear_issue_context,
             // GitHub PR commands
             projects::list_github_prs,

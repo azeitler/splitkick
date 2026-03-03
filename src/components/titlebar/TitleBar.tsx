@@ -18,14 +18,11 @@ import {
   Heart,
   PanelLeft,
   PanelLeftClose,
-  Plus,
   Settings,
 } from 'lucide-react'
 import { usePreferences } from '@/services/preferences'
 import { formatShortcutDisplay, DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 import { isNativeApp } from '@/lib/environment'
-import { useProjectsStore } from '@/store/projects-store'
-import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { UnreadBell } from '@/components/unread/UnreadBell'
 
 interface TitleBarProps {
@@ -40,13 +37,8 @@ export function TitleBar({
   hideTitle = false,
 }: TitleBarProps) {
   const { leftSidebarVisible, toggleLeftSidebar } = useUIStore()
-  const setAddProjectDialogOpen = useProjectsStore(
-    s => s.setAddProjectDialogOpen
-  )
   const commandContext = useCommandContext()
   const { data: preferences } = usePreferences()
-  const { installedBackends } = useInstalledBackends()
-  const setupIncomplete = installedBackends.length === 0
 
   const sidebarShortcut = formatShortcutDisplay(
     (preferences?.keybindings?.toggle_left_sidebar ||
@@ -132,21 +124,6 @@ export function TitleBar({
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
-                onClick={() =>
-                  openExternal('https://github.com/coollabsio/jean')
-                }
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 text-foreground/70 hover:text-foreground"
-              >
-                <Github className="h-3 w-3" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>GitHub</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
                 onClick={() => openExternal('https://jean.build/sponsorships/')}
                 variant="ghost"
                 size="icon"
@@ -156,20 +133,6 @@ export function TitleBar({
               </Button>
             </TooltipTrigger>
             <TooltipContent>Sponsor</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                onClick={() => setAddProjectDialogOpen(true)}
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 text-foreground/70 hover:text-foreground"
-                disabled={setupIncomplete}
-              >
-                <Plus className="h-3 w-3" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Add Project</TooltipContent>
           </Tooltip>
         </div>
       </div>
@@ -187,6 +150,21 @@ export function TitleBar({
         className="flex items-center"
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       >
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              onClick={() =>
+                openExternal('https://github.com/coollabsio/jean')
+              }
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 text-foreground/70 hover:text-foreground"
+            >
+              <Github className="h-3 w-3" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>GitHub</TooltipContent>
+        </Tooltip>
         {appVersion && <UpdateIndicator />}
         {appVersion && (
           <button

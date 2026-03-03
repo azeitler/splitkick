@@ -55,6 +55,12 @@ const MagicModal = lazy(() =>
     default: mod.MagicModal,
   }))
 )
+const GitHubDashboardModal = lazy(() =>
+  import('@/components/github-dashboard').then(mod => ({
+    default: mod.GitHubDashboardModal,
+  }))
+)
+import { FloatingDock } from '@/components/ui/floating-dock'
 import { Toaster } from '@/components/ui/sonner'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
@@ -274,8 +280,9 @@ export function MainWindow() {
         )}
 
         {/* Main Content - flex-1 to fill remaining space */}
-        <div className="min-w-0 flex-1 overflow-hidden">
+        <div className="relative min-w-0 flex-1 overflow-hidden">
           <MainWindowContent />
+          <FloatingDock />
         </div>
       </div>
 
@@ -324,6 +331,9 @@ export function MainWindow() {
         mode={closeConfirmMode}
       />
       <QuitConfirmationDialog />
+      <Suspense fallback={null}>
+        <GitHubDashboardModal />
+      </Suspense>
       <BranchConflictDialog />
       <TeardownOutputDialog />
       <Toaster

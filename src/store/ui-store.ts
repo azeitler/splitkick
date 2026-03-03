@@ -56,6 +56,8 @@ interface UIState {
   autoInvestigateSecurityAlertWorktreeIds: Set<string>
   /** Worktree IDs that should auto-trigger investigate-advisory when created */
   autoInvestigateAdvisoryWorktreeIds: Set<string>
+  /** Worktree IDs that should auto-trigger investigate-linear-issue when created */
+  autoInvestigateLinearIssueWorktreeIds: Set<string>
   /** Counter for background worktree creations (CMD+Click) — skip auto-navigation */
   pendingBackgroundCreations: number
   /** Worktree IDs that should auto-open first session modal when canvas mounts */
@@ -128,6 +130,8 @@ interface UIState {
   consumeAutoInvestigateSecurityAlert: (worktreeId: string) => boolean
   markWorktreeForAutoInvestigateAdvisory: (worktreeId: string) => void
   consumeAutoInvestigateAdvisory: (worktreeId: string) => boolean
+  markWorktreeForAutoInvestigateLinearIssue: (worktreeId: string) => void
+  consumeAutoInvestigateLinearIssue: (worktreeId: string) => boolean
   markWorktreeForAutoOpenSession: (
     worktreeId: string,
     sessionId?: string
@@ -143,6 +147,8 @@ interface UIState {
   setUIStateInitialized: (initialized: boolean) => void
   setPendingUpdateVersion: (version: string | null) => void
   setUpdateModalVersion: (version: string | null) => void
+  githubDashboardOpen: boolean
+  setGitHubDashboardOpen: (open: boolean) => void
 }
 
 export const useUIStore = create<UIState>()(
@@ -181,6 +187,7 @@ export const useUIStore = create<UIState>()(
       autoInvestigatePRWorktreeIds: new Set(),
       autoInvestigateSecurityAlertWorktreeIds: new Set(),
       autoInvestigateAdvisoryWorktreeIds: new Set(),
+      autoInvestigateLinearIssueWorktreeIds: new Set(),
       pendingBackgroundCreations: 0,
       autoOpenSessionWorktreeIds: new Set(),
       pendingAutoOpenSessionIds: {},
@@ -192,6 +199,7 @@ export const useUIStore = create<UIState>()(
       uiStateInitialized: false,
       pendingUpdateVersion: null,
       updateModalVersion: null,
+      githubDashboardOpen: false,
       toggleLeftSidebar: () =>
         set(
           state => ({ leftSidebarVisible: !state.leftSidebarVisible }),
@@ -511,6 +519,34 @@ export const useUIStore = create<UIState>()(
         return false
       },
 
+      markWorktreeForAutoInvestigateLinearIssue: worktreeId =>
+        set(
+          state => ({
+            autoInvestigateLinearIssueWorktreeIds: new Set([
+              ...state.autoInvestigateLinearIssueWorktreeIds,
+              worktreeId,
+            ]),
+          }),
+          undefined,
+          'markWorktreeForAutoInvestigateLinearIssue'
+        ),
+
+      consumeAutoInvestigateLinearIssue: worktreeId => {
+        if (get().autoInvestigateLinearIssueWorktreeIds.has(worktreeId)) {
+          set(
+            state => {
+              const newSet = new Set(state.autoInvestigateLinearIssueWorktreeIds)
+              newSet.delete(worktreeId)
+              return { autoInvestigateLinearIssueWorktreeIds: newSet }
+            },
+            undefined,
+            'consumeAutoInvestigateLinearIssue'
+          )
+          return true
+        }
+        return false
+      },
+
       markWorktreeForAutoOpenSession: (worktreeId, sessionId) =>
         set(
           state => ({
@@ -588,6 +624,9 @@ export const useUIStore = create<UIState>()(
           undefined,
           'setUpdateModalVersion'
         ),
+
+      setGitHubDashboardOpen: (open: boolean) =>
+        set({ githubDashboardOpen: open }, undefined, 'setGitHubDashboardOpen'),
     }),
     {
       name: 'ui-store',

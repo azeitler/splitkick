@@ -419,6 +419,31 @@ query ListTeams {
 }
 "#;
 
+/// Build get-issue-by-number query, optionally filtering by team.
+fn build_issue_by_number_query(team_id: Option<&str>) -> String {
+    let team_filter = match team_id {
+        Some(_) => r#", team: { id: { eq: $teamId } }"#,
+        None => "",
+    };
+    let vars = match team_id {
+        Some(_) => "($number: Float!, $teamId: ID!)",
+        None => "($number: Float!)",
+    };
+    format!(
+        r#"query GetIssueByNumber{vars} {{
+    issues(
+        filter: {{
+            number: {{ eq: $number }}{team_filter}
+        }}
+        first: 1
+    ) {{
+        nodes {{{ISSUE_FIELDS}
+        }}
+    }}
+}}"#
+    )
+}
+
 const GET_ISSUE_QUERY: &str = r#"
 query GetIssue($id: String!) {
     issue(id: $id) {
@@ -609,6 +634,34 @@ pub async fn get_linear_issue(
     })
 }
 
+/// Get a single Linear issue by its number (e.g., #12 → ENG-12)
+#[tauri::command]
+pub async fn get_linear_issue_by_number(
+    app: AppHandle,
+    project_id: String,
+    issue_number: i64,
+) -> Result<Option<LinearIssue>, String> {
+    log::trace!("Getting Linear issue #{issue_number} for project {project_id}");
+
+    let config = get_linear_config(&app, &project_id)?;
+    let query = build_issue_by_number_query(config.team_id.as_deref());
+    let mut variables = serde_json::json!({ "number": issue_number });
+    if let Some(team_id) = &config.team_id {
+        variables["teamId"] = serde_json::json!(team_id);
+    }
+
+    let response = linear_graphql(&config.api_key, &query, Some(variables)).await?;
+
+    let nodes = response
+        .get("data")
+        .and_then(|d| d.get("issues"))
+        .and_then(|i| i.get("nodes"))
+        .and_then(|n| n.as_array())
+        .ok_or("Unexpected Linear API response format")?;
+
+    Ok(nodes.first().and_then(parse_issue_node))
+}
+
 /// Load/refresh Linear issue context for a session
 #[tauri::command]
 pub async fn load_linear_issue_context(
@@ -724,6 +777,77 @@ pub async fn list_loaded_linear_issue_contexts(
     }
 
     Ok(contexts)
+}
+
+/// Content of a loaded Linear issue context file
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinearIssueContextContent {
+    pub identifier: String,
+    pub title: String,
+    pub content: String,
+}
+
+/// Return the full markdown content of each loaded Linear issue context file.
+/// Used to embed context directly into investigation prompts (Claude CLI cannot access Linear API).
+#[tauri::command]
+pub async fn get_linear_issue_context_contents(
+    app: AppHandle,
+    session_id: String,
+    worktree_id: Option<String>,
+    project_id: String,
+) -> Result<Vec<LinearIssueContextContent>, String> {
+    log::trace!("Getting Linear issue context contents for session {session_id}");
+
+    let config = get_linear_config(&app, &project_id)?;
+    let project_name = config.project_name;
+
+    let mut keys = get_session_linear_refs(&app, &session_id)?;
+
+    if let Some(ref wt_id) = worktree_id {
+        if let Ok(wt_keys) = get_session_linear_refs(&app, wt_id) {
+            for key in wt_keys {
+                if !keys.contains(&key) {
+                    keys.push(key);
+                }
+            }
+        }
+    }
+
+    if keys.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let contexts_dir = get_github_contexts_dir(&app)?;
+    let mut contents = Vec::new();
+
+    for key in keys {
+        // Key format: "{project_name}-{identifier}"
+        if let Some(identifier) = key.strip_prefix(&format!("{project_name}-")) {
+            let context_file =
+                contexts_dir.join(format!("{project_name}-linear-{}.md", identifier.to_lowercase()));
+
+            if let Ok(content) = std::fs::read_to_string(&context_file) {
+                let title = content
+                    .lines()
+                    .next()
+                    .and_then(|line| {
+                        line.strip_prefix("# Linear Issue ")
+                            .and_then(|rest| rest.split_once(": "))
+                            .map(|(_, title)| title.to_string())
+                    })
+                    .unwrap_or_else(|| format!("Issue {identifier}"));
+
+                contents.push(LinearIssueContextContent {
+                    identifier: identifier.to_string(),
+                    title,
+                    content,
+                });
+            }
+        }
+    }
+
+    Ok(contents)
 }
 
 /// Remove a loaded Linear issue context from a session

@@ -11,6 +11,7 @@ import {
   DEFAULT_INVESTIGATE_PR_PROMPT,
   DEFAULT_INVESTIGATE_SECURITY_ALERT_PROMPT,
   DEFAULT_INVESTIGATE_ADVISORY_PROMPT,
+  DEFAULT_INVESTIGATE_LINEAR_ISSUE_PROMPT,
   resolveMagicPromptProvider,
 } from '@/types/preferences'
 import type { WorktreeSessions, QueuedMessage } from '@/types/chat'
@@ -19,7 +20,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { projectsQueryKeys } from '@/services/projects'
 import type { Worktree } from '@/types/projects'
 
-type InvestigationType = 'issue' | 'pr' | 'security-alert' | 'advisory'
+type InvestigationType = 'issue' | 'pr' | 'security-alert' | 'advisory' | 'linear-issue'
 
 /**
  * Headless hook for starting investigations on background-created worktrees.
@@ -42,7 +43,8 @@ export function useBackgroundInvestigation(): void {
     state.autoInvestigateWorktreeIds.size > 0 ||
     state.autoInvestigatePRWorktreeIds.size > 0 ||
     state.autoInvestigateSecurityAlertWorktreeIds.size > 0 ||
-    state.autoInvestigateAdvisoryWorktreeIds.size > 0
+    state.autoInvestigateAdvisoryWorktreeIds.size > 0 ||
+    state.autoInvestigateLinearIssueWorktreeIds.size > 0
   )
 
   // Re-trigger effect when new worktree paths are registered.
@@ -60,6 +62,7 @@ export function useBackgroundInvestigation(): void {
       autoInvestigatePRWorktreeIds,
       autoInvestigateSecurityAlertWorktreeIds,
       autoInvestigateAdvisoryWorktreeIds,
+      autoInvestigateLinearIssueWorktreeIds,
     } = useUIStore.getState()
 
     const { worktreePaths, activeWorktreeId } = useChatStore.getState()
@@ -117,6 +120,15 @@ export function useBackgroundInvestigation(): void {
       candidates.push({ worktreeId, type: 'advisory' })
     }
 
+    for (const worktreeId of autoInvestigateLinearIssueWorktreeIds) {
+      if (worktreeId === activeWorktreeId) continue
+      if (!worktreePaths[worktreeId]) continue
+      if (!isWorktreeReady(worktreeId)) continue
+      if (processingRef.current.has(worktreeId)) continue
+      if (candidates.some(c => c.worktreeId === worktreeId)) continue
+      candidates.push({ worktreeId, type: 'linear-issue' })
+    }
+
     if (candidates.length === 0) return
 
     // Process each candidate
@@ -131,6 +143,8 @@ export function useBackgroundInvestigation(): void {
         uiStore.consumeAutoInvestigatePR(worktreeId)
       } else if (type === 'security-alert') {
         uiStore.consumeAutoInvestigateSecurityAlert(worktreeId)
+      } else if (type === 'linear-issue') {
+        uiStore.consumeAutoInvestigateLinearIssue(worktreeId)
       } else {
         uiStore.consumeAutoInvestigateAdvisory(worktreeId)
       }
@@ -157,6 +171,7 @@ async function buildPrompt(
   worktreeId: string,
   type: InvestigationType,
   preferences: ReturnType<typeof usePreferences>['data'],
+  projectId?: string,
 ): Promise<string> {
   if (type === 'issue') {
     const contexts = await invoke<{ number: number }[]>(
@@ -209,6 +224,32 @@ async function buildPrompt(
       .replace(/\{alertRefs\}/g, refs)
   }
 
+  if (type === 'linear-issue') {
+    const pid = projectId ?? ''
+    const [contexts, contentItems] = await Promise.all([
+      invoke<{ identifier: string; title: string; commentCount: number; projectName: string }[]>(
+        'list_loaded_linear_issue_contexts',
+        { sessionId: worktreeId, worktreeId, projectId: pid }
+      ),
+      invoke<{ identifier: string; title: string; content: string }[]>(
+        'get_linear_issue_context_contents',
+        { sessionId: worktreeId, worktreeId, projectId: pid }
+      ),
+    ])
+    const refs = (contexts ?? []).map(c => c.identifier).join(', ')
+    const word = (contexts ?? []).length === 1 ? 'issue' : 'issues'
+    const linearContext = (contentItems ?? []).map(c => c.content).join('\n\n---\n\n')
+    const customPrompt = preferences?.magic_prompts?.investigate_linear_issue
+    const template =
+      customPrompt && customPrompt.trim()
+        ? customPrompt
+        : DEFAULT_INVESTIGATE_LINEAR_ISSUE_PROMPT
+    return template
+      .replace(/\{linearWord\}/g, word)
+      .replace(/\{linearRefs\}/g, refs)
+      .replace(/\{linearContext\}/g, linearContext)
+  }
+
   // advisory
   const contexts = await invoke<{ ghsaId: string; severity: string; summary: string }[]>(
     'list_loaded_advisory_contexts',
@@ -239,6 +280,8 @@ function resolveModelProviderKeys(type: InvestigationType) {
       return { modelKey: 'investigate_security_alert_model' as const, providerKey: 'investigate_security_alert_provider' as const }
     case 'advisory':
       return { modelKey: 'investigate_advisory_model' as const, providerKey: 'investigate_advisory_provider' as const }
+    case 'linear-issue':
+      return { modelKey: 'investigate_linear_issue_model' as const, providerKey: 'investigate_linear_issue_provider' as const }
   }
 }
 
@@ -279,8 +322,14 @@ async function processBackgroundInvestigation(
     queryKey: chatQueryKeys.sessions(worktreeId),
   })
 
+  // Resolve projectId for Linear issue investigations
+  const cachedWorktree = queryClient.getQueryData<Worktree>(
+    [...projectsQueryKeys.all, 'worktree', worktreeId]
+  )
+  const projectId = cachedWorktree?.project_id
+
   // Build the investigation prompt
-  const prompt = await buildPrompt(worktreeId, type, preferences)
+  const prompt = await buildPrompt(worktreeId, type, preferences, projectId)
 
   // Resolve model, provider, backend
   const { modelKey, providerKey } = resolveModelProviderKeys(type)

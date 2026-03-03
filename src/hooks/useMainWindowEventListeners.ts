@@ -340,6 +340,12 @@ function executeKeybindingAction(
         new CustomEvent('scroll-chat', { detail: { direction: 'down' } })
       )
       break
+    case 'open_github_dashboard':
+      useUIStore.getState().setGitHubDashboardOpen(true)
+      break
+    case 'open_quick_menu':
+      window.dispatchEvent(new CustomEvent('toggle-quick-menu'))
+      break
     case 'toggle_session_label': {
       logger.debug('Keybinding: toggle_session_label')
       // Works when a session is active (modal open or in session view) or on project canvas
@@ -432,6 +438,13 @@ export function useMainWindowEventListeners() {
                 termStore.setActiveTerminal(wId, terms[digit - 1]!.id)
               }
             }
+          } else if (useUIStore.getState().githubDashboardOpen && digit >= 1 && digit <= 4) {
+            const TAB_MAP = ['issues', 'prs', 'security', 'advisories']
+            window.dispatchEvent(
+              new CustomEvent('switch-dashboard-tab', {
+                detail: { tab: TAB_MAP[digit - 1] },
+              })
+            )
           } else if (useUIStore.getState().sessionChatModalOpen) {
             window.dispatchEvent(
               new CustomEvent('switch-session', {

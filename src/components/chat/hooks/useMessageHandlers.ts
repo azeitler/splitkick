@@ -1,9 +1,7 @@
 import { useCallback, type RefObject } from 'react'
 import type { QueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { listen } from '@tauri-apps/api/event'
 import { invoke } from '@/lib/transport'
-import { isTauri } from '@/services/projects'
 import {
   chatQueryKeys,
   markPlanApproved as markPlanApprovedService,
@@ -49,6 +47,7 @@ interface SendMessageMutation {
       allowedTools?: string[]
       mcpConfig?: string
       customProfileName?: string
+      backend?: string
     },
     options?: {
       onSettled?: () => void
@@ -73,7 +72,10 @@ interface UseMessageHandlersParams {
   // Refs for settings (stable across re-renders)
   selectedModelRef: RefObject<string>
   buildModelRef: RefObject<string | null>
+  buildBackendRef: RefObject<string | null>
   yoloModelRef: RefObject<string | null>
+  yoloBackendRef: RefObject<string | null>
+  yoloThinkingLevelRef: RefObject<string | null>
   getCustomProfileName: () => string | undefined
   executionModeRef: RefObject<ExecutionMode>
   selectedThinkingLevelRef: RefObject<ThinkingLevel>
@@ -135,7 +137,10 @@ export function useMessageHandlers({
   activeWorktreePathRef,
   selectedModelRef,
   buildModelRef,
+  buildBackendRef,
   yoloModelRef,
+  yoloBackendRef,
+  yoloThinkingLevelRef,
   getCustomProfileName,
   executionModeRef,
   selectedThinkingLevelRef,
@@ -389,10 +394,13 @@ export function useMessageHandlers({
       // NOTE: setLastSentMessage is critical for permission denial flow - without it,
       // the denied message context won't be set and approval UI won't work
       const buildModel = buildModelRef.current ?? selectedModelRef.current
-      if (buildModelRef.current && buildModelRef.current !== selectedModelRef.current) {
-        toast.info(`Using ${buildModelRef.current} model for build`)
-      }
-      setLastSentMessage(sessionId, message)
+      const buildBackend = buildBackendRef.current ?? undefined
+      const buildOverride = (buildModelRef.current || buildBackend)
+        ? [buildBackend, buildModel].filter(Boolean).join(' / ')
+        : ''
+      if (buildOverride) toast.info(`Build: ${buildOverride}`)
+      const displayMessage = buildOverride ? `[Build: ${buildOverride}]\n${message}` : message
+      setLastSentMessage(sessionId, displayMessage)
       setError(sessionId, null)
       addSendingSession(sessionId)
       setSelectedModel(sessionId, buildModel)
@@ -403,7 +411,7 @@ export function useMessageHandlers({
           sessionId,
           worktreeId,
           worktreePath,
-          message,
+          message: displayMessage,
           model: buildModel,
           executionMode: 'build',
           thinkingLevel: selectedThinkingLevelRef.current,
@@ -426,6 +434,7 @@ export function useMessageHandlers({
       activeWorktreePathRef,
       selectedModelRef,
       buildModelRef,
+      buildBackendRef,
       selectedThinkingLevelRef,
       selectedEffortLevelRef,
       useAdaptiveThinkingRef,
@@ -514,10 +523,13 @@ export function useMessageHandlers({
           : 'Plan approved (yolo mode). Begin implementing all changes immediately without asking for confirmation. Do not re-explain the plan — start writing code.'
       // Send approval message so the backend continues with execution
       const yoloModel = yoloModelRef.current ?? selectedModelRef.current
-      if (yoloModelRef.current && yoloModelRef.current !== selectedModelRef.current) {
-        toast.info(`Using ${yoloModelRef.current} model for yolo`)
-      }
-      setLastSentMessage(sessionId, message)
+      const yoloBackend = yoloBackendRef.current ?? undefined
+      const yoloOverride = (yoloModelRef.current || yoloBackend)
+        ? [yoloBackend, yoloModel].filter(Boolean).join(' / ')
+        : ''
+      if (yoloOverride) toast.info(`Yolo: ${yoloOverride}`)
+      const displayMessage = yoloOverride ? `[Yolo: ${yoloOverride}]\n${message}` : message
+      setLastSentMessage(sessionId, displayMessage)
       setError(sessionId, null)
       addSendingSession(sessionId)
       setSelectedModel(sessionId, yoloModel)
@@ -528,7 +540,7 @@ export function useMessageHandlers({
           sessionId,
           worktreeId,
           worktreePath,
-          message,
+          message: displayMessage,
           model: yoloModel,
           executionMode: 'yolo',
           thinkingLevel: selectedThinkingLevelRef.current,
@@ -607,16 +619,20 @@ export function useMessageHandlers({
 
     // Explicitly set to build mode (not toggle, to avoid switching back to plan if already in build)
     const buildModel = buildModelRef.current ?? selectedModelRef.current
-    if (buildModelRef.current && buildModelRef.current !== selectedModelRef.current) {
-      toast.info(`Using ${buildModelRef.current} model for build`)
-    }
+    const buildBackend = buildBackendRef.current ?? undefined
+    const buildOverride = (buildModelRef.current || buildBackend)
+      ? [buildBackend, buildModel].filter(Boolean).join(' / ')
+      : ''
+    if (buildOverride) toast.info(`Build: ${buildOverride}`)
     setMode(sessionId, 'build')
     setSelectedModel(sessionId, buildModel)
 
     // Send approval message to Claude so it continues with execution
     // NOTE: setLastSentMessage is critical for permission denial flow - without it,
     // the denied message context won't be set and approval UI won't work
-    const buildApprovalMsg = 'Plan approved. Begin implementing the changes now. Do not re-explain the plan — start writing code.'
+    const buildApprovalMsg = buildOverride
+      ? `[Build: ${buildOverride}]\nPlan approved. Begin implementing the changes now. Do not re-explain the plan — start writing code.`
+      : 'Plan approved. Begin implementing the changes now. Do not re-explain the plan — start writing code.'
     setLastSentMessage(sessionId, buildApprovalMsg)
     setError(sessionId, null)
     addSendingSession(sessionId)
@@ -649,6 +665,7 @@ export function useMessageHandlers({
     activeWorktreePathRef,
     selectedModelRef,
     buildModelRef,
+    buildBackendRef,
     selectedThinkingLevelRef,
     selectedEffortLevelRef,
     useAdaptiveThinkingRef,
@@ -696,14 +713,18 @@ export function useMessageHandlers({
 
     // Set to yolo mode for auto-approval of all future tools
     const yoloModel = yoloModelRef.current ?? selectedModelRef.current
-    if (yoloModelRef.current && yoloModelRef.current !== selectedModelRef.current) {
-      toast.info(`Using ${yoloModelRef.current} model for yolo`)
-    }
+    const yoloBackend = yoloBackendRef.current ?? undefined
+    const yoloOverride = (yoloModelRef.current || yoloBackend)
+      ? [yoloBackend, yoloModel].filter(Boolean).join(' / ')
+      : ''
+    if (yoloOverride) toast.info(`Yolo: ${yoloOverride}`)
     setMode(sessionId, 'yolo')
     setSelectedModel(sessionId, yoloModel)
 
     // Send approval message to Claude so it continues with execution
-    const yoloApprovalMsg = 'Plan approved (yolo mode). Begin implementing all changes immediately without asking for confirmation. Do not re-explain the plan — start writing code.'
+    const yoloApprovalMsg = yoloOverride
+      ? `[Yolo: ${yoloOverride}]\nPlan approved (yolo mode). Begin implementing all changes immediately without asking for confirmation. Do not re-explain the plan — start writing code.`
+      : 'Plan approved (yolo mode). Begin implementing all changes immediately without asking for confirmation. Do not re-explain the plan — start writing code.'
     setLastSentMessage(sessionId, yoloApprovalMsg)
     setError(sessionId, null)
     addSendingSession(sessionId)
@@ -828,17 +849,28 @@ export function useMessageHandlers({
 
       // Send plan as first message in YOLO mode
       const yoloModel = yoloModelRef.current ?? selectedModelRef.current
-      if (yoloModelRef.current && yoloModelRef.current !== selectedModelRef.current) {
-        toast.info(`Using ${yoloModelRef.current} model for yolo`)
-      }
-      const planMessage = `Execute this plan. Implement all changes described.\n\n<plan>\n${planContent}\n</plan>`
+      const yoloBackend = yoloBackendRef.current ?? undefined
+      const yoloOverride = (yoloModelRef.current || yoloBackend)
+        ? [yoloBackend, yoloModel].filter(Boolean).join(' / ')
+        : ''
+      if (yoloOverride) toast.info(`Yolo: ${yoloOverride}`)
+      const planMessage = yoloOverride
+        ? `[Yolo: ${yoloOverride}]\nExecute this plan. Implement all changes described.\n\n<plan>\n${planContent}\n</plan>`
+        : `Execute this plan. Implement all changes described.\n\n<plan>\n${planContent}\n</plan>`
       store.setExecutionMode(newSession.id, 'yolo')
       store.setLastSentMessage(newSession.id, planMessage)
       store.setError(newSession.id, null)
       store.addSendingSession(newSession.id)
       store.setSelectedModel(newSession.id, yoloModel)
       store.setExecutingMode(newSession.id, 'yolo')
+      if (yoloBackend) {
+        store.setSelectedBackend(
+          newSession.id,
+          yoloBackend as 'claude' | 'codex' | 'opencode'
+        )
+      }
 
+      const yoloThinkingLevel = (yoloThinkingLevelRef.current ?? selectedThinkingLevelRef.current) as ThinkingLevel
       sendMessage.mutate({
         sessionId: newSession.id,
         worktreeId,
@@ -846,18 +878,18 @@ export function useMessageHandlers({
         message: planMessage,
         model: yoloModel,
         executionMode: 'yolo',
-        thinkingLevel: selectedThinkingLevelRef.current,
+        thinkingLevel: yoloThinkingLevel,
         effortLevel: useAdaptiveThinkingRef.current
           ? selectedEffortLevelRef.current
           : undefined,
         mcpConfig: getMcpConfig(),
         customProfileName: getCustomProfileName(),
+        backend: yoloBackend,
       })
 
-      // Optionally close the original session — but only after the new session's
-      // send_chat_message has started (chat:sending event). This avoids a race where
-      // close_session runs concurrently with send_chat_message and interferes with
-      // the new session's startup. Falls back to a 10s timeout as a safety net.
+      // Optionally close the original session immediately.
+      // cancel_process_if_running (used by close/archive) safely skips idle sessions,
+      // and with_sessions_mut uses a per-worktree mutex so there's no file-level race.
       const prefs = queryClient.getQueryData<AppPreferences>(
         preferencesQueryKeys.preferences()
       )
@@ -867,51 +899,34 @@ export function useMessageHandlers({
             ? 'archive_session'
             : 'close_session'
 
-        const doClose = () => {
-          invoke(command, { worktreeId, worktreePath, sessionId }).catch(err => {
+        // Optimistically remove from UI immediately
+        queryClient.setQueryData<WorktreeSessions>(
+          chatQueryKeys.sessions(worktreeId),
+          old => {
+            if (!old) return old
+            return {
+              ...old,
+              sessions: old.sessions.filter(s => s.id !== sessionId),
+              active_session_id:
+                old.active_session_id === sessionId
+                  ? newSession.id
+                  : old.active_session_id,
+            }
+          }
+        )
+
+        invoke(command, { worktreeId, worktreePath, sessionId })
+          .then(() =>
+            queryClient.invalidateQueries({
+              queryKey: chatQueryKeys.sessions(worktreeId),
+            })
+          )
+          .catch(err =>
             console.error(
               '[useMessageHandlers] Failed to close original session:',
               err
             )
-          })
-        }
-
-        if (isTauri()) {
-          const newSessionId = newSession.id
-          let closed = false
-          let unlisten: (() => void) | undefined
-
-          const timeout = setTimeout(() => {
-            if (!closed) {
-              closed = true
-              unlisten?.()
-              doClose()
-            }
-          }, 10000)
-
-          listen<{ session_id: string }>('chat:sending', event => {
-            if (event.payload.session_id === newSessionId && !closed) {
-              closed = true
-              clearTimeout(timeout)
-              unlisten?.()
-              doClose()
-            }
-          })
-            .then(fn => {
-              unlisten = fn
-              // If already closed by timeout before listen resolved, clean up immediately
-              if (closed) unlisten()
-            })
-            .catch(() => {
-              if (!closed) {
-                closed = true
-                clearTimeout(timeout)
-                doClose()
-              }
-            })
-        } else {
-          doClose()
-        }
+          )
       }
     },
     [
@@ -920,6 +935,8 @@ export function useMessageHandlers({
       activeWorktreePathRef,
       selectedModelRef,
       yoloModelRef,
+      yoloBackendRef,
+      yoloThinkingLevelRef,
       selectedThinkingLevelRef,
       selectedEffortLevelRef,
       useAdaptiveThinkingRef,
@@ -998,17 +1015,28 @@ export function useMessageHandlers({
 
     // Send plan as first message in YOLO mode
     const yoloModel = yoloModelRef.current ?? selectedModelRef.current
-    if (yoloModelRef.current && yoloModelRef.current !== selectedModelRef.current) {
-      toast.info(`Using ${yoloModelRef.current} model for yolo`)
-    }
-    const planMessage = `Execute this plan. Implement all changes described.\n\n<plan>\n${planContent}\n</plan>`
+    const yoloBackend = yoloBackendRef.current ?? undefined
+    const yoloOverride = (yoloModelRef.current || yoloBackend)
+      ? [yoloBackend, yoloModel].filter(Boolean).join(' / ')
+      : ''
+    if (yoloOverride) toast.info(`Yolo: ${yoloOverride}`)
+    const planMessage = yoloOverride
+      ? `[Yolo: ${yoloOverride}]\nExecute this plan. Implement all changes described.\n\n<plan>\n${planContent}\n</plan>`
+      : `Execute this plan. Implement all changes described.\n\n<plan>\n${planContent}\n</plan>`
     store.setExecutionMode(newSession.id, 'yolo')
     store.setLastSentMessage(newSession.id, planMessage)
     store.setError(newSession.id, null)
     store.addSendingSession(newSession.id)
     store.setSelectedModel(newSession.id, yoloModel)
     store.setExecutingMode(newSession.id, 'yolo')
+    if (yoloBackend) {
+      store.setSelectedBackend(
+        newSession.id,
+        yoloBackend as 'claude' | 'codex' | 'opencode'
+      )
+    }
 
+    const yoloThinkingLevel = (yoloThinkingLevelRef.current ?? selectedThinkingLevelRef.current) as ThinkingLevel
     sendMessage.mutate({
       sessionId: newSession.id,
       worktreeId,
@@ -1016,18 +1044,18 @@ export function useMessageHandlers({
       message: planMessage,
       model: yoloModel,
       executionMode: 'yolo',
-      thinkingLevel: selectedThinkingLevelRef.current,
+      thinkingLevel: yoloThinkingLevel,
       effortLevel: useAdaptiveThinkingRef.current
         ? selectedEffortLevelRef.current
         : undefined,
       mcpConfig: getMcpConfig(),
       customProfileName: getCustomProfileName(),
+      backend: yoloBackend,
     })
 
-    // Optionally close the original session — but only after the new session's
-    // send_chat_message has started (chat:sending event). This avoids a race where
-    // close_session runs concurrently with send_chat_message and interferes with
-    // the new session's startup. Falls back to a 10s timeout as a safety net.
+    // Optionally close the original session immediately.
+    // cancel_process_if_running (used by close/archive) safely skips idle sessions,
+    // and with_sessions_mut uses a per-worktree mutex so there's no file-level race.
     const prefs = queryClient.getQueryData<AppPreferences>(
       preferencesQueryKeys.preferences()
     )
@@ -1037,41 +1065,34 @@ export function useMessageHandlers({
           ? 'archive_session'
           : 'close_session'
 
-      const doClose = () => {
-        invoke(command, { worktreeId, worktreePath, sessionId }).catch(err => {
+      // Optimistically remove from UI immediately
+      queryClient.setQueryData<WorktreeSessions>(
+        chatQueryKeys.sessions(worktreeId),
+        old => {
+          if (!old) return old
+          return {
+            ...old,
+            sessions: old.sessions.filter(s => s.id !== sessionId),
+            active_session_id:
+              old.active_session_id === sessionId
+                ? newSession.id
+                : old.active_session_id,
+          }
+        }
+      )
+
+      invoke(command, { worktreeId, worktreePath, sessionId })
+        .then(() =>
+          queryClient.invalidateQueries({
+            queryKey: chatQueryKeys.sessions(worktreeId),
+          })
+        )
+        .catch(err =>
           console.error(
             '[useMessageHandlers] Failed to close original session:',
             err
           )
-        })
-      }
-
-      if (isTauri()) {
-        const newSessionId = newSession.id
-        let closed = false
-        const timeout = setTimeout(() => {
-          if (!closed) {
-            closed = true
-            doClose()
-          }
-        }, 10000)
-
-        listen<{ session_id: string }>('chat:sending', event => {
-          if (event.payload.session_id === newSessionId && !closed) {
-            closed = true
-            clearTimeout(timeout)
-            doClose()
-          }
-        }).catch(() => {
-          if (!closed) {
-            closed = true
-            clearTimeout(timeout)
-            doClose()
-          }
-        })
-      } else {
-        doClose()
-      }
+        )
     }
   }, [
     activeSessionIdRef,
@@ -1079,6 +1100,8 @@ export function useMessageHandlers({
     activeWorktreePathRef,
     selectedModelRef,
     yoloModelRef,
+    yoloBackendRef,
+    yoloThinkingLevelRef,
     selectedThinkingLevelRef,
     selectedEffortLevelRef,
     useAdaptiveThinkingRef,
