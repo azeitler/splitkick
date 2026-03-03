@@ -319,9 +319,10 @@ export function PermissionApproval({
       <div className="flex gap-2">
         <Button
           size="sm"
+          variant="outline"
           onClick={handleApprove}
           disabled={selectedIndices.size === 0}
-          className="gap-1"
+          className="gap-1 !bg-primary/80 !border-primary !text-primary-foreground hover:!bg-primary/90"
         >
           <Play className="h-3 w-3" />
           Approve & Continue
@@ -334,10 +335,10 @@ export function PermissionApproval({
         {onApproveYolo && (
           <Button
             size="sm"
-            variant="destructive"
+            variant="outline"
             onClick={handleApproveYolo}
             disabled={selectedIndices.size === 0}
-            className="gap-1"
+            className="gap-1 !bg-destructive !border-destructive !text-white hover:!bg-destructive/90 dark:!bg-destructive/60"
           >
             <Play className="h-3 w-3" />
             Approve (yolo)

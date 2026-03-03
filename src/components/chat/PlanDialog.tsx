@@ -3,8 +3,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { FileText, Pencil, RotateCcw } from 'lucide-react'
 import { invoke } from '@tauri-apps/api/core'
 import { readPlanFile } from '@/services/chat'
+import { usePreferences } from '@/services/preferences'
 import { getFilename } from '@/lib/path-utils'
 import { useUIStore } from '@/store/ui-store'
+import { resolveApprovalLabel } from './approval-label-utils'
 import {
   Dialog,
   DialogContent,
@@ -68,6 +70,9 @@ export function PlanDialog({
 }: PlanDialogProps) {
   const filename = filePath ? getFilename(filePath) : null
   const queryClient = useQueryClient()
+  const { data: preferences } = usePreferences()
+  const buildLabel = resolveApprovalLabel('build', preferences)
+  const yoloLabel = resolveApprovalLabel('yolo', preferences)
 
   const { data: fetchedContent, isLoading } = useQuery({
     queryKey: ['planFile', filePath],
@@ -265,14 +270,16 @@ export function PlanDialog({
 
             {/* Right side: Approve buttons */}
             <div className="flex gap-2">
-              <Button onClick={handleApprove} disabled={!canApprove}>
+              <Button variant="outline" size="sm" className="h-auto py-2 !bg-primary/80 !border-primary !text-primary-foreground hover:!bg-primary/90" onClick={handleApprove} disabled={!canApprove}>
                 Approve
                 <Kbd className="ml-1.5 h-4 text-[10px] bg-primary-foreground/20 text-primary-foreground">
                   {formatShortcutDisplay(DEFAULT_KEYBINDINGS.approve_plan)}
                 </Kbd>
               </Button>
               <Button
-                variant="destructive"
+                variant="outline"
+                size="sm"
+                className="h-auto py-2 !bg-destructive !border-destructive !text-white hover:!bg-destructive/90 dark:!bg-destructive/60"
                 onClick={handleApproveYolo}
                 disabled={!canApprove}
               >
@@ -285,26 +292,42 @@ export function PlanDialog({
                 <Button
                   variant="outline"
                   size="sm"
+                  className="h-auto py-2 !bg-primary/80 !border-primary !text-primary-foreground hover:!bg-primary/90"
                   onClick={handleClearContextBuildApprove}
                   disabled={!canApprove}
                 >
-                  Clear Context and Build
-                  <Kbd className="ml-1.5 h-4 text-[10px]">
-                    {formatShortcutDisplay(DEFAULT_KEYBINDINGS.approve_plan_clear_context_build)}
-                  </Kbd>
+                  <span className="flex flex-col items-center">
+                    <span className="flex items-center gap-1.5">
+                      Clear Context & Approve
+                      <Kbd className="h-4 text-[10px] bg-primary-foreground/20 text-primary-foreground">
+                        {formatShortcutDisplay(DEFAULT_KEYBINDINGS.approve_plan_clear_context_build)}
+                      </Kbd>
+                    </span>
+                    {buildLabel && (
+                      <span className="text-[10px] opacity-70">{buildLabel}</span>
+                    )}
+                  </span>
                 </Button>
               )}
               {onClearContextApprove && (
                 <Button
                   variant="outline"
                   size="sm"
+                  className="h-auto py-2 !bg-destructive !border-destructive !text-white hover:!bg-destructive/90 dark:!bg-destructive/60"
                   onClick={handleClearContextApprove}
                   disabled={!canApprove}
                 >
-                  Clear Context and YOLO
-                  <Kbd className="ml-1.5 h-4 text-[10px]">
-                    {formatShortcutDisplay(DEFAULT_KEYBINDINGS.approve_plan_clear_context)}
-                  </Kbd>
+                  <span className="flex flex-col items-center">
+                    <span className="flex items-center gap-1.5">
+                      Clear Context & Approve (yolo)
+                      <Kbd className="h-4 text-[10px] bg-destructive-foreground/20 text-destructive-foreground">
+                        {formatShortcutDisplay(DEFAULT_KEYBINDINGS.approve_plan_clear_context)}
+                      </Kbd>
+                    </span>
+                    {yoloLabel && (
+                      <span className="text-[10px] opacity-70">{yoloLabel}</span>
+                    )}
+                  </span>
                 </Button>
               )}
             </div>

@@ -1,5 +1,7 @@
 import type { ToolCall } from '@/types/chat'
 import { isAskUserQuestion, isExitPlanMode } from '@/types/chat'
+import { usePreferences } from '@/services/preferences'
+import { resolveApprovalLabel } from './approval-label-utils'
 import { Button } from '@/components/ui/button'
 import { Kbd } from '@/components/ui/kbd'
 
@@ -56,6 +58,10 @@ export function ExitPlanModeButton({
   shortcutClearContextBuild,
   hideApproveButtons,
 }: ExitPlanModeButtonProps) {
+  const { data: preferences } = usePreferences()
+  const buildLabel = resolveApprovalLabel('build', preferences)
+  const yoloLabel = resolveApprovalLabel('yolo', preferences)
+
   if (!toolCalls) return null
 
   const exitPlanTools = toolCalls.filter(isExitPlanMode)
@@ -73,57 +79,79 @@ export function ExitPlanModeButton({
 
   // Only render the approve button (plan is shown inline in timeline)
   return (
-    <div className="mt-3 flex flex-wrap gap-2">
-      <Button ref={buttonRef} onClick={() => onPlanApproval?.()}>
-        Approve
-        {shortcut && (
-          <Kbd className="ml-1.5 h-4 text-[10px] bg-primary-foreground/20 text-primary-foreground">
-            {shortcut}
-          </Kbd>
-        )}
-      </Button>
-      <Button
-        variant="destructive"
-        onClick={() => {
-          onPlanApprovalYolo?.()
-        }}
-      >
-        Approve (yolo)
-        {shortcutYolo && (
-          <Kbd className="ml-1.5 h-4 text-[10px] bg-destructive-foreground/20 text-destructive-foreground">
-            {shortcutYolo}
-          </Kbd>
-        )}
-      </Button>
-      {onClearContextBuildApproval && (
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 px-2 text-xs"
-          onClick={() => onClearContextBuildApproval()}
-        >
-          Clear Context and Build
-          {shortcutClearContextBuild && (
-            <Kbd className="ml-1.5 h-4 text-[10px]">
-              {shortcutClearContextBuild}
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+      <div className="flex flex-wrap gap-2">
+        <Button ref={buttonRef} variant="outline" size="sm" className="h-auto py-2 !bg-primary/80 !border-primary !text-primary-foreground hover:!bg-primary/90" onClick={() => onPlanApproval?.()}>
+          Approve
+          {shortcut && (
+            <Kbd className="ml-1.5 h-4 text-[10px] bg-primary-foreground/20 text-primary-foreground">
+              {shortcut}
             </Kbd>
           )}
         </Button>
-      )}
-      {onClearContextApproval && (
         <Button
           variant="outline"
           size="sm"
-          className="h-7 px-2 text-xs"
-          onClick={() => onClearContextApproval()}
+          className="h-auto py-2 !bg-destructive !border-destructive !text-white hover:!bg-destructive/90 dark:!bg-destructive/60"
+          onClick={() => {
+            onPlanApprovalYolo?.()
+          }}
         >
-          Clear Context and YOLO
-          {shortcutClearContext && (
-            <Kbd className="ml-1.5 h-4 text-[10px]">
-              {shortcutClearContext}
+          Approve (yolo)
+          {shortcutYolo && (
+            <Kbd className="ml-1.5 h-4 text-[10px] bg-destructive-foreground/20 text-destructive-foreground">
+              {shortcutYolo}
             </Kbd>
           )}
         </Button>
+      </div>
+      {(onClearContextBuildApproval || onClearContextApproval) && (
+        <div className="flex flex-wrap gap-2">
+          {onClearContextBuildApproval && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-auto py-2 !bg-primary/80 !border-primary !text-primary-foreground hover:!bg-primary/90"
+              onClick={() => onClearContextBuildApproval()}
+            >
+              <span className="flex flex-col items-center">
+                <span className="flex items-center gap-1.5">
+                  Clear Context & Approve
+                  {shortcutClearContextBuild && (
+                    <Kbd className="h-4 text-[10px] bg-primary-foreground/20 text-primary-foreground">
+                      {shortcutClearContextBuild}
+                    </Kbd>
+                  )}
+                </span>
+                {buildLabel && (
+                  <span className="text-[10px] opacity-70">{buildLabel}</span>
+                )}
+              </span>
+            </Button>
+          )}
+          {onClearContextApproval && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-auto py-2 !bg-destructive !border-destructive !text-white hover:!bg-destructive/90 dark:!bg-destructive/60"
+              onClick={() => onClearContextApproval()}
+            >
+              <span className="flex flex-col items-center">
+                <span className="flex items-center gap-1.5">
+                  Clear Context & Approve (yolo)
+                  {shortcutClearContext && (
+                    <Kbd className="h-4 text-[10px] bg-destructive-foreground/20 text-destructive-foreground">
+                      {shortcutClearContext}
+                    </Kbd>
+                  )}
+                </span>
+                {yoloLabel && (
+                  <span className="text-[10px] opacity-70">{yoloLabel}</span>
+                )}
+              </span>
+            </Button>
+          )}
+        </div>
       )}
     </div>
   )
