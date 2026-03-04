@@ -19,12 +19,14 @@ import type {
 import { isTauri } from './projects'
 
 /**
- * Check if an error is a GitHub CLI setup/authentication error.
+ * Check if an error is a GitHub CLI authentication or installation error.
  *
  * Matches:
  * - Auth errors: "GitHub CLI not authenticated. Run 'gh auth login' first."
- * - Not found: "Failed to run gh issue list: The system cannot find the file specified."
- * - Generic gh failures that indicate setup issues
+ * - Auth prompt: stderr containing "gh auth login"
+ * - Binary not found: "The system cannot find the file specified."
+ *
+ * Does NOT match generic gh failures (no remotes, repo not found, etc.)
  */
 export function isGhAuthError(error: unknown): boolean {
   if (!error) return false
@@ -34,7 +36,7 @@ export function isGhAuthError(error: unknown): boolean {
   return (
     lower.includes('not authenticated') ||
     lower.includes('gh auth login') ||
-    lower.includes('failed to run gh')
+    lower.includes('the system cannot find the file specified')
   )
 }
 

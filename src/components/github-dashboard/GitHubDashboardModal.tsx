@@ -35,6 +35,7 @@ import {
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/store/ui-store'
 import { useProjects, isTauri, useCreateWorktree } from '@/services/projects'
+import { isFolder } from '@/types/projects'
 import { isGhAuthError, githubQueryKeys, parseLabelQuery } from '@/services/github'
 import { GhAuthError } from '@/components/shared/GhAuthError'
 import { IssuePreviewModal } from '@/components/worktree/IssuePreviewModal'
@@ -510,9 +511,15 @@ export function GitHubDashboardModal() {
     return () => window.removeEventListener('switch-dashboard-tab', handler)
   }, [])
 
-  const { data: projects = [] } = useProjects()
+  const { data: allProjects = [] } = useProjects()
   const { triggerLogin, isGhInstalled } = useGhLogin()
   const createWorktree = useCreateWorktree()
+
+  // Only query projects with a valid path (exclude folders)
+  const projects = useMemo(
+    () => allProjects.filter(p => !isFolder(p) && p.path),
+    [allProjects]
+  )
 
   // Fetch issues for all projects in parallel
   const issueResults = useQueries({
@@ -520,10 +527,15 @@ export function GitHubDashboardModal() {
       queryKey: githubQueryKeys.issues(p.path, 'open'),
       queryFn: async (): Promise<GitHubIssueListResult> => {
         if (!isTauri()) return { issues: [], totalCount: 0 }
-        return invoke<GitHubIssueListResult>('list_github_issues', {
-          projectPath: p.path,
-          state: 'open',
-        })
+        try {
+          return await invoke<GitHubIssueListResult>('list_github_issues', {
+            projectPath: p.path,
+            state: 'open',
+          })
+        } catch (error) {
+          if (isGhAuthError(error)) throw error
+          return { issues: [], totalCount: 0 }
+        }
       },
       enabled: projects.length > 0,
       staleTime: 5 * 60 * 1000,
@@ -538,10 +550,15 @@ export function GitHubDashboardModal() {
       queryKey: githubQueryKeys.prs(p.path, 'open'),
       queryFn: async (): Promise<GitHubPullRequest[]> => {
         if (!isTauri()) return []
-        return invoke<GitHubPullRequest[]>('list_github_prs', {
-          projectPath: p.path,
-          state: 'open',
-        })
+        try {
+          return await invoke<GitHubPullRequest[]>('list_github_prs', {
+            projectPath: p.path,
+            state: 'open',
+          })
+        } catch (error) {
+          if (isGhAuthError(error)) throw error
+          return []
+        }
       },
       enabled: projects.length > 0,
       staleTime: 5 * 60 * 1000,
