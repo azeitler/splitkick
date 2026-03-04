@@ -911,76 +911,6 @@ export const GeneralPane: React.FC = () => {
             </Select>
           </InlineField>
 
-          {/* Claude subsection */}
-          <div className="pt-2">
-            <div className="text-sm font-semibold text-foreground/80 mb-3">
-              Claude
-            </div>
-          </div>
-
-          <InlineField
-            label="Model"
-            description="Claude model for AI assistance"
-          >
-            <Select
-              value={preferences?.selected_model ?? 'opus'}
-              onValueChange={handleModelChange}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {modelOptions.map(option => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </InlineField>
-
-          <InlineField
-            label="Thinking"
-            description="Extended thinking for complex tasks"
-          >
-            <Select
-              value={preferences?.thinking_level ?? 'off'}
-              onValueChange={handleThinkingLevelChange}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {thinkingLevelOptions.map(option => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </InlineField>
-
-          <InlineField
-            label="Effort level"
-            description="Effort for Opus (requires CLI 2.1.32+)"
-          >
-            <Select
-              value={preferences?.default_effort_level ?? 'high'}
-              onValueChange={handleEffortLevelChange}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {effortLevelOptions.map(option => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </InlineField>
-
           <InlineField
             label="Build execution"
             description="Backend, model, and thinking/effort override when approving plans"
@@ -1255,6 +1185,76 @@ export const GeneralPane: React.FC = () => {
                 </Select>
               </div>
             </div>
+          </InlineField>
+
+          {/* Claude subsection */}
+          <div className="pt-2">
+            <div className="text-sm font-semibold text-foreground/80 mb-3">
+              Claude
+            </div>
+          </div>
+
+          <InlineField
+            label="Model"
+            description="Claude model for AI assistance"
+          >
+            <Select
+              value={preferences?.selected_model ?? 'opus'}
+              onValueChange={handleModelChange}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {modelOptions.map(option => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </InlineField>
+
+          <InlineField
+            label="Thinking"
+            description="Extended thinking for complex tasks"
+          >
+            <Select
+              value={preferences?.thinking_level ?? 'off'}
+              onValueChange={handleThinkingLevelChange}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {thinkingLevelOptions.map(option => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </InlineField>
+
+          <InlineField
+            label="Effort level"
+            description="Effort for Opus (requires CLI 2.1.32+)"
+          >
+            <Select
+              value={preferences?.default_effort_level ?? 'high'}
+              onValueChange={handleEffortLevelChange}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {effortLevelOptions.map(option => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </InlineField>
 
           <InlineField
