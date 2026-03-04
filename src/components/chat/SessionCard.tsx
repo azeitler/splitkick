@@ -8,10 +8,12 @@ import {
   Shield,
   Sparkles,
   Tag,
+  Terminal,
   Trash2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getLabelTextColor } from '@/lib/label-colors'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Kbd } from '@/components/ui/kbd'
 import { StatusIndicator } from '@/components/ui/status-indicator'
@@ -28,7 +30,11 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
-import { type SessionCardData, statusConfig } from './session-card-utils'
+import {
+  getResumeCommand,
+  type SessionCardData,
+  statusConfig,
+} from './session-card-utils'
 
 export interface SessionCardProps {
   card: SessionCardData
@@ -80,6 +86,7 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
   ) {
     const config = statusConfig[card.status]
     const isRunning = card.status === 'planning' || card.status === 'vibing' || card.status === 'yoloing'
+    const resumeCommand = getResumeCommand(card.session)
     const renameInputRef = useCallback((node: HTMLInputElement | null) => {
       if (node) {
         node.focus()
@@ -306,7 +313,7 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
             </div>
           </div>
         </ContextMenuTrigger>
-        <ContextMenuContent className="w-48">
+        <ContextMenuContent className="w-64">
           {onRenameStart && (
             <ContextMenuItem
               onSelect={() =>
@@ -336,6 +343,19 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
                   Mark for Review
                 </>
               )}
+            </ContextMenuItem>
+          )}
+          {resumeCommand && (
+            <ContextMenuItem
+              onSelect={() => {
+                void navigator.clipboard
+                  .writeText(resumeCommand)
+                  .then(() => toast.success('Resume command copied'))
+                  .catch(() => toast.error('Failed to copy resume command'))
+              }}
+            >
+              <Terminal className="mr-2 h-4 w-4" />
+              Copy Resume Command
             </ContextMenuItem>
           )}
           <ContextMenuItem onSelect={onArchive}>

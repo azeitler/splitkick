@@ -86,7 +86,11 @@ import {
   useOpenBranchOnGitHub,
 } from '@/services/projects'
 import { getOpenInDefaultLabel } from '@/types/preferences'
-import { statusConfig, type SessionStatus } from './session-card-utils'
+import {
+  getResumeCommand,
+  statusConfig,
+  type SessionStatus,
+} from './session-card-utils'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -981,6 +985,7 @@ export function SessionChatModal({
                     const config = statusConfig[status]
                     const sessionLabel =
                       useChatStore.getState().sessionLabels[session.id]
+                    const resumeCommand = getResumeCommand(session)
                     return (
                       <ContextMenu key={session.id}>
                         <ContextMenuTrigger asChild>
@@ -1066,7 +1071,7 @@ export function SessionChatModal({
                               )}
                           </button>
                         </ContextMenuTrigger>
-                        <ContextMenuContent className="w-48">
+                        <ContextMenuContent className="w-64">
                           <ContextMenuItem
                             onSelect={() =>
                               handleStartRename(session.id, session.name)
@@ -1106,6 +1111,25 @@ export function SessionChatModal({
                               </>
                             )}
                           </ContextMenuItem>
+                          {resumeCommand && (
+                            <ContextMenuItem
+                              onSelect={() => {
+                                void navigator.clipboard
+                                  .writeText(resumeCommand)
+                                  .then(() =>
+                                    toast.success('Resume command copied')
+                                  )
+                                  .catch(() =>
+                                    toast.error(
+                                      'Failed to copy resume command'
+                                    )
+                                  )
+                              }}
+                            >
+                              <Terminal className="mr-2 h-4 w-4" />
+                              Copy Resume Command
+                            </ContextMenuItem>
+                          )}
                           <ContextMenuItem
                             onSelect={() => handleArchiveSession(session.id)}
                           >

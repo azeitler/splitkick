@@ -1,5 +1,15 @@
 import { Fragment, useState, useEffect, useCallback } from 'react'
-import { LayoutDashboard, Command, CircleHelp, Menu, Plus, Archive } from 'lucide-react'
+import {
+  LayoutDashboard,
+  Command,
+  CircleHelp,
+  Menu,
+  Plus,
+  Archive,
+  Terminal,
+} from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Kbd } from '@/components/ui/kbd'
 import {
@@ -11,6 +21,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -22,9 +33,12 @@ import {
 import { useUIStore } from '@/store/ui-store'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
+import { chatQueryKeys } from '@/services/chat'
 import { usePreferences } from '@/services/preferences'
+import type { WorktreeSessions } from '@/types/chat'
 import { DEFAULT_KEYBINDINGS, formatShortcutDisplay } from '@/types/keybindings'
 import type { KeybindingHint } from '@/components/ui/keybinding-hints'
+import { getResumeCommand } from '@/components/chat/session-card-utils'
 
 // Canvas-specific hints (same set used in both WorktreeCanvasView and ProjectCanvasView)
 const CANVAS_HINTS: KeybindingHint[] = [
@@ -68,6 +82,7 @@ function KeybindingHintsButton({ hints }: { hints: KeybindingHint[] }) {
 
 export function FloatingDock() {
   const { data: preferences } = usePreferences()
+  const queryClient = useQueryClient()
 
   const selectedProjectId = useProjectsStore(state => state.selectedProjectId)
   const selectedWorktreeId = useProjectsStore(state => state.selectedWorktreeId)
@@ -83,8 +98,55 @@ export function FloatingDock() {
   const showHints = isCanvasView && preferences?.show_keybinding_hints !== false
 
   const [menuOpen, setMenuOpen] = useState(false)
+  const [resumeCommand, setResumeCommand] = useState<string | null>(null)
 
-  const toggleMenu = useCallback(() => setMenuOpen(prev => !prev), [])
+  const getActiveResumeCommand = useCallback(() => {
+    const { selectedWorktreeId: currentWorktreeId } = useProjectsStore.getState()
+    if (!currentWorktreeId) return null
+
+    const activeSessionId = useChatStore.getState().activeSessionIds[currentWorktreeId]
+    if (!activeSessionId) return null
+
+    const cached =
+      queryClient.getQueryData<WorktreeSessions>(
+        chatQueryKeys.sessions(currentWorktreeId)
+      ) ??
+      queryClient.getQueryData<WorktreeSessions>([
+        ...chatQueryKeys.sessions(currentWorktreeId),
+        'with-counts',
+      ])
+    const session = cached?.sessions.find(s => s.id === activeSessionId)
+    return session ? getResumeCommand(session) : null
+  }, [queryClient])
+
+  const handleQuickMenuOpenChange = useCallback(
+    (open: boolean) => {
+      setMenuOpen(open)
+      if (open) {
+        setResumeCommand(getActiveResumeCommand())
+      }
+    },
+    [getActiveResumeCommand]
+  )
+
+  const toggleMenu = useCallback(() => {
+    setMenuOpen(prev => {
+      const next = !prev
+      if (next) {
+        setResumeCommand(getActiveResumeCommand())
+      }
+      return next
+    })
+  }, [getActiveResumeCommand])
+
+  const handleCopyResumeCommand = useCallback(() => {
+    const commandToCopy = getActiveResumeCommand() ?? resumeCommand
+    if (!commandToCopy) return
+    void navigator.clipboard
+      .writeText(commandToCopy)
+      .then(() => toast.success('Resume command copied'))
+      .catch(() => toast.error('Failed to copy resume command'))
+  }, [getActiveResumeCommand, resumeCommand])
 
   // Listen for keyboard shortcut event
   useEffect(() => {
@@ -105,7 +167,7 @@ export function FloatingDock() {
 
   return (
     <div className="absolute bottom-4 left-4 z-10 hidden sm:flex items-center gap-0.5 rounded-full border border-border/30 bg-background/60 backdrop-blur-md px-1 py-0.5">
-      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+      <DropdownMenu open={menuOpen} onOpenChange={handleQuickMenuOpenChange}>
         <Tooltip>
           <TooltipTrigger asChild>
             <DropdownMenuTrigger asChild>
@@ -143,6 +205,15 @@ export function FloatingDock() {
             GitHub Dashboard
             <DropdownMenuShortcut>{githubShortcut}</DropdownMenuShortcut>
           </DropdownMenuItem>
+          {resumeCommand && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleCopyResumeCommand}>
+                <Terminal className="mr-2 h-4 w-4" />
+                Copy Resume Command
+              </DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 

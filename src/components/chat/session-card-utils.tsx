@@ -308,6 +308,19 @@ export function computeSessionCardData(
   }
 }
 
+export function getResumeCommand(session: Session): string | null {
+  if (session.backend === 'claude' && session.claude_session_id) {
+    return `claude --resume ${session.claude_session_id}`
+  }
+  if (session.backend === 'codex' && session.codex_thread_id) {
+    return `codex resume ${session.codex_thread_id}`
+  }
+  if (session.backend === 'opencode' && session.opencode_session_id) {
+    return `opencode -s ${session.opencode_session_id}`
+  }
+  return null
+}
+
 // --- Status grouping ---
 
 export interface StatusGroup {
