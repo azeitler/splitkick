@@ -716,11 +716,18 @@ export const useChatStore = create<ChatUIState>()(
           state => {
             if (reviewing) {
               if (state.reviewingSessions[sessionId]) return state
+              // Clear waiting state so review status takes visual priority
+              const { [sessionId]: _w, ...waitingForInputSessionIds } =
+                state.waitingForInputSessionIds
+              const { [sessionId]: _p, ...pendingPlanMessageIds } =
+                state.pendingPlanMessageIds
               return {
                 reviewingSessions: {
                   ...state.reviewingSessions,
                   [sessionId]: true,
                 },
+                waitingForInputSessionIds,
+                pendingPlanMessageIds,
               }
             } else {
               if (!(sessionId in state.reviewingSessions)) return state
