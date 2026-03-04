@@ -121,7 +121,24 @@ fn get_upstream_ref(repo_path: &str) -> Option<String> {
 }
 
 /// Get the current branch name
+/// Uses symbolic-ref first (works on repos with no commits), falls back to rev-parse
 fn get_current_branch(repo_path: &str) -> Result<String, String> {
+    // Try symbolic-ref first — works even on empty repos (no commits yet)
+    let sym_output = silent_command("git")
+        .args(["symbolic-ref", "--short", "HEAD"])
+        .current_dir(repo_path)
+        .output();
+
+    if let Ok(ref o) = sym_output {
+        if o.status.success() {
+            let branch = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            if !branch.is_empty() {
+                return Ok(branch);
+            }
+        }
+    }
+
+    // Fall back to rev-parse (works when HEAD is detached)
     let output = silent_command("git")
         .args(["rev-parse", "--abbrev-ref", "HEAD"])
         .current_dir(repo_path)
