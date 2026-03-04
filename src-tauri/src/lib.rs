@@ -2057,6 +2057,39 @@ pub fn run() {
             // Kill orphaned OpenCode server from a previous crash (if any)
             opencode_server::cleanup_orphaned_server(app.handle());
 
+            // Allow image access from all known project/worktree directories.
+            let app_handle = app.handle().clone();
+            match crate::projects::storage::load_projects_data(&app_handle) {
+                Ok(data) => {
+                    for project in &data.projects {
+                        crate::projects::allow_project_in_asset_scope(&app_handle, &project.path);
+                        match crate::projects::storage::get_project_worktrees_dir(
+                            &project.name,
+                            project.worktrees_dir.as_deref(),
+                        ) {
+                            Ok(worktrees_dir) => {
+                                if let Some(path) = worktrees_dir.to_str() {
+                                    crate::projects::allow_project_in_asset_scope(
+                                        &app_handle,
+                                        path,
+                                    );
+                                }
+                            }
+                            Err(e) => {
+                                log::warn!(
+                                    "Failed to resolve worktrees dir for project '{}': {}",
+                                    project.name,
+                                    e
+                                );
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::warn!("Failed to load projects for asset scope initialization: {e}");
+                }
+            }
+
             // NOTE: Run recovery (crash recovery) is handled by check_resumable_sessions
             // which the frontend calls once it's ready. Previously this was done here in
             // setup(), but that caused a double-invocation bug: the second call from the

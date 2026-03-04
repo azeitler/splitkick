@@ -1292,10 +1292,7 @@ pub async fn send_chat_message(
                         .magic_prompt_providers
                         .session_naming_provider
                         .clone(),
-                    backend_override: prefs
-                        .magic_prompt_backends
-                        .session_naming_backend
-                        .clone(),
+                    backend_override: prefs.magic_prompt_backends.session_naming_backend.clone(),
                 };
 
                 // Spawn in background - does not block chat
@@ -2202,7 +2199,9 @@ pub async fn send_chat_message(
 
                 // Use a default no-op flag if somehow None (shouldn't happen for Opencode backend)
                 let default_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-                let cancel_flag = thread_opencode_cancel_flag.as_ref().unwrap_or(&default_flag);
+                let cancel_flag = thread_opencode_cancel_flag
+                    .as_ref()
+                    .unwrap_or(&default_flag);
 
                 match super::opencode::execute_opencode_http(
                     &thread_app,
@@ -2871,8 +2870,7 @@ fn save_image_to_disk(
     let file_path = images_dir.join(&filename);
 
     let temp_path = file_path.with_extension("tmp");
-    std::fs::write(&temp_path, data)
-        .map_err(|e| format!("Failed to write image file: {e}"))?;
+    std::fs::write(&temp_path, data).map_err(|e| format!("Failed to write image file: {e}"))?;
 
     std::fs::rename(&temp_path, &file_path)
         .map_err(|e| format!("Failed to finalize image file: {e}"))?;
@@ -2897,49 +2895,53 @@ fn save_image_to_disk(
 /// so this command reads the clipboard natively using arboard.
 /// Returns None if no image is available in the clipboard.
 #[tauri::command]
-pub async fn read_clipboard_image(
-    app: AppHandle,
-) -> Result<Option<SaveImageResponse>, String> {
+pub async fn read_clipboard_image(app: AppHandle) -> Result<Option<SaveImageResponse>, String> {
     log::trace!("Attempting to read image from native clipboard");
 
     let images_dir = get_images_dir(&app)?;
 
-    let result = tokio::task::spawn_blocking(move || -> Result<Option<SaveImageResponse>, String> {
-        let mut clipboard = arboard::Clipboard::new()
-            .map_err(|e| format!("Failed to access clipboard: {e}"))?;
+    let result =
+        tokio::task::spawn_blocking(move || -> Result<Option<SaveImageResponse>, String> {
+            let mut clipboard = arboard::Clipboard::new()
+                .map_err(|e| format!("Failed to access clipboard: {e}"))?;
 
-        let image_data = match clipboard.get_image() {
-            Ok(data) => data,
-            Err(arboard::Error::ContentNotAvailable) => return Ok(None),
-            Err(e) => return Err(format!("Failed to read clipboard image: {e}")),
-        };
+            let image_data = match clipboard.get_image() {
+                Ok(data) => data,
+                Err(arboard::Error::ContentNotAvailable) => return Ok(None),
+                Err(e) => return Err(format!("Failed to read clipboard image: {e}")),
+            };
 
-        // Guard against absurdly large clipboard images (>50 megapixels ≈ 200MB RGBA)
-        const MAX_CLIPBOARD_PIXELS: usize = 50_000_000;
-        if image_data.width * image_data.height > MAX_CLIPBOARD_PIXELS {
-            return Err(format!(
-                "Clipboard image too large: {}x{}",
-                image_data.width, image_data.height
-            ));
-        }
+            // Guard against absurdly large clipboard images (>50 megapixels ≈ 200MB RGBA)
+            const MAX_CLIPBOARD_PIXELS: usize = 50_000_000;
+            if image_data.width * image_data.height > MAX_CLIPBOARD_PIXELS {
+                return Err(format!(
+                    "Clipboard image too large: {}x{}",
+                    image_data.width, image_data.height
+                ));
+            }
 
-        // Build DynamicImage directly from RGBA pixels — avoids PNG encode→decode round-trip
-        let rgba = image::RgbaImage::from_raw(
-            image_data.width as u32,
-            image_data.height as u32,
-            image_data.bytes.into_owned(),
-        )
-        .ok_or_else(|| "Failed to create image from clipboard data".to_string())?;
+            // Build DynamicImage directly from RGBA pixels — avoids PNG encode→decode round-trip
+            let rgba = image::RgbaImage::from_raw(
+                image_data.width as u32,
+                image_data.height as u32,
+                image_data.bytes.into_owned(),
+            )
+            .ok_or_else(|| "Failed to create image from clipboard data".to_string())?;
 
-        let img = image::DynamicImage::ImageRgba8(rgba);
+            let img = image::DynamicImage::ImageRgba8(rgba);
 
-        // RGBA from clipboard always has an alpha channel, so never convert to JPEG
-        let needs_resize = img.width().max(img.height()) > MAX_IMAGE_DIMENSION;
-        let (processed_data, final_ext) = process_dynamic_image(img, "png", needs_resize, false)?;
-        Ok(Some(save_image_to_disk(&images_dir, &processed_data, &final_ext)?))
-    })
-    .await
-    .map_err(|e| format!("Clipboard image task failed: {e}"))??;
+            // RGBA from clipboard always has an alpha channel, so never convert to JPEG
+            let needs_resize = img.width().max(img.height()) > MAX_IMAGE_DIMENSION;
+            let (processed_data, final_ext) =
+                process_dynamic_image(img, "png", needs_resize, false)?;
+            Ok(Some(save_image_to_disk(
+                &images_dir,
+                &processed_data,
+                &final_ext,
+            )?))
+        })
+        .await
+        .map_err(|e| format!("Clipboard image task failed: {e}"))??;
 
     Ok(result)
 }
@@ -4792,10 +4794,7 @@ pub async fn generate_session_digest(
         .magic_prompt_providers
         .session_recap_provider
         .as_deref();
-    let magic_backend = prefs
-        .magic_prompt_backends
-        .session_recap_backend
-        .as_deref();
+    let magic_backend = prefs.magic_prompt_backends.session_recap_backend.as_deref();
 
     // Call Claude CLI with JSON schema (non-streaming)
     let response =
@@ -5053,19 +5052,14 @@ fn check_mcp_health_opencode(app: &AppHandle) -> Result<McpHealthResult, String>
 }
 
 /// Parse `codex mcp list --json` output into health statuses.
-fn parse_codex_mcp_list_json(
-    output: &str,
-) -> std::collections::HashMap<String, McpHealthStatus> {
+fn parse_codex_mcp_list_json(output: &str) -> std::collections::HashMap<String, McpHealthStatus> {
     // Try to parse as array of objects with name + status fields
     if let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(output) {
         return arr
             .iter()
             .filter_map(|item| {
                 let name = item.get("name")?.as_str()?.to_string();
-                let status_str = item
-                    .get("status")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                let status_str = item.get("status").and_then(|v| v.as_str()).unwrap_or("");
                 let status = match status_str {
                     "connected" | "ok" | "ready" => McpHealthStatus::Connected,
                     "disabled" => McpHealthStatus::Disabled,

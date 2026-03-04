@@ -897,11 +897,17 @@ export const ChatInput = memo(function ChatInput({
   // Handle command selection from / mention popover (executes immediately)
   const handleCommandSelect = useCallback(
     (command: ClaudeCommand) => {
+      // Cancel pending debounced save (it still has the old "/command" value)
+      clearTimeout(debouncedSaveRef.current)
+
       // Clear input
       if (inputRef.current) {
         inputRef.current.value = ''
         valueRef.current = ''
         inputRef.current.style.height = 'auto'
+      }
+      if (activeSessionId) {
+        useChatStore.getState().setInputDraft(activeSessionId, '')
       }
 
       // Reset slash popover state
@@ -913,7 +919,7 @@ export const ChatInput = memo(function ChatInput({
       // Notify parent to execute command
       onCommandExecute?.(command)
     },
-    [inputRef, onCommandExecute]
+    [activeSessionId, inputRef, onCommandExecute]
   )
 
   // Determine if slash is at prompt start (for enabling commands)

@@ -446,18 +446,19 @@ fn execute_codex_detached_inner(
     }
 
     super::increment_tailer_count();
-    let response = match tail_codex_output(app, session_id, worktree_id, output_file, pid, is_plan_mode) {
-        Ok(resp) => {
-            super::decrement_tailer_count();
-            super::registry::unregister_process(session_id);
-            resp
-        }
-        Err(e) => {
-            super::decrement_tailer_count();
-            super::registry::unregister_process(session_id);
-            return Err(e);
-        }
-    };
+    let response =
+        match tail_codex_output(app, session_id, worktree_id, output_file, pid, is_plan_mode) {
+            Ok(resp) => {
+                super::decrement_tailer_count();
+                super::registry::unregister_process(session_id);
+                resp
+            }
+            Err(e) => {
+                super::decrement_tailer_count();
+                super::registry::unregister_process(session_id);
+                return Err(e);
+            }
+        };
 
     Ok((pid, response))
 }
@@ -2569,25 +2570,24 @@ pub fn execute_one_shot_codex(
         );
 
         // User-facing error: detect common patterns and provide actionable hints
-        let user_msg =
-            if stderr.contains("AuthRequired") || stderr.contains("invalid_token") {
-                "Codex CLI failed: an MCP server requires authentication. \
+        let user_msg = if stderr.contains("AuthRequired") || stderr.contains("invalid_token") {
+            "Codex CLI failed: an MCP server requires authentication. \
                  Check your Codex MCP server configuration."
-                    .to_string()
+                .to_string()
+        } else {
+            let trimmed = stderr.trim();
+            if trimmed.len() > 200 {
+                format!(
+                    "Codex CLI failed (exit {}): {}…",
+                    output.status,
+                    &trimmed[..200]
+                )
+            } else if trimmed.is_empty() {
+                format!("Codex CLI failed (exit {})", output.status)
             } else {
-                let trimmed = stderr.trim();
-                if trimmed.len() > 200 {
-                    format!(
-                        "Codex CLI failed (exit {}): {}…",
-                        output.status,
-                        &trimmed[..200]
-                    )
-                } else if trimmed.is_empty() {
-                    format!("Codex CLI failed (exit {})", output.status)
-                } else {
-                    format!("Codex CLI failed (exit {}): {trimmed}", output.status)
-                }
-            };
+                format!("Codex CLI failed (exit {}): {trimmed}", output.status)
+            }
+        };
 
         return Err(user_msg);
     }

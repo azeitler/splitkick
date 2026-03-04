@@ -184,7 +184,9 @@ fn is_model_identifier(value: &str) -> bool {
     }
 
     fn allowed_segment(s: &str) -> bool {
-        !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+        !s.is_empty()
+            && s.chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
     }
 
     fn allowed_last_segment(s: &str) -> bool {

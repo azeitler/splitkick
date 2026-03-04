@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 use once_cell::sync::Lazy;
 use tauri::AppHandle;
@@ -18,8 +18,7 @@ static PROCESS_REGISTRY: Lazy<Mutex<HashMap<String, u32>>> =
 
 /// Sessions where cancel was requested before the CLI process was registered.
 /// When `register_process` is called for a pending session, the process is killed immediately.
-static PENDING_CANCELS: Lazy<Mutex<HashSet<String>>> =
-    Lazy::new(|| Mutex::new(HashSet::new()));
+static PENDING_CANCELS: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new(HashSet::new()));
 
 /// Cancel flags for OpenCode sessions (HTTP-based, no PID to kill).
 /// When cancel is requested, the flag is set so the blocking HTTP thread can detect it.

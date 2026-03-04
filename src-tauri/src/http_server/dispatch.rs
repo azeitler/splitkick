@@ -744,46 +744,47 @@ pub async fn dispatch_command(
                 field_opt(&args, "allowedTools", "allowed_tools")?;
             let mut effort_level: Option<crate::chat::types::EffortLevel> =
                 field_opt(&args, "effortLevel", "effort_level")?;
-            let thinking_level: Option<crate::chat::types::ThinkingLevel> =
-                match thinking_level_raw.as_deref() {
-                    None => None,
-                    Some("off") => Some(crate::chat::types::ThinkingLevel::Off),
-                    Some("think") => Some(crate::chat::types::ThinkingLevel::Think),
-                    Some("megathink") => Some(crate::chat::types::ThinkingLevel::Megathink),
-                    Some("ultrathink") => Some(crate::chat::types::ThinkingLevel::Ultrathink),
-                    // Backward compatibility:
-                    // Some frontend flows may send Codex effort values in thinkingLevel.
-                    // Translate to effortLevel and force thinking off instead of failing.
-                    Some("low") => {
-                        if effort_level.is_none() {
-                            effort_level = Some(crate::chat::types::EffortLevel::Low);
-                        }
-                        Some(crate::chat::types::ThinkingLevel::Off)
+            let thinking_level: Option<crate::chat::types::ThinkingLevel> = match thinking_level_raw
+                .as_deref()
+            {
+                None => None,
+                Some("off") => Some(crate::chat::types::ThinkingLevel::Off),
+                Some("think") => Some(crate::chat::types::ThinkingLevel::Think),
+                Some("megathink") => Some(crate::chat::types::ThinkingLevel::Megathink),
+                Some("ultrathink") => Some(crate::chat::types::ThinkingLevel::Ultrathink),
+                // Backward compatibility:
+                // Some frontend flows may send Codex effort values in thinkingLevel.
+                // Translate to effortLevel and force thinking off instead of failing.
+                Some("low") => {
+                    if effort_level.is_none() {
+                        effort_level = Some(crate::chat::types::EffortLevel::Low);
                     }
-                    Some("medium") => {
-                        if effort_level.is_none() {
-                            effort_level = Some(crate::chat::types::EffortLevel::Medium);
-                        }
-                        Some(crate::chat::types::ThinkingLevel::Off)
+                    Some(crate::chat::types::ThinkingLevel::Off)
+                }
+                Some("medium") => {
+                    if effort_level.is_none() {
+                        effort_level = Some(crate::chat::types::EffortLevel::Medium);
                     }
-                    Some("high") => {
-                        if effort_level.is_none() {
-                            effort_level = Some(crate::chat::types::EffortLevel::High);
-                        }
-                        Some(crate::chat::types::ThinkingLevel::Off)
+                    Some(crate::chat::types::ThinkingLevel::Off)
+                }
+                Some("high") => {
+                    if effort_level.is_none() {
+                        effort_level = Some(crate::chat::types::EffortLevel::High);
                     }
-                    Some("max" | "xhigh") => {
-                        if effort_level.is_none() {
-                            effort_level = Some(crate::chat::types::EffortLevel::Max);
-                        }
-                        Some(crate::chat::types::ThinkingLevel::Off)
+                    Some(crate::chat::types::ThinkingLevel::Off)
+                }
+                Some("max" | "xhigh") => {
+                    if effort_level.is_none() {
+                        effort_level = Some(crate::chat::types::EffortLevel::Max);
                     }
-                    Some(other) => {
-                        return Err(format!(
+                    Some(crate::chat::types::ThinkingLevel::Off)
+                }
+                Some(other) => {
+                    return Err(format!(
                             "invalid args `thinkingLevel` for command `send_chat_message`: unknown variant `{other}`, expected one of `off`, `think`, `megathink`, `ultrathink`"
                         ));
-                    }
-                };
+                }
+            };
             let mcp_config: Option<String> = field_opt(&args, "mcpConfig", "mcp_config")?;
             let chrome_enabled: Option<bool> = field_opt(&args, "chromeEnabled", "chrome_enabled")?;
             let custom_profile_name: Option<String> =

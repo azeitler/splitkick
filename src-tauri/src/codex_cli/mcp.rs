@@ -113,14 +113,15 @@ fn entry_to_json_map(entry: &CodexMcpServerEntry) -> serde_json::Map<String, ser
         if let Some(ref args) = entry.args {
             map.insert(
                 "args".into(),
-                serde_json::Value::Array(args.iter().map(|a| serde_json::Value::String(a.clone())).collect()),
+                serde_json::Value::Array(
+                    args.iter()
+                        .map(|a| serde_json::Value::String(a.clone()))
+                        .collect(),
+                ),
             );
         }
         if let Some(ref env) = entry.env {
-            map.insert(
-                "env".into(),
-                serde_json::to_value(env).unwrap_or_default(),
-            );
+            map.insert("env".into(), serde_json::to_value(env).unwrap_or_default());
         }
         if let Some(ref cwd) = entry.cwd {
             map.insert("cwd".into(), cwd.clone().into());

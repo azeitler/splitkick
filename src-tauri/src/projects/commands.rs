@@ -74,6 +74,11 @@ fn now() -> u64 {
         .as_secs()
 }
 
+pub(crate) fn allow_project_in_asset_scope(app: &AppHandle, project_path: &str) {
+    let scope = app.asset_protocol_scope();
+    let _ = scope.allow_directory(project_path, true);
+}
+
 /// Registry of in-flight AI review process PIDs keyed by review_run_id.
 static REVIEW_PROCESS_REGISTRY: Lazy<Mutex<HashMap<String, u32>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
@@ -212,6 +217,7 @@ pub async fn add_project(
 
     data.add_project(project.clone());
     save_projects_data(&app, &data)?;
+    allow_project_in_asset_scope(&app, &project.path);
 
     log::trace!("Successfully added project: {}", project.name);
     Ok(project)
@@ -370,6 +376,7 @@ pub async fn init_project(
 
     data.add_project(project.clone());
     save_projects_data(&app, &data)?;
+    allow_project_in_asset_scope(&app, &project.path);
 
     log::trace!("Successfully initialized project: {}", project.name);
     Ok(project)
@@ -422,6 +429,7 @@ pub async fn clone_project(
 
     data.add_project(project.clone());
     save_projects_data(&app, &data)?;
+    allow_project_in_asset_scope(&app, &project.path);
 
     log::trace!("Successfully cloned project: {}", project.name);
     Ok(project)
@@ -639,6 +647,10 @@ pub async fn create_worktree(
     // Build worktree path: <base>/<project-name>/<workspace-name>
     let project_worktrees_dir =
         get_project_worktrees_dir(&project.name, project.worktrees_dir.as_deref())?;
+    allow_project_in_asset_scope(&app, &project.path);
+    if let Some(worktrees_dir) = project_worktrees_dir.to_str() {
+        allow_project_in_asset_scope(&app, worktrees_dir);
+    }
     let worktree_path = project_worktrees_dir.join(&name);
     let worktree_path_str = worktree_path
         .to_str()

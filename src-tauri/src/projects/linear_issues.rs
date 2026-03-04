@@ -130,9 +130,7 @@ async fn linear_graphql(
         let status = response.status();
         let text = response.text().await.unwrap_or_default();
         if status.as_u16() == 401 {
-            return Err(
-                "Linear API key is invalid. Update it in project settings.".to_string(),
-            );
+            return Err("Linear API key is invalid. Update it in project settings.".to_string());
         }
         return Err(format!("Linear API error ({status}): {text}"));
     }
@@ -272,13 +270,21 @@ fn get_linear_config(app: &AppHandle, project_id: &str) -> Result<LinearConfig, 
 
     // 1. Check project-level key first
     if let Some(key) = project.linear_api_key.as_ref().filter(|k| !k.is_empty()) {
-        return Ok(LinearConfig { api_key: key.clone(), project_name, team_id });
+        return Ok(LinearConfig {
+            api_key: key.clone(),
+            project_name,
+            team_id,
+        });
     }
 
     // 2. Fall back to global key from AppPreferences
     let prefs = crate::load_preferences_sync(app)?;
     if let Some(key) = prefs.linear_api_key.as_ref().filter(|k| !k.is_empty()) {
-        return Ok(LinearConfig { api_key: key.clone(), project_name, team_id });
+        return Ok(LinearConfig {
+            api_key: key.clone(),
+            project_name,
+            team_id,
+        });
     }
 
     Err("No Linear API key configured. Add one in Settings → Integrations, or override per-project.".to_string())
@@ -482,7 +488,11 @@ pub async fn list_linear_teams(
     log::info!("Listing Linear teams for project {project_id}");
 
     let config = get_linear_config(&app, &project_id)?;
-    log::info!("Linear config resolved: api_key_len={}, project={}", config.api_key.len(), config.project_name);
+    log::info!(
+        "Linear config resolved: api_key_len={}, project={}",
+        config.api_key.len(),
+        config.project_name
+    );
 
     let response = linear_graphql(&config.api_key, LIST_TEAMS_QUERY, None).await?;
     log::info!("Linear teams raw response: {response}");
@@ -741,8 +751,10 @@ pub async fn list_loaded_linear_issue_contexts(
     for key in keys {
         // Key format: "{project_name}-{identifier}"
         if let Some(identifier) = key.strip_prefix(&format!("{project_name}-")) {
-            let context_file =
-                contexts_dir.join(format!("{project_name}-linear-{}.md", identifier.to_lowercase()));
+            let context_file = contexts_dir.join(format!(
+                "{project_name}-linear-{}.md",
+                identifier.to_lowercase()
+            ));
 
             if let Ok(content) = std::fs::read_to_string(&context_file) {
                 let title = content
@@ -758,12 +770,7 @@ pub async fn list_loaded_linear_issue_contexts(
                 let comment_count = content
                     .split("## Comments")
                     .nth(1)
-                    .map(|section| {
-                        section
-                            .lines()
-                            .filter(|l| l.starts_with("### "))
-                            .count()
-                    })
+                    .map(|section| section.lines().filter(|l| l.starts_with("### ")).count())
                     .unwrap_or(0);
 
                 contexts.push(LoadedLinearIssueContext {
@@ -824,8 +831,10 @@ pub async fn get_linear_issue_context_contents(
     for key in keys {
         // Key format: "{project_name}-{identifier}"
         if let Some(identifier) = key.strip_prefix(&format!("{project_name}-")) {
-            let context_file =
-                contexts_dir.join(format!("{project_name}-linear-{}.md", identifier.to_lowercase()));
+            let context_file = contexts_dir.join(format!(
+                "{project_name}-linear-{}.md",
+                identifier.to_lowercase()
+            ));
 
             if let Ok(content) = std::fs::read_to_string(&context_file) {
                 let title = content
