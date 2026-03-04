@@ -2308,6 +2308,7 @@ pub fn run() {
             // Claude CLI skills & commands
             projects::list_claude_skills,
             projects::list_claude_commands,
+            projects::resolve_claude_command,
             // GitHub issues commands
             projects::list_github_issues,
             projects::search_github_issues,

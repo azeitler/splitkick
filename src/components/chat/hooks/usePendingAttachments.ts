@@ -1,10 +1,14 @@
 import { useCallback, type RefObject } from 'react'
+import { invoke } from '@/lib/transport'
 import { generateId } from '@/lib/uuid'
+import { toast } from 'sonner'
 import { useChatStore } from '@/store/chat-store'
 import { buildMcpConfigJson } from '@/services/mcp'
 import { getFilename } from '@/lib/path-utils'
 import type {
   QueuedMessage,
+  ClaudeCommand,
+  ResolvedCommand,
   ExecutionMode,
   ThinkingLevel,
   EffortLevel,
@@ -99,38 +103,60 @@ export function usePendingAttachments({
   )
 
   const handleCommandExecute = useCallback(
-    (commandName: string) => {
+    (command: ClaudeCommand) => {
       if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
 
-      const queuedMessage: QueuedMessage = {
-        id: generateId(),
-        message: commandName,
-        pendingImages: [],
-        pendingFiles: [],
-        pendingSkills: [],
-        pendingTextFiles: [],
-        model: selectedModelRef.current,
-        provider: selectedProviderRef.current,
-        executionMode: executionModeRef.current,
-        thinkingLevel: selectedThinkingLevelRef.current,
-        effortLevel:
-          useAdaptiveThinkingRef.current || isCodexBackendRef.current
-            ? selectedEffortLevelRef.current
-            : undefined,
-        mcpConfig: buildMcpConfigJson(
-          mcpServersDataRef.current ?? [],
-          enabledMcpServersRef.current
-        ),
-        queuedAt: Date.now(),
-      }
+      void (async () => {
+        const toastId = toast.loading(`Resolving /${command.name}...`)
 
-      const { isSending: checkIsSendingNow, enqueueMessage } =
-        useChatStore.getState()
-      if (checkIsSendingNow(activeSessionId)) {
-        enqueueMessage(activeSessionId, queuedMessage)
-      } else {
-        sendMessageNow(queuedMessage)
-      }
+        try {
+          const resolved = await invoke<ResolvedCommand>(
+            'resolve_claude_command',
+            {
+              commandPath: command.path,
+              workingDir: activeWorktreePath,
+            }
+          )
+
+          const queuedMessage: QueuedMessage = {
+            id: generateId(),
+            message: resolved.content,
+            pendingImages: [],
+            pendingFiles: [],
+            pendingSkills: [],
+            pendingTextFiles: [],
+            model: selectedModelRef.current,
+            provider: selectedProviderRef.current,
+            executionMode: executionModeRef.current,
+            thinkingLevel: selectedThinkingLevelRef.current,
+            effortLevel:
+              useAdaptiveThinkingRef.current || isCodexBackendRef.current
+                ? selectedEffortLevelRef.current
+                : undefined,
+            mcpConfig: buildMcpConfigJson(
+              mcpServersDataRef.current ?? [],
+              enabledMcpServersRef.current
+            ),
+            commandAllowedTools: resolved.allowed_tools,
+            queuedAt: Date.now(),
+          }
+
+          const { isSending: checkIsSendingNow, enqueueMessage } =
+            useChatStore.getState()
+          if (checkIsSendingNow(activeSessionId)) {
+            enqueueMessage(activeSessionId, queuedMessage)
+          } else {
+            sendMessageNow(queuedMessage)
+          }
+
+          toast.dismiss(toastId)
+        } catch (error) {
+          toast.error(
+            `Failed to resolve /${command.name}: ${error instanceof Error ? error.message : String(error)}`,
+            { id: toastId }
+          )
+        }
+      })()
     },
     [activeSessionId, activeWorktreeId, activeWorktreePath, sendMessageNow]
   )

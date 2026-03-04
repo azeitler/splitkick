@@ -42,7 +42,7 @@ interface ChatInputProps {
   onSubmit: (e: React.FormEvent) => void
   onCancel: () => void
   onSwitchBackendWithTab?: () => void
-  onCommandExecute?: (commandName: string) => void
+  onCommandExecute?: (command: ClaudeCommand) => void
   onHasValueChange?: (hasValue: boolean) => void
   formRef: React.RefObject<HTMLFormElement | null>
   inputRef: React.RefObject<HTMLTextAreaElement | null>
@@ -911,7 +911,7 @@ export const ChatInput = memo(function ChatInput({
       setShowHint(true)
 
       // Notify parent to execute command
-      onCommandExecute?.(`/${command.name}`)
+      onCommandExecute?.(command)
     },
     [inputRef, onCommandExecute]
   )

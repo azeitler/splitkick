@@ -174,9 +174,14 @@ export function useMessageSending({
       setSelectedModel(activeSessionId, queuedMsg.model)
 
       const sessionApprovedTools = getApprovedTools(activeSessionId)
+      const mergedAllowedTools = [
+        ...GIT_ALLOWED_TOOLS,
+        ...(sessionApprovedTools.length > 0 ? sessionApprovedTools : []),
+        ...(queuedMsg.commandAllowedTools ?? []),
+      ]
       const allowedTools =
-        sessionApprovedTools.length > 0
-          ? [...GIT_ALLOWED_TOOLS, ...sessionApprovedTools]
+        mergedAllowedTools.length > 0
+          ? [...new Set(mergedAllowedTools)]
           : undefined
 
       const fullMessage = buildMessageWithRefs(queuedMsg)

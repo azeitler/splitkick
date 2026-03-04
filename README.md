@@ -20,12 +20,20 @@ For more information, take a look at [jean.build](https://jean.build).
 
 <table>
 <tr>
-<td><img src="screenshots/SCR-20260209-nigu.png" width="400" alt="Main Interface" /></td>
-<td><img src="screenshots/SCR-20260209-ninl.png" width="400" alt="Development Mode" /></td>
+<td><img src="screenshots/SCR-20260304-krym.png" width="400" alt="Screenshot 1" /></td>
+<td><img src="screenshots/SCR-20260304-ksgh.png" width="400" alt="Screenshot 2" /></td>
 </tr>
 <tr>
-<td><img src="screenshots/SCR-20260209-niug.png" width="400" alt="Diff View" /></td>
-<td><img src="screenshots/SCR-20260209-njel.png" width="400" alt="Plan Mode" /></td>
+<td><img src="screenshots/SCR-20260304-ksjn.png" width="400" alt="Screenshot 3" /></td>
+<td><img src="screenshots/SCR-20260304-ksnq.png" width="400" alt="Screenshot 4" /></td>
+</tr>
+<tr>
+<td><img src="screenshots/SCR-20260304-kstl.png" width="400" alt="Screenshot 5" /></td>
+<td><img src="screenshots/SCR-20260304-ktab.png" width="400" alt="Screenshot 6" /></td>
+</tr>
+<tr>
+<td><img src="screenshots/SCR-20260304-ktwr.png" width="400" alt="Screenshot 7" /></td>
+<td><img src="screenshots/SCR-20260304-kuhk.png" width="400" alt="Screenshot 8" /></td>
 </tr>
 </table>
 

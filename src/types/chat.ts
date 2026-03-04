@@ -667,6 +667,18 @@ export interface ClaudeCommand {
 }
 
 /**
+ * A resolved Claude command with interpolations expanded
+ */
+export interface ResolvedCommand {
+  /** Final message content after frontmatter stripping and interpolation resolution */
+  content: string
+  /** Additional allowed tools requested by the command frontmatter */
+  allowed_tools: string[]
+  /** Optional description from command frontmatter */
+  description?: string
+}
+
+/**
  * Represents a pending skill attachment before sending
  */
 export interface PendingSkill {
@@ -770,6 +782,8 @@ export interface QueuedMessage {
   effortLevel?: EffortLevel
   /** MCP config JSON to pass to CLI (snapshot at queue time) */
   mcpConfig?: string
+  /** Additional allowed tools from resolved slash command frontmatter */
+  commandAllowedTools?: string[]
   /** Backend to use for this message (snapshot at queue time) */
   backend?: Backend
   /** Timestamp when queued (for display ordering) */

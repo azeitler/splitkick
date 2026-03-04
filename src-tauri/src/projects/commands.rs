@@ -1,13 +1,15 @@
 use ignore::WalkBuilder;
 use once_cell::sync::Lazy;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
 use std::process::Stdio;
+use std::sync::mpsc;
 use std::sync::Mutex;
 use std::thread;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::DialogExt;
 use uuid::Uuid;
@@ -7810,6 +7812,137 @@ pub struct ClaudeCommand {
     pub description: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResolvedCommand {
+    pub content: String,
+    pub allowed_tools: Vec<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct CommandFrontmatter {
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default, rename = "allowed-tools")]
+    allowed_tools: Vec<String>,
+}
+
+fn split_frontmatter(content: &str) -> (Option<&str>, &str) {
+    let mut lines = content.split_inclusive('\n');
+    let Some(first_line) = lines.next() else {
+        return (None, content);
+    };
+
+    if first_line.trim() != "---" {
+        return (None, content);
+    }
+
+    let mut offset = first_line.len();
+    for line in lines {
+        let line_start = offset;
+        offset += line.len();
+        if line.trim() == "---" {
+            let frontmatter = &content[first_line.len()..line_start];
+            let body = &content[offset..];
+            return (Some(frontmatter), body);
+        }
+    }
+
+    (None, content)
+}
+
+fn parse_command_content(content: &str) -> (String, Option<String>, Vec<String>) {
+    let (frontmatter_raw, body) = split_frontmatter(content);
+    let fallback_description = body
+        .lines()
+        .find_map(|line| line.strip_prefix("# ").map(|s| s.trim().to_string()))
+        .filter(|s| !s.is_empty());
+
+    let Some(frontmatter_raw) = frontmatter_raw else {
+        return (body.to_string(), fallback_description, Vec::new());
+    };
+
+    let parsed = match serde_yaml::from_str::<CommandFrontmatter>(frontmatter_raw) {
+        Ok(frontmatter) => frontmatter,
+        Err(error) => {
+            log::warn!("Failed to parse command frontmatter: {error}");
+            return (body.to_string(), fallback_description, Vec::new());
+        }
+    };
+
+    let description = parsed.description.or(fallback_description);
+    (body.to_string(), description, parsed.allowed_tools)
+}
+
+fn run_interpolation_command(command: &str, working_dir: &str) -> Result<String, String> {
+    let (sender, receiver) = mpsc::channel();
+    let command = command.to_string();
+    let timeout_command = command.clone();
+    let working_dir = working_dir.to_string();
+
+    thread::spawn(move || {
+        let result = (|| -> Result<String, String> {
+            let output = silent_command("sh")
+                .args(["-lc", &command])
+                .current_dir(&working_dir)
+                .output()
+                .map_err(|error| format!("failed to run `{command}`: {error}"))?;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                let status = output
+                    .status
+                    .code()
+                    .map(|code| code.to_string())
+                    .unwrap_or_else(|| "terminated by signal".to_string());
+                let reason = if stderr.is_empty() {
+                    format!("exit status {status}")
+                } else {
+                    stderr
+                };
+                return Err(format!("`{command}` failed: {reason}"));
+            }
+
+            Ok(String::from_utf8_lossy(&output.stdout).to_string())
+        })();
+
+        let _ = sender.send(result);
+    });
+
+    receiver
+        .recv_timeout(Duration::from_secs(10))
+        .map_err(|_| format!("`{timeout_command}` timed out after 10s"))?
+}
+
+fn resolve_command_interpolations(content: &str, working_dir: &str) -> String {
+    static INTERPOLATION_REGEX: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r"!\`([^`]+)\`").expect("valid interpolation regex"));
+
+    let mut resolved = String::with_capacity(content.len());
+    let mut last_index = 0;
+
+    for captures in INTERPOLATION_REGEX.captures_iter(content) {
+        let Some(full_match) = captures.get(0) else {
+            continue;
+        };
+        let command = captures
+            .get(1)
+            .map(|capture| capture.as_str())
+            .unwrap_or_default();
+
+        resolved.push_str(&content[last_index..full_match.start()]);
+        let replacement = match run_interpolation_command(command, working_dir) {
+            Ok(output) => output,
+            Err(error) => format!("[command failed: {error}]"),
+        };
+        resolved.push_str(&replacement);
+        last_index = full_match.end();
+    }
+
+    resolved.push_str(&content[last_index..]);
+    resolved
+}
+
 /// List Claude CLI skills from ~/.claude/skills/
 /// Skills are directories containing a SKILL.md file
 #[tauri::command]
@@ -7927,12 +8060,9 @@ pub async fn list_claude_commands() -> Result<Vec<ClaudeCommand>, String> {
             continue;
         }
 
-        // Try to extract description from first line (if starts with #)
         let description = std::fs::read_to_string(&path).ok().and_then(|content| {
-            content
-                .lines()
-                .next()
-                .and_then(|line| line.strip_prefix("# ").map(|s| s.to_string()))
+            let (_, description, _) = parse_command_content(&content);
+            description
         });
 
         commands.push(ClaudeCommand {
@@ -7945,6 +8075,29 @@ pub async fn list_claude_commands() -> Result<Vec<ClaudeCommand>, String> {
     commands.sort_by(|a, b| a.name.cmp(&b.name));
     log::trace!("Found {} Claude CLI custom commands", commands.len());
     Ok(commands)
+}
+
+#[tauri::command]
+pub async fn resolve_claude_command(
+    command_path: String,
+    working_dir: String,
+) -> Result<ResolvedCommand, String> {
+    log::trace!("Resolving Claude command: {command_path}");
+
+    if !Path::new(&working_dir).exists() {
+        return Err(format!("Working directory does not exist: {working_dir}"));
+    }
+
+    let raw_content = std::fs::read_to_string(&command_path)
+        .map_err(|error| format!("Failed to read command file: {error}"))?;
+    let (body, description, allowed_tools) = parse_command_content(&raw_content);
+    let content = resolve_command_interpolations(&body, &working_dir);
+
+    Ok(ResolvedCommand {
+        content,
+        allowed_tools,
+        description,
+    })
 }
 
 // =============================================================================
