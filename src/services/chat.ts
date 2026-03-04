@@ -24,6 +24,7 @@ import {
 import { preferencesQueryKeys } from '@/services/preferences'
 import type { AppPreferences } from '@/types/preferences'
 import { useChatStore } from '@/store/chat-store'
+import { useUIStore } from '@/store/ui-store'
 import type { ReviewResponse, Worktree } from '@/types/projects'
 
 // Query keys for chat
@@ -554,7 +555,7 @@ export function useCloseSession() {
       logger.info('Session closed', { newActiveId })
       return newActiveId
     },
-    onSuccess: (_, { worktreeId, sessionId }) => {
+    onSuccess: (newActiveId, { worktreeId, sessionId }) => {
       queryClient.invalidateQueries({
         queryKey: chatQueryKeys.sessions(worktreeId),
       })
@@ -565,6 +566,11 @@ export function useCloseSession() {
 
       // Clear all session-scoped state
       useChatStore.getState().clearSessionState(sessionId)
+
+      // Switch to the new active session so the UI doesn't show a blank screen
+      if (newActiveId) {
+        useChatStore.getState().setActiveSession(worktreeId, newActiveId)
+      }
     },
     onError: error => {
       const message =
@@ -609,7 +615,7 @@ export function useArchiveSession() {
       logger.info('Session archived', { newActiveId })
       return newActiveId
     },
-    onSuccess: (_, { worktreeId, sessionId }) => {
+    onSuccess: (newActiveId, { worktreeId, sessionId }) => {
       queryClient.invalidateQueries({
         queryKey: chatQueryKeys.sessions(worktreeId),
       })
@@ -619,6 +625,11 @@ export function useArchiveSession() {
 
       // Clear all session-scoped state
       useChatStore.getState().clearSessionState(sessionId)
+
+      // Switch to the new active session so the UI doesn't show a blank screen
+      if (newActiveId) {
+        useChatStore.getState().setActiveSession(worktreeId, newActiveId)
+      }
     },
     onError: error => {
       const message = error instanceof Error ? error.message : String(error)
@@ -921,7 +932,8 @@ export function useCloseSessionOrWorktreeKeybinding(
 
   useEffect(() => {
     const handleCloseSessionOrWorktree = () => {
-      console.log('[CLOSE_LEGACY] useCloseSessionOrWorktreeKeybinding fired!')
+      // Skip when session modal is open — SessionChatModal handles CMD+W in that case
+      if (useUIStore.getState().sessionChatModalOpen) return
 
       // Check if confirmation is required
       const preferences = queryClient.getQueryData<AppPreferences>(
