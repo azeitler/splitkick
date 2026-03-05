@@ -396,6 +396,14 @@ export function useMessageSending({
       setSessionReviewing(activeSessionId, false)
       useChatStore.getState().clearPendingDigest(activeSessionId)
 
+      // Keep uncontrolled ChatInput state in sync for submit-button sends.
+      // Enter key path clears immediately in ChatInput; do the same here.
+      if (inputRef.current) {
+        inputRef.current.value = ''
+        inputRef.current.style.height = 'auto'
+        inputRef.current.dispatchEvent(new Event('input', { bubbles: true }))
+      }
+
       const { setQuestionsSkipped, setWaitingForInput } =
         useChatStore.getState()
       setQuestionsSkipped(activeSessionId, false)
