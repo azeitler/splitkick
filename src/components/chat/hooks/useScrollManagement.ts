@@ -6,8 +6,14 @@ import {
   useState,
 } from 'react'
 import type { RefObject } from 'react'
+import type { VirtualizedMessageListHandle } from '../VirtualizedMessageList'
+import type { ChatMessage } from '@/types/chat'
 
 interface UseScrollManagementOptions {
+  /** Messages array for finding findings index */
+  messages: ChatMessage[] | undefined
+  /** Ref to virtualized list for scrolling to specific message index */
+  virtualizedListRef: RefObject<VirtualizedMessageListHandle | null>
   /** Active worktree ID — used to scroll to bottom before paint on switch */
   activeWorktreeId: string | null
 }
@@ -21,10 +27,14 @@ interface UseScrollManagementReturn {
   areFindingsVisible: boolean
   /** Scroll to bottom with auto-scroll flag. Pass `true` for instant (no animation). */
   scrollToBottom: (instant?: boolean) => void
+  /** Mark scroll state as "at bottom" without performing any physical scroll. */
+  markAtBottom: () => void
   /** Scroll to findings element */
   scrollToFindings: () => void
   /** Handler for onScroll event */
   handleScroll: (e: React.UIEvent<HTMLDivElement>) => void
+  /** Callback when scroll-to-bottom is handled */
+  handleScrollToBottomHandled: () => void
   /** Begin a user-initiated keyboard scroll: cancels auto-scroll, blocks handleScroll updates */
   beginKeyboardScroll: () => void
   /** End a user-initiated keyboard scroll: unblocks handleScroll updates */
@@ -32,6 +42,8 @@ interface UseScrollManagementReturn {
 }
 
 export function useScrollManagement({
+  messages,
+  virtualizedListRef,
   activeWorktreeId,
 }: UseScrollManagementOptions): UseScrollManagementReturn {
   const scrollViewportRef = useRef<HTMLDivElement>(null)
@@ -93,6 +105,11 @@ export function useScrollManagement({
     }
   }, [])
 
+  // Handle scroll-to-bottom completion from VirtualizedMessageList
+  const handleScrollToBottomHandled = useCallback(() => {
+    isAtBottomRef.current = true
+    setIsAtBottom(true)
+  }, [])
 
   // Scroll to bottom helper
   // Pass instant=true for user-initiated actions (answering questions, approving plans)
@@ -151,6 +168,13 @@ export function useScrollManagement({
     }, 350)
   }, [])
 
+  // Mark scroll state as "at bottom" without performing any physical scroll.
+  // Used when sending a message so VirtualizedMessageList's gentle scrollIntoView
+  // handles the actual scrolling.
+  const markAtBottom = useCallback(() => {
+    isAtBottomRef.current = true
+    setIsAtBottom(true)
+  }, [])
 
   // Begin a user-initiated keyboard scroll.
   // Cancels any pending auto-scroll timeout AND keeps isAutoScrollingRef=true
@@ -179,21 +203,49 @@ export function useScrollManagement({
     }
   }, [])
 
-  // Scroll to findings element (all messages are always rendered)
+  // Scroll to findings helper
+  // First scroll to the message containing findings using virtualizer, then to the element.
   const scrollToFindings = useCallback(() => {
+    // First try to find the element directly (if already rendered)
     const findingsEl = scrollViewportRef.current?.querySelector(
       '[data-review-findings="unfixed"]'
     )
     if (findingsEl) {
       findingsEl.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      return
     }
-  }, [])
+
+    // If element not found, find which message has findings and scroll to it.
+    const msgs = messages ?? []
+    const msgWithFindings = msgs.findIndex(
+      msg => msg.role === 'assistant' && msg.content?.includes('<finding')
+    )
+    if (msgWithFindings >= 0 && virtualizedListRef.current) {
+      virtualizedListRef.current.scrollToIndex(msgWithFindings, {
+        align: 'start',
+      })
+
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current)
+      }
+      scrollTimeoutRef.current = setTimeout(() => {
+        const el = scrollViewportRef.current?.querySelector(
+          '[data-review-findings="unfixed"]'
+        )
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }
+      }, 100)
+    }
+  }, [messages, virtualizedListRef])
 
   return {
     scrollViewportRef,
     isAtBottom,
     areFindingsVisible,
     scrollToBottom,
+    markAtBottom,
+    handleScrollToBottomHandled,
     beginKeyboardScroll,
     endKeyboardScroll,
     scrollToFindings,
