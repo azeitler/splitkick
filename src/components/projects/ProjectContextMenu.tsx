@@ -20,7 +20,6 @@ import {
 import { isBaseSession, type Project } from '@/types/projects'
 import {
   useCreateBaseSession,
-  useCreateWorktree,
   useMoveItem,
   useOpenProjectOnGitHub,
   useOpenProjectWorktreesFolder,
@@ -32,6 +31,7 @@ import {
 } from '@/services/projects'
 import { usePreferences } from '@/services/preferences'
 import { useProjectsStore } from '@/store/projects-store'
+import { useUIStore } from '@/store/ui-store'
 import { getEditorLabel, getTerminalLabel } from '@/types/preferences'
 
 interface ProjectContextMenuProps {
@@ -43,7 +43,6 @@ export function ProjectContextMenu({
   project,
   children,
 }: ProjectContextMenuProps) {
-  const createWorktree = useCreateWorktree()
   const createBaseSession = useCreateBaseSession()
   const moveItem = useMoveItem()
   const removeProject = useRemoveProject()
@@ -54,7 +53,8 @@ export function ProjectContextMenu({
   const openInEditor = useOpenWorktreeInEditor()
   const { data: worktrees = [] } = useWorktrees(project.id)
   const { data: preferences } = usePreferences()
-  const { openProjectSettings } = useProjectsStore()
+  const { openProjectSettings, selectProject } = useProjectsStore()
+  const setNewWorktreeModalOpen = useUIStore(state => state.setNewWorktreeModalOpen)
   // Check if base session already exists
   const existingBaseSession = worktrees.find(isBaseSession)
   const isNested = project.parent_id !== undefined
@@ -82,7 +82,8 @@ export function ProjectContextMenu({
   }
 
   const handleNewWorktree = () => {
-    createWorktree.mutate({ projectId: project.id })
+    selectProject(project.id)
+    setNewWorktreeModalOpen(true)
   }
 
   const handleNewBaseSession = () => {

@@ -24,7 +24,7 @@ export function resolveApprovalLabel(
   const backend = mode === 'yolo' ? preferences.yolo_backend : preferences.build_backend
   const resolvedBackend = backend ?? preferences.default_backend ?? 'claude'
   const backendDefaultModel = resolvedBackend === 'codex'
-    ? (preferences.selected_codex_model ?? 'gpt-5.3-codex')
+    ? (preferences.selected_codex_model ?? 'gpt-5.4')
     : resolvedBackend === 'opencode'
       ? (preferences.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
       : (preferences.selected_model ?? null)

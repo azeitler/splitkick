@@ -487,7 +487,7 @@ export function ChatWindow({
 
   // Per-session model selection, falls back to preferences default (backend-aware)
   const defaultModel: string = isCodexBackend
-    ? (preferences?.selected_codex_model ?? 'gpt-5.3-codex')
+    ? (preferences?.selected_codex_model ?? 'gpt-5.4')
     : isOpencodeBackend
       ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
       : ((preferences?.selected_model as ClaudeModel) ?? DEFAULT_MODEL)
@@ -910,7 +910,7 @@ export function ChatWindow({
       const yoloBackend = (yoloBackendRef.current as Session['backend']) ?? undefined
       const yoloModel = yoloModelRef.current ??
         (yoloBackend === 'codex'
-          ? (preferences?.selected_codex_model ?? 'gpt-5.3-codex')
+          ? (preferences?.selected_codex_model ?? 'gpt-5.4')
           : yoloBackend === 'opencode'
             ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
             : selectedModelRef.current)
@@ -1059,7 +1059,7 @@ export function ChatWindow({
       const buildBackend = (buildBackendRef.current as Session['backend']) ?? undefined
       const buildModel = buildModelRef.current ??
         (buildBackend === 'codex'
-          ? (preferences?.selected_codex_model ?? 'gpt-5.3-codex')
+          ? (preferences?.selected_codex_model ?? 'gpt-5.4')
           : buildBackend === 'opencode'
             ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
             : selectedModelRef.current)
@@ -1275,7 +1275,7 @@ export function ChatWindow({
       const modeBackend = (modeBackendRef.current as Session['backend']) ?? undefined
       const modeModel = modeModelRef.current ??
         (modeBackend === 'codex'
-          ? (preferences?.selected_codex_model ?? 'gpt-5.3-codex')
+          ? (preferences?.selected_codex_model ?? 'gpt-5.4')
           : modeBackend === 'opencode'
             ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
             : selectedModelRef.current)

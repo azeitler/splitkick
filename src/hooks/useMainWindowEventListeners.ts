@@ -625,43 +625,67 @@ export function useMainWindowEventListeners() {
           // Silent failure - don't show toast to avoid interrupting workflow
         }),
 
-        // Real-time cache sync between native + web clients
-        listen<{ keys: string[] }>('cache:invalidate', event => {
-          const { keys } = event.payload
-          for (const key of keys) {
-            switch (key) {
-              case 'sessions':
-                queryClient.invalidateQueries({
-                  queryKey: chatQueryKeys.all,
-                })
-                break
-              case 'projects':
-                queryClient.invalidateQueries({
-                  queryKey: projectsQueryKeys.all,
-                })
-                break
-              case 'preferences':
-                queryClient.invalidateQueries({
-                  queryKey: ['preferences'],
-                })
-                break
-              case 'ui-state':
-                queryClient.invalidateQueries({
-                  queryKey: ['ui-state'],
-                })
-                break
-              case 'contexts':
-                queryClient.invalidateQueries({
-                  queryKey: ['contexts'],
-                })
-                // Also invalidate saved contexts list
-                queryClient.invalidateQueries({
-                  queryKey: ['saved-contexts'],
-                })
-                break
+        // Real-time cache sync between native + web clients.
+        // Debounce: collect keys over a 250ms window, then flush once.
+        // This coalesces rapid-fire events (e.g. bulk mutations) into a
+        // single invalidation wave instead of N separate ones.
+        (async () => {
+          const pendingKeys = new Set<string>()
+          let flushTimer: ReturnType<typeof setTimeout> | null = null
+
+          const flushInvalidations = () => {
+            flushTimer = null
+            for (const key of pendingKeys) {
+              switch (key) {
+                case 'sessions':
+                  queryClient.invalidateQueries({
+                    queryKey: chatQueryKeys.all,
+                  })
+                  break
+                case 'projects':
+                  queryClient.invalidateQueries({
+                    queryKey: projectsQueryKeys.all,
+                  })
+                  break
+                case 'preferences':
+                  queryClient.invalidateQueries({
+                    queryKey: ['preferences'],
+                  })
+                  break
+                case 'ui-state':
+                  queryClient.invalidateQueries({
+                    queryKey: ['ui-state'],
+                  })
+                  break
+                case 'contexts':
+                  queryClient.invalidateQueries({
+                    queryKey: ['contexts'],
+                  })
+                  queryClient.invalidateQueries({
+                    queryKey: ['saved-contexts'],
+                  })
+                  break
+              }
             }
+            pendingKeys.clear()
           }
-        }),
+
+          const unlisten = await listen<{ keys: string[] }>(
+            'cache:invalidate',
+            event => {
+              for (const key of event.payload.keys) pendingKeys.add(key)
+              if (flushTimer) clearTimeout(flushTimer)
+              flushTimer = setTimeout(flushInvalidations, 250)
+            }
+          )
+
+          // Return a cleanup function that clears the pending timer
+          // and unregisters the event listener
+          return () => {
+            if (flushTimer) clearTimeout(flushTimer)
+            unlisten()
+          }
+        })(),
       ])
 
       logger.debug(

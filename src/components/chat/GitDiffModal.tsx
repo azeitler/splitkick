@@ -22,6 +22,8 @@ import {
   X,
   Search,
   Undo2,
+  ChevronsUpDown,
+  PanelLeft,
 } from 'lucide-react'
 import {
   parsePatchFiles,
@@ -68,6 +70,7 @@ import {
   AlertDialogAction,
 } from '@/components/ui/alert-dialog'
 import { useTheme } from '@/hooks/use-theme'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { usePreferences } from '@/services/preferences'
 import { CommitsTabView } from './CommitsTabView'
 import {
@@ -203,13 +206,19 @@ export function GitDiffModal({
   const [diff, setDiff] = useState<GitDiff | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
-  const [diffStyle, setDiffStyle] = useState<DiffStyle>('split')
+  const [diffStyle, setDiffStyle] = useState<DiffStyle>(
+    window.innerWidth < 768 ? 'unified' : 'split'
+  )
   const [activeDiffType, setActiveDiffType] = useState<
     'uncommitted' | 'branch' | 'commits'
   >(diffRequest?.type ?? 'uncommitted')
   const dialogContentRef = useRef<HTMLDivElement>(null)
   const { theme } = useTheme()
+  const isMobile = useIsMobile()
   const { data: preferences } = usePreferences()
+
+  // On mobile, show file sidebar as an overlay panel toggled by a button
+  const [showMobileSidebar, setShowMobileSidebar] = useState(false)
 
   // Comment/selection state
   const [comments, setComments] = useState<DiffComment[]>([])
@@ -333,6 +342,7 @@ export function GitDiffModal({
       setSelectedFileIndex(0)
       setFileFilter('')
       setIsSwitching(false)
+      setShowMobileSidebar(false)
       if (switchTimeoutRef.current) {
         clearTimeout(switchTimeoutRef.current)
       }
@@ -591,6 +601,7 @@ export function GitDiffModal({
     setSelectedRange(null)
     setShowCommentInput(false)
     setIsSwitching(true)
+    setShowMobileSidebar(false)
 
     startTransition(() => {
       setSelectedFileIndex(index)
@@ -740,21 +751,21 @@ export function GitDiffModal({
             }
           }}
         >
-          <DialogTitle className="flex items-center gap-2 shrink-0">
+          <DialogTitle className="flex flex-wrap items-center gap-2 shrink-0 px-3 pt-3 sm:px-0 sm:pt-0">
             {showSwitcher ? (
               <div className="flex items-center bg-muted rounded-lg p-1">
                 <button
                   type="button"
                   onClick={() => handleSwitchDiffType('uncommitted')}
                   className={cn(
-                    'flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors',
+                    'flex items-center gap-1.5 px-2 sm:px-3 py-1 rounded-md text-xs font-medium transition-colors',
                     activeDiffType === 'uncommitted'
                       ? 'bg-background shadow-sm text-foreground'
                       : 'text-muted-foreground hover:text-foreground'
                   )}
                 >
                   <Pencil className="h-3.5 w-3.5" />
-                  Uncommitted
+                  <span className="hidden sm:inline">Uncommitted</span>
                   <span className="text-green-500">+{uncommittedAdded}</span>
                   <span className="text-red-500">-{uncommittedRemoved}</span>
                 </button>
@@ -762,14 +773,14 @@ export function GitDiffModal({
                   type="button"
                   onClick={() => handleSwitchDiffType('branch')}
                   className={cn(
-                    'flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors',
+                    'flex items-center gap-1.5 px-2 sm:px-3 py-1 rounded-md text-xs font-medium transition-colors',
                     activeDiffType === 'branch'
                       ? 'bg-background shadow-sm text-foreground'
                       : 'text-muted-foreground hover:text-foreground'
                   )}
                 >
                   <GitBranch className="h-3.5 w-3.5" />
-                  Branch
+                  <span className="hidden sm:inline">Branch</span>
                   <span className="text-green-500">+{branchAdded}</span>
                   <span className="text-red-500">-{branchRemoved}</span>
                 </button>
@@ -777,14 +788,14 @@ export function GitDiffModal({
                   type="button"
                   onClick={() => handleSwitchDiffType('commits')}
                   className={cn(
-                    'flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors',
+                    'flex items-center gap-1.5 px-2 sm:px-3 py-1 rounded-md text-xs font-medium transition-colors',
                     activeDiffType === 'commits'
                       ? 'bg-background shadow-sm text-foreground'
                       : 'text-muted-foreground hover:text-foreground'
                   )}
                 >
                   <GitCommitHorizontal className="h-3.5 w-3.5" />
-                  Commits
+                  <span className="hidden sm:inline">Commits</span>
                 </button>
               </div>
             ) : (
@@ -793,7 +804,7 @@ export function GitDiffModal({
                 {title}
               </>
             )}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               {/* View mode toggle */}
               <div className="flex items-center bg-muted rounded-lg p-1">
                 <Tooltip>
@@ -802,14 +813,14 @@ export function GitDiffModal({
                       type="button"
                       onClick={() => setDiffStyle('split')}
                       className={cn(
-                        'flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors',
+                        'flex items-center gap-1.5 px-2 sm:px-3 py-1 rounded-md text-xs font-medium transition-colors',
                         diffStyle === 'split'
                           ? 'bg-background shadow-sm text-foreground'
                           : 'text-muted-foreground hover:text-foreground'
                       )}
                     >
                       <Columns2 className="h-3.5 w-3.5" />
-                      Split
+                      <span className="hidden sm:inline">Split</span>
                     </button>
                   </TooltipTrigger>
                   <TooltipContent>Side-by-side view</TooltipContent>
@@ -820,14 +831,14 @@ export function GitDiffModal({
                       type="button"
                       onClick={() => setDiffStyle('unified')}
                       className={cn(
-                        'flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors',
+                        'flex items-center gap-1.5 px-2 sm:px-3 py-1 rounded-md text-xs font-medium transition-colors',
                         diffStyle === 'unified'
                           ? 'bg-background shadow-sm text-foreground'
                           : 'text-muted-foreground hover:text-foreground'
                       )}
                     >
                       <Rows3 className="h-3.5 w-3.5" />
-                      Stacked
+                      <span className="hidden sm:inline">Stacked</span>
                     </button>
                   </TooltipTrigger>
                   <TooltipContent>Unified view</TooltipContent>
@@ -840,26 +851,42 @@ export function GitDiffModal({
                     <button
                       type="button"
                       onClick={handleExecutePrompt}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-black text-white dark:bg-yellow-500 dark:text-black hover:bg-black/80 dark:hover:bg-yellow-400 rounded-md text-xs font-medium transition-colors"
+                      className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 bg-black text-white dark:bg-yellow-500 dark:text-black hover:bg-black/80 dark:hover:bg-yellow-400 rounded-md text-xs font-medium transition-colors"
                     >
                       <Play className="h-3.5 w-3.5" />
-                      Execute ({comments.length})
+                      <span className="hidden sm:inline">Execute</span> ({comments.length})
                     </button>
                   )}
                   {onAddToPrompt && (
                     <button
                       type="button"
                       onClick={handleAddToPrompt}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-black text-white dark:bg-yellow-500 dark:text-black hover:bg-black/80 dark:hover:bg-yellow-400 rounded-md text-xs font-medium transition-colors"
+                      className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 bg-black text-white dark:bg-yellow-500 dark:text-black hover:bg-black/80 dark:hover:bg-yellow-400 rounded-md text-xs font-medium transition-colors"
                     >
                       <Pencil className="h-3.5 w-3.5" />
-                      Add to prompt
+                      <span className="hidden sm:inline">Add to prompt</span>
                     </button>
                   )}
                 </div>
               )}
             </div>
             <div className="ml-auto flex items-center gap-1">
+              {/* Mobile sidebar toggle */}
+              {isMobile && hasFiles && activeDiffType !== 'commits' && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 shrink-0 p-0"
+                      onClick={() => setShowMobileSidebar(v => !v)}
+                    >
+                      <PanelLeft className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Toggle file list</TooltipContent>
+                </Tooltip>
+              )}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -951,165 +978,311 @@ export function GitDiffModal({
 
               {/* Flex container fills remaining space - only render when we have files */}
               {hasFiles && (
-                <ResizablePanelGroup
-                  direction="horizontal"
-                  className="flex-1 min-h-0 mt-2"
-                >
-                  {/* File sidebar */}
-                  <ResizablePanel defaultSize={25} minSize={15} maxSize={50}>
-                    <div
-                      ref={fileListRef}
-                      className={cn(
-                        'h-full overflow-y-auto transition-opacity duration-150',
-                        (isSwitching || isLoading) && 'opacity-60'
+                <div className="flex-1 min-h-0 mt-2 relative flex">
+                  {/* Mobile: file selector overlay */}
+                  {isMobile && showMobileSidebar && (
+                    <div className="absolute inset-0 z-20 bg-background flex flex-col">
+                      <div
+                        ref={fileListRef}
+                        className="flex-1 overflow-y-auto"
+                      >
+                        {flattenedFiles.length > 0 && (
+                          <div className="sticky top-0 z-10 bg-background border-b border-border pb-2">
+                            <div className="relative">
+                              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-[1em] w-[1em] text-muted-foreground pointer-events-none" />
+                              <input
+                                type="text"
+                                value={fileFilter}
+                                onChange={e => {
+                                  setFileFilter(e.target.value)
+                                  setSelectedFileIndex(0)
+                                }}
+                                placeholder="Filter files..."
+                                className="w-full bg-muted text-sm outline-none border border-border pl-7 pr-2 py-2.5 placeholder:text-muted-foreground focus:border-ring"
+                              />
+                            </div>
+                          </div>
+                        )}
+                        <div>
+                          {filteredFiles.map((file, index) => {
+                            const isSelected = index === selectedFileIndex
+                            const displayName =
+                              displayNameMap.get(file.key) ??
+                              getFilename(file.fileName)
+                            return (
+                              <button
+                                key={file.key}
+                                type="button"
+                                data-index={index}
+                                onClick={() => handleSelectFile(index)}
+                                className={cn(
+                                  'w-full flex items-center gap-2 px-3 py-2.5 text-left transition-colors',
+                                  'hover:bg-muted/50',
+                                  isSelected && 'bg-accent'
+                                )}
+                              >
+                                <FileText
+                                  className={cn(
+                                    'h-[1em] w-[1em] shrink-0',
+                                    getStatusColor(file.fileDiff.type)
+                                  )}
+                                />
+                                <span className="truncate flex-1 text-sm">
+                                  {displayName}
+                                </span>
+                                <div className="flex items-center gap-1 shrink-0 text-xs">
+                                  {file.additions > 0 && (
+                                    <span className="text-green-500">
+                                      +{file.additions}
+                                    </span>
+                                  )}
+                                  {file.deletions > 0 && (
+                                    <span className="text-red-500">
+                                      -{file.deletions}
+                                    </span>
+                                  )}
+                                </div>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Mobile: file name bar + full-width diff */}
+                  {isMobile && (
+                    <div className="flex-1 min-w-0 flex flex-col">
+                      {/* Current file indicator */}
+                      {selectedFile && (
+                        <button
+                          type="button"
+                          onClick={() => setShowMobileSidebar(v => !v)}
+                          className="flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground border-b border-border shrink-0"
+                        >
+                          <FileText
+                            className={cn(
+                              'h-3.5 w-3.5 shrink-0',
+                              getStatusColor(selectedFile.fileDiff.type)
+                            )}
+                          />
+                          <span className="truncate">
+                            {displayNameMap.get(selectedFile.key) ??
+                              getFilename(selectedFile.fileName)}
+                          </span>
+                          <span className="text-muted-foreground/60">
+                            {selectedFileIndex + 1}/{filteredFiles.length}
+                          </span>
+                          <ChevronsUpDown className="h-3 w-3 ml-auto shrink-0" />
+                        </button>
                       )}
-                    >
-                      {flattenedFiles.length > 0 && (
-                        <div className="sticky top-0 z-10 bg-background border-b border-border pb-2">
-                          <div className="relative">
-                            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-[1em] w-[1em] text-muted-foreground pointer-events-none" />
-                            <input
-                              type="text"
-                              value={fileFilter}
-                              onChange={e => {
-                                setFileFilter(e.target.value)
-                                setSelectedFileIndex(0)
-                              }}
-                              placeholder="Filter files..."
-                              className="w-full bg-muted text-sm outline-none border border-border pl-7 pr-2 py-2.5 placeholder:text-muted-foreground focus:border-ring"
+                      <div
+                        ref={scrollContainerRef}
+                        className={cn(
+                          'flex-1 min-h-0 overflow-y-auto transition-opacity duration-150',
+                          (isSwitching || isLoading) && 'opacity-60'
+                        )}
+                      >
+                        {selectedFile ? (
+                          <div className="px-1">
+                            <MemoizedFileDiff
+                              key={selectedFile.key}
+                              fileDiff={selectedFile.fileDiff}
+                              fileName={selectedFile.fileName}
+                              annotations={getAnnotationsForFile(
+                                selectedFile.fileName
+                              )}
+                              selectedLines={
+                                activeFileName === selectedFile.fileName
+                                  ? selectedRange
+                                  : null
+                              }
+                              themeType={resolvedThemeType}
+                              syntaxThemeDark={
+                                preferences?.syntax_theme_dark ?? 'vitesse-black'
+                              }
+                              syntaxThemeLight={
+                                preferences?.syntax_theme_light ?? 'github-light'
+                              }
+                              diffStyle={diffStyle}
+                              onLineSelected={getLineSelectedCallback(
+                                selectedFile.fileName
+                              )}
+                              onRemoveComment={handleRemoveComment}
                             />
                           </div>
-                        </div>
-                      )}
-                      <div>
-                        {filteredFiles.map((file, index) => {
-                          const isSelected = index === selectedFileIndex
-                          const displayName =
-                            displayNameMap.get(file.key) ??
-                            getFilename(file.fileName)
+                        ) : (
+                          <div className="flex items-center justify-center h-full text-muted-foreground">
+                            Select a file to view its diff
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
-                          const fileButton = (
-                            <button
-                              type="button"
-                              data-index={index}
-                              onClick={() => handleSelectFile(index)}
-                              className={cn(
-                                'w-full flex items-center gap-2 px-3 py-2 text-left transition-colors',
-                                'hover:bg-muted/50',
-                                isSelected && 'bg-accent'
-                              )}
-                            >
-                              <FileText
-                                className={cn(
-                                  'h-[1em] w-[1em] shrink-0',
-                                  getStatusColor(file.fileDiff.type)
-                                )}
-                              />
-                              <span className="truncate flex-1">
-                                {displayName}
-                              </span>
-                              <div className="flex items-center gap-1 shrink-0">
-                                {file.additions > 0 && (
-                                  <span className="text-green-500">
-                                    +{file.additions}
-                                  </span>
-                                )}
-                                {file.deletions > 0 && (
-                                  <span className="text-red-500">
-                                    -{file.deletions}
-                                  </span>
-                                )}
+                  {/* Desktop: resizable sidebar + diff panels */}
+                  {!isMobile && (
+                    <ResizablePanelGroup
+                      direction="horizontal"
+                      className="flex-1 min-h-0"
+                    >
+                      {/* File sidebar */}
+                      <ResizablePanel defaultSize={25} minSize={15} maxSize={50}>
+                        <div
+                          ref={fileListRef}
+                          className={cn(
+                            'h-full overflow-y-auto transition-opacity duration-150',
+                            (isSwitching || isLoading) && 'opacity-60'
+                          )}
+                        >
+                          {flattenedFiles.length > 0 && (
+                            <div className="sticky top-0 z-10 bg-background border-b border-border pb-2">
+                              <div className="relative">
+                                <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-[1em] w-[1em] text-muted-foreground pointer-events-none" />
+                                <input
+                                  type="text"
+                                  value={fileFilter}
+                                  onChange={e => {
+                                    setFileFilter(e.target.value)
+                                    setSelectedFileIndex(0)
+                                  }}
+                                  placeholder="Filter files..."
+                                  className="w-full bg-muted text-sm outline-none border border-border pl-7 pr-2 py-2.5 placeholder:text-muted-foreground focus:border-ring"
+                                />
                               </div>
-                            </button>
-                          )
+                            </div>
+                          )}
+                          <div>
+                            {filteredFiles.map((file, index) => {
+                              const isSelected = index === selectedFileIndex
+                              const displayName =
+                                displayNameMap.get(file.key) ??
+                                getFilename(file.fileName)
 
-                          return activeDiffType === 'uncommitted' ? (
-                            <ContextMenu key={file.key}>
-                              <Tooltip>
-                                <ContextMenuTrigger asChild>
+                              const fileButton = (
+                                <button
+                                  type="button"
+                                  data-index={index}
+                                  onClick={() => handleSelectFile(index)}
+                                  className={cn(
+                                    'w-full flex items-center gap-2 px-3 py-2 text-left transition-colors',
+                                    'hover:bg-muted/50',
+                                    isSelected && 'bg-accent'
+                                  )}
+                                >
+                                  <FileText
+                                    className={cn(
+                                      'h-[1em] w-[1em] shrink-0',
+                                      getStatusColor(file.fileDiff.type)
+                                    )}
+                                  />
+                                  <span className="truncate flex-1">
+                                    {displayName}
+                                  </span>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    {file.additions > 0 && (
+                                      <span className="text-green-500">
+                                        +{file.additions}
+                                      </span>
+                                    )}
+                                    {file.deletions > 0 && (
+                                      <span className="text-red-500">
+                                        -{file.deletions}
+                                      </span>
+                                    )}
+                                  </div>
+                                </button>
+                              )
+
+                              return activeDiffType === 'uncommitted' ? (
+                                <ContextMenu key={file.key}>
+                                  <Tooltip>
+                                    <ContextMenuTrigger asChild>
+                                      <TooltipTrigger asChild>
+                                        {fileButton}
+                                      </TooltipTrigger>
+                                    </ContextMenuTrigger>
+                                    <TooltipContent>{file.fileName}</TooltipContent>
+                                  </Tooltip>
+                                  <ContextMenuContent className="w-48">
+                                    <ContextMenuItem
+                                      variant="destructive"
+                                      onSelect={() =>
+                                        setRevertTarget({
+                                          fileName: file.fileName,
+                                          fileStatus: diffTypeToStatus(
+                                            file.fileDiff.type
+                                          ),
+                                        })
+                                      }
+                                    >
+                                      <Undo2 className="mr-2 h-4 w-4" />
+                                      Revert File
+                                    </ContextMenuItem>
+                                  </ContextMenuContent>
+                                </ContextMenu>
+                              ) : (
+                                <Tooltip key={file.key}>
                                   <TooltipTrigger asChild>
                                     {fileButton}
                                   </TooltipTrigger>
-                                </ContextMenuTrigger>
-                                <TooltipContent>{file.fileName}</TooltipContent>
-                              </Tooltip>
-                              <ContextMenuContent className="w-48">
-                                <ContextMenuItem
-                                  variant="destructive"
-                                  onSelect={() =>
-                                    setRevertTarget({
-                                      fileName: file.fileName,
-                                      fileStatus: diffTypeToStatus(
-                                        file.fileDiff.type
-                                      ),
-                                    })
-                                  }
-                                >
-                                  <Undo2 className="mr-2 h-4 w-4" />
-                                  Revert File
-                                </ContextMenuItem>
-                              </ContextMenuContent>
-                            </ContextMenu>
+                                  <TooltipContent>{file.fileName}</TooltipContent>
+                                </Tooltip>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      </ResizablePanel>
+
+                      <ResizableHandle />
+
+                      {/* Main content area */}
+                      <ResizablePanel defaultSize={75} minSize={50}>
+                        <div
+                          ref={scrollContainerRef}
+                          className={cn(
+                            'h-full min-w-0 overflow-y-auto transition-opacity duration-150',
+                            (isSwitching || isLoading) && 'opacity-60'
+                          )}
+                        >
+                          {selectedFile ? (
+                            <div className="px-2">
+                              <MemoizedFileDiff
+                                key={selectedFile.key}
+                                fileDiff={selectedFile.fileDiff}
+                                fileName={selectedFile.fileName}
+                                annotations={getAnnotationsForFile(
+                                  selectedFile.fileName
+                                )}
+                                selectedLines={
+                                  activeFileName === selectedFile.fileName
+                                    ? selectedRange
+                                    : null
+                                }
+                                themeType={resolvedThemeType}
+                                syntaxThemeDark={
+                                  preferences?.syntax_theme_dark ?? 'vitesse-black'
+                                }
+                                syntaxThemeLight={
+                                  preferences?.syntax_theme_light ?? 'github-light'
+                                }
+                                diffStyle={diffStyle}
+                                onLineSelected={getLineSelectedCallback(
+                                  selectedFile.fileName
+                                )}
+                                onRemoveComment={handleRemoveComment}
+                              />
+                            </div>
                           ) : (
-                            <Tooltip key={file.key}>
-                              <TooltipTrigger asChild>
-                                {fileButton}
-                              </TooltipTrigger>
-                              <TooltipContent>{file.fileName}</TooltipContent>
-                            </Tooltip>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  </ResizablePanel>
-
-                  <ResizableHandle />
-
-                  {/* Main content area */}
-                  <ResizablePanel defaultSize={75} minSize={50}>
-                    <div
-                      ref={scrollContainerRef}
-                      className={cn(
-                        'h-full min-w-0 overflow-y-auto transition-opacity duration-150',
-                        (isSwitching || isLoading) && 'opacity-60'
-                      )}
-                    >
-                      {selectedFile ? (
-                        <div className="px-2">
-                          <MemoizedFileDiff
-                            key={selectedFile.key}
-                            fileDiff={selectedFile.fileDiff}
-                            fileName={selectedFile.fileName}
-                            annotations={getAnnotationsForFile(
-                              selectedFile.fileName
-                            )}
-                            selectedLines={
-                              activeFileName === selectedFile.fileName
-                                ? selectedRange
-                                : null
-                            }
-                            themeType={resolvedThemeType}
-                            syntaxThemeDark={
-                              preferences?.syntax_theme_dark ?? 'vitesse-black'
-                            }
-                            syntaxThemeLight={
-                              preferences?.syntax_theme_light ?? 'github-light'
-                            }
-                            diffStyle={diffStyle}
-                            onLineSelected={getLineSelectedCallback(
-                              selectedFile.fileName
-                            )}
-                            onRemoveComment={handleRemoveComment}
-                          />
+                            <div className="flex items-center justify-center h-full text-muted-foreground">
+                              Select a file to view its diff
+                            </div>
+                          )}
                         </div>
-                      ) : (
-                        <div className="flex items-center justify-center h-full text-muted-foreground">
-                          Select a file to view its diff
-                        </div>
-                      )}
-                    </div>
-                  </ResizablePanel>
-                </ResizablePanelGroup>
+                      </ResizablePanel>
+                    </ResizablePanelGroup>
+                  )}
+                </div>
               )}
             </>
           )}

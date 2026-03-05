@@ -95,6 +95,29 @@ fn now() -> u64 {
         .as_secs()
 }
 
+/// Find the nearest non-archived session after removing an item at `removed_index`.
+/// Preference order: left neighbor(s) first, then right neighbor(s).
+fn find_neighbor_non_archived_session_id(
+    sessions: &[Session],
+    removed_index: usize,
+) -> Option<String> {
+    // Search left side first (closest to farthest)
+    for i in (0..removed_index).rev() {
+        if sessions.get(i).is_some_and(|s| s.archived_at.is_none()) {
+            return sessions.get(i).map(|s| s.id.clone());
+        }
+    }
+
+    // Then search right side (closest to farthest)
+    for i in removed_index..sessions.len() {
+        if sessions.get(i).is_some_and(|s| s.archived_at.is_none()) {
+            return sessions.get(i).map(|s| s.id.clone());
+        }
+    }
+
+    None
+}
+
 fn emit_sessions_cache_invalidation(app: &AppHandle) {
     if let Err(e) = app.emit_all(
         "cache:invalidate",
@@ -625,16 +648,31 @@ pub async fn close_session(
 
     // Now atomically modify the sessions file
     let new_active = with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
+        // Find index before removal to support deterministic neighbor selection.
+        let session_index = sessions.sessions.iter().position(|s| s.id == session_id);
+
         // Remove the session
         sessions.sessions.retain(|s| s.id != session_id);
 
-        // Clear active if the closed session was active (frontend will set the new active)
+        // If we closed the active session, select nearest visible tab: left then right.
         if sessions.active_session_id.as_deref() == Some(&session_id) {
-            sessions.active_session_id = None;
+            sessions.active_session_id = match session_index {
+                Some(idx) => find_neighbor_non_archived_session_id(&sessions.sessions, idx),
+                None => sessions
+                    .sessions
+                    .iter()
+                    .find(|s| s.archived_at.is_none())
+                    .map(|s| s.id.clone()),
+            };
         }
 
-        // Ensure at least one session exists
-        if sessions.sessions.is_empty() {
+        // Ensure at least one non-archived session exists
+        let non_archived_count = sessions
+            .sessions
+            .iter()
+            .filter(|s| s.archived_at.is_none())
+            .count();
+        if non_archived_count == 0 {
             let default_session = Session::default_session_with_backend(fallback_backend.clone());
             sessions.active_session_id = Some(default_session.id.clone());
             sessions.sessions.push(default_session);
@@ -1168,7 +1206,32 @@ pub async fn set_session_last_opened(app: AppHandle, session_id: String) -> Resu
         save_metadata(&app, &metadata)?;
     }
 
-    emit_sessions_cache_invalidation(&app);
+    Ok(())
+}
+
+/// Bulk-update last_opened_at for multiple sessions in a single call.
+#[tauri::command]
+pub async fn set_sessions_last_opened_bulk(
+    app: AppHandle,
+    session_ids: Vec<String>,
+) -> Result<(), String> {
+    log::trace!(
+        "Bulk setting last_opened_at for {} sessions",
+        session_ids.len()
+    );
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    for session_id in &session_ids {
+        if let Ok(Some(mut metadata)) = load_metadata(&app, session_id) {
+            metadata.last_opened_at = Some(now);
+            save_metadata(&app, &metadata)?;
+        }
+    }
+
     Ok(())
 }
 
@@ -1339,12 +1402,15 @@ pub async fn send_chat_message(
         sessions = load_sessions(&app, &worktree_path, &worktree_id)?;
     }
 
-    // Notify all clients that a message is being sent (for real-time sync)
+    // Notify all clients that a message is being sent (for real-time sync).
+    // Include user_message so cross-client viewers can show it immediately
+    // without refetching (avoids race with optimistic updates).
     if let Err(e) = app.emit_all(
         "chat:sending",
         &serde_json::json!({
             "session_id": session_id,
             "worktree_id": worktree_id,
+            "user_message": message,
         }),
     ) {
         log::error!("Failed to emit chat:sending event: {e}");
@@ -5236,5 +5302,39 @@ my-disabled: /usr/bin/disabled (STDIO) - disabled";
         let output = "Checking MCP server health...\n\n";
         let statuses = parse_mcp_list_output(output);
         assert!(statuses.is_empty());
+    }
+
+    #[test]
+    fn test_find_neighbor_non_archived_session_id_prefers_left() {
+        let mut s1 = Session::new("Session 1".to_string(), 0, Backend::Claude);
+        s1.id = "s1".to_string();
+        let mut s2 = Session::new("Session 2".to_string(), 1, Backend::Claude);
+        s2.id = "s2".to_string();
+        let mut s3 = Session::new("Session 3".to_string(), 2, Backend::Claude);
+        s3.id = "s3".to_string();
+        let mut s4 = Session::new("Session 4".to_string(), 3, Backend::Claude);
+        s4.id = "s4".to_string();
+
+        // Simulate deleting s3 (index 2): remaining list is [s1, s2, s4], removed_index=2.
+        let remaining = vec![s1, s2, s4];
+        let selected = find_neighbor_non_archived_session_id(&remaining, 2);
+        assert_eq!(selected.as_deref(), Some("s2"));
+    }
+
+    #[test]
+    fn test_find_neighbor_non_archived_session_id_falls_back_right() {
+        let mut s1 = Session::new("Session 1".to_string(), 0, Backend::Claude);
+        s1.id = "s1".to_string();
+        s1.archived_at = Some(1);
+        let mut s2 = Session::new("Session 2".to_string(), 1, Backend::Claude);
+        s2.id = "s2".to_string();
+        s2.archived_at = Some(1);
+        let mut s3 = Session::new("Session 3".to_string(), 2, Backend::Claude);
+        s3.id = "s3".to_string();
+
+        // Simulate deleting first session: remaining list is [s2(archived), s3], removed_index=0.
+        let remaining = vec![s2, s3];
+        let selected = find_neighbor_non_archived_session_id(&remaining, 0);
+        assert_eq!(selected.as_deref(), Some("s3"));
     }
 }

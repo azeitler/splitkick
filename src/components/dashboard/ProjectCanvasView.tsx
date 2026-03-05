@@ -46,7 +46,6 @@ import {
   useJeanConfig,
   isTauri,
   useCreateBaseSession,
-  useCreateWorktree,
   useOpenProjectOnGitHub,
   useOpenProjectWorktreesFolder,
   useOpenWorktreeInEditor,
@@ -495,7 +494,6 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   const isListLayout = canvasLayout === 'list'
 
   // Project action mutations
-  const createWorktree = useCreateWorktree()
   const createBaseSession = useCreateBaseSession()
   const removeProject = useRemoveProject()
   const openOnGitHub = useOpenProjectOnGitHub()
@@ -1827,9 +1825,10 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                   </DropdownMenuItem>
 
                   <DropdownMenuItem
-                    onSelect={() =>
-                      createWorktree.mutate({ projectId })
-                    }
+                    onSelect={() => {
+                      useProjectsStore.getState().selectProject(projectId)
+                      useUIStore.getState().setNewWorktreeModalOpen(true)
+                    }}
                   >
                     <Plus className="h-4 w-4" />
                     New Worktree

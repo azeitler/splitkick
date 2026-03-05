@@ -196,17 +196,40 @@ export function UnreadSessionsDrawer({
     [groupedItems]
   )
 
+  const markSessionsReadOptimistically = useCallback(
+    (sessionIds: string[]) => {
+      const now = Math.floor(Date.now() / 1000)
+      queryClient.setQueryData(['all-sessions'], old => {
+        if (!old) return old
+        const data = old as { entries?: { sessions?: Session[] }[] }
+        if (!data.entries) return old
+        return {
+          ...data,
+          entries: data.entries.map(entry => ({
+            ...entry,
+            sessions: (entry.sessions ?? []).map(session =>
+              sessionIds.includes(session.id)
+                ? { ...session, last_opened_at: now }
+                : session
+            ),
+          })),
+        }
+      })
+    },
+    [queryClient]
+  )
+
   const handleMarkAllRead = useCallback(async () => {
     const ids = unreadItems.map(item => item.session.id)
-    await Promise.all(
-      ids.map(id => invoke('set_session_last_opened', { sessionId: id }))
-    )
+    markSessionsReadOptimistically(ids)
+    await invoke('set_sessions_last_opened_bulk', { sessionIds: ids })
     queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
     window.dispatchEvent(new CustomEvent('session-opened'))
-  }, [unreadItems, queryClient])
+  }, [unreadItems, queryClient, markSessionsReadOptimistically])
 
   const handleMarkOneRead = useCallback(
     async (item: UnreadItem) => {
+      markSessionsReadOptimistically([item.session.id])
       await invoke('set_session_last_opened', {
         sessionId: item.session.id,
       })
@@ -218,7 +241,7 @@ export function UnreadSessionsDrawer({
         return Math.min(i, newTotal - 1)
       })
     },
-    [queryClient, flatItems.length]
+    [queryClient, flatItems.length, markSessionsReadOptimistically]
   )
 
   const handleSelect = useCallback(
@@ -248,6 +271,7 @@ export function UnreadSessionsDrawer({
       }
 
       setActiveSession(item.worktreeId, item.session.id)
+      markSessionsReadOptimistically([item.session.id])
       onOpenChange(false)
 
       if (onProjectCanvas) {
@@ -275,7 +299,7 @@ export function UnreadSessionsDrawer({
         }
       }
     },
-    [onOpenChange]
+    [onOpenChange, markSessionsReadOptimistically]
   )
 
   const handleKeyDown = useCallback(

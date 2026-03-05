@@ -127,7 +127,7 @@ export function useSessions(
     enabled: !!worktreeId && !!worktreePath,
     staleTime: 1000 * 60 * 5, // 5 minutes - enables instant tab bar rendering from cache
     gcTime: 1000 * 60 * 5,
-    refetchOnMount: 'always', // Catch status changes (running→completed, etc.) on re-mount
+    refetchOnMount: true, // Respects staleTime; status changes pushed via streaming/cache:invalidate events
   })
 }
 
@@ -337,9 +337,9 @@ export function useSession(
     enabled: !!sessionId && !!worktreeId && !!worktreePath,
     staleTime: 1000 * 60 * 5, // 5 minutes - enables instant session switching from cache
     gcTime: 1000 * 60 * 5,
-    // Always refetch when session is opened/focused to catch background YOLO completions
-    // Cache is still used for instant display while refetch happens in background
-    refetchOnMount: 'always',
+    // Respects staleTime; cross-client sync handled by cache:invalidate broadcast
+    // from Rust after send_chat_message completes (JSONL fully written).
+    refetchOnMount: true,
   })
 }
 

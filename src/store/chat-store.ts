@@ -30,7 +30,7 @@ export type { ClaudeModel, CodexModel }
 export const DEFAULT_MODEL: ClaudeModel = 'opus'
 
 /** Default Codex model */
-export const DEFAULT_CODEX_MODEL: CodexModel = 'gpt-5.3-codex'
+export const DEFAULT_CODEX_MODEL: CodexModel = 'gpt-5.4'
 
 /** Default thinking level */
 export const DEFAULT_THINKING_LEVEL: ThinkingLevel = 'off'
@@ -225,7 +225,11 @@ interface ChatUIState {
   setPendingMagicCommand: (cmd: { command: string } | null) => void
 
   // Actions - Session management
-  setActiveSession: (worktreeId: string, sessionId: string) => void
+  setActiveSession: (
+    worktreeId: string,
+    sessionId: string,
+    options?: { markOpened?: boolean }
+  ) => void
   getActiveSession: (worktreeId: string) => string | undefined
 
   // Actions - AI Review results management (session-scoped)
@@ -597,7 +601,7 @@ export const useChatStore = create<ChatUIState>()(
       pendingMagicCommand: null,
 
       // Session management
-      setActiveSession: (worktreeId, sessionId) => {
+      setActiveSession: (worktreeId, sessionId, options) => {
         set(
           state => ({
             activeSessionIds: {
@@ -614,12 +618,14 @@ export const useChatStore = create<ChatUIState>()(
           'setActiveSession'
         )
 
-        // Fire-and-forget: update last_opened_at on the backend
-        invoke('set_session_last_opened', { sessionId })
-          .then(() =>
-            window.dispatchEvent(new CustomEvent('session-opened'))
-          )
-          .catch(() => undefined)
+        if (options?.markOpened !== false) {
+          // Fire-and-forget: update last_opened_at on the backend
+          invoke('set_session_last_opened', { sessionId })
+            .then(() =>
+              window.dispatchEvent(new CustomEvent('session-opened'))
+            )
+            .catch(() => undefined)
+        }
       },
 
       getActiveSession: worktreeId => get().activeSessionIds[worktreeId],

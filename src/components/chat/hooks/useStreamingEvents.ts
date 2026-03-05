@@ -133,16 +133,44 @@ export default function useStreamingEvents({
     const unlistenSending = listen<{
       session_id: string
       worktree_id: string
+      user_message: string
     }>('chat:sending', event => {
-      const { session_id, worktree_id: wtId } = event.payload
+      const { session_id, worktree_id: wtId, user_message } = event.payload
       addSendingSession(session_id)
       // Invalidate sessions list so non-sender windows update metadata.
-      // IMPORTANT: Do NOT invalidate individual session queries here — it races
-      // with the mutation's optimistic updates and can overwrite them with stale
-      // JSONL data, causing duplicate/mismatched messages.
       queryClient.invalidateQueries({
         queryKey: chatQueryKeys.sessions(wtId),
       })
+      // Add the user message to the session cache so cross-client viewers
+      // see it immediately. Skip if this client already has the message
+      // (the sender added it via onMutate optimistic update).
+      if (user_message) {
+        queryClient.setQueryData<Session>(
+          chatQueryKeys.session(session_id),
+          old => {
+            if (!old) return old
+            const lastMsg = old.messages.at(-1)
+            // Skip if the last message already matches (sender's optimistic update)
+            if (lastMsg?.role === 'user' && lastMsg.content === user_message) {
+              return old
+            }
+            return {
+              ...old,
+              messages: [
+                ...old.messages,
+                {
+                  id: `sending-${session_id}-${Date.now()}`,
+                  session_id,
+                  role: 'user' as const,
+                  content: user_message,
+                  timestamp: Math.floor(Date.now() / 1000),
+                  tool_calls: [],
+                },
+              ],
+            }
+          }
+        )
+      }
     })
 
     const unlistenChunk = listen<ChunkEvent>('chat:chunk', event => {
@@ -785,6 +813,11 @@ export default function useStreamingEvents({
           queryKey: chatQueryKeys.sessions(worktreeId),
         })
         queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
+        // Invalidate individual session so cross-client viewers get the
+        // complete conversation (user message + assistant response).
+        queryClient.invalidateQueries({
+          queryKey: chatQueryKeys.session(sessionId),
+        })
       }
 
       if (persistencePromise) {

@@ -116,9 +116,8 @@ export function usePlanDialogApproval({
           }
         )
 
-        queryClient.invalidateQueries({
-          queryKey: chatQueryKeys.sessions(activeWorktreeId),
-        })
+        // Backend's emit_cache_invalidation will trigger the eventual refetch.
+        // Don't invalidate here — races with backend mutations.
       }
 
       // Clear Zustand waiting state so the queue processor can process the message

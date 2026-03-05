@@ -6,6 +6,7 @@ import {
   useWsAuthError,
   preloadInitialData,
   setAppDataDir,
+  hasPreloadedData,
   type InitialData,
 } from '@/lib/transport'
 import { isNativeApp } from '@/lib/environment'
@@ -562,9 +563,12 @@ function App() {
     }
     invoke<ResumableSession[]>('check_resumable_sessions')
       .then(resumable => {
-        // Always invalidate — recovery may have changed Running → Crashed/Completed
-        // even when no sessions are resumable
-        queryClient.invalidateQueries({ queryKey: chatQueryKeys.all })
+        // Invalidate session data to catch Running → Crashed/Completed transitions,
+        // but skip if data was just seeded from /api/init (web mode) to avoid a
+        // redundant refetch storm.
+        if (!hasPreloadedData()) {
+          queryClient.invalidateQueries({ queryKey: chatQueryKeys.all })
+        }
 
         // Clear any stale sending states from a previous app session.
         // On fresh startup sendingSessionIds should be empty, but if the store

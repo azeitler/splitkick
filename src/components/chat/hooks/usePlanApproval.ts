@@ -110,10 +110,10 @@ export function usePlanApproval({
           }
         )
 
-        // Invalidate sessions list so canvas cards update (after optimistic update)
-        queryClient.invalidateQueries({
-          queryKey: chatQueryKeys.sessions(worktreeId),
-        })
+        // Backend's emit_cache_invalidation (from mark_plan_approved and
+        // update_session_state) will trigger the eventual refetch with correct data.
+        // Don't invalidate here — the refetch races with backend mutations and can
+        // overwrite the optimistic update with stale waiting_for_input: true.
       }
 
       setExecutionMode(sessionId, 'build')
@@ -236,10 +236,8 @@ export function usePlanApproval({
           }
         )
 
-        // Invalidate sessions list so canvas cards update (after optimistic update)
-        queryClient.invalidateQueries({
-          queryKey: chatQueryKeys.sessions(worktreeId),
-        })
+        // Backend's emit_cache_invalidation will trigger the eventual refetch.
+        // Don't invalidate here — races with backend mutations.
       }
 
       setExecutionMode(sessionId, 'yolo')

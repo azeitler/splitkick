@@ -170,7 +170,7 @@ function getDefaultModelForBackend(
   preferences: AppPreferences | undefined
 ): string {
   if (backend === 'codex') {
-    return preferences?.selected_codex_model ?? 'gpt-5.3-codex'
+    return preferences?.selected_codex_model ?? 'gpt-5.4'
   }
   if (backend === 'opencode') {
     return preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex'

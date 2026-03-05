@@ -203,10 +203,18 @@ pub fn build_codex_args(
     args.push("--cd".to_string());
     args.push(working_dir.to_string_lossy().to_string());
 
-    // Model
+    // Model (only gpt-5.4-fast enables the fast service tier)
     if let Some(m) = model {
+        let (actual_model, is_fast) = match m {
+            "gpt-5.4-fast" => ("gpt-5.4", true),
+            other => (other.strip_suffix("-fast").unwrap_or(other), false),
+        };
         args.push("--model".to_string());
-        args.push(m.to_string());
+        args.push(actual_model.to_string());
+        if is_fast {
+            args.push("-c".to_string());
+            args.push("service_tier=\"fast\"".to_string());
+        }
     }
 
     // Permission mode mapping
@@ -2603,6 +2611,54 @@ pub fn execute_one_shot_codex(
     log::trace!("Codex one-shot stdout length: {} bytes", stdout.len());
 
     extract_codex_structured_output(&stdout)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_codex_args;
+    use std::path::Path;
+
+    #[test]
+    fn gpt_5_4_fast_enables_fast_service_tier() {
+        let (args, _) = build_codex_args(
+            Path::new("/tmp"),
+            None,
+            Some("gpt-5.4-fast"),
+            Some("plan"),
+            None,
+            false,
+            &[],
+            None,
+            false,
+            None,
+        );
+
+        assert!(args.windows(2).any(|w| w == ["--model", "gpt-5.4"]));
+        assert!(args
+            .windows(2)
+            .any(|w| w == ["-c", "service_tier=\"fast\""]));
+    }
+
+    #[test]
+    fn deprecated_fast_models_do_not_enable_fast_service_tier() {
+        let (args, _) = build_codex_args(
+            Path::new("/tmp"),
+            None,
+            Some("gpt-5.3-fast"),
+            Some("plan"),
+            None,
+            false,
+            &[],
+            None,
+            false,
+            None,
+        );
+
+        assert!(args.windows(2).any(|w| w == ["--model", "gpt-5.3"]));
+        assert!(!args
+            .windows(2)
+            .any(|w| w == ["-c", "service_tier=\"fast\""]));
+    }
 }
 
 /// Parse Codex NDJSON output to extract structured JSON from --output-schema response.

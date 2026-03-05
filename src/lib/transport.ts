@@ -222,6 +222,7 @@ class WsTransport {
   >()
   private reconnectAttempt = 0
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private connectWatchdog: ReturnType<typeof setTimeout> | null = null
   private queue: { data: string; resolve: () => void }[] = []
   private _connected = false
   private _connecting = false
@@ -333,8 +334,22 @@ class WsTransport {
     const url = `${protocol}//${host}/ws?token=${encodeURIComponent(token)}`
 
     this.ws = new WebSocket(url)
+    this.clearConnectWatchdog()
+    this.connectWatchdog = setTimeout(() => {
+      if (this.ws?.readyState === WebSocket.CONNECTING) {
+        console.warn(
+          '[WsTransport] WebSocket connect watchdog fired, forcing reconnect'
+        )
+        try {
+          this.ws.close()
+        } catch {
+          // Ignore close errors; reconnect logic handles recovery.
+        }
+      }
+    }, WsTransport.CONNECT_TIMEOUT)
 
     this.ws.onopen = () => {
+      this.clearConnectWatchdog()
       this.setConnected(true)
       this.reconnectAttempt = 0
 
@@ -356,6 +371,8 @@ class WsTransport {
     }
 
     this.ws.onclose = () => {
+      this.clearConnectWatchdog()
+      this.ws = null
       this.setConnected(false)
 
       // Reject all pending command promises immediately — the server
@@ -394,6 +411,8 @@ class WsTransport {
   ])
   private static readonly LONG_TIMEOUT = 10 * 60_000
   private static readonly DEFAULT_TIMEOUT = 60_000
+  private static readonly CONNECT_TIMEOUT = 12_000
+  private static readonly MAX_QUEUE_SIZE = 500
 
   /** Call a backend command over WebSocket. */
   async invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
@@ -410,6 +429,11 @@ class WsTransport {
       : WsTransport.DEFAULT_TIMEOUT
 
     return new Promise<T>((resolve, reject) => {
+      if (this._authError) {
+        reject(new Error(this._authError))
+        return
+      }
+
       const timeout = setTimeout(() => {
         this.pending.delete(id)
         reject(new Error(`Command '${command}' timed out after ${timeoutMs / 1000}s`))
@@ -424,6 +448,18 @@ class WsTransport {
       if (this.ws?.readyState === WebSocket.OPEN) {
         this.ws.send(data)
       } else {
+        if (this.queue.length >= WsTransport.MAX_QUEUE_SIZE) {
+          clearTimeout(timeout)
+          this.pending.delete(id)
+          reject(
+            new Error(
+              `Command queue is full (${WsTransport.MAX_QUEUE_SIZE}). Reconnecting WebSocket...`
+            )
+          )
+          this.forceReconnect()
+          return
+        }
+
         // Queue for when connection is established
         this.queue.push({
           data,
@@ -501,6 +537,25 @@ class WsTransport {
       this.reconnectTimer = null
       this.connect()
     }, delay)
+  }
+
+  private clearConnectWatchdog(): void {
+    if (!this.connectWatchdog) return
+    clearTimeout(this.connectWatchdog)
+    this.connectWatchdog = null
+  }
+
+  private forceReconnect(): void {
+    this.clearConnectWatchdog()
+    if (this.ws) {
+      try {
+        this.ws.close()
+      } catch {
+        // Ignore close errors; reconnect scheduling will recover.
+      }
+      return
+    }
+    this.scheduleReconnect()
   }
 }
 

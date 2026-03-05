@@ -98,7 +98,7 @@ export function useToolbarHandlers({
         useChatStore.getState().setSelectedBackend(activeSessionId, backend)
         const model =
           backend === 'codex'
-            ? (preferences?.selected_codex_model ?? 'gpt-5.3-codex')
+            ? (preferences?.selected_codex_model ?? 'gpt-5.4')
             : backend === 'opencode'
               ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
               : ((preferences?.selected_model as string) ?? DEFAULT_MODEL)

@@ -8,6 +8,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::AppHandle;
 
 use super::config::{ensure_cli_dir, get_cli_binary_path, resolve_cli_binary};
+use crate::gh_cli::resolve_github_api_token;
 use crate::http_server::EmitExt;
 use crate::platform::silent_command;
 
@@ -17,6 +18,8 @@ const CODEX_USAGE_URL: &str = "https://chatgpt.com/backend-api/wham/usage";
 const CODEX_OAUTH_REFRESH_URL: &str = "https://auth.openai.com/oauth/token";
 const CODEX_OAUTH_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
 const CODEX_USAGE_CACHE_TTL_SECS: u64 = 5 * 60;
+const GITHUB_API_ACCEPT: &str = "application/vnd.github+json";
+const GITHUB_API_VERSION: &str = "2022-11-28";
 
 /// Extract version number from a tag like "v0.104.0" or "vrust-v0.104.0"
 fn extract_version_from_tag(tag: &str) -> String {
@@ -840,14 +843,21 @@ pub async fn get_codex_usage() -> Result<CodexUsageSnapshot, String> {
 
 /// Get available Codex CLI versions from GitHub releases
 #[tauri::command]
-pub async fn get_available_codex_versions() -> Result<Vec<CodexReleaseInfo>, String> {
+pub async fn get_available_codex_versions(app: AppHandle) -> Result<Vec<CodexReleaseInfo>, String> {
     log::trace!("Fetching available Codex CLI versions from GitHub API");
 
     let client = build_github_client()?;
+    let token = resolve_github_api_token(&app);
 
     // Fetch enough releases to find stable ones buried behind prereleases
-    let response = client
+    let mut request = client
         .get(format!("{CODEX_RELEASES_API}?per_page=100"))
+        .header("Accept", GITHUB_API_ACCEPT)
+        .header("X-GitHub-Api-Version", GITHUB_API_VERSION);
+    if let Some(ref token) = token {
+        request = request.bearer_auth(token);
+    }
+    let response = request
         .send()
         .await
         .map_err(|e| format!("Failed to fetch releases: {e}"))?;
@@ -914,12 +924,19 @@ fn get_codex_target() -> Result<&'static str, String> {
 }
 
 /// Fetch the latest Codex CLI version from GitHub API
-async fn fetch_latest_codex_version() -> Result<String, String> {
+async fn fetch_latest_codex_version(app: &AppHandle) -> Result<String, String> {
     log::trace!("Fetching latest Codex CLI version");
 
     let client = build_github_client()?;
-    let response = client
+    let token = resolve_github_api_token(app);
+    let mut request = client
         .get(format!("{CODEX_RELEASES_API}/latest"))
+        .header("Accept", GITHUB_API_ACCEPT)
+        .header("X-GitHub-Api-Version", GITHUB_API_VERSION);
+    if let Some(ref token) = token {
+        request = request.bearer_auth(token);
+    }
+    let response = request
         .send()
         .await
         .map_err(|e| format!("Failed to fetch latest release: {e}"))?;
@@ -991,7 +1008,7 @@ pub async fn install_codex_cli(app: AppHandle, version: Option<String>) -> Resul
     // Determine version
     let version = match version {
         Some(v) => v,
-        None => fetch_latest_codex_version().await?,
+        None => fetch_latest_codex_version(&app).await?,
     };
 
     let target = get_codex_target()?;

@@ -3,7 +3,7 @@ import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
 import type { AppPreferences } from '@/types/preferences'
-import { defaultPreferences } from '@/types/preferences'
+import { defaultPreferences, normalizeCodexModel } from '@/types/preferences'
 import { DEFAULT_KEYBINDINGS, type KeybindingsMap } from '@/types/keybindings'
 
 // Old default keybindings that have been changed - used for migration
@@ -70,6 +70,9 @@ export function usePreferences() {
         }
         return {
           ...preferences,
+          selected_codex_model: normalizeCodexModel(
+            preferences.selected_codex_model
+          ),
           keybindings,
         }
       } catch (error) {

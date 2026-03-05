@@ -87,7 +87,10 @@ pub async fn dispatch_command(
                 custom_name,
             )
             .await?;
-            emit_cache_invalidation(app, &["projects"]);
+            // No cache invalidation here — worktree creation uses event-based sync
+            // (worktree:creating/created/error) that preserves the optimistic pending status.
+            // Invalidating would refetch list_worktrees which overwrites status: 'pending',
+            // preventing WorktreeSetupCard from appearing on the canvas.
             to_value(result)
         }
         "delete_worktree" => {
@@ -870,6 +873,7 @@ pub async fn dispatch_command(
                 message_id,
             )
             .await?;
+            emit_cache_invalidation(app, &["sessions"]);
             Ok(Value::Null)
         }
         "save_cancelled_message" => {
@@ -1663,7 +1667,7 @@ pub async fn dispatch_command(
             to_value(result)
         }
         "get_available_gh_versions" => {
-            let result = crate::gh_cli::get_available_gh_versions().await?;
+            let result = crate::gh_cli::get_available_gh_versions(app.clone()).await?;
             to_value(result)
         }
         "install_gh_cli" => {
@@ -1713,7 +1717,7 @@ pub async fn dispatch_command(
             to_value(result)
         }
         "get_available_codex_versions" => {
-            let result = crate::codex_cli::get_available_codex_versions().await?;
+            let result = crate::codex_cli::get_available_codex_versions(app.clone()).await?;
             to_value(result)
         }
         "get_codex_usage" => {
@@ -1807,6 +1811,11 @@ pub async fn dispatch_command(
         "set_session_last_opened" => {
             let session_id: String = field(&args, "sessionId", "session_id")?;
             crate::chat::set_session_last_opened(app.clone(), session_id).await?;
+            Ok(Value::Null)
+        }
+        "set_sessions_last_opened_bulk" => {
+            let session_ids: Vec<String> = field(&args, "sessionIds", "session_ids")?;
+            crate::chat::set_sessions_last_opened_bulk(app.clone(), session_ids).await?;
             Ok(Value::Null)
         }
 

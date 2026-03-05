@@ -616,20 +616,20 @@ export const DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
 
 /** Codex preset: heavy tasks use top model, light tasks use mini */
 export const CODEX_DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
-  investigate_issue_model: 'gpt-5.3-codex',
-  investigate_pr_model: 'gpt-5.3-codex',
-  investigate_workflow_run_model: 'gpt-5.3-codex',
+  investigate_issue_model: 'gpt-5.4',
+  investigate_pr_model: 'gpt-5.4',
+  investigate_workflow_run_model: 'gpt-5.4',
   pr_content_model: 'gpt-5.1-codex-mini',
   commit_message_model: 'gpt-5.1-codex-mini',
-  code_review_model: 'gpt-5.3-codex',
-  context_summary_model: 'gpt-5.3-codex',
-  resolve_conflicts_model: 'gpt-5.3-codex',
+  code_review_model: 'gpt-5.4',
+  context_summary_model: 'gpt-5.4',
+  resolve_conflicts_model: 'gpt-5.4',
   release_notes_model: 'gpt-5.1-codex-mini',
   session_naming_model: 'gpt-5.1-codex-mini',
   session_recap_model: 'gpt-5.1-codex-mini',
-  investigate_security_alert_model: 'gpt-5.3-codex',
-  investigate_advisory_model: 'gpt-5.3-codex',
-  investigate_linear_issue_model: 'gpt-5.3-codex',
+  investigate_security_alert_model: 'gpt-5.4',
+  investigate_advisory_model: 'gpt-5.4',
+  investigate_linear_issue_model: 'gpt-5.4',
 }
 
 /** OpenCode preset for all magic prompts */
@@ -977,6 +977,9 @@ export const effortLevelOptions: {
 // =============================================================================
 
 export type CodexModel =
+  | 'gpt-5.4'
+  | 'gpt-5.4-fast'
+  | 'gpt-5.3'
   | 'gpt-5.3-codex'
   | 'gpt-5.2-codex'
   | 'gpt-5.1-codex-max'
@@ -984,12 +987,34 @@ export type CodexModel =
   | 'gpt-5.1-codex-mini'
 
 export const codexModelOptions: { value: CodexModel; label: string }[] = [
+  { value: 'gpt-5.4', label: 'GPT 5.4' },
+  { value: 'gpt-5.4-fast', label: 'GPT 5.4 - Fast' },
+  { value: 'gpt-5.3', label: 'GPT 5.3' },
   { value: 'gpt-5.3-codex', label: 'GPT 5.3 Codex' },
   { value: 'gpt-5.2-codex', label: 'GPT 5.2 Codex' },
   { value: 'gpt-5.1-codex-max', label: 'GPT 5.1 Codex Max' },
   { value: 'gpt-5.2', label: 'GPT 5.2' },
   { value: 'gpt-5.1-codex-mini', label: 'GPT 5.1 Codex Mini' },
 ]
+
+const deprecatedCodexFastModelMap = {
+  'gpt-5.3-fast': 'gpt-5.3',
+  'gpt-5.3-codex-fast': 'gpt-5.3-codex',
+  'gpt-5.2-codex-fast': 'gpt-5.2-codex',
+  'gpt-5.1-codex-max-fast': 'gpt-5.1-codex-max',
+  'gpt-5.2-fast': 'gpt-5.2',
+  'gpt-5.1-codex-mini-fast': 'gpt-5.1-codex-mini',
+} as const
+
+export function normalizeCodexModel(model: string): CodexModel {
+  if (model in deprecatedCodexFastModelMap) {
+    return deprecatedCodexFastModelMap[
+      model as keyof typeof deprecatedCodexFastModelMap
+    ]
+  }
+
+  return isCodexModel(model) ? model : 'gpt-5.4'
+}
 
 export type CodexReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh'
 
@@ -1326,7 +1351,7 @@ export const defaultPreferences: AppPreferences = {
   canvas_layout: 'list',
   confirm_session_close: true, // Default: enabled (show confirmation)
   default_backend: 'claude', // Default: Claude
-  selected_codex_model: 'gpt-5.3-codex', // Default: latest Codex model
+  selected_codex_model: 'gpt-5.4', // Default: latest Codex model
   selected_opencode_model: 'opencode/gpt-5.3-codex', // Default OpenCode model
   default_codex_reasoning_effort: 'high', // Default: high reasoning
   codex_multi_agent_enabled: false, // Default: disabled

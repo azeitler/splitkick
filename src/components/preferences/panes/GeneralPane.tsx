@@ -1280,7 +1280,7 @@ export const GeneralPane: React.FC = () => {
             description="Codex model for AI assistance"
           >
             <Select
-              value={preferences?.selected_codex_model ?? 'gpt-5.3-codex'}
+              value={preferences?.selected_codex_model ?? 'gpt-5.4'}
               onValueChange={handleCodexModelChange}
             >
               <SelectTrigger>

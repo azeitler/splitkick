@@ -247,7 +247,7 @@ export function useUIStatePersistence() {
       logger.debug('Restoring active sessions', { activeSessionIds })
       const { setActiveSession } = useChatStore.getState()
       for (const [worktreeId, sessionId] of Object.entries(activeSessionIds)) {
-        setActiveSession(worktreeId, sessionId)
+        setActiveSession(worktreeId, sessionId, { markOpened: false })
       }
     }
 

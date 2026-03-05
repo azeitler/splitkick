@@ -1756,7 +1756,7 @@ fn run_jean_script(
 
     let mut cmd = silent_command(&shell);
     if supports_login {
-        cmd.args(["-l", "-c", script]);
+        cmd.args(["-l", "-i", "-c", script]);
     } else {
         cmd.args(["-c", script]);
     }
