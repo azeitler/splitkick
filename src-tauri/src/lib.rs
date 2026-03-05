@@ -1900,8 +1900,9 @@ fn create_app_menu(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error
 /// Fix PATH environment for macOS GUI applications.
 ///
 /// macOS GUI apps launched from Finder/Spotlight don't inherit the user's shell PATH.
-/// This function spawns a login shell (without -i) to capture PATH from login profiles
-/// (.zprofile, .bash_profile) while avoiding .zshrc which triggers TCC dialogs on Sequoia.
+/// This function uses a non-interactive login shell by default to capture PATH from
+/// login profiles (.zprofile, .bash_profile) while avoiding .zshrc, which can trigger
+/// TCC prompts on Sequoia when shell init scripts touch protected app data.
 #[cfg(target_os = "macos")]
 fn fix_macos_path() {
     use crate::platform::silent_command;
@@ -1909,14 +1910,22 @@ fn fix_macos_path() {
     // Get user's shell from $SHELL, default to zsh (macOS default since Catalina)
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
 
-    // Spawn a login (-l) + interactive (-i) shell to source all config files
-    // including .zshrc where tools like bun, nvm add their PATH entries.
+    // Use non-interactive mode by default to avoid loading .zshrc/.bashrc and
+    // reducing macOS App Data permission prompts.
+    // Users who need interactive init files for PATH can opt in explicitly.
+    let use_interactive_shell =
+        std::env::var("JEAN_MACOS_INTERACTIVE_PATH").unwrap_or_else(|_| "0".to_string()) == "1";
+
     // Use `printenv PATH` instead of `echo $PATH` because fish shell prints
     // $PATH as space-separated (it's a list in fish), while printenv always
     // outputs the raw colon-separated environment variable.
-    let output = silent_command(&shell)
-        .args(["-l", "-i", "-c", "/usr/bin/printenv PATH"])
-        .output();
+    let mut command = silent_command(&shell);
+    if use_interactive_shell {
+        command.args(["-l", "-i", "-c", "/usr/bin/printenv PATH"]);
+    } else {
+        command.args(["-l", "-c", "/usr/bin/printenv PATH"]);
+    }
+    let output = command.output();
 
     if let Ok(output) = output {
         if output.status.success() {
