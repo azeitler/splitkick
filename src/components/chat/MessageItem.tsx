@@ -78,6 +78,10 @@ interface MessageItemProps {
   onClearContextApproval?: (messageId: string) => void
   /** Callback for clear context approval (new session with plan in build mode) */
   onClearContextApprovalBuild?: (messageId: string) => void
+  /** Callback for worktree approval (new worktree with plan in build mode) */
+  onWorktreeBuildApproval?: (messageId: string) => void
+  /** Callback for worktree approval (new worktree with plan in yolo mode) */
+  onWorktreeYoloApproval?: (messageId: string) => void
   /** Callback when user answers a question */
   onQuestionAnswer: (
     toolCallId: string,
@@ -135,6 +139,8 @@ export const MessageItem = memo(function MessageItem({
   onPlanApprovalYolo,
   onClearContextApproval,
   onClearContextApprovalBuild,
+  onWorktreeBuildApproval,
+  onWorktreeYoloApproval,
   onQuestionAnswer,
   onQuestionSkip,
   onFileClick,
@@ -193,6 +199,16 @@ export const MessageItem = memo(function MessageItem({
   const handleClearContextApprovalBuild = useCallback(() => {
     onClearContextApprovalBuild?.(message.id)
   }, [onClearContextApprovalBuild, message.id])
+
+  // Stable callback for worktree build approval
+  const handleWorktreeBuildApproval = useCallback(() => {
+    onWorktreeBuildApproval?.(message.id)
+  }, [onWorktreeBuildApproval, message.id])
+
+  // Stable callback for worktree yolo approval
+  const handleWorktreeYoloApproval = useCallback(() => {
+    onWorktreeYoloApproval?.(message.id)
+  }, [onWorktreeYoloApproval, message.id])
 
   // Stable callback for checking if finding is fixed
   const handleIsFindingFixed = useCallback(
@@ -468,6 +484,8 @@ export const MessageItem = memo(function MessageItem({
             onPlanApprovalYolo={handlePlanApprovalYolo}
             onClearContextApproval={handleClearContextApproval}
             onClearContextBuildApproval={handleClearContextApprovalBuild}
+            onWorktreeBuildApproval={handleWorktreeBuildApproval}
+            onWorktreeYoloApproval={handleWorktreeYoloApproval}
             buttonRef={isLatestPlanRequest ? approveButtonRef : undefined}
             shortcut={approveShortcut}
             shortcutYolo={approveShortcutYolo}
@@ -531,6 +549,8 @@ export const MessageItem = memo(function MessageItem({
                 onPlanApprovalYolo={handlePlanApprovalYolo}
                 onClearContextApproval={handleClearContextApproval}
                 onClearContextBuildApproval={handleClearContextApprovalBuild}
+                onWorktreeBuildApproval={handleWorktreeBuildApproval}
+                onWorktreeYoloApproval={handleWorktreeYoloApproval}
                 buttonRef={isLatestPlanRequest ? approveButtonRef : undefined}
                 shortcut={approveShortcut}
                 shortcutYolo={approveShortcutYolo}

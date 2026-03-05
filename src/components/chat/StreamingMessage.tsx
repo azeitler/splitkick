@@ -72,6 +72,10 @@ interface StreamingMessageProps {
   onStreamingClearContextApproval?: () => void
   /** Callback for clear context and build approval during streaming */
   onStreamingClearContextApprovalBuild?: () => void
+  /** Callback for worktree build approval during streaming */
+  onStreamingWorktreeBuildApproval?: () => void
+  /** Callback for worktree yolo approval during streaming */
+  onStreamingWorktreeYoloApproval?: () => void
   /** Hide approve buttons (e.g. for Codex which has no native approval flow) */
   hideApproveButtons?: boolean
 }
@@ -102,6 +106,8 @@ export const StreamingMessage = memo(function StreamingMessage({
   onStreamingPlanApprovalYolo,
   onStreamingClearContextApproval,
   onStreamingClearContextApprovalBuild,
+  onStreamingWorktreeBuildApproval,
+  onStreamingWorktreeYoloApproval,
   hideApproveButtons,
 }: StreamingMessageProps) {
   return (
@@ -268,6 +274,12 @@ export const StreamingMessage = memo(function StreamingMessage({
                                   }
                                   onClearContextBuildApproval={
                                     onStreamingClearContextApprovalBuild
+                                  }
+                                  onWorktreeBuildApproval={
+                                    onStreamingWorktreeBuildApproval
+                                  }
+                                  onWorktreeYoloApproval={
+                                    onStreamingWorktreeYoloApproval
                                   }
                                   shortcut={approveShortcut}
                                   shortcutYolo={approveShortcutYolo}

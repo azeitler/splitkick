@@ -8,10 +8,12 @@ import {
   Shield,
   Sparkles,
   Tag,
+  Terminal,
   Trash2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getLabelTextColor } from '@/lib/label-colors'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Kbd } from '@/components/ui/kbd'
 import { StatusIndicator } from '@/components/ui/status-indicator'
@@ -28,8 +30,9 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
-import { statusConfig } from './session-card-utils'
+import { getResumeCommand, statusConfig } from './session-card-utils'
 import type { SessionCardProps } from './SessionCard'
+import { useIsMobile } from '@/hooks/use-mobile'
 
 export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
   function SessionListRow(
@@ -44,6 +47,8 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
       onApprove,
       onYolo,
       onClearContextApprove,
+      onWorktreeBuildApprove,
+      onWorktreeYoloApprove,
       onToggleLabel,
       onToggleReview,
       isRenaming,
@@ -56,6 +61,10 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
     ref
   ) {
     const config = statusConfig[card.status]
+    const isMobile = useIsMobile()
+    const hasRecap = card.hasRecap
+    const hasPlan = !!(card.planFilePath || card.planContent)
+    const resumeCommand = getResumeCommand(card.session)
     const renameInputRef = useCallback((node: HTMLInputElement | null) => {
       if (node) {
         node.focus()
@@ -141,7 +150,7 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
             )}
 
             {/* Recap icon */}
-            {card.hasRecap && (
+            {!isMobile && hasRecap && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -161,7 +170,7 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
             )}
 
             {/* Plan icon */}
-            {(card.planFilePath || card.planContent) && (
+            {!isMobile && hasPlan && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -234,6 +243,42 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
                       </Kbd>
                     </Button>
                   )}
+                  {onWorktreeBuildApprove && (
+                    <Button
+                      variant="outline"
+                      className="h-5 px-1.5 text-[10px] rounded"
+                      disabled={card.isSending}
+                      onClick={e => {
+                        e.stopPropagation()
+                        onWorktreeBuildApprove()
+                      }}
+                    >
+                      WT Build
+                      <Kbd className="ml-1 h-3.5 text-[9px]">
+                        {formatShortcutDisplay(
+                          DEFAULT_KEYBINDINGS.approve_plan_worktree_build
+                        )}
+                      </Kbd>
+                    </Button>
+                  )}
+                  {onWorktreeYoloApprove && (
+                    <Button
+                      variant="outline"
+                      className="h-5 px-1.5 text-[10px] rounded"
+                      disabled={card.isSending}
+                      onClick={e => {
+                        e.stopPropagation()
+                        onWorktreeYoloApprove()
+                      }}
+                    >
+                      WT YOLO
+                      <Kbd className="ml-1 h-3.5 text-[9px]">
+                        {formatShortcutDisplay(
+                          DEFAULT_KEYBINDINGS.approve_plan_worktree_yolo
+                        )}
+                      </Kbd>
+                    </Button>
+                  )}
                 </div>
               )}
           </div>
@@ -273,6 +318,28 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
           <ContextMenuItem onSelect={onArchive}>
             <Archive className="mr-2 h-4 w-4" />
             Archive Session
+          </ContextMenuItem>
+          {resumeCommand && (
+            <ContextMenuItem
+              onSelect={() => {
+                void navigator.clipboard
+                  .writeText(resumeCommand)
+                  .then(() => toast.success('Resume command copied'))
+                  .catch(() => toast.error('Failed to copy resume command'))
+              }}
+            >
+              <Terminal className="mr-2 h-4 w-4" />
+              Copy Resume Command
+            </ContextMenuItem>
+          )}
+          <ContextMenuSeparator />
+          <ContextMenuItem disabled={!hasRecap} onSelect={onRecapView}>
+            <Sparkles className="mr-2 h-4 w-4" />
+            Recap
+          </ContextMenuItem>
+          <ContextMenuItem disabled={!hasPlan} onSelect={onPlanView}>
+            <FileText className="mr-2 h-4 w-4" />
+            Plan
           </ContextMenuItem>
           <ContextMenuSeparator />
           <ContextMenuItem variant="destructive" onSelect={onDelete}>

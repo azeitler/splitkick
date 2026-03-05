@@ -1,8 +1,12 @@
+import { useState } from 'react'
 import {
   ArrowDownToLine,
   ArrowUpToLine,
+  Bot,
   BookmarkPlus,
   Brain,
+  Check,
+  ChevronRight,
   ClipboardList,
   Eye,
   FolderOpen,
@@ -29,6 +33,12 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
 import type { CustomCliProfile } from '@/types/preferences'
 import type { EffortLevel, ExecutionMode, ThinkingLevel } from '@/types/chat'
 import type { CheckStatus, PrDisplayStatus } from '@/types/pr-status'
@@ -41,6 +51,7 @@ import {
   getPrStatusDisplay,
   getProviderDisplayName,
 } from '@/components/chat/toolbar/toolbar-utils'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 
 interface MobileToolbarMenuProps {
@@ -137,20 +148,47 @@ export function MobileToolbarMenu({
   handleEffortLevelChange,
   handleThinkingLevelChange,
 }: MobileToolbarMenuProps) {
+  const isMobile = useIsMobile()
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [modelSheetOpen, setModelSheetOpen] = useState(false)
+  const [modelSearchQuery, setModelSearchQuery] = useState('')
   const providerDisplayName = getProviderDisplayName(selectedProvider)
+  const selectedModelLabel =
+    filteredModelOptions.find(o => o.value === selectedModel)?.label
+
+  const openModelSheet = () => {
+    setMenuOpen(false)
+    setModelSearchQuery('')
+    requestAnimationFrame(() => setModelSheetOpen(true))
+  }
+  const normalizedModelQuery = modelSearchQuery.trim().toLowerCase()
+  const visibleModelOptions = normalizedModelQuery
+    ? filteredModelOptions.filter(option => {
+        const label = option.label.toLowerCase()
+        const value = option.value.toLowerCase()
+        return (
+          label.includes(normalizedModelQuery) ||
+          value.includes(normalizedModelQuery)
+        )
+      })
+    : filteredModelOptions
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className="flex @xl:hidden h-8 items-center gap-1 rounded-l-lg px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-          disabled={isDisabled}
+    <>
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className="flex @xl:hidden h-8 items-center gap-1 rounded-l-lg px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+            disabled={isDisabled}
+          >
+            <MoreHorizontal className="h-4 w-4" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align={isMobile ? 'end' : 'start'}
+          className="w-56"
         >
-          <MoreHorizontal className="h-4 w-4" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-56">
         <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
           Context
         </div>
@@ -305,14 +343,14 @@ export function MobileToolbarMenu({
         <DropdownMenuSeparator />
 
         {!sessionHasMessages && (
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger>
-              <Sparkles className="mr-2 h-4 w-4" />
-              <span>Backend</span>
-              <span className="ml-auto text-xs text-muted-foreground capitalize">
-                {selectedBackend}
-              </span>
-            </DropdownMenuSubTrigger>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger className="[&>svg:last-child]:!ml-2">
+                <Sparkles className="mr-2 h-4 w-4" />
+                <span>Backend</span>
+                <span className="ml-auto w-16 text-right text-xs text-muted-foreground capitalize">
+                  {selectedBackend}
+                </span>
+              </DropdownMenuSubTrigger>
             <DropdownMenuSubContent>
               <DropdownMenuRadioGroup
                 value={selectedBackend}
@@ -386,42 +424,53 @@ export function MobileToolbarMenu({
             </DropdownMenuSub>
           )}
 
-        <DropdownMenuSub>
-          <DropdownMenuSubTrigger>
-            <Sparkles className="mr-2 h-4 w-4" />
-            <span>Model</span>
-            <span className="ml-auto text-xs text-muted-foreground">
-              {filteredModelOptions.find(o => o.value === selectedModel)?.label}
-            </span>
-          </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent>
-            {providerLocked && customCliProfiles.length > 0 && (
-              <>
-                <DropdownMenuLabel className="text-xs text-muted-foreground">
-                  Provider: {providerDisplayName}
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-              </>
-            )}
-            <DropdownMenuRadioGroup
-              value={selectedModel}
-              onValueChange={handleModelChange}
-            >
-              {filteredModelOptions.map(option => (
-                <DropdownMenuRadioItem key={option.value} value={option.value}>
-                  {option.label}
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
+          {isMobile ? (
+            <DropdownMenuItem onSelect={openModelSheet}>
+              <Bot className="h-4 w-4 text-foreground" />
+              <span>Model</span>
+              <span className="ml-auto w-16 text-right text-xs text-muted-foreground">
+                {selectedModelLabel}
+              </span>
+              <ChevronRight className="ml-2 h-4 w-4 shrink-0" />
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger className="[&>svg:last-child]:!ml-2">
+                <Bot className="mr-2 h-4 w-4 text-foreground" />
+                <span>Model</span>
+                <span className="ml-auto w-16 text-right text-xs text-muted-foreground">
+                  {selectedModelLabel}
+                </span>
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                {providerLocked && customCliProfiles.length > 0 && (
+                  <>
+                    <DropdownMenuLabel className="text-xs text-muted-foreground">
+                      Provider: {providerDisplayName}
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                  </>
+                )}
+                <DropdownMenuRadioGroup
+                  value={selectedModel}
+                  onValueChange={handleModelChange}
+                >
+                  {filteredModelOptions.map(option => (
+                    <DropdownMenuRadioItem key={option.value} value={option.value}>
+                      {option.label}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          )}
 
         {hideThinkingLevel ? null : useAdaptiveThinking || isCodex ? (
           <DropdownMenuSub>
-            <DropdownMenuSubTrigger>
+            <DropdownMenuSubTrigger className="[&>svg:last-child]:!ml-2">
               <Brain className="mr-2 h-4 w-4" />
               <span>Effort</span>
-              <span className="ml-auto text-xs text-muted-foreground">
+              <span className="ml-auto w-16 text-right text-xs text-muted-foreground">
                 {
                   EFFORT_LEVEL_OPTIONS.find(
                     o => o.value === selectedEffortLevel
@@ -450,10 +499,10 @@ export function MobileToolbarMenu({
           </DropdownMenuSub>
         ) : (
           <DropdownMenuSub>
-            <DropdownMenuSubTrigger>
+            <DropdownMenuSubTrigger className="[&>svg:last-child]:!ml-2">
               <Brain className="mr-2 h-4 w-4" />
               <span>Thinking</span>
-              <span className="ml-auto text-xs text-muted-foreground">
+              <span className="ml-auto w-16 text-right text-xs text-muted-foreground">
                 {
                   THINKING_LEVEL_OPTIONS.find(
                     o => o.value === selectedThinkingLevel
@@ -483,14 +532,14 @@ export function MobileToolbarMenu({
         )}
 
         <DropdownMenuSub>
-          <DropdownMenuSubTrigger>
+          <DropdownMenuSubTrigger className="[&>svg:last-child]:!ml-2">
             {executionMode === 'plan' && (
               <ClipboardList className="mr-2 h-4 w-4" />
             )}
             {executionMode === 'build' && <Hammer className="mr-2 h-4 w-4" />}
             {executionMode === 'yolo' && <Zap className="mr-2 h-4 w-4" />}
             <span>Mode</span>
-            <span className="ml-auto text-xs text-muted-foreground capitalize">
+            <span className="ml-auto w-16 text-right text-xs text-muted-foreground capitalize">
               {executionMode}
             </span>
           </DropdownMenuSubTrigger>
@@ -511,7 +560,57 @@ export function MobileToolbarMenu({
             </DropdownMenuRadioGroup>
           </DropdownMenuSubContent>
         </DropdownMenuSub>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <Sheet open={modelSheetOpen} onOpenChange={setModelSheetOpen}>
+        <SheetContent
+          side="bottom"
+          className="max-h-[75svh] rounded-t-xl p-0"
+          showCloseButton={false}
+        >
+          <SheetHeader className="border-b px-4 py-3">
+            <SheetTitle className="text-base">Select Model</SheetTitle>
+          </SheetHeader>
+          <div className="overflow-y-auto p-2">
+            <div className="px-2 pb-2">
+              <input
+                value={modelSearchQuery}
+                onChange={event => setModelSearchQuery(event.target.value)}
+                placeholder="Search models..."
+                className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm outline-none ring-0 focus:border-ring focus:ring-1 focus:ring-ring"
+                autoFocus
+              />
+            </div>
+            {providerLocked && customCliProfiles.length > 0 && (
+              <div className="px-2 pb-1 text-xs text-muted-foreground">
+                Provider: {providerDisplayName}
+              </div>
+            )}
+            {visibleModelOptions.map(option => (
+              <button
+                key={option.value}
+                type="button"
+                className={cn(
+                  'flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground',
+                  selectedModel === option.value && 'bg-accent text-accent-foreground'
+                )}
+                onClick={() => {
+                  handleModelChange(option.value)
+                  setModelSheetOpen(false)
+                }}
+              >
+                <span className="flex-1">{option.label}</span>
+                {selectedModel === option.value && <Check className="h-4 w-4" />}
+              </button>
+            ))}
+            {visibleModelOptions.length === 0 && (
+              <div className="px-3 py-4 text-sm text-muted-foreground">
+                No models match your search.
+              </div>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
   )
 }

@@ -31,3 +31,25 @@ export interface CodexInstallProgress {
   message: string
   percent: number
 }
+
+export interface CodexUsageWindowSnapshot {
+  usedPercent: number
+  resetsAt: number | null
+  limitWindowSeconds: number | null
+}
+
+export interface CodexAdditionalUsageLimit {
+  label: string
+  session: CodexUsageWindowSnapshot | null
+  weekly: CodexUsageWindowSnapshot | null
+}
+
+export interface CodexUsageSnapshot {
+  planType: string | null
+  session: CodexUsageWindowSnapshot | null
+  weekly: CodexUsageWindowSnapshot | null
+  reviews: CodexUsageWindowSnapshot | null
+  creditsRemaining: number | null
+  modelLimits: CodexAdditionalUsageLimit[]
+  fetchedAt: number
+}

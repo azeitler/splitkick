@@ -16,18 +16,33 @@ import type {
   CodexAuthStatus,
   CodexReleaseInfo,
   CodexInstallProgress,
+  CodexUsageSnapshot,
 } from '@/types/codex-cli'
 
 import { hasBackend } from '@/lib/environment'
 
 const isTauri = hasBackend
+const USAGE_REFRESH_MS = 1000 * 60 * 5
 
 // Query keys for Codex CLI
 export const codexCliQueryKeys = {
   all: ['codex-cli'] as const,
   status: () => [...codexCliQueryKeys.all, 'status'] as const,
   auth: () => [...codexCliQueryKeys.all, 'auth'] as const,
+  usage: () => [...codexCliQueryKeys.all, 'usage'] as const,
   versions: () => [...codexCliQueryKeys.all, 'versions'] as const,
+}
+
+function getUsageStaleTime(snapshot?: CodexUsageSnapshot): number {
+  if (!snapshot?.fetchedAt) return 0
+  const expiresAtMs = snapshot.fetchedAt * 1000 + USAGE_REFRESH_MS
+  return Math.max(0, expiresAtMs - Date.now())
+}
+
+function getUsageRefetchInterval(snapshot?: CodexUsageSnapshot): number {
+  if (!snapshot?.fetchedAt) return USAGE_REFRESH_MS
+  const expiresAtMs = snapshot.fetchedAt * 1000 + USAGE_REFRESH_MS
+  return Math.max(1_000, expiresAtMs - Date.now())
 }
 
 /**
@@ -82,6 +97,25 @@ export function useCodexCliAuth(options?: { enabled?: boolean }) {
 }
 
 /**
+ * Hook to fetch current Codex usage.
+ */
+export function useCodexUsage(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: codexCliQueryKeys.usage(),
+    queryFn: async (): Promise<CodexUsageSnapshot> => {
+      if (!isTauri()) {
+        throw new Error('Codex usage is only available in Tauri context')
+      }
+      return invoke<CodexUsageSnapshot>('get_codex_usage')
+    },
+    enabled: options?.enabled ?? true,
+    staleTime: query => getUsageStaleTime(query.state.data),
+    gcTime: 1000 * 60 * 10,
+    refetchInterval: query => getUsageRefetchInterval(query.state.data),
+  })
+}
+
+/**
  * Hook to fetch available Codex CLI versions from GitHub releases
  */
 export function useAvailableCodexVersions() {
@@ -126,10 +160,6 @@ export function useInstallCodexCli() {
 
   return useMutation({
     mutationFn: async (version?: string) => {
-      if (!isTauri()) {
-        throw new Error('Cannot install Codex CLI outside Tauri context')
-      }
-
       logger.info('Installing Codex CLI', { version })
       await invoke('install_codex_cli', { version: version ?? null })
     },

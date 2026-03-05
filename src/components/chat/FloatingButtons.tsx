@@ -1,6 +1,10 @@
 import { memo, useCallback } from 'react'
 import { AlertCircle, ArrowDown, Check } from 'lucide-react'
-import { Kbd } from '@/components/ui/kbd'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 
 interface FloatingButtonsProps {
   /** Whether there's a pending plan (from persisted message) */
@@ -65,17 +69,19 @@ export const FloatingButtons = memo(function FloatingButtons({
       <div className="absolute bottom-4 right-4 flex gap-2">
         {/* Floating Approve button - shown when main approve button is not visible */}
         {showApproveButton && (
-          <button
-            type="button"
-            onClick={handleApprove}
-            className="flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-sm text-primary-foreground shadow-md transition-colors hover:bg-primary/90"
-          >
-            <Check className="h-3.5 w-3.5" />
-            <span>Approve</span>
-            <Kbd className="ml-0.5 h-4 text-[10px] bg-primary-foreground/20 text-primary-foreground">
-              {approveShortcut}
-            </Kbd>
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={handleApprove}
+                className="flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-sm text-primary-foreground shadow-md transition-colors hover:bg-primary/90"
+              >
+                <Check className="h-3.5 w-3.5" />
+                <span>Approve</span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Approve plan ({approveShortcut})</TooltipContent>
+          </Tooltip>
         )}
         {/* Go to findings button - shown when findings exist and are not visible */}
         {showFindingsButton && (

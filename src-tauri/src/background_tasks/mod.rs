@@ -8,6 +8,7 @@
 //! - **Remote**: API calls like PR status via `gh` (slower, rate-limited)
 
 use std::collections::HashMap;
+use std::env;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -62,6 +63,34 @@ pub const DEFAULT_SWEEP_POLL_INTERVAL: u64 = 300;
 /// This controls how often non-active worktrees get their git status polled (round-robin).
 pub const DEFAULT_GIT_SWEEP_INTERVAL: u64 = 60;
 
+/// Default usage polling interval in seconds (5 minutes)
+/// This refreshes Claude/Codex usage caches on the backend.
+pub const DEFAULT_USAGE_POLL_INTERVAL: u64 = 300;
+
+fn now_unix_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+fn dev_usage_poll_override_enabled() -> bool {
+    match env::var("JEAN_DEV_USAGE_POLL") {
+        Ok(value) => matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        ),
+        Err(_) => false,
+    }
+}
+
+fn usage_polling_enabled() -> bool {
+    if cfg!(debug_assertions) {
+        return dev_usage_poll_override_enabled();
+    }
+    true
+}
+
 /// Manages background tasks for the application
 ///
 /// The task manager runs a polling loop that periodically checks git status
@@ -99,6 +128,10 @@ pub struct BackgroundTaskManager {
     git_sweep_index: Arc<AtomicU64>,
     /// Timestamp of last git sweep poll
     last_git_sweep_time: Arc<AtomicU64>,
+    /// Timestamp of last usage cache refresh poll
+    last_usage_poll_time: Arc<AtomicU64>,
+    /// Guard to avoid overlapping usage refresh jobs
+    usage_poll_in_flight: Arc<AtomicBool>,
 }
 
 impl BackgroundTaskManager {
@@ -121,6 +154,9 @@ impl BackgroundTaskManager {
             all_worktrees: Arc::new(Mutex::new(Vec::new())),
             git_sweep_index: Arc::new(AtomicU64::new(0)),
             last_git_sweep_time: Arc::new(AtomicU64::new(0)),
+            // Initialize to "now" so startup does not trigger an immediate usage refresh.
+            last_usage_poll_time: Arc::new(AtomicU64::new(now_unix_secs())),
+            usage_poll_in_flight: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -151,15 +187,50 @@ impl BackgroundTaskManager {
         let all_worktrees = Arc::clone(&self.all_worktrees);
         let git_sweep_index = Arc::clone(&self.git_sweep_index);
         let last_git_sweep_time = Arc::clone(&self.last_git_sweep_time);
+        let last_usage_poll_time = Arc::clone(&self.last_usage_poll_time);
+        let usage_poll_in_flight = Arc::clone(&self.usage_poll_in_flight);
+        let usage_poll_enabled = usage_polling_enabled();
 
         thread::spawn(move || {
             log::trace!("Background task polling loop started");
+            if cfg!(debug_assertions) {
+                if usage_poll_enabled {
+                    log::trace!(
+                        "Background usage polling enabled in dev via JEAN_DEV_USAGE_POLL override"
+                    );
+                } else {
+                    log::trace!("Background usage polling disabled in dev");
+                }
+            }
 
             loop {
                 // Check for shutdown signal
                 if shutdown.load(Ordering::Relaxed) {
                     log::trace!("Background task manager shutting down");
                     break;
+                }
+
+                // ================================================================
+                // Usage polling (backend cache refresh every 5 minutes)
+                // Runs independently from app focus/worktree polling.
+                // ================================================================
+                if usage_poll_enabled {
+                    let now = now_unix_secs();
+                    let last_usage = last_usage_poll_time.load(Ordering::Relaxed);
+                    let time_since_usage = now.saturating_sub(last_usage);
+
+                    if time_since_usage >= DEFAULT_USAGE_POLL_INTERVAL
+                        && !usage_poll_in_flight.swap(true, Ordering::Relaxed)
+                    {
+                        last_usage_poll_time.store(now, Ordering::Relaxed);
+                        let app_handle = app.clone();
+                        let in_flight_guard = Arc::clone(&usage_poll_in_flight);
+                        tauri::async_runtime::spawn(async move {
+                            log::trace!("Background usage refresh tick");
+                            refresh_usage_caches(&app_handle).await;
+                            in_flight_guard.store(false, Ordering::Relaxed);
+                        });
+                    }
                 }
 
                 // Only poll when app is focused
@@ -560,6 +631,46 @@ impl BackgroundTaskManager {
         log::trace!("Triggering immediate remote poll");
         self.immediate_remote_poll.store(true, Ordering::Relaxed);
     }
+}
+
+async fn refresh_usage_caches(app: &AppHandle) {
+    if let Err(e) = refresh_claude_usage_cache(app).await {
+        log::trace!("Background usage refresh (Claude) skipped/failed: {e}");
+    }
+
+    if let Err(e) = refresh_codex_usage_cache(app).await {
+        log::trace!("Background usage refresh (Codex) skipped/failed: {e}");
+    }
+}
+
+async fn refresh_claude_usage_cache(app: &AppHandle) -> Result<(), String> {
+    let status = crate::claude_cli::check_claude_cli_installed(app.clone()).await?;
+    if !status.installed {
+        return Ok(());
+    }
+
+    let auth = crate::claude_cli::check_claude_cli_auth(app.clone()).await?;
+    if !auth.authenticated {
+        return Ok(());
+    }
+
+    let _ = crate::claude_cli::get_claude_usage_with_source("background").await?;
+    Ok(())
+}
+
+async fn refresh_codex_usage_cache(app: &AppHandle) -> Result<(), String> {
+    let status = crate::codex_cli::check_codex_cli_installed(app.clone()).await?;
+    if !status.installed {
+        return Ok(());
+    }
+
+    let auth = crate::codex_cli::check_codex_cli_auth(app.clone()).await?;
+    if !auth.authenticated {
+        return Ok(());
+    }
+
+    let _ = crate::codex_cli::get_codex_usage().await?;
+    Ok(())
 }
 
 /// Emit a git status event to the frontend

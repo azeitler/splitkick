@@ -16,18 +16,33 @@ import type {
   ClaudeAuthStatus,
   ReleaseInfo,
   InstallProgress,
+  ClaudeUsageSnapshot,
 } from '@/types/claude-cli'
 
 import { hasBackend } from '@/lib/environment'
 
 const isTauri = hasBackend
+const USAGE_REFRESH_MS = 1000 * 60 * 5
 
 // Query keys for Claude CLI
 export const claudeCliQueryKeys = {
   all: ['claude-cli'] as const,
   status: () => [...claudeCliQueryKeys.all, 'status'] as const,
   auth: () => [...claudeCliQueryKeys.all, 'auth'] as const,
+  usage: () => [...claudeCliQueryKeys.all, 'usage'] as const,
   versions: () => [...claudeCliQueryKeys.all, 'versions'] as const,
+}
+
+function getUsageStaleTime(snapshot?: ClaudeUsageSnapshot): number {
+  if (!snapshot?.fetchedAt) return 0
+  const expiresAtMs = snapshot.fetchedAt * 1000 + USAGE_REFRESH_MS
+  return Math.max(0, expiresAtMs - Date.now())
+}
+
+function getUsageRefetchInterval(snapshot?: ClaudeUsageSnapshot): number {
+  if (!snapshot?.fetchedAt) return USAGE_REFRESH_MS
+  const expiresAtMs = snapshot.fetchedAt * 1000 + USAGE_REFRESH_MS
+  return Math.max(1_000, expiresAtMs - Date.now())
 }
 
 /**
@@ -92,6 +107,25 @@ export function useClaudeCliAuth(options?: { enabled?: boolean }) {
 }
 
 /**
+ * Hook to fetch current Claude usage.
+ */
+export function useClaudeUsage(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: claudeCliQueryKeys.usage(),
+    queryFn: async (): Promise<ClaudeUsageSnapshot> => {
+      if (!isTauri()) {
+        throw new Error('Claude usage is only available in Tauri context')
+      }
+      return invoke<ClaudeUsageSnapshot>('get_claude_usage')
+    },
+    enabled: options?.enabled ?? true,
+    staleTime: query => getUsageStaleTime(query.state.data),
+    gcTime: 1000 * 60 * 10,
+    refetchInterval: query => getUsageRefetchInterval(query.state.data),
+  })
+}
+
+/**
  * Hook to fetch available Claude CLI versions from GitHub
  */
 export function useAvailableCliVersions() {
@@ -139,10 +173,6 @@ export function useInstallClaudeCli() {
 
   return useMutation({
     mutationFn: async (version?: string) => {
-      if (!isTauri()) {
-        throw new Error('Cannot install CLI outside Tauri context')
-      }
-
       logger.info('Installing Claude CLI', { version })
       await invoke('install_claude_cli', { version: version ?? null })
     },

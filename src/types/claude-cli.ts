@@ -51,3 +51,18 @@ export interface InstallProgress {
   /** Percentage complete (0-100) */
   percent: number
 }
+
+export interface ClaudeUsageWindowSnapshot {
+  usedPercent: number
+  resetsAt: number | null
+}
+
+export interface ClaudeUsageSnapshot {
+  planType: string | null
+  session: ClaudeUsageWindowSnapshot | null
+  weekly: ClaudeUsageWindowSnapshot | null
+  sonnetWeekly: ClaudeUsageWindowSnapshot | null
+  extraUsageSpent: number | null
+  extraUsageLimit: number | null
+  fetchedAt: number
+}

@@ -14,8 +14,8 @@ import {
 import { cn } from '@/lib/utils'
 import { getLabelTextColor } from '@/lib/label-colors'
 import { toast } from 'sonner'
+import { ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Kbd } from '@/components/ui/kbd'
 import { StatusIndicator } from '@/components/ui/status-indicator'
 import { formatShortcutDisplay, DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 import {
@@ -24,12 +24,20 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
+import { useIsMobile } from '@/hooks/use-mobile'
 import {
   getResumeCommand,
   type SessionCardData,
@@ -48,6 +56,8 @@ export interface SessionCardProps {
   onYolo?: () => void
   onClearContextApprove?: () => void
   onClearContextBuildApprove?: () => void
+  onWorktreeBuildApprove?: () => void
+  onWorktreeYoloApprove?: () => void
   onToggleLabel?: () => void
   onToggleReview?: () => void
   onRename?: (sessionId: string, newName: string) => void
@@ -73,6 +83,8 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
       onYolo,
       onClearContextApprove,
       onClearContextBuildApprove,
+      onWorktreeBuildApprove,
+      onWorktreeYoloApprove,
       onToggleLabel,
       onToggleReview,
       isRenaming,
@@ -87,6 +99,9 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
     const config = statusConfig[card.status]
     const isRunning = card.status === 'planning' || card.status === 'vibing' || card.status === 'yoloing'
     const resumeCommand = getResumeCommand(card.session)
+    const isMobile = useIsMobile()
+    const hasRecap = card.hasRecap
+    const hasPlan = !!(card.planFilePath || card.planContent)
     const renameInputRef = useCallback((node: HTMLInputElement | null) => {
       if (node) {
         node.focus()
@@ -156,9 +171,10 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
                   <span>Session</span>
                 )}
               </div>
-              <div className="flex items-center gap-1.5">
+              {!isMobile && (
+                <div className="flex items-center gap-1.5">
                 {/* Recap button - only shown when recap exists */}
-                {card.hasRecap && (
+                {hasRecap && (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
@@ -177,7 +193,7 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
                   </Tooltip>
                 )}
                 {/* Plan button - only shown when plan exists */}
-                {(card.planFilePath || card.planContent) && (
+                {hasPlan && (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
@@ -195,7 +211,8 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
                     <TooltipContent>View plan (P)</TooltipContent>
                   </Tooltip>
                 )}
-              </div>
+                </div>
+              )}
             </div>
 
             {/* Session name */}
@@ -234,80 +251,96 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
                 )}
               </div>
 
-              {/* Actions row - Approve buttons for ExitPlanMode */}
+              {/* Actions row - Approve + Auto buttons */}
               {card.hasExitPlanMode &&
                 !card.hasQuestion &&
                 card.session.backend !== 'codex' &&
                 onApprove &&
                 onYolo && (
                   <div className="relative z-10 flex items-center gap-1.5">
-                    <Button
-                      className="h-6 px-2 text-xs rounded  "
-                      disabled={card.isSending}
-                      onClick={e => {
-                        e.stopPropagation()
-                        onApprove()
-                      }}
-                    >
-                      Approve
-                      <Kbd className="ml-1.5 h-4 text-[10px] bg-primary-foreground/20 text-primary-foreground">
-                        {formatShortcutDisplay(
-                          DEFAULT_KEYBINDINGS.approve_plan
-                        )}
-                      </Kbd>
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      className="h-6 px-2 text-xs rounded"
-                      disabled={card.isSending}
-                      onClick={e => {
-                        e.stopPropagation()
-                        onYolo()
-                      }}
-                    >
-                      YOLO
-                      <Kbd className="ml-1.5 h-4 text-[10px] bg-destructive-foreground/20 text-destructive-foreground">
-                        {formatShortcutDisplay(
-                          DEFAULT_KEYBINDINGS.approve_plan_yolo
-                        )}
-                      </Kbd>
-                    </Button>
-                    {onClearContextBuildApprove && (
-                      <Button
-                        variant="outline"
-                        className="h-5 px-1.5 text-[10px] rounded"
-                        disabled={card.isSending}
-                        onClick={e => {
-                          e.stopPropagation()
-                          onClearContextBuildApprove()
-                        }}
-                      >
-                        CC Build
-                        <Kbd className="ml-1 h-3.5 text-[9px]">
-                          {formatShortcutDisplay(
-                            DEFAULT_KEYBINDINGS.approve_plan_clear_context_build
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          className="h-6 px-2 text-xs rounded"
+                          disabled={card.isSending}
+                          onClick={e => {
+                            e.stopPropagation()
+                            onApprove()
+                          }}
+                        >
+                          Approve
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        Approve plan ({formatShortcutDisplay(DEFAULT_KEYBINDINGS.approve_plan)})
+                      </TooltipContent>
+                    </Tooltip>
+                    <div className="inline-flex">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className="h-6 px-2 text-xs rounded-r-none border-r-0"
+                            disabled={card.isSending}
+                            onClick={e => {
+                              e.stopPropagation()
+                              onYolo()
+                            }}
+                          >
+                            YOLO
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          Approve with yolo mode ({formatShortcutDisplay(DEFAULT_KEYBINDINGS.approve_plan_yolo)})
+                        </TooltipContent>
+                      </Tooltip>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className="h-6 px-1 text-xs rounded-l-none border-l border-l-border"
+                            disabled={card.isSending}
+                            onClick={e => e.stopPropagation()}
+                          >
+                            <ChevronDown className="h-3 w-3" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {onClearContextBuildApprove && (
+                            <DropdownMenuItem onClick={() => onClearContextBuildApprove()}>
+                              New Session
+                              <DropdownMenuShortcut>
+                                {formatShortcutDisplay(DEFAULT_KEYBINDINGS.approve_plan_clear_context_build)}
+                              </DropdownMenuShortcut>
+                            </DropdownMenuItem>
                           )}
-                        </Kbd>
-                      </Button>
-                    )}
-                    {onClearContextApprove && (
-                      <Button
-                        variant="outline"
-                        className="h-5 px-1.5 text-[10px] rounded"
-                        disabled={card.isSending}
-                        onClick={e => {
-                          e.stopPropagation()
-                          onClearContextApprove()
-                        }}
-                      >
-                        CC YOLO
-                        <Kbd className="ml-1 h-3.5 text-[9px]">
-                          {formatShortcutDisplay(
-                            DEFAULT_KEYBINDINGS.approve_plan_clear_context
+                          {onClearContextApprove && (
+                            <DropdownMenuItem onClick={() => onClearContextApprove()}>
+                              New Session (YOLO)
+                              <DropdownMenuShortcut>
+                                {formatShortcutDisplay(DEFAULT_KEYBINDINGS.approve_plan_clear_context)}
+                              </DropdownMenuShortcut>
+                            </DropdownMenuItem>
                           )}
-                        </Kbd>
-                      </Button>
-                    )}
+                          {onWorktreeBuildApprove && (
+                            <DropdownMenuItem onClick={() => onWorktreeBuildApprove()}>
+                              New Worktree
+                              <DropdownMenuShortcut>
+                                {formatShortcutDisplay(DEFAULT_KEYBINDINGS.approve_plan_worktree_build)}
+                              </DropdownMenuShortcut>
+                            </DropdownMenuItem>
+                          )}
+                          {onWorktreeYoloApprove && (
+                            <DropdownMenuItem onClick={() => onWorktreeYoloApprove()}>
+                              New Worktree (YOLO)
+                              <DropdownMenuShortcut>
+                                {formatShortcutDisplay(DEFAULT_KEYBINDINGS.approve_plan_worktree_yolo)}
+                              </DropdownMenuShortcut>
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
                 )}
             </div>
@@ -358,6 +391,21 @@ export const SessionCard = forwardRef<HTMLDivElement, SessionCardProps>(
               Copy Resume Command
             </ContextMenuItem>
           )}
+          <ContextMenuSeparator />
+          <ContextMenuItem
+            disabled={!hasRecap}
+            onSelect={onRecapView}
+          >
+            <Sparkles className="mr-2 h-4 w-4" />
+            Recap
+          </ContextMenuItem>
+          <ContextMenuItem
+            disabled={!hasPlan}
+            onSelect={onPlanView}
+          >
+            <FileText className="mr-2 h-4 w-4" />
+            Plan
+          </ContextMenuItem>
           <ContextMenuItem onSelect={onArchive}>
             <Archive className="mr-2 h-4 w-4" />
             Archive Session

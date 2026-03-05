@@ -101,6 +101,7 @@ import {
 import { WorktreeDropdownMenu } from '@/components/projects/WorktreeDropdownMenu'
 import { LabelModal } from './LabelModal'
 import { useSessionArchive } from './hooks/useSessionArchive'
+import { useIsMobile } from '@/hooks/use-mobile'
 
 /** Track whether any waiting tabs are off-screen to the left or right */
 function useOffScreenWaiting(
@@ -179,8 +180,13 @@ function getSessionStatus(
 ): SessionStatus {
   const isSending = storeState.sendingSessionIds[session.id]
   const executionMode = isSending
-    ? (storeState.executingModes[session.id] ?? storeState.executionModes[session.id] ?? 'plan')
-    : (storeState.executionModes[session.id] ?? 'plan')
+    ? (storeState.executingModes[session.id] ??
+      storeState.executionModes[session.id] ??
+      session.selected_execution_mode ??
+      'plan')
+    : (storeState.executionModes[session.id] ??
+      session.selected_execution_mode ??
+      'plan')
   const isReviewing =
     storeState.reviewingSessions[session.id] || !!session.review_results
 
@@ -219,6 +225,7 @@ export function SessionChatModal({
   onClose,
   onCloseWorktree,
 }: SessionChatModalProps) {
+  const isMobile = useIsMobile()
   const { data: sessionsData } = useSessions(
     worktreeId || null,
     worktreePath || null
@@ -260,6 +267,8 @@ export function SessionChatModal({
   const executionModes = useChatStore(state => state.executionModes)
   const executingModes = useChatStore(state => state.executingModes)
   const reviewingSessions = useChatStore(state => state.reviewingSessions)
+  const planFilePaths = useChatStore(state => state.planFilePaths)
+  const sessionDigests = useChatStore(state => state.sessionDigests)
   const storeState = useMemo(
     () => ({ sendingSessionIds, executionModes, executingModes, reviewingSessions }),
     [sendingSessionIds, executionModes, executingModes, reviewingSessions]
@@ -293,13 +302,14 @@ export function SessionChatModal({
 
   // Plan/recap indicators for tab bar buttons
   const hasPlan =
-    useChatStore(state =>
-      currentSessionId ? !!state.planFilePaths[currentSessionId] : false
-    ) || !!currentSession?.plan_file_path
+    (currentSessionId ? !!planFilePaths[currentSessionId] : false) ||
+    !!currentSession?.plan_file_path
   const hasRecap =
-    useChatStore(state =>
-      currentSessionId ? !!state.sessionDigests[currentSessionId] : false
-    ) || !!currentSession?.digest
+    (currentSessionId ? !!sessionDigests[currentSessionId] : false) ||
+    !!currentSession?.digest
+  const currentResumeCommand = currentSession
+    ? getResumeCommand(currentSession)
+    : null
 
   // Git status for header badges
   const { data: worktree } = useWorktree(worktreeId)
@@ -950,6 +960,40 @@ export function SessionChatModal({
                           Run
                         </DropdownMenuItem>
                       )}
+                      {currentResumeCommand && (
+                        <DropdownMenuItem
+                          onSelect={() => {
+                            void navigator.clipboard
+                              .writeText(currentResumeCommand)
+                              .then(() => toast.success('Resume command copied'))
+                              .catch(() =>
+                                toast.error('Failed to copy resume command')
+                              )
+                          }}
+                        >
+                          <Terminal className="h-4 w-4" />
+                          Copy Resume Command
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        disabled={!hasRecap}
+                        onSelect={() =>
+                          window.dispatchEvent(new CustomEvent('open-recap'))
+                        }
+                      >
+                        <Sparkles className="h-4 w-4" />
+                        Recap
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        disabled={!hasPlan}
+                        onSelect={() =>
+                          window.dispatchEvent(new CustomEvent('open-plan'))
+                        }
+                      >
+                        <FileText className="h-4 w-4" />
+                        Plan
+                      </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 )}
@@ -983,8 +1027,12 @@ export function SessionChatModal({
                     const isActive = session.id === currentSessionId
                     const status = getSessionStatus(session, storeState)
                     const config = statusConfig[status]
-                    const sessionLabel =
-                      useChatStore.getState().sessionLabels[session.id]
+                    const chatState = useChatStore.getState()
+                    const sessionLabel = chatState.sessionLabels[session.id]
+                    const sessionHasPlan =
+                      !!planFilePaths[session.id] || !!session.plan_file_path
+                    const sessionHasRecap =
+                      !!sessionDigests[session.id] || !!session.digest
                     const resumeCommand = getResumeCommand(session)
                     return (
                       <ContextMenu key={session.id}>
@@ -1065,7 +1113,7 @@ export function SessionChatModal({
                                       handleArchiveSession(session.id)
                                     }
                                   }}
-                                  className="ml-0.5 opacity-0 group-hover/tab:opacity-60 hover:!opacity-100"
+                                  className="ml-0.5 opacity-60 sm:opacity-0 sm:group-hover/tab:opacity-60 hover:!opacity-100"
                                   size="xs"
                                 />
                               )}
@@ -1130,6 +1178,39 @@ export function SessionChatModal({
                               Copy Resume Command
                             </ContextMenuItem>
                           )}
+                          <ContextMenuSeparator />
+                          <ContextMenuItem
+                            disabled={!sessionHasRecap}
+                            onSelect={() => {
+                              useChatStore
+                                .getState()
+                                .setActiveSession(worktreeId, session.id)
+                              requestAnimationFrame(() => {
+                                window.dispatchEvent(
+                                  new CustomEvent('open-recap')
+                                )
+                              })
+                            }}
+                          >
+                            <Sparkles className="mr-2 h-4 w-4" />
+                            Recap
+                          </ContextMenuItem>
+                          <ContextMenuItem
+                            disabled={!sessionHasPlan}
+                            onSelect={() => {
+                              useChatStore
+                                .getState()
+                                .setActiveSession(worktreeId, session.id)
+                              requestAnimationFrame(() => {
+                                window.dispatchEvent(
+                                  new CustomEvent('open-plan')
+                                )
+                              })
+                            }}
+                          >
+                            <FileText className="mr-2 h-4 w-4" />
+                            Plan
+                          </ContextMenuItem>
                           <ContextMenuItem
                             onSelect={() => handleArchiveSession(session.id)}
                           >
@@ -1151,40 +1232,44 @@ export function SessionChatModal({
                 </div>
                 <ScrollBar orientation="horizontal" className="h-1" />
               </ScrollArea>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      window.dispatchEvent(new CustomEvent('open-recap'))
-                    }
-                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
-                    aria-label="Recap"
-                  >
-                    <Sparkles
-                      className={cn('h-3 w-3', hasRecap && 'text-yellow-500')}
-                    />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>Recap (R)</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      window.dispatchEvent(new CustomEvent('open-plan'))
-                    }
-                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
-                    aria-label="Plan"
-                  >
-                    <FileText
-                      className={cn('h-3 w-3', hasPlan && 'text-yellow-500')}
-                    />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>Plan (P)</TooltipContent>
-              </Tooltip>
+              {!isMobile && (
+                <div className="flex items-center gap-0.5">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        window.dispatchEvent(new CustomEvent('open-recap'))
+                      }
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
+                      aria-label="Recap"
+                    >
+                      <Sparkles
+                        className={cn('h-3 w-3', hasRecap && 'text-yellow-500')}
+                      />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>Recap (R)</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        window.dispatchEvent(new CustomEvent('open-plan'))
+                      }
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
+                      aria-label="Plan"
+                    >
+                      <FileText
+                        className={cn('h-3 w-3', hasPlan && 'text-yellow-500')}
+                      />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>Plan (P)</TooltipContent>
+                </Tooltip>
+                </div>
+              )}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button

@@ -137,10 +137,6 @@ export function useInstallGhCli() {
 
   return useMutation({
     mutationFn: async (version?: string) => {
-      if (!isTauri()) {
-        throw new Error('Cannot install gh CLI outside Tauri context')
-      }
-
       logger.info('Installing GitHub CLI', { version })
       await invoke('install_gh_cli', { version: version ?? null })
     },

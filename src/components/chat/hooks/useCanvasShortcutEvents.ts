@@ -23,6 +23,10 @@ interface UseCanvasShortcutEventsOptions {
   onClearContextApproval: (card: SessionCardData, updatedPlan?: string) => void
   /** Callback for clear context approval (new session with plan in build mode) */
   onClearContextApprovalBuild: (card: SessionCardData, updatedPlan?: string) => void
+  /** Callback for worktree approval (new worktree with plan in build mode) */
+  onWorktreeApproval?: ((card: SessionCardData, updatedPlan?: string) => void) | null
+  /** Callback for worktree approval (new worktree with plan in yolo mode) */
+  onWorktreeApprovalYolo?: ((card: SessionCardData, updatedPlan?: string) => void) | null
   /** If true, skip handling toggle-session-label event (caller handles it) */
   skipLabelHandling?: boolean
 }
@@ -77,6 +81,8 @@ export function useCanvasShortcutEvents({
   onPlanApprovalYolo,
   onClearContextApproval,
   onClearContextApprovalBuild,
+  onWorktreeApproval,
+  onWorktreeApprovalYolo,
   skipLabelHandling,
 }: UseCanvasShortcutEventsOptions): UseCanvasShortcutEventsResult {
   // Plan dialog state
@@ -330,6 +336,28 @@ export function useCanvasShortcutEvents({
       }
     }
 
+    const handleWorktreeApproveEvent = () => {
+      if (
+        selectedCard.hasExitPlanMode &&
+        !selectedCard.hasQuestion &&
+        !selectedCard.isSending &&
+        onWorktreeApproval
+      ) {
+        onWorktreeApproval(selectedCard)
+      }
+    }
+
+    const handleWorktreeApproveYoloEvent = () => {
+      if (
+        selectedCard.hasExitPlanMode &&
+        !selectedCard.hasQuestion &&
+        !selectedCard.isSending &&
+        onWorktreeApprovalYolo
+      ) {
+        onWorktreeApprovalYolo(selectedCard)
+      }
+    }
+
     const handleOpenPlanEvent = () => {
       if (selectedCard.planFilePath || selectedCard.planContent) {
         handlePlanView(selectedCard)
@@ -351,6 +379,8 @@ export function useCanvasShortcutEvents({
     window.addEventListener('approve-plan-yolo', handleApprovePlanYoloEvent)
     window.addEventListener('approve-plan-clear-context', handleClearContextApproveEvent)
     window.addEventListener('approve-plan-clear-context-build', handleClearContextApproveBuildEvent)
+    window.addEventListener('approve-plan-worktree-build', handleWorktreeApproveEvent)
+    window.addEventListener('approve-plan-worktree-yolo', handleWorktreeApproveYoloEvent)
     window.addEventListener('open-plan', handleOpenPlanEvent)
     window.addEventListener('open-recap', handleOpenRecapEvent)
     if (!skipLabelHandling) {
@@ -371,6 +401,8 @@ export function useCanvasShortcutEvents({
         'approve-plan-clear-context-build',
         handleClearContextApproveBuildEvent
       )
+      window.removeEventListener('approve-plan-worktree-build', handleWorktreeApproveEvent)
+      window.removeEventListener('approve-plan-worktree-yolo', handleWorktreeApproveYoloEvent)
       window.removeEventListener('open-plan', handleOpenPlanEvent)
       window.removeEventListener('open-recap', handleOpenRecapEvent)
       if (!skipLabelHandling) {
@@ -384,6 +416,8 @@ export function useCanvasShortcutEvents({
     onPlanApprovalYolo,
     onClearContextApproval,
     onClearContextApprovalBuild,
+    onWorktreeApproval,
+    onWorktreeApprovalYolo,
     handlePlanView,
     handleRecapView,
     skipLabelHandling,

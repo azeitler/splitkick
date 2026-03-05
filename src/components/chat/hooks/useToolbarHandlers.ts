@@ -215,17 +215,33 @@ export function useToolbarHandlers({
 
   const handleToolbarSetExecutionMode = useCallback(
     (mode: ExecutionMode) => {
-      if (activeSessionId) {
-        setExecutionMode(activeSessionId, mode)
+      const sessionId = activeSessionIdRef.current
+      const worktreeId = activeWorktreeIdRef.current
+      const worktreePath = activeWorktreePathRef.current
+
+      if (sessionId) {
+        setExecutionMode(sessionId, mode)
+
+        // Persist immediately so browser/WebSocket mode survives reloads
+        // even if debounced background persistence is delayed/skipped.
+        if (worktreeId && worktreePath) {
+          invoke('update_session_state', {
+            worktreeId,
+            worktreePath,
+            sessionId,
+            selectedExecutionMode: mode,
+          }).catch(() => undefined)
+        }
+
         invoke('broadcast_session_setting', {
-          sessionId: activeSessionId,
+          sessionId,
           key: 'executionMode',
           value: mode,
         }).catch(() => undefined)
       }
       window.dispatchEvent(new CustomEvent('focus-chat-input'))
     },
-    [activeSessionId, setExecutionMode]
+    [activeSessionIdRef, activeWorktreeIdRef, activeWorktreePathRef, setExecutionMode]
   )
 
   const handleOpenMagicModal = useCallback(() => {

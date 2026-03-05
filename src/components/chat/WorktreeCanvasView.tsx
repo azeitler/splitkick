@@ -34,6 +34,7 @@ import {
 import { useCanvasStoreState } from './hooks/useCanvasStoreState'
 import { usePlanApproval } from './hooks/usePlanApproval'
 import { useClearContextApproval } from './hooks/useClearContextApproval'
+import { useWorktreeApproval } from './hooks/useWorktreeApproval'
 import { useSessionArchive } from './hooks/useSessionArchive'
 import { CanvasGrid } from './CanvasGrid'
 import { CloseWorktreeDialog } from './CloseWorktreeDialog'
@@ -186,7 +187,7 @@ export function WorktreeCanvasView({
     return () => window.removeEventListener('open-git-diff', handler)
   }, [isBase, worktreePath, defaultBranch, selectedSessionId])
 
-  // Preferences for keybinding hints and layout
+  // Preferences for canvas layout
   const { data: preferences } = usePreferences()
   const savePreferences = useSavePreferences()
   const canvasLayout = preferences?.canvas_layout ?? 'list'
@@ -206,6 +207,11 @@ export function WorktreeCanvasView({
   const { handleClearContextApproval, handleClearContextApprovalBuild } = useClearContextApproval({
     worktreeId,
     worktreePath,
+  })
+  const { handleWorktreeApproval, handleWorktreeApprovalYolo } = useWorktreeApproval({
+    worktreeId,
+    worktreePath,
+    projectId: project?.id ?? null,
   })
   // Worktree close (CMD+W on canvas)
   const [closeWorktreeDialogOpen, setCloseWorktreeDialogOpen] = useState(false)
@@ -604,6 +610,8 @@ export function WorktreeCanvasView({
               onPlanApprovalYolo={handlePlanApprovalYolo}
               onClearContextApproval={handleClearContextApproval}
               onClearContextApprovalBuild={handleClearContextApprovalBuild}
+              onWorktreeApproval={handleWorktreeApproval}
+              onWorktreeApprovalYolo={handleWorktreeApprovalYolo}
               onCloseWorktree={handleCloseWorktreeOrConfirm}
               searchInputRef={searchInputRef}
             />
@@ -622,6 +630,8 @@ export function WorktreeCanvasView({
               onPlanApprovalYolo={handlePlanApprovalYolo}
               onClearContextApproval={handleClearContextApproval}
               onClearContextApprovalBuild={handleClearContextApprovalBuild}
+              onWorktreeApproval={handleWorktreeApproval}
+              onWorktreeApprovalYolo={handleWorktreeApprovalYolo}
               onCloseWorktree={handleCloseWorktreeOrConfirm}
               searchInputRef={searchInputRef}
             />

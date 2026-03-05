@@ -7,7 +7,23 @@ import type {
   LinearTeam,
   LoadedLinearIssueContext,
 } from '@/types/linear'
-import { isTauri } from './projects'
+import { isTauri, useProjects } from './projects'
+import { usePreferences } from './preferences'
+
+function hasValue(value: string | null | undefined): boolean {
+  return !!value?.trim()
+}
+
+function useHasLinearAccess(projectId: string | null): boolean {
+  const { data: projects } = useProjects()
+  const { data: preferences } = usePreferences()
+  const project = projects?.find(p => p.id === projectId)
+
+  return (
+    hasValue(project?.linear_api_key ?? null) ||
+    hasValue(preferences?.linear_api_key ?? null)
+  )
+}
 
 /**
  * Check if an error is a Linear API key configuration error.
@@ -57,10 +73,12 @@ export function useLinearTeams(
   projectId: string | null,
   options?: { enabled?: boolean }
 ) {
+  const hasLinearAccess = useHasLinearAccess(projectId)
+
   return useQuery({
     queryKey: linearQueryKeys.teams(projectId ?? ''),
     queryFn: async (): Promise<LinearTeam[]> => {
-      if (!isTauri() || !projectId) {
+      if (!isTauri() || !projectId || !hasLinearAccess) {
         return []
       }
 
@@ -76,7 +94,7 @@ export function useLinearTeams(
         throw error
       }
     },
-    enabled: (options?.enabled ?? true) && !!projectId,
+    enabled: (options?.enabled ?? true) && !!projectId && hasLinearAccess,
     staleTime: 1000 * 60 * 5,
     gcTime: 1000 * 60 * 30,
     retry: 1,
@@ -90,10 +108,12 @@ export function useLinearIssues(
   projectId: string | null,
   options?: { enabled?: boolean }
 ) {
+  const hasLinearAccess = useHasLinearAccess(projectId)
+
   return useQuery({
     queryKey: linearQueryKeys.issues(projectId ?? ''),
     queryFn: async (): Promise<LinearIssueListResult> => {
-      if (!isTauri() || !projectId) {
+      if (!isTauri() || !projectId || !hasLinearAccess) {
         return { issues: [] }
       }
 
@@ -110,7 +130,7 @@ export function useLinearIssues(
         throw error
       }
     },
-    enabled: (options?.enabled ?? true) && !!projectId,
+    enabled: (options?.enabled ?? true) && !!projectId && hasLinearAccess,
     staleTime: 1000 * 60 * 2,
     gcTime: 1000 * 60 * 10,
     retry: 1,
@@ -125,10 +145,12 @@ export function useSearchLinearIssues(
   query: string,
   options?: { enabled?: boolean }
 ) {
+  const hasLinearAccess = useHasLinearAccess(projectId)
+
   return useQuery({
     queryKey: linearQueryKeys.issueSearch(projectId ?? '', query),
     queryFn: async (): Promise<LinearIssue[]> => {
-      if (!isTauri() || !projectId || !query.trim()) {
+      if (!isTauri() || !projectId || !query.trim() || !hasLinearAccess) {
         return []
       }
 
@@ -145,7 +167,11 @@ export function useSearchLinearIssues(
         throw error
       }
     },
-    enabled: (options?.enabled ?? true) && !!projectId && !!query.trim(),
+    enabled:
+      (options?.enabled ?? true) &&
+      !!projectId &&
+      !!query.trim() &&
+      hasLinearAccess,
     staleTime: 1000 * 60 * 1,
     gcTime: 1000 * 60 * 5,
     retry: 1,
@@ -161,10 +187,12 @@ export function useLoadedLinearIssueContexts(
   projectId: string | null,
   options?: { enabled?: boolean }
 ) {
+  const hasLinearAccess = useHasLinearAccess(projectId)
+
   return useQuery({
     queryKey: linearQueryKeys.loadedContexts(sessionId ?? ''),
     queryFn: async (): Promise<LoadedLinearIssueContext[]> => {
-      if (!isTauri() || !sessionId || !projectId) {
+      if (!isTauri() || !sessionId || !projectId || !hasLinearAccess) {
         return []
       }
 
@@ -178,7 +206,11 @@ export function useLoadedLinearIssueContexts(
         return []
       }
     },
-    enabled: (options?.enabled ?? true) && !!sessionId && !!projectId,
+    enabled:
+      (options?.enabled ?? true) &&
+      !!sessionId &&
+      !!projectId &&
+      hasLinearAccess,
     staleTime: 1000 * 60 * 2,
     gcTime: 1000 * 60 * 10,
     retry: 1,
@@ -194,11 +226,13 @@ export function useGetLinearIssueByNumber(
   query: string,
   options?: { enabled?: boolean }
 ) {
+  const hasLinearAccess = useHasLinearAccess(projectId)
   const itemNumber = parseLinearItemNumber(query)
   return useQuery({
     queryKey: linearQueryKeys.issueByNumber(projectId ?? '', itemNumber ?? 0),
     queryFn: async (): Promise<LinearIssue | null> => {
-      if (!isTauri() || !projectId || !itemNumber) return null
+      if (!isTauri() || !projectId || !itemNumber || !hasLinearAccess)
+        return null
       try {
         logger.debug('Fetching Linear issue by number', { projectId, itemNumber })
         const result = await invoke<LinearIssue | null>(
@@ -210,7 +244,11 @@ export function useGetLinearIssueByNumber(
         return null
       }
     },
-    enabled: (options?.enabled ?? true) && !!projectId && itemNumber !== null,
+    enabled:
+      (options?.enabled ?? true) &&
+      !!projectId &&
+      itemNumber !== null &&
+      hasLinearAccess,
     staleTime: 1000 * 30,
     gcTime: 1000 * 60 * 5,
     retry: 0,

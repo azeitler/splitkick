@@ -1,7 +1,6 @@
 import React, { useCallback, useState } from 'react'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
-import { Switch } from '@/components/ui/switch'
 import { Slider } from '@/components/ui/slider'
 import {
   Select,
@@ -121,18 +120,6 @@ export const AppearancePane: React.FC = () => {
     (field: 'ui_font' | 'chat_font', value: UIFont | ChatFont) => {
       if (preferences) {
         savePreferences.mutate({ ...preferences, [field]: value })
-      }
-    },
-    [savePreferences, preferences]
-  )
-
-  const handleKeybindingHintsChange = useCallback(
-    (checked: boolean) => {
-      if (preferences) {
-        savePreferences.mutate({
-          ...preferences,
-          show_keybinding_hints: checked,
-        })
       }
     },
     [savePreferences, preferences]
@@ -328,21 +315,6 @@ export const AppearancePane: React.FC = () => {
               default zoom with {modKey}+0.
             </p>
           </ScalingField>
-        </div>
-      </SettingsSection>
-
-      <SettingsSection title="Layout">
-        <div className="space-y-4">
-          <InlineField
-            label="Keybinding hints"
-            description="Show keyboard shortcuts at the bottom of canvas views"
-          >
-            <Switch
-              checked={preferences?.show_keybinding_hints ?? true}
-              onCheckedChange={handleKeybindingHintsChange}
-              disabled={savePreferences.isPending}
-            />
-          </InlineField>
         </div>
       </SettingsSection>
 

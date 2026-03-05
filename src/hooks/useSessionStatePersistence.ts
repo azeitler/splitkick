@@ -2,7 +2,11 @@ import { useEffect, useRef, useCallback, useMemo } from 'react'
 import { useChatStore } from '@/store/chat-store'
 import { useUpdateSessionState, useSessions } from '@/services/chat'
 import { logger } from '@/lib/logger'
-import type { QuestionAnswer, PermissionDenial } from '@/types/chat'
+import type {
+  QuestionAnswer,
+  PermissionDenial,
+  ExecutionMode,
+} from '@/types/chat'
 
 // Simple debounce implementation with flush support
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -60,6 +64,7 @@ interface SessionState {
   planFilePath: string | null
   pendingPlanMessageId: string | null
   enabledMcpServers: string[] | null
+  selectedExecutionMode: ExecutionMode | null
 }
 
 /**
@@ -136,6 +141,7 @@ export function useSessionStatePersistence() {
         planFilePaths,
         pendingPlanMessageIds,
         enabledMcpServers,
+        executionModes,
       } = useChatStore.getState()
 
       const ctx = deniedMessageContext[sessionId]
@@ -159,6 +165,7 @@ export function useSessionStatePersistence() {
         planFilePath: planFilePaths[sessionId] ?? null,
         pendingPlanMessageId: pendingPlanMessageIds[sessionId] ?? null,
         enabledMcpServers: enabledMcpServers[sessionId] ?? null,
+        selectedExecutionMode: executionModes[sessionId] ?? null,
       }
     },
     []
@@ -191,6 +198,7 @@ export function useSessionStatePersistence() {
         planFilePath: state.planFilePath,
         pendingPlanMessageId: state.pendingPlanMessageId,
         enabledMcpServers: state.enabledMcpServers,
+        selectedExecutionMode: state.selectedExecutionMode,
       })
     }, 500)
 
@@ -359,6 +367,14 @@ export function useSessionStatePersistence() {
       }
     }
 
+    // Load selected execution mode
+    if (session.selected_execution_mode) {
+      updates.executionModes = {
+        ...currentState.executionModes,
+        [activeSessionId]: session.selected_execution_mode,
+      }
+    }
+
     // When opening a session that's in plan-waiting state (Codex/Opencode plan mode),
     // transition it to review — viewing the session acts as acknowledgment.
     if (
@@ -430,6 +446,7 @@ export function useSessionStatePersistence() {
       useChatStore.getState().pendingPlanMessageIds[sessionId]
     let prevEnabledMcpServers =
       useChatStore.getState().enabledMcpServers[sessionId]
+    let prevExecutionMode = useChatStore.getState().executionModes[sessionId]
 
     const unsubscribe = useChatStore.subscribe(state => {
       if (isLoadingRef.current) return
@@ -444,6 +461,7 @@ export function useSessionStatePersistence() {
       const currentPlanFilePath = state.planFilePaths[sessionId]
       const currentPendingPlanMessageId = state.pendingPlanMessageIds[sessionId]
       const currentEnabledMcpServers = state.enabledMcpServers[sessionId]
+      const currentExecutionMode = state.executionModes[sessionId]
 
       const hasChanges =
         currentAnswered !== prevAnsweredQuestions ||
@@ -455,7 +473,8 @@ export function useSessionStatePersistence() {
         currentWaiting !== prevWaiting ||
         currentPlanFilePath !== prevPlanFilePath ||
         currentPendingPlanMessageId !== prevPendingPlanMessageId ||
-        currentEnabledMcpServers !== prevEnabledMcpServers
+        currentEnabledMcpServers !== prevEnabledMcpServers ||
+        currentExecutionMode !== prevExecutionMode
 
       if (hasChanges) {
         prevAnsweredQuestions = currentAnswered
@@ -468,6 +487,7 @@ export function useSessionStatePersistence() {
         prevPlanFilePath = currentPlanFilePath
         prevPendingPlanMessageId = currentPendingPlanMessageId
         prevEnabledMcpServers = currentEnabledMcpServers
+        prevExecutionMode = currentExecutionMode
 
         const currentState = getCurrentSessionState(sessionId)
         debouncedSaveRef.current?.(currentState)

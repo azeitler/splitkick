@@ -95,6 +95,15 @@ fn now() -> u64 {
         .as_secs()
 }
 
+fn emit_sessions_cache_invalidation(app: &AppHandle) {
+    if let Err(e) = app.emit_all(
+        "cache:invalidate",
+        &serde_json::json!({ "keys": ["sessions"] }),
+    ) {
+        log::error!("Failed to emit cache:invalidate for sessions: {e}");
+    }
+}
+
 // ============================================================================
 // Session Management Commands
 // ============================================================================
@@ -363,6 +372,7 @@ pub async fn create_session(
         }
     }
 
+    emit_sessions_cache_invalidation(&app);
     Ok(session)
 }
 
@@ -460,6 +470,7 @@ pub async fn update_session_state(
     clear_label: Option<bool>,
     review_results: Option<Option<serde_json::Value>>,
     enabled_mcp_servers: Option<Option<Vec<String>>>,
+    selected_execution_mode: Option<Option<String>>,
 ) -> Result<(), String> {
     log::trace!("Updating session state for: {session_id}");
 
@@ -509,6 +520,9 @@ pub async fn update_session_state(
             if let Some(v) = enabled_mcp_servers {
                 log::debug!("Saving session MCP servers: {v:?} for session {session_id}");
                 session.enabled_mcp_servers = v;
+            }
+            if let Some(v) = selected_execution_mode {
+                session.selected_execution_mode = v;
             }
             Ok(())
         } else {
@@ -610,7 +624,7 @@ pub async fn close_session(
     let fallback_backend = resolve_default_backend(&app, Some(&worktree_id));
 
     // Now atomically modify the sessions file
-    with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
+    let new_active = with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
         // Remove the session
         sessions.sessions.retain(|s| s.id != session_id);
 
@@ -631,7 +645,10 @@ pub async fn close_session(
             sessions.active_session_id
         );
         Ok(sessions.active_session_id.clone())
-    })
+    })?;
+
+    emit_sessions_cache_invalidation(&app);
+    Ok(new_active)
 }
 
 /// Archive a session tab (hide from UI but keep messages)
@@ -657,7 +674,7 @@ pub async fn archive_session(
     // Resolve default backend for fallback session creation
     let fallback_backend = resolve_default_backend(&app, Some(&worktree_id));
 
-    with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
+    let new_active = with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
         // Find the index before archiving/deleting
         let session_index = sessions.sessions.iter().position(|s| s.id == session_id);
 
@@ -753,7 +770,10 @@ pub async fn archive_session(
             );
         }
         Ok(sessions.active_session_id.clone())
-    })
+    })?;
+
+    emit_sessions_cache_invalidation(&app);
+    Ok(new_active)
 }
 
 /// Unarchive a session (restore it to the session list)
@@ -1130,6 +1150,7 @@ pub async fn set_active_session(
         let _ = save_metadata(&app, &metadata);
     }
 
+    emit_sessions_cache_invalidation(&app);
     Ok(())
 }
 
@@ -1147,6 +1168,7 @@ pub async fn set_session_last_opened(app: AppHandle, session_id: String) -> Resu
         save_metadata(&app, &metadata)?;
     }
 
+    emit_sessions_cache_invalidation(&app);
     Ok(())
 }
 

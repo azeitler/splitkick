@@ -285,6 +285,20 @@ function executeKeybindingAction(
       window.dispatchEvent(new CustomEvent('approve-plan-clear-context-build'))
       break
     }
+    case 'approve_plan_worktree_build': {
+      logger.debug('Keybinding: approve_plan_worktree_build')
+      const planDialogOpenWtBuild = useUIStore.getState().planDialogOpen
+      if (planDialogOpenWtBuild) break
+      window.dispatchEvent(new CustomEvent('approve-plan-worktree-build'))
+      break
+    }
+    case 'approve_plan_worktree_yolo': {
+      logger.debug('Keybinding: approve_plan_worktree_yolo')
+      const planDialogOpenWtYolo = useUIStore.getState().planDialogOpen
+      if (planDialogOpenWtYolo) break
+      window.dispatchEvent(new CustomEvent('approve-plan-worktree-yolo'))
+      break
+    }
     case 'open_plan':
       logger.debug('Keybinding: open_plan')
       window.dispatchEvent(new CustomEvent('open-plan'))
@@ -353,6 +367,9 @@ function executeKeybindingAction(
     case 'open_quick_menu':
       window.dispatchEvent(new CustomEvent('toggle-quick-menu'))
       break
+    case 'open_usage_dropdown':
+      window.dispatchEvent(new CustomEvent('toggle-usage-menu'))
+      break
     case 'toggle_session_label': {
       logger.debug('Keybinding: toggle_session_label')
       // Works when a session is active (modal open or in session view) or on project canvas
@@ -381,7 +398,10 @@ export function useMainWindowEventListeners() {
 
   // Update ref when preferences change
   useEffect(() => {
-    keybindingsRef.current = preferences?.keybindings ?? DEFAULT_KEYBINDINGS
+    keybindingsRef.current = {
+      ...DEFAULT_KEYBINDINGS,
+      ...(preferences?.keybindings ?? {}),
+    }
   }, [preferences?.keybindings])
 
   useEffect(() => {

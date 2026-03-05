@@ -698,9 +698,10 @@ pub async fn dispatch_command(
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
             let session_id: String = field(&args, "sessionId", "session_id")?;
-            crate::chat::close_session(app.clone(), worktree_id, worktree_path, session_id).await?;
-            emit_cache_invalidation(app, &["sessions"]);
-            Ok(Value::Null)
+            let result =
+                crate::chat::close_session(app.clone(), worktree_id, worktree_path, session_id)
+                    .await?;
+            to_value(result)
         }
         "reorder_sessions" => {
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
@@ -717,7 +718,6 @@ pub async fn dispatch_command(
             let session_id: String = field(&args, "sessionId", "session_id")?;
             crate::chat::set_active_session(app.clone(), worktree_id, worktree_path, session_id)
                 .await?;
-            emit_cache_invalidation(app, &["sessions"]);
             Ok(Value::Null)
         }
 
@@ -1418,6 +1418,8 @@ pub async fn dispatch_command(
                 field_opt(&args, "reviewResults", "review_results")?;
             let enabled_mcp_servers: Option<Option<Vec<String>>> =
                 field_opt(&args, "enabledMcpServers", "enabled_mcp_servers")?;
+            let selected_execution_mode: Option<Option<String>> =
+                field_opt(&args, "selectedExecutionMode", "selected_execution_mode")?;
             crate::chat::update_session_state(
                 app.clone(),
                 worktree_id,
@@ -1437,6 +1439,7 @@ pub async fn dispatch_command(
                 clear_label,
                 review_results,
                 enabled_mcp_servers,
+                selected_execution_mode,
             )
             .await?;
             emit_cache_invalidation(app, &["sessions"]);
@@ -1449,7 +1452,6 @@ pub async fn dispatch_command(
             let result =
                 crate::chat::archive_session(app.clone(), worktree_id, worktree_path, session_id)
                     .await?;
-            emit_cache_invalidation(app, &["sessions"]);
             to_value(result)
         }
         "unarchive_session" => {
@@ -1618,6 +1620,10 @@ pub async fn dispatch_command(
             let result = crate::claude_cli::check_claude_cli_auth(app.clone()).await?;
             to_value(result)
         }
+        "get_claude_usage" => {
+            let result = crate::claude_cli::get_claude_usage().await?;
+            to_value(result)
+        }
         "get_available_cli_versions" => {
             let result = crate::claude_cli::get_available_cli_versions().await?;
             to_value(result)
@@ -1693,6 +1699,407 @@ pub async fn dispatch_command(
         "get_opencode_server_status" => {
             let result = crate::opencode_server::get_opencode_server_status().await?;
             to_value(result)
+        }
+
+        // =====================================================================
+        // Codex CLI
+        // =====================================================================
+        "check_codex_cli_installed" => {
+            let result = crate::codex_cli::check_codex_cli_installed(app.clone()).await?;
+            to_value(result)
+        }
+        "check_codex_cli_auth" => {
+            let result = crate::codex_cli::check_codex_cli_auth(app.clone()).await?;
+            to_value(result)
+        }
+        "get_available_codex_versions" => {
+            let result = crate::codex_cli::get_available_codex_versions().await?;
+            to_value(result)
+        }
+        "get_codex_usage" => {
+            let result = crate::codex_cli::get_codex_usage().await?;
+            to_value(result)
+        }
+        "install_codex_cli" => {
+            let version: Option<String> = from_field_opt(&args, "version")?;
+            crate::codex_cli::install_codex_cli(app.clone(), version).await?;
+            Ok(Value::Null)
+        }
+        "approve_codex_command" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let rpc_id: u64 = field(&args, "rpcId", "rpc_id")?;
+            let decision: String = from_field(&args, "decision")?;
+            crate::chat::approve_codex_command(session_id, rpc_id, decision)?;
+            Ok(Value::Null)
+        }
+
+        // =====================================================================
+        // Chat (additional)
+        // =====================================================================
+        "check_mcp_health" => {
+            let backend: Option<String> = from_field_opt(&args, "backend")?;
+            let result = crate::chat::check_mcp_health(app.clone(), backend).await?;
+            to_value(result)
+        }
+        "get_mcp_servers" => {
+            let backend: Option<String> = from_field_opt(&args, "backend")?;
+            let worktree_path: Option<String> = field_opt(&args, "worktreePath", "worktree_path")?;
+            let result = crate::chat::get_mcp_servers(backend, worktree_path).await?;
+            to_value(result)
+        }
+        "read_clipboard_image" => {
+            let result = crate::chat::read_clipboard_image(app.clone()).await?;
+            to_value(result)
+        }
+        "regenerate_session_name" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let custom_prompt: Option<String> = field_opt(&args, "customPrompt", "custom_prompt")?;
+            let model: Option<String> = from_field_opt(&args, "model")?;
+            let custom_profile_name: Option<String> =
+                field_opt(&args, "customProfileName", "custom_profile_name")?;
+            crate::chat::regenerate_session_name(
+                app.clone(),
+                worktree_id,
+                worktree_path,
+                session_id,
+                custom_prompt,
+                model,
+                custom_profile_name,
+            )
+            .await?;
+            emit_cache_invalidation(app, &["sessions"]);
+            Ok(Value::Null)
+        }
+        "set_session_backend" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let backend: String = from_field(&args, "backend")?;
+            crate::chat::set_session_backend(
+                app.clone(),
+                worktree_id,
+                worktree_path,
+                session_id,
+                backend,
+            )
+            .await?;
+            emit_cache_invalidation(app, &["session", "sessions"]);
+            Ok(Value::Null)
+        }
+        "set_session_provider" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let provider: Option<String> = from_field_opt(&args, "provider")?;
+            crate::chat::set_session_provider(
+                app.clone(),
+                worktree_id,
+                worktree_path,
+                session_id,
+                provider,
+            )
+            .await?;
+            emit_cache_invalidation(app, &["session", "sessions"]);
+            Ok(Value::Null)
+        }
+        "set_session_last_opened" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            crate::chat::set_session_last_opened(app.clone(), session_id).await?;
+            Ok(Value::Null)
+        }
+
+        // =====================================================================
+        // Git & Project (additional)
+        // =====================================================================
+        "check_git_identity" => {
+            let result = crate::projects::check_git_identity().await?;
+            to_value(result)
+        }
+        "set_git_identity" => {
+            let name: String = from_field(&args, "name")?;
+            let email: String = from_field(&args, "email")?;
+            crate::projects::set_git_identity(name, email).await?;
+            Ok(Value::Null)
+        }
+        "clone_project" => {
+            let url: String = from_field(&args, "url")?;
+            let path: String = from_field(&args, "path")?;
+            let parent_id: Option<String> = field_opt(&args, "parentId", "parent_id")?;
+            let result = crate::projects::clone_project(app.clone(), url, path, parent_id).await?;
+            emit_cache_invalidation(app, &["projects"]);
+            to_value(result)
+        }
+        "open_branch_on_github" => {
+            let repo_path: String = field(&args, "repoPath", "repo_path")?;
+            let branch: String = from_field(&args, "branch")?;
+            crate::projects::open_branch_on_github(repo_path, branch).await?;
+            Ok(Value::Null)
+        }
+        "open_log_directory" => {
+            crate::projects::open_log_directory(app.clone()).await?;
+            Ok(Value::Null)
+        }
+        "remove_git_remote" => {
+            let repo_path: String = field(&args, "repoPath", "repo_path")?;
+            let remote_name: String = field(&args, "remoteName", "remote_name")?;
+            crate::projects::remove_git_remote(repo_path, remote_name).await?;
+            Ok(Value::Null)
+        }
+        "resolve_claude_command" => {
+            let command_path: String = field(&args, "commandPath", "command_path")?;
+            let working_dir: String = field(&args, "workingDir", "working_dir")?;
+            let result = crate::projects::resolve_claude_command(command_path, working_dir).await?;
+            to_value(result)
+        }
+        "revert_file" => {
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let file_path: String = field(&args, "filePath", "file_path")?;
+            let file_status: String = field(&args, "fileStatus", "file_status")?;
+            crate::projects::revert_file(worktree_path, file_path, file_status).await?;
+            Ok(Value::Null)
+        }
+        "set_worktree_last_opened" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            crate::projects::set_worktree_last_opened(app.clone(), worktree_id).await?;
+            Ok(Value::Null)
+        }
+        "git_stash" => {
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let result = crate::projects::git_stash(worktree_path).await?;
+            to_value(result)
+        }
+        "git_stash_pop" => {
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let result = crate::projects::git_stash_pop(worktree_path).await?;
+            to_value(result)
+        }
+        "generate_pr_update_content" => {
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let session_id: Option<String> = field_opt(&args, "sessionId", "session_id")?;
+            let custom_prompt: Option<String> = field_opt(&args, "customPrompt", "custom_prompt")?;
+            let model: Option<String> = from_field_opt(&args, "model")?;
+            let custom_profile_name: Option<String> =
+                field_opt(&args, "customProfileName", "custom_profile_name")?;
+            let result = crate::projects::generate_pr_update_content(
+                app.clone(),
+                worktree_path,
+                session_id,
+                custom_prompt,
+                model,
+                custom_profile_name,
+            )
+            .await?;
+            to_value(result)
+        }
+        "update_pr_description" => {
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let pr_number: u32 = field(&args, "prNumber", "pr_number")?;
+            let title: String = from_field(&args, "title")?;
+            let body: String = from_field(&args, "body")?;
+            crate::projects::update_pr_description(
+                app.clone(),
+                worktree_path,
+                pr_number,
+                title,
+                body,
+            )
+            .await?;
+            Ok(Value::Null)
+        }
+        "get_jean_config" => {
+            let project_path: String = field(&args, "projectPath", "project_path")?;
+            let result = crate::projects::get_jean_config(project_path).await;
+            to_value(result)
+        }
+        "save_jean_config" => {
+            let project_path: String = field(&args, "projectPath", "project_path")?;
+            let config = from_field(&args, "config")?;
+            crate::projects::save_jean_config(project_path, config).await?;
+            Ok(Value::Null)
+        }
+        "list_github_releases" => {
+            let project_path: String = field(&args, "projectPath", "project_path")?;
+            let result = crate::projects::list_github_releases(app.clone(), project_path).await?;
+            to_value(result)
+        }
+        "generate_release_notes" => {
+            let project_path: String = field(&args, "projectPath", "project_path")?;
+            let tag: String = from_field(&args, "tag")?;
+            let release_name: String = field(&args, "releaseName", "release_name")?;
+            let custom_prompt: Option<String> = field_opt(&args, "customPrompt", "custom_prompt")?;
+            let model: Option<String> = from_field_opt(&args, "model")?;
+            let custom_profile_name: Option<String> =
+                field_opt(&args, "customProfileName", "custom_profile_name")?;
+            let result = crate::projects::generate_release_notes(
+                app.clone(),
+                project_path,
+                tag,
+                release_name,
+                custom_prompt,
+                model,
+                custom_profile_name,
+            )
+            .await?;
+            to_value(result)
+        }
+
+        // =====================================================================
+        // GitHub Issues (additional)
+        // =====================================================================
+        "get_github_issue_by_number" => {
+            let project_path: String = field(&args, "projectPath", "project_path")?;
+            let issue_number: u32 = field(&args, "issueNumber", "issue_number")?;
+            let result = crate::projects::get_github_issue_by_number(
+                app.clone(),
+                project_path,
+                issue_number,
+            )
+            .await?;
+            to_value(result)
+        }
+        "get_github_pr_by_number" => {
+            let project_path: String = field(&args, "projectPath", "project_path")?;
+            let pr_number: u32 = field(&args, "prNumber", "pr_number")?;
+            let result =
+                crate::projects::get_github_pr_by_number(app.clone(), project_path, pr_number)
+                    .await?;
+            to_value(result)
+        }
+        "get_repository_advisory" => {
+            let project_path: String = field(&args, "projectPath", "project_path")?;
+            let ghsa_id: String = field(&args, "ghsaId", "ghsa_id")?;
+            let result =
+                crate::projects::get_repository_advisory(app.clone(), project_path, ghsa_id)
+                    .await?;
+            to_value(result)
+        }
+        "list_workflow_runs" => {
+            let project_path: String = field(&args, "projectPath", "project_path")?;
+            let branch: Option<String> = from_field_opt(&args, "branch")?;
+            let result =
+                crate::projects::list_workflow_runs(app.clone(), project_path, branch).await?;
+            to_value(result)
+        }
+
+        // =====================================================================
+        // Linear Issues
+        // =====================================================================
+        "list_linear_teams" => {
+            let project_id: String = field(&args, "projectId", "project_id")?;
+            let result = crate::projects::list_linear_teams(app.clone(), project_id).await?;
+            to_value(result)
+        }
+        "list_linear_issues" => {
+            let project_id: String = field(&args, "projectId", "project_id")?;
+            let result = crate::projects::list_linear_issues(app.clone(), project_id).await?;
+            to_value(result)
+        }
+        "search_linear_issues" => {
+            let project_id: String = field(&args, "projectId", "project_id")?;
+            let query: String = from_field(&args, "query")?;
+            let result =
+                crate::projects::search_linear_issues(app.clone(), project_id, query).await?;
+            to_value(result)
+        }
+        "get_linear_issue" => {
+            let project_id: String = field(&args, "projectId", "project_id")?;
+            let issue_id: String = field(&args, "issueId", "issue_id")?;
+            let result =
+                crate::projects::get_linear_issue(app.clone(), project_id, issue_id).await?;
+            to_value(result)
+        }
+        "get_linear_issue_by_number" => {
+            let project_id: String = field(&args, "projectId", "project_id")?;
+            let issue_number: i64 = field(&args, "issueNumber", "issue_number")?;
+            let result =
+                crate::projects::get_linear_issue_by_number(app.clone(), project_id, issue_number)
+                    .await?;
+            to_value(result)
+        }
+        "load_linear_issue_context" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let project_id: String = field(&args, "projectId", "project_id")?;
+            let issue_id: String = field(&args, "issueId", "issue_id")?;
+            let result = crate::projects::load_linear_issue_context(
+                app.clone(),
+                session_id,
+                project_id,
+                issue_id,
+            )
+            .await?;
+            to_value(result)
+        }
+        "list_loaded_linear_issue_contexts" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let worktree_id: Option<String> = field_opt(&args, "worktreeId", "worktree_id")?;
+            let project_id: String = field(&args, "projectId", "project_id")?;
+            let result = crate::projects::list_loaded_linear_issue_contexts(
+                app.clone(),
+                session_id,
+                worktree_id,
+                project_id,
+            )
+            .await?;
+            to_value(result)
+        }
+        "get_linear_issue_context_contents" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let worktree_id: Option<String> = field_opt(&args, "worktreeId", "worktree_id")?;
+            let project_id: String = field(&args, "projectId", "project_id")?;
+            let result = crate::projects::get_linear_issue_context_contents(
+                app.clone(),
+                session_id,
+                worktree_id,
+                project_id,
+            )
+            .await?;
+            to_value(result)
+        }
+        "remove_linear_issue_context" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let project_id: String = field(&args, "projectId", "project_id")?;
+            let identifier: String = from_field(&args, "identifier")?;
+            crate::projects::remove_linear_issue_context(
+                app.clone(),
+                session_id,
+                project_id,
+                identifier,
+            )
+            .await?;
+            Ok(Value::Null)
+        }
+
+        // =====================================================================
+        // CLI Profiles
+        // =====================================================================
+        "save_cli_profile" => {
+            let name: String = from_field(&args, "name")?;
+            let settings_json: String = field(&args, "settingsJson", "settings_json")?;
+            let result = crate::save_cli_profile(name, settings_json).await?;
+            to_value(result)
+        }
+        "delete_cli_profile" => {
+            let name: String = from_field(&args, "name")?;
+            crate::delete_cli_profile(name).await?;
+            Ok(Value::Null)
+        }
+
+        // =====================================================================
+        // Background Tasks (additional)
+        // =====================================================================
+        "set_all_worktrees_for_polling" => {
+            let worktrees = from_field(&args, "worktrees")?;
+            let state = app.state::<crate::background_tasks::BackgroundTaskManager>();
+            crate::background_tasks::commands::set_all_worktrees_for_polling(state, worktrees)?;
+            Ok(Value::Null)
+        }
+        "set_pr_worktrees_for_polling" => {
+            let worktrees = from_field(&args, "worktrees")?;
+            let state = app.state::<crate::background_tasks::BackgroundTaskManager>();
+            crate::background_tasks::commands::set_pr_worktrees_for_polling(state, worktrees)?;
+            Ok(Value::Null)
         }
 
         // =====================================================================

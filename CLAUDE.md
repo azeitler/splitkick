@@ -373,3 +373,60 @@ Projects have an optional `worktrees_dir: Option<String>` field that overrides t
   - The `<project-name>` subdirectory is always appended to prevent collisions when multiple projects share the same custom base dir
 - **UI**: "Worktrees Location" section in `src/components/projects/panes/GeneralPane.tsx` (Browse + Save + Reset)
 - **Saved via**: `update_project_settings` Tauri command, `worktrees_dir: Option<Option<String>>` param (outer Option = not updating, inner Option = clear/set)
+
+#### Adding New Tauri Commands (Web Access Dispatch)
+
+**CRITICAL:** Every new `#[tauri::command]` must ALSO be registered in the WebSocket dispatch handler, or it will only work in the native app and fail with `"Unknown command"` in web access.
+
+**Two places to register every command:**
+
+1. **`src-tauri/src/lib.rs`** — `tauri::generate_handler![...]` (native Tauri IPC)
+2. **`src-tauri/src/http_server/dispatch.rs`** — `dispatch_command()` match arms (WebSocket transport)
+
+**Dispatch pattern:**
+
+```rust
+// In dispatch.rs — match arm inside dispatch_command()
+"my_new_command" => {
+    // Use field() for camelCase/snake_case dual-key extraction
+    let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+    // Use from_field() for single-key extraction
+    let name: String = from_field(&args, "name")?;
+    // Use from_field_opt() / field_opt() for Option<T>
+    let model: Option<String> = from_field_opt(&args, "model")?;
+
+    let result = crate::my_module::my_new_command(app.clone(), worktree_id, name, model).await?;
+    to_value(result) // or Ok(Value::Null) for () return
+}
+```
+
+**Helper functions in dispatch.rs:**
+
+- `to_value(result)` — Serialize return value to `serde_json::Value`
+- `from_field(&args, "key")` — Extract required field (single key)
+- `from_field_opt(&args, "key")` — Extract optional field (single key)
+- `field(&args, "camelKey", "snake_key")` — Extract required field (tries camelCase first, then snake_case)
+- `field_opt(&args, "camelKey", "snake_key")` — Extract optional field (dual-key)
+- `emit_cache_invalidation(app, &["sessions", "session"])` — Broadcast cache invalidation to all clients
+
+**Module path rules** (use re-exports, NOT private `::commands::` paths):
+
+- `crate::chat::` — chat commands (re-exported via `pub use commands::*`)
+- `crate::codex_cli::` — codex CLI commands (re-exported via `pub use commands::*`)
+- `crate::projects::` — project/git/github/linear commands (re-exported via `pub use commands::*`, `pub use github_issues::*`, etc.)
+- `crate::background_tasks::commands::` — background task commands (public module, direct access)
+- `crate::` — top-level commands defined in `lib.rs` (e.g., `save_cli_profile`)
+
+**For `State<'_, T>` params** (e.g., `BackgroundTaskManager`): extract via `app.state::<T>()`:
+
+```rust
+let state = app.state::<crate::background_tasks::BackgroundTaskManager>();
+crate::background_tasks::commands::my_command(state, arg)?;
+```
+
+**Checklist for new commands:**
+
+- [ ] Add `#[tauri::command]` function
+- [ ] Register in `lib.rs` `generate_handler![]`
+- [ ] Add match arm in `dispatch.rs` `dispatch_command()`
+- [ ] Add `emit_cache_invalidation()` if the command mutates data that other clients should refresh

@@ -89,6 +89,7 @@ import { OpenInButton } from '@/components/open-in/OpenInButton'
 import { useCanvasStoreState } from '@/components/chat/hooks/useCanvasStoreState'
 import { usePlanApproval } from '@/components/chat/hooks/usePlanApproval'
 import { useClearContextApproval } from '@/components/chat/hooks/useClearContextApproval'
+import { useWorktreeApproval } from '@/components/chat/hooks/useWorktreeApproval'
 import { useCanvasKeyboardNav } from '@/components/chat/hooks/useCanvasKeyboardNav'
 import { useCanvasShortcutEvents } from '@/components/chat/hooks/useCanvasShortcutEvents'
 import {
@@ -487,7 +488,7 @@ function WorktreeSectionHeader({
 }
 
 export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
-  // Preferences for keybinding hints and layout
+  // Preferences for canvas layout
   const { data: preferences } = usePreferences()
   const savePreferences = useSavePreferences()
   const canvasLayout = preferences?.canvas_layout ?? 'list'
@@ -756,6 +757,11 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   const { handleClearContextApproval, handleClearContextApprovalBuild } = useClearContextApproval({
     worktreeId: selectedFlatCard?.worktreeId ?? '',
     worktreePath: selectedFlatCard?.worktreePath ?? '',
+  })
+  const { handleWorktreeApproval, handleWorktreeApprovalYolo } = useWorktreeApproval({
+    worktreeId: selectedFlatCard?.worktreeId ?? '',
+    worktreePath: selectedFlatCard?.worktreePath ?? '',
+    projectId: projectId ?? null,
   })
 
   // Archive mutations - need to handle per-worktree
@@ -1261,6 +1267,12 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       handleClearContextApproval(card, updatedPlan),
     onClearContextApprovalBuild: (card, updatedPlan) =>
       handleClearContextApprovalBuild(card, updatedPlan),
+    onWorktreeApproval: handleWorktreeApproval
+      ? (card, updatedPlan) => handleWorktreeApproval(card, updatedPlan)
+      : null,
+    onWorktreeApprovalYolo: handleWorktreeApprovalYolo
+      ? (card, updatedPlan) => handleWorktreeApprovalYolo(card, updatedPlan)
+      : null,
     skipLabelHandling: true,
   })
 
@@ -1425,6 +1437,24 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       }
     },
     [planDialogCard, handleClearContextApprovalBuild]
+  )
+
+  const handleDialogWorktreeApprove = useCallback(
+    (updatedPlan: string) => {
+      if (planDialogCard && handleWorktreeApproval) {
+        handleWorktreeApproval(planDialogCard, updatedPlan)
+      }
+    },
+    [planDialogCard, handleWorktreeApproval]
+  )
+
+  const handleDialogWorktreeApproveYolo = useCallback(
+    (updatedPlan: string) => {
+      if (planDialogCard && handleWorktreeApprovalYolo) {
+        handleWorktreeApprovalYolo(planDialogCard, updatedPlan)
+      }
+    },
+    [planDialogCard, handleWorktreeApprovalYolo]
   )
 
   // Handle archive session for a specific worktree
@@ -2073,6 +2103,8 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                                   onYolo={() => handlePlanApprovalYolo(card)}
                                   onClearContextApprove={() => handleClearContextApproval(card)}
                                   onClearContextBuildApprove={() => handleClearContextApprovalBuild(card)}
+                                  onWorktreeBuildApprove={handleWorktreeApproval ? () => handleWorktreeApproval(card) : undefined}
+                                  onWorktreeYoloApprove={handleWorktreeApprovalYolo ? () => handleWorktreeApprovalYolo(card) : undefined}
                                   onToggleLabel={() =>
                                     handleOpenWorktreeLabelModal(card)
                                   }
@@ -2129,6 +2161,8 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
           onApproveYolo={handleDialogApproveYolo}
           onClearContextApprove={handleDialogClearContextApprove}
           onClearContextBuildApprove={handleDialogClearContextApproveBuild}
+          onWorktreeBuildApprove={handleWorktreeApproval ? handleDialogWorktreeApprove : undefined}
+          onWorktreeYoloApprove={handleWorktreeApprovalYolo ? handleDialogWorktreeApproveYolo : undefined}
         />
       ) : planDialogContent ? (
         <PlanDialog
@@ -2141,6 +2175,8 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
           onApproveYolo={handleDialogApproveYolo}
           onClearContextApprove={handleDialogClearContextApprove}
           onClearContextBuildApprove={handleDialogClearContextApproveBuild}
+          onWorktreeBuildApprove={handleWorktreeApproval ? handleDialogWorktreeApprove : undefined}
+          onWorktreeYoloApprove={handleWorktreeApprovalYolo ? handleDialogWorktreeApproveYolo : undefined}
         />
       ) : null}
 

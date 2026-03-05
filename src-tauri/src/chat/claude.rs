@@ -854,7 +854,7 @@ pub fn tail_claude_output(
     pid: u32,
 ) -> Result<ClaudeResponse, String> {
     use super::detached::is_process_alive;
-    use super::tail::{NdjsonTailer, POLL_INTERVAL};
+    use super::tail::{NdjsonTailer, POLL_INTERVAL, POLL_INTERVAL_FAST};
     use std::time::{Duration, Instant};
 
     log::trace!("Starting to tail NDJSON output for session: {session_id}");
@@ -885,8 +885,9 @@ pub fn tail_claude_output(
     loop {
         // Poll for new lines
         let lines = tailer.poll()?;
+        let had_data = !lines.is_empty();
 
-        if !lines.is_empty() {
+        if had_data {
             last_output_time = Instant::now();
         }
 
@@ -1339,8 +1340,13 @@ pub fn tail_claude_output(
             }
         }
 
-        // Sleep before next poll
-        std::thread::sleep(POLL_INTERVAL);
+        // Adaptive sleep: poll faster when actively receiving data (5ms)
+        // to reduce per-event latency, back off to 50ms when idle.
+        std::thread::sleep(if had_data {
+            POLL_INTERVAL_FAST
+        } else {
+            POLL_INTERVAL
+        });
     }
 
     // Surface CLI errors when process failed with no meaningful output

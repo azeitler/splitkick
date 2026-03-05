@@ -1,7 +1,7 @@
 import { useCallback, type RefObject } from 'react'
 import type { QueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { invoke } from '@/lib/transport'
+import { invoke, listen } from '@/lib/transport'
 import {
   chatQueryKeys,
   markPlanApproved as markPlanApprovedService,
@@ -24,7 +24,9 @@ import { parseReviewFindings, getFindingKey } from '../review-finding-utils'
 import { findPlanContent, findPlanFilePath } from '../tool-call-utils'
 import { generateId } from '@/lib/uuid'
 import { preferencesQueryKeys } from '@/services/preferences'
+import { useProjectsStore } from '@/store/projects-store'
 import type { AppPreferences } from '@/types/preferences'
+import type { Worktree, WorktreeCreatedEvent, WorktreeCreateErrorEvent } from '@/types/projects'
 
 /** Git commands to auto-approve for magic prompts (no permission prompts needed) */
 export const GIT_ALLOWED_TOOLS = [
@@ -93,6 +95,8 @@ interface UseMessageHandlersParams {
   inputRef: RefObject<HTMLTextAreaElement | null>
   // For pending plan approval callback
   pendingPlanMessage: ChatMessage | null | undefined
+  // For worktree approval (null = no project context, buttons won't render)
+  projectIdRef: RefObject<string | null>
 }
 
 interface MessageHandlers {
@@ -110,6 +114,10 @@ interface MessageHandlers {
   handleStreamingClearContextApproval: () => void
   handleClearContextApprovalBuild: (messageId: string) => void
   handleStreamingClearContextApprovalBuild: () => void
+  handleWorktreeBuildApproval: (messageId: string) => void
+  handleStreamingWorktreeBuildApproval: () => void
+  handleWorktreeYoloApproval: (messageId: string) => void
+  handleStreamingWorktreeYoloApproval: () => void
   handlePendingPlanApprovalCallback: () => void
   handlePermissionApproval: (
     sessionId: string,
@@ -198,6 +206,7 @@ export function useMessageHandlers({
   scrollToBottom,
   inputRef,
   pendingPlanMessage,
+  projectIdRef,
 }: UseMessageHandlersParams): MessageHandlers {
   'use no memo'
 
@@ -1219,6 +1228,502 @@ export function useMessageHandlers({
     [handleStreamingClearContextApproval]
   )
 
+  // Handle worktree approval (create new worktree + send plan)
+  const handleWorktreeApproval = useCallback(
+    async (messageId: string, mode: 'yolo' | 'build' = 'build') => {
+      const sessionId = activeSessionIdRef.current
+      const worktreeId = activeWorktreeIdRef.current
+      const worktreePath = activeWorktreePathRef.current
+      const projectId = projectIdRef.current
+      if (!sessionId || !worktreeId || !worktreePath || !projectId) return
+
+      // Get the message to extract plan content
+      const sessionData = queryClient.getQueryData<Session>(
+        chatQueryKeys.session(sessionId)
+      )
+      const message = sessionData?.messages.find(m => m.id === messageId)
+      if (!message?.tool_calls) {
+        toast.error('No plan content available')
+        return
+      }
+
+      // Resolve plan content from tool calls
+      let planContent = findPlanContent(message.tool_calls)
+      if (!planContent) {
+        const planFilePath = findPlanFilePath(message.tool_calls)
+        if (planFilePath) {
+          try {
+            planContent = await readPlanFile(planFilePath)
+          } catch (err) {
+            toast.error(`Failed to read plan file: ${err}`)
+            return
+          }
+        }
+      }
+      if (!planContent) {
+        toast.error('No plan content available')
+        return
+      }
+
+      const toastId = toast.loading('Creating worktree...')
+
+      // Mark plan approved on original session
+      markPlanApprovedService(worktreeId, worktreePath, sessionId, messageId)
+      queryClient.setQueryData<Session>(
+        chatQueryKeys.session(sessionId),
+        old => {
+          if (!old) return old
+          return {
+            ...old,
+            approved_plan_message_ids: [
+              ...(old.approved_plan_message_ids ?? []),
+              messageId,
+            ],
+            messages: old.messages.map(msg =>
+              msg.id === messageId ? { ...msg, plan_approved: true } : msg
+            ),
+          }
+        }
+      )
+      queryClient.invalidateQueries({
+        queryKey: chatQueryKeys.sessions(worktreeId),
+      })
+
+      const store = useChatStore.getState()
+      store.clearToolCalls(sessionId)
+      store.clearStreamingContentBlocks(sessionId)
+      store.setSessionReviewing(sessionId, false)
+      store.setWaitingForInput(sessionId, false)
+
+      // Create new worktree
+      let pendingWorktree: Worktree
+      try {
+        pendingWorktree = await invoke<Worktree>('create_worktree', { projectId })
+      } catch (err) {
+        toast.error(`Failed to create worktree: ${err}`, { id: toastId })
+        return
+      }
+
+      // Wait for worktree to be ready
+      let readyWorktree: Worktree
+      try {
+        readyWorktree = await new Promise<Worktree>((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            void unlistenCreated.then(fn => fn())
+            void unlistenError.then(fn => fn())
+            reject(new Error('Worktree creation timed out'))
+          }, 120_000)
+
+          const unlistenCreated = listen<WorktreeCreatedEvent>('worktree:created', event => {
+            if (event.payload.worktree.id === pendingWorktree.id) {
+              clearTimeout(timeout)
+              void unlistenCreated.then(fn => fn())
+              void unlistenError.then(fn => fn())
+              resolve(event.payload.worktree)
+            }
+          })
+
+          const unlistenError = listen<WorktreeCreateErrorEvent>('worktree:error', event => {
+            if (event.payload.id === pendingWorktree.id) {
+              clearTimeout(timeout)
+              void unlistenCreated.then(fn => fn())
+              void unlistenError.then(fn => fn())
+              reject(new Error(event.payload.error))
+            }
+          })
+        })
+      } catch (err) {
+        toast.error(`Worktree creation failed: ${err}`, { id: toastId })
+        return
+      }
+
+      toast.loading('Sending plan...', { id: toastId })
+
+      // Navigate to new worktree
+      const projectsStore = useProjectsStore.getState()
+      projectsStore.expandProject(readyWorktree.project_id)
+      projectsStore.selectWorktree(readyWorktree.id)
+      store.registerWorktreePath(readyWorktree.id, readyWorktree.path)
+      store.setActiveWorktree(readyWorktree.id, readyWorktree.path)
+
+      // Use the default session auto-created by the backend, or create one if none exists
+      let newSession: Session
+      try {
+        const sessionsData = await invoke<WorktreeSessions>('get_sessions', {
+          worktreeId: readyWorktree.id,
+          worktreePath: readyWorktree.path,
+        })
+        if (sessionsData.sessions.length > 0 && sessionsData.sessions[0]) {
+          newSession = sessionsData.sessions[0]
+        } else {
+          newSession = await invoke<Session>('create_session', {
+            worktreeId: readyWorktree.id,
+            worktreePath: readyWorktree.path,
+          })
+        }
+      } catch (err) {
+        toast.error(`Failed to get session: ${err}`, { id: toastId })
+        return
+      }
+
+      store.setActiveSession(readyWorktree.id, newSession.id)
+      store.addUserInitiatedSession(newSession.id)
+
+      // Resolve model/backend/thinking based on mode
+      const isYolo = mode === 'yolo'
+      const modeModelRef = isYolo ? yoloModelRef : buildModelRef
+      const modeBackendRef = isYolo ? yoloBackendRef : buildBackendRef
+      const modeThinkingRef = isYolo ? yoloThinkingLevelRef : buildThinkingLevelRef
+      const modeLabel = isYolo ? 'Yolo' : 'Build'
+
+      const currentSessionBackend = queryClient.getQueryData<Session>(
+        chatQueryKeys.session(sessionId)
+      )?.backend
+      const prefs = queryClient.getQueryData<AppPreferences>(
+        preferencesQueryKeys.preferences()
+      )
+      const modeBackendOverride = (modeBackendRef.current as Session['backend']) ?? null
+      const resolvedBackend = modeBackendOverride ?? undefined
+      const modelBackend = resolvedBackend ?? currentSessionBackend
+      const resolvedModel =
+        modeModelRef.current ??
+        (modeBackendOverride
+          ? getDefaultModelForBackend(modelBackend, prefs)
+          : selectedModelRef.current)
+      const modeOverride = (modeModelRef.current || modeBackendOverride)
+        ? [resolvedBackend, resolvedModel].filter(Boolean).join(' / ')
+        : ''
+      if (modeOverride) toast.info(`${modeLabel}: ${modeOverride}`)
+      const planMessage = modeOverride
+        ? `[${modeLabel}: ${modeOverride}]\nExecute this plan. Implement all changes described.\n\n<plan>\n${planContent}\n</plan>`
+        : `Execute this plan. Implement all changes described.\n\n<plan>\n${planContent}\n</plan>`
+      store.setExecutionMode(newSession.id, mode)
+      store.setLastSentMessage(newSession.id, planMessage)
+      store.setError(newSession.id, null)
+      store.addSendingSession(newSession.id)
+      store.setSelectedModel(newSession.id, resolvedModel)
+      store.setExecutingMode(newSession.id, mode)
+      if (resolvedBackend) {
+        store.setSelectedBackend(
+          newSession.id,
+          resolvedBackend as 'claude' | 'codex' | 'opencode'
+        )
+      }
+      queryClient.setQueryData<Session>(
+        chatQueryKeys.session(newSession.id),
+        old => old ? { ...old, backend: resolvedBackend ?? old.backend, selected_model: resolvedModel } : old
+      )
+
+      await invoke('set_session_model', {
+        worktreeId: readyWorktree.id, worktreePath: readyWorktree.path,
+        sessionId: newSession.id, model: resolvedModel,
+      }).catch(err => console.error('[worktreeApproval] Failed to persist model:', err))
+      if (resolvedBackend) {
+        await invoke('set_session_backend', {
+          worktreeId: readyWorktree.id, worktreePath: readyWorktree.path,
+          sessionId: newSession.id, backend: resolvedBackend,
+        }).catch(err => console.error('[worktreeApproval] Failed to persist backend:', err))
+      }
+
+      const effectiveBackend = resolvedBackend ?? currentSessionBackend
+      let resolvedThinkingLevel: ThinkingLevel = selectedThinkingLevelRef.current
+      let resolvedEffortLevel: EffortLevel | undefined = useAdaptiveThinkingRef.current
+        ? selectedEffortLevelRef.current
+        : undefined
+      if (effectiveBackend === 'codex') {
+        resolvedThinkingLevel = 'off'
+        resolvedEffortLevel =
+          mapCodexReasoningToEffort(modeThinkingRef.current) ?? selectedEffortLevelRef.current
+      } else if (isThinkingLevel(modeThinkingRef.current)) {
+        resolvedThinkingLevel = modeThinkingRef.current
+      }
+      sendMessage.mutate({
+        sessionId: newSession.id,
+        worktreeId: readyWorktree.id,
+        worktreePath: readyWorktree.path,
+        message: planMessage,
+        model: resolvedModel,
+        executionMode: mode,
+        thinkingLevel: resolvedThinkingLevel,
+        effortLevel: resolvedEffortLevel,
+        mcpConfig: getMcpConfig(),
+        customProfileName: getCustomProfileName(),
+        backend: resolvedBackend,
+      })
+
+      toast.success(`Plan sent to new worktree (${modeLabel})`, { id: toastId })
+    },
+    [
+      activeSessionIdRef,
+      activeWorktreeIdRef,
+      activeWorktreePathRef,
+      projectIdRef,
+      selectedModelRef,
+      buildModelRef,
+      buildBackendRef,
+      buildThinkingLevelRef,
+      yoloModelRef,
+      yoloBackendRef,
+      yoloThinkingLevelRef,
+      selectedThinkingLevelRef,
+      selectedEffortLevelRef,
+      useAdaptiveThinkingRef,
+      getMcpConfig,
+      getCustomProfileName,
+      sendMessage,
+      queryClient,
+    ]
+  )
+
+  // Handle streaming worktree approval
+  const handleStreamingWorktreeApproval = useCallback(async (mode: 'yolo' | 'build' = 'build') => {
+    const sessionId = activeSessionIdRef.current
+    const worktreeId = activeWorktreeIdRef.current
+    const worktreePath = activeWorktreePathRef.current
+    const projectId = projectIdRef.current
+    if (!sessionId || !worktreeId || !worktreePath || !projectId) return
+
+    // Get streaming content blocks to extract plan content
+    const store = useChatStore.getState()
+    const contentBlocks = store.streamingContentBlocks[sessionId]
+    const toolCalls = store.activeToolCalls[sessionId]
+
+    let planContent: string | null = null
+    if (toolCalls) {
+      planContent = findPlanContent(toolCalls)
+      if (!planContent) {
+        const planFilePath = findPlanFilePath(toolCalls)
+        if (planFilePath) {
+          try {
+            planContent = await readPlanFile(planFilePath)
+          } catch {
+            // Fall through to content blocks
+          }
+        }
+      }
+    }
+
+    if (!planContent && contentBlocks) {
+      for (const block of contentBlocks) {
+        if ('text' in block && block.text) {
+          planContent = block.text
+          break
+        }
+      }
+    }
+
+    if (!planContent) {
+      toast.error('No plan content available')
+      return
+    }
+
+    const toastId = toast.loading('Creating worktree...')
+
+    // Mark as approved in streaming state
+    store.setStreamingPlanApproved(sessionId, true)
+    store.clearToolCalls(sessionId)
+    store.clearStreamingContentBlocks(sessionId)
+    store.setSessionReviewing(sessionId, false)
+    store.setWaitingForInput(sessionId, false)
+
+    // Create new worktree
+    let pendingWorktree: Worktree
+    try {
+      pendingWorktree = await invoke<Worktree>('create_worktree', { projectId })
+    } catch (err) {
+      toast.error(`Failed to create worktree: ${err}`, { id: toastId })
+      return
+    }
+
+    // Wait for worktree to be ready
+    let readyWorktree: Worktree
+    try {
+      readyWorktree = await new Promise<Worktree>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          void unlistenCreated.then(fn => fn())
+          void unlistenError.then(fn => fn())
+          reject(new Error('Worktree creation timed out'))
+        }, 120_000)
+
+        const unlistenCreated = listen<WorktreeCreatedEvent>('worktree:created', event => {
+          if (event.payload.worktree.id === pendingWorktree.id) {
+            clearTimeout(timeout)
+            void unlistenCreated.then(fn => fn())
+            void unlistenError.then(fn => fn())
+            resolve(event.payload.worktree)
+          }
+        })
+
+        const unlistenError = listen<WorktreeCreateErrorEvent>('worktree:error', event => {
+          if (event.payload.id === pendingWorktree.id) {
+            clearTimeout(timeout)
+            void unlistenCreated.then(fn => fn())
+            void unlistenError.then(fn => fn())
+            reject(new Error(event.payload.error))
+          }
+        })
+      })
+    } catch (err) {
+      toast.error(`Worktree creation failed: ${err}`, { id: toastId })
+      return
+    }
+
+    toast.loading('Sending plan...', { id: toastId })
+
+    // Navigate to new worktree
+    const projectsStore = useProjectsStore.getState()
+    projectsStore.expandProject(readyWorktree.project_id)
+    projectsStore.selectWorktree(readyWorktree.id)
+    store.registerWorktreePath(readyWorktree.id, readyWorktree.path)
+    store.setActiveWorktree(readyWorktree.id, readyWorktree.path)
+
+    // Use the default session auto-created by the backend, or create one if none exists
+    let newSession: Session
+    try {
+      const sessionsData = await invoke<WorktreeSessions>('get_sessions', {
+        worktreeId: readyWorktree.id,
+        worktreePath: readyWorktree.path,
+      })
+      if (sessionsData.sessions.length > 0 && sessionsData.sessions[0]) {
+        newSession = sessionsData.sessions[0]
+      } else {
+        newSession = await invoke<Session>('create_session', {
+          worktreeId: readyWorktree.id,
+          worktreePath: readyWorktree.path,
+        })
+      }
+    } catch (err) {
+      toast.error(`Failed to get session: ${err}`, { id: toastId })
+      return
+    }
+
+    store.setActiveSession(readyWorktree.id, newSession.id)
+    store.addUserInitiatedSession(newSession.id)
+
+    // Resolve model/backend/thinking based on mode
+    const isYolo = mode === 'yolo'
+    const modeModelRef = isYolo ? yoloModelRef : buildModelRef
+    const modeBackendRef = isYolo ? yoloBackendRef : buildBackendRef
+    const modeThinkingRef = isYolo ? yoloThinkingLevelRef : buildThinkingLevelRef
+    const modeLabel = isYolo ? 'Yolo' : 'Build'
+
+    const currentSessionBackend = queryClient.getQueryData<Session>(
+      chatQueryKeys.session(sessionId)
+    )?.backend
+    const prefs = queryClient.getQueryData<AppPreferences>(
+      preferencesQueryKeys.preferences()
+    )
+    const modeBackendOverride = (modeBackendRef.current as Session['backend']) ?? null
+    const resolvedBackend = modeBackendOverride ?? undefined
+    const modelBackend = resolvedBackend ?? currentSessionBackend
+    const resolvedModel =
+      modeModelRef.current ??
+      (modeBackendOverride
+        ? getDefaultModelForBackend(modelBackend, prefs)
+        : selectedModelRef.current)
+    const modeOverride = (modeModelRef.current || modeBackendOverride)
+      ? [resolvedBackend, resolvedModel].filter(Boolean).join(' / ')
+      : ''
+    if (modeOverride) toast.info(`${modeLabel}: ${modeOverride}`)
+    const planMessage = modeOverride
+      ? `[${modeLabel}: ${modeOverride}]\nExecute this plan. Implement all changes described.\n\n<plan>\n${planContent}\n</plan>`
+      : `Execute this plan. Implement all changes described.\n\n<plan>\n${planContent}\n</plan>`
+    store.setExecutionMode(newSession.id, mode)
+    store.setLastSentMessage(newSession.id, planMessage)
+    store.setError(newSession.id, null)
+    store.addSendingSession(newSession.id)
+    store.setSelectedModel(newSession.id, resolvedModel)
+    store.setExecutingMode(newSession.id, mode)
+    if (resolvedBackend) {
+      store.setSelectedBackend(
+        newSession.id,
+        resolvedBackend as 'claude' | 'codex' | 'opencode'
+      )
+    }
+    queryClient.setQueryData<Session>(
+      chatQueryKeys.session(newSession.id),
+      old => old ? { ...old, backend: resolvedBackend ?? old.backend, selected_model: resolvedModel } : old
+    )
+
+    await invoke('set_session_model', {
+      worktreeId: readyWorktree.id, worktreePath: readyWorktree.path,
+      sessionId: newSession.id, model: resolvedModel,
+    }).catch(err => console.error('[streamingWorktreeApproval] Failed to persist model:', err))
+    if (resolvedBackend) {
+      await invoke('set_session_backend', {
+        worktreeId: readyWorktree.id, worktreePath: readyWorktree.path,
+        sessionId: newSession.id, backend: resolvedBackend,
+      }).catch(err => console.error('[streamingWorktreeApproval] Failed to persist backend:', err))
+    }
+
+    const effectiveBackend = resolvedBackend ?? currentSessionBackend
+    let resolvedThinkingLevel: ThinkingLevel = selectedThinkingLevelRef.current
+    let resolvedEffortLevel: EffortLevel | undefined = useAdaptiveThinkingRef.current
+      ? selectedEffortLevelRef.current
+      : undefined
+    if (effectiveBackend === 'codex') {
+      resolvedThinkingLevel = 'off'
+      resolvedEffortLevel =
+        mapCodexReasoningToEffort(modeThinkingRef.current) ?? selectedEffortLevelRef.current
+    } else if (isThinkingLevel(modeThinkingRef.current)) {
+      resolvedThinkingLevel = modeThinkingRef.current
+    }
+    sendMessage.mutate({
+      sessionId: newSession.id,
+      worktreeId: readyWorktree.id,
+      worktreePath: readyWorktree.path,
+      message: planMessage,
+      model: resolvedModel,
+      executionMode: mode,
+      thinkingLevel: resolvedThinkingLevel,
+      effortLevel: resolvedEffortLevel,
+      mcpConfig: getMcpConfig(),
+      customProfileName: getCustomProfileName(),
+      backend: resolvedBackend,
+    })
+
+    toast.success(`Plan sent to new worktree (${modeLabel})`, { id: toastId })
+  }, [
+    activeSessionIdRef,
+    activeWorktreeIdRef,
+    activeWorktreePathRef,
+    projectIdRef,
+    selectedModelRef,
+    buildModelRef,
+    buildBackendRef,
+    buildThinkingLevelRef,
+    yoloModelRef,
+    yoloBackendRef,
+    yoloThinkingLevelRef,
+    selectedThinkingLevelRef,
+    selectedEffortLevelRef,
+    useAdaptiveThinkingRef,
+    getMcpConfig,
+    getCustomProfileName,
+    sendMessage,
+    queryClient,
+  ])
+
+  const handleWorktreeBuildApproval = useCallback(
+    (messageId: string) => handleWorktreeApproval(messageId, 'build'),
+    [handleWorktreeApproval]
+  )
+
+  const handleWorktreeYoloApproval = useCallback(
+    (messageId: string) => handleWorktreeApproval(messageId, 'yolo'),
+    [handleWorktreeApproval]
+  )
+
+  const handleStreamingWorktreeBuildApproval = useCallback(
+    () => handleStreamingWorktreeApproval('build'),
+    [handleStreamingWorktreeApproval]
+  )
+
+  const handleStreamingWorktreeYoloApproval = useCallback(
+    () => handleStreamingWorktreeApproval('yolo'),
+    [handleStreamingWorktreeApproval]
+  )
+
   // Handle permission approval (when tools require user approval)
   // PERFORMANCE: Uses refs for session/worktree IDs to keep callback stable across session switches
   const handlePermissionApproval = useCallback(
@@ -1848,6 +2353,10 @@ Please apply all these fixes to the respective files.`
     handleStreamingClearContextApproval,
     handleClearContextApprovalBuild,
     handleStreamingClearContextApprovalBuild,
+    handleWorktreeBuildApproval,
+    handleStreamingWorktreeBuildApproval,
+    handleWorktreeYoloApproval,
+    handleStreamingWorktreeYoloApproval,
     handlePendingPlanApprovalCallback,
     handlePermissionApproval,
     handlePermissionApprovalYolo,

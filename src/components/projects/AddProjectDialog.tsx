@@ -32,9 +32,9 @@ export function AddProjectDialog() {
 
   const handleAddExisting = useCallback(async () => {
     if (!isNativeApp()) {
-      toast.error('Not running in Tauri', {
+      toast.error('Native desktop feature unavailable', {
         description:
-          'Run the app with "bun run tauri:dev" to use native features.',
+          'This action requires the Jean desktop app (Tauri runtime).',
       })
       return
     }
@@ -86,9 +86,9 @@ export function AddProjectDialog() {
 
   const handleInitNew = useCallback(async () => {
     if (!isNativeApp()) {
-      toast.error('Not running in Tauri', {
+      toast.error('Native desktop feature unavailable', {
         description:
-          'Run the app with "bun run tauri:dev" to use native features.',
+          'This action requires the Jean desktop app (Tauri runtime).',
       })
       return
     }

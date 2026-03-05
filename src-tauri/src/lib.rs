@@ -156,8 +156,6 @@ pub struct AppPreferences {
     pub auto_pull_base_branch: bool, // Auto-pull base branch before creating a new worktree
     #[serde(default = "default_auto_archive_on_pr_merged")]
     pub auto_archive_on_pr_merged: bool, // Auto-archive worktrees when their PR is merged
-    #[serde(default = "default_show_keybinding_hints")]
-    pub show_keybinding_hints: bool, // Show keyboard shortcut hints at bottom of canvas views
     #[serde(default)]
     pub debug_mode_enabled: bool, // Show debug panel in chat sessions (default: false)
     #[serde(default)]
@@ -415,10 +413,6 @@ fn default_auto_pull_base_branch() -> bool {
 }
 
 fn default_auto_archive_on_pr_merged() -> bool {
-    true // Enabled by default
-}
-
-fn default_show_keybinding_hints() -> bool {
     true // Enabled by default
 }
 
@@ -1050,7 +1044,6 @@ impl Default for AppPreferences {
             removal_behavior: default_removal_behavior(),
             auto_pull_base_branch: default_auto_pull_base_branch(),
             auto_archive_on_pr_merged: default_auto_archive_on_pr_merged(),
-            show_keybinding_hints: default_show_keybinding_hints(),
             debug_mode_enabled: false,
             default_effort_level: default_effort_level(),
             default_enabled_mcp_servers: Vec::new(),
@@ -1745,34 +1738,51 @@ async fn stop_http_server(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Start HTTP server with explicit localhost_only override (for headless mode)
+/// Start HTTP server with CLI overrides (for headless mode)
 async fn start_http_server_headless(
     app: AppHandle,
-    port: u16,
+    default_port: u16,
     bind_all_interfaces: bool,
+    overrides: &HttpServerOverrides,
 ) -> Result<http_server::server::ServerStatus, String> {
     use std::sync::Arc;
     use tokio::sync::Mutex;
 
     let prefs = load_preferences(app.clone()).await?;
-    // In headless mode with bind_all_interfaces=true, override localhost_only to false
-    let localhost_only = if bind_all_interfaces {
+
+    // Port: CLI override > preference
+    let port = overrides.port.unwrap_or(default_port);
+
+    // Host: CLI --host overrides bind_all_interfaces and preference
+    let localhost_only = if let Some(ref host) = overrides.host {
+        host == "127.0.0.1" || host == "localhost" || host == "::1"
+    } else if bind_all_interfaces {
         false
     } else {
         prefs.http_server_localhost_only
     };
-    let token_required = prefs.http_server_token_required;
 
-    // Generate or load token
-    let token = match prefs.http_server_token {
-        Some(t) if !t.is_empty() => t,
-        _ => {
-            let new_token = http_server::auth::generate_token();
-            // Persist the token
-            let mut prefs = prefs.clone();
-            prefs.http_server_token = Some(new_token.clone());
-            save_preferences(app.clone(), prefs).await?;
-            new_token
+    // Token required: --no-token overrides preference
+    let token_required = if overrides.no_token {
+        false
+    } else {
+        prefs.http_server_token_required
+    };
+
+    // Token: CLI --token used directly (not persisted), otherwise load/generate
+    let token = if let Some(ref t) = overrides.token {
+        t.clone()
+    } else {
+        match prefs.http_server_token {
+            Some(t) if !t.is_empty() => t,
+            _ => {
+                let new_token = http_server::auth::generate_token();
+                // Persist auto-generated tokens
+                let mut prefs = prefs.clone();
+                prefs.http_server_token = Some(new_token.clone());
+                save_preferences(app.clone(), prefs).await?;
+                new_token
+            }
         }
     };
 
@@ -1926,11 +1936,118 @@ fn fix_macos_path() {
     }
 }
 
+/// Parsed CLI arguments for headless server mode.
+struct CliArgs {
+    headless: bool,
+    host: Option<String>,
+    port: Option<u16>,
+    token: Option<String>,
+    no_token: bool,
+}
+
+/// CLI overrides for HTTP server configuration.
+/// These take precedence over saved preferences but are not persisted.
+struct HttpServerOverrides {
+    host: Option<String>,
+    port: Option<u16>,
+    token: Option<String>,
+    no_token: bool,
+}
+
+fn print_cli_help() {
+    let version = env!("CARGO_PKG_VERSION");
+    println!("Jean {version}");
+    println!();
+    println!("Usage: jean [OPTIONS]");
+    println!();
+    println!("Options:");
+    println!("  --headless          Run without GUI (HTTP server only)");
+    println!("  --host <addr>       Bind address (default: 0.0.0.0 in headless)");
+    println!("  --port <port>       HTTP server port (overrides saved preference)");
+    println!("  --token <token>     Use specific auth token (not persisted)");
+    println!("  --no-token          Disable token authentication");
+    println!("  --help              Show this help message");
+    println!("  --version           Show version");
+}
+
+fn parse_cli_args() -> CliArgs {
+    let args: Vec<String> = std::env::args().collect();
+
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        print_cli_help();
+        std::process::exit(0);
+    }
+    if args.iter().any(|a| a == "--version" || a == "-V") {
+        println!("Jean {}", env!("CARGO_PKG_VERSION"));
+        std::process::exit(0);
+    }
+
+    let headless = args.iter().any(|a| a == "--headless");
+    let no_token = args.iter().any(|a| a == "--no-token");
+
+    let mut host = None;
+    let mut port = None;
+    let mut token = None;
+
+    let mut iter = args.iter().skip(1);
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--host" => {
+                host = iter.next().cloned();
+                if host.is_none() {
+                    eprintln!("Error: --host requires an address argument");
+                    std::process::exit(1);
+                }
+            }
+            "--port" => {
+                if let Some(val) = iter.next() {
+                    match val.parse::<u16>() {
+                        Ok(p) => port = Some(p),
+                        Err(_) => {
+                            eprintln!("Error: --port requires a valid port number (1-65535)");
+                            std::process::exit(1);
+                        }
+                    }
+                } else {
+                    eprintln!("Error: --port requires a port number argument");
+                    std::process::exit(1);
+                }
+            }
+            "--token" => {
+                token = iter.next().cloned();
+                if token.is_none() {
+                    eprintln!("Error: --token requires a token argument");
+                    std::process::exit(1);
+                }
+            }
+            _ => {} // ignore unknown flags (Tauri/OS may pass their own)
+        }
+    }
+
+    if token.is_some() && no_token {
+        eprintln!("Error: --token and --no-token are mutually exclusive");
+        std::process::exit(1);
+    }
+
+    if !headless && (host.is_some() || port.is_some() || token.is_some() || no_token) {
+        eprintln!(
+            "Warning: --host, --port, --token, --no-token are only effective with --headless"
+        );
+    }
+
+    CliArgs {
+        headless,
+        host,
+        port,
+        token,
+        no_token,
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Parse CLI arguments for headless mode
-    let args: Vec<String> = std::env::args().collect();
-    let headless = args.iter().any(|a| a == "--headless");
+    let cli_args = parse_cli_args();
+    let headless = cli_args.headless;
 
     // Fix PATH environment for macOS GUI applications
     // GUI apps don't inherit shell PATH - spawns login shell to get PATH from profiles
@@ -2196,15 +2313,22 @@ pub fn run() {
 
             // Start HTTP server (always in headless mode, or if auto-start configured)
             let app_handle_http = app.handle().clone();
+            let server_overrides = HttpServerOverrides {
+                host: cli_args.host,
+                port: cli_args.port,
+                token: cli_args.token,
+                no_token: cli_args.no_token,
+            };
             tauri::async_runtime::spawn(async move {
                 match load_preferences(app_handle_http.clone()).await {
                     Ok(prefs) if headless || prefs.http_server_auto_start => {
-                        let port = prefs.http_server_port;
+                        let port = server_overrides.port.unwrap_or(prefs.http_server_port);
                         log::info!("Starting HTTP server on port {port}");
                         match start_http_server_headless(
                             app_handle_http,
                             port,
                             headless, // In headless mode, bind to 0.0.0.0
+                            &server_overrides,
                         )
                         .await
                         {
@@ -2213,14 +2337,21 @@ pub fn run() {
                                 let token = status.token.unwrap_or_default();
                                 log::info!("HTTP server started: {url}");
                                 if headless {
-                                    // Print to stdout for scripts/users to capture
                                     println!("\n╔══════════════════════════════════════════════════════════════╗");
                                     println!("║  Jean server running in headless mode                        ║");
                                     println!("╠══════════════════════════════════════════════════════════════╣");
                                     println!("║  URL: {url:<54} ║");
-                                    println!("║  Token: {token:<52} ║");
+                                    if server_overrides.no_token {
+                                        println!("║  Auth: disabled (--no-token)                                 ║");
+                                    } else {
+                                        println!("║  Token: {token:<52} ║");
+                                    }
                                     println!("║                                                              ║");
-                                    println!("║  Open in browser: {url}?token={token}");
+                                    if server_overrides.no_token {
+                                        println!("║  Open in browser: {url}");
+                                    } else {
+                                        println!("║  Open in browser: {url}?token={token}");
+                                    }
                                     println!("╚══════════════════════════════════════════════════════════════╝\n");
                                 }
                             }
@@ -2478,11 +2609,13 @@ pub fn run() {
             // Claude CLI management commands
             claude_cli::check_claude_cli_installed,
             claude_cli::check_claude_cli_auth,
+            claude_cli::get_claude_usage,
             claude_cli::get_available_cli_versions,
             claude_cli::install_claude_cli,
             // Codex CLI management commands
             codex_cli::check_codex_cli_installed,
             codex_cli::check_codex_cli_auth,
+            codex_cli::get_codex_usage,
             codex_cli::get_available_codex_versions,
             codex_cli::install_codex_cli,
             // OpenCode CLI management commands

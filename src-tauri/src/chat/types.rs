@@ -387,6 +387,9 @@ pub struct Session {
     /// Selected provider (custom CLI profile name) for this session
     #[serde(default)]
     pub selected_provider: Option<String>,
+    /// Selected execution mode for this session (plan/build/yolo)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_execution_mode: Option<String>,
     /// Whether session naming has been attempted for this session
     /// Prevents re-triggering on app restart
     #[serde(default)]
@@ -486,6 +489,7 @@ impl Session {
             selected_model: None,
             selected_thinking_level: None,
             selected_provider: None,
+            selected_execution_mode: None,
             session_naming_completed: false,
             archived_at: None,
             last_opened_at: None,
@@ -664,6 +668,7 @@ impl SessionMetadata {
             selected_model: self.selected_model.clone(),
             selected_thinking_level: self.selected_thinking_level.clone(),
             selected_provider: self.selected_provider.clone(),
+            selected_execution_mode: self.selected_execution_mode.clone(),
             session_naming_completed: self.session_naming_completed,
             archived_at: self.archived_at,
             last_opened_at: self.last_opened_at,
@@ -699,6 +704,7 @@ impl SessionMetadata {
         self.selected_model = session.selected_model.clone();
         self.selected_thinking_level = session.selected_thinking_level.clone();
         self.selected_provider = session.selected_provider.clone();
+        self.selected_execution_mode = session.selected_execution_mode.clone();
         self.session_naming_completed = session.session_naming_completed;
         self.archived_at = session.archived_at;
         self.answered_questions = session.answered_questions.clone();
@@ -964,6 +970,9 @@ pub struct SessionMetadata {
     /// Selected provider (custom CLI profile name) for this session
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selected_provider: Option<String>,
+    /// Selected execution mode for this session (plan/build/yolo)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_execution_mode: Option<String>,
     /// Whether session naming has been attempted
     #[serde(default)]
     pub session_naming_completed: bool,
@@ -1100,6 +1109,7 @@ impl SessionMetadata {
             selected_model: None,
             selected_thinking_level: None,
             selected_provider: None,
+            selected_execution_mode: None,
             session_naming_completed: false,
             archived_at: None,
             answered_questions: vec![],

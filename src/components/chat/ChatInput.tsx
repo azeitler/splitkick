@@ -165,6 +165,8 @@ export const ChatInput = memo(function ChatInput({
 
       // React to external clears (draft went from non-empty to empty)
       if (prevDraft && !draft && inputRef.current?.value) {
+        // Cancel pending debounced writes so cleared drafts don't get restored.
+        clearTimeout(debouncedSaveRef.current)
         inputRef.current.value = ''
         valueRef.current = ''
         inputRef.current.style.height = 'auto'

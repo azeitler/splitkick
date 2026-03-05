@@ -23,6 +23,8 @@ interface MessageListProps {
   onPlanApprovalYolo?: (messageId: string) => void
   onClearContextApproval?: (messageId: string) => void
   onClearContextApprovalBuild?: (messageId: string) => void
+  onWorktreeBuildApproval?: (messageId: string) => void
+  onWorktreeYoloApproval?: (messageId: string) => void
   onQuestionAnswer: (
     toolCallId: string,
     answers: QuestionAnswer[],
@@ -66,6 +68,8 @@ export const MessageList = memo(function MessageList({
   onPlanApprovalYolo,
   onClearContextApproval,
   onClearContextApprovalBuild,
+  onWorktreeBuildApproval,
+  onWorktreeYoloApproval,
   onQuestionAnswer,
   onQuestionSkip,
   onFileClick,
@@ -122,6 +126,8 @@ export const MessageList = memo(function MessageList({
               onPlanApprovalYolo={onPlanApprovalYolo}
               onClearContextApproval={onClearContextApproval}
               onClearContextApprovalBuild={onClearContextApprovalBuild}
+              onWorktreeBuildApproval={onWorktreeBuildApproval}
+              onWorktreeYoloApproval={onWorktreeYoloApproval}
               onQuestionAnswer={onQuestionAnswer}
               onQuestionSkip={onQuestionSkip}
               onFileClick={onFileClick}

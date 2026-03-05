@@ -3,7 +3,7 @@ use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::AppHandle;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 
 use super::dispatch::dispatch_command;
 use super::WsEvent;
@@ -27,17 +27,22 @@ struct InvokeResponse {
     error: Option<String>,
 }
 
-#[derive(Serialize)]
-struct EventMessage {
-    #[serde(rename = "type")]
-    msg_type: String,
-    event: String,
-    payload: Value,
-}
-
 /// Handle a single WebSocket connection.
-/// Reads invoke requests, dispatches to command handlers, writes responses.
-/// Also forwards broadcast events to the client.
+///
+/// Architecture (optimised for multi-client streaming):
+///
+/// 1. **No event forwarder task** — the main select loop reads directly from
+///    the broadcast channel, eliminating the intermediate mpsc hop.
+///
+/// 2. **Command dispatch is spawned** as separate tokio tasks so it never
+///    blocks event delivery. Responses come back via an unbounded channel.
+///
+/// 3. **Batched writes** — after receiving the first message, we drain
+///    additional pending messages with `try_recv()` and write them all with
+///    `SinkExt::feed()` before a single `SinkExt::flush()`.
+///
+/// 4. **Events are pre-serialized** (`Arc<str>`) in the broadcast channel,
+///    so no per-client JSON work is needed here.
 pub async fn handle_ws_connection(
     socket: WebSocket,
     app: AppHandle,
@@ -45,72 +50,49 @@ pub async fn handle_ws_connection(
 ) {
     let (mut ws_tx, mut ws_rx) = socket.split();
 
-    // Spawn a task to forward broadcast events to this client
-    let (client_tx, mut client_rx) = tokio::sync::mpsc::channel::<String>(256);
+    // Channel for command dispatch responses. Unbounded because command
+    // responses are infrequent (user-initiated) and must never be dropped.
+    let (resp_tx, mut resp_rx) = mpsc::unbounded_channel::<String>();
 
-    let event_forwarder = tokio::spawn(async move {
-        loop {
-            match event_rx.recv().await {
-                Ok(ws_event) => {
-                    let msg = EventMessage {
-                        msg_type: "event".to_string(),
-                        event: ws_event.event,
-                        payload: ws_event.payload,
-                    };
-                    if let Ok(json) = serde_json::to_string(&msg) {
-                        if client_tx.send(json).await.is_err() {
-                            break; // Client disconnected
-                        }
-                    }
-                }
-                Err(broadcast::error::RecvError::Lagged(n)) => {
-                    log::warn!("WS client lagged, skipped {n} events");
-                }
-                Err(broadcast::error::RecvError::Closed) => break,
-            }
-        }
-    });
-
-    // Main loop: handle incoming messages and outgoing events
+    // Main loop — three event sources, never blocks on command dispatch.
     loop {
         tokio::select! {
-            // Incoming message from client
+            // ── Incoming command from client ──────────────────────────
             msg = ws_rx.next() => {
                 match msg {
                     Some(Ok(Message::Text(text))) => {
-                        let app_clone = app.clone();
-                        // Parse and dispatch
                         match serde_json::from_str::<InvokeRequest>(&text) {
                             Ok(req) => {
-                                let id = req.id.clone();
-                                match dispatch_command(&app_clone, &req.command, req.args).await {
-                                    Ok(data) => {
-                                        let resp = InvokeResponse {
+                                // Spawn dispatch as a separate task so the
+                                // select loop stays free to drain events.
+                                let app_clone = app.clone();
+                                let tx = resp_tx.clone();
+                                tokio::spawn(async move {
+                                    let id = req.id.clone();
+                                    let resp = match dispatch_command(
+                                        &app_clone,
+                                        &req.command,
+                                        req.args,
+                                    )
+                                    .await
+                                    {
+                                        Ok(data) => InvokeResponse {
                                             msg_type: "response".to_string(),
                                             id,
                                             data: Some(data),
                                             error: None,
-                                        };
-                                        if let Ok(json) = serde_json::to_string(&resp) {
-                                            if ws_tx.send(Message::Text(json.into())).await.is_err() {
-                                                break;
-                                            }
-                                        }
-                                    }
-                                    Err(err) => {
-                                        let resp = InvokeResponse {
+                                        },
+                                        Err(err) => InvokeResponse {
                                             msg_type: "error".to_string(),
                                             id,
                                             data: None,
                                             error: Some(err),
-                                        };
-                                        if let Ok(json) = serde_json::to_string(&resp) {
-                                            if ws_tx.send(Message::Text(json.into())).await.is_err() {
-                                                break;
-                                            }
-                                        }
+                                        },
+                                    };
+                                    if let Ok(json) = serde_json::to_string(&resp) {
+                                        let _ = tx.send(json);
                                     }
-                                }
+                                });
                             }
                             Err(e) => {
                                 let resp = InvokeResponse {
@@ -136,15 +118,75 @@ pub async fn handle_ws_connection(
                     _ => {} // Ignore binary, pong
                 }
             }
-            // Outgoing event from broadcast
-            Some(json) = client_rx.recv() => {
-                if ws_tx.send(Message::Text(json.into())).await.is_err() {
+
+            // ── Command response from a spawned dispatch task ────────
+            Some(json) = resp_rx.recv() => {
+                // Feed this response then drain any other pending messages.
+                if feed_and_drain(&mut ws_tx, &mut event_rx, &mut resp_rx, json).await.is_err() {
                     break;
+                }
+            }
+
+            // ── Broadcast event (direct from broadcast channel) ──────
+            result = event_rx.recv() => {
+                match result {
+                    Ok(first_event) => {
+                        if feed_and_drain(&mut ws_tx, &mut event_rx, &mut resp_rx, first_event.json.to_string()).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(n)) => {
+                        log::warn!("WS client lagged, skipped {n} events");
+                    }
+                    Err(broadcast::error::RecvError::Closed) => break,
                 }
             }
         }
     }
 
-    event_forwarder.abort();
     log::trace!("WebSocket client disconnected");
+}
+
+/// Maximum additional messages to drain after the first in a single flush cycle.
+const DRAIN_MAX: usize = 32;
+
+/// Feed the first message, then non-blocking drain up to `DRAIN_MAX` more
+/// pending messages from both the broadcast and command response channels.
+/// Finishes with a single `flush()` to coalesce into fewer syscalls.
+async fn feed_and_drain(
+    ws_tx: &mut futures_util::stream::SplitSink<WebSocket, Message>,
+    event_rx: &mut broadcast::Receiver<WsEvent>,
+    resp_rx: &mut mpsc::UnboundedReceiver<String>,
+    first: String,
+) -> Result<(), axum::Error> {
+    ws_tx.feed(Message::Text(first.into())).await?;
+
+    // Non-blocking drain: grab whatever is already pending.
+    for _ in 0..DRAIN_MAX {
+        // Try broadcast events first (high volume during streaming)
+        match event_rx.try_recv() {
+            Ok(ev) => {
+                ws_tx
+                    .feed(Message::Text(ev.json.to_string().into()))
+                    .await?;
+                continue;
+            }
+            Err(broadcast::error::TryRecvError::Lagged(n)) => {
+                log::warn!("WS client lagged during drain, skipped {n} events");
+                continue;
+            }
+            _ => {}
+        }
+        // Try command responses
+        match resp_rx.try_recv() {
+            Ok(json) => {
+                ws_tx.feed(Message::Text(json.into())).await?;
+                continue;
+            }
+            Err(_) => break, // Nothing pending — stop draining
+        }
+    }
+
+    ws_tx.flush().await?;
+    Ok(())
 }

@@ -248,8 +248,11 @@ export function computeSessionCardData(
 
   // Execution mode
   const executionMode = sessionSending
-    ? (executingModes[session.id] ?? executionModes[session.id] ?? 'plan')
-    : (executionModes[session.id] ?? 'plan')
+    ? (executingModes[session.id] ??
+      executionModes[session.id] ??
+      session.selected_execution_mode ??
+      'plan')
+    : (executionModes[session.id] ?? session.selected_execution_mode ?? 'plan')
 
   // Determine status
   // Priority: permission > waiting > sending (active) > review > restart recovery > completed > idle

@@ -28,6 +28,8 @@ interface CanvasListProps {
   onPlanApprovalYolo: (card: SessionCardData, updatedPlan?: string) => void
   onClearContextApproval: (card: SessionCardData, updatedPlan?: string) => void
   onClearContextApprovalBuild: (card: SessionCardData, updatedPlan?: string) => void
+  onWorktreeApproval?: ((card: SessionCardData, updatedPlan?: string) => void) | null
+  onWorktreeApprovalYolo?: ((card: SessionCardData, updatedPlan?: string) => void) | null
   onCloseWorktree: () => void
   searchInputRef?: React.RefObject<HTMLInputElement | null>
 }
@@ -49,6 +51,8 @@ export function CanvasList({
   onPlanApprovalYolo,
   onClearContextApproval,
   onClearContextApprovalBuild,
+  onWorktreeApproval,
+  onWorktreeApprovalYolo,
   onCloseWorktree,
   searchInputRef,
 }: CanvasListProps) {
@@ -129,6 +133,8 @@ export function CanvasList({
     onPlanApprovalYolo,
     onClearContextApproval,
     onClearContextApprovalBuild,
+    onWorktreeApproval,
+    onWorktreeApprovalYolo,
   })
 
   const isModalOpen =
@@ -182,6 +188,24 @@ export function CanvasList({
       }
     },
     [planDialogCard, onClearContextApprovalBuild]
+  )
+
+  const handleDialogWorktreeApprove = useCallback(
+    (updatedPlan: string) => {
+      if (planDialogCard && onWorktreeApproval) {
+        onWorktreeApproval(planDialogCard, updatedPlan)
+      }
+    },
+    [planDialogCard, onWorktreeApproval]
+  )
+
+  const handleDialogWorktreeApproveYolo = useCallback(
+    (updatedPlan: string) => {
+      if (planDialogCard && onWorktreeApprovalYolo) {
+        onWorktreeApprovalYolo(planDialogCard, updatedPlan)
+      }
+    },
+    [planDialogCard, onWorktreeApprovalYolo]
   )
 
   useEffect(() => {
@@ -324,6 +348,8 @@ export function CanvasList({
                       onYolo={() => onPlanApprovalYolo(card)}
                       onClearContextApprove={() => onClearContextApproval(card)}
                       onClearContextBuildApprove={() => onClearContextApprovalBuild(card)}
+                      onWorktreeBuildApprove={onWorktreeApproval ? () => onWorktreeApproval(card) : undefined}
+                      onWorktreeYoloApprove={onWorktreeApprovalYolo ? () => onWorktreeApprovalYolo(card) : undefined}
                       onToggleLabel={() => handleOpenLabelModal(card)}
                       onToggleReview={() => {
                         const { reviewingSessions, setSessionReviewing } =
@@ -361,6 +387,8 @@ export function CanvasList({
           onApproveYolo={handleDialogApproveYolo}
           onClearContextApprove={handleDialogClearContextApprove}
           onClearContextBuildApprove={handleDialogClearContextApproveBuild}
+          onWorktreeBuildApprove={onWorktreeApproval ? handleDialogWorktreeApprove : undefined}
+          onWorktreeYoloApprove={onWorktreeApprovalYolo ? handleDialogWorktreeApproveYolo : undefined}
         />
       ) : planDialogContent ? (
         <PlanDialog
@@ -374,6 +402,8 @@ export function CanvasList({
           onApproveYolo={handleDialogApproveYolo}
           onClearContextApprove={handleDialogClearContextApprove}
           onClearContextBuildApprove={handleDialogClearContextApproveBuild}
+          onWorktreeBuildApprove={onWorktreeApproval ? handleDialogWorktreeApprove : undefined}
+          onWorktreeYoloApprove={onWorktreeApprovalYolo ? handleDialogWorktreeApproveYolo : undefined}
         />
       ) : null}
 

@@ -23,7 +23,7 @@ import {
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
-import { invoke } from '@/lib/transport'
+import { invoke, listen } from '@/lib/transport'
 import { GitBranch, GitMerge, Layers } from 'lucide-react'
 import {
   useSession,
@@ -38,6 +38,8 @@ import {
   chatQueryKeys,
 } from '@/services/chat'
 import { useWorktree, useProjects, useRunScript } from '@/services/projects'
+import { useProjectsStore } from '@/store/projects-store'
+import type { Worktree, WorktreeCreatedEvent, WorktreeCreateErrorEvent } from '@/types/projects'
 import {
   useLoadedIssueContexts,
   useLoadedPRContexts,
@@ -110,7 +112,7 @@ import { supportsAdaptiveThinking } from '@/lib/model-utils'
 import { useClaudeCliStatus } from '@/services/claude-cli'
 import { usePrStatus, usePrStatusEvents } from '@/services/pr-status'
 import type { PrDisplayStatus, CheckStatus } from '@/types/pr-status'
-import type { QueuedMessage, Session, SessionDigest } from '@/types/chat'
+import type { QueuedMessage, Session, SessionDigest, WorktreeSessions } from '@/types/chat'
 import type { DiffRequest } from '@/types/git-diff'
 import { FileDiffModal } from './FileDiffModal'
 
@@ -574,7 +576,9 @@ export function ChatWindow({
   // Uses deferredSessionId for display consistency with other content
   const executionMode = useChatStore(state =>
     deferredSessionId
-      ? (state.executionModes[deferredSessionId] ?? 'plan')
+      ? (state.executionModes[deferredSessionId] ??
+        session?.selected_execution_mode ??
+        'plan')
       : 'plan'
   )
   // Executing mode - the mode the currently-running prompt was sent with
@@ -697,6 +701,7 @@ export function ChatWindow({
   const useAdaptiveThinkingRef = useRef(useAdaptiveThinkingFlag)
   const isCodexBackendRef = useRef(isCodexBackend)
   const executionModeRef = useRef(executionMode)
+  const projectIdRef = useRef<string | null>(worktree?.project_id ?? null)
   const enabledMcpServersRef = useRef(enabledMcpServers)
   const mcpServersDataRef = useRef<McpServerInfo[]>(availableMcpServers)
   const selectedBackendRef = useRef(selectedBackend)
@@ -718,6 +723,7 @@ export function ChatWindow({
   useAdaptiveThinkingRef.current = useAdaptiveThinkingFlag
   isCodexBackendRef.current = isCodexBackend
   executionModeRef.current = executionMode
+  projectIdRef.current = worktree?.project_id ?? null
   enabledMcpServersRef.current = enabledMcpServers
   mcpServersDataRef.current = availableMcpServers
   selectedBackendRef.current = selectedBackend
@@ -1136,6 +1142,234 @@ export function ChatWindow({
     ]
   )
 
+  // Worktree approval handler for PlanDialog (creates new worktree + session)
+  const handlePlanDialogWorktreeApprove = useCallback(
+    async (editedPlanContent: string, mode: 'build' | 'yolo') => {
+      const projectId = worktree?.project_id
+      if (!activeSessionId || !activeWorktreeId || !activeWorktreePath || !projectId) return
+
+      const toastId = toast.loading('Creating worktree...')
+
+      // Mark pending plan approved if exists
+      if (pendingPlanMessage) {
+        markPlanApprovedService(
+          activeWorktreeId,
+          activeWorktreePath,
+          activeSessionId,
+          pendingPlanMessage.id
+        )
+        queryClient.setQueryData<Session>(
+          chatQueryKeys.session(activeSessionId),
+          old => {
+            if (!old) return old
+            return {
+              ...old,
+              approved_plan_message_ids: [
+                ...(old.approved_plan_message_ids ?? []),
+                pendingPlanMessage.id,
+              ],
+              messages: old.messages.map(msg =>
+                msg.id === pendingPlanMessage.id
+                  ? { ...msg, plan_approved: true }
+                  : msg
+              ),
+            }
+          }
+        )
+      }
+
+      const store = useChatStore.getState()
+      store.clearToolCalls(activeSessionId)
+      store.clearStreamingContentBlocks(activeSessionId)
+      store.setSessionReviewing(activeSessionId, false)
+      store.setWaitingForInput(activeSessionId, false)
+
+      // Create new worktree
+      let pendingWorktree: Worktree
+      try {
+        pendingWorktree = await invoke<Worktree>('create_worktree', { projectId })
+      } catch (err) {
+        toast.error(`Failed to create worktree: ${err}`, { id: toastId })
+        return
+      }
+
+      // Wait for worktree to be ready
+      let readyWorktree: Worktree
+      try {
+        readyWorktree = await new Promise<Worktree>((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            void unlistenCreated.then(fn => fn())
+            void unlistenError.then(fn => fn())
+            reject(new Error('Worktree creation timed out'))
+          }, 120_000)
+
+          const unlistenCreated = listen<WorktreeCreatedEvent>('worktree:created', event => {
+            if (event.payload.worktree.id === pendingWorktree.id) {
+              clearTimeout(timeout)
+              void unlistenCreated.then(fn => fn())
+              void unlistenError.then(fn => fn())
+              resolve(event.payload.worktree)
+            }
+          })
+
+          const unlistenError = listen<WorktreeCreateErrorEvent>('worktree:error', event => {
+            if (event.payload.id === pendingWorktree.id) {
+              clearTimeout(timeout)
+              void unlistenCreated.then(fn => fn())
+              void unlistenError.then(fn => fn())
+              reject(new Error(event.payload.error))
+            }
+          })
+        })
+      } catch (err) {
+        toast.error(`Worktree creation failed: ${err}`, { id: toastId })
+        return
+      }
+
+      toast.loading('Sending plan...', { id: toastId })
+
+      // Navigate to new worktree
+      const projectsStore = useProjectsStore.getState()
+      projectsStore.expandProject(readyWorktree.project_id)
+      projectsStore.selectWorktree(readyWorktree.id)
+      store.registerWorktreePath(readyWorktree.id, readyWorktree.path)
+      store.setActiveWorktree(readyWorktree.id, readyWorktree.path)
+
+      // Use the default session auto-created by the backend, or create one if none exists
+      let newSession: Session
+      try {
+        const sessionsData = await invoke<WorktreeSessions>('get_sessions', {
+          worktreeId: readyWorktree.id,
+          worktreePath: readyWorktree.path,
+        })
+        if (sessionsData.sessions.length > 0 && sessionsData.sessions[0]) {
+          newSession = sessionsData.sessions[0]
+        } else {
+          newSession = await invoke<Session>('create_session', {
+            worktreeId: readyWorktree.id,
+            worktreePath: readyWorktree.path,
+          })
+        }
+      } catch (err) {
+        toast.error(`Failed to get session: ${err}`, { id: toastId })
+        return
+      }
+
+      store.setActiveSession(readyWorktree.id, newSession.id)
+      store.addUserInitiatedSession(newSession.id)
+
+      // Resolve mode-specific overrides
+      const isYolo = mode === 'yolo'
+      const modeLabel = isYolo ? 'Yolo' : 'Build'
+      const modeBackendRef = isYolo ? yoloBackendRef : buildBackendRef
+      const modeModelRef = isYolo ? yoloModelRef : buildModelRef
+      const modeThinkingRef = isYolo ? yoloThinkingLevelRef : buildThinkingLevelRef
+      const modeBackend = (modeBackendRef.current as Session['backend']) ?? undefined
+      const modeModel = modeModelRef.current ??
+        (modeBackend === 'codex'
+          ? (preferences?.selected_codex_model ?? 'gpt-5.3-codex')
+          : modeBackend === 'opencode'
+            ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
+            : selectedModelRef.current)
+      const modeOverride = (modeModelRef.current || modeBackend)
+        ? [modeBackend, modeModel].filter(Boolean).join(' / ')
+        : ''
+      if (modeOverride) toast.info(`${modeLabel}: ${modeOverride}`)
+      const message = modeOverride
+        ? `[${modeLabel}: ${modeOverride}]\nExecute this plan. Implement all changes described.\n\n<plan>\n${editedPlanContent}\n</plan>`
+        : `Execute this plan. Implement all changes described.\n\n<plan>\n${editedPlanContent}\n</plan>`
+      store.setExecutionMode(newSession.id, mode)
+      store.setLastSentMessage(newSession.id, message)
+      store.setError(newSession.id, null)
+      store.addSendingSession(newSession.id)
+      store.setSelectedModel(newSession.id, modeModel)
+      store.setExecutingMode(newSession.id, mode)
+      if (modeBackend) {
+        store.setSelectedBackend(
+          newSession.id,
+          modeBackend as 'claude' | 'codex' | 'opencode'
+        )
+      }
+      queryClient.setQueryData<Session>(
+        chatQueryKeys.session(newSession.id),
+        old => old ? { ...old, backend: modeBackend ?? old.backend, selected_model: modeModel } : old
+      )
+
+      await invoke('set_session_model', {
+        worktreeId: readyWorktree.id, worktreePath: readyWorktree.path,
+        sessionId: newSession.id, model: modeModel,
+      }).catch(err => console.error(`[PlanDialog WT ${modeLabel}] Failed to persist model:`, err))
+      if (modeBackend) {
+        await invoke('set_session_backend', {
+          worktreeId: readyWorktree.id, worktreePath: readyWorktree.path,
+          sessionId: newSession.id, backend: modeBackend,
+        }).catch(err => console.error(`[PlanDialog WT ${modeLabel}] Failed to persist backend:`, err))
+      }
+
+      const effectiveBackend = modeBackend ?? session?.backend
+      const modeThinking = modeThinkingRef.current
+      const thinkingLevel: ThinkingLevel =
+        effectiveBackend === 'codex'
+          ? 'off'
+          : ((modeThinking ?? selectedThinkingLevelRef.current) as ThinkingLevel)
+      const effortLevel: EffortLevel | undefined =
+        effectiveBackend === 'codex'
+          ? (({
+              low: 'low',
+              medium: 'medium',
+              high: 'high',
+              xhigh: 'max',
+              max: 'max',
+            } as Record<string, EffortLevel>)[modeThinking ?? ''] ??
+            selectedEffortLevelRef.current)
+          : undefined
+      sendMessage.mutate({
+        sessionId: newSession.id,
+        worktreeId: readyWorktree.id,
+        worktreePath: readyWorktree.path,
+        message,
+        model: modeModel,
+        executionMode: mode,
+        thinkingLevel,
+        effortLevel,
+        backend: modeBackend,
+      })
+
+      toast.success(`Plan sent to new worktree (${modeLabel})`, { id: toastId })
+    },
+    [
+      activeSessionId,
+      activeWorktreeId,
+      activeWorktreePath,
+      worktree?.project_id,
+      pendingPlanMessage,
+      queryClient,
+      sendMessage,
+      selectedModelRef,
+      buildModelRef,
+      buildBackendRef,
+      buildThinkingLevelRef,
+      yoloModelRef,
+      yoloBackendRef,
+      yoloThinkingLevelRef,
+      selectedThinkingLevelRef,
+      selectedEffortLevelRef,
+      preferences?.selected_codex_model,
+      preferences?.selected_opencode_model,
+      session?.backend,
+    ]
+  )
+
+  const handlePlanDialogWorktreeBuildApprove = useCallback(
+    (editedPlanContent: string) => handlePlanDialogWorktreeApprove(editedPlanContent, 'build'),
+    [handlePlanDialogWorktreeApprove]
+  )
+
+  const handlePlanDialogWorktreeYoloApprove = useCallback(
+    (editedPlanContent: string) => handlePlanDialogWorktreeApprove(editedPlanContent, 'yolo'),
+    [handlePlanDialogWorktreeApprove]
+  )
+
   // Opens a new session and sends the review fix message there
   const handleReviewFix = useCallback(
     async (message: string, executionMode: 'plan' | 'yolo') => {
@@ -1451,6 +1685,10 @@ export function ChatWindow({
     handleStreamingClearContextApproval,
     handleClearContextApprovalBuild,
     handleStreamingClearContextApprovalBuild,
+    handleWorktreeBuildApproval,
+    handleStreamingWorktreeBuildApproval,
+    handleWorktreeYoloApproval,
+    handleStreamingWorktreeYoloApproval,
     handlePendingPlanApprovalCallback,
     handlePermissionApproval,
     handlePermissionApprovalYolo,
@@ -1482,6 +1720,7 @@ export function ChatWindow({
     scrollToBottom,
     inputRef,
     pendingPlanMessage,
+    projectIdRef,
   })
 
   // Copy a sent user message to the clipboard with attachment metadata
@@ -1759,6 +1998,8 @@ export function ChatWindow({
                                 onPlanApprovalYolo={handlePlanApprovalYolo}
                                 onClearContextApproval={handleClearContextApproval}
                                 onClearContextApprovalBuild={handleClearContextApprovalBuild}
+                                onWorktreeBuildApproval={worktree?.project_id ? handleWorktreeBuildApproval : undefined}
+                                onWorktreeYoloApproval={worktree?.project_id ? handleWorktreeYoloApproval : undefined}
                                 onQuestionAnswer={handleQuestionAnswer}
                                 onQuestionSkip={handleSkipQuestion}
                                 onFileClick={setViewingFilePath}
@@ -1806,6 +2047,12 @@ export function ChatWindow({
                                 }
                                 onStreamingClearContextApprovalBuild={
                                   handleStreamingClearContextApprovalBuild
+                                }
+                                onStreamingWorktreeBuildApproval={
+                                  worktree?.project_id ? handleStreamingWorktreeBuildApproval : undefined
+                                }
+                                onStreamingWorktreeYoloApproval={
+                                  worktree?.project_id ? handleStreamingWorktreeYoloApproval : undefined
                                 }
                                 hideApproveButtons={isCodexBackend}
                               />
@@ -2228,6 +2475,8 @@ export function ChatWindow({
               onApproveYolo={handlePlanDialogApproveYolo}
               onClearContextApprove={handlePlanDialogClearContextApprove}
               onClearContextBuildApprove={handlePlanDialogClearContextBuildApprove}
+              onWorktreeBuildApprove={worktree?.project_id ? handlePlanDialogWorktreeBuildApprove : undefined}
+              onWorktreeYoloApprove={worktree?.project_id ? handlePlanDialogWorktreeYoloApprove : undefined}
               hideApproveButtons={isCodexBackend}
             />
           ) : latestPlanFilePath ? (
@@ -2250,6 +2499,8 @@ export function ChatWindow({
               onApproveYolo={handlePlanDialogApproveYolo}
               onClearContextApprove={handlePlanDialogClearContextApprove}
               onClearContextBuildApprove={handlePlanDialogClearContextBuildApprove}
+              onWorktreeBuildApprove={worktree?.project_id ? handlePlanDialogWorktreeBuildApprove : undefined}
+              onWorktreeYoloApprove={worktree?.project_id ? handlePlanDialogWorktreeYoloApprove : undefined}
               hideApproveButtons={isCodexBackend}
             />
           ) : null)}

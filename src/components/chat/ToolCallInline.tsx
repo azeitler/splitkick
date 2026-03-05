@@ -79,7 +79,7 @@ export function ToolCallInline({
           isOpen && 'bg-muted/50'
         )}
       >
-        <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50 cursor-pointer select-none min-w-0">
+        <CollapsibleTrigger className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-muted/50 cursor-pointer select-none min-w-0">
           {icon}
           <span className="font-medium">{label}</span>
           {detail && filePath && onFileClick ? (
@@ -180,8 +180,8 @@ export function TaskCallInline({
           isOpen && 'bg-muted/50'
         )}
       >
-        <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50 cursor-pointer select-none min-w-0">
-          <Bot className="h-4 w-4 shrink-0" />
+        <CollapsibleTrigger className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-muted/50 cursor-pointer select-none min-w-0">
+          <Bot className="h-3.5 w-3.5 shrink-0" />
           <span className="font-medium">
             {subagentType ? `Task (${subagentType})` : 'Task'}
           </span>
@@ -319,8 +319,8 @@ export function StackedGroup({
           isOpen && 'bg-muted/50'
         )}
       >
-        <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50 cursor-pointer select-none min-w-0">
-          <Layers className="h-4 w-4 shrink-0" />
+        <CollapsibleTrigger className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-muted/50 cursor-pointer select-none min-w-0">
+          <Layers className="h-3.5 w-3.5 shrink-0" />
           <span className="font-medium">{summary}</span>
           {isStreaming && isIncomplete ? (
             <Loader2 className="ml-auto h-3 w-3 shrink-0 animate-spin text-muted-foreground/50" />

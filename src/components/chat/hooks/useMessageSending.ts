@@ -341,7 +341,10 @@ export function useMessageSending({
         isSending: checkIsSendingNow,
         setSessionReviewing,
       } = useChatStore.getState()
-      const textMessage = (inputDrafts[activeSessionId ?? ''] ?? '').trim()
+      const liveInputValue = inputRef.current?.value
+      const textMessage = (
+        liveInputValue ?? inputDrafts[activeSessionId ?? ''] ?? ''
+      ).trim()
       const images = getPendingImages(activeSessionId ?? '')
       const files = getPendingFiles(activeSessionId ?? '')
       const skills = getPendingSkills(activeSessionId ?? '')

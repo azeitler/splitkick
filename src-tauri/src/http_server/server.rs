@@ -1,5 +1,5 @@
 use axum::{
-    extract::{ws::WebSocketUpgrade, Query, State},
+    extract::{ws::WebSocketUpgrade, Path as AxumPath, Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::get,
@@ -54,6 +54,14 @@ struct WsAuth {
 /// Resolve the dist directory path at runtime.
 /// Checks multiple locations for development and production scenarios.
 fn resolve_dist_path(app: &AppHandle) -> std::path::PathBuf {
+    // Development: prefer local dist output first so `vite build --watch`
+    // changes are served immediately instead of stale bundled resources.
+    let dev_dist = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../dist");
+    if cfg!(debug_assertions) && dev_dist.exists() && dev_dist.join("index.html").exists() {
+        log::info!("Serving frontend from dev dist: {}", dev_dist.display());
+        return dev_dist;
+    }
+
     // 1. Check if app has a resource dir with dist/ (bundled via resources config)
     if let Ok(resource_dir) = app.path().resource_dir() {
         log::info!("Resource dir: {}", resource_dir.display());
@@ -74,8 +82,7 @@ fn resolve_dist_path(app: &AppHandle) -> std::path::PathBuf {
         }
     }
 
-    // 2. Development: relative to cargo manifest dir
-    let dev_dist = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../dist");
+    // 2. Fallback to local dist path (also used in release if needed)
     if dev_dist.exists() && dev_dist.join("index.html").exists() {
         log::info!("Serving frontend from dev dist: {}", dev_dist.display());
         return dev_dist;
@@ -134,6 +141,7 @@ pub async fn start_server(
         .route("/ws", get(ws_handler))
         .route("/api/auth", get(auth_handler))
         .route("/api/init", get(init_handler))
+        .route("/api/files/{*filepath}", get(file_handler))
         .fallback_service(serve_dir)
         .layer(cors)
         .with_state(state);
@@ -398,6 +406,11 @@ async fn init_handler(Query(params): Query<WsAuth>, State(state): State<AppState
         }
     }
 
+    // Include app data dir so the web view can build file-serving URLs
+    if let Ok(app_data_dir) = state.app.path().app_data_dir() {
+        response["appDataDir"] = Value::String(app_data_dir.to_string_lossy().to_string());
+    }
+
     match preferences_result {
         Ok(preferences) => {
             if let Ok(val) = serde_json::to_value(&preferences) {
@@ -423,6 +436,85 @@ async fn init_handler(Query(params): Query<WsAuth>, State(state): State<AppState
     }
 
     Json(response).into_response()
+}
+
+/// Guess MIME type from file extension.
+fn mime_from_extension(path: &std::path::Path) -> &'static str {
+    match path.extension().and_then(|e| e.to_str()) {
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("png") => "image/png",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        Some("svg") => "image/svg+xml",
+        Some("txt") => "text/plain; charset=utf-8",
+        Some("json") => "application/json",
+        Some("md") => "text/markdown; charset=utf-8",
+        _ => "application/octet-stream",
+    }
+}
+
+/// Serve files from the app data directory (authenticated).
+/// Used by the web view to load images, avatars, and other assets
+/// that Tauri's asset:// protocol would serve in native mode.
+async fn file_handler(
+    AxumPath(filepath): AxumPath<String>,
+    Query(params): Query<WsAuth>,
+    State(state): State<AppState>,
+) -> Response {
+    // Validate token
+    if state.token_required {
+        let provided = params.token.unwrap_or_default();
+        if !auth::validate_token(&provided, &state.token) {
+            return (StatusCode::UNAUTHORIZED, "Invalid token").into_response();
+        }
+    }
+
+    // Resolve app data directory
+    let app_data_dir = match state.app.path().app_data_dir() {
+        Ok(dir) => dir,
+        Err(_) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Cannot resolve app data dir",
+            )
+                .into_response()
+        }
+    };
+
+    // Build requested path and canonicalize
+    let requested = app_data_dir.join(&filepath);
+    let canonical = match requested.canonicalize() {
+        Ok(p) => p,
+        Err(_) => return (StatusCode::NOT_FOUND, "File not found").into_response(),
+    };
+
+    // Security: ensure path is within app data dir (prevents traversal)
+    let canonical_base = match app_data_dir.canonicalize() {
+        Ok(p) => p,
+        Err(_) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, "Cannot resolve base dir").into_response()
+        }
+    };
+    if !canonical.starts_with(&canonical_base) {
+        return (StatusCode::FORBIDDEN, "Access denied").into_response();
+    }
+
+    // Only serve files, not directories
+    if !canonical.is_file() {
+        return (StatusCode::NOT_FOUND, "Not a file").into_response();
+    }
+
+    // Read and serve the file
+    let mime = mime_from_extension(&canonical);
+    match tokio::fs::read(&canonical).await {
+        Ok(bytes) => Response::builder()
+            .header("Content-Type", mime)
+            .header("Cache-Control", "private, max-age=3600")
+            .body(axum::body::Body::from(bytes))
+            .unwrap()
+            .into_response(),
+        Err(_) => (StatusCode::NOT_FOUND, "Cannot read file").into_response(),
+    }
 }
 
 /// Get the local LAN IP address.

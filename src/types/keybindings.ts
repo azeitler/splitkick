@@ -18,6 +18,8 @@ export type KeybindingAction =
   | 'approve_plan_yolo'
   | 'approve_plan_clear_context'
   | 'approve_plan_clear_context_build'
+  | 'approve_plan_worktree_build'
+  | 'approve_plan_worktree_yolo'
   | 'open_plan'
   | 'open_recap'
   | 'restore_last_archived'
@@ -33,6 +35,7 @@ export type KeybindingAction =
   | 'scroll_chat_down'
   | 'open_github_dashboard'
   | 'open_quick_menu'
+  | 'open_usage_dropdown'
 
 // Shortcut string format: "mod+key" where mod is cmd/ctrl
 // Examples: "mod+l", "mod+shift+p", "mod+1"
@@ -70,6 +73,8 @@ export const DEFAULT_KEYBINDINGS: KeybindingsMap = {
   approve_plan_yolo: 'mod+y',
   approve_plan_clear_context: 'mod+shift+y',
   approve_plan_clear_context_build: 'mod+shift+enter',
+  approve_plan_worktree_build: 'mod+alt+enter',
+  approve_plan_worktree_yolo: 'mod+alt+y',
   open_plan: 'p',
   open_recap: 'r',
   restore_last_archived: 'mod+shift+t',
@@ -85,6 +90,7 @@ export const DEFAULT_KEYBINDINGS: KeybindingsMap = {
   scroll_chat_down: 'mod+arrowdown',
   open_github_dashboard: 'mod+shift+d',
   open_quick_menu: 'mod+period',
+  open_usage_dropdown: 'mod+u',
 }
 
 // UI definitions for the settings pane
@@ -210,6 +216,20 @@ export const KEYBINDING_DEFINITIONS: KeybindingDefinition[] = [
     category: 'chat',
   },
   {
+    action: 'approve_plan_worktree_build',
+    label: 'Worktree build',
+    description: 'Approve plan and execute in a new worktree (build mode)',
+    default_shortcut: 'mod+alt+enter',
+    category: 'chat',
+  },
+  {
+    action: 'approve_plan_worktree_yolo',
+    label: 'Worktree yolo',
+    description: 'Approve plan and execute in a new worktree (yolo mode)',
+    default_shortcut: 'mod+alt+y',
+    category: 'chat',
+  },
+  {
     action: 'open_plan',
     label: 'Open plan',
     description: 'Open the plan dialog for the selected session',
@@ -319,6 +339,13 @@ export const KEYBINDING_DEFINITIONS: KeybindingDefinition[] = [
     label: 'Quick menu',
     description: 'Open the floating quick menu',
     default_shortcut: 'mod+period',
+    category: 'navigation',
+  },
+  {
+    action: 'open_usage_dropdown',
+    label: 'Usage dropdown',
+    description: 'Open the floating usage dropdown',
+    default_shortcut: 'mod+u',
     category: 'navigation',
   },
 ]

@@ -109,8 +109,6 @@ export function useInstallOpencodeCli() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (version?: string) => {
-      if (!isTauri())
-        throw new Error('Cannot install OpenCode CLI outside Tauri context')
       await invoke('install_opencode_cli', { version: version ?? null })
     },
     retry: false,

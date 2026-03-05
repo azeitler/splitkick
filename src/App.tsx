@@ -5,6 +5,7 @@ import {
   useWsConnectionStatus,
   useWsAuthError,
   preloadInitialData,
+  setAppDataDir,
   type InitialData,
 } from '@/lib/transport'
 import { isNativeApp } from '@/lib/environment'
@@ -48,43 +49,45 @@ function WebLoadingScreen() {
   )
 }
 
-/** Small fixed badge showing WebSocket connection status (browser mode only). */
-function WsStatusBadge() {
-  const connected = useWsConnectionStatus()
+/** Full-screen auth error overlay for web access mode. */
+function WsAuthErrorOverlay() {
   const authError = useWsAuthError()
 
-  if (authError) {
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/90 backdrop-blur-sm">
-        <div className="mx-4 max-w-md rounded-lg border border-destructive/50 bg-background p-6 shadow-lg">
-          <div className="flex items-center gap-2 text-destructive">
-            <svg
-              className="size-5 shrink-0"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-            >
-              <path
-                fillRule="evenodd"
-                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                clipRule="evenodd"
-              />
-            </svg>
-            <h2 className="text-sm font-semibold">Connection Failed</h2>
-          </div>
-          <p className="mt-2 text-sm text-muted-foreground">{authError}</p>
-        </div>
-      </div>
-    )
-  }
+  if (!authError) return null
 
   return (
-    <div className="fixed bottom-2 right-2 z-50 flex items-center gap-1.5 rounded-full bg-background/80 px-2.5 py-1 text-xs font-medium shadow-sm ring-1 ring-border/50 backdrop-blur-sm">
-      <span
-        className={`inline-block size-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`}
-      />
-      <span className="text-muted-foreground">
-        {connected ? 'Connected' : 'Reconnecting\u2026'}
-      </span>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/90 backdrop-blur-sm">
+      <div className="mx-4 max-w-md rounded-lg border border-destructive/50 bg-background p-6 shadow-lg">
+        <div className="flex items-center gap-2 text-destructive">
+          <svg
+            className="size-5 shrink-0"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+          >
+            <path
+              fillRule="evenodd"
+              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+              clipRule="evenodd"
+            />
+          </svg>
+          <h2 className="text-sm font-semibold">Connection Failed</h2>
+        </div>
+        <p className="mt-2 text-sm text-muted-foreground">{authError}</p>
+      </div>
+    </div>
+  )
+}
+
+function WsReconnectingOverlay() {
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-background/90 backdrop-blur-sm">
+      <div className="flex flex-col items-center gap-3">
+        <div className="size-6 animate-spin rounded-full border-2 border-muted border-t-primary" />
+        <div className="text-sm font-medium">Reconnecting...</div>
+        <div className="text-xs text-muted-foreground">
+          Reloading session state
+        </div>
+      </div>
     </div>
   )
 }
@@ -275,6 +278,10 @@ function App() {
       if (data.uiState) {
         queryClient.setQueryData(['ui-state'], data.uiState)
       }
+      // Cache app data dir for browser-mode file URL conversion
+      if (data.appDataDir) {
+        setAppDataDir(data.appDataDir)
+      }
     }
 
     preloadInitialData()
@@ -324,21 +331,59 @@ function App() {
   // When WebSocket connects (browser mode), invalidate queries that weren't preloaded
   // so they refetch with the now-available backend. Skip preloaded data.
   const wsConnected = useWsConnectionStatus()
+  const wsAuthError = useWsAuthError()
+  const hadWsConnectionRef = useRef(false)
   useEffect(() => {
-    if (!isNativeApp() && wsConnected) {
-      logger.info('WebSocket connected, invalidating dynamic queries')
-      // Invalidate everything except what we preloaded
+    if (isNativeApp() || !wsConnected) return
+
+    const reconnected = hadWsConnectionRef.current
+    hadWsConnectionRef.current = true
+
+    logger.info('WebSocket connected, invalidating dynamic queries', {
+      reconnected,
+    })
+
+    // Invalidate everything except what we preloaded
+    queryClient.invalidateQueries({
+      predicate: query => {
+        const key = query.queryKey[0]
+        // Skip invalidating preloaded data (projects, worktrees, sessions, chat, preferences, ui-state)
+        return (
+          key !== 'projects' &&
+          key !== 'preferences' &&
+          key !== 'ui-state' &&
+          key !== 'chat'
+        )
+      },
+    })
+
+    // On reconnect, always reload the currently opened chat session state.
+    if (reconnected) {
+      const chatStore = useChatStore.getState()
+      const uiStore = useUIStore.getState()
+      const targetWorktreeId =
+        uiStore.sessionChatModalOpen && uiStore.sessionChatModalWorktreeId
+          ? uiStore.sessionChatModalWorktreeId
+          : chatStore.activeWorktreeId
+
+      if (!targetWorktreeId) return
+
+      const activeSessionId = chatStore.activeSessionIds[targetWorktreeId]
+      if (!activeSessionId) return
+
+      logger.info('WebSocket reconnected, reloading active session', {
+        worktreeId: targetWorktreeId,
+        sessionId: activeSessionId,
+      })
+
       queryClient.invalidateQueries({
-        predicate: query => {
-          const key = query.queryKey[0]
-          // Skip invalidating preloaded data (projects, worktrees, sessions, chat, preferences, ui-state)
-          return (
-            key !== 'projects' &&
-            key !== 'preferences' &&
-            key !== 'ui-state' &&
-            key !== 'chat'
-          )
-        },
+        queryKey: chatQueryKeys.sessions(targetWorktreeId),
+      })
+      queryClient.invalidateQueries({
+        queryKey: chatQueryKeys.session(activeSessionId),
+      })
+      queryClient.invalidateQueries({
+        queryKey: ['all-sessions'],
       })
     }
   }, [wsConnected, queryClient])
@@ -625,11 +670,18 @@ function App() {
     return <WebLoadingScreen />
   }
 
+  const showReconnectOverlay =
+    !isNativeApp() &&
+    !wsConnected &&
+    hadWsConnectionRef.current &&
+    !wsAuthError
+
   return (
     <ErrorBoundary>
       <ThemeProvider>
         <MainWindow />
-        {!isNativeApp() && <WsStatusBadge />}
+        {showReconnectOverlay && <WsReconnectingOverlay />}
+        {!isNativeApp() && <WsAuthErrorOverlay />}
       </ThemeProvider>
     </ErrorBoundary>
   )

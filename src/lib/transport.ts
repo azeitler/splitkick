@@ -14,21 +14,53 @@ import { generateId } from './uuid'
 // File source URL conversion (drop-in for Tauri's convertFileSrc)
 // ---------------------------------------------------------------------------
 
+// Cache for the server's app data directory path (set from init data or hook).
+// Used by convertFileSrc in browser mode to build /api/files/ URLs.
+let _appDataDir: string | null = null
+
+/** Set the app data directory path for browser-mode file URL conversion. */
+export function setAppDataDir(dir: string): void {
+  // Normalize: ensure trailing separator for reliable startsWith matching
+  _appDataDir = dir.endsWith('/') || dir.endsWith('\\') ? dir : `${dir}/`
+}
+
 /**
  * Convert a filesystem path to a URL loadable by the webview.
  * Re-implements Tauri's convertFileSrc() as pure string manipulation
  * to avoid a static import of @tauri-apps/api/core (which crashes in
  * browser mode because it checks for __TAURI_INTERNALS__ on load).
  *
- * In browser mode, returns the path as-is (local images won't render,
- * but the app won't crash).
+ * In browser mode, converts to /api/files/ URLs served by the HTTP server.
  */
 export function convertFileSrc(filePath: string, protocol = 'asset'): string {
-  if (!isNativeApp()) return filePath
-  const path = encodeURIComponent(filePath)
-  return navigator.userAgent.includes('Windows')
-    ? `https://${protocol}.localhost/${path}`
-    : `${protocol}://localhost/${path}`
+  if (isNativeApp()) {
+    const path = encodeURIComponent(filePath)
+    return navigator.userAgent.includes('Windows')
+      ? `https://${protocol}.localhost/${path}`
+      : `${protocol}://localhost/${path}`
+  }
+
+  // Browser mode: convert server filesystem path to /api/files/ URL
+  const token = localStorage.getItem('jean-http-token') || ''
+  const params = token ? `?token=${encodeURIComponent(token)}` : ''
+
+  // Try exact prefix match with cached app data dir
+  if (_appDataDir && filePath.startsWith(_appDataDir)) {
+    const relativePath = filePath.substring(_appDataDir.length)
+    return `/api/files/${encodeURI(relativePath)}${params}`
+  }
+
+  // Fallback: detect app data dir marker in path (works before _appDataDir is set)
+  for (const marker of ['com.jean.desktop/', 'com.jean.desktop\\']) {
+    const idx = filePath.indexOf(marker)
+    if (idx !== -1) {
+      const relativePath = filePath.substring(idx + marker.length)
+      return `/api/files/${encodeURI(relativePath)}${params}`
+    }
+  }
+
+  // Last resort: return as-is (will likely not render, but won't crash)
+  return filePath
 }
 
 /** Unlisten function type — compatible with Tauri's UnlistenFn. */
@@ -99,6 +131,7 @@ export interface InitialData {
   activeSessions?: Record<string, unknown> // sessionId -> Session (with messages)
   preferences: unknown
   uiState: unknown
+  appDataDir?: string
 }
 
 let initialDataPromise: Promise<InitialData | null> | null = null
@@ -324,6 +357,20 @@ class WsTransport {
 
     this.ws.onclose = () => {
       this.setConnected(false)
+
+      // Reject all pending command promises immediately — the server
+      // response will never arrive on this socket. Prevents waiting
+      // the full timeout (up to 10 min for long-running commands).
+      for (const [, pending] of this.pending.entries()) {
+        clearTimeout(pending.timeout)
+        pending.reject(new Error('WebSocket disconnected'))
+      }
+      this.pending.clear()
+
+      // Clear queued-but-unsent messages to prevent reconnect from
+      // flushing stale commands that spawn duplicate CLI processes.
+      this.queue = []
+
       this.scheduleReconnect()
     }
 
@@ -331,6 +378,22 @@ class WsTransport {
       // onclose will fire after onerror
     }
   }
+
+  // Commands that spawn CLI processes and can run for extended periods.
+  // These get a 10-minute timeout instead of the default 60s.
+  private static readonly LONG_RUNNING_COMMANDS: ReadonlySet<string> = new Set([
+    'send_chat_message',
+    'run_review_with_ai',
+    'create_pr_with_ai_content',
+    'create_commit_with_ai',
+    'execute_summarization',
+    'install_claude_cli',
+    'install_codex_cli',
+    'install_opencode_cli',
+    'install_gh_cli',
+  ])
+  private static readonly LONG_TIMEOUT = 10 * 60_000
+  private static readonly DEFAULT_TIMEOUT = 60_000
 
   /** Call a backend command over WebSocket. */
   async invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
@@ -342,11 +405,15 @@ class WsTransport {
       args: args || {},
     })
 
+    const timeoutMs = WsTransport.LONG_RUNNING_COMMANDS.has(command)
+      ? WsTransport.LONG_TIMEOUT
+      : WsTransport.DEFAULT_TIMEOUT
+
     return new Promise<T>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pending.delete(id)
-        reject(new Error(`Command '${command}' timed out after 60s`))
-      }, 60_000)
+        reject(new Error(`Command '${command}' timed out after ${timeoutMs / 1000}s`))
+      }, timeoutMs)
 
       this.pending.set(id, {
         resolve: resolve as (data: unknown) => void,

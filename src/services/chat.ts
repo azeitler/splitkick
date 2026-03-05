@@ -150,9 +150,11 @@ export async function prefetchSessions(
     })
     queryClient.setQueryData(chatQueryKeys.sessions(worktreeId), sessions)
 
-    // Restore reviewingSessions, waitingForInputSessionIds, sessionLabels, reviewResults, and fixedFindings
+    // Restore reviewingSessions, waitingForInputSessionIds, sessionLabels, reviewResults,
+    // fixedFindings, and selected execution modes.
     const reviewingUpdates: Record<string, boolean> = {}
     const waitingUpdates: Record<string, boolean> = {}
+    const executionModeUpdates: Record<string, ExecutionMode> = {}
     const labelUpdates: Record<string, LabelData> = {}
     const reviewResultsUpdates: Record<string, ReviewResponse> = {}
     const fixedFindingsUpdates: Record<string, Set<string>> = {}
@@ -171,6 +173,9 @@ export async function prefetchSessions(
           session.waiting_for_input_type === 'plan')
       if (session.waiting_for_input && canBeWaiting) {
         waitingUpdates[session.id] = true
+      }
+      if (session.selected_execution_mode) {
+        executionModeUpdates[session.id] = session.selected_execution_mode
       }
       if (session.label) {
         labelUpdates[session.id] = session.label
@@ -215,6 +220,12 @@ export async function prefetchSessions(
       storeUpdates.waitingForInputSessionIds = {
         ...currentState.waitingForInputSessionIds,
         ...waitingUpdates,
+      }
+    }
+    if (Object.keys(executionModeUpdates).length > 0) {
+      storeUpdates.executionModes = {
+        ...currentState.executionModes,
+        ...executionModeUpdates,
       }
     }
     if (Object.keys(labelUpdates).length > 0) {
@@ -463,6 +474,7 @@ export function useUpdateSessionState() {
       planFilePath,
       pendingPlanMessageId,
       enabledMcpServers,
+      selectedExecutionMode,
     }: {
       worktreeId: string
       worktreePath: string
@@ -486,6 +498,7 @@ export function useUpdateSessionState() {
       planFilePath?: string | null
       pendingPlanMessageId?: string | null
       enabledMcpServers?: string[] | null
+      selectedExecutionMode?: ExecutionMode | null
     }): Promise<void> => {
       if (!isTauri()) {
         throw new Error('Not in Tauri context')
@@ -506,6 +519,7 @@ export function useUpdateSessionState() {
         planFilePath,
         pendingPlanMessageId,
         enabledMcpServers,
+        selectedExecutionMode,
       })
       logger.debug('Session state updated')
     },
@@ -1346,9 +1360,42 @@ export function useSendMessage() {
         useChatStore.getState()
       removeSendingSession(sessionId)
       clearExecutingMode(sessionId)
+
+      // Disconnect or timeout — the CLI likely ran fine, we just lost the
+      // RPC response. Don't rollback (it destroys streamed content the user
+      // already saw). Refetch authoritative state from backend disk.
+      // Error strings match those thrown in src/lib/transport.ts WsTransport.
+      const isDisconnect =
+        errorStr.includes('WebSocket disconnected') ||
+        errorMessage.includes('WebSocket disconnected')
+      const isTimeout =
+        errorStr.includes('timed out') || errorMessage.includes('timed out')
+
+      if (isDisconnect || isTimeout) {
+        logger.warn('Lost command response, refetching session', {
+          sessionId,
+          reason: isDisconnect ? 'disconnect' : 'timeout',
+        })
+        queryClient.invalidateQueries({
+          queryKey: chatQueryKeys.session(sessionId),
+        })
+        queryClient.invalidateQueries({
+          queryKey: chatQueryKeys.sessions(worktreeId),
+        })
+        toast.error(
+          isDisconnect
+            ? 'Connection lost — refreshing...'
+            : 'Response timed out — refreshing...',
+          {
+            description: 'Your message was likely processed successfully.',
+          }
+        )
+        return
+      }
+
+      // Real errors — rollback to previous state
       setError(sessionId, errorMessage || 'Unknown error occurred')
 
-      // Rollback to previous state on actual errors (not cancellation)
       if (context?.previous) {
         queryClient.setQueryData(
           chatQueryKeys.session(sessionId),

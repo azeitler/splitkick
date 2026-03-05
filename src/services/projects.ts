@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { invoke, useWsConnectionStatus } from '@/lib/transport'
+import { invoke, useWsConnectionStatus, setAppDataDir } from '@/lib/transport'
 import { listen, type UnlistenFn } from '@/lib/transport'
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
@@ -2752,6 +2752,8 @@ export function useAppDataDir() {
       logger.debug('Getting app data directory')
       const dir = await invoke<string>('get_app_data_dir')
       logger.debug('App data directory', { dir })
+      // Cache for browser-mode file URL conversion
+      if (dir) setAppDataDir(dir)
       return dir
     },
     staleTime: Infinity, // Path doesn't change during session

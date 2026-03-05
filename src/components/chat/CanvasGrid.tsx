@@ -28,6 +28,8 @@ interface CanvasGridProps {
   onPlanApprovalYolo: (card: SessionCardData, updatedPlan?: string) => void
   onClearContextApproval: (card: SessionCardData, updatedPlan?: string) => void
   onClearContextApprovalBuild: (card: SessionCardData, updatedPlan?: string) => void
+  onWorktreeApproval?: ((card: SessionCardData, updatedPlan?: string) => void) | null
+  onWorktreeApprovalYolo?: ((card: SessionCardData, updatedPlan?: string) => void) | null
   onCloseWorktree: () => void
   searchInputRef?: React.RefObject<HTMLInputElement | null>
 }
@@ -50,6 +52,8 @@ export function CanvasGrid({
   onPlanApprovalYolo,
   onClearContextApproval,
   onClearContextApprovalBuild,
+  onWorktreeApproval,
+  onWorktreeApprovalYolo,
   onCloseWorktree,
   searchInputRef,
 }: CanvasGridProps) {
@@ -138,6 +142,8 @@ export function CanvasGrid({
     onPlanApprovalYolo,
     onClearContextApproval,
     onClearContextApprovalBuild,
+    onWorktreeApproval,
+    onWorktreeApprovalYolo,
   })
 
   // Keyboard navigation - disable when any modal/dialog is open
@@ -191,6 +197,24 @@ export function CanvasGrid({
       }
     },
     [planDialogCard, onClearContextApprovalBuild]
+  )
+
+  const handleDialogWorktreeApprove = useCallback(
+    (updatedPlan: string) => {
+      if (planDialogCard && onWorktreeApproval) {
+        onWorktreeApproval(planDialogCard, updatedPlan)
+      }
+    },
+    [planDialogCard, onWorktreeApproval]
+  )
+
+  const handleDialogWorktreeApproveYolo = useCallback(
+    (updatedPlan: string) => {
+      if (planDialogCard && onWorktreeApprovalYolo) {
+        onWorktreeApprovalYolo(planDialogCard, updatedPlan)
+      }
+    },
+    [planDialogCard, onWorktreeApprovalYolo]
   )
 
   // Listen for focus-canvas-search event
@@ -337,6 +361,8 @@ export function CanvasGrid({
                       onYolo={() => onPlanApprovalYolo(card)}
                       onClearContextApprove={() => onClearContextApproval(card)}
                       onClearContextBuildApprove={() => onClearContextApprovalBuild(card)}
+                      onWorktreeBuildApprove={onWorktreeApproval ? () => onWorktreeApproval(card) : undefined}
+                      onWorktreeYoloApprove={onWorktreeApprovalYolo ? () => onWorktreeApprovalYolo(card) : undefined}
                       onToggleLabel={() => handleOpenLabelModal(card)}
                       onToggleReview={() => {
                         const { reviewingSessions, setSessionReviewing } =
@@ -374,6 +400,8 @@ export function CanvasGrid({
           onApproveYolo={handleDialogApproveYolo}
           onClearContextApprove={handleDialogClearContextApprove}
           onClearContextBuildApprove={handleDialogClearContextApproveBuild}
+          onWorktreeBuildApprove={onWorktreeApproval ? handleDialogWorktreeApprove : undefined}
+          onWorktreeYoloApprove={onWorktreeApprovalYolo ? handleDialogWorktreeApproveYolo : undefined}
         />
       ) : planDialogContent ? (
         <PlanDialog
@@ -387,6 +415,8 @@ export function CanvasGrid({
           onApproveYolo={handleDialogApproveYolo}
           onClearContextApprove={handleDialogClearContextApprove}
           onClearContextBuildApprove={handleDialogClearContextApproveBuild}
+          onWorktreeBuildApprove={onWorktreeApproval ? handleDialogWorktreeApprove : undefined}
+          onWorktreeYoloApprove={onWorktreeApprovalYolo ? handleDialogWorktreeApproveYolo : undefined}
         />
       ) : null}
 

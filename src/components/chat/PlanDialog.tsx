@@ -18,7 +18,11 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Markdown } from '@/components/ui/markdown'
-import { Kbd } from '@/components/ui/kbd'
+import { SplitButton } from '@/components/ui/split-button'
+import {
+  DropdownMenuItem,
+  DropdownMenuShortcut,
+} from '@/components/ui/dropdown-menu'
 import { formatShortcutDisplay, DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 
 export interface ApprovalContext {
@@ -38,6 +42,8 @@ interface PlanDialogBaseProps {
   onApproveYolo?: (updatedPlan: string) => void
   onClearContextApprove?: (updatedPlan: string) => void
   onClearContextBuildApprove?: (updatedPlan: string) => void
+  onWorktreeBuildApprove?: (updatedPlan: string) => void
+  onWorktreeYoloApprove?: (updatedPlan: string) => void
   /** Hide approve buttons (e.g. for Codex which has no native approval flow) */
   hideApproveButtons?: boolean
 }
@@ -66,6 +72,8 @@ export function PlanDialog({
   onApproveYolo,
   onClearContextApprove,
   onClearContextBuildApprove,
+  onWorktreeBuildApprove,
+  onWorktreeYoloApprove,
   hideApproveButtons,
 }: PlanDialogProps) {
   const filename = filePath ? getFilename(filePath) : null
@@ -156,6 +164,16 @@ export function PlanDialog({
     onClose()
   }, [editedContent, onClearContextBuildApprove, onClose])
 
+  const handleWorktreeBuildApprove = useCallback(() => {
+    onWorktreeBuildApprove?.(editedContent)
+    onClose()
+  }, [editedContent, onWorktreeBuildApprove, onClose])
+
+  const handleWorktreeYoloApprove = useCallback(() => {
+    onWorktreeYoloApprove?.(editedContent)
+    onClose()
+  }, [editedContent, onWorktreeYoloApprove, onClose])
+
   // Keyboard shortcuts for approve actions
   useEffect(() => {
     if (!isOpen || !editable) return
@@ -163,12 +181,15 @@ export function PlanDialog({
     const handleKeyDown = (e: KeyboardEvent) => {
       const isMod = e.metaKey || e.ctrlKey
 
-      // Mod+Enter = Approve
-      if (isMod && e.key === 'Enter' && !e.shiftKey) {
+      // Check most specific combos first to avoid matching simpler patterns
+
+      // Mod+Alt+Enter = Worktree Build
+      if (isMod && e.altKey && e.key === 'Enter') {
         e.preventDefault()
-        if (canApprove) {
-          handleApprove()
+        if (canApprove && onWorktreeBuildApprove) {
+          handleWorktreeBuildApprove()
         }
+        return
       }
 
       // Mod+Shift+Enter = Clear Context and build
@@ -180,7 +201,25 @@ export function PlanDialog({
         return
       }
 
-      // Mod+Shift+Y = Clear Context and yolo (check before Mod+Y since Shift+Y = 'Y')
+      // Mod+Enter = Approve (no shift, no alt)
+      if (isMod && e.key === 'Enter' && !e.shiftKey && !e.altKey) {
+        e.preventDefault()
+        if (canApprove) {
+          handleApprove()
+        }
+        return
+      }
+
+      // Mod+Alt+Y = Worktree Yolo
+      if (isMod && e.altKey && (e.key === 'Y' || e.key === 'y')) {
+        e.preventDefault()
+        if (canApprove && onWorktreeYoloApprove) {
+          handleWorktreeYoloApprove()
+        }
+        return
+      }
+
+      // Mod+Shift+Y = Clear Context and yolo
       if (isMod && e.shiftKey && (e.key === 'Y' || e.key === 'y')) {
         e.preventDefault()
         if (canApprove && onClearContextApprove) {
@@ -189,18 +228,19 @@ export function PlanDialog({
         return
       }
 
-      // Mod+Y = Approve Yolo
-      if (isMod && e.key === 'y') {
+      // Mod+Y = Approve Yolo (no shift, no alt)
+      if (isMod && e.key === 'y' && !e.shiftKey && !e.altKey) {
         e.preventDefault()
         if (canApprove) {
           handleApproveYolo()
         }
+        return
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, editable, canApprove, handleApprove, handleApproveYolo, onClearContextApprove, handleClearContextApprove, onClearContextBuildApprove, handleClearContextBuildApprove])
+  }, [isOpen, editable, canApprove, handleApprove, handleApproveYolo, onClearContextApprove, handleClearContextApprove, onClearContextBuildApprove, handleClearContextBuildApprove, onWorktreeBuildApprove, handleWorktreeBuildApprove, onWorktreeYoloApprove, handleWorktreeYoloApprove])
 
   return (
     <Dialog open={isOpen} onOpenChange={open => !open && onClose()}>
@@ -268,68 +308,75 @@ export function PlanDialog({
               </Button>
             )}
 
-            {/* Right side: Approve buttons */}
+            {/* Right side: Approve + Auto split buttons */}
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" className="h-auto py-2 !bg-primary/80 !border-primary !text-primary-foreground hover:!bg-primary/90" onClick={handleApprove} disabled={!canApprove}>
-                Approve
-                <Kbd className="ml-1.5 h-4 text-[10px] bg-primary-foreground/20 text-primary-foreground">
-                  {formatShortcutDisplay(DEFAULT_KEYBINDINGS.approve_plan)}
-                </Kbd>
-              </Button>
-              <Button
+              <SplitButton
+                label="Approve"
+                tooltip={`Approve plan (${formatShortcutDisplay(DEFAULT_KEYBINDINGS.approve_plan)})`}
+                onClick={handleApprove}
+                disabled={!canApprove}
+              >
+                {onClearContextBuildApprove && (
+                  <DropdownMenuItem onClick={handleClearContextBuildApprove} disabled={!canApprove}>
+                    <span className="flex flex-col">
+                      <span>New Session</span>
+                      {buildLabel && (
+                        <span className="text-[10px] text-muted-foreground">{buildLabel}</span>
+                      )}
+                    </span>
+                    <DropdownMenuShortcut>
+                      {formatShortcutDisplay(DEFAULT_KEYBINDINGS.approve_plan_clear_context_build)}
+                    </DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                )}
+                {onWorktreeBuildApprove && (
+                  <DropdownMenuItem onClick={handleWorktreeBuildApprove} disabled={!canApprove}>
+                    <span className="flex flex-col">
+                      <span>New Worktree</span>
+                      {buildLabel && (
+                        <span className="text-[10px] text-muted-foreground">{buildLabel}</span>
+                      )}
+                    </span>
+                    <DropdownMenuShortcut>
+                      {formatShortcutDisplay(DEFAULT_KEYBINDINGS.approve_plan_worktree_build)}
+                    </DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                )}
+              </SplitButton>
+              <SplitButton
+                label="YOLO"
+                tooltip={`Approve with yolo mode (${formatShortcutDisplay(DEFAULT_KEYBINDINGS.approve_plan_yolo)})`}
                 variant="outline"
-                size="sm"
-                className="h-auto py-2 !bg-destructive !border-destructive !text-white hover:!bg-destructive/90 dark:!bg-destructive/60"
                 onClick={handleApproveYolo}
                 disabled={!canApprove}
               >
-                Approve (yolo)
-                <Kbd className="ml-1.5 h-4 text-[10px] bg-destructive-foreground/20 text-destructive-foreground">
-                  {formatShortcutDisplay(DEFAULT_KEYBINDINGS.approve_plan_yolo)}
-                </Kbd>
-              </Button>
-              {onClearContextBuildApprove && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-auto py-2 !bg-primary/80 !border-primary !text-primary-foreground hover:!bg-primary/90"
-                  onClick={handleClearContextBuildApprove}
-                  disabled={!canApprove}
-                >
-                  <span className="flex flex-col items-center">
-                    <span className="flex items-center gap-1.5">
-                      Clear Context & Approve
-                      <Kbd className="h-4 text-[10px] bg-primary-foreground/20 text-primary-foreground">
-                        {formatShortcutDisplay(DEFAULT_KEYBINDINGS.approve_plan_clear_context_build)}
-                      </Kbd>
+                {onClearContextApprove && (
+                  <DropdownMenuItem onClick={handleClearContextApprove} disabled={!canApprove}>
+                    <span className="flex flex-col">
+                      <span>New Session (YOLO)</span>
+                      {yoloLabel && (
+                        <span className="text-[10px] text-muted-foreground">{yoloLabel}</span>
+                      )}
                     </span>
-                    {buildLabel && (
-                      <span className="text-[10px] opacity-70">{buildLabel}</span>
-                    )}
-                  </span>
-                </Button>
-              )}
-              {onClearContextApprove && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-auto py-2 !bg-destructive !border-destructive !text-white hover:!bg-destructive/90 dark:!bg-destructive/60"
-                  onClick={handleClearContextApprove}
-                  disabled={!canApprove}
-                >
-                  <span className="flex flex-col items-center">
-                    <span className="flex items-center gap-1.5">
-                      Clear Context & Approve (yolo)
-                      <Kbd className="h-4 text-[10px] bg-destructive-foreground/20 text-destructive-foreground">
-                        {formatShortcutDisplay(DEFAULT_KEYBINDINGS.approve_plan_clear_context)}
-                      </Kbd>
+                    <DropdownMenuShortcut>
+                      {formatShortcutDisplay(DEFAULT_KEYBINDINGS.approve_plan_clear_context)}
+                    </DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                )}
+                {onWorktreeYoloApprove && (
+                  <DropdownMenuItem onClick={handleWorktreeYoloApprove} disabled={!canApprove}>
+                    <span className="flex flex-col">
+                      <span>New Worktree (YOLO)</span>
+                      {yoloLabel && (
+                        <span className="text-[10px] text-muted-foreground">{yoloLabel}</span>
+                      )}
                     </span>
-                    {yoloLabel && (
-                      <span className="text-[10px] opacity-70">{yoloLabel}</span>
-                    )}
-                  </span>
-                </Button>
-              )}
+                    <DropdownMenuShortcut>
+                      {formatShortcutDisplay(DEFAULT_KEYBINDINGS.approve_plan_worktree_yolo)}
+                    </DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                )}
+              </SplitButton>
             </div>
           </DialogFooter>
         )}
