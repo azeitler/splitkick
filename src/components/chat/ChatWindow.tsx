@@ -94,7 +94,10 @@ import { logger } from '@/lib/logger'
 import { saveCrashState } from '@/lib/recovery'
 import { ErrorBanner } from './ErrorBanner'
 import { SessionDigestReminder } from './SessionDigestReminder'
-import { MessageList } from './MessageList'
+import {
+  VirtualizedMessageList,
+  type VirtualizedMessageListHandle,
+} from './VirtualizedMessageList'
 import {
   extractImagePaths,
   extractTextFilePaths,
@@ -738,7 +741,9 @@ export function ChatWindow({
     []
   )
 
-  // Ref for approve button (passed to MessageList)
+  const virtualizedListRef = useRef<VirtualizedMessageListHandle>(null)
+
+  // Ref for approve button (passed to VirtualizedMessageList)
   const approveButtonRef = useRef<HTMLButtonElement>(null)
 
   // Terminal panel ref for imperative collapse/expand
@@ -756,7 +761,10 @@ export function ChatWindow({
     endKeyboardScroll,
     scrollToFindings,
     handleScroll,
+    handleScrollToBottomHandled,
   } = useScrollManagement({
+    messages: session?.messages,
+    virtualizedListRef,
     activeWorktreeId,
   })
 
@@ -1982,8 +1990,10 @@ export function ChatWindow({
                                 Loading...
                               </div>
                             ) : (
-                              <MessageList
+                              <VirtualizedMessageList
+                                ref={virtualizedListRef}
                                 messages={messages}
+                                scrollContainerRef={scrollViewportRef}
                                 totalMessages={messages.length}
                                 lastPlanMessageIndex={lastPlanMessageIndex}
                                 sessionId={deferredSessionId ?? ''}
@@ -2012,6 +2022,10 @@ export function ChatWindow({
                                 isFindingFixed={isFindingFixed}
                                 onCopyToInput={handleCopyToInput}
                                 hideApproveButtons={isCodexBackend}
+                                shouldScrollToBottom={isAtBottom}
+                                onScrollToBottomHandled={
+                                  handleScrollToBottomHandled
+                                }
                               />
                             )}
                             {isSending && activeSessionId && (
