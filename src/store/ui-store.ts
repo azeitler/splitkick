@@ -34,7 +34,6 @@ interface UIState {
   openInModalOpen: boolean
   remotePickerOpen: boolean
   remotePickerRepoPath: string | null
-  remotePickerCallback: ((remote: string) => void) | null
   loadContextModalOpen: boolean
   magicModalOpen: boolean
   newWorktreeModalOpen: boolean
@@ -154,6 +153,14 @@ interface UIState {
   setGitHubDashboardOpen: (open: boolean) => void
 }
 
+// Store callback outside Zustand state to avoid serialization issues with
+// devtools and deep-comparison utilities (functions are not serializable).
+let _remotePickerCallback: ((remote: string) => void) | null = null
+
+export function getRemotePickerCallback() {
+  return _remotePickerCallback
+}
+
 export const useUIStore = create<UIState>()(
   devtools(
     (set, get) => ({
@@ -171,7 +178,6 @@ export const useUIStore = create<UIState>()(
       openInModalOpen: false,
       remotePickerOpen: false,
       remotePickerRepoPath: null,
-      remotePickerCallback: null,
       loadContextModalOpen: false,
       magicModalOpen: false,
       newWorktreeModalOpen: false,
@@ -281,27 +287,29 @@ export const useUIStore = create<UIState>()(
       setOpenInModalOpen: open =>
         set({ openInModalOpen: open }, undefined, 'setOpenInModalOpen'),
 
-      openRemotePicker: (repoPath, callback) =>
+      openRemotePicker: (repoPath, callback) => {
+        _remotePickerCallback = callback
         set(
           {
             remotePickerOpen: true,
             remotePickerRepoPath: repoPath,
-            remotePickerCallback: callback,
           },
           undefined,
           'openRemotePicker'
-        ),
+        )
+      },
 
-      closeRemotePicker: () =>
+      closeRemotePicker: () => {
+        _remotePickerCallback = null
         set(
           {
             remotePickerOpen: false,
             remotePickerRepoPath: null,
-            remotePickerCallback: null,
           },
           undefined,
           'closeRemotePicker'
-        ),
+        )
+      },
 
       setLoadContextModalOpen: open =>
         set(
