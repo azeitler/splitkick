@@ -6,7 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { useUIStore } from '@/store/ui-store'
+import { useUIStore, getRemotePickerCallback } from '@/store/ui-store'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getGitRemotes, removeGitRemote } from '@/services/git-status'
 import { cn } from '@/lib/utils'
@@ -15,7 +15,6 @@ export function RemotePickerModal() {
   const {
     remotePickerOpen,
     remotePickerRepoPath,
-    remotePickerCallback,
     closeRemotePicker,
   } = useUIStore()
   const contentRef = useRef<HTMLDivElement>(null)
@@ -37,11 +36,12 @@ export function RemotePickerModal() {
   const selectRemote = useCallback(
     (index: number) => {
       const remote = remotes[index]
-      if (!remote || !remotePickerCallback) return
+      const callback = getRemotePickerCallback()
+      if (!remote || !callback) return
       closeRemotePicker()
-      remotePickerCallback(remote.name)
+      callback(remote.name)
     },
-    [remotes, remotePickerCallback, closeRemotePicker]
+    [remotes, closeRemotePicker]
   )
 
   const handleRemoveRemote = useCallback(

@@ -447,7 +447,7 @@ export function useMainWindowEventListeners() {
         return
       if (useProjectsStore.getState().projectSettingsDialogOpen) return
 
-      // CMD/Ctrl+1–9: switch terminal tab (if terminal focused), session tab (in modal), or worktree by index (on dashboard)
+      // CMD/Ctrl+1–9: switch session tabs (when modal open), dashboard tabs, or worktree by index
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
         // Use e.code (physical key) since e.key can vary with CMD held on macOS
         const digitMatch = e.code.match(/^Digit(\d)$/)
@@ -455,27 +455,21 @@ export function useMainWindowEventListeners() {
         if (digit >= 1 && digit <= 9) {
           e.preventDefault()
           e.stopPropagation()
-          // If terminal is focused, switch terminal tab
-          if (document.activeElement?.closest('.xterm')) {
-            const wId = useChatStore.getState().activeWorktreeId
-            if (wId) {
-              const termStore = useTerminalStore.getState()
-              const terms = termStore.terminals[wId] ?? []
-              if (digit - 1 < terms.length) {
-                termStore.setActiveTerminal(wId, terms[digit - 1]!.id)
-              }
-            }
-          } else if (useUIStore.getState().githubDashboardOpen && digit >= 1 && digit <= 4) {
+          if (useUIStore.getState().sessionChatModalOpen) {
+            window.dispatchEvent(
+              new CustomEvent('switch-session', {
+                detail: { index: digit - 1 },
+              })
+            )
+          } else if (
+            useUIStore.getState().githubDashboardOpen &&
+            digit >= 1 &&
+            digit <= 4
+          ) {
             const TAB_MAP = ['issues', 'prs', 'security', 'advisories']
             window.dispatchEvent(
               new CustomEvent('switch-dashboard-tab', {
                 detail: { tab: TAB_MAP[digit - 1] },
-              })
-            )
-          } else if (useUIStore.getState().sessionChatModalOpen) {
-            window.dispatchEvent(
-              new CustomEvent('switch-session', {
-                detail: { index: digit - 1 },
               })
             )
           } else {

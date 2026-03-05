@@ -575,6 +575,11 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionsFingerprint])
 
+  // Keep a ref to sessionsByWorktreeId so effects/callbacks can read the
+  // latest value without re-triggering when the Map reference changes.
+  const sessionsByWorktreeIdRef = useRef(sessionsByWorktreeId)
+  sessionsByWorktreeIdRef.current = sessionsByWorktreeId
+
   // Use shared store state hook
   const storeState = useCanvasStoreState()
 
@@ -926,7 +931,8 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
 
   // Auto-open session modal for newly created worktrees
   useEffect(() => {
-    for (const [worktreeId, sessionData] of sessionsByWorktreeId) {
+    const currentSessions = sessionsByWorktreeIdRef.current
+    for (const [worktreeId, sessionData] of currentSessions) {
       if (!sessionData.sessions.length) continue
 
       const autoOpen = useUIStore.getState().consumeAutoOpenSession(worktreeId)
@@ -971,7 +977,9 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
         break // Only one per render cycle
       }
     }
-  }, [sessionsByWorktreeId, readyWorktrees, flatCards])
+    // sessionsFingerprint tracks when session data changes (stable string, not Map reference)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionsFingerprint, readyWorktrees, flatCards])
 
   // Auto-select session when dashboard opens (visual selection only, no modal unless restore_last_session is on)
   // Prefers last opened per project, then persisted active session per worktree, falls back to first card
@@ -989,7 +997,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     const lastOpened = lastOpenedPerProject[projectId]
     if (lastOpened) {
       const worktreeSessions =
-        sessionsByWorktreeId.get(lastOpened.worktreeId)?.sessions ?? []
+        sessionsByWorktreeIdRef.current.get(lastOpened.worktreeId)?.sessions ?? []
       const hasSavedSession = worktreeSessions.some(
         session => session.id === lastOpened.sessionId
       )
@@ -1105,7 +1113,6 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     selectedWorktreeModal,
     projectId,
     preferences?.restore_last_session,
-    sessionsByWorktreeId,
   ])
 
   // Sync selection to store for cancel shortcut - updates when user navigates with arrow keys
@@ -1139,7 +1146,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       const { activeSessionIds, setActiveSession, setLastOpenedForProject } =
         useChatStore.getState()
       const existingSessionId = activeSessionIds[worktreeId]
-      const firstSessionId = sessionsByWorktreeId.get(worktreeId)?.sessions[0]?.id
+      const firstSessionId = sessionsByWorktreeIdRef.current.get(worktreeId)?.sessions[0]?.id
       const targetSessionId = existingSessionId ?? firstSessionId
 
       if (targetSessionId) {
@@ -1149,7 +1156,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
         setLastOpenedForProject(projectId, worktreeId, targetSessionId)
       }
     },
-    [projectId, sessionsByWorktreeId]
+    [projectId]
   )
 
   // Handle selection from keyboard nav
@@ -1461,7 +1468,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   const handleArchiveSessionForWorktree = useCallback(
     (worktreeId: string, worktreePath: string, sessionId: string) => {
       const worktree = readyWorktrees.find(w => w.id === worktreeId)
-      const sessionData = sessionsByWorktreeId.get(worktreeId)
+      const sessionData = sessionsByWorktreeIdRef.current.get(worktreeId)
       const activeSessions =
         sessionData?.sessions?.filter(s => !s.archived_at) ?? []
 
@@ -1487,7 +1494,6 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     },
     [
       readyWorktrees,
-      sessionsByWorktreeId,
       project,
       archiveSession,
       archiveWorktree,
@@ -1500,7 +1506,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   const handleDeleteSessionForWorktree = useCallback(
     (worktreeId: string, worktreePath: string, sessionId: string) => {
       const worktree = readyWorktrees.find(w => w.id === worktreeId)
-      const sessionData = sessionsByWorktreeId.get(worktreeId)
+      const sessionData = sessionsByWorktreeIdRef.current.get(worktreeId)
       const activeSessions =
         sessionData?.sessions?.filter(s => !s.archived_at) ?? []
 
@@ -1537,7 +1543,6 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     },
     [
       readyWorktrees,
-      sessionsByWorktreeId,
       project,
       removalBehavior,
       closeSession,
