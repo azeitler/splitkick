@@ -35,6 +35,7 @@ import { useCliVersionCheck } from './hooks/useCliVersionCheck'
 import { useQueueProcessor } from './hooks/useQueueProcessor'
 import { useBackgroundInvestigation } from './hooks/useBackgroundInvestigation'
 import { useAutoArchiveOnMerge } from './hooks/useAutoArchiveOnMerge'
+import { useMagicPromptAutoDefaults } from './hooks/useMagicPromptAutoDefaults'
 import useStreamingEvents from './components/chat/hooks/useStreamingEvents'
 import { preloadAllSounds } from './lib/sounds'
 import {
@@ -338,6 +339,9 @@ function App() {
 
   // Auto-archive worktrees when their PR is merged (if enabled in preferences)
   useAutoArchiveOnMerge()
+
+  // One-time: detect installed backends and set magic prompt defaults accordingly
+  useMagicPromptAutoDefaults()
 
   // When WebSocket connects (browser mode), invalidate queries that weren't preloaded
   // so they refetch with the now-available backend. Skip preloaded data.

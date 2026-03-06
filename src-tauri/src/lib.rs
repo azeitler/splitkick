@@ -128,6 +128,8 @@ pub struct AppPreferences {
     pub magic_prompt_providers: MagicPromptProviders, // Per-prompt provider overrides (None = use default_provider)
     #[serde(default)]
     pub magic_prompt_backends: MagicPromptBackends, // Per-prompt backend overrides (None = use project/global default_backend)
+    #[serde(default)]
+    pub magic_models_auto_initialized: bool, // Whether magic prompt models were auto-set based on installed backends
     #[serde(default = "default_file_edit_mode")]
     pub file_edit_mode: String, // How to edit files: inline (CodeMirror) or external (VS Code, etc.)
     #[serde(default)]
@@ -1030,6 +1032,7 @@ impl Default for AppPreferences {
             magic_prompt_models: MagicPromptModels::default(),
             magic_prompt_providers: MagicPromptProviders::default(),
             magic_prompt_backends: MagicPromptBackends::default(),
+            magic_models_auto_initialized: false,
             file_edit_mode: default_file_edit_mode(),
             ai_language: String::new(),
             allow_web_tools_in_plan_mode: default_allow_web_tools_in_plan_mode(),

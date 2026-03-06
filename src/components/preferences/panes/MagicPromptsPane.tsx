@@ -751,6 +751,7 @@ export const MagicPromptsPane: React.FC = () => {
           variant="outline"
           size="sm"
           onClick={handleApplyClaudeDefaults}
+          disabled={!installedBackends.includes('claude')}
           className="h-7 text-xs"
         >
           Claude Defaults
@@ -759,6 +760,7 @@ export const MagicPromptsPane: React.FC = () => {
           variant="outline"
           size="sm"
           onClick={handleApplyCodexDefaults}
+          disabled={!installedBackends.includes('codex')}
           className="h-7 text-xs"
         >
           Codex Defaults
@@ -767,6 +769,7 @@ export const MagicPromptsPane: React.FC = () => {
           variant="outline"
           size="sm"
           onClick={handleApplyOpenCodeDefaults}
+          disabled={!installedBackends.includes('opencode')}
           className="h-7 text-xs"
         >
           OpenCode Defaults

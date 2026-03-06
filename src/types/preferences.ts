@@ -847,6 +847,7 @@ export interface AppPreferences {
   build_thinking_level: string | null // Thinking level override for build mode, null = use session thinking level
   yolo_thinking_level: string | null // Thinking level override for yolo mode, null = use session thinking level
   linear_api_key: string | null // Global Linear personal API key (inherited by all projects)
+  magic_models_auto_initialized: boolean // Whether magic prompt models were auto-set based on installed backends
 }
 
 export type CanvasLayout = 'grid' | 'list'
@@ -1365,4 +1366,5 @@ export const defaultPreferences: AppPreferences = {
   build_thinking_level: null, // Default: use session thinking level
   yolo_thinking_level: null, // Default: use session thinking level
   linear_api_key: null, // Default: no global Linear API key
+  magic_models_auto_initialized: false, // Default: not yet auto-set
 }
