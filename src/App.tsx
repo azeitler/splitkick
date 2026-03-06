@@ -12,7 +12,7 @@ import {
 import { isNativeApp } from '@/lib/environment'
 import { projectsQueryKeys } from '@/services/projects'
 import { chatQueryKeys } from '@/services/chat'
-import type { WorktreeSessions } from '@/types/chat'
+import type { Session, WorktreeSessions } from '@/types/chat'
 import { initializeCommandSystem } from './lib/commands'
 import { logger } from './lib/logger'
 import { toast } from 'sonner'
@@ -631,7 +631,7 @@ function App() {
 
       // Check for and resume any detached sessions that are still running.
       invoke<ResumableSession[]>('check_resumable_sessions')
-        .then(resumable => {
+        .then(async resumable => {
           if (!hasPreloadedData()) {
             queryClient.invalidateQueries({ queryKey: chatQueryKeys.all })
           }
@@ -654,9 +654,106 @@ function App() {
               session_id: session.session_id,
               worktree_id: session.worktree_id,
             })
-            useChatStore.getState().addSendingSession(session.session_id)
+            const store = useChatStore.getState()
+            store.addSendingSession(session.session_id)
+
+            let sessionSnapshot = queryClient.getQueryData<Session>(
+              chatQueryKeys.session(session.session_id)
+            )
+            let worktreePath = store.getWorktreePath(session.worktree_id)
+            if (!worktreePath) {
+              try {
+                const worktree = await invoke<{ path: string }>('get_worktree', {
+                  worktreeId: session.worktree_id,
+                })
+                if (worktree.path) {
+                  worktreePath = worktree.path
+                  store.registerWorktreePath(session.worktree_id, worktree.path)
+                }
+              } catch (error) {
+                logger.warn('Failed to resolve worktree path for resumable run', {
+                  session_id: session.session_id,
+                  worktree_id: session.worktree_id,
+                  error,
+                })
+              }
+            }
+            if (worktreePath) {
+              try {
+                sessionSnapshot = await invoke<Session>('get_session', {
+                  sessionId: session.session_id,
+                  worktreeId: session.worktree_id,
+                  worktreePath,
+                })
+                queryClient.setQueryData(
+                  chatQueryKeys.session(session.session_id),
+                  sessionSnapshot
+                )
+              } catch (error) {
+                logger.warn('Failed to load session snapshot for resumable run', {
+                  session_id: session.session_id,
+                  error,
+                })
+              }
+            }
+
+            const lastMsg = sessionSnapshot?.messages.at(-1)
+            if (
+              lastMsg?.role === 'assistant' &&
+              lastMsg.id.startsWith('running-')
+            ) {
+              let snapshotContent = lastMsg.content
+              if (!snapshotContent && lastMsg.content_blocks?.length) {
+                const textParts: string[] = []
+                for (const block of lastMsg.content_blocks) {
+                  if (block.type === 'text') {
+                    textParts.push(block.text)
+                  }
+                }
+                snapshotContent = textParts.join('')
+              }
+
+              if (snapshotContent) {
+                const existingContent =
+                  store.streamingContents[session.session_id] ?? ''
+                if (!existingContent.startsWith(snapshotContent)) {
+                  store.setStreamingContent(
+                    session.session_id,
+                    snapshotContent + existingContent
+                  )
+                }
+              }
+
+              if (!store.streamingContentBlocks[session.session_id]?.length) {
+                for (const block of lastMsg.content_blocks ?? []) {
+                  if (block.type === 'text') {
+                    store.addTextBlock(session.session_id, block.text)
+                  } else if (block.type === 'tool_use') {
+                    store.addToolBlock(session.session_id, block.tool_call_id)
+                  } else if (block.type === 'thinking') {
+                    store.addThinkingBlock(session.session_id, block.thinking)
+                  }
+                }
+
+                for (const tc of lastMsg.tool_calls ?? []) {
+                  store.addToolCall(session.session_id, tc)
+                }
+              }
+
+              queryClient.setQueryData<Session>(
+                chatQueryKeys.session(session.session_id),
+                old =>
+                  old
+                    ? {
+                        ...old,
+                        messages: old.messages.filter(m => m.id !== lastMsg.id),
+                      }
+                    : old
+              )
+            }
+
             if (session.execution_mode) {
-              useChatStore.getState().setExecutingMode(
+              store.setExecutingMode(
                 session.session_id,
                 session.execution_mode as 'plan' | 'build' | 'yolo'
               )

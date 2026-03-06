@@ -42,7 +42,7 @@ cd jean
 bun install
 
 # Start development
-bun run tauri:dev
+bun run tauri:dev # Also keeps the web-access dist rebuilt in the background
 ```
 
 ## Project Structure
@@ -69,7 +69,7 @@ jean/
 
 | Command                 | Description                                       |
 | ----------------------- | ------------------------------------------------- |
-| `bun run tauri:dev`     | Start app in development mode                     |
+| `bun run tauri:dev`     | Start app in development mode and rebuild web dist |
 | `bun run tauri:dev:rdp` | Start in dev mode with RDP/remote desktop support |
 | `bun run check:all`     | **Run all quality checks (must pass before PR)**  |
 | `bun run typecheck`     | TypeScript type checking                          |

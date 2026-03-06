@@ -82,7 +82,7 @@ export function OpenInButton({
 
   return (
     <div
-      className={`inline-flex items-center rounded-md border border-border/50 bg-muted/50 ${className ?? ''}`}
+      className={`hidden items-center rounded-md border border-border/50 bg-muted/50 sm:inline-flex ${className ?? ''}`}
     >
       <Tooltip>
         <TooltipTrigger asChild>

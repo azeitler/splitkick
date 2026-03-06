@@ -697,11 +697,9 @@ pub fn load_session_messages(
             });
         }
 
-        // Add assistant message if run has completed/cancelled/crashed,
-        // OR if the run is still Running but the session is waiting for user input
-        // (ExitPlanMode/AskUserQuestion blocked the CLI — JSONL has complete content up to the block)
-        let include_waiting_run = run.status == RunStatus::Running && metadata.waiting_for_input;
-        if (run.status != RunStatus::Running || include_waiting_run) && !is_undo_send {
+        // Add assistant message for every non-undo run, including Running runs.
+        // Running logs contain partial JSONL snapshots that we can surface on reload.
+        if !is_undo_send {
             let lines = read_run_log(app, session_id, &run.run_id)?;
 
             // Parse JSONL content — route by backend
@@ -711,6 +709,9 @@ pub fn load_session_messages(
                 parse_run_to_message(&lines, run)?
             };
             assistant_msg.session_id = session_id.to_string();
+            if run.status == RunStatus::Running {
+                assistant_msg.id = format!("running-{}", run.run_id);
+            }
 
             // For crashed runs with no content (only metadata header), add placeholder
             if run.status == RunStatus::Crashed

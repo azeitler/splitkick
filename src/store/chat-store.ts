@@ -294,6 +294,7 @@ interface ChatUIState {
 
   // Actions - Streaming content (session-based)
   appendStreamingContent: (sessionId: string, chunk: string) => void
+  setStreamingContent: (sessionId: string, content: string) => void
   clearStreamingContent: (sessionId: string) => void
 
   // Actions - Tool calls (session-based)
@@ -1013,6 +1014,21 @@ export const useChatStore = create<ChatUIState>()(
           }),
           undefined,
           'appendStreamingContent'
+        ),
+
+      setStreamingContent: (sessionId, content) =>
+        set(
+          state => {
+            if (state.streamingContents[sessionId] === content) return state
+            return {
+              streamingContents: {
+                ...state.streamingContents,
+                [sessionId]: content,
+              },
+            }
+          },
+          undefined,
+          'setStreamingContent'
         ),
 
       clearStreamingContent: sessionId =>

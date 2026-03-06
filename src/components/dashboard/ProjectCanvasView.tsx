@@ -330,6 +330,7 @@ function WorktreeSectionHeader({
   }, [cards])
 
   const lastActivity = formatRelativeTime(sessionMetrics?.latestUpdatedAt)
+  const displayBranch = gitStatus?.current_branch ?? worktree.branch
 
   return (
     <>
@@ -366,9 +367,9 @@ function WorktreeSectionHeader({
         )}
 
         <div className={cn(showDetails ? 'flex flex-col gap-1.5' : 'contents')}>
-          <div className="flex min-w-0 items-center gap-2">
+          <div className="flex min-w-0 items-start gap-2 sm:items-center">
             {shortcutNumber !== undefined && (
-              <kbd className="shrink-0 inline-flex h-4 min-w-4 items-center justify-center rounded border border-border/50 bg-muted/50 px-0.5 font-mono text-muted-foreground">
+              <kbd className="hidden shrink-0 h-4 min-w-4 items-center justify-center rounded border border-border/50 bg-muted/50 px-0.5 font-mono text-muted-foreground sm:inline-flex">
                 <span className='text-[9px]'>⌘{shortcutNumber}</span>
               </kbd>
             )}
@@ -382,45 +383,49 @@ function WorktreeSectionHeader({
                 </TooltipContent>
               </Tooltip>
             )}
-            <span className="inline-flex min-w-0 items-center gap-1.5 font-medium">
-              <span className="truncate">
-                {isBase ? 'Base Session' : worktree.name}
-              </span>
-              {(() => {
-                const displayBranch =
-                  gitStatus?.current_branch ?? worktree.branch
-                return displayBranch ? (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-border/50 px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground">
+            <span className="flex min-w-0 flex-1 flex-col gap-1 font-medium sm:flex-row sm:items-center sm:gap-1.5">
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span className="min-w-0 flex-1 truncate">
+                  {isBase ? 'Base Session' : worktree.name}
+                </span>
+                {displayBranch && (
+                  <span className="hidden items-center gap-1 rounded-full border border-border/50 px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground sm:inline-flex">
                     <GitBranch className="h-2.5 w-2.5" />
                     <span className="max-w-40 truncate">{displayBranch}</span>
                   </span>
-                ) : null
-              })()}
-              {worktree.label && (
+                )}
+                {worktree.label && (
+                  <span
+                    className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
+                    style={{
+                      backgroundColor: worktree.label.color,
+                      color: getLabelTextColor(worktree.label.color),
+                    }}
+                  >
+                    {worktree.label.name}
+                  </span>
+                )}
                 <span
-                  className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
-                  style={{
-                    backgroundColor: worktree.label.color,
-                    color: getLabelTextColor(worktree.label.color),
-                  }}
+                  className="inline-flex items-center font-normal hover:bg-muted/50 rounded px-1.5 py-0.5"
+                  onClick={e => e.stopPropagation()}
                 >
-                  {worktree.label.name}
+                  <GitStatusBadges
+                    behindCount={behindCount}
+                    unpushedCount={unpushedCount}
+                    diffAdded={diffAdded}
+                    diffRemoved={diffRemoved}
+                    onPull={handlePull}
+                    onPush={handlePush}
+                    onDiffClick={handleDiffClick}
+                  />
+                </span>
+              </span>
+              {displayBranch && (
+                <span className="inline-flex max-w-full items-center gap-1 self-start rounded-full border border-border/50 px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground sm:hidden">
+                  <GitBranch className="h-2.5 w-2.5 shrink-0" />
+                  <span className="max-w-full truncate">{displayBranch}</span>
                 </span>
               )}
-              <span
-                className="inline-flex items-center font-normal hover:bg-muted/50 rounded  px-1.5 py-0.5"
-                onClick={e => e.stopPropagation()}
-              >
-                <GitStatusBadges
-                  behindCount={behindCount}
-                  unpushedCount={unpushedCount}
-                  diffAdded={diffAdded}
-                  diffRemoved={diffRemoved}
-                  onPull={handlePull}
-                  onPush={handlePush}
-                  onDiffClick={handleDiffClick}
-                />
-              </span>
             </span>
           </div>
           {showDetails && sessionMetrics && (
@@ -463,7 +468,7 @@ function WorktreeSectionHeader({
                 </span>
               )}
               {onRowClick && (
-                <span className="ml-auto text-[11px] opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                <span className="ml-auto hidden text-[11px] opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 sm:inline-flex">
                   Press Enter to open
                 </span>
               )}

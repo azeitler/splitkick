@@ -34,7 +34,7 @@ Ensure you have the following installed:
 
    ```bash
    bun run dev        # React dev server only
-   bun run tauri:dev  # Full Tauri app (recommended)
+   bun run tauri:dev  # Full Tauri app + web-access dist watcher
    ```
 
 4. **Verify everything works**:
