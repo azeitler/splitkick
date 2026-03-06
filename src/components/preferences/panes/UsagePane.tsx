@@ -3,11 +3,6 @@ import { Loader2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import {
-  useClaudeCliAuth,
-  useClaudeCliStatus,
-  useClaudeUsage,
-} from '@/services/claude-cli'
-import {
   useCodexCliAuth,
   useCodexCliStatus,
   useCodexUsage,
@@ -75,32 +70,18 @@ function getQueryErrorMessage(error: unknown, fallback: string) {
 }
 
 export const UsagePane: React.FC = () => {
-  const claudeStatus = useClaudeCliStatus()
-  const claudeAuth = useClaudeCliAuth({
-    enabled: !!claudeStatus.data?.installed,
-  })
-  const claudeUsage = useClaudeUsage({
-    enabled: !!claudeStatus.data?.installed && !!claudeAuth.data?.authenticated,
-  })
-
   const codexStatus = useCodexCliStatus()
   const codexAuth = useCodexCliAuth({ enabled: !!codexStatus.data?.installed })
   const codexUsage = useCodexUsage({
     enabled: !!codexStatus.data?.installed && !!codexAuth.data?.authenticated,
   })
 
-  const claudeErrorMessage = getQueryErrorMessage(
-    claudeUsage.error,
-    'Failed to load Claude usage.'
-  )
   const codexErrorMessage = getQueryErrorMessage(
     codexUsage.error,
     'Failed to load Codex usage.'
   )
   const isRefreshing =
-    claudeUsage.isFetching ||
     codexUsage.isFetching ||
-    claudeAuth.isFetching ||
     codexAuth.isFetching
 
   return (
@@ -127,65 +108,9 @@ export const UsagePane: React.FC = () => {
       </div>
 
       <SettingsSection title="Claude">
-        {!claudeStatus.data?.installed ? (
-          <p className="text-sm text-muted-foreground">
-            Claude CLI is not installed.
-          </p>
-        ) : claudeAuth.isLoading ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Checking authentication...
-          </div>
-        ) : !claudeAuth.data?.authenticated ? (
-          <p className="text-sm text-muted-foreground">
-            Claude is not authenticated. Run `claude` in your terminal to log
-            in.
-          </p>
-        ) : claudeUsage.isLoading ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Loading usage...
-          </div>
-        ) : claudeUsage.isError ? (
-          <div className="space-y-3">
-            <p className="text-sm text-destructive">{claudeErrorMessage}</p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => claudeUsage.refetch()}
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
-              Retry
-            </Button>
-          </div>
-        ) : claudeUsage.data ? (
-          <div className="space-y-5">
-            <div className="rounded-md border border-border p-3">
-              <p className="text-xs text-muted-foreground">Plan</p>
-              <p className="text-sm font-medium text-foreground">
-                {claudeUsage.data.planType ?? 'Unknown'}
-              </p>
-              {claudeUsage.data.extraUsageSpent !== null && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Extra usage spent: ${claudeUsage.data.extraUsageSpent.toFixed(2)}
-                  {claudeUsage.data.extraUsageLimit !== null &&
-                    ` / $${claudeUsage.data.extraUsageLimit.toFixed(2)}`}
-                </p>
-              )}
-            </div>
-
-            <UsageRow label="Session" usage={claudeUsage.data.session} />
-            <UsageRow label="Weekly" usage={claudeUsage.data.weekly} />
-            <UsageRow label="Sonnet" usage={claudeUsage.data.sonnetWeekly} />
-
-            <p className="text-xs text-muted-foreground">
-              Last updated:{' '}
-              {new Date(claudeUsage.data.fetchedAt * 1000).toLocaleString()}
-            </p>
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">No usage data available.</p>
-        )}
+        <p className="text-sm text-muted-foreground">
+          Claude usage tracking is temporarily disabled due to an authentication bug that causes repeated logouts.
+        </p>
       </SettingsSection>
 
       <SettingsSection title="Codex">
