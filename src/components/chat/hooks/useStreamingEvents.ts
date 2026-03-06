@@ -31,6 +31,10 @@ import type {
   SessionDigest,
   WorktreeSessions,
 } from '@/types/chat'
+import {
+  applySessionSettingToSession,
+  type SessionSettingKey,
+} from '@/components/chat/hooks/session-setting-sync'
 
 interface UseStreamingEventsParams {
   queryClient: QueryClient
@@ -1285,7 +1289,7 @@ export default function useStreamingEvents({
       }
     )
 
-    // Handle session setting changes (model, thinking level, execution mode)
+    // Handle session setting changes (backend, model, thinking level, execution mode)
     // Broadcast by other clients via broadcast_session_setting command
     const unlistenSettingChanged = listen<{
       session_id: string
@@ -1294,7 +1298,10 @@ export default function useStreamingEvents({
     }>('session:setting-changed', event => {
       const { session_id, key, value } = event.payload
       const store = useChatStore.getState()
-      switch (key) {
+      switch (key as SessionSettingKey) {
+        case 'backend':
+          store.setSelectedBackend(session_id, value as 'claude' | 'codex' | 'opencode')
+          break
         case 'model':
           store.setSelectedModel(session_id, value)
           break
@@ -1308,6 +1315,24 @@ export default function useStreamingEvents({
           store.setExecutionMode(session_id, value as 'plan' | 'build' | 'yolo')
           break
       }
+
+      queryClient.setQueryData<Session>(
+        chatQueryKeys.session(session_id),
+        old =>
+          old
+            ? applySessionSettingToSession(
+                old,
+                key as SessionSettingKey,
+                value
+              )
+            : old
+      )
+      queryClient.invalidateQueries({
+        queryKey: [...chatQueryKeys.all, 'sessions'],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ['all-sessions'],
+      })
     })
 
     return () => {

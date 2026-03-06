@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { Plus, Folder, Archive, Briefcase } from 'lucide-react'
 import { useSidebarWidth } from '@/components/layout/SidebarWidthContext'
 import {
@@ -8,74 +8,25 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useProjects, useCreateFolder } from '@/services/projects'
-import { fetchWorktreesStatus } from '@/services/git-status'
 import { useProjectsStore } from '@/store/projects-store'
 import { ProjectTree } from './ProjectTree'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
+import { scheduleIdleWork } from '@/lib/idle'
 
 export function ProjectsSidebar() {
   const { data: projects = [], isLoading } = useProjects()
   const { setAddProjectDialogOpen } = useProjectsStore()
   const createFolder = useCreateFolder()
   const sidebarWidth = useSidebarWidth()
-  const { installedBackends } = useInstalledBackends()
+  const [backendCheckReady, setBackendCheckReady] = useState(false)
+  useEffect(() => scheduleIdleWork(() => setBackendCheckReady(true), 1500), [])
+  const { installedBackends } = useInstalledBackends({
+    enabled: backendCheckReady,
+  })
   const setupIncomplete = installedBackends.length === 0
 
   // Responsive layout threshold
   const isNarrow = sidebarWidth < 180
-
-  // Fetch worktree git status for all projects on startup
-  // Priority: expanded projects first, then all others
-  // Note: Session prefetching is handled by useSessionPrefetch in MainWindow
-  const hasFetchedRef = useRef(false)
-  useEffect(() => {
-    if (hasFetchedRef.current || projects.length === 0) return
-    hasFetchedRef.current = true
-
-    // Filter to only actual projects (not folders)
-    const actualProjects = projects.filter(p => !p.is_folder)
-    if (actualProjects.length === 0) return
-
-    // Get expanded projects from store (use getState to avoid subscription)
-    const { expandedProjectIds } = useProjectsStore.getState()
-
-    // Split into expanded (priority) and collapsed projects
-    const expandedProjects = actualProjects.filter(p =>
-      expandedProjectIds.has(p.id)
-    )
-    const collapsedProjects = actualProjects.filter(
-      p => !expandedProjectIds.has(p.id)
-    )
-
-    // Fetch git status for a batch of projects
-    const fetchGitStatusBatch = async (batch: typeof actualProjects) => {
-      await Promise.all(
-        batch.map(p =>
-          fetchWorktreesStatus(p.id).catch(() => {
-            /* silent */
-          })
-        )
-      )
-    }
-
-    const fetchAll = async () => {
-      const concurrencyLimit = 3
-
-      // First: fetch expanded projects (user sees these immediately)
-      for (let i = 0; i < expandedProjects.length; i += concurrencyLimit) {
-        const batch = expandedProjects.slice(i, i + concurrencyLimit)
-        await fetchGitStatusBatch(batch)
-      }
-
-      // Then: fetch collapsed projects in background (lazy load for when user expands)
-      for (let i = 0; i < collapsedProjects.length; i += concurrencyLimit) {
-        const batch = collapsedProjects.slice(i, i + concurrencyLimit)
-        await fetchGitStatusBatch(batch)
-      }
-    }
-
-    fetchAll()
-  }, [projects])
 
   return (
     <div className="flex h-full flex-col">
@@ -122,7 +73,7 @@ export function ProjectsSidebar() {
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => setAddProjectDialogOpen(true)}
-              disabled={setupIncomplete}
+              disabled={!backendCheckReady || setupIncomplete}
             >
               <Briefcase className="mr-2 size-3.5" />
               Project

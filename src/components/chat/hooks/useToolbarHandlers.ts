@@ -11,6 +11,7 @@ import type {
   ExecutionMode,
   Session,
 } from '@/types/chat'
+import { applySessionSettingToSession } from '@/components/chat/hooks/session-setting-sync'
 
 interface UseToolbarHandlersParams {
   activeSessionId: string | null | undefined
@@ -75,6 +76,12 @@ export function useToolbarHandlers({
   const handleToolbarModelChange = useCallback(
     (model: string) => {
       if (activeSessionId && activeWorktreeId && activeWorktreePath) {
+        useChatStore.getState().setSelectedModel(activeSessionId, model)
+        queryClient.setQueryData(
+          chatQueryKeys.session(activeSessionId),
+          (old: Session | null | undefined) =>
+            old ? applySessionSettingToSession(old, 'model', model) : old
+        )
         setSessionModel.mutate({
           sessionId: activeSessionId,
           worktreeId: activeWorktreeId,
@@ -89,24 +96,47 @@ export function useToolbarHandlers({
       }
       window.dispatchEvent(new CustomEvent('focus-chat-input'))
     },
-    [activeSessionId, activeWorktreeId, activeWorktreePath, setSessionModel]
+    [
+      activeSessionId,
+      activeWorktreeId,
+      activeWorktreePath,
+      queryClient,
+      setSessionModel,
+    ]
   )
 
   const handleToolbarBackendChange = useCallback(
     (backend: 'claude' | 'codex' | 'opencode') => {
       if (activeSessionId && activeWorktreeId && activeWorktreePath) {
-        useChatStore.getState().setSelectedBackend(activeSessionId, backend)
         const model =
           backend === 'codex'
             ? (preferences?.selected_codex_model ?? 'gpt-5.4')
             : backend === 'opencode'
               ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
               : ((preferences?.selected_model as string) ?? DEFAULT_MODEL)
+        useChatStore.getState().setSelectedBackend(activeSessionId, backend)
+        useChatStore.getState().setSelectedModel(activeSessionId, model)
         queryClient.setQueryData(
           chatQueryKeys.session(activeSessionId),
           (old: Session | null | undefined) =>
-            old ? { ...old, backend, selected_model: model } : old
+            old
+              ? applySessionSettingToSession(
+                  applySessionSettingToSession(old, 'backend', backend),
+                  'model',
+                  model
+                )
+              : old
         )
+        invoke('broadcast_session_setting', {
+          sessionId: activeSessionId,
+          key: 'backend',
+          value: backend,
+        }).catch(() => undefined)
+        invoke('broadcast_session_setting', {
+          sessionId: activeSessionId,
+          key: 'model',
+          value: model,
+        }).catch(() => undefined)
         setSessionBackend.mutate(
           {
             sessionId: activeSessionId,
@@ -176,6 +206,11 @@ export function useToolbarHandlers({
       if (!sessionId || !worktreeId || !worktreePath) return
 
       useChatStore.getState().setThinkingLevel(sessionId, level)
+      queryClient.setQueryData(
+        chatQueryKeys.session(sessionId),
+        (old: Session | null | undefined) =>
+          old ? applySessionSettingToSession(old, 'thinkingLevel', level) : old
+      )
       setSessionThinkingLevel.mutate({
         sessionId,
         worktreeId,
@@ -221,6 +256,11 @@ export function useToolbarHandlers({
 
       if (sessionId) {
         setExecutionMode(sessionId, mode)
+        queryClient.setQueryData(
+          chatQueryKeys.session(sessionId),
+          (old: Session | null | undefined) =>
+            old ? applySessionSettingToSession(old, 'executionMode', mode) : old
+        )
 
         // Persist immediately so browser/WebSocket mode survives reloads
         // even if debounced background persistence is delayed/skipped.

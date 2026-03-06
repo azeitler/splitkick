@@ -41,6 +41,7 @@ import {
   beginSessionStateHydration,
   endSessionStateHydration,
 } from './lib/session-state-hydration'
+import { scheduleIdleWork } from './lib/idle'
 
 /** Loading screen shown while preloading initial data (browser mode only). */
 function WebLoadingScreen() {
@@ -405,34 +406,46 @@ function App() {
     }
   }, [])
 
-  // Check CLI installation status
+  const [cliCheckReady, setCliCheckReady] = useState(false)
+  useEffect(() => {
+    if (!isNativeApp()) return
+    return scheduleIdleWork(() => setCliCheckReady(true), 2000)
+  }, [])
+
+  // Check CLI installation status after the first paint.
   const { data: claudeStatus, isLoading: isClaudeStatusLoading } =
-    useClaudeCliStatus()
+    useClaudeCliStatus({ enabled: cliCheckReady && isNativeApp() })
   const { data: codexStatus, isLoading: isCodexStatusLoading } =
-    useCodexCliStatus()
+    useCodexCliStatus({ enabled: cliCheckReady && isNativeApp() })
   const { data: opencodeStatus, isLoading: isOpencodeStatusLoading } =
-    useOpencodeCliStatus()
-  const { data: ghStatus, isLoading: isGhStatusLoading } = useGhCliStatus()
+    useOpencodeCliStatus({ enabled: cliCheckReady && isNativeApp() })
+  const { data: ghStatus, isLoading: isGhStatusLoading } = useGhCliStatus({
+    enabled: cliCheckReady && isNativeApp(),
+  })
 
   // Check CLI authentication status (only when installed)
   const { data: claudeAuth, isLoading: isClaudeAuthLoading } = useClaudeCliAuth(
-    { enabled: !!claudeStatus?.installed }
+    { enabled: cliCheckReady && !!claudeStatus?.installed && isNativeApp() }
   )
   const { data: codexAuth, isLoading: isCodexAuthLoading } = useCodexCliAuth({
-    enabled: !!codexStatus?.installed,
+    enabled: cliCheckReady && !!codexStatus?.installed && isNativeApp(),
   })
   const { data: opencodeAuth, isLoading: isOpencodeAuthLoading } =
     useOpencodeCliAuth({
-      enabled: !!opencodeStatus?.installed,
+      enabled: cliCheckReady && !!opencodeStatus?.installed && isNativeApp(),
     })
   const { data: ghAuth, isLoading: isGhAuthLoading } = useGhCliAuth({
-    enabled: !!ghStatus?.installed,
+    enabled: cliCheckReady && !!ghStatus?.installed && isNativeApp(),
   })
 
   // Show onboarding if GitHub CLI is not ready, or no AI backend is ready.
   // Only in native app - web view uses the desktop's CLIs via WebSocket
   useEffect(() => {
     if (!isNativeApp()) return
+    if (!cliCheckReady) return
+
+    // Wait until the status queries have actually resolved before deciding.
+    if (!claudeStatus || !codexStatus || !opencodeStatus || !ghStatus) return
 
     const isLoading =
       isClaudeStatusLoading ||
@@ -490,6 +503,7 @@ function App() {
     isCodexAuthLoading,
     isOpencodeAuthLoading,
     isGhAuthLoading,
+    cliCheckReady,
     queryClient,
   ])
 
@@ -539,93 +553,6 @@ function App() {
     initializeCommandSystem()
     logger.debug('Command system initialized')
 
-    // Preload notification sounds for instant playback
-    preloadAllSounds()
-
-    // Kill any orphaned terminals from previous session/reload
-    // This ensures cleanup even if beforeunload didn't complete
-    invoke<number>('kill_all_terminals')
-      .then(killed => {
-        if (killed > 0) {
-          logger.info(
-            `Cleaned up ${killed} orphaned terminal(s) from previous session`
-          )
-        }
-      })
-      .catch(error => {
-        logger.warn('Failed to cleanup orphaned terminals', { error })
-      })
-
-    // Clean up old recovery files on startup
-    cleanupOldFiles().catch(error => {
-      logger.warn('Failed to cleanup old recovery files', { error })
-    })
-
-    // Check for and resume any detached Claude sessions that are still running
-    interface ResumableSession {
-      session_id: string
-      worktree_id: string
-      run_id: string
-      user_message: string
-      resumable: boolean
-      execution_mode: string | null
-    }
-    invoke<ResumableSession[]>('check_resumable_sessions')
-      .then(resumable => {
-        // Invalidate session data to catch Running → Crashed/Completed transitions,
-        // but skip if data was just seeded from /api/init (web mode) to avoid a
-        // redundant refetch storm.
-        if (!hasPreloadedData()) {
-          queryClient.invalidateQueries({ queryKey: chatQueryKeys.all })
-        }
-
-        // Clear any stale sending states from a previous app session.
-        // On fresh startup sendingSessionIds should be empty, but if the store
-        // was somehow persisted or restored, ensure only truly resumable sessions
-        // are marked as sending.
-        const { sendingSessionIds, removeSendingSession } = useChatStore.getState()
-        const resumableIds = new Set(resumable.map(r => r.session_id))
-        for (const sessionId of Object.keys(sendingSessionIds)) {
-          if (!resumableIds.has(sessionId)) {
-            removeSendingSession(sessionId)
-          }
-        }
-
-        if (resumable.length > 0) {
-          logger.info('Found resumable sessions', { count: resumable.length })
-
-          // Resume each session
-          for (const session of resumable) {
-            logger.info('Resuming session', {
-              session_id: session.session_id,
-              worktree_id: session.worktree_id,
-            })
-            // Mark session as sending and restore execution mode for streaming UI
-            useChatStore.getState().addSendingSession(session.session_id)
-            if (session.execution_mode) {
-              useChatStore.getState().setExecutingMode(
-                session.session_id,
-                session.execution_mode as 'plan' | 'build' | 'yolo'
-              )
-            }
-            // Resume the session (this will start tailing the output file)
-            invoke('resume_session', {
-              sessionId: session.session_id,
-              worktreeId: session.worktree_id,
-            }).catch(error => {
-              logger.error('Failed to resume session', {
-                session_id: session.session_id,
-                error,
-              })
-              useChatStore.getState().removeSendingSession(session.session_id)
-            })
-          }
-        }
-      })
-      .catch(error => {
-        logger.error('Failed to check resumable sessions', { error })
-      })
-
     // Example of logging with context
     logger.info('App environment', {
       isDev: import.meta.env.DEV,
@@ -667,10 +594,91 @@ function App() {
     }
     window.addEventListener('update-available', handleUpdateAvailable)
 
+    interface ResumableSession {
+      session_id: string
+      worktree_id: string
+      run_id: string
+      user_message: string
+      resumable: boolean
+      execution_mode: string | null
+    }
+
+    const cancelIdleStartupWork = scheduleIdleWork(() => {
+      // Preload notification sounds after the shell is interactive.
+      preloadAllSounds()
+
+      // Kill any orphaned terminals from previous session/reload.
+      invoke<number>('kill_all_terminals')
+        .then(killed => {
+          if (killed > 0) {
+            logger.info(
+              `Cleaned up ${killed} orphaned terminal(s) from previous session`
+            )
+          }
+        })
+        .catch(error => {
+          logger.warn('Failed to cleanup orphaned terminals', { error })
+        })
+
+      // Clean up old recovery files on startup.
+      cleanupOldFiles().catch(error => {
+        logger.warn('Failed to cleanup old recovery files', { error })
+      })
+
+      // Check for and resume any detached sessions that are still running.
+      invoke<ResumableSession[]>('check_resumable_sessions')
+        .then(resumable => {
+          if (!hasPreloadedData()) {
+            queryClient.invalidateQueries({ queryKey: chatQueryKeys.all })
+          }
+
+          const { sendingSessionIds, removeSendingSession } =
+            useChatStore.getState()
+          const resumableIds = new Set(resumable.map(r => r.session_id))
+          for (const sessionId of Object.keys(sendingSessionIds)) {
+            if (!resumableIds.has(sessionId)) {
+              removeSendingSession(sessionId)
+            }
+          }
+
+          if (resumable.length === 0) return
+
+          logger.info('Found resumable sessions', { count: resumable.length })
+
+          for (const session of resumable) {
+            logger.info('Resuming session', {
+              session_id: session.session_id,
+              worktree_id: session.worktree_id,
+            })
+            useChatStore.getState().addSendingSession(session.session_id)
+            if (session.execution_mode) {
+              useChatStore.getState().setExecutingMode(
+                session.session_id,
+                session.execution_mode as 'plan' | 'build' | 'yolo'
+              )
+            }
+            invoke('resume_session', {
+              sessionId: session.session_id,
+              worktreeId: session.worktree_id,
+            }).catch(error => {
+              logger.error('Failed to resume session', {
+                session_id: session.session_id,
+                error,
+              })
+              useChatStore.getState().removeSendingSession(session.session_id)
+            })
+          }
+        })
+        .catch(error => {
+          logger.error('Failed to check resumable sessions', { error })
+        })
+    }, 2500)
+
     // Check for updates 5 seconds after app loads, then every 30 minutes
     const updateTimer = setTimeout(checkForUpdates, 5000)
     const updateInterval = setInterval(checkForUpdates, 30 * 60 * 1000)
     return () => {
+      cancelIdleStartupWork()
       clearTimeout(updateTimer)
       clearInterval(updateInterval)
       window.removeEventListener('install-pending-update', handleInstallPending)

@@ -787,7 +787,17 @@ pub fn recover_incomplete_runs(app: &tauri::AppHandle) -> Result<Vec<RecoveredRu
     let session_ids = list_all_session_ids(app)?;
     let mut recovered = Vec::new();
 
+    // Sessions with active process/cancel-flag registrations are currently
+    // being managed by send_chat_message — skip them entirely. Without this
+    // guard, a web-access client refresh would call check_resumable_sessions,
+    // mark an already-tailed run as Resumable, and resume_session would start
+    // a second tail from the beginning of the file — duplicating every event.
+    let actively_managed = super::registry::get_actively_managed_sessions();
+
     for session_id in session_ids {
+        if actively_managed.contains(&session_id) {
+            continue;
+        }
         let mut metadata = match load_metadata(app, &session_id)? {
             Some(m) => m,
             None => continue,

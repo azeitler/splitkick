@@ -1,7 +1,5 @@
-import { useCallback, useEffect } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
-import { ChatWindow } from '@/components/chat'
-import { ProjectCanvasView } from '@/components/dashboard'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useProjects } from '@/services/projects'
@@ -12,6 +10,19 @@ import { Plus, Loader2 } from 'lucide-react'
 import { WelcomeProjectGrid } from './WelcomeProjectGrid'
 import { isFolder } from '@/types/projects'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
+import { scheduleIdleWork } from '@/lib/idle'
+
+const ChatWindow = lazy(() =>
+  import('@/components/chat/ChatWindow').then(mod => ({
+    default: mod.ChatWindow,
+  }))
+)
+
+const ProjectCanvasView = lazy(() =>
+  import('@/components/dashboard/ProjectCanvasView').then(mod => ({
+    default: mod.ProjectCanvasView,
+  }))
+)
 
 interface MainWindowContentProps {
   children?: React.ReactNode
@@ -28,11 +39,21 @@ export function MainWindowContent({
     state => state.setAddProjectDialogOpen
   )
   const { data: projects = [] } = useProjects()
-  const { installedBackends, isLoading: backendsLoading } = useInstalledBackends()
+  const [backendCheckReady, setBackendCheckReady] = useState(false)
+  useEffect(() => scheduleIdleWork(() => setBackendCheckReady(true), 1500), [])
+
   const realProjects = projects.filter(p => !isFolder(p))
-  const setupIncomplete = !backendsLoading && installedBackends.length === 0
 
   const showWelcome = !activeWorktreePath && !selectedProjectId && !children
+  const shouldCheckBackends = backendCheckReady && showWelcome
+  const { installedBackends, isLoading: backendsLoading } = useInstalledBackends(
+    {
+      enabled: shouldCheckBackends,
+    }
+  )
+  const awaitingBackendCheck = showWelcome && !backendCheckReady
+  const setupIncomplete =
+    shouldCheckBackends && !backendsLoading && installedBackends.length === 0
   const showAddButton = showWelcome && projects.length === 0 && !setupIncomplete
 
   const handleProjectClick = useCallback((projectId: string) => {
@@ -72,12 +93,28 @@ export function MainWindowContent({
       )}
     >
       {activeWorktreePath ? (
-        <ChatWindow />
+        <Suspense
+          fallback={
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              Loading chat…
+            </div>
+          }
+        >
+          <ChatWindow />
+        </Suspense>
       ) : selectedProjectId ? (
-        <ProjectCanvasView
-          key={selectedProjectId}
-          projectId={selectedProjectId}
-        />
+        <Suspense
+          fallback={
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              Loading project…
+            </div>
+          }
+        >
+          <ProjectCanvasView
+            key={selectedProjectId}
+            projectId={selectedProjectId}
+          />
+        </Suspense>
       ) : children ? (
         children
       ) : realProjects.length > 0 ? (
@@ -91,7 +128,7 @@ export function MainWindowContent({
           <h1 className="text-4xl font-bold text-foreground">
             Welcome to Jean!
           </h1>
-          {backendsLoading ? (
+          {awaitingBackendCheck || backendsLoading ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
               <span>Calling Jean…</span>

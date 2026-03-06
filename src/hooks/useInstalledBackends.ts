@@ -8,10 +8,11 @@ import type { CliBackend } from '@/types/preferences'
  * Returns only the backends whose CLIs are currently installed.
  * Use this to filter backend selection UI so users can't pick uninstalled ones.
  */
-export function useInstalledBackends() {
-  const claude = useClaudeCliStatus()
-  const codex = useCodexCliStatus()
-  const opencode = useOpencodeCliStatus()
+export function useInstalledBackends(options?: { enabled?: boolean }) {
+  const enabled = options?.enabled ?? true
+  const claude = useClaudeCliStatus({ enabled })
+  const codex = useCodexCliStatus({ enabled })
+  const opencode = useOpencodeCliStatus({ enabled })
 
   const installedBackends = useMemo(() => {
     const backends: CliBackend[] = []

@@ -102,6 +102,22 @@ pub fn get_running_sessions() -> Vec<String> {
     PROCESS_REGISTRY.lock().unwrap().keys().cloned().collect()
 }
 
+/// Get all session IDs that are actively managed (running process OR cancel flag).
+/// Used by recover_incomplete_runs to skip sessions that don't need recovery.
+pub fn get_actively_managed_sessions() -> HashSet<String> {
+    let mut sessions: HashSet<String> =
+        PROCESS_REGISTRY.lock().unwrap().keys().cloned().collect();
+    sessions.extend(CANCEL_FLAGS.lock().unwrap().keys().cloned());
+    sessions
+}
+
+/// Check if a specific session is actively managed (has a running process or cancel flag).
+/// Used by resume_session to avoid starting a duplicate tail.
+pub fn is_session_actively_managed(session_id: &str) -> bool {
+    PROCESS_REGISTRY.lock().unwrap().contains_key(session_id)
+        || CANCEL_FLAGS.lock().unwrap().contains_key(session_id)
+}
+
 /// Cancel a running Claude process for a session by sending SIGKILL to the process group
 /// Returns true if a process was found and signal sent, false otherwise
 ///

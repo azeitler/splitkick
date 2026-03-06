@@ -16,6 +16,7 @@ use tower_http::services::{ServeDir, ServeFile};
 
 use super::auth;
 use super::websocket::handle_ws_connection;
+use super::EmitExt;
 use super::WsBroadcaster;
 
 /// Shared state for the Axum server.
@@ -333,11 +334,107 @@ async fn init_handler(Query(params): Query<WsAuth>, State(state): State<AppState
     // Note: Git status is already included in the Worktree struct (cached_* fields)
     // No need to fetch separately - the frontend will use worktree.cached_* values
 
+    let is_active_session_valid = |worktree_id: &str, session_id: &str| {
+        sessions_by_worktree
+            .get(worktree_id)
+            .map(|ws| {
+                ws.sessions
+                    .iter()
+                    .any(|s| s.id == session_id && s.archived_at.is_none())
+            })
+            .unwrap_or(false)
+    };
+
     // Extract ui_state early so we can use it to fetch active sessions
-    let ui_state = match &ui_state_result {
+    let mut ui_state = match &ui_state_result {
         Ok(ui_state) => Some(ui_state.clone()),
         Err(_) => None,
     };
+    let mut cleaned_active_sessions: Vec<(String, Option<String>)> = Vec::new();
+
+    // Clean up stale active_session_ids that reference deleted/archived sessions.
+    // This happens when a session is deleted in the native app but ui-state.json
+    // hasn't been flushed yet (debounced save) before a web client connects.
+    if let Some(ref mut ui) = ui_state {
+        let stale_keys: Vec<String> = ui
+            .active_session_ids
+            .iter()
+            .filter(|(worktree_id, session_id)| !is_active_session_valid(worktree_id, session_id))
+            .map(|(k, _)| k.clone())
+            .collect();
+
+        for worktree_id in stale_keys {
+            let old_id = ui.active_session_ids.remove(&worktree_id);
+            // Try to fall back to the most recent non-archived session
+            let fallback_session_id = sessions_by_worktree
+                .get(&worktree_id)
+                .and_then(|ws| ws.sessions.iter().find(|s| s.archived_at.is_none()))
+                .map(|fallback| fallback.id.clone());
+
+            if let Some(ref fallback_id) = fallback_session_id {
+                log::info!(
+                    "Replacing stale active session {} with {} for worktree {worktree_id}",
+                    old_id.as_deref().unwrap_or("?"),
+                    fallback_id
+                );
+                ui.active_session_ids
+                    .insert(worktree_id.clone(), fallback_id.clone());
+            } else {
+                log::info!(
+                    "Removed stale active session {} for worktree {worktree_id} (no fallback)",
+                    old_id.as_deref().unwrap_or("?")
+                );
+            }
+
+            cleaned_active_sessions.push((worktree_id, fallback_session_id));
+        }
+    }
+
+    if !cleaned_active_sessions.is_empty() {
+        match crate::load_ui_state(state.app.clone()).await {
+            Ok(mut latest_ui_state) => {
+                let mut persisted_cleanup = false;
+
+                for (worktree_id, fallback_session_id) in &cleaned_active_sessions {
+                    let should_update = latest_ui_state
+                        .active_session_ids
+                        .get(worktree_id)
+                        .map(|session_id| !is_active_session_valid(worktree_id, session_id))
+                        .unwrap_or(false);
+
+                    if !should_update {
+                        continue;
+                    }
+
+                    persisted_cleanup = true;
+
+                    if let Some(fallback_id) = fallback_session_id {
+                        latest_ui_state
+                            .active_session_ids
+                            .insert(worktree_id.clone(), fallback_id.clone());
+                    } else {
+                        latest_ui_state.active_session_ids.remove(worktree_id);
+                    }
+                }
+
+                if persisted_cleanup {
+                    if let Err(e) = crate::save_ui_state(state.app.clone(), latest_ui_state).await {
+                        log::error!("Failed to persist cleaned ui_state for /api/init: {e}");
+                    } else if let Err(e) = state.app.emit_all(
+                        "cache:invalidate",
+                        &serde_json::json!({ "keys": ["ui-state"] }),
+                    ) {
+                        log::error!("Failed to emit cache:invalidate after ui_state cleanup: {e}");
+                    }
+                }
+            }
+            Err(e) => {
+                log::error!(
+                    "Failed to reload ui_state before persisting cleanup for /api/init: {e}"
+                );
+            }
+        }
+    }
 
     // Fetch full session details (with messages) for all active sessions
     // This ensures the chat history is immediately available when the app loads
@@ -423,14 +520,18 @@ async fn init_handler(Query(params): Query<WsAuth>, State(state): State<AppState
         }
     }
 
-    match ui_state_result {
-        Ok(ui_state) => {
-            if let Ok(val) = serde_json::to_value(&ui_state) {
+    // Use the cleaned ui_state (with stale active_session_ids removed) if available,
+    // otherwise fall back to the original result for error handling
+    match ui_state {
+        Some(cleaned_ui) => {
+            if let Ok(val) = serde_json::to_value(&cleaned_ui) {
                 response["uiState"] = val;
             }
         }
-        Err(e) => {
-            log::error!("Failed to load ui_state for /api/init: {e}");
+        None => {
+            if let Err(e) = &ui_state_result {
+                log::error!("Failed to load ui_state for /api/init: {e}");
+            }
             response["uiState"] = Value::Null;
         }
     }

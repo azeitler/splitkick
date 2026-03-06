@@ -56,13 +56,13 @@ export function useCliVersionCheck() {
   }, [shouldCheck])
 
   const { data: claudeStatus, isLoading: claudeLoading } =
-    useClaudeCliStatus({ enabled: shouldCheck })
+    useClaudeCliStatus({ enabled: shouldCheck && versionCheckReady })
   const { data: ghStatus, isLoading: ghLoading } =
-    useGhCliStatus({ enabled: shouldCheck })
+    useGhCliStatus({ enabled: shouldCheck && versionCheckReady })
   const { data: codexStatus, isLoading: codexLoading } =
-    useCodexCliStatus({ enabled: shouldCheck })
+    useCodexCliStatus({ enabled: shouldCheck && versionCheckReady })
   const { data: opencodeStatus, isLoading: opencodeLoading } =
-    useOpencodeCliStatus({ enabled: shouldCheck })
+    useOpencodeCliStatus({ enabled: shouldCheck && versionCheckReady })
   const { data: claudeVersions, isLoading: claudeVersionsLoading } =
     useAvailableCliVersions({ enabled: shouldCheck && versionCheckReady })
   const { data: ghVersions, isLoading: ghVersionsLoading } =

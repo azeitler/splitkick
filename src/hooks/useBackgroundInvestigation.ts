@@ -3,7 +3,6 @@ import { invoke } from '@/lib/transport'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 import { usePreferences } from '@/services/preferences'
-import { useClaudeCliStatus } from '@/services/claude-cli'
 import { chatQueryKeys } from '@/services/chat'
 import { resolveBackend, supportsAdaptiveThinking } from '@/lib/model-utils'
 import {
@@ -34,7 +33,6 @@ type InvestigationType = 'issue' | 'pr' | 'security-alert' | 'advisory' | 'linea
  */
 export function useBackgroundInvestigation(): void {
   const { data: preferences } = usePreferences()
-  const { data: cliStatus } = useClaudeCliStatus()
   const queryClient = useQueryClient()
   const processingRef = useRef<Set<string>>(new Set())
 
@@ -153,7 +151,7 @@ export function useBackgroundInvestigation(): void {
         worktreeId,
         type,
         preferences,
-        cliStatus?.version ?? null,
+        null,
         queryClient,
       ).catch(err => {
         logger.error('Background investigation failed', { worktreeId, err })
@@ -161,7 +159,7 @@ export function useBackgroundInvestigation(): void {
         processingRef.current.delete(worktreeId)
       })
     }
-  }, [hasAutoInvestigate, worktreePathCount, preferences, cliStatus?.version, queryClient])
+  }, [hasAutoInvestigate, worktreePathCount, preferences, queryClient])
 }
 
 /**

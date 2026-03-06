@@ -143,7 +143,9 @@ pub async fn check_claude_cli_installed(app: AppHandle) -> Result<ClaudeCliStatu
                 >= 1
         })
         .unwrap_or(false);
-    log::trace!("Claude CLI supports auth command: {supports_auth_command} (inferred from version)");
+    log::trace!(
+        "Claude CLI supports auth command: {supports_auth_command} (inferred from version)"
+    );
 
     Ok(ClaudeCliStatus {
         installed: true,

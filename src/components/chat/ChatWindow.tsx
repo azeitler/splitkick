@@ -1403,7 +1403,7 @@ export function ChatWindow({
       // Switch to new session
       store.setActiveSession(activeWorktreeId, newSession.id)
 
-      const model = selectedModelRef.current
+      const model = preferences?.magic_prompt_models?.code_review_model ?? selectedModelRef.current
       store.setExecutionMode(newSession.id, executionMode)
       store.setLastSentMessage(newSession.id, message)
       store.setError(newSession.id, null)
@@ -1426,6 +1426,7 @@ export function ChatWindow({
       activeWorktreeId,
       activeWorktreePath,
       createSession,
+      preferences,
       sendMessage,
       selectedModelRef,
       selectedThinkingLevelRef,

@@ -1903,8 +1903,8 @@ fn create_app_menu(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error
 /// This function spawns a login + interactive shell to capture PATH from all config
 /// files including .zshrc where tools like bun, nvm add their PATH entries.
 #[cfg(target_os = "macos")]
-fn fix_macos_path() {
-    use crate::platform::silent_command;
+pub fn fix_macos_path() {
+    use std::process::Command;
 
     // Get user's shell from $SHELL, default to zsh (macOS default since Catalina)
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
@@ -1914,7 +1914,10 @@ fn fix_macos_path() {
     // Use `printenv PATH` instead of `echo $PATH` because fish shell prints
     // $PATH as space-separated (it's a list in fish), while printenv always
     // outputs the raw colon-separated environment variable.
-    let output = silent_command(&shell)
+    //
+    // NOTE: Uses Command::new() directly instead of silent_command() to avoid
+    // recursion — silent_command() calls ensure_macos_path() which calls this.
+    let output = Command::new(&shell)
         .args(["-l", "-i", "-c", "/usr/bin/printenv PATH"])
         .output();
 
@@ -2049,16 +2052,9 @@ pub fn run() {
     let cli_args = parse_cli_args();
     let headless = cli_args.headless;
 
-    // Fix PATH environment for macOS GUI applications.
-    // GUI apps don't inherit shell PATH — spawns login shell to get PATH from profiles.
-    // Runs in a background thread because shell startup takes 100-500ms depending on
-    // dotfile complexity. PATH will be set before any CLI command actually needs it.
-    #[cfg(target_os = "macos")]
-    std::thread::spawn(|| {
-        let start = std::time::Instant::now();
-        fix_macos_path();
-        log::info!("Startup: fix_macos_path() completed in {:?} (background thread)", start.elapsed());
-    });
+    // macOS PATH fix is handled lazily on first silent_command() call via
+    // platform::ensure_macos_path(). No background thread needed — the Once guard
+    // ensures the shell is spawned exactly once, blocking only the first CLI invocation.
 
     // FIX: Avoid WebKit GBM buffer errors on Linux (especially NVIDIA)
     //

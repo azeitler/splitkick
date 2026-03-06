@@ -5,15 +5,12 @@ import { prefetchSessions } from '@/services/chat'
 import { useProjectsStore } from '@/store/projects-store'
 import type { Project, Worktree } from '@/types/projects'
 import { isNativeApp } from '@/lib/environment'
+import { scheduleIdleWork } from '@/lib/idle'
 
 /**
- * Prefetch sessions for all projects on app startup.
- * This runs regardless of sidebar visibility to ensure session statuses
- * (reviewingSessions, waitingForInputSessionIds) are restored immediately.
- *
- * Without this, session statuses only load when:
- * 1. The sidebar is open (ProjectsSidebar mounts and runs its own prefetch)
- * 2. A session is explicitly opened (useSessions runs with refetchOnMount)
+ * Prefetch sessions for the most relevant startup projects after the initial
+ * paint. This keeps the first render path light while still warming the cache
+ * for the currently selected project or expanded sidebar items.
  */
 export function useSessionPrefetch(projects: Project[] | undefined) {
   const queryClient = useQueryClient()
@@ -22,22 +19,23 @@ export function useSessionPrefetch(projects: Project[] | undefined) {
   useEffect(() => {
     if (!isNativeApp()) return
     if (hasFetchedRef.current || !projects || projects.length === 0) return
-    hasFetchedRef.current = true
 
     // Filter to only actual projects (not folders)
     const actualProjects = projects.filter(p => !p.is_folder)
     if (actualProjects.length === 0) return
 
-    // Get expanded projects from store (use getState to avoid subscription)
-    const { expandedProjectIds } = useProjectsStore.getState()
+    const { expandedProjectIds, selectedProjectId } = useProjectsStore.getState()
+    const prioritizedProjectIds = new Set<string>(expandedProjectIds)
+    if (selectedProjectId) {
+      prioritizedProjectIds.add(selectedProjectId)
+    }
 
-    // Split into expanded (priority) and collapsed projects
-    const expandedProjects = actualProjects.filter(p =>
-      expandedProjectIds.has(p.id)
+    const prioritizedProjects = actualProjects.filter(p =>
+      prioritizedProjectIds.has(p.id)
     )
-    const collapsedProjects = actualProjects.filter(
-      p => !expandedProjectIds.has(p.id)
-    )
+    if (prioritizedProjects.length === 0) return
+
+    hasFetchedRef.current = true
 
     // Fetch sessions for all worktrees in a project
     const fetchSessionsForProject = async (projectId: string) => {
@@ -57,22 +55,21 @@ export function useSessionPrefetch(projects: Project[] | undefined) {
       }
     }
 
-    const fetchAll = async () => {
-      const concurrencyLimit = 3
+    const cancelIdleWork = scheduleIdleWork(() => {
+      const fetchAll = async () => {
+        const concurrencyLimit = 2
 
-      // First: fetch expanded projects (user sees these immediately)
-      for (let i = 0; i < expandedProjects.length; i += concurrencyLimit) {
-        const batch = expandedProjects.slice(i, i + concurrencyLimit)
-        await Promise.all(batch.map(p => fetchSessionsForProject(p.id)))
+        for (let i = 0; i < prioritizedProjects.length; i += concurrencyLimit) {
+          const batch = prioritizedProjects.slice(i, i + concurrencyLimit)
+          await Promise.all(batch.map(p => fetchSessionsForProject(p.id)))
+        }
       }
 
-      // Then: fetch collapsed projects in background
-      for (let i = 0; i < collapsedProjects.length; i += concurrencyLimit) {
-        const batch = collapsedProjects.slice(i, i + concurrencyLimit)
-        await Promise.all(batch.map(p => fetchSessionsForProject(p.id)))
-      }
+      void fetchAll()
+    }, 2000)
+
+    return () => {
+      cancelIdleWork()
     }
-
-    fetchAll()
   }, [projects, queryClient])
 }

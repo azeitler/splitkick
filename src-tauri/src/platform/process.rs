@@ -2,10 +2,32 @@
 
 use std::process::Command;
 
+/// Ensures macOS PATH has been fixed from the user's login shell.
+/// Uses `std::sync::Once` so the shell is only spawned on the first call.
+/// This must NOT call `silent_command()` internally to avoid recursion.
+#[cfg(target_os = "macos")]
+pub fn ensure_macos_path() {
+    use std::sync::Once;
+    static INIT: Once = Once::new();
+    INIT.call_once(|| {
+        let start = std::time::Instant::now();
+        crate::fix_macos_path();
+        log::info!(
+            "fix_macos_path() completed in {:?} (lazy, on first CLI invocation)",
+            start.elapsed()
+        );
+    });
+}
+
 /// Creates a Command that won't open a console window on Windows.
 /// Use for all background operations (git, gh, claude CLI, etc.).
 /// Do NOT use for commands that intentionally open UI (terminals, editors, file explorers).
 pub fn silent_command<S: AsRef<std::ffi::OsStr>>(program: S) -> Command {
+    // Ensure macOS GUI app has the user's full PATH before spawning any subprocess.
+    // Lazy + cached via Once — only the first call pays the shell-spawn cost (~100-500ms).
+    #[cfg(target_os = "macos")]
+    ensure_macos_path();
+
     #[allow(unused_mut)]
     let mut cmd = Command::new(program);
     #[cfg(windows)]

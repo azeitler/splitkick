@@ -7831,12 +7831,33 @@ pub struct ResolvedCommand {
     pub description: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum AllowedToolsFrontmatter {
+    List(Vec<String>),
+    String(String),
+}
+
+impl AllowedToolsFrontmatter {
+    fn into_vec(self) -> Vec<String> {
+        match self {
+            Self::List(items) => items,
+            Self::String(value) => value
+                .split(',')
+                .map(str::trim)
+                .filter(|item| !item.is_empty())
+                .map(ToString::to_string)
+                .collect(),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Default)]
 struct CommandFrontmatter {
     #[serde(default)]
     description: Option<String>,
     #[serde(default, rename = "allowed-tools")]
-    allowed_tools: Vec<String>,
+    allowed_tools: Option<AllowedToolsFrontmatter>,
 }
 
 fn split_frontmatter(content: &str) -> (Option<&str>, &str) {
@@ -7883,7 +7904,11 @@ fn parse_command_content(content: &str) -> (String, Option<String>, Vec<String>)
     };
 
     let description = parsed.description.or(fallback_description);
-    (body.to_string(), description, parsed.allowed_tools)
+    let allowed_tools = parsed
+        .allowed_tools
+        .map(AllowedToolsFrontmatter::into_vec)
+        .unwrap_or_default();
+    (body.to_string(), description, allowed_tools)
 }
 
 fn run_interpolation_command(command: &str, working_dir: &str) -> Result<String, String> {
@@ -8264,6 +8289,58 @@ pub async fn save_jean_config(project_path: String, config: JeanConfig) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_parse_command_content_with_allowed_tools_list() {
+        let content = r#"---
+allowed-tools: [Read, "Bash(git status:*)"]
+description: Test command
+---
+
+Body
+"#;
+
+        let (body, description, allowed_tools) = parse_command_content(content);
+        assert_eq!(body.trim(), "Body");
+        assert_eq!(description.as_deref(), Some("Test command"));
+        assert_eq!(allowed_tools, vec!["Read", "Bash(git status:*)"]);
+    }
+
+    #[test]
+    fn test_parse_command_content_with_allowed_tools_string() {
+        let content = r#"---
+allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git commit:*), Bash(git push:*)
+description: Test command
+---
+
+Body
+"#;
+
+        let (_, description, allowed_tools) = parse_command_content(content);
+        assert_eq!(description.as_deref(), Some("Test command"));
+        assert_eq!(
+            allowed_tools,
+            vec![
+                "Bash(git add:*)",
+                "Bash(git status:*)",
+                "Bash(git commit:*)",
+                "Bash(git push:*)",
+            ]
+        );
+    }
+
+    #[test]
+    fn test_parse_command_content_with_allowed_tools_string_ignores_empty_entries() {
+        let content = r#"---
+allowed-tools: Read, , Bash(git status:*),   
+---
+
+Body
+"#;
+
+        let (_, _, allowed_tools) = parse_command_content(content);
+        assert_eq!(allowed_tools, vec!["Read", "Bash(git status:*)"]);
+    }
 
     #[test]
     fn test_extract_structured_output_valid() {

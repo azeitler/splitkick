@@ -1,38 +1,97 @@
 import { useMemo, useCallback, useRef, useEffect, useState, lazy, Suspense } from 'react'
 import { TitleBar } from '@/components/titlebar/TitleBar'
 import { DevModeBanner } from './DevModeBanner'
-import { LeftSideBar } from './LeftSideBar'
 import { SidebarWidthProvider } from './SidebarWidthContext'
 import { MainWindowContent } from './MainWindowContent'
 import { CommandPalette } from '@/components/command-palette/CommandPalette'
-import { ProjectSettingsDialog } from '@/components/projects/ProjectSettingsDialog'
-import { CommitModal } from '@/components/commit/CommitModal'
-import { OnboardingDialog } from '@/components/onboarding/OnboardingDialog'
-import { FeatureTourDialog } from '@/components/onboarding/FeatureTourDialog'
-import { JeanConfigWizard } from '@/components/onboarding/JeanConfigWizard'
-import { CliUpdateModal } from '@/components/layout/CliUpdateModal'
-import { UpdateAvailableModal } from '@/components/layout/UpdateAvailableModal'
-import { CliLoginModal } from '@/components/preferences/CliLoginModal'
-import { OpenInModal } from '@/components/open-in/OpenInModal'
-import { RemotePickerModal } from '@/components/magic/RemotePickerModal'
-import { UpdatePrDialog } from '@/components/magic/UpdatePrDialog'
-import { AddProjectDialog } from '@/components/projects/AddProjectDialog'
-import { GitInitModal } from '@/components/projects/GitInitModal'
-import { CloneProjectModal } from '@/components/projects/CloneProjectModal'
 import { QuitConfirmationDialog } from './QuitConfirmationDialog'
-import { CloseWorktreeDialog } from '@/components/chat/CloseWorktreeDialog'
 import { BranchConflictDialog } from '@/components/worktree/BranchConflictDialog'
 import { TeardownOutputDialog } from '@/components/worktree/TeardownOutputDialog'
 
 // Lazy-loaded heavy modals (code splitting)
+const LeftSideBar = lazy(() =>
+  import('./LeftSideBar').then(mod => ({
+    default: mod.LeftSideBar,
+  }))
+)
 const PreferencesDialog = lazy(() =>
   import('@/components/preferences/PreferencesDialog').then(mod => ({
     default: mod.PreferencesDialog,
   }))
 )
+const ProjectSettingsDialog = lazy(() =>
+  import('@/components/projects/ProjectSettingsDialog').then(mod => ({
+    default: mod.ProjectSettingsDialog,
+  }))
+)
+const CommitModal = lazy(() =>
+  import('@/components/commit/CommitModal').then(mod => ({
+    default: mod.CommitModal,
+  }))
+)
+const OnboardingDialog = lazy(() =>
+  import('@/components/onboarding/OnboardingDialog').then(mod => ({
+    default: mod.OnboardingDialog,
+  }))
+)
+const FeatureTourDialog = lazy(() =>
+  import('@/components/onboarding/FeatureTourDialog').then(mod => ({
+    default: mod.FeatureTourDialog,
+  }))
+)
+const JeanConfigWizard = lazy(() =>
+  import('@/components/onboarding/JeanConfigWizard').then(mod => ({
+    default: mod.JeanConfigWizard,
+  }))
+)
+const CliUpdateModal = lazy(() =>
+  import('@/components/layout/CliUpdateModal').then(mod => ({
+    default: mod.CliUpdateModal,
+  }))
+)
+const UpdateAvailableModal = lazy(() =>
+  import('@/components/layout/UpdateAvailableModal').then(mod => ({
+    default: mod.UpdateAvailableModal,
+  }))
+)
+const CliLoginModal = lazy(() =>
+  import('@/components/preferences/CliLoginModal').then(mod => ({
+    default: mod.CliLoginModal,
+  }))
+)
+const OpenInModal = lazy(() =>
+  import('@/components/open-in/OpenInModal').then(mod => ({
+    default: mod.OpenInModal,
+  }))
+)
+const RemotePickerModal = lazy(() =>
+  import('@/components/magic/RemotePickerModal').then(mod => ({
+    default: mod.RemotePickerModal,
+  }))
+)
+const UpdatePrDialog = lazy(() =>
+  import('@/components/magic/UpdatePrDialog').then(mod => ({
+    default: mod.UpdatePrDialog,
+  }))
+)
 const NewWorktreeModal = lazy(() =>
   import('@/components/worktree/NewWorktreeModal').then(mod => ({
     default: mod.NewWorktreeModal,
+  }))
+)
+const AddProjectDialog = lazy(() =>
+  import('@/components/projects/AddProjectDialog').then(mod => ({
+    default: mod.AddProjectDialog,
+  }))
+)
+const GitInitModal = lazy(() =>
+  import('@/components/projects/GitInitModal').then(mod => ({
+    default: mod.GitInitModal,
+  }))
+)
+const CloneProjectModal = lazy(() =>
+  import('@/components/projects/CloneProjectModal').then(mod => ({
+    default: mod.CloneProjectModal,
   }))
 )
 const ArchivedModal = lazy(() =>
@@ -58,6 +117,11 @@ const MagicModal = lazy(() =>
 const GitHubDashboardModal = lazy(() =>
   import('@/components/github-dashboard').then(mod => ({
     default: mod.GitHubDashboardModal,
+  }))
+)
+const CloseWorktreeDialog = lazy(() =>
+  import('@/components/chat/CloseWorktreeDialog').then(mod => ({
+    default: mod.CloseWorktreeDialog,
   }))
 )
 import { FloatingDock } from '@/components/ui/floating-dock'
@@ -91,11 +155,47 @@ import { isNativeApp } from '@/lib/environment'
 const MIN_SIDEBAR_WIDTH = 150
 const MAX_SIDEBAR_WIDTH = 500
 
+function useRetainedMount(active: boolean) {
+  const [shouldMount, setShouldMount] = useState(active)
+
+  useEffect(() => {
+    if (active) {
+      setShouldMount(true)
+    }
+  }, [active])
+
+  return shouldMount
+}
+
 export function MainWindow() {
   const leftSidebarVisible = useUIStore(state => state.leftSidebarVisible)
   const leftSidebarSize = useUIStore(state => state.leftSidebarSize)
   const setLeftSidebarSize = useUIStore(state => state.setLeftSidebarSize)
+  const preferencesOpen = useUIStore(state => state.preferencesOpen)
+  const commitModalOpen = useUIStore(state => state.commitModalOpen)
+  const onboardingOpen = useUIStore(state => state.onboardingOpen)
+  const featureTourOpen = useUIStore(state => state.featureTourOpen)
+  const openInModalOpen = useUIStore(state => state.openInModalOpen)
+  const remotePickerOpen = useUIStore(state => state.remotePickerOpen)
+  const magicModalOpen = useUIStore(state => state.magicModalOpen)
+  const newWorktreeModalOpen = useUIStore(state => state.newWorktreeModalOpen)
+  const releaseNotesModalOpen = useUIStore(state => state.releaseNotesModalOpen)
+  const updatePrModalOpen = useUIStore(state => state.updatePrModalOpen)
+  const workflowRunsModalOpen = useUIStore(state => state.workflowRunsModalOpen)
+  const cliUpdateModalOpen = useUIStore(state => state.cliUpdateModalOpen)
+  const cliLoginModalOpen = useUIStore(state => state.cliLoginModalOpen)
+  const updateModalVersion = useUIStore(state => state.updateModalVersion)
+  const githubDashboardOpen = useUIStore(state => state.githubDashboardOpen)
   const selectedWorktreeId = useProjectsStore(state => state.selectedWorktreeId)
+  const addProjectDialogOpen = useProjectsStore(state => state.addProjectDialogOpen)
+  const projectSettingsDialogOpen = useProjectsStore(
+    state => state.projectSettingsDialogOpen
+  )
+  const gitInitModalOpen = useProjectsStore(state => state.gitInitModalOpen)
+  const cloneModalOpen = useProjectsStore(state => state.cloneModalOpen)
+  const jeanConfigWizardOpen = useProjectsStore(
+    state => state.jeanConfigWizardOpen
+  )
 
   // Fetch worktree data for polling initialization
   const { data: worktree } = useWorktree(selectedWorktreeId ?? null)
@@ -143,8 +243,8 @@ export function MainWindow() {
   // Persist session-specific state (answered questions, fixed findings, etc.)
   useSessionStatePersistence()
 
-  // Prefetch sessions for all projects on startup (regardless of sidebar visibility).
-  // Wait for UI state initialization first so sidebar rendering isn't starved of IPC bandwidth.
+  // Prefetch sessions for the selected or expanded projects after the UI state
+  // is restored so the first render path stays light.
   useSessionPrefetch(isInitialized ? projects : undefined)
 
   // Ref for the sidebar element to update width directly during drag
@@ -243,6 +343,35 @@ export function MainWindow() {
     [leftSidebarSize, setLeftSidebarSize]
   )
 
+  const shouldRenderPreferencesDialog = useRetainedMount(preferencesOpen)
+  const shouldRenderProjectSettingsDialog = useRetainedMount(
+    projectSettingsDialogOpen
+  )
+  const shouldRenderCommitModal = useRetainedMount(commitModalOpen)
+  const shouldRenderOnboardingDialog = useRetainedMount(onboardingOpen)
+  const shouldRenderFeatureTourDialog = useRetainedMount(featureTourOpen)
+  const shouldRenderJeanConfigWizard = useRetainedMount(jeanConfigWizardOpen)
+  const shouldRenderCliUpdateModal = useRetainedMount(cliUpdateModalOpen)
+  const shouldRenderUpdateAvailableModal = useRetainedMount(
+    updateModalVersion !== null
+  )
+  const shouldRenderCliLoginModal = useRetainedMount(cliLoginModalOpen)
+  const shouldRenderOpenInModal = useRetainedMount(openInModalOpen)
+  const shouldRenderRemotePickerModal = useRetainedMount(remotePickerOpen)
+  const shouldRenderUpdatePrDialog = useRetainedMount(updatePrModalOpen)
+  const shouldRenderWorkflowRunsModal = useRetainedMount(workflowRunsModalOpen)
+  const shouldRenderMagicModal = useRetainedMount(magicModalOpen)
+  const shouldRenderReleaseNotesDialog = useRetainedMount(
+    releaseNotesModalOpen
+  )
+  const shouldRenderNewWorktreeModal = useRetainedMount(newWorktreeModalOpen)
+  const shouldRenderAddProjectDialog = useRetainedMount(addProjectDialogOpen)
+  const shouldRenderGitInitModal = useRetainedMount(gitInitModalOpen)
+  const shouldRenderCloneProjectModal = useRetainedMount(cloneModalOpen)
+  const shouldRenderArchivedModal = useRetainedMount(archivedModalOpen)
+  const shouldRenderCloseWorktreeDialog = useRetainedMount(closeConfirmOpen)
+  const shouldRenderGitHubDashboardModal = useRetainedMount(githubDashboardOpen)
+
   return (
     <div
       className={`flex h-dvh w-full flex-col overflow-hidden bg-background ${isNativeApp() ? 'rounded-xl' : ''}`}
@@ -263,7 +392,9 @@ export function MainWindow() {
               className="h-full overflow-hidden"
               style={{ width: leftSidebarSize }}
             >
-              <LeftSideBar />
+              <Suspense fallback={null}>
+                <LeftSideBar />
+              </Suspense>
             </div>
           </SidebarWidthProvider>
         )}
@@ -288,52 +419,126 @@ export function MainWindow() {
 
       {/* Global UI Components (hidden until triggered) */}
       <CommandPalette />
-      <Suspense fallback={null}>
-        <PreferencesDialog />
-      </Suspense>
-      <ProjectSettingsDialog />
-      <CommitModal />
-      <OnboardingDialog />
-      <FeatureTourDialog />
-      <JeanConfigWizard />
-      <CliUpdateModal />
-      <UpdateAvailableModal />
-      <CliLoginModal />
-      <OpenInModal />
-      <Suspense fallback={null}>
-        <WorkflowRunsModal />
-      </Suspense>
-      <Suspense fallback={null}>
-        <MagicModal />
-      </Suspense>
-      <RemotePickerModal />
-      <Suspense fallback={null}>
-        <ReleaseNotesDialog />
-      </Suspense>
-      <UpdatePrDialog />
-      <Suspense fallback={null}>
-        <NewWorktreeModal />
-      </Suspense>
-      <AddProjectDialog />
-      <GitInitModal />
-      <CloneProjectModal />
-      <Suspense fallback={null}>
-        <ArchivedModal
-          open={archivedModalOpen}
-          onOpenChange={setArchivedModalOpen}
-        />
-      </Suspense>
-      <CloseWorktreeDialog
-        open={closeConfirmOpen}
-        onOpenChange={setCloseConfirmOpen}
-        onConfirm={executeClose}
-        branchName={closeConfirmBranch}
-        mode={closeConfirmMode}
-      />
+      {shouldRenderPreferencesDialog && (
+        <Suspense fallback={null}>
+          <PreferencesDialog />
+        </Suspense>
+      )}
+      {shouldRenderProjectSettingsDialog && (
+        <Suspense fallback={null}>
+          <ProjectSettingsDialog />
+        </Suspense>
+      )}
+      {shouldRenderCommitModal && (
+        <Suspense fallback={null}>
+          <CommitModal />
+        </Suspense>
+      )}
+      {shouldRenderOnboardingDialog && (
+        <Suspense fallback={null}>
+          <OnboardingDialog />
+        </Suspense>
+      )}
+      {shouldRenderFeatureTourDialog && (
+        <Suspense fallback={null}>
+          <FeatureTourDialog />
+        </Suspense>
+      )}
+      {shouldRenderJeanConfigWizard && (
+        <Suspense fallback={null}>
+          <JeanConfigWizard />
+        </Suspense>
+      )}
+      {shouldRenderCliUpdateModal && (
+        <Suspense fallback={null}>
+          <CliUpdateModal />
+        </Suspense>
+      )}
+      {shouldRenderUpdateAvailableModal && (
+        <Suspense fallback={null}>
+          <UpdateAvailableModal />
+        </Suspense>
+      )}
+      {shouldRenderCliLoginModal && (
+        <Suspense fallback={null}>
+          <CliLoginModal />
+        </Suspense>
+      )}
+      {shouldRenderOpenInModal && (
+        <Suspense fallback={null}>
+          <OpenInModal />
+        </Suspense>
+      )}
+      {shouldRenderWorkflowRunsModal && (
+        <Suspense fallback={null}>
+          <WorkflowRunsModal />
+        </Suspense>
+      )}
+      {shouldRenderMagicModal && (
+        <Suspense fallback={null}>
+          <MagicModal />
+        </Suspense>
+      )}
+      {shouldRenderRemotePickerModal && (
+        <Suspense fallback={null}>
+          <RemotePickerModal />
+        </Suspense>
+      )}
+      {shouldRenderReleaseNotesDialog && (
+        <Suspense fallback={null}>
+          <ReleaseNotesDialog />
+        </Suspense>
+      )}
+      {shouldRenderUpdatePrDialog && (
+        <Suspense fallback={null}>
+          <UpdatePrDialog />
+        </Suspense>
+      )}
+      {shouldRenderNewWorktreeModal && (
+        <Suspense fallback={null}>
+          <NewWorktreeModal />
+        </Suspense>
+      )}
+      {shouldRenderAddProjectDialog && (
+        <Suspense fallback={null}>
+          <AddProjectDialog />
+        </Suspense>
+      )}
+      {shouldRenderGitInitModal && (
+        <Suspense fallback={null}>
+          <GitInitModal />
+        </Suspense>
+      )}
+      {shouldRenderCloneProjectModal && (
+        <Suspense fallback={null}>
+          <CloneProjectModal />
+        </Suspense>
+      )}
+      {shouldRenderArchivedModal && (
+        <Suspense fallback={null}>
+          <ArchivedModal
+            open={archivedModalOpen}
+            onOpenChange={setArchivedModalOpen}
+          />
+        </Suspense>
+      )}
+      {shouldRenderCloseWorktreeDialog && (
+        <Suspense fallback={null}>
+          <CloseWorktreeDialog
+            open={closeConfirmOpen}
+            onOpenChange={setCloseConfirmOpen}
+            onConfirm={executeClose}
+            branchName={closeConfirmBranch}
+            mode={closeConfirmMode}
+          />
+        </Suspense>
+      )}
       <QuitConfirmationDialog />
-      <Suspense fallback={null}>
-        <GitHubDashboardModal />
-      </Suspense>
+      {shouldRenderGitHubDashboardModal && (
+        <Suspense fallback={null}>
+          <GitHubDashboardModal />
+        </Suspense>
+      )}
       <BranchConflictDialog />
       <TeardownOutputDialog />
       <Toaster

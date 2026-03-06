@@ -603,7 +603,7 @@ export const DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
   investigate_workflow_run_model: 'opus',
   pr_content_model: 'haiku',
   commit_message_model: 'haiku',
-  code_review_model: 'haiku',
+  code_review_model: 'opus',
   context_summary_model: 'opus',
   resolve_conflicts_model: 'opus',
   release_notes_model: 'haiku',

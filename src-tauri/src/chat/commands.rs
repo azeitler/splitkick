@@ -4473,6 +4473,17 @@ pub async fn resume_session(
 
     log::trace!("Attempting to resume session: {session_id}");
 
+    // If this session is already being actively managed (tailed by send_chat_message),
+    // skip resuming to avoid starting a duplicate tail that re-emits all events
+    // from the beginning of the output file.
+    if super::registry::is_session_actively_managed(&session_id) {
+        log::trace!("Session {session_id} is already actively managed, skipping resume");
+        return Ok(ResumeSessionResponse {
+            resumed: false,
+            run_count: 0,
+        });
+    }
+
     // Load the metadata to find resumable runs
     let mut metadata = match load_metadata(&app, &session_id)? {
         Some(m) => m,
@@ -4669,10 +4680,40 @@ pub async fn check_resumable_sessions(
 ) -> Result<Vec<super::run_log::RecoveredRun>, String> {
     log::trace!("Checking for resumable sessions");
 
-    // This calls recover_incomplete_runs which updates statuses and returns info
+    // This calls recover_incomplete_runs which updates statuses and returns info.
+    // Note: recover_incomplete_runs skips sessions that are actively managed
+    // (in PROCESS_REGISTRY or CANCEL_FLAGS) to avoid corrupting their metadata.
     let recovered = super::run_log::recover_incomplete_runs(&app)?;
 
-    let resumable: Vec<_> = recovered.into_iter().filter(|r| r.resumable).collect();
+    let mut resumable: Vec<_> = recovered.into_iter().filter(|r| r.resumable).collect();
+
+    // Also report sessions that are actively managed (being tailed right now).
+    // The web client needs these to mark sessions as "sending" and show streaming UI.
+    // resume_session will no-op for these since they're already being tailed.
+    let actively_managed = super::registry::get_actively_managed_sessions();
+    for session_id in &actively_managed {
+        // Skip if already reported by recover_incomplete_runs
+        if resumable.iter().any(|r| r.session_id == *session_id) {
+            continue;
+        }
+        if let Some(metadata) = load_metadata(&app, session_id)? {
+            if let Some(run) = metadata
+                .runs
+                .iter()
+                .rev()
+                .find(|r| r.status == RunStatus::Running)
+            {
+                resumable.push(super::run_log::RecoveredRun {
+                    session_id: session_id.clone(),
+                    worktree_id: metadata.worktree_id.clone(),
+                    run_id: run.run_id.clone(),
+                    user_message: run.user_message.clone(),
+                    resumable: true,
+                    execution_mode: run.execution_mode.clone(),
+                });
+            }
+        }
+    }
 
     log::trace!("Found {} resumable session(s)", resumable.len());
 
