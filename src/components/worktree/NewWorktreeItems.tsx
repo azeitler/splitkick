@@ -44,7 +44,7 @@ export function SessionTabBar({
           onClick={() => onTabChange(tab.id)}
           tabIndex={-1}
           className={cn(
-            'flex-shrink-0 px-4 py-2 text-sm font-medium transition-colors',
+            'flex-1 px-4 py-2 text-sm font-medium transition-colors',
             'flex items-center justify-center gap-1.5',
             'hover:bg-accent focus:outline-none',
             'border-b-2',

@@ -552,7 +552,14 @@ pub async fn update_session_state(
             log::trace!("Session already removed, skipping update: {session_id}");
             Ok(())
         }
-    })
+    })?;
+
+    // Notify all clients (native + web access) to refetch session data.
+    // This is the single cache invalidation point for session state mutations —
+    // other commands (e.g. mark_plan_approved) rely on callers also invoking
+    // update_session_state rather than emitting their own invalidation.
+    emit_sessions_cache_invalidation(&app);
+    Ok(())
 }
 
 /// Extract pasted image paths from message content

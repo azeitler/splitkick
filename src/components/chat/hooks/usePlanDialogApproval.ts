@@ -68,15 +68,8 @@ export function usePlanDialogApproval({
       console.warn('[usePlanDialogApproval] approve CALLED', { mode, activeSessionId })
       if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
 
-      // Mark plan as approved if there's a pending plan message
+      // Optimistic updates: apply immediately so the approving client's UI updates
       if (pendingPlanMessage) {
-        markPlanApprovedService(
-          activeWorktreeId,
-          activeWorktreePath,
-          activeSessionId,
-          pendingPlanMessage.id
-        )
-        // Optimistically update query cache
         queryClient.setQueryData<Session>(
           chatQueryKeys.session(activeSessionId),
           old => {
@@ -96,8 +89,6 @@ export function usePlanDialogApproval({
           }
         )
 
-        // Optimistically clear waiting_for_input in sessions cache to prevent
-        // stale "waiting" status during the refetch window
         queryClient.setQueryData<WorktreeSessions>(
           chatQueryKeys.sessions(activeWorktreeId),
           old => {
@@ -117,9 +108,6 @@ export function usePlanDialogApproval({
             }
           }
         )
-
-        // Backend's emit_cache_invalidation will trigger the eventual refetch.
-        // Don't invalidate here — races with backend mutations.
       }
 
       // Clear Zustand waiting state so the queue processor can process the message
@@ -139,17 +127,31 @@ export function usePlanDialogApproval({
       clearStreamingContentBlocks(activeSessionId)
       setSessionReviewing(activeSessionId, false)
 
-      // Persist cleared waiting state to backend so refetch loads correct data
-      invoke('update_session_state', {
-        worktreeId: activeWorktreeId,
-        worktreePath: activeWorktreePath,
-        sessionId: activeSessionId,
-        waitingForInput: false,
-        waitingForInputType: null,
-        selectedExecutionMode: mode,
-      }).catch(err => {
-        console.error('[usePlanDialogApproval] Failed to clear waiting state:', err)
-      })
+      // Chain: mark_plan_approved → update_session_state
+      // On WebSocket, commands dispatch concurrently. update_session_state emits
+      // cache:invalidate which triggers refetch on other clients. mark_plan_approved
+      // must complete first so the refetch includes plan_approved=true.
+      const markPromise = pendingPlanMessage
+        ? markPlanApprovedService(
+            activeWorktreeId,
+            activeWorktreePath,
+            activeSessionId,
+            pendingPlanMessage.id
+          ).catch(err => { console.error('[usePlanDialogApproval] markPlanApproved failed:', err) })
+        : Promise.resolve()
+
+      markPromise
+        .then(() => invoke('update_session_state', {
+          worktreeId: activeWorktreeId,
+          worktreePath: activeWorktreePath,
+          sessionId: activeSessionId,
+          waitingForInput: false,
+          waitingForInputType: null,
+          selectedExecutionMode: mode,
+        }))
+        .catch(err => {
+          console.error('[usePlanDialogApproval] Failed to clear waiting state:', err)
+        })
 
       // Build approval message
       const defaultText =
@@ -170,6 +172,13 @@ export function usePlanDialogApproval({
         console.log('[usePlanDialogApproval] Broadcast executionMode=' + mode + ' succeeded')
       }).catch(err => {
         console.error('[usePlanDialogApproval] Broadcast executionMode=' + mode + ' failed:', err)
+      })
+      invoke('broadcast_session_setting', {
+        sessionId: activeSessionId,
+        key: 'waitingForInput',
+        value: 'false',
+      }).catch(err => {
+        console.error('[usePlanDialogApproval] Broadcast waitingForInput=false failed:', err)
       })
 
       const modelOverride = mode === 'yolo' ? yoloModelRef.current : buildModelRef.current

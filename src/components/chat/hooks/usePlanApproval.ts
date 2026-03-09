@@ -68,10 +68,8 @@ export function usePlanApproval({
       const messageId = card.pendingPlanMessageId
       const originalPlan = card.planContent
 
-      // If there's a pending plan message, mark it as approved
+      // Optimistic updates: apply immediately so the approving client's UI updates
       if (messageId) {
-        markPlanApproved(worktreeId, worktreePath, sessionId, messageId)
-
         queryClient.setQueryData<Session>(
           chatQueryKeys.session(sessionId),
           old => {
@@ -89,8 +87,6 @@ export function usePlanApproval({
           }
         )
 
-        // Optimistically clear waiting_for_input in sessions cache to prevent
-        // stale "waiting" status during the refetch window
         queryClient.setQueryData<WorktreeSessions>(
           chatQueryKeys.sessions(worktreeId),
           old => {
@@ -110,23 +106,22 @@ export function usePlanApproval({
             }
           }
         )
-
-        // Backend's emit_cache_invalidation (from mark_plan_approved and
-        // update_session_state) will trigger the eventual refetch with correct data.
-        // Don't invalidate here — the refetch races with backend mutations and can
-        // overwrite the optimistic update with stale waiting_for_input: true.
       }
 
       setExecutionMode(sessionId, 'build')
-      console.log('[usePlanApproval] Broadcasting executionMode=build for session', sessionId)
       invoke('broadcast_session_setting', {
         sessionId,
         key: 'executionMode',
         value: 'build',
-      }).then(() => {
-        console.log('[usePlanApproval] Broadcast executionMode=build succeeded')
       }).catch(err => {
         console.error('[usePlanApproval] Broadcast executionMode=build failed:', err)
+      })
+      invoke('broadcast_session_setting', {
+        sessionId,
+        key: 'waitingForInput',
+        value: 'false',
+      }).catch(err => {
+        console.error('[usePlanApproval] Broadcast waitingForInput=false failed:', err)
       })
       clearToolCalls(sessionId)
       clearStreamingContentBlocks(sessionId)
@@ -138,8 +133,6 @@ export function usePlanApproval({
       const thinkingLevel = preferences?.thinking_level ?? 'off'
       const sessionBackend = card.session.backend
 
-      // Format message - if no pending plan, always include the updated plan content
-      // For Codex: use explicit execution instruction since it resumes a thread
       const isCodex = sessionBackend === 'codex'
       const baseMsg = isCodex
         ? 'Execute the plan you created. Implement all changes described.'
@@ -150,18 +143,25 @@ export function usePlanApproval({
       const buildInfo = [sessionBackend, model].filter(Boolean).join(' / ')
       const message = buildInfo ? `[Build: ${buildInfo}]\n${rawMessage}` : rawMessage
 
-      // Persist cleared waiting state to backend BEFORE sending the message.
-      // On WebSocket (web access), commands are dispatched concurrently via tokio::spawn.
-      // Without awaiting, send_chat_message can start before update_session_state writes
-      // to disk, causing chat:sending's invalidateQueries to refetch stale waiting_for_input.
-      invoke('update_session_state', {
-        worktreeId,
-        worktreePath,
-        sessionId,
-        waitingForInput: false,
-        waitingForInputType: null,
-        selectedExecutionMode: 'build',
-      })
+      // Chain: mark_plan_approved → update_session_state → sendMessage
+      // On WebSocket, commands dispatch concurrently via tokio::spawn.
+      // update_session_state emits cache:invalidate which triggers refetch on
+      // other clients. mark_plan_approved must complete first so the refetch
+      // includes plan_approved=true (from approved_plan_message_ids).
+      const markPromise = messageId
+        ? markPlanApproved(worktreeId, worktreePath, sessionId, messageId)
+            .catch(err => { console.error('[usePlanApproval] markPlanApproved failed:', err) })
+        : Promise.resolve()
+
+      markPromise
+        .then(() => invoke('update_session_state', {
+          worktreeId,
+          worktreePath,
+          sessionId,
+          waitingForInput: false,
+          waitingForInputType: null,
+          selectedExecutionMode: 'build',
+        }))
         .catch(err => {
           console.error('[usePlanApproval] Failed to clear waiting state:', err)
         })
@@ -211,10 +211,8 @@ export function usePlanApproval({
       const messageId = card.pendingPlanMessageId
       const originalPlan = card.planContent
 
-      // If there's a pending plan message, mark it as approved
+      // Optimistic updates: apply immediately so the approving client's UI updates
       if (messageId) {
-        markPlanApproved(worktreeId, worktreePath, sessionId, messageId)
-
         queryClient.setQueryData<Session>(
           chatQueryKeys.session(sessionId),
           old => {
@@ -232,8 +230,6 @@ export function usePlanApproval({
           }
         )
 
-        // Optimistically clear waiting_for_input in sessions cache to prevent
-        // stale "waiting" status during the refetch window
         queryClient.setQueryData<WorktreeSessions>(
           chatQueryKeys.sessions(worktreeId),
           old => {
@@ -253,21 +249,22 @@ export function usePlanApproval({
             }
           }
         )
-
-        // Backend's emit_cache_invalidation will trigger the eventual refetch.
-        // Don't invalidate here — races with backend mutations.
       }
 
       setExecutionMode(sessionId, 'yolo')
-      console.log('[usePlanApproval] Broadcasting executionMode=yolo for session', sessionId)
       invoke('broadcast_session_setting', {
         sessionId,
         key: 'executionMode',
         value: 'yolo',
-      }).then(() => {
-        console.log('[usePlanApproval] Broadcast executionMode=yolo succeeded')
       }).catch(err => {
         console.error('[usePlanApproval] Broadcast executionMode=yolo failed:', err)
+      })
+      invoke('broadcast_session_setting', {
+        sessionId,
+        key: 'waitingForInput',
+        value: 'false',
+      }).catch(err => {
+        console.error('[usePlanApproval] Broadcast waitingForInput=false failed:', err)
       })
       clearToolCalls(sessionId)
       clearStreamingContentBlocks(sessionId)
@@ -279,7 +276,6 @@ export function usePlanApproval({
       const thinkingLevel = preferences?.thinking_level ?? 'off'
       const sessionBackend = card.session.backend
 
-      // Format message - if no pending plan, always include the updated plan content
       const isCodexYolo = sessionBackend === 'codex'
       const baseMsgYolo = isCodexYolo
         ? 'Execute the plan you created. Implement all changes described.'
@@ -290,16 +286,22 @@ export function usePlanApproval({
       const yoloInfo = [sessionBackend, model].filter(Boolean).join(' / ')
       const message = yoloInfo ? `[Yolo: ${yoloInfo}]\n${rawMessage}` : rawMessage
 
-      // Persist cleared waiting state to backend BEFORE sending the message.
-      // See handlePlanApproval comment for why this must be awaited.
-      invoke('update_session_state', {
-        worktreeId,
-        worktreePath,
-        sessionId,
-        waitingForInput: false,
-        waitingForInputType: null,
-        selectedExecutionMode: 'yolo',
-      })
+      // Chain: mark_plan_approved → update_session_state → sendMessage
+      // See handlePlanApproval comment for why sequencing matters.
+      const markPromise = messageId
+        ? markPlanApproved(worktreeId, worktreePath, sessionId, messageId)
+            .catch(err => { console.error('[usePlanApproval] markPlanApproved failed:', err) })
+        : Promise.resolve()
+
+      markPromise
+        .then(() => invoke('update_session_state', {
+          worktreeId,
+          worktreePath,
+          sessionId,
+          waitingForInput: false,
+          waitingForInputType: null,
+          selectedExecutionMode: 'yolo',
+        }))
         .catch(err => {
           console.error('[usePlanApproval] Failed to clear waiting state:', err)
         })

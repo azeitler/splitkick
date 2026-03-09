@@ -1330,6 +1330,12 @@ export default function useStreamingEvents({
         case 'executionMode':
           store.setExecutionMode(session_id, value as 'plan' | 'build' | 'yolo')
           break
+        case 'waitingForInput':
+          if (value === 'false') {
+            store.setWaitingForInput(session_id, false)
+            store.setPendingPlanMessageId(session_id, null)
+          }
+          break
       }
 
       queryClient.setQueryData<Session>(

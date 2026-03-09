@@ -5,6 +5,7 @@ export type SessionSettingKey =
   | 'model'
   | 'thinkingLevel'
   | 'executionMode'
+  | 'waitingForInput'
 
 export function applySessionSettingToSession(
   session: Session,
@@ -32,5 +33,8 @@ export function applySessionSettingToSession(
         ...session,
         selected_execution_mode: value as ExecutionMode,
       }
+    case 'waitingForInput':
+      // Handled in Zustand (useStreamingEvents), not session metadata
+      return session
   }
 }

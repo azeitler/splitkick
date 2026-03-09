@@ -879,7 +879,11 @@ pub async fn dispatch_command(
                 message_id,
             )
             .await?;
-            emit_cache_invalidation(app, &["sessions"]);
+            // Don't emit cache invalidation here — all callers also invoke
+            // update_session_state which emits its own invalidation.  Emitting
+            // here races with that command (concurrent tokio::spawn) and causes
+            // the other client to refetch stale selected_execution_mode before
+            // update_session_state persists the new value, reverting to plan mode.
             Ok(Value::Null)
         }
         "save_cancelled_message" => {
