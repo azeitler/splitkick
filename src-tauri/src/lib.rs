@@ -1352,15 +1352,15 @@ async fn save_preferences(app: AppHandle, preferences: AppPreferences) -> Result
 #[tauri::command]
 async fn patch_preferences(app: AppHandle, patch: Value) -> Result<(), String> {
     let current = load_preferences(app.clone()).await?;
-    let mut current_json = serde_json::to_value(&current)
-        .map_err(|e| format!("Serialize error: {e}"))?;
+    let mut current_json =
+        serde_json::to_value(&current).map_err(|e| format!("Serialize error: {e}"))?;
     if let (Some(base), Some(patch_obj)) = (current_json.as_object_mut(), patch.as_object()) {
         for (key, value) in patch_obj {
             base.insert(key.clone(), value.clone());
         }
     }
-    let merged: AppPreferences = serde_json::from_value(current_json)
-        .map_err(|e| format!("Merge error: {e}"))?;
+    let merged: AppPreferences =
+        serde_json::from_value(current_json).map_err(|e| format!("Merge error: {e}"))?;
     save_preferences(app, merged).await
 }
 

@@ -28,10 +28,7 @@ use crate::platform::silent_command;
 #[derive(Debug)]
 pub enum ServerEvent {
     /// JSON-RPC notification from server (has `method` + `params`, no `id`)
-    Notification {
-        method: String,
-        params: Value,
-    },
+    Notification { method: String, params: Value },
     /// JSON-RPC request from server needing client response (approval)
     ServerRequest {
         id: u64,
@@ -73,6 +70,10 @@ static APP_HANDLE: once_cell::sync::OnceCell<AppHandle> = once_cell::sync::OnceC
 /// Number of active sessions using the server. When this drops to 0, a delayed
 /// shutdown is scheduled (matching the opencode server pattern).
 static USAGE_COUNT: AtomicU64 = AtomicU64::new(0);
+
+/// Generation counter incremented each time a new server is spawned.
+/// Used by the delayed shutdown thread to avoid killing a newly-spawned server.
+static SERVER_GENERATION: AtomicU64 = AtomicU64::new(0);
 
 // =============================================================================
 // PID file for crash-recovery
@@ -194,7 +195,10 @@ fn ensure_running_inner(app: &AppHandle) -> Result<(), String> {
         ));
     }
 
-    log::info!("Starting codex app-server: {} app-server", cli_path.display());
+    log::info!(
+        "Starting codex app-server: {} app-server",
+        cli_path.display()
+    );
 
     let mut child = silent_command(&cli_path)
         .arg("app-server")
@@ -208,6 +212,7 @@ fn ensure_running_inner(app: &AppHandle) -> Result<(), String> {
 
     let pid = child.id();
     write_pid_file(pid);
+    SERVER_GENERATION.fetch_add(1, Ordering::SeqCst);
     log::info!("Codex app-server spawned with PID: {pid}");
 
     // Take stdin for writing
@@ -337,18 +342,16 @@ fn do_initialize(
 // =============================================================================
 
 /// Write a JSON-RPC message to the server's stdin.
-fn write_message(
-    writer: &Arc<Mutex<BufWriter<ChildStdin>>>,
-    msg: &Value,
-) -> Result<(), String> {
+fn write_message(writer: &Arc<Mutex<BufWriter<ChildStdin>>>, msg: &Value) -> Result<(), String> {
     let line = serde_json::to_string(msg).map_err(|e| format!("JSON serialize error: {e}"))?;
-    let mut w = writer.lock().map_err(|e| format!("Stdin lock error: {e}"))?;
+    let mut w = writer
+        .lock()
+        .map_err(|e| format!("Stdin lock error: {e}"))?;
     w.write_all(line.as_bytes())
         .map_err(|e| format!("Stdin write error: {e}"))?;
     w.write_all(b"\n")
         .map_err(|e| format!("Stdin write error: {e}"))?;
-    w.flush()
-        .map_err(|e| format!("Stdin flush error: {e}"))?;
+    w.flush().map_err(|e| format!("Stdin flush error: {e}"))?;
     Ok(())
 }
 
@@ -427,15 +430,18 @@ pub fn register_session(thread_id: &str, ctx: SessionContext) {
     }
 }
 
+/// Decrement the usage count without unregistering a session or scheduling shutdown.
+/// Used when `ensure_running()` succeeded but thread start failed before a session
+/// was registered (so there's nothing to unregister, but the count is inflated).
+pub fn decrement_usage_count() {
+    USAGE_COUNT.fetch_sub(1, Ordering::SeqCst);
+}
+
 /// Unregister a session and schedule delayed shutdown if no sessions remain.
 pub fn unregister_session(thread_id: &str) {
     let guard = CODEX_SERVER.lock().unwrap();
     if let Some(ref server) = *guard {
-        server
-            .active_sessions
-            .lock()
-            .unwrap()
-            .remove(thread_id);
+        server.active_sessions.lock().unwrap().remove(thread_id);
     }
     drop(guard);
 
@@ -443,9 +449,13 @@ pub fn unregister_session(thread_id: &str) {
     if prev == 1 {
         // Last session finished — schedule delayed shutdown (2s grace period
         // in case another session starts quickly, matching opencode pattern).
-        std::thread::spawn(|| {
+        // Capture generation so we don't kill a newly-spawned server.
+        let gen = SERVER_GENERATION.load(Ordering::SeqCst);
+        std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_secs(2));
-            if USAGE_COUNT.load(Ordering::SeqCst) == 0 {
+            if USAGE_COUNT.load(Ordering::SeqCst) == 0
+                && SERVER_GENERATION.load(Ordering::SeqCst) == gen
+            {
                 log::info!("No active codex sessions — shutting down app-server");
                 shutdown_server();
             }
@@ -477,9 +487,7 @@ pub fn is_server_alive() -> bool {
 
 fn reader_loop(
     stdout: std::process::ChildStdout,
-    pending_requests: Arc<
-        Mutex<HashMap<u64, tokio::sync::oneshot::Sender<Result<Value, String>>>>,
-    >,
+    pending_requests: Arc<Mutex<HashMap<u64, tokio::sync::oneshot::Sender<Result<Value, String>>>>>,
     active_sessions: Arc<Mutex<HashMap<String, SessionContext>>>,
     server_dead: Arc<AtomicBool>,
 ) {
@@ -576,19 +584,16 @@ fn route_notification(
         .get("threadId")
         .or_else(|| {
             // thread/started has it nested: params.thread.id
-            params
-                .get("thread")
-                .and_then(|t| t.get("id"))
+            params.get("thread").and_then(|t| t.get("id"))
         })
         .and_then(|v| v.as_str());
 
     if let Some(tid) = thread_id {
         let sessions = active_sessions.lock().unwrap();
         if let Some(ctx) = sessions.get(tid) {
-            let _ = ctx.event_tx.send(ServerEvent::Notification {
-                method,
-                params,
-            });
+            let _ = ctx
+                .event_tx
+                .send(ServerEvent::Notification { method, params });
         } else {
             log::trace!("No active session for thread {tid}, notification: {method}");
         }
@@ -617,11 +622,9 @@ fn route_server_request(
     if let Some(tid) = thread_id {
         let sessions = active_sessions.lock().unwrap();
         if let Some(ctx) = sessions.get(tid) {
-            let _ = ctx.event_tx.send(ServerEvent::ServerRequest {
-                id,
-                method,
-                params,
-            });
+            let _ = ctx
+                .event_tx
+                .send(ServerEvent::ServerRequest { id, method, params });
         } else {
             log::warn!("No active session for approval request on thread {tid}");
         }

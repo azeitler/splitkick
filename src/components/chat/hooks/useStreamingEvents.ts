@@ -304,6 +304,12 @@ export default function useStreamingEvents({
       const sessionId = event.payload.session_id
       const worktreeId = event.payload.worktree_id
 
+      // Flush any buffered chunks so streamingContents is up to date
+      if (chunkRafId !== null) {
+        cancelAnimationFrame(chunkRafId)
+        flushChunkBuffer()
+      }
+
       console.log(`[Done] chat:done received session=${sessionId}`, { currentSending: Object.keys(useChatStore.getState().sendingSessionIds) })
 
       const {
@@ -1035,6 +1041,12 @@ export default function useStreamingEvents({
           worktree_id: eventWorktreeId,
           undo_send,
         } = event.payload
+
+        // Flush any buffered chunks so streamingContents is up to date
+        if (chunkRafId !== null) {
+          cancelAnimationFrame(chunkRafId)
+          flushChunkBuffer()
+        }
 
         console.log(`[Cancelled] chat:cancelled received session=${session_id} undo_send=${undo_send}`, { currentSending: Object.keys(useChatStore.getState().sendingSessionIds) })
 

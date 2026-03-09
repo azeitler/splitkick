@@ -204,9 +204,8 @@ pub fn build_turn_start_params(
     // Sandbox policy with writable roots (for build/yolo modes with add_dirs)
     let mode = execution_mode.unwrap_or("plan");
     if mode == "build" && !add_dirs.is_empty() {
-        let mut writable_roots: Vec<serde_json::Value> = vec![
-            serde_json::json!(working_dir.to_string_lossy()),
-        ];
+        let mut writable_roots: Vec<serde_json::Value> =
+            vec![serde_json::json!(working_dir.to_string_lossy())];
         for dir in add_dirs {
             writable_roots.push(serde_json::json!(dir));
         }
@@ -261,33 +260,68 @@ pub fn execute_codex_via_server(
     codex_server::ensure_running(app)?;
 
     // Start or resume thread
-    let thread_id = if let Some(tid) = existing_thread_id {
-        // Resume existing thread
-        let resume_params = build_thread_start_params(
-            working_dir,
-            model,
-            execution_mode,
-            search_enabled,
-            instructions_file,
-            multi_agent_enabled,
-            max_agent_threads,
-        );
-        let mut full_params = serde_json::json!({ "threadId": tid, "persistExtendedHistory": true });
-        // Copy overridable fields
-        for key in &["model", "cwd", "approvalPolicy", "sandbox", "config", "serviceTier"] {
-            if let Some(v) = resume_params.get(key) {
-                full_params[key] = v.clone();
+    // Wrapped in a closure so we can decrement USAGE_COUNT on failure
+    // (ensure_running incremented it, but no session is registered yet)
+    let thread_id = match (|| -> Result<String, String> {
+        if let Some(tid) = existing_thread_id {
+            // Resume existing thread
+            let resume_params = build_thread_start_params(
+                working_dir,
+                model,
+                execution_mode,
+                search_enabled,
+                instructions_file,
+                multi_agent_enabled,
+                max_agent_threads,
+            );
+            let mut full_params =
+                serde_json::json!({ "threadId": tid, "persistExtendedHistory": true });
+            // Copy overridable fields
+            for key in &[
+                "model",
+                "cwd",
+                "approvalPolicy",
+                "sandbox",
+                "config",
+                "serviceTier",
+            ] {
+                if let Some(v) = resume_params.get(key) {
+                    full_params[key] = v.clone();
+                }
             }
-        }
-        match codex_server::send_request("thread/resume", full_params) {
-            Ok(_) => tid.to_string(),
-            Err(e) => {
-                log::warn!("Failed to resume thread {tid}: {e}, starting new thread");
-                start_new_thread(working_dir, model, execution_mode, search_enabled, instructions_file, multi_agent_enabled, max_agent_threads)?
+            match codex_server::send_request("thread/resume", full_params) {
+                Ok(_) => Ok(tid.to_string()),
+                Err(e) => {
+                    log::warn!("Failed to resume thread {tid}: {e}, starting new thread");
+                    start_new_thread(
+                        working_dir,
+                        model,
+                        execution_mode,
+                        search_enabled,
+                        instructions_file,
+                        multi_agent_enabled,
+                        max_agent_threads,
+                    )
+                }
             }
+        } else {
+            start_new_thread(
+                working_dir,
+                model,
+                execution_mode,
+                search_enabled,
+                instructions_file,
+                multi_agent_enabled,
+                max_agent_threads,
+            )
         }
-    } else {
-        start_new_thread(working_dir, model, execution_mode, search_enabled, instructions_file, multi_agent_enabled, max_agent_threads)?
+    })() {
+        Ok(tid) => tid,
+        Err(e) => {
+            // ensure_running incremented USAGE_COUNT but no session was registered
+            codex_server::decrement_usage_count();
+            return Err(e);
+        }
     };
 
     // Build turn params
@@ -460,6 +494,7 @@ fn process_turn_events(
                     &mut content_blocks,
                     &mut pending_tool_ids,
                     &mut completed,
+                    &mut cancelled,
                     &mut usage,
                     &mut error_emitted,
                 );
@@ -471,7 +506,11 @@ fn process_turn_events(
                         .and_then(|t| t.get("id"))
                         .and_then(|v| v.as_str())
                     {
-                        super::registry::register_codex_turn(session_id.to_string(), thread_id.to_string(), turn_id.to_string());
+                        super::registry::register_codex_turn(
+                            session_id.to_string(),
+                            thread_id.to_string(),
+                            turn_id.to_string(),
+                        );
                     }
                 }
             }
@@ -483,7 +522,11 @@ fn process_turn_events(
                         "id": id,
                         "params": params,
                     });
-                    let _ = writeln!(writer, "{}", serde_json::to_string(&line).unwrap_or_default());
+                    let _ = writeln!(
+                        writer,
+                        "{}",
+                        serde_json::to_string(&line).unwrap_or_default()
+                    );
                 }
 
                 handle_approval_request(
@@ -522,6 +565,12 @@ fn process_turn_events(
 
     // Emit chat:done unless error was emitted
     if !cancelled && !error_emitted {
+        // Write result marker for crash-recovery compatibility
+        // (jsonl_has_result_line() in run_log.rs checks for this)
+        if let Some(ref mut writer) = output_writer {
+            let _ = writeln!(writer, r#"{{"type":"result"}}"#);
+        }
+
         let _ = app.emit_all(
             "chat:done",
             &DoneEvent {
@@ -548,7 +597,10 @@ fn notification_to_history_line(method: &str, params: &serde_json::Value) -> Opt
     // Map app-server notification methods to old exec JSONL format
     let event_type = match method {
         "thread/started" => {
-            let tid = params.get("thread").and_then(|t| t.get("id")).and_then(|v| v.as_str())?;
+            let tid = params
+                .get("thread")
+                .and_then(|t| t.get("id"))
+                .and_then(|v| v.as_str())?;
             let line = serde_json::json!({
                 "type": "thread.started",
                 "thread_id": tid,
@@ -559,9 +611,15 @@ fn notification_to_history_line(method: &str, params: &serde_json::Value) -> Opt
         "turn/completed" => {
             // Map turn completion with usage data
             let turn = params.get("turn")?;
-            let status = turn.get("status").and_then(|v| v.as_str()).unwrap_or("completed");
+            let status = turn
+                .get("status")
+                .and_then(|v| v.as_str())
+                .unwrap_or("completed");
             if status == "failed" {
-                let error = turn.get("error").cloned().unwrap_or(serde_json::Value::Null);
+                let error = turn
+                    .get("error")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
                 let line = serde_json::json!({
                     "type": "turn.failed",
                     "error": error,
@@ -611,6 +669,7 @@ fn process_server_notification(
     content_blocks: &mut Vec<ContentBlock>,
     pending_tool_ids: &mut HashMap<String, String>,
     completed: &mut bool,
+    cancelled: &mut bool,
     usage: &mut Option<UsageData>,
     error_emitted: &mut bool,
 ) {
@@ -651,9 +710,19 @@ fn process_server_notification(
             let event_type = "item.started";
             let event_msg = serde_json::json!({ "type": event_type, "item": event_item });
             process_codex_event(
-                app, session_id, worktree_id, &event_msg, event_type,
-                full_content, thread_id, tool_calls, content_blocks,
-                pending_tool_ids, completed, usage, error_emitted,
+                app,
+                session_id,
+                worktree_id,
+                &event_msg,
+                event_type,
+                full_content,
+                thread_id,
+                tool_calls,
+                content_blocks,
+                pending_tool_ids,
+                completed,
+                usage,
+                error_emitted,
             );
         }
         "item/completed" => {
@@ -662,9 +731,19 @@ fn process_server_notification(
             let event_type = "item.completed";
             let event_msg = serde_json::json!({ "type": event_type, "item": event_item });
             process_codex_event(
-                app, session_id, worktree_id, &event_msg, event_type,
-                full_content, thread_id, tool_calls, content_blocks,
-                pending_tool_ids, completed, usage, error_emitted,
+                app,
+                session_id,
+                worktree_id,
+                &event_msg,
+                event_type,
+                full_content,
+                thread_id,
+                tool_calls,
+                content_blocks,
+                pending_tool_ids,
+                completed,
+                usage,
+                error_emitted,
             );
         }
         "item/commandExecution/outputDelta" | "item/fileChange/outputDelta" => {
@@ -674,7 +753,10 @@ fn process_server_notification(
         "turn/completed" => {
             // Extract usage from the turn object
             if let Some(turn) = params.get("turn") {
-                let status = turn.get("status").and_then(|v| v.as_str()).unwrap_or("completed");
+                let status = turn
+                    .get("status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("completed");
                 if status == "failed" {
                     let error_msg = turn
                         .get("error")
@@ -692,8 +774,11 @@ fn process_server_notification(
                     );
                     *error_emitted = true;
                 } else if status == "interrupted" {
-                    // Turn was interrupted (cancelled)
+                    // Turn was interrupted (cancelled by user).
+                    // Mark cancelled so chat:done is NOT emitted — the registry
+                    // already emitted chat:cancelled for immediate frontend response.
                     log::trace!("Turn interrupted for session {session_id}");
+                    *cancelled = true;
                 }
             }
             *completed = true;
@@ -750,7 +835,10 @@ fn process_server_notification(
                 },
             );
             *error_emitted = true;
-            let will_retry = params.get("willRetry").and_then(|v| v.as_bool()).unwrap_or(false);
+            let will_retry = params
+                .get("willRetry")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
             if !will_retry {
                 *completed = true;
             }
@@ -863,7 +951,6 @@ fn handle_approval_request(
         }
     }
 }
-
 
 /// Extract an error message from a Codex JSON value, handling both formats:
 /// - String format: `{"error": "message"}`

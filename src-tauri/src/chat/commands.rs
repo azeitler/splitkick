@@ -2341,11 +2341,9 @@ pub async fn send_chat_message(
         Ok(Err(e)) => {
             // Thread completed with an error — clean up all registrations.
             log::info!("[SendChat] EXIT session={session_id} reason=thread_error error={e}");
-            super::registry::clear_pending_cancel(&session_id);
+            super::registry::cleanup_session_registrations(&session_id);
             if let Some(ref flag) = opencode_cancel_flag {
-                // Only unregister if the flag wasn't already set by a cancel call
                 if !flag.load(std::sync::atomic::Ordering::SeqCst) {
-                    super::registry::unregister_cancel_flag(&session_id);
                     // Mark run as crashed so it doesn't stay in Running forever
                     if let Err(mark_err) = run_log_writer.mark_crashed() {
                         log::warn!("Failed to mark OpenCode run as crashed: {mark_err}");
@@ -2362,10 +2360,7 @@ pub async fn send_chat_message(
         }
         Err(_) => {
             log::info!("[SendChat] EXIT session={session_id} reason=thread_panic");
-            super::registry::clear_pending_cancel(&session_id);
-            if let Some(ref _flag) = opencode_cancel_flag {
-                super::registry::unregister_cancel_flag(&session_id);
-            }
+            super::registry::cleanup_session_registrations(&session_id);
             if let Err(mark_err) = run_log_writer.mark_crashed() {
                 log::warn!("Failed to mark run as crashed after thread panic: {mark_err}");
             }
@@ -2376,10 +2371,7 @@ pub async fn send_chat_message(
     };
 
     // Clear any stale pending cancel entry and unregister OpenCode cancel flag now that we have a result.
-    super::registry::clear_pending_cancel(&session_id);
-    if let Some(ref _flag) = opencode_cancel_flag {
-        super::registry::unregister_cancel_flag(&session_id);
-    }
+    super::registry::cleanup_session_registrations(&session_id);
 
     // PID is now persisted via pid_callback immediately after spawn (before tailing).
     // No need to set_pid here — it was already saved for crash recovery.
