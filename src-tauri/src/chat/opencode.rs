@@ -732,7 +732,7 @@ fn process_sse_event(
         }
         "server.heartbeat" => Some(false),
 
-        "message.part.updated" | "message.part" => {
+        "message.part.updated" | "message.part" | "message.part.added" => {
             let part = if let Some(part) = properties.get("part") {
                 part
             } else {
@@ -767,6 +767,9 @@ fn process_sse_event(
                             suffix
                         }
                         _ => {
+                            // New text part not previously seen via message.part.delta.
+                            // This is likely a user message echo — track it but don't emit.
+                            // Assistant text parts are always preceded by delta events.
                             tracked_parts.insert(
                                 part_id,
                                 TrackedPartState {
@@ -776,7 +779,7 @@ fn process_sse_event(
                                     },
                                 },
                             );
-                            text.to_string()
+                            String::new()
                         }
                     };
 
@@ -797,7 +800,14 @@ fn process_sse_event(
                             *emitted_len = text.len();
                             suffix
                         }
-                        _ => {
+                        Some(TrackedPartState {
+                            kind: TrackedPartKind::Text { emitted_len },
+                            ..
+                        }) => {
+                            // Auto-created as Text by delta handler; reclassify
+                            // to Reasoning. Early deltas were emitted as chat:chunk
+                            // — minor cosmetic issue, but streaming worked.
+                            let prev_len = *emitted_len;
                             tracked_parts.insert(
                                 part_id,
                                 TrackedPartState {
@@ -807,7 +817,21 @@ fn process_sse_event(
                                     },
                                 },
                             );
-                            text.to_string()
+                            unseen_suffix(text, prev_len).to_string()
+                        }
+                        _ => {
+                            // Same as text: don't emit new reasoning parts from
+                            // message.part.updated — deltas handle initial streaming.
+                            tracked_parts.insert(
+                                part_id,
+                                TrackedPartState {
+                                    session_id: part_session_id.to_string(),
+                                    kind: TrackedPartKind::Reasoning {
+                                        emitted_len: text.len(),
+                                    },
+                                },
+                            );
+                            String::new()
                         }
                     };
 
@@ -993,10 +1017,41 @@ fn process_sse_event(
                     Some(true)
                 }
                 _ => {
-                    log::info!(
-                        "OpenCode SSE: delta for unknown part part_id='{part_id}' field='{field}'"
-                    );
-                    Some(false)
+                    // Delta arrived before message.part.updated — auto-create
+                    // tracking entry and emit immediately so streaming works.
+                    match field {
+                        "text" => {
+                            // Cannot distinguish text vs reasoning from delta alone;
+                            // default to Text. If message.part.updated later reveals
+                            // reasoning, the handler reclassifies and unseen_suffix
+                            // prevents duplicate emission.
+                            tracked_parts.insert(
+                                part_id.to_string(),
+                                TrackedPartState {
+                                    session_id: delta_session_id.to_string(),
+                                    kind: TrackedPartKind::Text {
+                                        emitted_len: delta.len(),
+                                    },
+                                },
+                            );
+                            emit_chat_chunk(app, session_id, worktree_id, delta);
+                            Some(true)
+                        }
+                        f if f.contains("output") => {
+                            // Tool output delta without a prior tool tracking entry.
+                            // Can't emit tool_result without tool_call_id — defer.
+                            log::info!(
+                                "OpenCode SSE: tool output delta for untracked part_id='{part_id}', deferring"
+                            );
+                            Some(false)
+                        }
+                        _ => {
+                            log::info!(
+                                "OpenCode SSE: delta for unknown part part_id='{part_id}' field='{field}'"
+                            );
+                            Some(false)
+                        }
+                    }
                 }
             }
         }
