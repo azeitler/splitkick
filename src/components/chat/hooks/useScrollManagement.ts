@@ -86,6 +86,9 @@ export function useScrollManagement({
         isAtBottomRef.current = false
         setIsAtBottom(false)
         userScrollUpUntilRef.current = Date.now() + 1000
+      } else if (e.deltaY > 0) {
+        // User scrolling down — clear cooldown so bottom detection works
+        userScrollUpUntilRef.current = 0
       }
     }
 
