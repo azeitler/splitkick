@@ -4,6 +4,11 @@ use super::types::{ContentBlock, ToolCall, UsageData};
 use crate::http_server::EmitExt;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use regex::Regex;
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
+use tauri::AppHandle;
 
 #[derive(serde::Serialize, Clone)]
 struct ChunkEvent {
@@ -68,6 +73,114 @@ pub struct OpenCodeResponse {
     pub content_blocks: Vec<ContentBlock>,
     pub cancelled: bool,
     pub usage: Option<UsageData>,
+}
+
+#[derive(Debug, Clone)]
+enum TrackedPartKind {
+    Text {
+        emitted_len: usize,
+    },
+    Reasoning {
+        emitted_len: usize,
+    },
+    Tool {
+        tool_call_id: String,
+        tool_name: String,
+        emitted_started: bool,
+        last_output: Option<String>,
+    },
+    Other,
+}
+
+#[derive(Debug, Clone)]
+struct TrackedPartState {
+    session_id: String,
+    kind: TrackedPartKind,
+}
+
+fn emit_chat_chunk(app: &AppHandle, session_id: &str, worktree_id: &str, content: &str) {
+    if content.is_empty() {
+        return;
+    }
+
+    let _ = app.emit_all(
+        "chat:chunk",
+        &ChunkEvent {
+            session_id: session_id.to_string(),
+            worktree_id: worktree_id.to_string(),
+            content: content.to_string(),
+        },
+    );
+}
+
+fn emit_chat_thinking(app: &AppHandle, session_id: &str, worktree_id: &str, content: &str) {
+    if content.is_empty() {
+        return;
+    }
+
+    let _ = app.emit_all(
+        "chat:thinking",
+        &ThinkingEvent {
+            session_id: session_id.to_string(),
+            worktree_id: worktree_id.to_string(),
+            content: content.to_string(),
+        },
+    );
+}
+
+fn emit_chat_tool_use(
+    app: &AppHandle,
+    session_id: &str,
+    worktree_id: &str,
+    tool_call_id: &str,
+    tool_name: &str,
+    input: serde_json::Value,
+) {
+    let _ = app.emit_all(
+        "chat:tool_use",
+        &ToolUseEvent {
+            session_id: session_id.to_string(),
+            worktree_id: worktree_id.to_string(),
+            id: tool_call_id.to_string(),
+            name: tool_name.to_string(),
+            input,
+            parent_tool_use_id: None,
+        },
+    );
+    let _ = app.emit_all(
+        "chat:tool_block",
+        &ToolBlockEvent {
+            session_id: session_id.to_string(),
+            worktree_id: worktree_id.to_string(),
+            tool_call_id: tool_call_id.to_string(),
+        },
+    );
+}
+
+fn emit_chat_tool_result(
+    app: &AppHandle,
+    session_id: &str,
+    worktree_id: &str,
+    tool_call_id: &str,
+    output: &str,
+) {
+    let _ = app.emit_all(
+        "chat:tool_result",
+        &ToolResultEvent {
+            session_id: session_id.to_string(),
+            worktree_id: worktree_id.to_string(),
+            tool_use_id: tool_call_id.to_string(),
+            output: output.to_string(),
+        },
+    );
+}
+
+fn unseen_suffix(full_text: &str, emitted_len: usize) -> &str {
+    if emitted_len <= full_text.len() && full_text.is_char_boundary(emitted_len) {
+        &full_text[emitted_len..]
+    } else {
+        full_text
+    }
 }
 
 fn choose_model(all_providers: &serde_json::Value) -> Option<(String, String)> {
@@ -310,6 +423,611 @@ fn prepare_opencode_parts(prompt: &str) -> serde_json::Value {
     serde_json::Value::Array(parts)
 }
 
+// ---------------------------------------------------------------------------
+// SSE streaming support (OpenCode global event stream: GET /event)
+// ---------------------------------------------------------------------------
+//
+// OpenCode SSE wire format:
+//   data: {"directory":"...","payload":{"type":"message.part","properties":{...}}}
+//
+// Part types in properties:
+//   text       → { id, type:"text", text }
+//   tool_call  → { id, type:"tool_call", tool_name, tool_input, tool_call_id, metadata }
+//   tool_result→ { id, type:"tool_result", tool_name, tool_output, tool_call_id, metadata }
+//   (others: file, agent, subtask)
+
+/// Spawn a background thread that connects to OpenCode's global SSE endpoint
+/// (`GET /event`) and emits `chat:*` events in real-time.
+///
+/// Returns an `Arc<AtomicBool>` that becomes `true` once at least one
+/// event has been successfully emitted to the UI.
+#[allow(clippy::too_many_arguments)]
+fn spawn_sse_listener(
+    app: AppHandle,
+    base_url: String,
+    opencode_session_id: String,
+    session_id: String,
+    worktree_id: String,
+    working_dir: String,
+    done_flag: Arc<AtomicBool>,
+    cancelled: Arc<AtomicBool>,
+    sse_ready_tx: std::sync::mpsc::SyncSender<bool>,
+) -> Arc<AtomicBool> {
+    let sse_active = Arc::new(AtomicBool::new(false));
+    let sse_active_clone = sse_active.clone();
+
+    std::thread::Builder::new()
+        .name("opencode-sse".into())
+        .spawn(move || {
+            let rt = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(rt) => rt,
+                Err(e) => {
+                    log::warn!("OpenCode SSE: failed to create tokio runtime: {e}");
+                    let _ = sse_ready_tx.send(false);
+                    return;
+                }
+            };
+
+            rt.block_on(sse_listener_loop(
+                app,
+                base_url,
+                opencode_session_id,
+                session_id,
+                worktree_id,
+                working_dir,
+                done_flag,
+                cancelled,
+                sse_active_clone,
+                sse_ready_tx,
+            ));
+        })
+        .ok(); // Detach — don't join
+
+    sse_active
+}
+
+/// Async loop: connect to `GET /event`, parse SSE, emit `chat:*` events.
+#[allow(clippy::too_many_arguments)]
+async fn sse_listener_loop(
+    app: AppHandle,
+    base_url: String,
+    opencode_session_id: String,
+    session_id: String,
+    worktree_id: String,
+    working_dir: String,
+    done_flag: Arc<AtomicBool>,
+    cancelled: Arc<AtomicBool>,
+    sse_active: Arc<AtomicBool>,
+    sse_ready_tx: std::sync::mpsc::SyncSender<bool>,
+) {
+    let client = match reqwest::Client::builder().no_proxy().build() {
+        Ok(c) => c,
+        Err(e) => {
+            log::warn!("OpenCode SSE: failed to build async client: {e}");
+            let _ = sse_ready_tx.send(false);
+            return;
+        }
+    };
+
+    // The global SSE endpoint is GET /event (no directory filter — it broadcasts all events)
+    let url = format!("{base_url}/event");
+    log::info!("OpenCode SSE: connecting to {url}");
+    let query = [("directory", working_dir.clone())];
+
+    let response = match client
+        .get(&url)
+        .query(&query)
+        .header("Accept", "text/event-stream")
+        .header("Cache-Control", "no-cache")
+        .send()
+        .await
+    {
+        Ok(resp) if resp.status().is_success() => {
+            let content_type = resp
+                .headers()
+                .get("content-type")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("");
+            if content_type.contains("text/event-stream") {
+                log::info!("OpenCode SSE: connected (content-type: {content_type})");
+                resp
+            } else {
+                log::info!(
+                    "OpenCode SSE: /event returned 200 but content-type='{content_type}' (not SSE)"
+                );
+                let _ = sse_ready_tx.send(false);
+                return;
+            }
+        }
+        Ok(resp) => {
+            log::info!("OpenCode SSE: /event returned {}", resp.status());
+            let _ = sse_ready_tx.send(false);
+            return;
+        }
+        Err(e) => {
+            log::info!("OpenCode SSE: /event connection failed: {e}");
+            let _ = sse_ready_tx.send(false);
+            return;
+        }
+    };
+
+    let _ = sse_ready_tx.send(true);
+
+    // Read SSE stream chunk by chunk
+    let mut response = response;
+    let mut buffer = String::new();
+    let mut current_data = String::new();
+    let mut total_events_emitted: u64 = 0;
+    let mut total_chunks: u64 = 0;
+    let mut poll_count: u64 = 0;
+    let mut tracked_parts: HashMap<String, TrackedPartState> = HashMap::new();
+    let mut last_activity = tokio::time::Instant::now();
+    let drain_window = Duration::from_millis(750);
+
+    log::info!(
+        "OpenCode SSE: listening for events (opencode_session={opencode_session_id}, directory={working_dir})"
+    );
+
+    loop {
+        if cancelled.load(Ordering::Relaxed) {
+            log::info!(
+                "OpenCode SSE: stopping (cancelled), {total_chunks} chunks, \
+                 {total_events_emitted} events, {poll_count} polls, buffer_len={}",
+                buffer.len()
+            );
+            if !buffer.is_empty() {
+                let preview: String = buffer.chars().take(500).collect();
+                log::info!("OpenCode SSE: leftover buffer: {preview}");
+            }
+            break;
+        }
+
+        let draining = done_flag.load(Ordering::Relaxed);
+        if draining && last_activity.elapsed() >= drain_window {
+            log::info!(
+                "OpenCode SSE: stopping after drain window, {total_chunks} chunks, \
+                 {total_events_emitted} events, {poll_count} polls, buffer_len={}",
+                buffer.len()
+            );
+            break;
+        }
+
+        poll_count += 1;
+        let chunk = tokio::select! {
+            biased;
+            c = response.chunk() => c,
+            _ = tokio::time::sleep(if draining {
+                Duration::from_millis(100)
+            } else {
+                Duration::from_millis(500)
+            }) => {
+                if draining && last_activity.elapsed() >= drain_window {
+                    log::info!(
+                        "OpenCode SSE: drain window elapsed after {total_chunks} chunks, \
+                         {total_events_emitted} events emitted"
+                    );
+                    break;
+                }
+                if !draining && poll_count % 4 == 0 {
+                    log::info!(
+                        "OpenCode SSE: poll #{poll_count} (no data), chunks={total_chunks}, \
+                         events={total_events_emitted}, buffer_len={}",
+                        buffer.len()
+                    );
+                }
+                continue;
+            },
+        };
+
+        match chunk {
+            Ok(Some(bytes)) => {
+                total_chunks += 1;
+                last_activity = tokio::time::Instant::now();
+                let chunk_str = String::from_utf8_lossy(&bytes);
+                let preview: String = chunk_str.chars().take(300).collect();
+                log::info!(
+                    "OpenCode SSE: chunk #{total_chunks} ({} bytes): {preview}{}",
+                    bytes.len(),
+                    if chunk_str.len() > 300 { "..." } else { "" }
+                );
+                buffer.push_str(&chunk_str);
+
+                while let Some(newline_pos) = buffer.find('\n') {
+                    let line = buffer[..newline_pos].trim_end_matches('\r').to_string();
+                    buffer = buffer[newline_pos + 1..].to_string();
+
+                    if line.is_empty() {
+                        // End of SSE event — dispatch
+                        if !current_data.is_empty() {
+                            if let Some(emitted) = process_sse_event(
+                                &app,
+                                &current_data,
+                                &opencode_session_id,
+                                &session_id,
+                                &worktree_id,
+                                &mut tracked_parts,
+                            ) {
+                                if emitted {
+                                    total_events_emitted += 1;
+                                    sse_active.store(true, Ordering::Relaxed);
+                                }
+                            }
+                        }
+                        current_data.clear();
+                    } else if let Some(data) = line.strip_prefix("data: ") {
+                        if !current_data.is_empty() {
+                            current_data.push('\n');
+                        }
+                        current_data.push_str(data);
+                    } else if let Some(data) = line.strip_prefix("data:") {
+                        if !current_data.is_empty() {
+                            current_data.push('\n');
+                        }
+                        current_data.push_str(data);
+                    }
+                    // Ignore event:, id:, comments (:), etc.
+                }
+            }
+            Ok(None) => {
+                log::info!(
+                    "OpenCode SSE: stream ended after {total_chunks} chunks, \
+                     {total_events_emitted} events emitted"
+                );
+                break;
+            }
+            Err(e) => {
+                log::info!("OpenCode SSE: read error after {total_chunks} chunks: {e}");
+                break;
+            }
+        }
+    }
+}
+
+/// Parse an OpenCode SSE event and emit the appropriate `chat:*` event.
+///
+/// OpenCode SSE format (flat, no wrapper):
+///   `{"type":"message.part","properties":{...}}`
+///
+/// Returns `Some(true)` if a chat event was emitted, `Some(false)` if the
+/// event was recognized but not emittable, `None` if parsing failed.
+fn process_sse_event(
+    app: &AppHandle,
+    data: &str,
+    opencode_session_id: &str,
+    session_id: &str,
+    worktree_id: &str,
+    tracked_parts: &mut HashMap<String, TrackedPartState>,
+) -> Option<bool> {
+    let json: serde_json::Value = match serde_json::from_str(data) {
+        Ok(v) => v,
+        Err(e) => {
+            log::info!("OpenCode SSE: JSON parse error: {e}, raw: {data}");
+            return None;
+        }
+    };
+
+    // Handle both flat format ({"type":"...","properties":{...}})
+    // and wrapped format ({"directory":"...","payload":{"type":"...","properties":{...}}})
+    let (event_type, properties) = if let Some(payload) = json.get("payload") {
+        // Wrapped format
+        let t = payload.get("type")?.as_str()?;
+        let p = payload.get("properties").cloned().unwrap_or_default();
+        (t.to_string(), p)
+    } else {
+        // Flat format
+        let t = json.get("type")?.as_str()?;
+        let p = json.get("properties").cloned().unwrap_or_default();
+        (t.to_string(), p)
+    };
+
+    let event_type = event_type.as_str();
+
+    match event_type {
+        "server.connected" => {
+            log::info!("OpenCode SSE: server.connected");
+            Some(false)
+        }
+        "server.heartbeat" => Some(false),
+
+        "message.part.updated" | "message.part" => {
+            let part = if let Some(part) = properties.get("part") {
+                part
+            } else {
+                &properties
+            };
+            let part_type = part.get("type").and_then(|v| v.as_str()).unwrap_or("");
+            let part_id = part
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let part_session_id = part.get("sessionID").and_then(|v| v.as_str()).unwrap_or("");
+            let part_preview: String = part.to_string().chars().take(200).collect();
+            log::info!(
+                "OpenCode SSE: {event_type} type='{part_type}' session='{part_session_id}' → {part_preview}"
+            );
+
+            if part_session_id != opencode_session_id {
+                return Some(false);
+            }
+
+            match part_type {
+                "text" => {
+                    let text = part.get("text").and_then(|v| v.as_str()).unwrap_or("");
+                    let suffix = match tracked_parts.get_mut(&part_id) {
+                        Some(TrackedPartState {
+                            kind: TrackedPartKind::Text { emitted_len },
+                            ..
+                        }) => {
+                            let suffix = unseen_suffix(text, *emitted_len).to_string();
+                            *emitted_len = text.len();
+                            suffix
+                        }
+                        _ => {
+                            tracked_parts.insert(
+                                part_id,
+                                TrackedPartState {
+                                    session_id: part_session_id.to_string(),
+                                    kind: TrackedPartKind::Text {
+                                        emitted_len: text.len(),
+                                    },
+                                },
+                            );
+                            text.to_string()
+                        }
+                    };
+
+                    if !suffix.is_empty() {
+                        emit_chat_chunk(app, session_id, worktree_id, &suffix);
+                        return Some(true);
+                    }
+                    Some(false)
+                }
+                "reasoning" => {
+                    let text = part.get("text").and_then(|v| v.as_str()).unwrap_or("");
+                    let suffix = match tracked_parts.get_mut(&part_id) {
+                        Some(TrackedPartState {
+                            kind: TrackedPartKind::Reasoning { emitted_len },
+                            ..
+                        }) => {
+                            let suffix = unseen_suffix(text, *emitted_len).to_string();
+                            *emitted_len = text.len();
+                            suffix
+                        }
+                        _ => {
+                            tracked_parts.insert(
+                                part_id,
+                                TrackedPartState {
+                                    session_id: part_session_id.to_string(),
+                                    kind: TrackedPartKind::Reasoning {
+                                        emitted_len: text.len(),
+                                    },
+                                },
+                            );
+                            text.to_string()
+                        }
+                    };
+
+                    if !suffix.is_empty() {
+                        emit_chat_thinking(app, session_id, worktree_id, &suffix);
+                        return Some(true);
+                    }
+                    Some(false)
+                }
+                "tool" | "tool_call" => {
+                    let tool_name = part
+                        .get("tool")
+                        .or_else(|| part.get("tool_name"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("tool")
+                        .to_string();
+                    let tool_call_id = part
+                        .get("callID")
+                        .or_else(|| part.get("tool_call_id"))
+                        .and_then(|v| v.as_str())
+                        .or_else(|| part.get("id").and_then(|v| v.as_str()))
+                        .unwrap_or("tool-call")
+                        .to_string();
+                    let state = part.get("state").cloned().unwrap_or_default();
+                    let input = state
+                        .get("input")
+                        .or_else(|| part.get("tool_input"))
+                        .cloned()
+                        .unwrap_or(serde_json::json!({}));
+                    let existing_output =
+                        tracked_parts
+                            .get(&part_id)
+                            .and_then(|state| match &state.kind {
+                                TrackedPartKind::Tool { last_output, .. } => last_output.clone(),
+                                _ => None,
+                            });
+                    let mut emitted = false;
+
+                    let entry = tracked_parts
+                        .entry(part_id)
+                        .or_insert_with(|| TrackedPartState {
+                            session_id: part_session_id.to_string(),
+                            kind: TrackedPartKind::Tool {
+                                tool_call_id: tool_call_id.clone(),
+                                tool_name: tool_name.clone(),
+                                emitted_started: false,
+                                last_output: None,
+                            },
+                        });
+
+                    if entry.session_id != part_session_id {
+                        entry.session_id = part_session_id.to_string();
+                    }
+
+                    if let TrackedPartKind::Tool {
+                        tool_call_id: tracked_call_id,
+                        tool_name: tracked_tool_name,
+                        emitted_started,
+                        last_output,
+                    } = &mut entry.kind
+                    {
+                        *tracked_call_id = tool_call_id.clone();
+                        *tracked_tool_name = tool_name.clone();
+
+                        if !*emitted_started {
+                            emit_chat_tool_use(
+                                app,
+                                session_id,
+                                worktree_id,
+                                &tool_call_id,
+                                &tool_name,
+                                input,
+                            );
+                            *emitted_started = true;
+                            emitted = true;
+                        }
+
+                        let status = state
+                            .get("status")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or_default();
+                        let next_output = match status {
+                            "completed" => state
+                                .get("output")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string()),
+                            "error" => state
+                                .get("error")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string()),
+                            _ => None,
+                        };
+
+                        if let Some(output) = next_output {
+                            if existing_output.as_ref() != Some(&output) {
+                                emit_chat_tool_result(
+                                    app,
+                                    session_id,
+                                    worktree_id,
+                                    &tool_call_id,
+                                    &output,
+                                );
+                                *last_output = Some(output);
+                                emitted = true;
+                            }
+                        }
+                    }
+
+                    Some(emitted)
+                }
+                _ => {
+                    if !part_id.is_empty() {
+                        tracked_parts
+                            .entry(part_id)
+                            .or_insert_with(|| TrackedPartState {
+                                session_id: part_session_id.to_string(),
+                                kind: TrackedPartKind::Other,
+                            });
+                    }
+                    log::info!(
+                        "OpenCode SSE: unknown part type '{part_type}', properties={part_preview}"
+                    );
+                    Some(false)
+                }
+            }
+        }
+        "message.part.delta" => {
+            let delta_session_id = properties
+                .get("sessionID")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if delta_session_id != opencode_session_id {
+                return Some(false);
+            }
+
+            let part_id = properties
+                .get("partID")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let field = properties
+                .get("field")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let delta = properties
+                .get("delta")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+
+            if part_id.is_empty() || delta.is_empty() {
+                return Some(false);
+            }
+
+            match tracked_parts.get_mut(part_id) {
+                Some(TrackedPartState {
+                    kind: TrackedPartKind::Text { emitted_len },
+                    ..
+                }) if field == "text" => {
+                    *emitted_len += delta.len();
+                    emit_chat_chunk(app, session_id, worktree_id, delta);
+                    Some(true)
+                }
+                Some(TrackedPartState {
+                    kind: TrackedPartKind::Reasoning { emitted_len },
+                    ..
+                }) if field == "text" => {
+                    *emitted_len += delta.len();
+                    emit_chat_thinking(app, session_id, worktree_id, delta);
+                    Some(true)
+                }
+                Some(TrackedPartState {
+                    kind:
+                        TrackedPartKind::Tool {
+                            tool_call_id,
+                            last_output,
+                            ..
+                        },
+                    ..
+                }) if field.contains("output") => {
+                    let mut next_output = last_output.clone().unwrap_or_default();
+                    next_output.push_str(delta);
+                    *last_output = Some(next_output.clone());
+                    emit_chat_tool_result(app, session_id, worktree_id, tool_call_id, &next_output);
+                    Some(true)
+                }
+                _ => {
+                    log::info!(
+                        "OpenCode SSE: delta for unknown part part_id='{part_id}' field='{field}'"
+                    );
+                    Some(false)
+                }
+            }
+        }
+
+        "message.created" => {
+            log::info!(
+                "OpenCode SSE: message.created, role={:?}",
+                properties.get("role").and_then(|v| v.as_str())
+            );
+            Some(false)
+        }
+
+        "session.updated" => {
+            log::info!(
+                "OpenCode SSE: session.updated id={:?}",
+                properties
+                    .get("info")
+                    .and_then(|info| info.get("id"))
+                    .and_then(|v| v.as_str())
+                    .or_else(|| properties.get("id").and_then(|v| v.as_str()))
+            );
+            Some(false)
+        }
+
+        _ => {
+            log::info!("OpenCode SSE: event type='{event_type}'");
+            Some(false)
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn execute_opencode_http(
     app: &tauri::AppHandle,
@@ -322,10 +1040,8 @@ pub fn execute_opencode_http(
     reasoning_effort: Option<&str>,
     prompt: &str,
     system_prompt: Option<&str>,
-    cancelled: &std::sync::Arc<std::sync::atomic::AtomicBool>,
+    cancelled: &Arc<AtomicBool>,
 ) -> Result<OpenCodeResponse, String> {
-    use std::sync::atomic::Ordering;
-
     // Check for cancellation before doing any work
     if cancelled.load(Ordering::SeqCst) {
         return Ok(OpenCodeResponse {
@@ -350,8 +1066,9 @@ pub fn execute_opencode_http(
     }
     let _server_guard = ServerReleaseGuard;
 
+    // 30 min timeout — OpenCode agentic tasks can run for extended periods
     let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(300))
+        .timeout(std::time::Duration::from_secs(1800))
         .build()
         .map_err(|e| format!("Failed to build OpenCode HTTP client: {e}"))?;
 
@@ -430,6 +1147,33 @@ pub fn execute_opencode_http(
         });
     }
 
+    // --- SSE streaming: spawn a background listener before sending POST ---
+    let done_flag = Arc::new(AtomicBool::new(false));
+    let (sse_ready_tx, sse_ready_rx) = std::sync::mpsc::sync_channel::<bool>(1);
+
+    let sse_active = spawn_sse_listener(
+        app.clone(),
+        base_url.clone(),
+        opencode_session_id.clone(),
+        session_id.to_string(),
+        worktree_id.to_string(),
+        working_dir.to_string_lossy().to_string(),
+        done_flag.clone(),
+        cancelled.clone(),
+        sse_ready_tx,
+    );
+
+    // Wait up to 3 seconds for SSE to signal ready (connected or failed)
+    let sse_connected = sse_ready_rx
+        .recv_timeout(std::time::Duration::from_secs(3))
+        .unwrap_or(false);
+
+    if sse_connected {
+        log::info!("OpenCode: SSE streaming active, events will stream in real-time");
+    } else {
+        log::info!("OpenCode: SSE not available, will emit events from POST response");
+    }
+
     let msg_url = format!("{base_url}/session/{opencode_session_id}/message");
 
     let mut payload = serde_json::json!({
@@ -465,6 +1209,7 @@ pub fn execute_opencode_http(
     };
 
     if !response.status().is_success() {
+        done_flag.store(true, Ordering::Relaxed);
         let status = response.status();
         let body = response.text().unwrap_or_default();
         let error = format!("OpenCode message failed: status={status}, body={body}");
@@ -482,6 +1227,24 @@ pub fn execute_opencode_http(
     let response_json: serde_json::Value = response
         .json()
         .map_err(|e| format!("Failed to parse OpenCode message response: {e}"))?;
+
+    // Let the SSE listener drain any trailing events before deciding whether
+    // the POST response needs to synthesize the stream.
+    std::thread::sleep(Duration::from_millis(200));
+
+    // Check if SSE successfully streamed events — if so, skip emitting from
+    // the POST response to avoid duplicates. The POST response is still parsed
+    // to build the return value (content, tool_calls, content_blocks, usage).
+    let streamed_via_sse = sse_active.load(Ordering::Relaxed);
+    log::info!(
+        "OpenCode: POST response received, streamed_via_sse={streamed_via_sse}, \
+         will {} events from POST response",
+        if streamed_via_sse {
+            "SKIP emitting"
+        } else {
+            "EMIT"
+        }
+    );
 
     let mut content = String::new();
     let mut tool_calls: Vec<ToolCall> = Vec::new();
@@ -503,14 +1266,16 @@ pub fn execute_opencode_http(
                         content_blocks.push(ContentBlock::Text {
                             text: text.to_string(),
                         });
-                        let _ = app.emit_all(
-                            "chat:chunk",
-                            &ChunkEvent {
-                                session_id: session_id.to_string(),
-                                worktree_id: worktree_id.to_string(),
-                                content: text.to_string(),
-                            },
-                        );
+                        if !streamed_via_sse {
+                            let _ = app.emit_all(
+                                "chat:chunk",
+                                &ChunkEvent {
+                                    session_id: session_id.to_string(),
+                                    worktree_id: worktree_id.to_string(),
+                                    content: text.to_string(),
+                                },
+                            );
+                        }
                     }
                 }
             }
@@ -519,14 +1284,16 @@ pub fn execute_opencode_http(
                     content_blocks.push(ContentBlock::Thinking {
                         thinking: text.to_string(),
                     });
-                    let _ = app.emit_all(
-                        "chat:thinking",
-                        &ThinkingEvent {
-                            session_id: session_id.to_string(),
-                            worktree_id: worktree_id.to_string(),
-                            content: text.to_string(),
-                        },
-                    );
+                    if !streamed_via_sse {
+                        let _ = app.emit_all(
+                            "chat:thinking",
+                            &ThinkingEvent {
+                                session_id: session_id.to_string(),
+                                worktree_id: worktree_id.to_string(),
+                                content: text.to_string(),
+                            },
+                        );
+                    }
                 }
             }
             Some("tool") => {
@@ -555,25 +1322,27 @@ pub fn execute_opencode_http(
                     tool_call_id: tool_call_id.clone(),
                 });
 
-                let _ = app.emit_all(
-                    "chat:tool_use",
-                    &ToolUseEvent {
-                        session_id: session_id.to_string(),
-                        worktree_id: worktree_id.to_string(),
-                        id: tool_call_id.clone(),
-                        name: tool_name,
-                        input,
-                        parent_tool_use_id: None,
-                    },
-                );
-                let _ = app.emit_all(
-                    "chat:tool_block",
-                    &ToolBlockEvent {
-                        session_id: session_id.to_string(),
-                        worktree_id: worktree_id.to_string(),
-                        tool_call_id: tool_call_id.clone(),
-                    },
-                );
+                if !streamed_via_sse {
+                    let _ = app.emit_all(
+                        "chat:tool_use",
+                        &ToolUseEvent {
+                            session_id: session_id.to_string(),
+                            worktree_id: worktree_id.to_string(),
+                            id: tool_call_id.clone(),
+                            name: tool_name,
+                            input,
+                            parent_tool_use_id: None,
+                        },
+                    );
+                    let _ = app.emit_all(
+                        "chat:tool_block",
+                        &ToolBlockEvent {
+                            session_id: session_id.to_string(),
+                            worktree_id: worktree_id.to_string(),
+                            tool_call_id: tool_call_id.clone(),
+                        },
+                    );
+                }
 
                 let status = state
                     .get("status")
@@ -595,15 +1364,17 @@ pub fn execute_opencode_http(
                     if let Some(call) = tool_calls.iter_mut().find(|t| t.id == tool_call_id) {
                         call.output = Some(output.clone());
                     }
-                    let _ = app.emit_all(
-                        "chat:tool_result",
-                        &ToolResultEvent {
-                            session_id: session_id.to_string(),
-                            worktree_id: worktree_id.to_string(),
-                            tool_use_id: tool_call_id,
-                            output,
-                        },
-                    );
+                    if !streamed_via_sse {
+                        let _ = app.emit_all(
+                            "chat:tool_result",
+                            &ToolResultEvent {
+                                session_id: session_id.to_string(),
+                                worktree_id: worktree_id.to_string(),
+                                tool_use_id: tool_call_id,
+                                output,
+                            },
+                        );
+                    }
                 }
             }
             Some("step-finish") => {
@@ -632,6 +1403,7 @@ pub fn execute_opencode_http(
             waiting_for_plan: execution_mode == Some("plan") && !content.is_empty(),
         },
     );
+    done_flag.store(true, Ordering::Relaxed);
 
     Ok(OpenCodeResponse {
         content,
@@ -697,7 +1469,7 @@ fn one_shot_opencode_blocking(
     dir: &str,
 ) -> Result<String, String> {
     let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(300))
+        .timeout(std::time::Duration::from_secs(600))
         .build()
         .map_err(|e| format!("Failed to build OpenCode HTTP client: {e}"))?;
 

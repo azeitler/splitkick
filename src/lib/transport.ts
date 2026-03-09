@@ -432,7 +432,7 @@ class WsTransport {
     'install_opencode_cli',
     'install_gh_cli',
   ])
-  private static readonly LONG_TIMEOUT = 10 * 60_000
+  private static readonly LONG_TIMEOUT = 30 * 60_000
   private static readonly DEFAULT_TIMEOUT = 60_000
   private static readonly CONNECT_TIMEOUT = 12_000
   private static readonly MAX_QUEUE_SIZE = 500
