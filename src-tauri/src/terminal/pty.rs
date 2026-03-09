@@ -9,6 +9,17 @@ use super::types::{
     TerminalOutputEvent, TerminalSession, TerminalStartedEvent, TerminalStoppedEvent,
 };
 
+/// Quote a string for safe use in shell commands.
+/// Wraps in single quotes, escaping any embedded single quotes.
+fn shell_quote(s: &str) -> String {
+    // If no special characters, return as-is
+    if !s.contains(|c: char| c.is_whitespace() || c == '\'' || c == '"' || c == '\\' || c == '$' || c == '`' || c == '!' || c == '(' || c == ')') {
+        return s.to_string();
+    }
+    // Single-quote the string, replacing ' with '\'' (end quote, escaped quote, start quote)
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
+
 /// Detect user's default shell (cross-platform)
 fn get_user_shell() -> String {
     crate::platform::get_default_shell()
@@ -55,12 +66,34 @@ pub fn spawn_terminal(
     // Build command - either run a specific command or start interactive shell
     let mut cmd = if let Some(ref run_command) = command {
         if let Some(ref args) = command_args {
-            // Direct binary invocation — bypass shell to avoid argument mangling
-            let mut c = CommandBuilder::new(run_command);
-            for arg in args {
-                c.arg(arg);
+            // If the binary path contains spaces (e.g. "~/Library/Application Support/..."),
+            // CommandBuilder::new() can fail on macOS. Use a shell wrapper instead.
+            #[cfg(not(windows))]
+            let needs_shell_wrapper = run_command.contains(' ');
+            #[cfg(windows)]
+            let needs_shell_wrapper = false;
+
+            if needs_shell_wrapper {
+                log::trace!("Command path contains spaces, using shell wrapper");
+                // Build a properly quoted shell command: '/path/with spaces/bin' arg1 arg2
+                let mut parts = vec![shell_quote(run_command)];
+                for arg in args {
+                    parts.push(shell_quote(arg));
+                }
+                let full_command = parts.join(" ");
+                log::trace!("Shell command: {full_command}");
+                let mut c = CommandBuilder::new(&shell);
+                c.arg("-c");
+                c.arg(&full_command);
+                c
+            } else {
+                // Direct binary invocation — bypass shell to avoid argument mangling
+                let mut c = CommandBuilder::new(run_command);
+                for arg in args {
+                    c.arg(arg);
+                }
+                c
             }
-            c
         } else {
             // Run the command wrapped in a shell
             let mut c = CommandBuilder::new(&shell);
@@ -72,8 +105,8 @@ pub fn spawn_terminal(
             #[cfg(not(windows))]
             {
                 c.arg("-c");
-                // Note: Caller is responsible for properly quoting paths with spaces
-                c.arg(run_command);
+                // Quote the command in case it contains spaces
+                c.arg(&shell_quote(run_command));
             }
             c
         }
