@@ -1855,6 +1855,7 @@ pub fn execute_one_shot_codex(
     model: &str,
     output_schema: &str,
     working_dir: Option<&std::path::Path>,
+    reasoning_effort: Option<&str>,
 ) -> Result<String, String> {
     let cli_path = crate::codex_cli::resolve_cli_binary(app);
 
@@ -1863,8 +1864,9 @@ pub fn execute_one_shot_codex(
     }
 
     log::info!(
-        "Executing one-shot Codex CLI: model={model}, working_dir={:?}",
-        working_dir
+        "Executing one-shot Codex CLI: model={model}, working_dir={:?}, reasoning_effort={:?}",
+        working_dir,
+        reasoning_effort
     );
 
     // Write schema to a temp file since --output-schema expects a file path
