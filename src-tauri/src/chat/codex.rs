@@ -1055,6 +1055,9 @@ fn tail_codex_attached(
                     "agent_message" => {
                         if let Some(text) = item.get("text").and_then(|v| v.as_str()) {
                             if !text.is_empty() {
+                                if !full_content.is_empty() {
+                                    full_content.push_str("\n\n");
+                                }
                                 full_content.push_str(text);
                                 content_blocks.push(ContentBlock::Text {
                                     text: text.to_string(),
@@ -1660,6 +1663,9 @@ fn process_codex_event(
                 "agent_message" => {
                     if let Some(text) = item.get("text").and_then(|v| v.as_str()) {
                         if !text.is_empty() {
+                            if !full_content.is_empty() {
+                                full_content.push_str("\n\n");
+                            }
                             full_content.push_str(text);
                             content_blocks.push(ContentBlock::Text {
                                 text: text.to_string(),
@@ -2321,6 +2327,9 @@ pub fn parse_codex_run_to_message(
                 match item_type {
                     "agent_message" => {
                         if let Some(text) = item.get("text").and_then(|v| v.as_str()) {
+                            if !content.is_empty() {
+                                content.push_str("\n\n");
+                            }
                             content.push_str(text);
                             content_blocks.push(ContentBlock::Text {
                                 text: text.to_string(),
@@ -2477,6 +2486,7 @@ pub fn execute_one_shot_codex(
     model: &str,
     output_schema: &str,
     working_dir: Option<&std::path::Path>,
+    reasoning_effort: Option<&str>,
 ) -> Result<String, String> {
     let cli_path = crate::codex_cli::resolve_cli_binary(app);
 
@@ -2511,6 +2521,9 @@ pub fn execute_one_shot_codex(
     } else {
         // One-shot calls that don't know a repository path should still run.
         cmd.arg("--skip-git-repo-check");
+    }
+    if let Some(effort) = reasoning_effort {
+        cmd.args(["-c", &format!("model_reasoning_effort=\"{effort}\"")]);
     }
     cmd.arg("-"); // Read prompt from stdin
     cmd.stdin(std::process::Stdio::piped())

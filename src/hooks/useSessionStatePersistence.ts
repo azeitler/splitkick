@@ -380,13 +380,10 @@ export function useSessionStatePersistence() {
       }
     }
 
-    // Load queued messages from session (persisted for cross-client sync)
-    if (session.queued_messages && session.queued_messages.length > 0) {
-      updates.messageQueues = {
-        ...currentState.messageQueues,
-        [activeSessionId]: session.queued_messages,
-      }
-    }
+    // NOTE: Do NOT load queued_messages from session data into Zustand here.
+    // Queue state is synced in real-time via the queue:updated Tauri event
+    // (useMainWindowEventListeners). Loading from TanStack cache is redundant
+    // and can restore stale data, causing double execution.
 
     // When opening a session that's in plan-waiting state (Codex/Opencode plan mode),
     // transition it to review — viewing the session acts as acknowledgment.

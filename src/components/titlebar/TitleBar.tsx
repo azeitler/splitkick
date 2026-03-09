@@ -1,7 +1,6 @@
 import type React from 'react'
 import { useState, useEffect } from 'react'
 import { cn } from '@/lib/utils'
-import { MacOSWindowControls } from './MacOSWindowControls'
 import { WindowsWindowControls } from './WindowsWindowControls'
 import { isMacOS, openExternal } from '@/lib/platform'
 import { Button } from '@/components/ui/button'
@@ -64,7 +63,7 @@ export function TitleBar({
       {...(native ? { 'data-tauri-drag-region': true } : {})}
       className={cn(
         'relative flex h-8 w-full shrink-0 items-center justify-between',
-        isMobile ? 'bg-background' : 'bg-sidebar',
+        'bg-background px-2',
         native && 'z-[60]',
         className
       )}
@@ -74,13 +73,11 @@ export function TitleBar({
         className="flex items-center"
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       >
-        {native && isMacOS && <MacOSWindowControls />}
-
         {/* Left Action Buttons */}
         <div
           className={cn(
             'flex items-center gap-1',
-            (!native || !isMacOS) && 'pl-2'
+            native && isMacOS ? 'pl-[68px]' : 'pl-2'
           )}
         >
           <Tooltip>
@@ -89,7 +86,7 @@ export function TitleBar({
                 onClick={toggleLeftSidebar}
                 variant="ghost"
                 size="icon"
-                className="h-6 w-6 text-foreground/70 hover:text-foreground"
+                className="h-6 w-6 rounded-none text-foreground/70 hover:text-foreground"
               >
                 {leftSidebarVisible ? (
                   <PanelLeftClose className="h-3 w-3" />
@@ -111,7 +108,7 @@ export function TitleBar({
                 onClick={commandContext.openPreferences}
                 variant="ghost"
                 size="icon"
-                className="h-6 w-6 text-foreground/70 hover:text-foreground"
+                className="h-6 w-6 rounded-none text-foreground/70 hover:text-foreground"
               >
                 <Settings className="h-3 w-3" />
               </Button>
@@ -132,12 +129,27 @@ export function TitleBar({
                 onClick={() => openExternal('https://jean.build/sponsorships/')}
                 variant="ghost"
                 size="icon"
-                className="h-6 w-6 text-pink-500 hover:text-pink-400"
+                className="h-6 w-6 rounded-none text-pink-500 hover:text-pink-400"
               >
                 <Heart className="h-3 w-3" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>Sponsor</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                onClick={() =>
+                  openExternal('https://github.com/coollabsio/jean')
+                }
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 rounded-none text-foreground/70 hover:text-foreground"
+              >
+                <Github className="h-3 w-3" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>GitHub</TooltipContent>
           </Tooltip>
         </div>
       </div>
@@ -168,21 +180,6 @@ export function TitleBar({
             v{appVersion}
           </button>
         )}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              onClick={() =>
-                openExternal('https://github.com/coollabsio/jean')
-              }
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 text-foreground/70 hover:text-foreground"
-            >
-              <Github className="h-3 w-3" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>GitHub</TooltipContent>
-        </Tooltip>
         {native && !isMacOS && <WindowsWindowControls />}
       </div>
     </div>

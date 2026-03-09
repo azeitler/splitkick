@@ -59,6 +59,7 @@ interface UseLoadContextHandlersOptions {
     | {
         magic_prompts?: { context_summary?: string | null }
         magic_prompt_models?: { context_summary_model?: string | null }
+        magic_prompt_efforts?: { context_summary_effort?: string | null }
         magic_prompt_providers?: MagicPromptProviders
         default_provider?: string | null
       }
@@ -707,6 +708,7 @@ export function useLoadContextHandlers({
               'context_summary_provider',
               preferences?.default_provider
             ),
+            reasoningEffort: preferences?.magic_prompt_efforts?.context_summary_effort ?? null,
           }
         )
 
@@ -739,6 +741,7 @@ export function useLoadContextHandlers({
       preferences?.magic_prompt_models?.context_summary_model,
       preferences?.magic_prompt_providers,
       preferences?.default_provider,
+      preferences?.magic_prompt_efforts?.context_summary_effort,
       onClearSearch,
     ]
   )

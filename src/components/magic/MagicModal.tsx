@@ -346,6 +346,7 @@ export function MagicModal() {
                 'commit_message_provider',
                 preferences?.default_provider
               ),
+              reasoningEffort: preferences?.magic_prompt_efforts?.commit_message_effort ?? null,
             }
           )
           triggerImmediateGitPoll()
@@ -439,6 +440,7 @@ export function MagicModal() {
                   'pr_content_provider',
                   preferences?.default_provider
                 ),
+                reasoningEffort: preferences?.magic_prompt_efforts?.pr_content_effort ?? null,
               }
             )
             if (!result.existing) {
@@ -610,6 +612,7 @@ ${resolveInstructions}`
                 'code_review_provider',
                 preferences?.default_provider
               ),
+              reasoningEffort: preferences?.magic_prompt_efforts?.code_review_effort ?? null,
               reviewRunId,
             })
 

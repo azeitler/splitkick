@@ -573,6 +573,7 @@ export function useCommandContext(
           'code_review_provider',
           preferences?.default_provider
         ),
+        reasoningEffort: preferences?.magic_prompt_efforts?.code_review_effort ?? null,
       })
 
       // Store review results in Zustand (also activates review tab)
@@ -599,6 +600,7 @@ export function useCommandContext(
     preferences?.magic_prompt_models?.code_review_model,
     preferences?.magic_prompt_providers,
     preferences?.default_provider,
+    preferences?.magic_prompt_efforts?.code_review_effort,
   ])
 
   // Terminal - Open terminal panel
@@ -726,6 +728,7 @@ export function useCommandContext(
           'session_naming_provider',
           preferences?.default_provider
         ),
+        reasoningEffort: preferences?.magic_prompt_efforts?.session_naming_effort ?? null,
       })
       toast.success('Session title will update shortly', { id: toastId })
     } catch (error) {
@@ -737,6 +740,7 @@ export function useCommandContext(
     preferences?.magic_prompt_models?.session_naming_model,
     preferences?.magic_prompt_providers,
     preferences?.default_provider,
+    preferences?.magic_prompt_efforts?.session_naming_effort,
   ])
 
   // State getter - Check if run script is available

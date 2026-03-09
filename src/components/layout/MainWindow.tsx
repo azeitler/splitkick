@@ -376,11 +376,11 @@ export function MainWindow() {
     <div
       className={`flex h-dvh w-full flex-col overflow-hidden bg-background ${isNativeApp() ? 'rounded-xl' : ''}`}
     >
-      {/* Dev Mode Banner */}
-      <DevModeBanner />
-
       {/* Title Bar */}
       <TitleBar title={windowTitle} hideTitle={isViewingCanvasTab} />
+
+      {/* Dev Mode Banner */}
+      <DevModeBanner />
 
       {/* Main Content Area */}
       <div className="flex flex-1 overflow-hidden">
