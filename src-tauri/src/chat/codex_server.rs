@@ -447,12 +447,12 @@ pub fn unregister_session(thread_id: &str) {
 
     let prev = USAGE_COUNT.fetch_sub(1, Ordering::SeqCst);
     if prev == 1 {
-        // Last session finished — schedule delayed shutdown (2s grace period
-        // in case another session starts quickly, matching opencode pattern).
+        // Last session finished — schedule delayed shutdown (10min grace period
+        // to keep server warm for typical work sessions).
         // Capture generation so we don't kill a newly-spawned server.
         let gen = SERVER_GENERATION.load(Ordering::SeqCst);
         std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_secs(2));
+            std::thread::sleep(std::time::Duration::from_secs(600));
             if USAGE_COUNT.load(Ordering::SeqCst) == 0
                 && SERVER_GENERATION.load(Ordering::SeqCst) == gen
             {
