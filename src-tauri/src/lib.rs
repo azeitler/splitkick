@@ -1344,6 +1344,13 @@ async fn save_preferences(app: AppHandle, preferences: AppPreferences) -> Result
     })?;
 
     log::trace!("Successfully saved preferences to {prefs_path:?}");
+
+    // Sync native menu accelerator for magic menu (macOS only)
+    #[cfg(target_os = "macos")]
+    if let Some(shortcut) = prefs_for_disk.keybindings.get("open_magic_modal") {
+        sync_magic_menu_accelerator(&app, shortcut);
+    }
+
     Ok(())
 }
 
@@ -1861,6 +1868,48 @@ async fn regenerate_http_token(app: AppHandle) -> Result<String, String> {
     Ok(new_token)
 }
 
+/// Convert a frontend shortcut string (e.g. "mod+shift+m") to Tauri accelerator format (e.g. "CmdOrCtrl+Shift+M")
+#[cfg(target_os = "macos")]
+fn shortcut_to_accelerator(shortcut: &str) -> String {
+    shortcut
+        .split('+')
+        .map(|part| match part {
+            "mod" => "CmdOrCtrl",
+            "shift" => "Shift",
+            "alt" => "Alt",
+            "arrowup" => "Up",
+            "arrowdown" => "Down",
+            "arrowleft" => "Left",
+            "arrowright" => "Right",
+            "backspace" => "Backspace",
+            "enter" => "Enter",
+            "escape" => "Escape",
+            "tab" => "Tab",
+            "space" => "Space",
+            "comma" => ",",
+            "period" => ".",
+            other => other, // single letters/digits pass through as-is
+        })
+        .collect::<Vec<_>>()
+        .join("+")
+}
+
+/// Update the native magic menu accelerator to match the user's keybinding preference
+#[cfg(target_os = "macos")]
+fn sync_magic_menu_accelerator(app: &AppHandle, shortcut: &str) {
+    use tauri::menu::MenuItemKind;
+    if let Some(menu) = app.menu() {
+        if let Some(MenuItemKind::MenuItem(item)) = menu.get("magic-menu") {
+            let accel = shortcut_to_accelerator(shortcut);
+            if let Err(e) = item.set_accelerator(Some(&accel)) {
+                log::error!("Failed to set magic menu accelerator to '{accel}': {e}");
+            } else {
+                log::trace!("Updated magic menu accelerator to '{accel}'");
+            }
+        }
+    }
+}
+
 #[cfg(target_os = "macos")]
 // Create the native menu system
 fn create_app_menu(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
@@ -1903,11 +1952,25 @@ fn create_app_menu(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error
         .item(&MenuItemBuilder::with_id("toggle-right-sidebar", "Toggle Right Sidebar").build(app)?)
         .build()?;
 
+    // Build the Window submenu
+    // CMD+M is overridden to open the magic menu instead of macOS minimize
+    let window_submenu = SubmenuBuilder::new(app, "Window")
+        .item(
+            &MenuItemBuilder::with_id("magic-menu", "Magic Menu")
+                .accelerator("CmdOrCtrl+M")
+                .build(app)?,
+        )
+        .separator()
+        .item(&PredefinedMenuItem::minimize(app, None)?)
+        .item(&PredefinedMenuItem::maximize(app, None)?)
+        .build()?;
+
     // Build the main menu with submenus
     let menu = MenuBuilder::new(app)
         .item(&app_submenu)
         .item(&edit_submenu)
         .item(&view_submenu)
+        .item(&window_submenu)
         .build()?;
 
     // Set the menu for the app
@@ -2324,6 +2387,13 @@ pub fn run() {
                                         "Failed to emit menu-toggle-right-sidebar event: {e}"
                                     )
                                 }
+                            }
+                        }
+                        "magic-menu" => {
+                            log::trace!("Magic Menu menu item clicked");
+                            match app.emit("menu-magic-menu", ()) {
+                                Ok(_) => log::trace!("Successfully emitted menu-magic-menu event"),
+                                Err(e) => log::error!("Failed to emit menu-magic-menu event: {e}"),
                             }
                         }
                         _ => {

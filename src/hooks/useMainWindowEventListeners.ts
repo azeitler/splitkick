@@ -564,6 +564,11 @@ export function useMainWindowEventListeners() {
           }
         }),
 
+        listen('menu-magic-menu', () => {
+          logger.debug('Magic menu event received from native menu')
+          executeKeybindingAction('open_magic_modal', commandContext, queryClient)
+        }),
+
         // Branch naming events (automatic branch renaming based on first message)
         listen<{ worktree_id: string; old_branch: string; new_branch: string }>(
           'branch-renamed',
