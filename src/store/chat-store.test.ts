@@ -21,6 +21,7 @@ describe('ChatStore', () => {
       fixedReviewFindings: {},
       worktreePaths: {},
       sendingSessionIds: {},
+      sendStartedAt: {},
       waitingForInputSessionIds: {},
       sessionWorktreeMap: {},
       streamingContents: {},
@@ -136,6 +137,39 @@ describe('ChatStore', () => {
 
       addSendingSession('session-1')
       expect(isWorktreeRunning('worktree-1')).toBe(true)
+    })
+
+    it('allows fast completion when the current run has streaming state', () => {
+      const now = Date.now()
+
+      useChatStore.setState({
+        sendingSessionIds: { 'session-1': true },
+        sendStartedAt: { 'session-1': now },
+        streamingContents: { 'session-1': 'Fast reply' },
+      })
+
+      useChatStore.getState().completeSession('session-1')
+
+      const state = useChatStore.getState()
+      expect(state.sendingSessionIds['session-1']).toBeUndefined()
+      expect(state.sendStartedAt['session-1']).toBeUndefined()
+      expect(state.reviewingSessions['session-1']).toBe(true)
+    })
+
+    it('blocks fast completion when no current streaming state exists', () => {
+      const now = Date.now()
+
+      useChatStore.setState({
+        sendingSessionIds: { 'session-1': true },
+        sendStartedAt: { 'session-1': now },
+      })
+
+      useChatStore.getState().completeSession('session-1')
+
+      const state = useChatStore.getState()
+      expect(state.sendingSessionIds['session-1']).toBe(true)
+      expect(state.sendStartedAt['session-1']).toBe(now)
+      expect(state.reviewingSessions['session-1']).toBeUndefined()
     })
   })
 

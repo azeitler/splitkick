@@ -430,6 +430,7 @@ pub async fn regenerate_session_name(
     custom_prompt: Option<String>,
     model: Option<String>,
     custom_profile_name: Option<String>,
+    reasoning_effort: Option<String>,
 ) -> Result<(), String> {
     log::trace!("Regenerating session name for {session_id}");
 
@@ -464,6 +465,7 @@ pub async fn regenerate_session_name(
         custom_session_prompt: custom_prompt,
         custom_profile_name,
         backend_override,
+        reasoning_effort,
     };
 
     spawn_naming_task(app, request);
@@ -1386,6 +1388,7 @@ pub async fn send_chat_message(
                         .session_naming_provider
                         .clone(),
                     backend_override: prefs.magic_prompt_backends.session_naming_backend.clone(),
+                    reasoning_effort: prefs.magic_prompt_efforts.session_naming_effort.clone(),
                 };
 
                 // Spawn in background - does not block chat
@@ -4046,6 +4049,7 @@ fn execute_summarization_claude(
     working_dir: Option<&std::path::Path>,
     worktree_id: Option<&str>,
     magic_backend: Option<&str>,
+    reasoning_effort: Option<&str>,
 ) -> Result<ContextSummaryResponse, String> {
     let model_str = model.unwrap_or("opus");
 
@@ -4060,6 +4064,7 @@ fn execute_summarization_claude(
             model_str,
             Some(CONTEXT_SUMMARY_SCHEMA),
             working_dir,
+            reasoning_effort,
         )?;
         return serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse OpenCode summarization JSON: {e}, content: {json_str}");
@@ -4075,6 +4080,7 @@ fn execute_summarization_claude(
             model_str,
             CONTEXT_SUMMARY_SCHEMA,
             working_dir,
+            reasoning_effort,
         )?;
         return serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse Codex summarization JSON: {e}, content: {json_str}");
@@ -4187,6 +4193,7 @@ pub async fn generate_context_from_session(
     custom_prompt: Option<String>,
     model: Option<String>,
     custom_profile_name: Option<String>,
+    reasoning_effort: Option<String>,
 ) -> Result<SaveContextResponse, String> {
     log::trace!(
         "Generating context from session {} for project {}",
@@ -4238,6 +4245,7 @@ pub async fn generate_context_from_session(
         Some(std::path::Path::new(&worktree_path)),
         Some(&worktree_id),
         magic_backend.as_deref(),
+        reasoning_effort.as_deref(),
     ) {
         Ok(response) => {
             // Validate slug is not empty
@@ -4744,6 +4752,7 @@ fn execute_digest_claude(
     working_dir: Option<&std::path::Path>,
     worktree_id: Option<&str>,
     magic_backend: Option<&str>,
+    reasoning_effort: Option<&str>,
 ) -> Result<SessionDigestResponse, String> {
     // Per-operation backend > project/global default_backend
     let backend = resolve_magic_prompt_backend(app, magic_backend, worktree_id);
@@ -4756,6 +4765,7 @@ fn execute_digest_claude(
             model,
             Some(SESSION_DIGEST_SCHEMA),
             working_dir,
+            reasoning_effort,
         )?;
         return serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse OpenCode digest JSON: {e}, content: {json_str}");
@@ -4771,6 +4781,7 @@ fn execute_digest_claude(
             model,
             SESSION_DIGEST_SCHEMA,
             working_dir,
+            reasoning_effort,
         )?;
         return serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse Codex digest JSON: {e}, content: {json_str}");
@@ -4913,10 +4924,11 @@ pub async fn generate_session_digest(
         .session_recap_provider
         .as_deref();
     let magic_backend = prefs.magic_prompt_backends.session_recap_backend.as_deref();
+    let effort = prefs.magic_prompt_efforts.session_recap_effort.as_deref();
 
     // Call Claude CLI with JSON schema (non-streaming)
     let response =
-        execute_digest_claude(&app, &prompt, model, provider, None, None, magic_backend)?;
+        execute_digest_claude(&app, &prompt, model, provider, None, None, magic_backend, effort)?;
 
     Ok(SessionDigest {
         chat_summary: response.chat_summary,

@@ -621,6 +621,19 @@ function getToolDisplay(toolCall: ToolCall): ToolDisplay {
       }
     }
 
+    case 'ToolSearch': {
+      const query = input.query as string | undefined
+      const maxResults =
+        (input.max_results as number | undefined) ??
+        (input.maxResults as number | undefined)
+      return {
+        icon: <Search className="h-4 w-4 shrink-0" />,
+        label: 'Tool Search',
+        detail: query,
+        expandedContent: `Query: ${query ?? '(none)'}${typeof maxResults === 'number' ? `\nMax results: ${maxResults}` : ''}`,
+      }
+    }
+
     case 'Glob': {
       const pattern = input.pattern as string | undefined
       const path = input.path as string | undefined

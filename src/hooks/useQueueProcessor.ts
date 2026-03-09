@@ -153,7 +153,9 @@ export function useQueueProcessor(): void {
         .then(msg => {
           if (!msg) {
             // Another client already dequeued this message, or the backend
-            // queue was empty. The queue:updated event will sync local state.
+            // queue was empty. Clear local Zustand queue to prevent phantom
+            // entries from lingering (defense against stale state).
+            useChatStore.getState().clearQueue(capturedSessionId)
             processingRef.current.delete(capturedSessionId)
             return
           }

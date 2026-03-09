@@ -35,6 +35,20 @@ export const DEFAULT_CODEX_MODEL: CodexModel = 'gpt-5.4'
 /** Default thinking level */
 export const DEFAULT_THINKING_LEVEL: ThinkingLevel = 'off'
 
+function hasActiveStreamingState(
+  state: Pick<
+    ChatUIState,
+    'streamingContents' | 'streamingContentBlocks' | 'activeToolCalls'
+  >,
+  sessionId: string
+): boolean {
+  return (
+    !!state.streamingContents[sessionId] ||
+    (state.streamingContentBlocks[sessionId]?.length ?? 0) > 0 ||
+    (state.activeToolCalls[sessionId]?.length ?? 0) > 0
+  )
+}
+
 interface ChatUIState {
   // Currently active worktree for chat
   activeWorktreeId: string | null
@@ -2084,15 +2098,23 @@ export const useChatStore = create<ChatUIState>()(
       completeSession: sessionId =>
         set(
           state => {
-            // Protection window: if this session just started sending (within 500ms),
-            // this is a stale completion from a previous cancelled run. Skip it.
+            // Protection window: if this session just started sending (within 500ms)
+            // and the NEW run has not emitted any streaming state yet, this is
+            // likely a stale completion from a previous cancelled run. Skip it.
             const sendStarted = state.sendStartedAt[sessionId] ?? 0
             const elapsed = Date.now() - sendStarted
-            if (sendStarted > 0 && elapsed < 500) {
-              console.warn(`[Store] completeSession BLOCKED for session=${sessionId} — send started ${elapsed}ms ago (stale event from previous run)`)
+            const hasStreamingState = hasActiveStreamingState(state, sessionId)
+            if (sendStarted > 0 && elapsed < 500 && !hasStreamingState) {
+              console.warn(
+                `[Store] completeSession BLOCKED for session=${sessionId} — send started ${elapsed}ms ago with no current streaming state (stale event from previous run)`
+              )
               return state
             }
-            console.log(`[Store] completeSession id=${sessionId}`, { wasSending: !!state.sendingSessionIds[sessionId], elapsed: sendStarted > 0 ? elapsed : 'n/a' })
+            console.log(`[Store] completeSession id=${sessionId}`, {
+              wasSending: !!state.sendingSessionIds[sessionId],
+              elapsed: sendStarted > 0 ? elapsed : 'n/a',
+              hasStreamingState,
+            })
             const { [sessionId]: _sc, ...streamingContents } =
               state.streamingContents
             const { [sessionId]: _sb, ...streamingContentBlocks } =
@@ -2131,11 +2153,15 @@ export const useChatStore = create<ChatUIState>()(
       pauseSession: sessionId =>
         set(
           state => {
-            // Same protection window as completeSession
+            // Same stale-event protection as completeSession: only block if the
+            // new run has not emitted any streaming state yet.
             const sendStarted = state.sendStartedAt[sessionId] ?? 0
             const elapsed = Date.now() - sendStarted
-            if (sendStarted > 0 && elapsed < 500) {
-              console.warn(`[Store] pauseSession BLOCKED for session=${sessionId} — send started ${elapsed}ms ago`)
+            const hasStreamingState = hasActiveStreamingState(state, sessionId)
+            if (sendStarted > 0 && elapsed < 500 && !hasStreamingState) {
+              console.warn(
+                `[Store] pauseSession BLOCKED for session=${sessionId} — send started ${elapsed}ms ago with no current streaming state`
+              )
               return state
             }
             const { [sessionId]: _sc, ...streamingContents } =

@@ -7,7 +7,22 @@
   "app": {
     "windows": [
       {
-        "title": "Jean (Dev)"
+        "title": "Jean (Dev)",
+        "width": 800,
+        "height": 600,
+        "minWidth": 1000,
+        "minHeight": 700,
+        "resizable": true,
+        "fullscreen": false,
+        "maximized": false,
+        "center": true,
+        "decorations": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "alwaysOnTop": false,
+        "transparent": true,
+        "shadow": true,
+        "dragDropEnabled": true
       }
     ]
   }

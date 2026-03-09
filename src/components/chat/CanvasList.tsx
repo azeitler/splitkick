@@ -150,7 +150,6 @@ export function CanvasList({
     onSelectedIndexChange,
     onSelect: handleSelect,
     enabled: !isModalOpen,
-    layout: 'list',
     onSelectionChange: handleSelectionChange,
   })
 

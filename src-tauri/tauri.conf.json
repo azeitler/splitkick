@@ -22,18 +22,13 @@
         "fullscreen": false,
         "maximized": false,
         "center": true,
-        "decorations": false,
+        "decorations": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
         "alwaysOnTop": false,
         "transparent": true,
         "shadow": true,
-        "dragDropEnabled": true,
-        "windowEffects": {
-          "effects": [
-            "hudWindow"
-          ],
-          "radius": 12,
-          "state": "active"
-        }
+        "dragDropEnabled": true
       }
     ],
     "security": {

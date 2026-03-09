@@ -154,6 +154,7 @@ import { useMessageSending } from './hooks/useMessageSending'
 import { usePlanState } from './hooks/usePlanState'
 import { useActiveTodosAndAgents } from './hooks/useActiveTodosAndAgents'
 import { usePendingAttachments } from './hooks/usePendingAttachments'
+import { dedupeInFlightAssistantMessage } from './in-flight-message-dedupe'
 
 // PERFORMANCE: Stable empty array references to prevent infinite render loops
 // When Zustand selectors return [], a new reference is created each time
@@ -1806,7 +1807,6 @@ export function ChatWindow({
     setDiffRequest,
     isAtBottom,
     scrollToBottom,
-    streamingContent,
     currentStreamingContentBlocks,
     isSending,
     currentQueuedMessages,
@@ -1891,7 +1891,12 @@ export function ChatWindow({
 
   // Pre-calculate last plan message index for approve button logic
   const lastPlanMessageIndex = useMemo(() => {
-    const messages = session?.messages ?? []
+    const messages = dedupeInFlightAssistantMessage(session?.messages ?? [], {
+      isSending,
+      streamingContent,
+      streamingContentBlocks: currentStreamingContentBlocks,
+      streamingToolCalls: currentToolCalls,
+    })
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i]
       if (
@@ -1903,10 +1908,31 @@ export function ChatWindow({
       }
     }
     return -1
-  }, [session?.messages])
+  }, [
+    session?.messages,
+    isSending,
+    streamingContent,
+    currentStreamingContentBlocks,
+    currentToolCalls,
+  ])
 
   // Messages for rendering - memoize to ensure stable reference
-  const messages = useMemo(() => session?.messages ?? [], [session?.messages])
+  const messages = useMemo(
+    () =>
+      dedupeInFlightAssistantMessage(session?.messages ?? [], {
+        isSending,
+        streamingContent,
+        streamingContentBlocks: currentStreamingContentBlocks,
+        streamingToolCalls: currentToolCalls,
+      }),
+    [
+      session?.messages,
+      isSending,
+      streamingContent,
+      currentStreamingContentBlocks,
+      currentToolCalls,
+    ]
+  )
 
   // Virtualizer for message list - always use virtualization for consistent performance
   // Even small conversations benefit from virtualization when messages have heavy content

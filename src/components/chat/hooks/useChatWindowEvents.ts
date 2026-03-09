@@ -46,7 +46,6 @@ interface UseChatWindowEventsParams {
   // Auto-scroll
   isAtBottom: boolean
   scrollToBottom: (instant?: boolean) => void
-  streamingContent: string
   currentStreamingContentBlocks: ContentBlock[]
   isSending: boolean
   currentQueuedMessages: QueuedMessage[]
@@ -108,7 +107,6 @@ export function useChatWindowEvents({
   setDiffRequest,
   isAtBottom,
   scrollToBottom,
-  streamingContent,
   currentStreamingContentBlocks,
   isSending,
   currentQueuedMessages,
@@ -144,17 +142,18 @@ export function useChatWindowEvents({
   }, [activeWorktreeId, scrollToBottom])
 
   // Auto-scroll on new messages/streaming
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- isAtBottom and scrollToBottom are intentionally
+  // read but not deps: isAtBottom changing shouldn't re-trigger scroll, and scrollToBottom is stable.
+  // streamingContent is excluded because it changes every ~50ms during streaming, causing cascading
+  // smooth scroll animations. Content block length changes are sufficient to track streaming progress.
   useEffect(() => {
     if (isAtBottom) {
       scrollToBottom()
     }
   }, [
     session?.messages.length,
-    streamingContent,
     currentStreamingContentBlocks.length,
     isSending,
-    isAtBottom,
-    scrollToBottom,
     currentQueuedMessages.length,
   ])
 

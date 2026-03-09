@@ -129,6 +129,8 @@ pub struct AppPreferences {
     #[serde(default)]
     pub magic_prompt_backends: MagicPromptBackends, // Per-prompt backend overrides (None = use project/global default_backend)
     #[serde(default)]
+    pub magic_prompt_efforts: MagicPromptReasoningEfforts, // Per-prompt reasoning effort overrides
+    #[serde(default)]
     pub magic_models_auto_initialized: bool, // Whether magic prompt models were auto-set based on installed backends
     #[serde(default = "default_file_edit_mode")]
     pub file_edit_mode: String, // How to edit files: inline (CodeMirror) or external (VS Code, etc.)
@@ -952,6 +954,39 @@ pub struct MagicPromptBackends {
     pub investigate_linear_issue_backend: Option<String>,
 }
 
+/// Per-prompt reasoning effort overrides for magic prompts (None = use model default)
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MagicPromptReasoningEfforts {
+    #[serde(default)]
+    pub investigate_issue_effort: Option<String>,
+    #[serde(default)]
+    pub investigate_pr_effort: Option<String>,
+    #[serde(default)]
+    pub investigate_workflow_run_effort: Option<String>,
+    #[serde(default)]
+    pub pr_content_effort: Option<String>,
+    #[serde(default)]
+    pub commit_message_effort: Option<String>,
+    #[serde(default)]
+    pub code_review_effort: Option<String>,
+    #[serde(default)]
+    pub context_summary_effort: Option<String>,
+    #[serde(default)]
+    pub resolve_conflicts_effort: Option<String>,
+    #[serde(default)]
+    pub release_notes_effort: Option<String>,
+    #[serde(default)]
+    pub session_naming_effort: Option<String>,
+    #[serde(default)]
+    pub session_recap_effort: Option<String>,
+    #[serde(default)]
+    pub investigate_security_alert_effort: Option<String>,
+    #[serde(default)]
+    pub investigate_advisory_effort: Option<String>,
+    #[serde(default)]
+    pub investigate_linear_issue_effort: Option<String>,
+}
+
 impl MagicPrompts {
     /// Migrate prompts that match the current default to None.
     /// This ensures users who never customized a prompt get auto-updated defaults.
@@ -1032,6 +1067,7 @@ impl Default for AppPreferences {
             magic_prompt_models: MagicPromptModels::default(),
             magic_prompt_providers: MagicPromptProviders::default(),
             magic_prompt_backends: MagicPromptBackends::default(),
+            magic_prompt_efforts: MagicPromptReasoningEfforts::default(),
             magic_models_auto_initialized: false,
             file_edit_mode: default_file_edit_mode(),
             ai_language: String::new(),

@@ -730,7 +730,11 @@ impl SessionMetadata {
         self.pending_plan_message_id = session.pending_plan_message_id.clone();
         self.enabled_mcp_servers = session.enabled_mcp_servers.clone();
         self.label = session.label.clone();
-        self.queued_messages = session.queued_messages.clone();
+        // NOTE: Do NOT overwrite queued_messages here. Queue state is managed
+        // exclusively by enqueue/dequeue/remove/clear operations which use
+        // atomic read-modify-write via with_existing_metadata_mut. Overwriting
+        // here causes a TOCTOU race where stale queue data from the session
+        // overwrites freshly-dequeued state, leading to double execution.
     }
 }
 

@@ -30,8 +30,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
-import { getResumeCommand, statusConfig } from './session-card-utils'
-import type { SessionCardProps } from './SessionCard'
+import { getResumeCommand, statusConfig, type SessionCardProps } from './session-card-utils'
 import { useIsMobile } from '@/hooks/use-mobile'
 
 export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(

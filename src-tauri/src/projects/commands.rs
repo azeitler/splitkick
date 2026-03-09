@@ -4826,6 +4826,7 @@ fn generate_pr_content(
     custom_profile_name: Option<&str>,
     worktree_id: Option<&str>,
     magic_backend: Option<&str>,
+    reasoning_effort: Option<&str>,
 ) -> Result<PrContentResponse, String> {
     // Get diff and commits
     let diff = get_branch_diff(repo_path, target_branch)?;
@@ -4862,6 +4863,7 @@ fn generate_pr_content(
             model_str,
             Some(PR_CONTENT_SCHEMA),
             Some(std::path::Path::new(repo_path)),
+            reasoning_effort,
         )?;
         return serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse OpenCode PR content JSON: {e}, content: {json_str}");
@@ -4877,6 +4879,7 @@ fn generate_pr_content(
             model_str,
             PR_CONTENT_SCHEMA,
             Some(std::path::Path::new(repo_path)),
+            reasoning_effort,
         )?;
         return serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse Codex PR content JSON: {e}, content: {json_str}");
@@ -4996,6 +4999,7 @@ pub async fn create_pr_with_ai_content(
     custom_prompt: Option<String>,
     model: Option<String>,
     custom_profile_name: Option<String>,
+    reasoning_effort: Option<String>,
 ) -> Result<CreatePrResponse, String> {
     log::trace!("Creating PR for: {worktree_path}");
 
@@ -5161,6 +5165,7 @@ pub async fn create_pr_with_ai_content(
         custom_profile_name.as_deref(),
         Some(worktree_id),
         pr_magic_backend.as_deref(),
+        reasoning_effort.as_deref(),
     )?;
 
     // Append unconditional issue/PR references to the body
@@ -5275,6 +5280,7 @@ pub async fn generate_pr_update_content(
     custom_prompt: Option<String>,
     model: Option<String>,
     custom_profile_name: Option<String>,
+    reasoning_effort: Option<String>,
 ) -> Result<UpdatePrResponse, String> {
     log::trace!("Generating PR update content for: {worktree_path}");
 
@@ -5342,6 +5348,7 @@ pub async fn generate_pr_update_content(
         custom_profile_name.as_deref(),
         Some(worktree_id),
         pr_magic_backend.as_deref(),
+        reasoning_effort.as_deref(),
     )?;
 
     // Append unconditional issue/PR references to the body
@@ -5600,6 +5607,7 @@ fn generate_commit_message(
     working_dir: Option<&std::path::Path>,
     worktree_id: Option<&str>,
     magic_backend: Option<&str>,
+    reasoning_effort: Option<&str>,
 ) -> Result<CommitMessageResponse, String> {
     let model_str = model.unwrap_or("haiku");
 
@@ -5614,6 +5622,7 @@ fn generate_commit_message(
             model_str,
             Some(COMMIT_MESSAGE_SCHEMA),
             working_dir,
+            reasoning_effort,
         )?;
         return serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse OpenCode commit message JSON: {e}, content: {json_str}");
@@ -5629,6 +5638,7 @@ fn generate_commit_message(
             model_str,
             COMMIT_MESSAGE_SCHEMA,
             working_dir,
+            reasoning_effort,
         )?;
         return serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse Codex commit message JSON: {e}, content: {json_str}");
@@ -5720,6 +5730,7 @@ pub async fn create_commit_with_ai(
     pr_number: Option<u32>,
     model: Option<String>,
     custom_profile_name: Option<String>,
+    reasoning_effort: Option<String>,
 ) -> Result<CreateCommitResponse, String> {
     log::trace!("Creating commit for: {worktree_path}");
 
@@ -5791,6 +5802,7 @@ pub async fn create_commit_with_ai(
         Some(std::path::Path::new(&worktree_path)),
         worktree_id.as_deref(),
         commit_magic_backend.as_deref(),
+        reasoning_effort.as_deref(),
     )?;
 
     log::trace!(
@@ -6053,6 +6065,7 @@ fn generate_review(
     review_run_id: Option<&str>,
     worktree_id: Option<&str>,
     magic_backend: Option<&str>,
+    reasoning_effort: Option<&str>,
 ) -> Result<ReviewResponse, String> {
     let model_str = model.unwrap_or("haiku");
 
@@ -6067,6 +6080,7 @@ fn generate_review(
             model_str,
             Some(REVIEW_SCHEMA),
             working_dir,
+            reasoning_effort,
         )?;
         return serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse OpenCode review JSON: {e}, content: {json_str}");
@@ -6180,6 +6194,7 @@ pub async fn run_review_with_ai(
     model: Option<String>,
     custom_profile_name: Option<String>,
     review_run_id: Option<String>,
+    reasoning_effort: Option<String>,
 ) -> Result<ReviewResponse, String> {
     log::trace!("Running AI code review for: {worktree_path}");
 
@@ -6327,6 +6342,7 @@ pub async fn run_review_with_ai(
         review_run_id.as_deref(),
         None,
         review_magic_backend.as_deref(),
+        reasoning_effort.as_deref(),
     )?;
 
     log::trace!(
@@ -6518,6 +6534,7 @@ fn generate_release_notes_content(
     model: Option<&str>,
     custom_profile_name: Option<&str>,
     magic_backend: Option<&str>,
+    reasoning_effort: Option<&str>,
 ) -> Result<ReleaseNotesResponse, String> {
     // Fetch tags to ensure we have the tag locally
     let fetch_output = silent_command("git")
@@ -6588,6 +6605,7 @@ fn generate_release_notes_content(
             model_str,
             Some(RELEASE_NOTES_SCHEMA),
             Some(std::path::Path::new(project_path)),
+            reasoning_effort,
         )?;
         return serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse OpenCode release notes JSON: {e}, content: {json_str}");
@@ -6603,6 +6621,7 @@ fn generate_release_notes_content(
             model_str,
             RELEASE_NOTES_SCHEMA,
             Some(std::path::Path::new(project_path)),
+            reasoning_effort,
         )?;
         return serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse Codex release notes JSON: {e}, content: {json_str}");
@@ -6692,6 +6711,7 @@ pub async fn generate_release_notes(
     custom_prompt: Option<String>,
     model: Option<String>,
     custom_profile_name: Option<String>,
+    reasoning_effort: Option<String>,
 ) -> Result<ReleaseNotesResponse, String> {
     log::trace!("Generating release notes for {project_path} since {tag}");
 
@@ -6709,6 +6729,7 @@ pub async fn generate_release_notes(
         model.as_deref(),
         custom_profile_name.as_deref(),
         release_magic_backend.as_deref(),
+        reasoning_effort.as_deref(),
     )
 }
 
@@ -6801,6 +6822,11 @@ pub async fn merge_worktree_to_base(
             .and_then(|p| std::fs::read_to_string(p).ok())
             .and_then(|c| serde_json::from_str::<crate::AppPreferences>(&c).ok())
             .and_then(|p| p.magic_prompt_backends.commit_message_backend);
+        let merge_effort = crate::get_preferences_path(&app)
+            .ok()
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .and_then(|c| serde_json::from_str::<crate::AppPreferences>(&c).ok())
+            .and_then(|p| p.magic_prompt_efforts.commit_message_effort);
         match generate_commit_message(
             &app,
             &prompt,
@@ -6809,6 +6835,7 @@ pub async fn merge_worktree_to_base(
             Some(std::path::Path::new(&worktree.path)),
             Some(&worktree_id),
             merge_magic_backend.as_deref(),
+            merge_effort.as_deref(),
         ) {
             Ok(response) => {
                 // Create the commit with AI-generated message

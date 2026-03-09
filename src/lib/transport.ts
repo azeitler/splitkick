@@ -247,6 +247,14 @@ class WsTransport {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private connectWatchdog: ReturnType<typeof setTimeout> | null = null
   private queue: { data: string; resolve: () => void }[] = []
+  // Buffer for events that arrive before listeners are registered.
+  // Covers the ~16ms gap between WS onopen and React effect listener setup.
+  private eventBuffer = new Map<
+    string,
+    { msg: WsMessage; bufferedAt: number }[]
+  >()
+  private static readonly EVENT_BUFFER_MAX_AGE = 5_000
+  private static readonly EVENT_BUFFER_MAX_SIZE = 50
   private _connected = false
   private _connecting = false
   private _authError: string | null = null
@@ -398,6 +406,10 @@ class WsTransport {
       this.ws = null
       this.setConnected(false)
 
+      // Clear event buffer — stale events from a dead connection
+      // must not be delivered when the next connection opens.
+      this.eventBuffer.clear()
+
       // Reject all pending command promises immediately — the server
       // response will never arrive on this socket. Prevents waiting
       // the full timeout (up to 10 min for long-running commands).
@@ -507,6 +519,22 @@ class WsTransport {
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     this.listeners.get(event)!.add(typedHandler)
 
+    // Drain buffered events that arrived before this listener was registered
+    // (covers the gap between WS onopen and React effect listener setup)
+    const buffered = this.eventBuffer.get(event)
+    if (buffered && buffered.length > 0) {
+      this.eventBuffer.delete(event)
+      const now = Date.now()
+      for (const { msg, bufferedAt } of buffered) {
+        if (now - bufferedAt > WsTransport.EVENT_BUFFER_MAX_AGE) continue
+        try {
+          typedHandler({ payload: msg.payload })
+        } catch (e) {
+          console.error(`[WsTransport] Error draining buffered '${event}':`, e)
+        }
+      }
+    }
+
     // Ensure connected
     this.connect()
 
@@ -535,13 +563,21 @@ class WsTransport {
       }
     } else if (msg.type === 'event' && msg.event) {
       const handlers = this.listeners.get(msg.event)
-      if (handlers) {
+      if (handlers && handlers.size > 0) {
         for (const handler of handlers) {
           try {
             handler({ payload: msg.payload })
           } catch (e) {
             console.error(`[WsTransport] Error in '${msg.event}' handler:`, e)
           }
+        }
+      } else {
+        // Buffer events that arrive before listeners are registered
+        // (happens during the React render cycle gap after WS connects)
+        const buffered = this.eventBuffer.get(msg.event) ?? []
+        if (buffered.length < WsTransport.EVENT_BUFFER_MAX_SIZE) {
+          buffered.push({ msg, bufferedAt: Date.now() })
+          this.eventBuffer.set(msg.event, buffered)
         }
       }
     }

@@ -163,9 +163,15 @@ export function useScrollManagement({
 
     if (instant) {
       // Instant scroll — no animation, no correction needed
+      isAutoScrollingRef.current = false
       viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'instant' })
       return
     }
+
+    // Skip if a smooth scroll is already in flight — it will reach bottom.
+    // This prevents cascading animations when the auto-scroll effect fires
+    // rapidly (e.g. on every streaming content block).
+    if (isAutoScrollingRef.current) return
 
     isAutoScrollingRef.current = true
 

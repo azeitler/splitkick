@@ -1262,6 +1262,9 @@ pub fn execute_opencode_http(
             Some("text") => {
                 if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
                     if !text.is_empty() {
+                        if !content.is_empty() {
+                            content.push_str("\n\n");
+                        }
                         content.push_str(text);
                         content_blocks.push(ContentBlock::Text {
                             text: text.to_string(),
@@ -1429,11 +1432,13 @@ pub fn execute_one_shot_opencode(
     model: &str,
     json_schema: Option<&str>,
     working_dir: Option<&std::path::Path>,
+    reasoning_effort: Option<&str>,
 ) -> Result<String, String> {
     // Own all data for the spawned thread
     let app = app.clone();
     let model = model.to_string();
     let prompt = prompt.to_string();
+    let reasoning = reasoning_effort.map(|s| s.to_string());
     // Parse the JSON schema string into a Value for the native `format` field
     let schema_value: Option<serde_json::Value> = json_schema
         .map(|s| serde_json::from_str(s))
@@ -1450,7 +1455,7 @@ pub fn execute_one_shot_opencode(
     let handle = std::thread::spawn(move || {
         let base_url = crate::opencode_server::acquire(&app)?;
         let result =
-            one_shot_opencode_blocking(&base_url, &prompt, &model, schema_value.as_ref(), &dir);
+            one_shot_opencode_blocking(&base_url, &prompt, &model, schema_value.as_ref(), &dir, reasoning.as_deref());
         crate::opencode_server::release();
         result
     });
@@ -1467,6 +1472,7 @@ fn one_shot_opencode_blocking(
     model: &str,
     json_schema: Option<&serde_json::Value>,
     dir: &str,
+    reasoning_effort: Option<&str>,
 ) -> Result<String, String> {
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(600))
@@ -1538,6 +1544,11 @@ fn one_shot_opencode_blocking(
         "parts": prepare_opencode_parts(prompt),
     });
 
+    // Add reasoning effort if specified
+    if let Some(effort) = reasoning_effort {
+        payload["reasoning_effort"] = serde_json::Value::String(effort.to_string());
+    }
+
     // Use OpenCode's native structured output support via the `format` field
     if let Some(schema) = json_schema {
         payload["format"] = serde_json::json!({
@@ -1607,6 +1618,9 @@ fn one_shot_opencode_blocking(
     for part in parts {
         if part.get("type").and_then(|v| v.as_str()) == Some("text") {
             if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
+                if !content.is_empty() {
+                    content.push_str("\n\n");
+                }
                 content.push_str(text);
             }
         }

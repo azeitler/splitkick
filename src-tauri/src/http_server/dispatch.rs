@@ -249,6 +249,8 @@ pub async fn dispatch_command(
             let model: Option<String> = from_field_opt(&args, "model")?;
             let custom_profile_name: Option<String> =
                 field_opt(&args, "customProfileName", "custom_profile_name")?;
+            let reasoning_effort: Option<String> =
+                field_opt(&args, "reasoningEffort", "reasoning_effort")?;
             let result = crate::projects::create_pr_with_ai_content(
                 app.clone(),
                 worktree_path,
@@ -256,6 +258,7 @@ pub async fn dispatch_command(
                 magic_prompt,
                 model,
                 custom_profile_name,
+                reasoning_effort,
             )
             .await?;
             to_value(result)
@@ -269,6 +272,8 @@ pub async fn dispatch_command(
             let model: Option<String> = from_field_opt(&args, "model")?;
             let custom_profile_name: Option<String> =
                 field_opt(&args, "customProfileName", "custom_profile_name")?;
+            let reasoning_effort: Option<String> =
+                field_opt(&args, "reasoningEffort", "reasoning_effort")?;
             let result = crate::projects::create_commit_with_ai(
                 app.clone(),
                 worktree_path,
@@ -278,6 +283,7 @@ pub async fn dispatch_command(
                 pr_number,
                 model,
                 custom_profile_name,
+                reasoning_effort,
             )
             .await?;
             to_value(result)
@@ -289,6 +295,8 @@ pub async fn dispatch_command(
             let custom_profile_name: Option<String> =
                 field_opt(&args, "customProfileName", "custom_profile_name")?;
             let review_run_id: Option<String> = field_opt(&args, "reviewRunId", "review_run_id")?;
+            let reasoning_effort: Option<String> =
+                field_opt(&args, "reasoningEffort", "reasoning_effort")?;
             let result = crate::projects::run_review_with_ai(
                 app.clone(),
                 worktree_path,
@@ -296,6 +304,7 @@ pub async fn dispatch_command(
                 model,
                 custom_profile_name,
                 review_run_id,
+                reasoning_effort,
             )
             .await?;
             to_value(result)
@@ -948,6 +957,8 @@ pub async fn dispatch_command(
             let model: Option<String> = from_field_opt(&args, "model")?;
             let custom_profile_name: Option<String> =
                 field_opt(&args, "customProfileName", "custom_profile_name")?;
+            let reasoning_effort: Option<String> =
+                field_opt(&args, "reasoningEffort", "reasoning_effort")?;
             let result = crate::chat::generate_context_from_session(
                 app.clone(),
                 worktree_path,
@@ -957,6 +968,7 @@ pub async fn dispatch_command(
                 custom_prompt,
                 model,
                 custom_profile_name,
+                reasoning_effort,
             )
             .await?;
             to_value(result)
@@ -1824,6 +1836,8 @@ pub async fn dispatch_command(
             let model: Option<String> = from_field_opt(&args, "model")?;
             let custom_profile_name: Option<String> =
                 field_opt(&args, "customProfileName", "custom_profile_name")?;
+            let reasoning_effort: Option<String> =
+                field_opt(&args, "reasoningEffort", "reasoning_effort")?;
             crate::chat::regenerate_session_name(
                 app.clone(),
                 worktree_id,
@@ -1832,6 +1846,7 @@ pub async fn dispatch_command(
                 custom_prompt,
                 model,
                 custom_profile_name,
+                reasoning_effort,
             )
             .await?;
             emit_cache_invalidation(app, &["sessions"]);
@@ -1952,6 +1967,8 @@ pub async fn dispatch_command(
             let model: Option<String> = from_field_opt(&args, "model")?;
             let custom_profile_name: Option<String> =
                 field_opt(&args, "customProfileName", "custom_profile_name")?;
+            let reasoning_effort: Option<String> =
+                field_opt(&args, "reasoningEffort", "reasoning_effort")?;
             let result = crate::projects::generate_pr_update_content(
                 app.clone(),
                 worktree_path,
@@ -1959,6 +1976,7 @@ pub async fn dispatch_command(
                 custom_prompt,
                 model,
                 custom_profile_name,
+                reasoning_effort,
             )
             .await?;
             to_value(result)
@@ -2002,6 +2020,8 @@ pub async fn dispatch_command(
             let model: Option<String> = from_field_opt(&args, "model")?;
             let custom_profile_name: Option<String> =
                 field_opt(&args, "customProfileName", "custom_profile_name")?;
+            let reasoning_effort: Option<String> =
+                field_opt(&args, "reasoningEffort", "reasoning_effort")?;
             let result = crate::projects::generate_release_notes(
                 app.clone(),
                 project_path,
@@ -2010,6 +2030,7 @@ pub async fn dispatch_command(
                 custom_prompt,
                 model,
                 custom_profile_name,
+                reasoning_effort,
             )
             .await?;
             to_value(result)

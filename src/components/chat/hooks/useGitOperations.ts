@@ -119,6 +119,7 @@ export function useGitOperations({
             'commit_message_provider',
             preferences?.default_provider
           ),
+          reasoningEffort: preferences?.magic_prompt_efforts?.commit_message_effort ?? null,
         }
       )
 
@@ -142,6 +143,7 @@ export function useGitOperations({
     preferences?.magic_prompt_models?.commit_message_model,
     preferences?.magic_prompt_providers,
     preferences?.default_provider,
+    preferences?.magic_prompt_efforts?.commit_message_effort,
   ])
 
   // Handle Commit & Push - creates commit with AI-generated message and pushes
@@ -173,6 +175,7 @@ export function useGitOperations({
               'commit_message_provider',
               preferences?.default_provider
             ),
+            reasoningEffort: preferences?.magic_prompt_efforts?.commit_message_effort ?? null,
           }
         )
 
@@ -224,6 +227,7 @@ export function useGitOperations({
       preferences?.magic_prompt_models?.commit_message_model,
       preferences?.magic_prompt_providers,
       preferences?.default_provider,
+      preferences?.magic_prompt_efforts?.commit_message_effort,
     ]
   )
 
@@ -326,6 +330,7 @@ export function useGitOperations({
             'pr_content_provider',
             preferences?.default_provider
           ),
+          reasoningEffort: preferences?.magic_prompt_efforts?.pr_content_effort ?? null,
         }
       )
 
@@ -369,6 +374,7 @@ export function useGitOperations({
     preferences?.magic_prompt_models?.pr_content_model,
     preferences?.magic_prompt_providers,
     preferences?.default_provider,
+    preferences?.magic_prompt_efforts?.pr_content_effort,
   ])
 
   // Handle Review - runs AI code review in background
@@ -423,6 +429,7 @@ export function useGitOperations({
             'code_review_provider',
             preferences?.default_provider
           ),
+          reasoningEffort: preferences?.magic_prompt_efforts?.code_review_effort ?? null,
           reviewRunId,
         })
 
@@ -530,6 +537,7 @@ export function useGitOperations({
       preferences?.magic_prompt_models?.code_review_model,
       preferences?.magic_prompt_providers,
       preferences?.default_provider,
+      preferences?.magic_prompt_efforts?.code_review_effort,
     ]
   )
 

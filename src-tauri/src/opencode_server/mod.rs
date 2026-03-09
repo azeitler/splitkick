@@ -264,9 +264,9 @@ pub fn acquire(app: &AppHandle) -> Result<String, String> {
 pub fn release() {
     let prev = USAGE_COUNT.fetch_sub(1, Ordering::SeqCst);
     if prev == 1 {
-        // Schedule delayed shutdown — if no one re-acquires within 2s, stop the server.
+        // Schedule delayed shutdown — if no one re-acquires within 10min, stop the server.
         std::thread::spawn(|| {
-            std::thread::sleep(Duration::from_secs(2));
+            std::thread::sleep(Duration::from_secs(600));
             if USAGE_COUNT.load(Ordering::SeqCst) == 0 {
                 if let Err(e) = stop_managed_server_inner() {
                     log::warn!("Failed to stop managed OpenCode server on last release: {e}");

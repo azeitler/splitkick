@@ -596,6 +596,27 @@ export interface MagicPromptModels {
   investigate_linear_issue_model: MagicPromptModel
 }
 
+/**
+ * Per-prompt reasoning effort overrides. null = use model default (no reasoning effort flag).
+ * Field names use snake_case to match Rust struct exactly.
+ */
+export interface MagicPromptReasoningEfforts {
+  investigate_issue_effort: MagicPromptReasoningEffort
+  investigate_pr_effort: MagicPromptReasoningEffort
+  investigate_workflow_run_effort: MagicPromptReasoningEffort
+  pr_content_effort: MagicPromptReasoningEffort
+  commit_message_effort: MagicPromptReasoningEffort
+  code_review_effort: MagicPromptReasoningEffort
+  context_summary_effort: MagicPromptReasoningEffort
+  resolve_conflicts_effort: MagicPromptReasoningEffort
+  release_notes_effort: MagicPromptReasoningEffort
+  session_naming_effort: MagicPromptReasoningEffort
+  session_recap_effort: MagicPromptReasoningEffort
+  investigate_security_alert_effort: MagicPromptReasoningEffort
+  investigate_advisory_effort: MagicPromptReasoningEffort
+  investigate_linear_issue_effort: MagicPromptReasoningEffort
+}
+
 /** Default models for each magic prompt */
 export const DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
   investigate_issue_model: 'opus',
@@ -619,14 +640,14 @@ export const CODEX_DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
   investigate_issue_model: 'gpt-5.4',
   investigate_pr_model: 'gpt-5.4',
   investigate_workflow_run_model: 'gpt-5.4',
-  pr_content_model: 'gpt-5.1-codex-mini',
-  commit_message_model: 'gpt-5.1-codex-mini',
+  pr_content_model: 'gpt-5.3-codex',
+  commit_message_model: 'gpt-5.3-codex',
   code_review_model: 'gpt-5.4',
   context_summary_model: 'gpt-5.4',
   resolve_conflicts_model: 'gpt-5.4',
-  release_notes_model: 'gpt-5.1-codex-mini',
-  session_naming_model: 'gpt-5.1-codex-mini',
-  session_recap_model: 'gpt-5.1-codex-mini',
+  release_notes_model: 'gpt-5.3-codex',
+  session_naming_model: 'gpt-5.3-codex',
+  session_recap_model: 'gpt-5.3-codex',
   investigate_security_alert_model: 'gpt-5.4',
   investigate_advisory_model: 'gpt-5.4',
   investigate_linear_issue_model: 'gpt-5.4',
@@ -648,6 +669,47 @@ export const OPENCODE_DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
   investigate_security_alert_model: 'opencode/gpt-5.3-codex',
   investigate_advisory_model: 'opencode/gpt-5.3-codex',
   investigate_linear_issue_model: 'opencode/gpt-5.3-codex',
+}
+
+/** Default reasoning efforts for Claude backend (null = use model default) */
+export const DEFAULT_MAGIC_PROMPT_EFFORTS: MagicPromptReasoningEfforts = {
+  investigate_issue_effort: null,
+  investigate_pr_effort: null,
+  investigate_workflow_run_effort: null,
+  pr_content_effort: null,
+  commit_message_effort: null,
+  code_review_effort: null,
+  context_summary_effort: null,
+  resolve_conflicts_effort: null,
+  release_notes_effort: null,
+  session_naming_effort: null,
+  session_recap_effort: null,
+  investigate_security_alert_effort: null,
+  investigate_advisory_effort: null,
+  investigate_linear_issue_effort: null,
+}
+
+/** Codex preset: heavier reasoning for investigations, lighter for simple generation */
+export const CODEX_DEFAULT_MAGIC_PROMPT_EFFORTS: MagicPromptReasoningEfforts = {
+  investigate_issue_effort: 'medium',
+  investigate_pr_effort: 'medium',
+  investigate_workflow_run_effort: 'medium',
+  pr_content_effort: 'low',
+  commit_message_effort: 'low',
+  code_review_effort: 'medium',
+  context_summary_effort: 'medium',
+  resolve_conflicts_effort: 'medium',
+  release_notes_effort: 'low',
+  session_naming_effort: 'low',
+  session_recap_effort: 'low',
+  investigate_security_alert_effort: 'medium',
+  investigate_advisory_effort: 'medium',
+  investigate_linear_issue_effort: 'medium',
+}
+
+/** OpenCode preset: same as Codex */
+export const OPENCODE_DEFAULT_MAGIC_PROMPT_EFFORTS: MagicPromptReasoningEfforts = {
+  ...CODEX_DEFAULT_MAGIC_PROMPT_EFFORTS,
 }
 
 /**
@@ -807,6 +869,7 @@ export interface AppPreferences {
   magic_prompt_models: MagicPromptModels // Per-prompt model overrides
   magic_prompt_providers: MagicPromptProviders // Per-prompt provider overrides (null = use default_provider)
   magic_prompt_backends: MagicPromptBackends // Per-prompt backend overrides (null = use project/global default_backend)
+  magic_prompt_efforts: MagicPromptReasoningEfforts // Per-prompt reasoning effort overrides (null = model default)
   file_edit_mode: FileEditMode // How to edit files: inline (CodeMirror) or external (VS Code, etc.)
   ai_language: string // Preferred language for AI responses (empty = default)
   allow_web_tools_in_plan_mode: boolean // Allow WebFetch/WebSearch in plan mode without prompts
@@ -830,7 +893,7 @@ export interface AppPreferences {
   zoom_level: number // Zoom level percentage (50-200, default 100)
   custom_cli_profiles: CustomCliProfile[] // Custom CLI settings profiles (e.g., OpenRouter, MiniMax)
   default_provider: string | null // Default provider profile name (null = Anthropic direct)
-  canvas_layout: CanvasLayout // Canvas display mode: grid (cards) or list (compact rows)
+
   confirm_session_close: boolean // Show confirmation dialog before closing sessions/worktrees
   default_backend: CliBackend // Default CLI backend for new sessions: 'claude', 'codex', or 'opencode'
   selected_codex_model: CodexModel // Default Codex model
@@ -849,8 +912,6 @@ export interface AppPreferences {
   linear_api_key: string | null // Global Linear personal API key (inherited by all projects)
   magic_models_auto_initialized: boolean // Whether magic prompt models were auto-set based on installed backends
 }
-
-export type CanvasLayout = 'grid' | 'list'
 
 export interface CustomCliProfile {
   name: string // Display name, e.g. "OpenRouter"
@@ -1018,6 +1079,8 @@ export function normalizeCodexModel(model: string): CodexModel {
 }
 
 export type CodexReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh'
+
+export type MagicPromptReasoningEffort = 'low' | 'medium' | 'high' | null
 
 // =============================================================================
 // Magic Prompt Model (unified type for both Claude and Codex)
@@ -1326,6 +1389,7 @@ export const defaultPreferences: AppPreferences = {
   magic_prompt_models: DEFAULT_MAGIC_PROMPT_MODELS,
   magic_prompt_providers: DEFAULT_MAGIC_PROMPT_PROVIDERS,
   magic_prompt_backends: DEFAULT_MAGIC_PROMPT_BACKENDS,
+  magic_prompt_efforts: DEFAULT_MAGIC_PROMPT_EFFORTS,
   file_edit_mode: 'external',
   ai_language: '', // Default: empty (Claude's default behavior)
   allow_web_tools_in_plan_mode: true, // Default: enabled
@@ -1349,7 +1413,6 @@ export const defaultPreferences: AppPreferences = {
   zoom_level: ZOOM_LEVEL_DEFAULT,
   custom_cli_profiles: [],
   default_provider: null,
-  canvas_layout: 'list',
   confirm_session_close: true, // Default: enabled (show confirmation)
   default_backend: 'claude', // Default: Claude
   selected_codex_model: 'gpt-5.4', // Default: latest Codex model
