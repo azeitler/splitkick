@@ -1046,6 +1046,96 @@ pub(crate) async fn get_claude_usage_with_source(
     Ok(snapshot)
 }
 
+/// Result of detecting Claude CLI in system PATH
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClaudePathDetection {
+    pub found: bool,
+    pub path: Option<String>,
+    pub version: Option<String>,
+}
+
+/// Detect Claude CLI in system PATH (excluding Jean-managed binary)
+#[tauri::command]
+pub async fn detect_claude_in_path(app: AppHandle) -> Result<ClaudePathDetection, String> {
+    log::trace!("Detecting Claude CLI in system PATH");
+
+    let jean_managed_path = get_cli_binary_path(&app)
+        .ok()
+        .and_then(|p| std::fs::canonicalize(&p).ok());
+
+    // Use platform-specific command to find claude in PATH
+    let which_cmd = if cfg!(target_os = "windows") {
+        "where"
+    } else {
+        "which"
+    };
+
+    let output = match super::super::platform::silent_command(which_cmd)
+        .arg("claude")
+        .output()
+    {
+        Ok(output) if output.status.success() => {
+            String::from_utf8_lossy(&output.stdout).trim().to_string()
+        }
+        _ => {
+            log::trace!("Claude CLI not found in PATH");
+            return Ok(ClaudePathDetection {
+                found: false,
+                path: None,
+                version: None,
+            });
+        }
+    };
+
+    if output.is_empty() {
+        return Ok(ClaudePathDetection {
+            found: false,
+            path: None,
+            version: None,
+        });
+    }
+
+    let found_path = std::path::PathBuf::from(&output);
+
+    // Exclude Jean-managed binary
+    if let Some(ref jean_path) = jean_managed_path {
+        if let Ok(canonical_found) = std::fs::canonicalize(&found_path) {
+            if canonical_found == *jean_path {
+                log::trace!("Found PATH claude is the Jean-managed binary, excluding");
+                return Ok(ClaudePathDetection {
+                    found: false,
+                    path: None,
+                    version: None,
+                });
+            }
+        }
+    }
+
+    // Get version
+    let version = match super::super::platform::silent_command(&found_path)
+        .arg("--version")
+        .output()
+    {
+        Ok(ver_output) if ver_output.status.success() => {
+            let ver_str = String::from_utf8_lossy(&ver_output.stdout).trim().to_string();
+            Some(extract_version_number(&ver_str))
+        }
+        _ => None,
+    };
+
+    log::trace!(
+        "Found Claude CLI in PATH: {} (version: {:?})",
+        output,
+        version
+    );
+
+    Ok(ClaudePathDetection {
+        found: true,
+        path: Some(output),
+        version,
+    })
+}
+
 /// Helper function to emit installation progress events
 fn emit_progress(app: &AppHandle, stage: &str, message: &str, percent: u8) {
     let progress = InstallProgress {

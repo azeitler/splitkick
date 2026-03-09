@@ -16,7 +16,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useUIStore } from '@/store/ui-store'
-import { useClaudeCliSetup, useClaudeCliAuth } from '@/services/claude-cli'
+import { useClaudeCliSetup, useClaudeCliAuth, useClaudePathDetection } from '@/services/claude-cli'
 import { useCodexCliSetup, useCodexCliAuth } from '@/services/codex-cli'
 import {
   useOpenCodeCliSetup,
@@ -29,6 +29,7 @@ import {
   ErrorState,
   AuthCheckingState,
   AuthLoginState,
+  ClaudePathSelector,
 } from './CliSetupComponents'
 import { toast } from 'sonner'
 import { usePreferences, usePatchPreferences } from '@/services/preferences'
@@ -123,6 +124,7 @@ function OnboardingDialogContent() {
   const patchPreferences = usePatchPreferences()
 
   const claudeSetup = useClaudeCliSetup()
+  const pathDetection = useClaudePathDetection()
   const codexSetup = useCodexCliSetup()
   const opencodeSetup = useOpenCodeCliSetup()
   const ghSetup = useGhCliSetup()
@@ -149,6 +151,7 @@ function OnboardingDialogContent() {
   const [codexInstallFailed, setCodexInstallFailed] = useState(false)
   const [opencodeInstallFailed, setOpencodeInstallFailed] = useState(false)
   const [ghInstallFailed, setGhInstallFailed] = useState(false)
+  const [claudePathSelected, setClaudePathSelected] = useState(false)
   const [claudeLoginAttempt, setClaudeLoginAttempt] = useState(0)
   const [codexLoginAttempt, setCodexLoginAttempt] = useState(0)
   const [opencodeLoginAttempt, setOpencodeLoginAttempt] = useState(0)
@@ -310,6 +313,7 @@ function OnboardingDialogContent() {
       setCodexInstallFailed(false)
       setOpencodeInstallFailed(false)
       setGhInstallFailed(false)
+      setClaudePathSelected(false)
       setClaudeLoginAttempt(0)
       setCodexLoginAttempt(0)
       setOpencodeLoginAttempt(0)
@@ -487,6 +491,18 @@ function OnboardingDialogContent() {
       },
     })
   }, [claudeVersion, claudeSetup, claudeAuth])
+
+  const handleClaudePathSelect = useCallback(() => {
+    setClaudePathSelected(true)
+    if (preferences) {
+      patchPreferences.mutate({ claude_cli_source: 'path' }, {
+        onSuccess: () => {
+          setStep('claude-auth-checking')
+          claudeAuth.refetch()
+        },
+      })
+    }
+  }, [preferences, patchPreferences, claudeAuth])
 
   const handleCodexInstall = useCallback(() => {
     if (!codexVersion) return
@@ -747,14 +763,29 @@ function OnboardingDialogContent() {
 
     if (
       step === 'claude-setup' ||
-      step === 'claude-installing' ||
+      step === 'claude-installing'
+    ) {
+      const isReinstall = isClaudeReinstall
+
+      return {
+        title: isReinstall
+          ? `Change ${backendName} Version`
+          : `Setup ${backendName}`,
+        description: isReinstall
+          ? 'Select a version to install. This will replace the current installation.'
+          : pathDetection.data?.found
+            ? 'Choose to use your system Claude or install with Jean.'
+            : 'Select a version to install.',
+      }
+    }
+
+    if (
       step === 'codex-setup' ||
       step === 'codex-installing' ||
       step === 'opencode-setup' ||
       step === 'opencode-installing'
     ) {
       const isReinstall =
-        (currentBackend === 'claude' && isClaudeReinstall) ||
         (currentBackend === 'codex' && isCodexReinstall) ||
         (currentBackend === 'opencode' && isOpencodeReinstall)
 
@@ -899,6 +930,16 @@ function OnboardingDialogContent() {
             <AuthCheckingState cliName="OpenCode CLI" />
           ) : step === 'gh-auth-checking' ? (
             <AuthCheckingState cliName="GitHub CLI" />
+          ) : step === 'claude-setup' && pathDetection.data?.found && !claudePathSelected ? (
+            <ClaudePathSelector
+              pathVersion={pathDetection.data.version}
+              pathPath={pathDetection.data.path}
+              isLoading={claudePathSelected}
+              onSelectPath={handleClaudePathSelect}
+              onSelectJean={() => {
+                setClaudePathSelected(false)
+              }}
+            />
           ) : step === 'claude-auth-login' ? (
             <AuthLoginState
               cliName="Claude CLI"

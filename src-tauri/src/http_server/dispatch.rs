@@ -1630,6 +1630,10 @@ pub async fn dispatch_command(
             let result = crate::claude_cli::check_claude_cli_auth(app.clone()).await?;
             to_value(result)
         }
+        "detect_claude_in_path" => {
+            let result = crate::claude_cli::detect_claude_in_path(app.clone()).await?;
+            to_value(result)
+        }
         "get_claude_usage" => {
             let result = crate::claude_cli::get_claude_usage().await?;
             to_value(result)

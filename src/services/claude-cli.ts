@@ -33,6 +33,28 @@ export const claudeCliQueryKeys = {
   versions: () => [...claudeCliQueryKeys.all, 'versions'] as const,
 }
 
+/**
+ * Hook to detect Claude CLI in system PATH
+ */
+export function useClaudePathDetection(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: [...claudeCliQueryKeys.all, 'path-detection'],
+    queryFn: async (): Promise<{ found: boolean; path: string | null; version: string | null }> => {
+      if (!isTauri()) {
+        return { found: false, path: null, version: null }
+      }
+      try {
+        return await invoke<{ found: boolean; path: string | null; version: string | null }>('detect_claude_in_path')
+      } catch {
+        return { found: false, path: null, version: null }
+      }
+    },
+    enabled: options?.enabled ?? true,
+    staleTime: 1000 * 60 * 30, // 30 min cache
+    gcTime: 1000 * 60 * 60,
+  })
+}
+
 function getUsageStaleTime(snapshot?: ClaudeUsageSnapshot): number {
   if (!snapshot?.fetchedAt) return 0
   const expiresAtMs = snapshot.fetchedAt * 1000 + USAGE_REFRESH_MS

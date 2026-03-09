@@ -24,7 +24,9 @@ import {
 import {
   useClaudeCliStatus,
   useClaudeCliAuth,
+  useAvailableCliVersions,
   claudeCliQueryKeys,
+  useClaudePathDetection,
 } from '@/services/claude-cli'
 import { useGhCliStatus, useGhCliAuth, ghCliQueryKeys } from '@/services/gh-cli'
 import {
@@ -97,6 +99,7 @@ import { formatOpencodeModelLabel } from '@/components/chat/toolbar/toolbar-util
 import { playNotificationSound } from '@/lib/sounds'
 import type { ThinkingLevel, EffortLevel } from '@/types/chat'
 import { isNativeApp } from '@/lib/environment'
+import { isNewerVersion } from '@/lib/version-utils'
 import { cn } from '@/lib/utils'
 import {
   setGitPollInterval,
@@ -150,8 +153,19 @@ export const GeneralPane: React.FC = () => {
   const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
 
+  // Claude PATH detection
+  const { data: pathDetection } = useClaudePathDetection()
+
   // CLI status hooks
   const { data: cliStatus, isLoading: isCliLoading } = useClaudeCliStatus()
+  const isPathSource = preferences?.claude_cli_source === 'path'
+  const { data: claudeVersions, isLoading: isClaudeVersionsLoading } =
+    useAvailableCliVersions({ enabled: isPathSource && !!cliStatus?.installed })
+  const claudeLatestStable = claudeVersions?.find(v => !v.prerelease)
+  const claudeHasUpdate =
+    !!cliStatus?.version &&
+    !!claudeLatestStable &&
+    isNewerVersion(claudeLatestStable.version, cliStatus.version)
   const { data: ghStatus, isLoading: isGhLoading } = useGhCliStatus()
   const { data: codexStatus, isLoading: isCodexLoading } = useCodexCliStatus()
   const { data: opencodeStatus, isLoading: isOpenCodeLoading } =
@@ -296,6 +310,19 @@ export const GeneralPane: React.FC = () => {
       patchPreferences.mutate({
         yolo_thinking_level: value === 'default' ? null : value,
       })
+    }
+  }
+
+  const handleClaudeSourceChange = (value: 'jean' | 'path') => {
+    if (preferences) {
+      patchPreferences.mutate(
+        { claude_cli_source: value },
+        {
+          onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: claudeCliQueryKeys.all })
+          },
+        }
+      )
     }
   }
 
@@ -552,10 +579,6 @@ export const GeneralPane: React.FC = () => {
     openCliLoginModal('opencode', opencodeStatus.path, ['auth', 'login'])
   }, [opencodeStatus?.path, openCliLoginModal, queryClient])
 
-  const claudeStatusDescription = cliStatus?.installed
-    ? cliStatus.path
-    : 'Claude CLI is required for chat functionality'
-
   const ghStatusDescription = ghStatus?.installed
     ? ghStatus.path
     : 'GitHub CLI is required for GitHub integration'
@@ -596,34 +619,40 @@ export const GeneralPane: React.FC = () => {
             <InlineField
               label={cliStatus?.installed ? 'Version' : 'Status'}
               description={
-                cliStatus?.installed ? (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        onClick={() => handleCopyPath(cliStatus.path)}
-                        className="text-left hover:underline cursor-pointer"
-                      >
-                        {claudeStatusDescription}
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>Click to copy path</TooltipContent>
-                  </Tooltip>
-                ) : (
-                  'Optional — enables Claude AI sessions'
-                )
+                cliStatus?.installed
+                  ? 'Enables Claude AI sessions'
+                  : 'Optional — enables Claude AI sessions'
               }
             >
               {isCliLoading ? (
                 <Loader2 className="size-4 animate-spin text-muted-foreground" />
               ) : cliStatus?.installed ? (
-                <Button
-                  variant="outline"
-                  className="w-40 justify-between"
-                  onClick={() => openCliUpdateModal('claude')}
-                >
-                  {cliStatus.version ?? 'Installed'}
-                  <ChevronDown className="size-3" />
-                </Button>
+                isPathSource ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">{cliStatus.version ?? 'Installed'}</span>
+                    {isClaudeVersionsLoading ? (
+                      <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={!claudeHasUpdate}
+                        onClick={() => openCliLoginModal('claude', cliStatus.path ?? 'claude', ['update'])}
+                      >
+                        {claudeHasUpdate ? `Update to ${claudeLatestStable?.version}` : 'Up to date'}
+                      </Button>
+                    )}
+                  </div>
+                ) : (
+                  <Button
+                    variant="outline"
+                    className="w-40 justify-between"
+                    onClick={() => openCliUpdateModal('claude')}
+                  >
+                    {cliStatus.version ?? 'Installed'}
+                    <ChevronDown className="size-3" />
+                  </Button>
+                )
               ) : (
                 <Button
                   className="w-40"
@@ -633,6 +662,49 @@ export const GeneralPane: React.FC = () => {
                 </Button>
               )}
             </InlineField>
+            {cliStatus?.installed && (
+              <InlineField
+                label="Source"
+                description={
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => handleCopyPath(
+                          preferences?.claude_cli_source === 'path'
+                            ? pathDetection?.path
+                            : cliStatus.path
+                        )}
+                        className="text-left hover:underline cursor-pointer"
+                      >
+                        {preferences?.claude_cli_source === 'path'
+                          ? pathDetection?.path ?? 'System PATH'
+                          : cliStatus.path}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Click to copy path</TooltipContent>
+                  </Tooltip>
+                }
+              >
+                <Select
+                  value={preferences?.claude_cli_source ?? 'jean'}
+                  onValueChange={handleClaudeSourceChange}
+                >
+                  <SelectTrigger className="w-40">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="jean">Jean (managed)</SelectItem>
+                    <SelectItem
+                      value="path"
+                      disabled={!pathDetection?.found}
+                    >
+                      System PATH
+                      {!pathDetection?.found && ' (not found)'}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </InlineField>
+            )}
           </div>
         </SettingsSection>
       )}

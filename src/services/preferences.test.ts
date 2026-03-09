@@ -148,6 +148,7 @@ describe('preferences service', () => {
         yolo_thinking_level: null,
         linear_api_key: null,
         magic_models_auto_initialized: false,
+        claude_cli_source: 'jean',
       }
       vi.mocked(invoke).mockResolvedValueOnce(mockPreferences)
 
@@ -262,6 +263,7 @@ describe('preferences service', () => {
         yolo_thinking_level: null,
         linear_api_key: null,
         magic_models_auto_initialized: false,
+        claude_cli_source: 'jean',
       }
       vi.mocked(invoke).mockResolvedValueOnce(prefsWithOldBinding)
 
@@ -348,6 +350,7 @@ describe('preferences service', () => {
         yolo_thinking_level: null,
         linear_api_key: null,
         magic_models_auto_initialized: false,
+        claude_cli_source: 'jean',
       }
       vi.mocked(invoke).mockResolvedValueOnce(prefsWithDeprecatedFastModel)
 
@@ -435,6 +438,7 @@ describe('preferences service', () => {
         yolo_thinking_level: null,
         linear_api_key: null,
         magic_models_auto_initialized: false,
+        claude_cli_source: 'jean',
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -524,6 +528,7 @@ describe('preferences service', () => {
         yolo_thinking_level: null,
         linear_api_key: null,
         magic_models_auto_initialized: false,
+        claude_cli_source: 'jean',
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -613,6 +618,7 @@ describe('preferences service', () => {
         yolo_thinking_level: null,
         linear_api_key: null,
         magic_models_auto_initialized: false,
+        claude_cli_source: 'jean',
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -700,6 +706,7 @@ describe('preferences service', () => {
         yolo_thinking_level: null,
         linear_api_key: null,
         magic_models_auto_initialized: false,
+        claude_cli_source: 'jean',
       }
 
       const { result } = renderHook(() => useSavePreferences(), {

@@ -24,11 +24,14 @@ import { useUIStore } from '@/store/ui-store'
 import { isNewerVersion } from '@/lib/version-utils'
 import { logger } from '@/lib/logger'
 import { isNativeApp } from '@/lib/environment'
+import { usePreferences } from '@/services/preferences'
 
 interface CliUpdateInfo {
   type: 'claude' | 'gh' | 'codex' | 'opencode'
   currentVersion: string
   latestVersion: string
+  claudeCliSource?: 'jean' | 'path'
+  claudePath?: string | null
 }
 
 const CLI_DISPLAY_NAMES: Record<CliUpdateInfo['type'], string> = {
@@ -45,6 +48,7 @@ const CLI_DISPLAY_NAMES: Record<CliUpdateInfo['type'], string> = {
  */
 export function useCliVersionCheck() {
   const shouldCheck = isNativeApp()
+  const { data: preferences } = usePreferences()
 
   // Defer version fetches (GitHub API) by 10s — they're only for update toasts,
   // no reason to compete with startup-critical queries.
@@ -110,6 +114,8 @@ export function useCliVersionCheck() {
             type: 'claude',
             currentVersion: claudeStatus.version,
             latestVersion: latestStable.version,
+            claudeCliSource: preferences?.claude_cli_source,
+            claudePath: claudeStatus.path,
           })
         }
       }
@@ -211,6 +217,7 @@ export function useCliVersionCheck() {
     ghVersionsLoading,
     codexVersionsLoading,
     opencodeVersionsLoading,
+    preferences?.claude_cli_source,
   ])
 }
 
@@ -220,11 +227,15 @@ export function useCliVersionCheck() {
  * Toast stays visible until user dismisses it.
  */
 function showUpdateToasts(updates: CliUpdateInfo[]) {
-  const { openCliUpdateModal } = useUIStore.getState()
+  const { openCliUpdateModal, openCliLoginModal } = useUIStore.getState()
 
   for (const update of updates) {
     const cliName = CLI_DISPLAY_NAMES[update.type]
     const toastId = `cli-update-${update.type}`
+
+    // For Claude in PATH mode, open a terminal with `claude update`
+    const isClaudePath =
+      update.type === 'claude' && update.claudeCliSource === 'path'
 
     toast.info(`${cliName} update available`, {
       id: toastId,
@@ -233,7 +244,11 @@ function showUpdateToasts(updates: CliUpdateInfo[]) {
       action: {
         label: 'Update',
         onClick: () => {
-          openCliUpdateModal(update.type)
+          if (isClaudePath) {
+            openCliLoginModal('claude', update.claudePath ?? 'claude', ['update'])
+          } else {
+            openCliUpdateModal(update.type)
+          }
           toast.dismiss(toastId)
         },
       },

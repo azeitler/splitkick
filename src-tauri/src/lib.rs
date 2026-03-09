@@ -210,6 +210,8 @@ pub struct AppPreferences {
     pub yolo_thinking_level: Option<String>, // Thinking level override for yolo mode, None = use session thinking level
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub linear_api_key: Option<String>, // Global Linear personal API key (inherited by all projects)
+    #[serde(default = "default_cli_source")]
+    pub claude_cli_source: String, // Claude CLI source: "jean" (managed) or "path" (system PATH)
 }
 
 fn default_true() -> Option<bool> {
@@ -364,6 +366,10 @@ fn default_confirm_session_close() -> bool {
 
 fn default_backend() -> String {
     "claude".to_string()
+}
+
+fn default_cli_source() -> String {
+    "jean".to_string()
 }
 
 fn default_codex_model() -> String {
@@ -1074,6 +1080,7 @@ impl Default for AppPreferences {
             build_thinking_level: None,
             yolo_thinking_level: None,
             linear_api_key: None,
+            claude_cli_source: default_cli_source(),
         }
     }
 }
@@ -2723,6 +2730,7 @@ pub fn run() {
             // Claude CLI management commands
             claude_cli::check_claude_cli_installed,
             claude_cli::check_claude_cli_auth,
+            claude_cli::detect_claude_in_path,
             claude_cli::get_claude_usage,
             claude_cli::get_available_cli_versions,
             claude_cli::install_claude_cli,

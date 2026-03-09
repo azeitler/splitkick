@@ -383,3 +383,56 @@ export function AuthLoginState({
     </div>
   )
 }
+
+export interface ClaudePathSelectorProps {
+  pathVersion: string | null
+  pathPath: string | null
+  isLoading: boolean
+  onSelectPath: () => void
+  onSelectJean: () => void
+}
+
+export function ClaudePathSelector({
+  pathVersion,
+  pathPath,
+  isLoading,
+  onSelectPath,
+  onSelectJean,
+}: ClaudePathSelectorProps) {
+  return (
+    <div className="space-y-4">
+      <div className="text-center text-sm text-muted-foreground">
+        We detected Claude CLI in your system PATH
+      </div>
+
+      <div className="space-y-3">
+        <button
+          onClick={onSelectPath}
+          disabled={isLoading}
+          className="w-full p-4 rounded-lg border-2 border-primary/50 hover:border-primary bg-primary/5 hover:bg-primary/10 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <div className="font-medium">Use system Claude</div>
+          <div className="text-sm text-muted-foreground">
+            Version: {pathVersion || 'unknown'}
+          </div>
+          {pathPath && (
+            <div className="text-xs text-muted-foreground mt-1 break-all">
+              {pathPath}
+            </div>
+          )}
+        </button>
+
+        <button
+          onClick={onSelectJean}
+          disabled={isLoading}
+          className="w-full p-4 rounded-lg border-2 border-border hover:border-primary/50 hover:bg-muted transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <div className="font-medium">Install with Jean</div>
+          <div className="text-sm text-muted-foreground">
+            Jean will manage the installation
+          </div>
+        </button>
+      </div>
+    </div>
+  )
+}
