@@ -133,10 +133,22 @@ export function AddProjectDialog() {
     }
   }, [initProject, addProjectParentFolderId, setAddProjectDialogOpen])
 
-  // Keyboard shortcuts: A = add existing, I = initialize new
+  // Keyboard shortcuts: A = add existing, I = initialize new, C = clone
   useEffect(() => {
     if (!addProjectDialogOpen || isPending) return
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't intercept when another modal is on top
+      const { gitInitModalOpen, cloneModalOpen } = useProjectsStore.getState()
+      if (gitInitModalOpen || cloneModalOpen) return
+
+      // Don't intercept when typing in an input field
+      const target = e.target as HTMLElement
+      if (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable
+      ) return
+
       if (e.key === 'a' || e.key === 'A') {
         e.preventDefault()
         handleAddExisting()
