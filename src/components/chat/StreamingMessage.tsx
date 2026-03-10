@@ -130,13 +130,18 @@ export const StreamingMessage = memo(function StreamingMessage({
             )
           }
           // Find all incomplete item indices for spinner (show on all in-progress tools)
+          // Use === undefined check since empty string is a valid "completed" output (e.g. Read tools)
           const incompleteIndices = new Set<number>()
           timeline.forEach((item, idx) => {
-            if (item.type === 'task' && !item.taskTool.output) incompleteIndices.add(idx)
-            else if (item.type === 'standalone' && !item.tool.output) incompleteIndices.add(idx)
+            if (item.type === 'task' && item.taskTool.output === undefined)
+              incompleteIndices.add(idx)
+            else if (item.type === 'standalone' && item.tool.output === undefined)
+              incompleteIndices.add(idx)
             else if (
               item.type === 'stackedGroup' &&
-              item.items.some(i => i.type === 'tool' && !i.tool.output)
+              item.items.some(
+                i => i.type === 'tool' && i.tool.output === undefined
+              )
             )
               incompleteIndices.add(idx)
           })

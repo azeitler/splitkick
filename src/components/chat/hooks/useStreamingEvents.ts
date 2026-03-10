@@ -261,12 +261,12 @@ export default function useStreamingEvents({
         const toolCalls = activeToolCalls[session_id] ?? []
         const toolCall = toolCalls.find(tc => tc.id === tool_use_id)
 
-        // Skip storing output for Read tool (files can be large, users can click to open)
-        if (toolCall?.name === 'Read') {
-          return
-        }
-
-        updateToolCallOutput(session_id, tool_use_id, output)
+        // For Read tools, store empty placeholder instead of full content (can be large)
+        updateToolCallOutput(
+          session_id,
+          tool_use_id,
+          toolCall?.name === 'Read' ? '' : output
+        )
       }
     )
 

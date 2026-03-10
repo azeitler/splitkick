@@ -260,10 +260,14 @@ pub fn cancel_process(
     };
     if let Some((thread_id, turn_id)) = codex_turn {
         // Codex app-server session: send turn/interrupt
+        // Must run on a separate thread because interrupt_turn uses blocking_recv,
+        // which panics if called from within a tokio async runtime.
         log::warn!("Codex app-server session {session_id}: interrupting turn {turn_id}");
-        if let Err(e) = super::codex_server::interrupt_turn(&thread_id, &turn_id) {
-            log::error!("Failed to interrupt Codex turn: {e}");
-        }
+        std::thread::spawn(move || {
+            if let Err(e) = super::codex_server::interrupt_turn(&thread_id, &turn_id) {
+                log::error!("Failed to interrupt Codex turn: {e}");
+            }
+        });
 
         if let Err(e) = run_log::mark_running_run_cancelled(app, session_id) {
             log::warn!("Failed to mark run as cancelled in manifest: {e}");
@@ -388,12 +392,16 @@ pub fn cancel_process_if_running(
     };
     if let Some((thread_id, turn_id)) = codex_turn {
         // Codex app-server session actively running — interrupt turn
+        // Must run on a separate thread because interrupt_turn uses blocking_recv,
+        // which panics if called from within a tokio async runtime.
         log::trace!(
             "Codex app-server session {session_id} is running, interrupting turn {turn_id}"
         );
-        if let Err(e) = super::codex_server::interrupt_turn(&thread_id, &turn_id) {
-            log::error!("Failed to interrupt Codex turn: {e}");
-        }
+        std::thread::spawn(move || {
+            if let Err(e) = super::codex_server::interrupt_turn(&thread_id, &turn_id) {
+                log::error!("Failed to interrupt Codex turn: {e}");
+            }
+        });
 
         if let Err(e) = run_log::mark_running_run_cancelled(app, session_id) {
             log::warn!("Failed to mark run as cancelled in manifest: {e}");

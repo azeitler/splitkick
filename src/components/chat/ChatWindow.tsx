@@ -769,6 +769,7 @@ export function ChatWindow({
     messages: session?.messages,
     virtualizedListRef,
     activeWorktreeId,
+    isSending,
   })
 
   // Drag and drop images into chat input

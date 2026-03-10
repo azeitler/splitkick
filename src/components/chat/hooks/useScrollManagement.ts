@@ -16,6 +16,8 @@ interface UseScrollManagementOptions {
   virtualizedListRef: RefObject<VirtualizedMessageListHandle | null>
   /** Active worktree ID — used to scroll to bottom before paint on switch */
   activeWorktreeId: string | null
+  /** Whether a message is currently being streamed — enables ResizeObserver auto-scroll */
+  isSending?: boolean
 }
 
 interface UseScrollManagementReturn {
@@ -45,6 +47,7 @@ export function useScrollManagement({
   messages,
   virtualizedListRef,
   activeWorktreeId,
+  isSending,
 }: UseScrollManagementOptions): UseScrollManagementReturn {
   const scrollViewportRef = useRef<HTMLDivElement>(null)
 
@@ -95,6 +98,28 @@ export function useScrollManagement({
     viewport.addEventListener('wheel', handleWheel, { passive: true })
     return () => viewport.removeEventListener('wheel', handleWheel)
   }, [])
+
+  // Auto-scroll during streaming using ResizeObserver.
+  // Fires when the scroll content container grows (frame-perfect tracking).
+  // Uses instant scroll (not smooth) to avoid cascading animation issues.
+  useEffect(() => {
+    if (!isSending) return
+
+    const viewport = scrollViewportRef.current
+    if (!viewport || !viewport.firstElementChild) return
+
+    const observer = new ResizeObserver(() => {
+      // Respect cooldown after user scrolled up
+      if (Date.now() < userScrollUpUntilRef.current) return
+      // Don't scroll if user has scrolled away from bottom
+      if (!isAtBottomRef.current) return
+
+      viewport.scrollTop = viewport.scrollHeight
+    })
+
+    observer.observe(viewport.firstElementChild)
+    return () => observer.disconnect()
+  }, [isSending])
 
   // Scroll to bottom before paint when switching worktrees to prevent flash of top content
   useLayoutEffect(() => {
