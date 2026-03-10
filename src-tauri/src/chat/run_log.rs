@@ -722,6 +722,17 @@ pub fn load_session_messages(
                     "*Response lost - Jean was closed before receiving a response.*".to_string();
             }
 
+            // Skip cancelled runs with no content (instant cancel race window).
+            // During the brief period between mark_running_run_cancelled() setting
+            // a placeholder assistant_message_id and the command handler setting it
+            // to None, the JSONL may be empty. Don't show an empty message.
+            if run.status == RunStatus::Cancelled
+                && assistant_msg.content.is_empty()
+                && assistant_msg.tool_calls.is_empty()
+            {
+                continue;
+            }
+
             messages.push(assistant_msg);
         }
     }
@@ -746,7 +757,12 @@ pub fn mark_running_run_cancelled(app: &tauri::AppHandle, session_id: &str) -> R
             run.status = RunStatus::Cancelled;
             run.ended_at = Some(now);
             run.cancelled = true;
-            // Leave assistant_message_id as None (undo_send case)
+            // Set a placeholder assistant_message_id so this run is NOT treated
+            // as undo_send during the race window between this immediate metadata
+            // write and the deferred run_log_writer.cancel() in commands.rs.
+            // The command handler will overwrite with the real ID (or None for
+            // instant cancel with no content).
+            run.assistant_message_id = Some(format!("pending-{}", run.run_id));
             modified = true;
             log::trace!(
                 "Marked run {} as cancelled for session {}",

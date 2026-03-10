@@ -430,6 +430,7 @@ pub async fn regenerate_session_name(
     custom_prompt: Option<String>,
     model: Option<String>,
     custom_profile_name: Option<String>,
+    reasoning_effort: Option<String>,
 ) -> Result<(), String> {
     log::trace!("Regenerating session name for {session_id}");
 
@@ -464,6 +465,7 @@ pub async fn regenerate_session_name(
         custom_session_prompt: custom_prompt,
         custom_profile_name,
         backend_override,
+        reasoning_effort,
     };
 
     spawn_naming_task(app, request);
@@ -552,7 +554,14 @@ pub async fn update_session_state(
             log::trace!("Session already removed, skipping update: {session_id}");
             Ok(())
         }
-    })
+    })?;
+
+    // Notify all clients (native + web access) to refetch session data.
+    // This is the single cache invalidation point for session state mutations —
+    // other commands (e.g. mark_plan_approved) rely on callers also invoking
+    // update_session_state rather than emitting their own invalidation.
+    emit_sessions_cache_invalidation(&app);
+    Ok(())
 }
 
 /// Extract pasted image paths from message content
@@ -1379,6 +1388,7 @@ pub async fn send_chat_message(
                         .session_naming_provider
                         .clone(),
                     backend_override: prefs.magic_prompt_backends.session_naming_backend.clone(),
+                    reasoning_effort: prefs.magic_prompt_efforts.session_naming_effort.clone(),
                 };
 
                 // Spawn in background - does not block chat
@@ -1765,7 +1775,7 @@ pub async fn send_chat_message(
             }
             Backend::Codex => {
                 // === Codex execution path ===
-                log::trace!("About to call execute_codex_detached...");
+                log::trace!("About to call execute_codex_via_server...");
 
                 // Map EffortLevel to Codex reasoning effort values
                 let codex_reasoning_effort: Option<String> =
@@ -2047,10 +2057,7 @@ pub async fn send_chat_message(
                     }
                 };
 
-                // For Codex: first message uses positional arg, resume pipes via stdin
-                let prompt = Some(thread_message.as_str());
-
-                match super::codex::execute_codex_detached(
+                match super::codex::execute_codex_via_server(
                     &thread_app,
                     &thread_session_id,
                     &thread_worktree_id,
@@ -2062,14 +2069,13 @@ pub async fn send_chat_message(
                     codex_reasoning_effort.as_deref(),
                     thread_codex_search,
                     &codex_add_dirs,
-                    prompt,
+                    &thread_message,
                     codex_instructions_file.as_deref(),
                     thread_codex_multi_agent,
                     thread_codex_max_threads,
-                    Some(make_pid_callback()),
                 ) {
-                    Ok((pid, response)) => Ok((
-                        pid,
+                    Ok(response) => Ok((
+                        0, // No PID for app-server sessions
                         UnifiedResponse {
                             content: response.content,
                             resume_id: response.thread_id,
@@ -2082,7 +2088,7 @@ pub async fn send_chat_message(
                         },
                     )),
                     Err(e) => {
-                        log::error!("execute_codex_detached FAILED: {e}");
+                        log::error!("execute_codex_via_server FAILED: {e}");
                         Err(e)
                     }
                 }
@@ -2338,11 +2344,9 @@ pub async fn send_chat_message(
         Ok(Err(e)) => {
             // Thread completed with an error — clean up all registrations.
             log::info!("[SendChat] EXIT session={session_id} reason=thread_error error={e}");
-            super::registry::clear_pending_cancel(&session_id);
+            super::registry::cleanup_session_registrations(&session_id);
             if let Some(ref flag) = opencode_cancel_flag {
-                // Only unregister if the flag wasn't already set by a cancel call
                 if !flag.load(std::sync::atomic::Ordering::SeqCst) {
-                    super::registry::unregister_cancel_flag(&session_id);
                     // Mark run as crashed so it doesn't stay in Running forever
                     if let Err(mark_err) = run_log_writer.mark_crashed() {
                         log::warn!("Failed to mark OpenCode run as crashed: {mark_err}");
@@ -2359,10 +2363,7 @@ pub async fn send_chat_message(
         }
         Err(_) => {
             log::info!("[SendChat] EXIT session={session_id} reason=thread_panic");
-            super::registry::clear_pending_cancel(&session_id);
-            if let Some(ref _flag) = opencode_cancel_flag {
-                super::registry::unregister_cancel_flag(&session_id);
-            }
+            super::registry::cleanup_session_registrations(&session_id);
             if let Err(mark_err) = run_log_writer.mark_crashed() {
                 log::warn!("Failed to mark run as crashed after thread panic: {mark_err}");
             }
@@ -2373,10 +2374,7 @@ pub async fn send_chat_message(
     };
 
     // Clear any stale pending cancel entry and unregister OpenCode cancel flag now that we have a result.
-    super::registry::clear_pending_cancel(&session_id);
-    if let Some(ref _flag) = opencode_cancel_flag {
-        super::registry::unregister_cancel_flag(&session_id);
-    }
+    super::registry::cleanup_session_registrations(&session_id);
 
     // PID is now persisted via pid_callback immediately after spawn (before tailing).
     // No need to set_pid here — it was already saved for crash recovery.
@@ -4051,6 +4049,7 @@ fn execute_summarization_claude(
     working_dir: Option<&std::path::Path>,
     worktree_id: Option<&str>,
     magic_backend: Option<&str>,
+    reasoning_effort: Option<&str>,
 ) -> Result<ContextSummaryResponse, String> {
     let model_str = model.unwrap_or("opus");
 
@@ -4065,6 +4064,7 @@ fn execute_summarization_claude(
             model_str,
             Some(CONTEXT_SUMMARY_SCHEMA),
             working_dir,
+            reasoning_effort,
         )?;
         return serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse OpenCode summarization JSON: {e}, content: {json_str}");
@@ -4080,6 +4080,7 @@ fn execute_summarization_claude(
             model_str,
             CONTEXT_SUMMARY_SCHEMA,
             working_dir,
+            reasoning_effort,
         )?;
         return serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse Codex summarization JSON: {e}, content: {json_str}");
@@ -4192,6 +4193,7 @@ pub async fn generate_context_from_session(
     custom_prompt: Option<String>,
     model: Option<String>,
     custom_profile_name: Option<String>,
+    reasoning_effort: Option<String>,
 ) -> Result<SaveContextResponse, String> {
     log::trace!(
         "Generating context from session {} for project {}",
@@ -4243,6 +4245,7 @@ pub async fn generate_context_from_session(
         Some(std::path::Path::new(&worktree_path)),
         Some(&worktree_id),
         magic_backend.as_deref(),
+        reasoning_effort.as_deref(),
     ) {
         Ok(response) => {
             // Validate slug is not empty
@@ -4559,7 +4562,6 @@ pub async fn resume_session(
         let worktree_id_clone = worktree_id.clone();
         let run_id_clone = run_id.clone();
         let is_codex = metadata.backend == Backend::Codex;
-        let is_plan_mode = run.execution_mode.as_deref() == Some("plan");
 
         // Spawn a task to tail the output file
         tauri::async_runtime::spawn(async move {
@@ -4575,29 +4577,19 @@ pub async fn resume_session(
 
             // Tail the output file — route by backend
             let (resume_id, usage, cancelled) = if is_codex {
-                match super::codex::tail_codex_output(
-                    &app_clone,
-                    &session_id_clone,
-                    &worktree_id_clone,
-                    &output_file,
-                    pid,
-                    is_plan_mode,
-                ) {
-                    Ok(response) => (response.thread_id, response.usage, response.cancelled),
-                    Err(e) => {
-                        log::error!("Resume Codex tail failed for run: {run_id_clone}, error: {e}");
-                        super::registry::unregister_process(&session_id_clone);
-                        if let Ok(mut writer) =
-                            RunLogWriter::resume(&app_clone, &session_id_clone, &run_id_clone)
-                        {
-                            if let Err(e) = writer.crash() {
-                                log::error!("Failed to mark run as crashed: {e}");
-                            }
-                        }
-                        emit_done(&app_clone, &session_id_clone, &worktree_id_clone);
-                        return;
+                // Codex uses app-server now — no detached process to tail.
+                // Mark as crashed; the user's next message will use thread/resume.
+                log::trace!("Codex session {session_id_clone}: no process to tail (app-server mode), marking run complete");
+                super::registry::unregister_process(&session_id_clone);
+                if let Ok(mut writer) =
+                    RunLogWriter::resume(&app_clone, &session_id_clone, &run_id_clone)
+                {
+                    if let Err(e) = writer.crash() {
+                        log::error!("Failed to mark run as crashed: {e}");
                     }
                 }
+                emit_done(&app_clone, &session_id_clone, &worktree_id_clone);
+                return;
             } else {
                 match super::claude::tail_claude_output(
                     &app_clone,
@@ -4760,6 +4752,7 @@ fn execute_digest_claude(
     working_dir: Option<&std::path::Path>,
     worktree_id: Option<&str>,
     magic_backend: Option<&str>,
+    reasoning_effort: Option<&str>,
 ) -> Result<SessionDigestResponse, String> {
     // Per-operation backend > project/global default_backend
     let backend = resolve_magic_prompt_backend(app, magic_backend, worktree_id);
@@ -4772,6 +4765,7 @@ fn execute_digest_claude(
             model,
             Some(SESSION_DIGEST_SCHEMA),
             working_dir,
+            reasoning_effort,
         )?;
         return serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse OpenCode digest JSON: {e}, content: {json_str}");
@@ -4787,6 +4781,7 @@ fn execute_digest_claude(
             model,
             SESSION_DIGEST_SCHEMA,
             working_dir,
+            reasoning_effort,
         )?;
         return serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse Codex digest JSON: {e}, content: {json_str}");
@@ -4929,10 +4924,11 @@ pub async fn generate_session_digest(
         .session_recap_provider
         .as_deref();
     let magic_backend = prefs.magic_prompt_backends.session_recap_backend.as_deref();
+    let effort = prefs.magic_prompt_efforts.session_recap_effort.as_deref();
 
     // Call Claude CLI with JSON schema (non-streaming)
     let response =
-        execute_digest_claude(&app, &prompt, model, provider, None, None, magic_backend)?;
+        execute_digest_claude(&app, &prompt, model, provider, None, None, magic_backend, effort)?;
 
     Ok(SessionDigest {
         chat_summary: response.chat_summary,
@@ -5216,11 +5212,11 @@ fn parse_codex_mcp_list_json(output: &str) -> std::collections::HashMap<String, 
 /// PermissionApproval UI during a Codex build-mode session.
 #[tauri::command]
 pub fn approve_codex_command(
-    session_id: String,
+    _session_id: String,
     rpc_id: u64,
     decision: String,
 ) -> Result<(), String> {
-    super::codex::send_approval(&session_id, rpc_id, &decision)
+    super::codex_server::send_response(rpc_id, serde_json::json!({"decision": decision}))
 }
 
 // =============================================================================

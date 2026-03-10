@@ -252,18 +252,10 @@ function App() {
             ...worktreePaths,
           }
         }
-        if (Object.keys(reviewingUpdates).length > 0) {
-          storeUpdates.reviewingSessions = {
-            ...currentState.reviewingSessions,
-            ...reviewingUpdates,
-          }
-        }
-        if (Object.keys(waitingUpdates).length > 0) {
-          storeUpdates.waitingForInputSessionIds = {
-            ...currentState.waitingForInputSessionIds,
-            ...waitingUpdates,
-          }
-        }
+        // Replace (not merge) reviewing/waiting state — server is source of truth.
+        // Merging would keep stale entries from sessions that changed while disconnected.
+        storeUpdates.reviewingSessions = reviewingUpdates
+        storeUpdates.waitingForInputSessionIds = waitingUpdates
         if (Object.keys(storeUpdates).length > 0) {
           beginSessionStateHydration()
           try {
@@ -281,21 +273,28 @@ function App() {
           queryClient.setQueryData(chatQueryKeys.session(sessionId), session)
         }
       }
-      // Mark running sessions as sending (restores streaming state after refresh)
-      // Batch into a single set() to avoid triggering subscribers per-session
+      // Replace sendingSessionIds with exactly the server's running sessions.
+      // This clears sessions that finished while disconnected and restores
+      // sessions that are still running — server is source of truth.
+      const runningSendingIds: Record<string, boolean> = {}
       if (data.runningSessions?.length) {
-        useChatStore.setState(state => {
-          const updated = { ...state.sendingSessionIds }
-          let changed = false
-          for (const sessionId of data.runningSessions!) {
-            if (!updated[sessionId]) {
-              updated[sessionId] = true
-              changed = true
-            }
-          }
-          return changed ? { sendingSessionIds: updated } : state
-        })
+        for (const sessionId of data.runningSessions) {
+          runningSendingIds[sessionId] = true
+        }
       }
+      useChatStore.setState(state => {
+        const current = state.sendingSessionIds
+        // Check if anything actually changed to avoid unnecessary re-renders
+        const currentKeys = Object.keys(current)
+        const newKeys = Object.keys(runningSendingIds)
+        if (
+          currentKeys.length === newKeys.length &&
+          newKeys.every(k => current[k])
+        ) {
+          return state
+        }
+        return { sendingSessionIds: runningSendingIds }
+      })
       // Note: Git status is included in worktree cached_* fields, no separate cache needed
       // Seed preferences into cache
       if (data.preferences) {

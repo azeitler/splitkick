@@ -275,6 +275,9 @@
 
 .animate-dots::after {
   content: '';
+  display: inline-block;
+  width: 1.5ch;
+  text-align: left;
   animation: dots 1.5s steps(1, end) infinite;
 }
 
@@ -363,10 +366,9 @@
     cursor: default;
   }
 
-  /* Make html transparent in native app so rounded MainWindow corners aren't
-     obscured by the rectangular html background */
+  /* Use app background color so native titlebar overlay area blends in */
   html:has(body.native-app) {
-    background: transparent;
+    background: hsl(var(--background));
   }
 
   svg {

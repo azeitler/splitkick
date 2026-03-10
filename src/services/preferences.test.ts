@@ -14,6 +14,7 @@ import {
   DEFAULT_MAGIC_PROMPT_MODELS,
   DEFAULT_MAGIC_PROMPT_PROVIDERS,
   DEFAULT_MAGIC_PROMPT_BACKENDS,
+  DEFAULT_MAGIC_PROMPT_EFFORTS,
 } from '@/types/preferences'
 import { DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 
@@ -106,6 +107,7 @@ describe('preferences service', () => {
         magic_prompt_models: DEFAULT_MAGIC_PROMPT_MODELS,
         magic_prompt_providers: DEFAULT_MAGIC_PROMPT_PROVIDERS,
         magic_prompt_backends: DEFAULT_MAGIC_PROMPT_BACKENDS,
+        magic_prompt_efforts: DEFAULT_MAGIC_PROMPT_EFFORTS,
         file_edit_mode: 'external',
         ai_language: '',
         allow_web_tools_in_plan_mode: true,
@@ -129,7 +131,7 @@ describe('preferences service', () => {
         zoom_level: 100,
         custom_cli_profiles: [],
         default_provider: null,
-        canvas_layout: 'grid',
+
         auto_pull_base_branch: true,
         confirm_session_close: true,
         default_backend: 'claude',
@@ -221,6 +223,7 @@ describe('preferences service', () => {
         magic_prompt_models: DEFAULT_MAGIC_PROMPT_MODELS,
         magic_prompt_providers: DEFAULT_MAGIC_PROMPT_PROVIDERS,
         magic_prompt_backends: DEFAULT_MAGIC_PROMPT_BACKENDS,
+        magic_prompt_efforts: DEFAULT_MAGIC_PROMPT_EFFORTS,
         file_edit_mode: 'external',
         ai_language: '',
         allow_web_tools_in_plan_mode: true,
@@ -244,7 +247,7 @@ describe('preferences service', () => {
         zoom_level: 100,
         custom_cli_profiles: [],
         default_provider: null,
-        canvas_layout: 'grid',
+
         auto_pull_base_branch: true,
         confirm_session_close: true,
         default_backend: 'claude',
@@ -308,6 +311,7 @@ describe('preferences service', () => {
         magic_prompt_models: DEFAULT_MAGIC_PROMPT_MODELS,
         magic_prompt_providers: DEFAULT_MAGIC_PROMPT_PROVIDERS,
         magic_prompt_backends: DEFAULT_MAGIC_PROMPT_BACKENDS,
+        magic_prompt_efforts: DEFAULT_MAGIC_PROMPT_EFFORTS,
         file_edit_mode: 'external',
         ai_language: '',
         allow_web_tools_in_plan_mode: true,
@@ -331,7 +335,7 @@ describe('preferences service', () => {
         zoom_level: 100,
         custom_cli_profiles: [],
         default_provider: null,
-        canvas_layout: 'grid',
+
         auto_pull_base_branch: true,
         confirm_session_close: true,
         default_backend: 'claude',
@@ -396,6 +400,7 @@ describe('preferences service', () => {
         magic_prompt_models: DEFAULT_MAGIC_PROMPT_MODELS,
         magic_prompt_providers: DEFAULT_MAGIC_PROMPT_PROVIDERS,
         magic_prompt_backends: DEFAULT_MAGIC_PROMPT_BACKENDS,
+        magic_prompt_efforts: DEFAULT_MAGIC_PROMPT_EFFORTS,
         file_edit_mode: 'external',
         ai_language: '',
         allow_web_tools_in_plan_mode: true,
@@ -419,7 +424,7 @@ describe('preferences service', () => {
         zoom_level: 100,
         custom_cli_profiles: [],
         default_provider: null,
-        canvas_layout: 'grid',
+
         auto_pull_base_branch: true,
         confirm_session_close: true,
         default_backend: 'claude',
@@ -486,6 +491,7 @@ describe('preferences service', () => {
         magic_prompt_models: DEFAULT_MAGIC_PROMPT_MODELS,
         magic_prompt_providers: DEFAULT_MAGIC_PROMPT_PROVIDERS,
         magic_prompt_backends: DEFAULT_MAGIC_PROMPT_BACKENDS,
+        magic_prompt_efforts: DEFAULT_MAGIC_PROMPT_EFFORTS,
         file_edit_mode: 'external',
         ai_language: '',
         allow_web_tools_in_plan_mode: true,
@@ -509,7 +515,7 @@ describe('preferences service', () => {
         zoom_level: 100,
         custom_cli_profiles: [],
         default_provider: null,
-        canvas_layout: 'grid',
+
         auto_pull_base_branch: true,
         confirm_session_close: true,
         default_backend: 'claude',
@@ -576,6 +582,7 @@ describe('preferences service', () => {
         magic_prompt_models: DEFAULT_MAGIC_PROMPT_MODELS,
         magic_prompt_providers: DEFAULT_MAGIC_PROMPT_PROVIDERS,
         magic_prompt_backends: DEFAULT_MAGIC_PROMPT_BACKENDS,
+        magic_prompt_efforts: DEFAULT_MAGIC_PROMPT_EFFORTS,
         file_edit_mode: 'external',
         ai_language: '',
         allow_web_tools_in_plan_mode: true,
@@ -599,7 +606,7 @@ describe('preferences service', () => {
         zoom_level: 100,
         custom_cli_profiles: [],
         default_provider: null,
-        canvas_layout: 'grid',
+
         auto_pull_base_branch: true,
         confirm_session_close: true,
         default_backend: 'claude',
@@ -664,6 +671,7 @@ describe('preferences service', () => {
         magic_prompt_models: DEFAULT_MAGIC_PROMPT_MODELS,
         magic_prompt_providers: DEFAULT_MAGIC_PROMPT_PROVIDERS,
         magic_prompt_backends: DEFAULT_MAGIC_PROMPT_BACKENDS,
+        magic_prompt_efforts: DEFAULT_MAGIC_PROMPT_EFFORTS,
         file_edit_mode: 'external',
         ai_language: '',
         allow_web_tools_in_plan_mode: true,
@@ -687,7 +695,7 @@ describe('preferences service', () => {
         zoom_level: 100,
         custom_cli_profiles: [],
         default_provider: null,
-        canvas_layout: 'grid',
+
         auto_pull_base_branch: true,
         confirm_session_close: true,
         default_backend: 'claude',

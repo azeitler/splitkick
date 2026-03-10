@@ -86,6 +86,7 @@ export function useContextOperations({
             'context_summary_provider',
             preferences?.default_provider
           ),
+          reasoningEffort: preferences?.magic_prompt_efforts?.context_summary_effort ?? null,
         }
       )
 
@@ -108,6 +109,7 @@ export function useContextOperations({
     preferences?.magic_prompt_models?.context_summary_model,
     preferences?.magic_prompt_providers,
     preferences?.default_provider,
+    preferences?.magic_prompt_efforts?.context_summary_effort,
   ])
 
   // Handle Load Context - opens modal to select saved context

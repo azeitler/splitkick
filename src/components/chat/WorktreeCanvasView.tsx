@@ -36,18 +36,15 @@ import { usePlanApproval } from './hooks/usePlanApproval'
 import { useClearContextApproval } from './hooks/useClearContextApproval'
 import { useWorktreeApproval } from './hooks/useWorktreeApproval'
 import { useSessionArchive } from './hooks/useSessionArchive'
-import { CanvasGrid } from './CanvasGrid'
 import { CloseWorktreeDialog } from './CloseWorktreeDialog'
 import { CanvasList } from './CanvasList'
-import { usePreferences, usePatchPreferences } from '@/services/preferences'
+import { usePreferences } from '@/services/preferences'
 import {
   Search,
   Loader2,
   MoreHorizontal,
   Settings,
   Plus,
-  LayoutGrid,
-  List,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -58,7 +55,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { useProjectsStore } from '@/store/projects-store'
 import { OpenInButton } from '@/components/open-in/OpenInButton'
 import { NewIssuesBadge } from '@/components/shared/NewIssuesBadge'
@@ -187,10 +183,7 @@ export function WorktreeCanvasView({
     return () => window.removeEventListener('open-git-diff', handler)
   }, [isBase, worktreePath, defaultBranch, selectedSessionId])
 
-  // Preferences for canvas layout
   const { data: preferences } = usePreferences()
-  const patchPreferences = usePatchPreferences()
-  const canvasLayout = preferences?.canvas_layout ?? 'list'
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('')
@@ -416,6 +409,8 @@ export function WorktreeCanvasView({
     setSelectedIndex(targetIndex)
     const targetCard = sessionCards[targetIndex]
     if (targetCard) {
+      // Auto-open the session chat modal
+      setSelectedSessionId(targetCard.session.id)
       useChatStore
         .getState()
         .setCanvasSelectedSession(worktreeId, targetCard.session.id)
@@ -550,26 +545,6 @@ export function WorktreeCanvasView({
               worktreePath={worktreePath}
               branch={gitStatus?.current_branch ?? worktree?.branch}
             />
-            <ToggleGroup
-              type="single"
-              size="sm"
-              variant="outline"
-              value={canvasLayout}
-              onValueChange={value => {
-                if (value) {
-                  patchPreferences.mutate({
-                    canvas_layout: value as 'grid' | 'list',
-                  })
-                }
-              }}
-            >
-              <ToggleGroupItem value="grid" aria-label="Grid view">
-                <LayoutGrid className="h-3.5 w-3.5" />
-              </ToggleGroupItem>
-              <ToggleGroupItem value="list" aria-label="List view">
-                <List className="h-3.5 w-3.5" />
-              </ToggleGroupItem>
-            </ToggleGroup>
           </div>
         </div>
 
@@ -594,28 +569,8 @@ export function WorktreeCanvasView({
                   </span>
                 )}
             </div>
-          ) : canvasLayout === 'list' ? (
-            <CanvasList
-              cards={sessionCards}
-              worktreeId={worktreeId}
-              worktreePath={worktreePath}
-              selectedIndex={selectedIndex}
-              onSelectedIndexChange={handleSelectedIndexChange}
-              selectedSessionId={selectedSessionId}
-              onSelectedSessionIdChange={setSelectedSessionId}
-              onArchiveSession={handleArchiveSession}
-              onDeleteSession={handleDeleteSession}
-              onPlanApproval={handlePlanApproval}
-              onPlanApprovalYolo={handlePlanApprovalYolo}
-              onClearContextApproval={handleClearContextApproval}
-              onClearContextApprovalBuild={handleClearContextApprovalBuild}
-              onWorktreeApproval={handleWorktreeApproval}
-              onWorktreeApprovalYolo={handleWorktreeApprovalYolo}
-              onCloseWorktree={handleCloseWorktreeOrConfirm}
-              searchInputRef={searchInputRef}
-            />
           ) : (
-            <CanvasGrid
+            <CanvasList
               cards={sessionCards}
               worktreeId={worktreeId}
               worktreePath={worktreePath}

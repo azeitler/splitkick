@@ -16,6 +16,8 @@ interface UseScrollManagementOptions {
   virtualizedListRef: RefObject<VirtualizedMessageListHandle | null>
   /** Active worktree ID — used to scroll to bottom before paint on switch */
   activeWorktreeId: string | null
+  /** Whether a message is currently being streamed — enables ResizeObserver auto-scroll */
+  isSending?: boolean
 }
 
 interface UseScrollManagementReturn {
@@ -45,6 +47,7 @@ export function useScrollManagement({
   messages,
   virtualizedListRef,
   activeWorktreeId,
+  isSending,
 }: UseScrollManagementOptions): UseScrollManagementReturn {
   const scrollViewportRef = useRef<HTMLDivElement>(null)
 
@@ -58,6 +61,8 @@ export function useScrollManagement({
   const [areFindingsVisible, setAreFindingsVisible] = useState(true)
   // Ref for scroll timeout cleanup
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Cooldown: when user scrolls up, block handleScroll from re-setting isAtBottom for a short period
+  const userScrollUpUntilRef = useRef(0)
 
   // Cleanup scroll timeout on unmount
   useEffect(() => {
@@ -67,6 +72,54 @@ export function useScrollManagement({
       }
     }
   }, [])
+
+  // Detect user scrolling up during auto-scroll and break the lock
+  useEffect(() => {
+    const viewport = scrollViewportRef.current
+    if (!viewport) return
+
+    const handleWheel = (e: WheelEvent) => {
+      if (e.deltaY < 0) {
+        // User scrolling up — cancel auto-scroll and block re-activation for 1s
+        if (scrollTimeoutRef.current) {
+          clearTimeout(scrollTimeoutRef.current)
+          scrollTimeoutRef.current = null
+        }
+        isAutoScrollingRef.current = false
+        isAtBottomRef.current = false
+        setIsAtBottom(false)
+        userScrollUpUntilRef.current = Date.now() + 1000
+      } else if (e.deltaY > 0) {
+        // User scrolling down — clear cooldown so bottom detection works
+        userScrollUpUntilRef.current = 0
+      }
+    }
+
+    viewport.addEventListener('wheel', handleWheel, { passive: true })
+    return () => viewport.removeEventListener('wheel', handleWheel)
+  }, [])
+
+  // Auto-scroll during streaming using ResizeObserver.
+  // Fires when the scroll content container grows (frame-perfect tracking).
+  // Uses instant scroll (not smooth) to avoid cascading animation issues.
+  useEffect(() => {
+    if (!isSending) return
+
+    const viewport = scrollViewportRef.current
+    if (!viewport || !viewport.firstElementChild) return
+
+    const observer = new ResizeObserver(() => {
+      // Respect cooldown after user scrolled up
+      if (Date.now() < userScrollUpUntilRef.current) return
+      // Don't scroll if user has scrolled away from bottom
+      if (!isAtBottomRef.current) return
+
+      viewport.scrollTop = viewport.scrollHeight
+    })
+
+    observer.observe(viewport.firstElementChild)
+    return () => observer.disconnect()
+  }, [isSending])
 
   // Scroll to bottom before paint when switching worktrees to prevent flash of top content
   useLayoutEffect(() => {
@@ -88,6 +141,12 @@ export function useScrollManagement({
     const { scrollTop, scrollHeight, clientHeight } = target
     // Consider "at bottom" if within 100px of the bottom
     const atBottom = scrollHeight - scrollTop - clientHeight < 100
+
+    // During cooldown after user scrolled up, only allow transitions to NOT-at-bottom
+    if (Date.now() < userScrollUpUntilRef.current && atBottom) {
+      return
+    }
+
     isAtBottomRef.current = atBottom
     // PERFORMANCE: Functional setState skips re-render when value hasn't changed
     setIsAtBottom(prev => (prev === atBottom ? prev : atBottom))
@@ -129,9 +188,15 @@ export function useScrollManagement({
 
     if (instant) {
       // Instant scroll — no animation, no correction needed
+      isAutoScrollingRef.current = false
       viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'instant' })
       return
     }
+
+    // Skip if a smooth scroll is already in flight — it will reach bottom.
+    // This prevents cascading animations when the auto-scroll effect fires
+    // rapidly (e.g. on every streaming content block).
+    if (isAutoScrollingRef.current) return
 
     isAutoScrollingRef.current = true
 

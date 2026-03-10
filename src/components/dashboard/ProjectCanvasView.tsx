@@ -16,8 +16,6 @@ import {
   Settings,
   Plus,
   FileJson,
-  LayoutGrid,
-  List,
   Clock3,
   GitBranch,
   MessageSquare,
@@ -73,8 +71,8 @@ import { SecurityAlertsBadge } from '@/components/shared/SecurityAlertsBadge'
 import { PlanDialog } from '@/components/chat/PlanDialog'
 import { RecapDialog } from '@/components/chat/RecapDialog'
 import { SessionChatModal } from '@/components/chat/SessionChatModal'
-import { SessionCard } from '@/components/chat/SessionCard'
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+
+
 import { LabelModal } from '@/components/chat/LabelModal'
 import { getLabelTextColor } from '@/lib/label-colors'
 import {
@@ -97,8 +95,7 @@ import {
   useCloseBaseSessionClean,
   useCloseBaseSessionArchive,
 } from '@/services/projects'
-import { useArchiveSession, useCloseSession, useRenameSession } from '@/services/chat'
-import { usePreferences, usePatchPreferences } from '@/services/preferences'
+import { usePreferences } from '@/services/preferences'
 import { DEFAULT_KEYBINDINGS, formatShortcutDisplay } from '@/types/keybindings'
 import { CloseWorktreeDialog } from '@/components/chat/CloseWorktreeDialog'
 const GitDiffModal = lazy(() =>
@@ -492,11 +489,7 @@ function WorktreeSectionHeader({
 }
 
 export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
-  // Preferences for canvas layout
   const { data: preferences } = usePreferences()
-  const patchPreferences = usePatchPreferences()
-  const canvasLayout = preferences?.canvas_layout ?? 'list'
-  const isListLayout = canvasLayout === 'list'
 
   // Project action mutations
   const createBaseSession = useCreateBaseSession()
@@ -690,39 +683,18 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     const result: FlatCard[] = []
     let globalIndex = 0
     for (const section of worktreeSections) {
-      if (isListLayout) {
-        // List view: one entry per worktree
-        result.push({
-          worktreeId: section.worktree.id,
-          worktreePath: section.worktree.path,
-          card: section.cards[0] ?? null,
-          globalIndex,
-          isPending: section.isPending,
-        })
-        globalIndex++
-      } else if (section.isPending) {
-        result.push({
-          worktreeId: section.worktree.id,
-          worktreePath: section.worktree.path,
-          card: null,
-          globalIndex,
-          isPending: true,
-        })
-        globalIndex++
-      } else {
-        for (const card of section.cards) {
-          result.push({
-            worktreeId: section.worktree.id,
-            worktreePath: section.worktree.path,
-            card,
-            globalIndex,
-          })
-          globalIndex++
-        }
-      }
+      // One entry per worktree
+      result.push({
+        worktreeId: section.worktree.id,
+        worktreePath: section.worktree.path,
+        card: section.cards[0] ?? null,
+        globalIndex,
+        isPending: section.isPending,
+      })
+      globalIndex++
     }
     return result
-  }, [worktreeSections, isListLayout])
+  }, [worktreeSections])
 
   // Selection state
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
@@ -773,8 +745,6 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   })
 
   // Archive mutations - need to handle per-worktree
-  const archiveSession = useArchiveSession()
-  const closeSession = useCloseSession()
   const archiveWorktree = useArchiveWorktree()
   const deleteWorktree = useDeleteWorktree()
   const closeBaseSessionClean = useCloseBaseSessionClean()
@@ -888,19 +858,11 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       ? { worktreeId: selectedWorktreeModal.worktreeId }
       : highlightedCardRef.current
     if (!highlighted) return
-    const cardIndex = isListLayout
-      ? flatCards.findIndex(fc => fc.worktreeId === highlighted.worktreeId)
-      : flatCards.findIndex(
-          fc =>
-            fc.worktreeId === highlighted.worktreeId &&
-            ('sessionId' in highlighted
-              ? fc.card?.session.id === highlighted.sessionId
-              : true)
-        )
+    const cardIndex = flatCards.findIndex(fc => fc.worktreeId === highlighted.worktreeId)
     if (cardIndex !== -1 && cardIndex !== selectedIndex) {
       setSelectedIndex(cardIndex)
     }
-  }, [selectedWorktreeModal, flatCards, selectedIndex, isListLayout])
+  }, [selectedWorktreeModal, flatCards, selectedIndex])
 
   // Keep a valid selection when the selected item disappears (archive/delete/close).
   // In list layout this prefers the previous row, matching expected canvas behavior.
@@ -1262,8 +1224,6 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     isGeneratingRecap,
     regenerateRecap,
     closeRecapDialog,
-    handlePlanView,
-    handleRecapView,
   } = useCanvasShortcutEvents({
     selectedCard,
     enabled: !selectedWorktreeModal && selectedIndex !== null,
@@ -1379,22 +1339,6 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     [worktreeLabelTarget, queryClient, projectId]
   )
 
-  const handleOpenWorktreeLabelModal = useCallback(
-    (card: SessionCardData) => {
-      const section = worktreeSections.find(s =>
-        s.cards.some(c => c.session.id === card.session.id)
-      )
-      if (!section) return
-
-      setWorktreeLabelTarget({
-        worktreeId: section.worktree.id,
-        currentLabel: section.worktree.label ?? null,
-      })
-      setWorktreeLabelModalOpen(true)
-    },
-    [worktreeSections]
-  )
-
   // Keyboard navigation - disable when any modal/dialog is open
   const isModalOpen =
     !!selectedWorktreeModal ||
@@ -1408,7 +1352,6 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     onSelectedIndexChange: handleSelectedIndexChange,
     onSelect: handleSelect,
     enabled: !isModalOpen,
-    layout: canvasLayout,
     onSelectionChange: syncSelectionToStore,
   })
 
@@ -1466,138 +1409,6 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     },
     [planDialogCard, handleWorktreeApprovalYolo]
   )
-
-  // Handle archive session for a specific worktree
-  const handleArchiveSessionForWorktree = useCallback(
-    (worktreeId: string, worktreePath: string, sessionId: string) => {
-      const worktree = readyWorktrees.find(w => w.id === worktreeId)
-      const sessionData = sessionsByWorktreeIdRef.current.get(worktreeId)
-      const activeSessions =
-        sessionData?.sessions?.filter(s => !s.archived_at) ?? []
-
-      if (activeSessions.length <= 1 && worktree && project) {
-        if (isBaseSession(worktree)) {
-          closeBaseSessionClean.mutate({
-            worktreeId,
-            projectId: project.id,
-          })
-        } else {
-          archiveWorktree.mutate({
-            worktreeId,
-            projectId: project.id,
-          })
-        }
-      } else {
-        archiveSession.mutate({
-          worktreeId,
-          worktreePath,
-          sessionId,
-        })
-      }
-    },
-    [
-      readyWorktrees,
-      project,
-      archiveSession,
-      archiveWorktree,
-      closeBaseSessionClean,
-    ]
-  )
-
-  // Handle delete session for a specific worktree (respects removal_behavior preference)
-  const removalBehavior = preferences?.removal_behavior ?? 'archive'
-  const handleDeleteSessionForWorktree = useCallback(
-    (worktreeId: string, worktreePath: string, sessionId: string) => {
-      const worktree = readyWorktrees.find(w => w.id === worktreeId)
-      const sessionData = sessionsByWorktreeIdRef.current.get(worktreeId)
-      const activeSessions =
-        sessionData?.sessions?.filter(s => !s.archived_at) ?? []
-
-      if (activeSessions.length <= 1 && worktree && project) {
-        if (isBaseSession(worktree)) {
-          closeBaseSessionClean.mutate({
-            worktreeId,
-            projectId: project.id,
-          })
-        } else if (removalBehavior === 'delete') {
-          deleteWorktree.mutate({
-            worktreeId,
-            projectId: project.id,
-          })
-        } else {
-          archiveWorktree.mutate({
-            worktreeId,
-            projectId: project.id,
-          })
-        }
-      } else if (removalBehavior === 'delete') {
-        closeSession.mutate({
-          worktreeId,
-          worktreePath,
-          sessionId,
-        })
-      } else {
-        archiveSession.mutate({
-          worktreeId,
-          worktreePath,
-          sessionId,
-        })
-      }
-    },
-    [
-      readyWorktrees,
-      project,
-      removalBehavior,
-      closeSession,
-      archiveSession,
-      archiveWorktree,
-      deleteWorktree,
-      closeBaseSessionClean,
-    ]
-  )
-
-  // Rename session state
-  const renameSessionMutation = useRenameSession()
-  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null)
-  const [renameValue, setRenameValue] = useState('')
-  // Track which worktree the renaming session belongs to
-  const renamingWorktreeRef = useRef<{ id: string; path: string } | null>(null)
-
-  const handleStartRenameForWorktree = useCallback(
-    (worktreeId: string, worktreePath: string, sessionId: string, currentName: string) => {
-      renamingWorktreeRef.current = { id: worktreeId, path: worktreePath }
-      setRenameValue(currentName)
-      setRenamingSessionId(sessionId)
-    },
-    []
-  )
-
-  const handleRenameSubmit = useCallback(
-    (sessionId: string) => {
-      const newName = renameValue.trim()
-      const wt = renamingWorktreeRef.current
-      if (newName && wt) {
-        // Find the current name to avoid no-op mutations
-        const currentSession = flatCards.find(c => c.card?.session.id === sessionId)
-        if (currentSession && currentSession.card?.session.name !== newName) {
-          renameSessionMutation.mutate({
-            worktreeId: wt.id,
-            worktreePath: wt.path,
-            sessionId,
-            newName,
-          })
-        }
-      }
-      setRenamingSessionId(null)
-      renamingWorktreeRef.current = null
-    },
-    [renameValue, flatCards, renameSessionMutation]
-  )
-
-  const handleRenameCancel = useCallback(() => {
-    setRenamingSessionId(null)
-    renamingWorktreeRef.current = null
-  }, [])
 
   // Listen for close-session-or-worktree event to handle CMD+W
   useEffect(() => {
@@ -1942,26 +1753,6 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
 
               <div className="flex items-center gap-2 shrink-0">
                 <OpenInButton worktreePath={project.path} />
-                <ToggleGroup
-                  type="single"
-                  size="sm"
-                  variant="outline"
-                  value={canvasLayout}
-                  onValueChange={value => {
-                    if (value) {
-                      patchPreferences.mutate({
-                        canvas_layout: value as 'grid' | 'list',
-                      })
-                    }
-                  }}
-                >
-                  <ToggleGroupItem value="grid" aria-label="Grid view">
-                    <LayoutGrid className="h-3.5 w-3.5" />
-                  </ToggleGroupItem>
-                  <ToggleGroupItem value="list" aria-label="List view">
-                    <List className="h-3.5 w-3.5" />
-                  </ToggleGroupItem>
-                </ToggleGroup>
               </div>
             </>
           )}
@@ -1969,7 +1760,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
 
         {/* Canvas View */}
         <div
-          className={`flex-1 pb-16 ${worktreeSections.length === 0 && !searchQuery ? '' : isListLayout ? 'pt-5 px-4' : 'pt-6 px-4'}`}
+          className={`flex-1 pb-16 ${worktreeSections.length === 0 && !searchQuery ? '' : 'pt-5 px-4'}`}
         >
           {worktreeSections.length === 0 ? (
             searchQuery ? (
@@ -1982,8 +1773,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                 projectPath={project?.path ?? null}
               />
             )
-          ) : isListLayout ? (
-            /* List view: one compact row per worktree */
+          ) : (
             <div className="flex flex-col gap-1">
               {(() => {
                 let shortcutNum = 0
@@ -2031,127 +1821,6 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                   )
                 })
               })()}
-            </div>
-          ) : (
-            /* Grid view: full card rendering */
-            <div className="space-y-6">
-              {worktreeSections.map(section => (
-                <div key={section.worktree.id}>
-                  <WorktreeSectionHeader
-                    worktree={section.worktree}
-                    projectId={projectId}
-                    defaultBranch={project.default_branch}
-                  />
-
-                  {section.isPending ? (
-                    <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3">
-                      {(() => {
-                        const currentIndex = cardIndex++
-                        return (
-                          <WorktreeSetupCard
-                            key={section.worktree.id}
-                            ref={el => {
-                              cardRefs.current[currentIndex] = el
-                            }}
-                            worktree={section.worktree}
-                            layout={canvasLayout}
-                            isSelected={selectedIndex === currentIndex}
-                            onSelect={() => setSelectedIndex(currentIndex)}
-                          />
-                        )
-                      })()}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col gap-4">
-                      {groupCardsByStatus(section.cards).map(group => (
-                        <div key={group.key}>
-                          <div className="mb-2 flex items-baseline gap-1.5">
-                            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                              {group.title}
-                            </span>
-                            <span className="text-[10px] text-muted-foreground/60">
-                              {group.cards.length}
-                            </span>
-                          </div>
-                          <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3">
-                            {group.cards.map(card => {
-                              const currentIndex = cardIndex++
-                              return (
-                                <SessionCard
-                                  key={card.session.id}
-                                  ref={el => {
-                                    cardRefs.current[currentIndex] = el
-                                  }}
-                                  card={card}
-                                  isSelected={selectedIndex === currentIndex}
-                                  onSelect={() => {
-                                    setSelectedIndex(currentIndex)
-                                    handleWorktreeClick(
-                                      section.worktree.id,
-                                      section.worktree.path
-                                    )
-                                  }}
-                                  onArchive={() =>
-                                    handleArchiveSessionForWorktree(
-                                      section.worktree.id,
-                                      section.worktree.path,
-                                      card.session.id
-                                    )
-                                  }
-                                  onDelete={() =>
-                                    handleDeleteSessionForWorktree(
-                                      section.worktree.id,
-                                      section.worktree.path,
-                                      card.session.id
-                                    )
-                                  }
-                                  onPlanView={() => handlePlanView(card)}
-                                  onRecapView={() => handleRecapView(card)}
-                                  onApprove={() => handlePlanApproval(card)}
-                                  onYolo={() => handlePlanApprovalYolo(card)}
-                                  onClearContextApprove={() => handleClearContextApproval(card)}
-                                  onClearContextBuildApprove={() => handleClearContextApprovalBuild(card)}
-                                  onWorktreeBuildApprove={handleWorktreeApproval ? () => handleWorktreeApproval(card) : undefined}
-                                  onWorktreeYoloApprove={handleWorktreeApprovalYolo ? () => handleWorktreeApprovalYolo(card) : undefined}
-                                  onToggleLabel={() =>
-                                    handleOpenWorktreeLabelModal(card)
-                                  }
-                                  onToggleReview={() => {
-                                    const {
-                                      reviewingSessions,
-                                      setSessionReviewing,
-                                    } = useChatStore.getState()
-                                    const isReviewing =
-                                      reviewingSessions[card.session.id] ||
-                                      !!card.session.review_results
-                                    setSessionReviewing(
-                                      card.session.id,
-                                      !isReviewing
-                                    )
-                                  }}
-                                  isRenaming={renamingSessionId === card.session.id}
-                                  renameValue={renameValue}
-                                  onRenameValueChange={setRenameValue}
-                                  onRenameStart={(sessionId, currentName) =>
-                                    handleStartRenameForWorktree(
-                                      section.worktree.id,
-                                      section.worktree.path,
-                                      sessionId,
-                                      currentName
-                                    )
-                                  }
-                                  onRenameSubmit={handleRenameSubmit}
-                                  onRenameCancel={handleRenameCancel}
-                                />
-                              )
-                            })}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
             </div>
           )}
         </div>

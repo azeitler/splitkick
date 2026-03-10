@@ -69,13 +69,6 @@ export const ChatInput = memo(function ChatInput({
   // This avoids React re-renders on every keystroke
   const valueRef = useRef<string>('')
 
-  // Auto-resize textarea to fit content, up to ~10 rows
-  const resizeTextarea = useCallback(() => {
-    const el = inputRef.current
-    if (!el) return
-    el.style.height = 'auto'
-    el.style.height = `${el.scrollHeight}px`
-  }, [inputRef])
   const debouncedSaveRef = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined
   )
@@ -139,9 +132,6 @@ export const ChatInput = memo(function ChatInput({
 
     if (inputRef.current) {
       inputRef.current.value = draft
-      // Reset height for restored content
-      inputRef.current.style.height = 'auto'
-      inputRef.current.style.height = `${inputRef.current.scrollHeight}px`
     }
   }, [activeSessionId, inputRef])
 
@@ -171,7 +161,6 @@ export const ChatInput = memo(function ChatInput({
         clearTimeout(debouncedSaveRef.current)
         inputRef.current.value = ''
         valueRef.current = ''
-        inputRef.current.style.height = 'auto'
         setShowHint(true)
         onHasValueChangeRef.current?.(false)
       }
@@ -191,7 +180,6 @@ export const ChatInput = memo(function ChatInput({
     clearTimeout(debouncedSaveRef.current)
     if (inputRef.current) {
       inputRef.current.value = ''
-      inputRef.current.style.height = 'auto'
     }
     valueRef.current = ''
     setShowHint(true)
@@ -223,11 +211,6 @@ export const ChatInput = memo(function ChatInput({
       setShowHint(prev => (prev !== isEmpty ? isEmpty : prev))
       // Notify parent of hasValue change for send button styling
       onHasValueChangeRef.current?.(!isEmpty)
-
-      // Auto-resize to fit content
-      // Use rAF to ensure layout is complete (handles paste where DOM updates
-      // may not be fully flushed before scrollHeight is read)
-      requestAnimationFrame(() => resizeTextarea())
 
       // Sync pending files with @mentions in input
       // Remove any pending files whose @filename is no longer in the text
@@ -353,7 +336,6 @@ export const ChatInput = memo(function ChatInput({
       fileMentionOpen,
       slashTriggerIndex,
       slashPopoverOpen,
-      resizeTextarea,
     ]
   )
 
@@ -510,8 +492,6 @@ export const ChatInput = memo(function ChatInput({
                 .getState()
                 .setInputDraft(activeSessionId, textarea.value)
               onHasValueChangeRef.current?.(Boolean(textarea.value.trim()))
-              // onChange won't fire for direct DOM value set, resize manually
-              requestAnimationFrame(() => resizeTextarea())
             }
 
             const {
@@ -823,10 +803,8 @@ export const ChatInput = memo(function ChatInput({
         }
       }
 
-      // Auto-resize after paste content is inserted
-      requestAnimationFrame(() => resizeTextarea())
     },
-    [activeSessionId, activeWorktreePath, inputRef, resizeTextarea]
+    [activeSessionId, activeWorktreePath, inputRef]
   )
 
   // Handle file selection from @ mention popover
@@ -924,7 +902,6 @@ export const ChatInput = memo(function ChatInput({
       if (inputRef.current) {
         inputRef.current.value = ''
         valueRef.current = ''
-        inputRef.current.style.height = 'auto'
       }
       if (activeSessionId) {
         useChatStore.getState().setInputDraft(activeSessionId, '')

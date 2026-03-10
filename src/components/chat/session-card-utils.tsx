@@ -42,6 +42,31 @@ export interface SessionCardData {
   label: LabelData | null
 }
 
+export interface SessionCardProps {
+  card: SessionCardData
+  isSelected: boolean
+  onSelect: () => void
+  onArchive: () => void
+  onDelete: () => void
+  onPlanView: () => void
+  onRecapView: () => void
+  onApprove?: () => void
+  onYolo?: () => void
+  onClearContextApprove?: () => void
+  onClearContextBuildApprove?: () => void
+  onWorktreeBuildApprove?: () => void
+  onWorktreeYoloApprove?: () => void
+  onToggleLabel?: () => void
+  onToggleReview?: () => void
+  onRename?: (sessionId: string, newName: string) => void
+  isRenaming?: boolean
+  renameValue?: string
+  onRenameValueChange?: (value: string) => void
+  onRenameStart?: (sessionId: string, currentName: string) => void
+  onRenameSubmit?: (sessionId: string) => void
+  onRenameCancel?: () => void
+}
+
 export const statusConfig: Record<
   SessionStatus,
   {
