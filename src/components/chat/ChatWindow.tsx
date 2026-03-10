@@ -1522,27 +1522,7 @@ export function ChatWindow({
     [pickRemoteOrRun, handlePull]
   )
 
-  // Keyboard shortcuts for merge dialog
-  useEffect(() => {
-    if (!showMergeDialog) return
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const key = e.key.toLowerCase()
-      if (key === 'p') {
-        e.preventDefault()
-        executeMerge('merge')
-      } else if (key === 's') {
-        e.preventDefault()
-        executeMerge('squash')
-      } else if (key === 'r') {
-        e.preventDefault()
-        executeMerge('rebase')
-      }
-    }
-
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [showMergeDialog, executeMerge])
 
   // Global cancel keyboard shortcut (Cmd+Option+Backspace / Ctrl+Alt+Backspace)
   // ChatInput handles this when focused, but we need a global handler for when
@@ -2601,7 +2581,21 @@ export function ChatWindow({
 
         {/* Merge options dialog */}
         <AlertDialog open={showMergeDialog} onOpenChange={setShowMergeDialog}>
-          <AlertDialogContent>
+          <AlertDialogContent
+            onKeyDown={e => {
+              const key = e.key.toLowerCase()
+              if (key === 'p') {
+                e.preventDefault()
+                executeMerge('merge')
+              } else if (key === 's') {
+                e.preventDefault()
+                executeMerge('squash')
+              } else if (key === 'r') {
+                e.preventDefault()
+                executeMerge('rebase')
+              }
+            }}
+          >
             <AlertDialogHeader>
               <AlertDialogTitle>Merge to Base</AlertDialogTitle>
               <AlertDialogDescription>
