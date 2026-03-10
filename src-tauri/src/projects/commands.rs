@@ -5486,11 +5486,12 @@ fn get_staged_diff(repo_path: &str) -> Result<String, String> {
 
     let diff = String::from_utf8_lossy(&output.stdout).to_string();
 
-    // Truncate very long diffs
+    // Truncate very long diffs (char-safe for multi-byte UTF-8)
     if diff.len() > 50000 {
+        let end = diff.char_indices().nth(50000).map(|(i, _)| i).unwrap_or(diff.len());
         Ok(format!(
             "{}...\n\n[Diff truncated - {} chars total]",
-            &diff[..50000],
+            &diff[..end],
             diff.len()
         ))
     } else {
@@ -6571,11 +6572,12 @@ fn generate_release_notes_content(
         return Err(format!("No changes found since {tag}"));
     }
 
-    // Truncate commits if too large (50K chars)
+    // Truncate commits if too large (50K chars, char-safe for multi-byte UTF-8)
     let commits = if commits.len() > 50_000 {
+        let end = commits.char_indices().nth(50_000).map(|(i, _)| i).unwrap_or(commits.len());
         format!(
             "{}\n\n[... truncated, {} total characters]",
-            &commits[..50_000],
+            &commits[..end],
             commits.len()
         )
     } else {
