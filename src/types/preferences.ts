@@ -1146,13 +1146,14 @@ export const terminalOptions: { value: TerminalApp; label: string }[] =
         { value: 'iterm2', label: 'iTerm2' },
       ]
 
-export type EditorApp = 'zed' | 'vscode' | 'cursor' | 'xcode'
+export type EditorApp = 'zed' | 'vscode' | 'cursor' | 'xcode' | 'intellij'
 
 export const editorOptions: { value: EditorApp; label: string }[] = [
   { value: 'zed', label: 'Zed' },
   { value: 'vscode', label: 'VS Code' },
   { value: 'cursor', label: 'Cursor' },
   { value: 'xcode', label: 'Xcode' },
+  { value: 'intellij', label: 'IntelliJ IDEA' },
 ]
 
 export type OpenInDefault = 'editor' | 'terminal' | 'finder' | 'github'
