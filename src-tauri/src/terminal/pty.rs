@@ -66,7 +66,7 @@ pub fn spawn_terminal(
             }
             c
         } else {
-            // Run the command wrapped in a shell — must escape for word-splitting safety
+            // Run the command wrapped in a shell
             let mut c = CommandBuilder::new(&shell);
             #[cfg(windows)]
             {
@@ -76,7 +76,7 @@ pub fn spawn_terminal(
             #[cfg(not(windows))]
             {
                 c.arg("-c");
-                c.arg(&crate::platform::shell_escape(run_command));
+                c.arg(run_command);
             }
             c
         }

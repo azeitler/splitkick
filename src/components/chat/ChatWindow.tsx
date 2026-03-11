@@ -83,7 +83,6 @@ import { ChatInput } from './ChatInput'
 import { SessionDebugPanel } from './SessionDebugPanel'
 import { ChatToolbar } from './ChatToolbar'
 import { ReviewResultsPanel } from './ReviewResultsPanel'
-import { WorktreeCanvasView } from './WorktreeCanvasView'
 import { QueuedMessagesList } from './QueuedMessageItem'
 import { FloatingButtons } from './FloatingButtons'
 import { PlanDialog } from './PlanDialog'
@@ -233,14 +232,6 @@ export function ChatWindow({
       ? (state.reviewingSessions[activeSessionId] ?? false)
       : false
   )
-  // PERFORMANCE: Proper selector for isViewingCanvasTab - subscribes to actual data
-  // Default to true so Canvas is the initial view when opening a worktree
-  const isViewingCanvasTabRaw = useChatStore(state =>
-    state.activeWorktreeId
-      ? (state.viewingCanvasTab[state.activeWorktreeId] ?? true)
-      : false
-  )
-
   const isStreamingPlanApproved = useChatStore(
     state => state.isStreamingPlanApproved
   )
@@ -361,7 +352,6 @@ export function ChatWindow({
 
   const { data: preferences } = usePreferences()
   const patchPreferences = usePatchPreferences()
-  const isViewingCanvasTab = isViewingCanvasTabRaw
   const sessionModalOpen = useUIStore(state => state.sessionChatModalOpen)
   const focusChatShortcut = formatShortcutDisplay(
     (preferences?.keybindings?.focus_chat_input ??
@@ -1625,7 +1615,6 @@ export function ChatWindow({
     })
 
   // Listen for magic-command events from MagicModal
-  // Pass isModal and isViewingCanvasTab to prevent duplicate listeners when modal is open over canvas
   useMagicCommands({
     handleSaveContext,
     handleLoadContext,
@@ -1640,7 +1629,6 @@ export function ChatWindow({
     handleInvestigateWorkflowRun,
     handleInvestigate,
     isModal,
-    isViewingCanvasTab,
     sessionModalOpen,
   })
 
@@ -1773,7 +1761,6 @@ export function ChatWindow({
     activeWorktreeId,
     activeWorktreePath,
     isModal,
-    isViewingCanvasTab,
     latestPlanContent,
     latestPlanFilePath,
     setPlanDialogContent,
@@ -1953,14 +1940,7 @@ export function ChatWindow({
       )}
     >
       <div className="flex h-full w-full min-w-0 flex-col overflow-hidden">
-        {/* Canvas view (when canvas tab is active) */}
-        {!isModal && isViewingCanvasTab ? (
-          <WorktreeCanvasView
-            worktreeId={activeWorktreeId}
-            worktreePath={activeWorktreePath}
-          />
-        ) : (
-          <ResizablePanelGroup direction="horizontal" className="flex-1">
+        <ResizablePanelGroup direction="horizontal" className="flex-1">
             <ResizablePanel
               defaultSize={hasReviewResults && reviewSidebarVisible ? 50 : 100}
               minSize={40}
@@ -2467,7 +2447,6 @@ export function ChatWindow({
               </>
             )}
           </ResizablePanelGroup>
-        )}
 
         {/* File content modal for viewing files from tool calls */}
         <FileContentModal

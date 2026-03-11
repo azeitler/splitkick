@@ -2748,13 +2748,19 @@ pub async fn save_cancelled_message(
     tool_calls: Vec<super::types::ToolCall>,
     content_blocks: Vec<super::types::ContentBlock>,
 ) -> Result<(), String> {
-    let _ = (worktree_id, worktree_path, tool_calls, content_blocks);
+    let _ = (worktree_id, worktree_path);
 
-    if content.is_empty() {
+    if content.is_empty() && tool_calls.is_empty() && content_blocks.is_empty() {
         return Ok(());
     }
 
-    super::run_log::persist_partial_cancelled_content(&app, &session_id, &content)
+    super::run_log::persist_partial_cancelled_content(
+        &app,
+        &session_id,
+        &content,
+        &tool_calls,
+        &content_blocks,
+    )
 }
 
 /// Mark a message's plan as approved

@@ -5031,20 +5031,51 @@ pub async fn create_pr_with_ai_content(
         log::trace!("Staging and committing {uncommitted} uncommitted changes");
 
         // Stage all changes
-        let stage_output = silent_command("git")
-            .args(["add", "-A"])
-            .current_dir(&worktree_path)
-            .output()
-            .map_err(|e| format!("Failed to stage changes: {e}"))?;
+        stage_all_changes(&worktree_path)?;
 
-        if !stage_output.status.success() {
-            let stderr = String::from_utf8_lossy(&stage_output.stderr);
-            return Err(format!("Failed to stage changes: {stderr}"));
-        }
+        // Generate a meaningful commit message from the staged diff
+        let commit_msg = match (|| -> Result<String, String> {
+            let status = get_git_status(&worktree_path)?;
+            let diff = get_staged_diff(&worktree_path)?;
+            let recent_commits = get_recent_commits(&worktree_path, 10)?;
+            let remote_info = get_remote_info(&worktree_path)?;
 
-        // Commit with a generic message (the PR will have the real description)
+            let prompt = COMMIT_MESSAGE_PROMPT
+                .replace("{status}", &status)
+                .replace("{diff}", &diff)
+                .replace("{recent_commits}", &recent_commits)
+                .replace("{remote_info}", &remote_info);
+
+            let commit_magic_backend = crate::get_preferences_path(&app)
+                .ok()
+                .and_then(|p| std::fs::read_to_string(p).ok())
+                .and_then(|c| serde_json::from_str::<crate::AppPreferences>(&c).ok())
+                .and_then(|p| p.magic_prompt_backends.commit_message_backend);
+
+            let response = generate_commit_message(
+                &app,
+                &prompt,
+                model.as_deref(),
+                custom_profile_name.as_deref(),
+                Some(std::path::Path::new(&worktree_path)),
+                Some(&worktree.id),
+                commit_magic_backend.as_deref(),
+                reasoning_effort.as_deref(),
+            )?;
+            Ok(response.message)
+        })() {
+            Ok(msg) => {
+                log::trace!("Generated commit message: {}", msg.lines().next().unwrap_or(""));
+                msg
+            }
+            Err(e) => {
+                log::warn!("Failed to generate commit message, using fallback: {e}");
+                "chore: prepare for PR".to_string()
+            }
+        };
+
         let commit_output = silent_command("git")
-            .args(["commit", "-m", "chore: prepare for PR"])
+            .args(["commit", "-m", &commit_msg])
             .current_dir(&worktree_path)
             .output()
             .map_err(|e| format!("Failed to commit: {e}"))?;
