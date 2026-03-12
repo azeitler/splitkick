@@ -23,6 +23,7 @@ interface MagicCommandHandlers {
   handleResolveConflicts: () => void
   handleInvestigateWorkflowRun: (detail: WorkflowRunDetail) => void
   handleInvestigate: (type: 'issue' | 'pr') => void
+  handleReviewComments: (prompt: string) => void
 }
 
 interface UseMagicCommandsOptions extends MagicCommandHandlers {
@@ -54,6 +55,7 @@ export function useMagicCommands({
   handleResolveConflicts,
   handleInvestigateWorkflowRun,
   handleInvestigate,
+  handleReviewComments,
   isModal = false,
   sessionModalOpen = false,
 }: UseMagicCommandsOptions): void {
@@ -71,6 +73,7 @@ export function useMagicCommands({
     handleResolveConflicts,
     handleInvestigateWorkflowRun,
     handleInvestigate,
+    handleReviewComments,
   })
 
   // Update refs in useLayoutEffect to avoid linter warning about ref updates during render
@@ -89,6 +92,7 @@ export function useMagicCommands({
       handleResolveConflicts,
       handleInvestigateWorkflowRun,
       handleInvestigate,
+      handleReviewComments,
     }
   })
 
@@ -145,6 +149,9 @@ export function useMagicCommands({
         case 'investigate-workflow-run':
           handlers.handleInvestigateWorkflowRun(rest as WorkflowRunDetail)
           break
+        case 'review-comments':
+          handlers.handleReviewComments((rest as { prompt: string }).prompt)
+          break
       }
     }
 
@@ -175,6 +182,11 @@ export function useMagicCommands({
         break
       case 'resolve-conflicts':
         handlers.handleResolveConflicts()
+        break
+      case 'review-comments':
+        if (pendingMagicCommand.prompt) {
+          handlers.handleReviewComments(pendingMagicCommand.prompt)
+        }
         break
     }
   }, [pendingMagicCommand, isModal])

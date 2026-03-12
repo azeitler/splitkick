@@ -5290,6 +5290,86 @@ pub async fn create_pr_with_ai_content(
 }
 
 // =============================================================================
+// Merge GitHub PR
+// =============================================================================
+
+/// Response from merging a GitHub PR
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergePrResponse {
+    pub merged: bool,
+    pub message: String,
+}
+
+/// Merge the open GitHub PR for the current branch using `gh pr merge`.
+///
+/// Checks mergeability first via `gh pr view`, then merges with `--merge --delete-branch`.
+#[tauri::command]
+pub async fn merge_github_pr(
+    app: AppHandle,
+    worktree_path: String,
+) -> Result<MergePrResponse, String> {
+    let gh = resolve_gh_binary(&app);
+
+    // 1. Check PR status and mergeability
+    let view_output = silent_command(&gh)
+        .args([
+            "pr",
+            "view",
+            "--json",
+            "number,state,mergeable,mergeStateStatus,url,title",
+        ])
+        .current_dir(&worktree_path)
+        .output()
+        .map_err(|e| format!("Failed to run gh pr view: {e}"))?;
+
+    if !view_output.status.success() {
+        let stderr = String::from_utf8_lossy(&view_output.stderr);
+        return Err(format!("No PR found for this branch: {stderr}"));
+    }
+
+    let pr_info: serde_json::Value = serde_json::from_slice(&view_output.stdout)
+        .map_err(|e| format!("Failed to parse PR info: {e}"))?;
+
+    let state = pr_info["state"].as_str().unwrap_or("");
+    if state != "OPEN" {
+        return Err(format!("PR is not open (state: {state})"));
+    }
+
+    let mergeable = pr_info["mergeable"].as_str().unwrap_or("UNKNOWN");
+    let merge_state = pr_info["mergeStateStatus"].as_str().unwrap_or("UNKNOWN");
+
+    if mergeable == "CONFLICTING" {
+        return Err("PR has merge conflicts that must be resolved first".to_string());
+    }
+
+    if merge_state == "BLOCKED" {
+        return Err("PR is blocked (required checks or reviews may be pending)".to_string());
+    }
+
+    let title = pr_info["title"].as_str().unwrap_or("").to_string();
+
+    // 2. Merge the PR
+    let merge_output = silent_command(&gh)
+        .args(["pr", "merge", "--merge"])
+        .current_dir(&worktree_path)
+        .output()
+        .map_err(|e| format!("Failed to run gh pr merge: {e}"))?;
+
+    if !merge_output.status.success() {
+        let stderr = String::from_utf8_lossy(&merge_output.stderr);
+        return Err(format!("Failed to merge PR: {stderr}"));
+    }
+
+    log::info!("Merged PR: {title}");
+
+    Ok(MergePrResponse {
+        merged: true,
+        message: format!("Merged: {title}"),
+    })
+}
+
+// =============================================================================
 // AI-Powered PR Update
 // =============================================================================
 

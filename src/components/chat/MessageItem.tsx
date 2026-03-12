@@ -28,6 +28,7 @@ import {
 import { ThinkingBlock } from './ThinkingBlock'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import { logger } from '@/lib/logger'
+import { formatDuration } from './time-utils'
 import {
   parseReviewFindings,
   hasReviewFindings,
@@ -115,6 +116,8 @@ interface MessageItemProps {
   onCopyToInput?: (message: ChatMessage) => void
   /** Hide approve buttons (e.g. for Codex which has no native approval flow) */
   hideApproveButtons?: boolean
+  /** Duration of this assistant message in ms (computed from user→assistant timestamp delta) */
+  durationMs?: number | null
 }
 
 /**
@@ -153,6 +156,7 @@ export const MessageItem = memo(function MessageItem({
   isFindingFixed,
   onCopyToInput,
   hideApproveButtons,
+  durationMs,
 }: MessageItemProps) {
   // Only show Approve button for the last message with ExitPlanMode
   const isLatestPlanRequest = messageIndex === lastPlanMessageIndex
@@ -574,6 +578,12 @@ export const MessageItem = memo(function MessageItem({
       {message.cancelled && (
         <span className="text-xs text-muted-foreground/50 italic">
           (cancelled)
+        </span>
+      )}
+
+      {message.role === 'assistant' && durationMs != null && durationMs > 0 && (
+        <span className="mt-1 block min-h-4 text-xs leading-4 text-muted-foreground/40 tabular-nums font-mono">
+          {formatDuration(durationMs)}
         </span>
       )}
     </>

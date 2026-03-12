@@ -1842,7 +1842,7 @@ pub fn parse_codex_run_to_message(
         session_id: String::new(), // Set by caller
         role: MessageRole::Assistant,
         content,
-        timestamp: run.started_at,
+        timestamp: run.ended_at.unwrap_or(run.started_at),
         tool_calls,
         content_blocks,
         cancelled: run.cancelled,

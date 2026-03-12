@@ -263,6 +263,13 @@ pub async fn dispatch_command(
             .await?;
             to_value(result)
         }
+        "merge_github_pr" => {
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let result =
+                crate::projects::merge_github_pr(app.clone(), worktree_path).await?;
+            emit_cache_invalidation(app, &["projects"]);
+            to_value(result)
+        }
         "create_commit_with_ai" => {
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
             let custom_prompt: Option<String> = field_opt(&args, "magicPrompt", "magic_prompt")?;
@@ -392,6 +399,14 @@ pub async fn dispatch_command(
             let pr_number: u32 = field(&args, "prNumber", "pr_number")?;
             let result =
                 crate::projects::get_github_pr(app.clone(), project_path, pr_number).await?;
+            to_value(result)
+        }
+        "get_pr_review_comments" => {
+            let project_path: String = field(&args, "projectPath", "project_path")?;
+            let pr_number: u32 = field(&args, "prNumber", "pr_number")?;
+            let result =
+                crate::projects::get_pr_review_comments(app.clone(), project_path, pr_number)
+                    .await?;
             to_value(result)
         }
         "load_issue_context" => {

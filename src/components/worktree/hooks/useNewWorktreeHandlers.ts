@@ -147,10 +147,20 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
 
     if (hasBaseSession && baseSession) {
       const { selectWorktree } = useProjectsStore.getState()
-      const { setActiveWorktree } = useChatStore.getState()
       selectWorktree(baseSession.id)
-      setActiveWorktree(baseSession.id, baseSession.path)
+      useChatStore.getState().registerWorktreePath(baseSession.id, baseSession.path)
+
+      // Close NewWorktreeModal first
+      handleOpenChange(false)
+
+      // Open the base session in SessionChatModal via custom event
+      window.dispatchEvent(
+        new CustomEvent('open-worktree-modal', {
+          detail: { worktreeId: baseSession.id, worktreePath: baseSession.path },
+        })
+      )
       toast.success(`Switched to base session: ${baseSession.name}`)
+      return
     } else {
       createBaseSession.mutate(selectedProjectId)
     }

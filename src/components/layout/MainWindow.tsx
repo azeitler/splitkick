@@ -74,6 +74,11 @@ const UpdatePrDialog = lazy(() =>
     default: mod.UpdatePrDialog,
   }))
 )
+const ReviewCommentsDialog = lazy(() =>
+  import('@/components/magic/ReviewCommentsDialog').then(mod => ({
+    default: mod.ReviewCommentsDialog,
+  }))
+)
 const NewWorktreeModal = lazy(() =>
   import('@/components/worktree/NewWorktreeModal').then(mod => ({
     default: mod.NewWorktreeModal,
@@ -180,6 +185,7 @@ export function MainWindow() {
   const newWorktreeModalOpen = useUIStore(state => state.newWorktreeModalOpen)
   const releaseNotesModalOpen = useUIStore(state => state.releaseNotesModalOpen)
   const updatePrModalOpen = useUIStore(state => state.updatePrModalOpen)
+  const reviewCommentsModalOpen = useUIStore(state => state.reviewCommentsModalOpen)
   const workflowRunsModalOpen = useUIStore(state => state.workflowRunsModalOpen)
   const cliUpdateModalOpen = useUIStore(state => state.cliUpdateModalOpen)
   const cliLoginModalOpen = useUIStore(state => state.cliLoginModalOpen)
@@ -349,6 +355,7 @@ export function MainWindow() {
   const shouldRenderOpenInModal = useRetainedMount(openInModalOpen)
   const shouldRenderRemotePickerModal = useRetainedMount(remotePickerOpen)
   const shouldRenderUpdatePrDialog = useRetainedMount(updatePrModalOpen)
+  const shouldRenderReviewCommentsDialog = useRetainedMount(reviewCommentsModalOpen)
   const shouldRenderWorkflowRunsModal = useRetainedMount(workflowRunsModalOpen)
   const shouldRenderMagicModal = useRetainedMount(magicModalOpen)
   const shouldRenderReleaseNotesDialog = useRetainedMount(
@@ -366,14 +373,14 @@ export function MainWindow() {
     <div
       className={`flex h-dvh w-full flex-col overflow-hidden bg-background ${isNativeApp() ? 'rounded-xl' : ''}`}
     >
-      {/* Title Bar */}
-      <TitleBar title={windowTitle} />
+      {/* Title Bar - semi-transparent overlay */}
+      <TitleBar title={windowTitle} className="absolute top-0 left-0 right-0" />
 
       {/* Dev Mode Banner */}
       <DevModeBanner />
 
       {/* Main Content Area */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden pt-8">
         {/* Left Sidebar with pixel-based width - only render after UI state is initialized */}
         {leftSidebarVisible && isInitialized && (
           <SidebarWidthProvider value={leftSidebarSize}>
@@ -482,6 +489,11 @@ export function MainWindow() {
       {shouldRenderUpdatePrDialog && (
         <Suspense fallback={null}>
           <UpdatePrDialog />
+        </Suspense>
+      )}
+      {shouldRenderReviewCommentsDialog && (
+        <Suspense fallback={null}>
+          <ReviewCommentsDialog />
         </Suspense>
       )}
       {shouldRenderNewWorktreeModal && (

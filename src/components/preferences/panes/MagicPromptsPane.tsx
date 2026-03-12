@@ -40,6 +40,7 @@ import {
   DEFAULT_INVESTIGATE_ADVISORY_PROMPT,
   DEFAULT_INVESTIGATE_LINEAR_ISSUE_PROMPT,
   DEFAULT_RELEASE_NOTES_PROMPT,
+  DEFAULT_REVIEW_COMMENTS_PROMPT,
   DEFAULT_SESSION_NAMING_PROMPT,
   DEFAULT_SESSION_RECAP_PROMPT,
   DEFAULT_PARALLEL_EXECUTION_PROMPT,
@@ -252,6 +253,27 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_CODE_REVIEW_PROMPT,
+        defaultModel: 'opus',
+      },
+      {
+        key: 'review_comments',
+        modelKey: 'review_comments_model',
+        providerKey: 'review_comments_provider',
+        backendKey: 'review_comments_backend',
+        label: 'Review Comments',
+        description:
+          'Prompt for addressing inline PR review comments selected from the Review Comments dialog.',
+        variables: [
+          {
+            name: '{prNumber}',
+            description: 'Pull request number',
+          },
+          {
+            name: '{reviewComments}',
+            description: 'Formatted selected review comments with file paths, diffs, and bodies',
+          },
+        ],
+        defaultValue: DEFAULT_REVIEW_COMMENTS_PROMPT,
         defaultModel: 'opus',
       },
       {

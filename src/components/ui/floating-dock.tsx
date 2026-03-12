@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect, useCallback } from 'react'
+import { Fragment, useState, useEffect, useCallback, useSyncExternalStore } from 'react'
 import {
   LayoutDashboard,
   Command,
@@ -57,7 +57,7 @@ const CANVAS_HINTS: KeybindingHint[] = [
   { shortcut: DEFAULT_KEYBINDINGS.close_session_or_worktree as string, label: 'close' },
 ]
 
-function KeybindingHintsButton({ hints }: { hints: KeybindingHint[] }) {
+function KeybindingHintsButton({ hints, side = 'top' }: { hints: KeybindingHint[]; side?: 'top' | 'right' }) {
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -70,7 +70,7 @@ function KeybindingHintsButton({ hints }: { hints: KeybindingHint[] }) {
           <span className="sr-only">Keyboard shortcuts</span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent side="top" align="start" className="w-auto min-w-[200px] p-3">
+      <PopoverContent side={side} align="start" className="w-auto min-w-[200px] p-3">
         <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 items-center">
           {hints.map(hint => (
             <Fragment key={hint.shortcut}>
@@ -113,8 +113,21 @@ function CodexIcon({ className }: { className: string }) {
   )
 }
 
+const WIDE_BREAKPOINT = 1280
+const lgQuery = `(min-width: ${WIDE_BREAKPOINT}px)`
+function subscribeLg(cb: () => void) {
+  const mql = window.matchMedia(lgQuery)
+  mql.addEventListener('change', cb)
+  return () => mql.removeEventListener('change', cb)
+}
+function snapshotLg() {
+  return window.matchMedia(lgQuery).matches
+}
+const serverLg = () => true
+
 export function FloatingDock() {
   const isMobile = useIsMobile()
+  const isLg = useSyncExternalStore(subscribeLg, snapshotLg, serverLg)
   const { data: preferences } = usePreferences()
   const queryClient = useQueryClient()
 
@@ -262,9 +275,10 @@ export function FloatingDock() {
   const isWebAccess = !isNativeApp()
   const showConnectionIndicator = isWebAccess
   const showKeybindingHints = isNativeApp() && !isMobile
+  const popoverSide = isLg ? 'top' : 'right' as const
 
   return (
-    <div className="absolute bottom-4 right-4 z-10 flex items-center gap-0.5 rounded-full border border-border/30 bg-background/60 backdrop-blur-md px-1 py-0.5 sm:left-4 sm:right-auto">
+    <div className="absolute bottom-4 right-4 z-10 flex flex-row items-center gap-0.5 rounded-full border border-border/30 bg-background/60 backdrop-blur-md px-1 py-0.5 sm:left-4 sm:right-auto sm:flex-col sm:rounded-2xl sm:px-0.5 sm:py-1 xl:flex-row xl:rounded-full xl:px-1 xl:py-0.5">
       <DropdownMenu open={menuOpen} onOpenChange={handleQuickMenuOpenChange}>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -279,13 +293,13 @@ export function FloatingDock() {
               </Button>
             </DropdownMenuTrigger>
           </TooltipTrigger>
-          <TooltipContent side="top">
+          <TooltipContent side={popoverSide}>
             Menu{' '}
             <kbd className="ml-1 text-[0.625rem] opacity-60">{menuShortcut}</kbd>
           </TooltipContent>
         </Tooltip>
         <DropdownMenuContent
-          side="top"
+          side={popoverSide}
           align="start"
           className="min-w-[200px]"
           onEscapeKeyDown={e => e.stopPropagation()}
@@ -336,7 +350,7 @@ export function FloatingDock() {
             <span className="sr-only">Command Palette</span>
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="top">
+        <TooltipContent side={popoverSide}>
           Command Palette{' '}
           <kbd className="ml-1 text-[0.625rem] opacity-60">⌘K</kbd>
         </TooltipContent>
@@ -349,21 +363,24 @@ export function FloatingDock() {
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
-                  size="sm"
-                  className="h-7 w-[88px] justify-center rounded-full px-2 text-muted-foreground hover:text-foreground"
+                  size={isLg ? 'sm' : 'icon'}
+                  className={isLg
+                    ? 'h-7 w-[88px] justify-center rounded-full px-2 text-muted-foreground hover:text-foreground'
+                    : 'h-7 w-7 rounded-full text-muted-foreground hover:text-foreground'
+                  }
                 >
-                  <activeUsageEntry.Icon className="mr-1 size-3.5 shrink-0" />
-                  <span className="text-[11px] leading-none tabular-nums">{usageBadge.text}</span>
+                  <activeUsageEntry.Icon className={isLg ? 'mr-1 size-3.5 shrink-0' : 'size-4'} />
+                  {isLg && <span className="text-[11px] leading-none tabular-nums">{usageBadge.text}</span>}
                 </Button>
               </DropdownMenuTrigger>
             </TooltipTrigger>
-            <TooltipContent side="top">
+            <TooltipContent side={popoverSide}>
               {activeUsageEntry.label} Session|Weekly{' '}
               <kbd className="ml-1 text-[0.625rem] opacity-60">{usageShortcut}</kbd>
             </TooltipContent>
           </Tooltip>
           <DropdownMenuContent
-            side="top"
+            side={popoverSide}
             align="start"
             className="min-w-[180px]"
             onEscapeKeyDown={e => e.stopPropagation()}
@@ -405,7 +422,7 @@ export function FloatingDock() {
       )}
 
       {showConnectionIndicator && <ConnectionIndicator />}
-      {showKeybindingHints && <KeybindingHintsButton hints={CANVAS_HINTS} />}
+      {showKeybindingHints && <KeybindingHintsButton hints={CANVAS_HINTS} side={popoverSide} />}
     </div>
   )
 }

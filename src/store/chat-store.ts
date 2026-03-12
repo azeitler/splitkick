@@ -84,6 +84,9 @@ interface ChatUIState {
   // from stale completion events arriving from a previous cancelled run
   sendStartedAt: Record<string, number>
 
+  // Duration (ms) of the last completed run per session — set by completeSession
+  completedDurations: Record<string, number>
+
   // Session IDs initiated by the user (e.g. Clear Context & YOLO) — auto-mark as opened on completion
   userInitiatedSessionIds: Record<string, true>
 
@@ -233,8 +236,8 @@ interface ChatUIState {
   sessionLabels: Record<string, LabelData>
 
   // Pending magic command to execute when ChatWindow mounts (from canvas navigation)
-  pendingMagicCommand: { command: string } | null
-  setPendingMagicCommand: (cmd: { command: string } | null) => void
+  pendingMagicCommand: { command: string; prompt?: string } | null
+  setPendingMagicCommand: (cmd: { command: string; prompt?: string } | null) => void
 
   // Actions - Session management
   setActiveSession: (
@@ -556,6 +559,7 @@ export const useChatStore = create<ChatUIState>()(
       worktreePaths: {},
       sendingSessionIds: {},
       sendStartedAt: {},
+      completedDurations: {},
       userInitiatedSessionIds: {},
       waitingForInputSessionIds: {},
       sessionWorktreeMap: {},
@@ -871,12 +875,14 @@ export const useChatStore = create<ChatUIState>()(
             // Guard: skip no-op updates to avoid re-renders on every streaming chunk
             if (state.sendingSessionIds[sessionId]) return state
             const now = Date.now()
+            const { [sessionId]: _, ...restDurations } = state.completedDurations
             return {
               sendingSessionIds: {
                 ...state.sendingSessionIds,
                 [sessionId]: true,
               },
               sendStartedAt: { ...state.sendStartedAt, [sessionId]: now },
+              completedDurations: restDurations,
             }
           },
           undefined,
@@ -2106,6 +2112,10 @@ export const useChatStore = create<ChatUIState>()(
               streamingPlanApprovals,
               executingModes,
               sendStartedAt: sendStartedAtRest,
+              completedDurations:
+                sendStarted > 0
+                  ? { ...state.completedDurations, [sessionId]: elapsed }
+                  : state.completedDurations,
               reviewingSessions: {
                 ...state.reviewingSessions,
                 [sessionId]: true,

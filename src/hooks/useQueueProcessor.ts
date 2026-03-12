@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useChatStore } from '@/store/chat-store'
 import { useSendMessage, persistDequeue } from '@/services/chat'
 import { usePreferences } from '@/services/preferences'
@@ -84,6 +84,11 @@ export function useQueueProcessor(): void {
 
   // Track which sessions we're currently processing to prevent race conditions
   const processingRef = useRef<Set<string>>(new Set())
+
+  // Counter to force effect re-evaluation after a mutation settles.
+  // Without this, clearing processingRef in onSettled doesn't re-trigger
+  // the effect because hasProcessableQueue (boolean) hasn't changed.
+  const [settleTrigger, setSettleTrigger] = useState(0)
 
   // PERFORMANCE: Derived boolean selector — only re-renders when the answer changes,
   // not on every mutation to any key in the underlying records.
@@ -220,6 +225,7 @@ export function useQueueProcessor(): void {
             {
               onSettled: () => {
                 processingRef.current.delete(capturedSessionId)
+                setSettleTrigger(t => t + 1)
               },
             }
           )
@@ -230,10 +236,12 @@ export function useQueueProcessor(): void {
             err,
           })
           processingRef.current.delete(capturedSessionId)
+          setSettleTrigger(t => t + 1)
         })
     }
   }, [
     hasProcessableQueue,
+    settleTrigger,
     sendMessage,
     preferences?.parallel_execution_prompt_enabled,
     preferences?.magic_prompts?.parallel_execution,

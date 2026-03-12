@@ -461,6 +461,8 @@ pub struct MagicPrompts {
     pub investigate_advisory: Option<String>,
     #[serde(default)]
     pub investigate_linear_issue: Option<String>,
+    #[serde(default)]
+    pub review_comments: Option<String>,
 }
 
 fn default_investigate_issue_prompt() -> String {
@@ -2503,6 +2505,7 @@ pub fn run() {
             projects::open_worktree_in_editor,
             projects::open_pull_request,
             projects::create_pr_with_ai_content,
+            projects::merge_github_pr,
             projects::generate_pr_update_content,
             projects::update_pr_description,
             projects::create_commit_with_ai,
@@ -2571,6 +2574,7 @@ pub fn run() {
             projects::list_github_prs,
             projects::search_github_prs,
             projects::get_github_pr,
+            projects::get_pr_review_comments,
             projects::get_github_pr_by_number,
             projects::load_pr_context,
             projects::list_loaded_pr_contexts,

@@ -8,6 +8,7 @@ import {
   GitPullRequestArrow,
   Eye,
   FileText,
+  MessageSquare,
   Wand2,
   BookmarkPlus,
   FolderOpen,
@@ -43,6 +44,7 @@ import type {
   CreateCommitResponse,
   CreatePrResponse,
   MergeConflictsResponse,
+  MergePrResponse,
   ReviewResponse,
 } from '@/types/projects'
 import type { Session } from '@/types/chat'
@@ -71,6 +73,8 @@ type MagicOption =
   | 'release-notes'
   | 'investigate-issue'
   | 'investigate-pr'
+  | 'merge-pr'
+  | 'review-comments'
 
 /** Options that work on canvas without an open session (git-only operations) */
 const CANVAS_ALLOWED_OPTIONS = new Set<MagicOption>([
@@ -82,8 +86,10 @@ const CANVAS_ALLOWED_OPTIONS = new Set<MagicOption>([
   'open-pr',
   'update-pr',
   'review',
+  'review-comments',
   'release-notes',
   'merge',
+  'merge-pr',
   'resolve-conflicts',
 ])
 
@@ -165,6 +171,13 @@ function buildMagicColumns(hasOpenPr: boolean): MagicColumns {
           key: 'O',
         },
         { id: 'review', label: 'Review', icon: Eye, key: 'R' },
+        {
+          id: 'review-comments',
+          label: 'Review Comments',
+          icon: MessageSquare,
+          key: 'V',
+        },
+        { id: 'merge-pr', label: 'Merge', icon: GitMerge, key: 'N' },
       ],
     },
     {
@@ -225,11 +238,13 @@ const KEY_TO_OPTION: Record<string, MagicOption> = {
   o: 'open-pr',
   e: 'update-pr',
   r: 'review',
+  v: 'review-comments',
   m: 'merge',
   f: 'resolve-conflicts',
   g: 'release-notes',
   i: 'investigate-issue',
   a: 'investigate-pr',
+  n: 'merge-pr',
 }
 
 export function MagicModal() {
@@ -474,6 +489,46 @@ export function MagicModal() {
             toast.error(`Failed to create PR: ${error}`, { id: toastId })
           } finally {
             clearWorktreeLoading(selectedWorktreeId)
+          }
+          break
+        }
+        case 'merge-pr': {
+          if (!worktree.pr_number) {
+            toast.error('No PR open for this worktree')
+            return
+          }
+          const mergePrToastId = toast.loading('Merging PR...')
+          try {
+            const result = await invoke<MergePrResponse>('merge_github_pr', {
+              worktreePath: worktree.path,
+            })
+            toast.success(result.message, { id: mergePrToastId })
+
+            // Archive or delete the worktree (same as auto-archive on merge)
+            const shouldDelete = preferences?.removal_behavior === 'delete'
+            const action = shouldDelete ? 'Deleting' : 'Archiving'
+            const cleanupToastId = toast.loading(`${action} worktree...`)
+            try {
+              await invoke(shouldDelete ? 'delete_worktree' : 'archive_worktree', {
+                worktreeId: selectedWorktreeId,
+              })
+              queryClient.invalidateQueries({
+                queryKey: projectsQueryKeys.worktrees(worktree.project_id),
+              })
+              triggerImmediateGitPoll()
+              if (worktree.project_id) fetchWorktreesStatus(worktree.project_id)
+              const pastAction = shouldDelete ? 'Deleted' : 'Archived'
+              toast.success(
+                `${pastAction} "${worktree.name}"`,
+                { id: cleanupToastId }
+              )
+            } catch (cleanupError) {
+              toast.error(`Failed to ${action.toLowerCase()} worktree: ${cleanupError}`, {
+                id: cleanupToastId,
+              })
+            }
+          } catch (error) {
+            toast.error(`Failed to merge PR: ${error}`, { id: mergePrToastId })
           }
           break
         }
@@ -770,6 +825,30 @@ ${resolveInstructions}`
         return
       }
 
+      // Review Comments: open the review comments dialog (requires open PR)
+      if (option === 'review-comments') {
+        if (!worktree?.pr_number) {
+          notify('No PR linked to this worktree', undefined, { type: 'error' })
+          setMagicModalOpen(false)
+          return
+        }
+        useUIStore.getState().setReviewCommentsModalOpen(true)
+        setMagicModalOpen(false)
+        return
+      }
+
+      // Merge PR on GitHub (requires open PR)
+      if (option === 'merge-pr') {
+        if (!worktree?.pr_number) {
+          notify('No PR open for this worktree', undefined, { type: 'error' })
+          setMagicModalOpen(false)
+          return
+        }
+        setMagicModalOpen(false)
+        executeGitDirectly('merge-pr')
+        return
+      }
+
       // If PR already exists, open it in the browser instead of creating a new one
       if (option === 'open-pr' && worktree?.pr_url) {
         await openExternal(worktree.pr_url)
@@ -904,7 +983,9 @@ ${resolveInstructions}`
                         (option.id === 'investigate-issue' &&
                           !hasIssueContexts) ||
                         (option.id === 'investigate-pr' && !hasPrContexts) ||
-                        (option.id === 'update-pr' && !hasOpenPr)
+                        (option.id === 'update-pr' && !hasOpenPr) ||
+                        (option.id === 'review-comments' && !hasOpenPr) ||
+                        (option.id === 'merge-pr' && !hasOpenPr)
 
                       return (
                         <button

@@ -65,6 +65,8 @@ export interface MagicPrompts {
   investigate_advisory: string | null
   /** Prompt for investigating Linear issues (context embedded in prompt since Claude CLI cannot access Linear API) */
   investigate_linear_issue: string | null
+  /** Prompt for addressing inline PR review comments */
+  review_comments: string | null
 }
 
 /** Default prompt for investigating GitHub issues */
@@ -556,6 +558,38 @@ Now provide a brief summary with exactly two fields:
 - chat_summary: One sentence (max 100 chars) describing the overall goal and current status
 - last_action: One sentence (max 200 chars) describing what was just completed in the last exchange`
 
+/** Default prompt for addressing inline PR review comments */
+export const DEFAULT_REVIEW_COMMENTS_PROMPT = `<task>
+
+Address the following review comments from PR #{prNumber}
+
+</task>
+
+
+<review_comments>
+{reviewComments}
+</review_comments>
+
+
+<instructions>
+
+1. Read each review comment carefully, noting the file path, line numbers, and diff context
+2. Understand what the reviewer is asking for in each comment
+3. Make the requested changes to address each comment
+4. If a comment is unclear or you disagree with it, explain your reasoning
+5. After making changes, briefly summarize what you changed for each comment
+
+</instructions>
+
+
+<guidelines>
+
+- Be thorough but focused — address exactly what was requested
+- If a comment requires a larger refactor, explain the scope before proceeding
+- Run tests after making changes to ensure nothing is broken
+
+</guidelines>`
+
 /** Default values for all magic prompts (null = use current app default) */
 export const DEFAULT_MAGIC_PROMPTS: MagicPrompts = {
   investigate_issue: null,
@@ -574,6 +608,7 @@ export const DEFAULT_MAGIC_PROMPTS: MagicPrompts = {
   investigate_security_alert: null,
   investigate_advisory: null,
   investigate_linear_issue: null,
+  review_comments: null,
 }
 
 /**
@@ -594,6 +629,7 @@ export interface MagicPromptModels {
   investigate_security_alert_model: MagicPromptModel
   investigate_advisory_model: MagicPromptModel
   investigate_linear_issue_model: MagicPromptModel
+  review_comments_model: MagicPromptModel
 }
 
 /**
@@ -615,6 +651,7 @@ export interface MagicPromptReasoningEfforts {
   investigate_security_alert_effort: MagicPromptReasoningEffort
   investigate_advisory_effort: MagicPromptReasoningEffort
   investigate_linear_issue_effort: MagicPromptReasoningEffort
+  review_comments_effort: MagicPromptReasoningEffort
 }
 
 /** Default models for each magic prompt */
@@ -633,6 +670,7 @@ export const DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
   investigate_security_alert_model: 'opus',
   investigate_advisory_model: 'opus',
   investigate_linear_issue_model: 'opus',
+  review_comments_model: 'opus',
 }
 
 /** Codex preset: heavy tasks use top model, light tasks use mini */
@@ -651,6 +689,7 @@ export const CODEX_DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
   investigate_security_alert_model: 'gpt-5.4',
   investigate_advisory_model: 'gpt-5.4',
   investigate_linear_issue_model: 'gpt-5.4',
+  review_comments_model: 'gpt-5.4',
 }
 
 /** OpenCode preset for all magic prompts */
@@ -669,6 +708,7 @@ export const OPENCODE_DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
   investigate_security_alert_model: 'opencode/gpt-5.3-codex',
   investigate_advisory_model: 'opencode/gpt-5.3-codex',
   investigate_linear_issue_model: 'opencode/gpt-5.3-codex',
+  review_comments_model: 'opencode/gpt-5.3-codex',
 }
 
 /** Default reasoning efforts for Claude backend (null = use model default) */
@@ -687,6 +727,7 @@ export const DEFAULT_MAGIC_PROMPT_EFFORTS: MagicPromptReasoningEfforts = {
   investigate_security_alert_effort: null,
   investigate_advisory_effort: null,
   investigate_linear_issue_effort: null,
+  review_comments_effort: null,
 }
 
 /** Codex preset: heavier reasoning for investigations, lighter for simple generation */
@@ -705,6 +746,7 @@ export const CODEX_DEFAULT_MAGIC_PROMPT_EFFORTS: MagicPromptReasoningEfforts = {
   investigate_security_alert_effort: 'medium',
   investigate_advisory_effort: 'medium',
   investigate_linear_issue_effort: 'medium',
+  review_comments_effort: 'medium',
 }
 
 /** OpenCode preset: same as Codex */
@@ -731,6 +773,7 @@ export interface MagicPromptProviders {
   investigate_security_alert_provider: string | null
   investigate_advisory_provider: string | null
   investigate_linear_issue_provider: string | null
+  review_comments_provider: string | null
 }
 
 /** Default providers for each magic prompt (null = use global default_provider) */
@@ -749,6 +792,7 @@ export const DEFAULT_MAGIC_PROMPT_PROVIDERS: MagicPromptProviders = {
   investigate_security_alert_provider: null,
   investigate_advisory_provider: null,
   investigate_linear_issue_provider: null,
+  review_comments_provider: null,
 }
 
 /**
@@ -771,6 +815,7 @@ export interface MagicPromptBackends {
   investigate_security_alert_backend: string | null
   investigate_advisory_backend: string | null
   investigate_linear_issue_backend: string | null
+  review_comments_backend: string | null
 }
 
 /** Default backends for each magic prompt (null = use project/global default_backend) */
@@ -789,6 +834,7 @@ export const DEFAULT_MAGIC_PROMPT_BACKENDS: MagicPromptBackends = {
   investigate_security_alert_backend: null,
   investigate_advisory_backend: null,
   investigate_linear_issue_backend: null,
+  review_comments_backend: null,
 }
 
 function makeBackendsPreset(backend: string): MagicPromptBackends {
@@ -807,6 +853,7 @@ function makeBackendsPreset(backend: string): MagicPromptBackends {
     investigate_security_alert_backend: backend,
     investigate_advisory_backend: backend,
     investigate_linear_issue_backend: backend,
+    review_comments_backend: backend,
   }
 }
 
