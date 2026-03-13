@@ -192,6 +192,16 @@ export function ChatWindow({
   const storeWorktreePath = useChatStore(state => state.activeWorktreePath)
   const activeWorktreeId = propWorktreeId ?? storeWorktreeId
   const activeWorktreePath = propWorktreePath ?? storeWorktreePath
+  const hasPendingAutoInvestigate = useUIStore(state => {
+    if (!activeWorktreeId) return false
+    return (
+      state.autoInvestigateWorktreeIds.has(activeWorktreeId) ||
+      state.autoInvestigatePRWorktreeIds.has(activeWorktreeId) ||
+      state.autoInvestigateSecurityAlertWorktreeIds.has(activeWorktreeId) ||
+      state.autoInvestigateAdvisoryWorktreeIds.has(activeWorktreeId) ||
+      state.autoInvestigateLinearIssueWorktreeIds.has(activeWorktreeId)
+    )
+  })
 
   // PERFORMANCE: Proper selector for activeSessionId - subscribes to changes
   // This triggers re-render when tabs are clicked (setActiveSession updates activeSessionIds)
@@ -1662,6 +1672,7 @@ export function ChatWindow({
   useEffect(() => {
     if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
     if (worktreeStatus !== 'ready') return
+    if (!hasPendingAutoInvestigate) return
     const uiStore = useUIStore.getState()
     if (uiStore.consumeAutoInvestigate(activeWorktreeId)) {
       handleInvestigate('issue')
@@ -1674,7 +1685,14 @@ export function ChatWindow({
     } else if (uiStore.consumeAutoInvestigateLinearIssue(activeWorktreeId)) {
       handleInvestigate('linear-issue')
     }
-  }, [activeSessionId, activeWorktreeId, activeWorktreePath, worktreeStatus, handleInvestigate])
+  }, [
+    activeSessionId,
+    activeWorktreeId,
+    activeWorktreePath,
+    worktreeStatus,
+    hasPendingAutoInvestigate,
+    handleInvestigate,
+  ])
 
   // Message handlers hook - handles questions, plan approval, permission approval, finding fixes
   const {

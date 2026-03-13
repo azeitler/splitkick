@@ -276,6 +276,7 @@ pub fn start_run(
     execution_mode: Option<&str>,
     thinking_level: Option<&str>,
     effort_level: Option<&str>,
+    backend: Option<Backend>,
 ) -> Result<RunLogWriter, String> {
     let run_id = Uuid::new_v4().to_string();
     let now = now_timestamp();
@@ -337,6 +338,21 @@ pub fn start_run(
         session_name,
         order,
         |metadata| {
+            // Guard: if there's already a Running run, reject to prevent duplicates.
+            // This is a safety net — the primary guard is in send_chat_message.
+            let has_running = metadata
+                .runs
+                .iter()
+                .any(|r| r.status == RunStatus::Running);
+            if has_running {
+                return Err(format!(
+                    "Session {session_id} already has a Running run — refusing to create duplicate"
+                ));
+            }
+
+            if let Some(ref b) = backend {
+                metadata.backend = b.clone();
+            }
             metadata.runs.push(run_entry.clone());
             Ok(())
         },
@@ -702,8 +718,24 @@ pub fn load_session_messages(
         if !is_undo_send {
             let lines = read_run_log(app, session_id, &run.run_id)?;
 
-            // Parse JSONL content — route by backend
-            let mut assistant_msg = if metadata.backend == Backend::Codex {
+            // Parse JSONL content — route by backend.
+            // Per-run model takes priority (handles mixed-backend sessions where
+            // user switches between Claude/Codex models mid-session).
+            let run_is_codex = run
+                .model
+                .as_deref()
+                .map(crate::is_codex_model)
+                .unwrap_or(false);
+            let run_is_opencode = run
+                .model
+                .as_deref()
+                .map(crate::is_opencode_model)
+                .unwrap_or(false);
+            let use_codex_parser = run_is_codex
+                || run_is_opencode
+                || metadata.backend == Backend::Codex
+                || metadata.backend == Backend::Opencode;
+            let mut assistant_msg = if use_codex_parser {
                 super::codex::parse_codex_run_to_message(&lines, run)?
             } else {
                 parse_run_to_message(&lines, run)?

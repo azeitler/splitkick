@@ -797,8 +797,22 @@ function handleWorktreeReady(
   registerWorktreePath(worktree.id, worktree.path)
 
   if (!isBackground) {
-    // Mark for auto-open so whichever canvas is currently active can open the new session.
-    useUIStore.getState().markWorktreeForAutoOpenSession(worktree.id)
+    const uiStore = useUIStore.getState()
+
+    // If a session modal is already open on the project canvas (for example the
+    // base session), switch that modal directly to the new worktree instead of
+    // waiting for ProjectCanvasView's auto-open effect to run later.
+    if (uiStore.sessionChatModalOpen) {
+      window.dispatchEvent(
+        new CustomEvent('open-worktree-modal', {
+          detail: { worktreeId: worktree.id, worktreePath: worktree.path },
+        })
+      )
+    } else {
+      // Mark for auto-open so whichever canvas is currently active can open
+      // the new session.
+      uiStore.markWorktreeForAutoOpenSession(worktree.id)
+    }
 
     // Only switch to worktree view if user is already in a worktree canvas.
     // If user is on project canvas (activeWorktreePath is null), keep them there.
@@ -921,8 +935,24 @@ export function useWorktreeEvents() {
               useProjectsStore.getState()
             selectProject(worktree.project_id)
             selectWorktree(worktree.id)
-            const { setActiveWorktree } = useChatStore.getState()
-            setActiveWorktree(worktree.id, worktree.path)
+            // Clear active worktree so we land on ProjectCanvasView (not bare
+            // ChatWindow), then open the session modal with the full header.
+            const { clearActiveWorktree } = useChatStore.getState()
+            clearActiveWorktree()
+            // Use both mechanisms: markWorktreeForAutoOpenSession for when the
+            // canvas is mounting (lazy-loaded), and a deferred event dispatch
+            // for when it's already mounted. The auto-open effect consumes the
+            // mark, so only one will take effect.
+            useUIStore
+              .getState()
+              .markWorktreeForAutoOpenSession(worktree.id)
+            setTimeout(() => {
+              window.dispatchEvent(
+                new CustomEvent('open-worktree-modal', {
+                  detail: { worktreeId: worktree.id, worktreePath: worktree.path },
+                })
+              )
+            }, 0)
           },
         }
 

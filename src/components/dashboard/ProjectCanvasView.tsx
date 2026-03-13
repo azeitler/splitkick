@@ -1879,7 +1879,6 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
         worktreePath={selectedWorktreeModal?.worktreePath ?? ''}
         isOpen={!!selectedWorktreeModal}
         onClose={() => setSelectedWorktreeModal(null)}
-        onCloseWorktree={() => setSelectedWorktreeModal(null)}
       />
 
       {/* Git Diff Modal (CMD+G on canvas) */}

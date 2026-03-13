@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { generateId } from '@/lib/uuid'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
+import { useUIStore } from '@/store/ui-store'
 import { chatQueryKeys } from '@/services/chat'
 import { saveWorktreePr, projectsQueryKeys } from '@/services/projects'
 import {
@@ -458,17 +459,9 @@ export function useGitOperations({
         setActiveSession(activeWorktreeId, targetSessionId)
         useProjectsStore.getState().selectWorktree(activeWorktreeId)
         clearActiveWorktree()
-        setTimeout(() => {
-          window.dispatchEvent(
-            new CustomEvent('open-session-modal', {
-              detail: {
-                sessionId: targetSessionId,
-                worktreeId: activeWorktreeId,
-                worktreePath: activeWorktreePath,
-              },
-            })
-          )
-        }, 50)
+        useUIStore
+          .getState()
+          .markWorktreeForAutoOpenSession(activeWorktreeId, targetSessionId)
 
         // Persist review results to session file
         invoke('update_session_state', {
@@ -501,17 +494,12 @@ export function useGitOperations({
                 useProjectsStore.getState().selectWorktree(activeWorktreeId)
                 clearActiveWorktree()
                 setActiveSession(activeWorktreeId, targetSessionId)
-                setTimeout(() => {
-                  window.dispatchEvent(
-                    new CustomEvent('open-session-modal', {
-                      detail: {
-                        sessionId: targetSessionId,
-                        worktreeId: activeWorktreeId,
-                        worktreePath: activeWorktreePath,
-                      },
-                    })
+                useUIStore
+                  .getState()
+                  .markWorktreeForAutoOpenSession(
+                    activeWorktreeId,
+                    targetSessionId
                   )
-                }, 50)
               },
             },
           }

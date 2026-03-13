@@ -1294,6 +1294,56 @@ fn process_codex_event(
                         },
                     );
                 }
+                // These types are handled on completion only (via deltas / dedicated events)
+                "agent_message" | "reasoning" => {}
+                // Informational tool-like events — surface as tool calls in the UI
+                "web_search" | "image_generation" | "image_view" | "context_compaction" => {
+                    let tool_name = match item_type {
+                        "web_search" => "CodexWebSearch",
+                        "image_generation" => "CodexImageGeneration",
+                        "image_view" => "CodexImageView",
+                        "context_compaction" => "CodexContextCompaction",
+                        _ => unreachable!(),
+                    };
+                    let tool_id = if item_id.is_empty() {
+                        uuid::Uuid::new_v4().to_string()
+                    } else {
+                        item_id.to_string()
+                    };
+                    let input = item.clone();
+                    tool_calls.push(ToolCall {
+                        id: tool_id.clone(),
+                        name: tool_name.to_string(),
+                        input: input.clone(),
+                        output: None,
+                        parent_tool_use_id: None,
+                    });
+                    content_blocks.push(ContentBlock::ToolUse {
+                        tool_call_id: tool_id.clone(),
+                    });
+                    if !item_id.is_empty() {
+                        pending_tool_ids.insert(item_id.to_string(), tool_id.clone());
+                    }
+                    let _ = app.emit_all(
+                        "chat:tool_use",
+                        &ToolUseEvent {
+                            session_id: session_id.to_string(),
+                            worktree_id: worktree_id.to_string(),
+                            id: tool_id.clone(),
+                            name: tool_name.to_string(),
+                            input,
+                            parent_tool_use_id: None,
+                        },
+                    );
+                    let _ = app.emit_all(
+                        "chat:tool_block",
+                        &ToolBlockEvent {
+                            session_id: session_id.to_string(),
+                            worktree_id: worktree_id.to_string(),
+                            tool_call_id: tool_id,
+                        },
+                    );
+                }
                 other => {
                     log::debug!("Unknown Codex item.started type: {other}");
                 }
@@ -1456,6 +1506,41 @@ fn process_codex_event(
                         if let Some(tc) = tool_calls.iter_mut().find(|t| t.id == tool_id) {
                             tc.output = Some(output.clone());
                             tc.input = item.clone();
+                        }
+                        let _ = app.emit_all(
+                            "chat:tool_result",
+                            &ToolResultEvent {
+                                session_id: session_id.to_string(),
+                                worktree_id: worktree_id.to_string(),
+                                tool_use_id: tool_id,
+                                output,
+                            },
+                        );
+                    }
+                }
+                // Informational tool-like events — populate output for UI
+                "web_search" | "image_generation" | "image_view" | "context_compaction" => {
+                    let output = if item_type == "context_compaction" {
+                        item.get("summary")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Context compacted")
+                            .to_string()
+                    } else {
+                        item.get("output")
+                            .or_else(|| item.get("result"))
+                            .map(|v| {
+                                if let Some(s) = v.as_str() {
+                                    s.to_string()
+                                } else {
+                                    serde_json::to_string(v).unwrap_or_default()
+                                }
+                            })
+                            .unwrap_or_else(|| "completed".to_string())
+                    };
+                    let tool_id = pending_tool_ids.remove(item_id).unwrap_or_default();
+                    if !tool_id.is_empty() {
+                        if let Some(tc) = tool_calls.iter_mut().find(|t| t.id == tool_id) {
+                            tc.output = Some(output.clone());
                         }
                         let _ = app.emit_all(
                             "chat:tool_result",

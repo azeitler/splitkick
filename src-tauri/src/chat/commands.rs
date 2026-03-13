@@ -1290,6 +1290,14 @@ pub async fn send_chat_message(
         return Err("Worktree path cannot be empty".to_string());
     }
 
+    // Guard: reject if this session already has an active process being tailed.
+    // Without this, a double-send (frontend race, page reload, etc.) creates
+    // duplicate run entries and orphans the first process in the registry.
+    if super::registry::is_session_actively_managed(&session_id) {
+        log::warn!("[SendChat] REJECTED session={session_id} — already actively managed (duplicate send)");
+        return Err("Session already has an active request".to_string());
+    }
+
     // Load sessions
     let mut sessions = load_sessions(&app, &worktree_path, &worktree_id)?;
 
@@ -1473,7 +1481,7 @@ pub async fn send_chat_message(
         Some("codex") => Backend::Codex,
         Some("opencode") => Backend::Opencode,
         Some("claude") => Backend::Claude,
-        _ => session_backend,
+        _ => session_backend.clone(),
     };
     // Override backend based on model string (safety net: model always wins)
     let effective_backend = if let Some(ref m) = model {
@@ -1487,6 +1495,18 @@ pub async fn send_chat_message(
     } else {
         effective_backend
     };
+
+    // Sync session.backend when model-based resolution overrides it
+    // (e.g. user switched from Claude model to Codex model mid-session).
+    // Without this, run_log reload uses the stale backend to pick the parser.
+    if effective_backend != session_backend {
+        with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
+            if let Some(session) = sessions.find_session_mut(&session_id) {
+                session.backend = effective_backend.clone();
+            }
+            Ok(())
+        })?;
+    }
 
     // Build context for Claude
     let context = ClaudeContext::new(worktree_path.clone());
@@ -1521,6 +1541,7 @@ pub async fn send_chat_message(
             .as_ref()
             .and_then(|e| e.effort_value())
             .or(None),
+        Some(effective_backend.clone()),
     )?;
 
     // Get file paths for detached execution
