@@ -23,6 +23,12 @@ import {
 } from '@/types/keybindings'
 
 export function getTerminalShortcutWorktreeId(): string | null {
+  const activeElement = document.activeElement
+  const terminalFocused =
+    activeElement instanceof HTMLElement && !!activeElement.closest('.xterm')
+
+  if (!terminalFocused) return null
+
   const uiState = useUIStore.getState()
   const chatState = useChatStore.getState()
   const terminalState = useTerminalStore.getState()
@@ -245,7 +251,7 @@ function executeKeybindingAction(
       break
     }
     case 'new_session': {
-      // When terminal UI is open, CMD+T should always create a terminal tab.
+      // When terminal is focused, CMD+T should create a terminal tab.
       if (addTerminalTabForShortcut()) break
       logger.debug('Keybinding: new_session')
       window.dispatchEvent(new CustomEvent('create-new-session'))
@@ -264,7 +270,7 @@ function executeKeybindingAction(
       )
       break
     case 'close_session_or_worktree': {
-      // When terminal UI is open, CMD+W should always close the active terminal tab.
+      // When terminal is focused, CMD+W should close the active terminal tab.
       if (closeActiveTerminalTabForShortcut()) break
       // Default: close session/worktree
       logger.debug('Keybinding: close_session_or_worktree')
@@ -471,7 +477,7 @@ export function useMainWindowEventListeners() {
         return
       if (useProjectsStore.getState().projectSettingsDialogOpen) return
 
-      // When terminal panel is open, remap shortcuts for terminal-specific actions
+      // When terminal is focused, remap shortcuts for terminal-specific actions
       // and block all others so they don't interfere with terminal usage.
       {
         const terminalShortcutWorktreeId = getTerminalShortcutWorktreeId()

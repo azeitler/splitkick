@@ -1029,8 +1029,12 @@ export function SessionChatModal({
                 aria-label="Scroll to waiting session"
               />
             )}
-            <ScrollArea className="flex-1" viewportRef={modalTabScrollRef}>
-              <div className="flex items-center gap-1.5 py-1 px-3">
+            <ScrollArea
+              className="min-w-0 flex-1"
+              viewportClassName="overflow-x-auto overflow-y-hidden overscroll-x-contain overscroll-y-none touch-pan-x scrollbar-hide [-webkit-overflow-scrolling:touch]"
+              viewportRef={modalTabScrollRef}
+            >
+              <div className="flex min-w-max items-center gap-1.5 py-1 px-3">
                 {sortedSessions.map((session, idx) => {
                   const isActive = session.id === currentSessionId
                   const status = getSessionStatus(session, storeState)

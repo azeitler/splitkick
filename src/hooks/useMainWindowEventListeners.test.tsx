@@ -24,9 +24,24 @@ vi.mock('@/lib/terminal-instances', () => ({
   startHeadless: vi.fn(),
 }))
 
+function focusTerminal() {
+  document.body.innerHTML = ''
+
+  const terminal = document.createElement('div')
+  terminal.className = 'xterm'
+
+  const input = document.createElement('textarea')
+  terminal.appendChild(input)
+  document.body.appendChild(terminal)
+
+  input.focus()
+  return input
+}
+
 describe('useMainWindowEventListeners terminal shortcuts', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    document.body.innerHTML = ''
 
     useChatStore.setState({
       activeWorktreeId: null,
@@ -100,7 +115,19 @@ describe('useMainWindowEventListeners terminal shortcuts', () => {
     })
   })
 
+  it('does not resolve terminal shortcuts when the terminal is open but unfocused', () => {
+    useChatStore.setState({ activeWorktreeId: 'canvas-worktree' })
+    useTerminalStore.setState({
+      terminalPanelOpen: { 'canvas-worktree': true },
+      terminalVisible: true,
+    })
+
+    expect(getTerminalShortcutWorktreeId()).toBeNull()
+  })
+
   it('resolves terminal shortcuts against the modal worktree', () => {
+    focusTerminal()
+
     useChatStore.setState({ activeWorktreeId: 'canvas-worktree' })
     useUIStore.setState({
       sessionChatModalOpen: true,
@@ -114,6 +141,8 @@ describe('useMainWindowEventListeners terminal shortcuts', () => {
   })
 
   it('uses the terminal shortcut path to open a new terminal tab for the modal worktree', () => {
+    focusTerminal()
+
     useUIStore.setState({
       sessionChatModalOpen: true,
       sessionChatModalWorktreeId: 'modal-worktree',
@@ -142,6 +171,8 @@ describe('useMainWindowEventListeners terminal shortcuts', () => {
   })
 
   it('uses the terminal shortcut path to close the active terminal tab for the modal worktree', () => {
+    focusTerminal()
+
     useUIStore.setState({
       sessionChatModalOpen: true,
       sessionChatModalWorktreeId: 'modal-worktree',
