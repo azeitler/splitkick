@@ -1471,6 +1471,35 @@ export function useMessageHandlers({
       })
 
       toast.success(`Plan sent to new worktree (${modeLabel})`, { id: toastId })
+
+      // Optionally close the original session
+      if (prefs?.close_original_on_clear_context) {
+        const closeCommand =
+          prefs.removal_behavior === 'archive'
+            ? 'archive_session'
+            : 'close_session'
+
+        queryClient.setQueryData<WorktreeSessions>(
+          chatQueryKeys.sessions(worktreeId),
+          old => {
+            if (!old) return old
+            return {
+              ...old,
+              sessions: old.sessions.filter(s => s.id !== sessionId),
+            }
+          }
+        )
+
+        invoke(closeCommand, { worktreeId, worktreePath, sessionId })
+          .then(() =>
+            queryClient.invalidateQueries({
+              queryKey: chatQueryKeys.sessions(worktreeId),
+            })
+          )
+          .catch(err =>
+            console.error('[worktreeApproval] Failed to close original session:', err)
+          )
+      }
     },
     [
       activeSessionIdRef,
@@ -1717,6 +1746,35 @@ export function useMessageHandlers({
     })
 
     toast.success(`Plan sent to new worktree (${modeLabel})`, { id: toastId })
+
+    // Optionally close the original session
+    if (prefs?.close_original_on_clear_context) {
+      const closeCommand =
+        prefs.removal_behavior === 'archive'
+          ? 'archive_session'
+          : 'close_session'
+
+      queryClient.setQueryData<WorktreeSessions>(
+        chatQueryKeys.sessions(worktreeId),
+        old => {
+          if (!old) return old
+          return {
+            ...old,
+            sessions: old.sessions.filter(s => s.id !== sessionId),
+          }
+        }
+      )
+
+      invoke(closeCommand, { worktreeId, worktreePath, sessionId })
+        .then(() =>
+          queryClient.invalidateQueries({
+            queryKey: chatQueryKeys.sessions(worktreeId),
+          })
+        )
+        .catch(err =>
+          console.error('[streamingWorktreeApproval] Failed to close original session:', err)
+        )
+    }
   }, [
     activeSessionIdRef,
     activeWorktreeIdRef,
