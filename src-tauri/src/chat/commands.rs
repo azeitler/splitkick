@@ -281,7 +281,7 @@ pub async fn get_session(
     worktree_path: String,
     session_id: String,
 ) -> Result<Session, String> {
-    log::trace!("Getting session: {session_id}");
+    log::debug!("[GetSession] session={session_id} worktree={worktree_id}");
     let sessions = load_sessions(&app, &worktree_path, &worktree_id)?;
     let mut session = sessions
         .find_session(&session_id)
@@ -290,6 +290,11 @@ pub async fn get_session(
 
     // Load messages from NDJSON (single source of truth)
     let mut messages = run_log::load_session_messages(&app, &session_id)?;
+    log::debug!(
+        "[GetSession] session={session_id} loaded {} messages (backend={:?})",
+        messages.len(),
+        session.backend
+    );
 
     // Apply approved plan status from session metadata
     for msg in &mut messages {

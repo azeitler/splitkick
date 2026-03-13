@@ -682,8 +682,17 @@ pub fn load_session_messages(
 ) -> Result<Vec<ChatMessage>, String> {
     let metadata = match load_metadata(app, session_id)? {
         Some(m) => m,
-        None => return Ok(vec![]),
+        None => {
+            log::debug!("[LoadMessages] session={session_id} no metadata found");
+            return Ok(vec![]);
+        }
     };
+
+    log::debug!(
+        "[LoadMessages] session={session_id} metadata has {} runs (backend={:?})",
+        metadata.runs.len(),
+        metadata.backend
+    );
 
     let mut messages = Vec::new();
 
@@ -719,8 +728,8 @@ pub fn load_session_messages(
             let lines = read_run_log(app, session_id, &run.run_id)?;
 
             // Parse JSONL content — route by backend.
-            // Per-run model takes priority (handles mixed-backend sessions where
-            // user switches between Claude/Codex models mid-session).
+            // Per-run model is authoritative when present. Only fall back to
+            // session-level metadata.backend for legacy runs with no model stored.
             let run_is_codex = run
                 .model
                 .as_deref()
@@ -731,10 +740,14 @@ pub fn load_session_messages(
                 .as_deref()
                 .map(crate::is_opencode_model)
                 .unwrap_or(false);
-            let use_codex_parser = run_is_codex
-                || run_is_opencode
-                || metadata.backend == Backend::Codex
-                || metadata.backend == Backend::Opencode;
+            let use_codex_parser = if run.model.is_some() {
+                // Model stored per-run: use it directly (prevents misrouting
+                // when metadata.backend was overwritten by a later run).
+                run_is_codex || run_is_opencode
+            } else {
+                // Legacy run without model field: fall back to session backend.
+                metadata.backend == Backend::Codex || metadata.backend == Backend::Opencode
+            };
             let mut assistant_msg = if use_codex_parser {
                 super::codex::parse_codex_run_to_message(&lines, run)?
             } else {

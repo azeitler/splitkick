@@ -98,6 +98,15 @@ struct ErrorEvent {
 // App-server param builders
 // =============================================================================
 
+/// Split "gpt-5.4-fast" → ("gpt-5.4", true). Only gpt-5.4-fast is recognised;
+/// older models that happened to end in `-fast` are left unchanged.
+fn split_fast_model(model: &str) -> (&str, bool) {
+    match model {
+        "gpt-5.4-fast" => ("gpt-5.4", true),
+        other => (other.strip_suffix("-fast").unwrap_or(other), false),
+    }
+}
+
 /// Build JSON-RPC params for `thread/start`.
 #[allow(clippy::too_many_arguments)]
 pub fn build_thread_start_params(
@@ -117,10 +126,11 @@ pub fn build_thread_start_params(
 
     // Model (gpt-5.4-fast → model=gpt-5.4 + serviceTier=fast)
     if let Some(m) = model {
-        let (actual_model, is_fast) = match m {
-            "gpt-5.4-fast" => ("gpt-5.4", true),
-            other => (other.strip_suffix("-fast").unwrap_or(other), false),
-        };
+        let (actual_model, is_fast) = split_fast_model(m);
+        log::debug!(
+            "Codex thread params: model={actual_model}, fast={is_fast}, mode={:?}",
+            execution_mode
+        );
         params["model"] = serde_json::json!(actual_model);
         if is_fast {
             params["serviceTier"] = serde_json::json!("fast");
@@ -223,6 +233,10 @@ pub fn build_turn_start_params(
     // Override cwd per turn
     params["cwd"] = serde_json::json!(working_dir.to_string_lossy());
 
+    log::debug!(
+        "Codex turn params: thread={thread_id}, effort={reasoning_effort:?}, mode={execution_mode:?}"
+    );
+
     params
 }
 
@@ -256,6 +270,11 @@ pub fn execute_codex_via_server(
 
     let is_plan_mode = execution_mode.unwrap_or("plan") == "plan";
     let is_build_mode = execution_mode.unwrap_or("plan") == "build";
+
+    log::debug!(
+        "Codex server turn: session={session_id}, model={model:?}, mode={execution_mode:?}, effort={reasoning_effort:?}, resume={}",
+        existing_thread_id.is_some()
+    );
 
     // Ensure the app-server is running
     codex_server::ensure_running(app)?;
@@ -918,6 +937,7 @@ fn normalize_item_types(item: &serde_json::Value) -> serde_json::Value {
                 "imageGeneration" => "image_generation",
                 "imageView" => "image_view",
                 "contextCompaction" => "context_compaction",
+                "userMessage" => "user_message",
                 other => other,
             };
             obj.insert("type".to_string(), serde_json::json!(normalized));
@@ -1295,7 +1315,7 @@ fn process_codex_event(
                     );
                 }
                 // These types are handled on completion only (via deltas / dedicated events)
-                "agent_message" | "reasoning" => {}
+                "agent_message" | "reasoning" | "user_message" => {}
                 // Informational tool-like events — surface as tool calls in the UI
                 "web_search" | "image_generation" | "image_view" | "context_compaction" => {
                     let tool_name = match item_type {
@@ -1553,6 +1573,8 @@ fn process_codex_event(
                         );
                     }
                 }
+                // User's own input echoed back — no UI needed
+                "user_message" => {}
                 other => {
                     log::debug!("Unknown Codex item.completed type: {other}");
                 }
@@ -2003,8 +2025,11 @@ pub fn execute_one_shot_codex(
         return Err("Codex CLI not installed".to_string());
     }
 
+    // Split fast suffix: "gpt-5.4-fast" → model="gpt-5.4" + service_tier="fast"
+    let (actual_model, is_fast) = split_fast_model(model);
+
     log::info!(
-        "Executing one-shot Codex CLI: model={model}, working_dir={:?}, reasoning_effort={:?}",
+        "Executing one-shot Codex CLI: model={actual_model}, fast={is_fast}, working_dir={:?}, reasoning_effort={:?}",
         working_dir,
         reasoning_effort
     );
@@ -2016,14 +2041,11 @@ pub fn execute_one_shot_codex(
         .map_err(|e| format!("Failed to write schema file: {e}"))?;
 
     let mut cmd = crate::platform::silent_command(&cli_path);
-    cmd.args([
-        "exec",
-        "--json",
-        "--model",
-        model,
-        "--full-auto",
-        "--output-schema",
-    ]);
+    cmd.args(["exec", "--json", "--model", actual_model, "--full-auto"]);
+    if is_fast {
+        cmd.args(["-c", "service_tier=\"fast\""]);
+    }
+    cmd.arg("--output-schema");
     cmd.arg(&schema_file);
     if let Some(dir) = working_dir {
         cmd.arg("--cd");
@@ -2152,6 +2174,23 @@ mod tests {
         );
         assert_eq!(params["model"], "gpt-5.4");
         assert_eq!(params["serviceTier"], "fast");
+    }
+
+    #[test]
+    fn split_fast_model_recognises_gpt_5_4_fast() {
+        assert_eq!(split_fast_model("gpt-5.4-fast"), ("gpt-5.4", true));
+    }
+
+    #[test]
+    fn split_fast_model_ignores_deprecated_fast_suffix() {
+        // Older models ending in -fast should NOT enable fast tier
+        assert_eq!(split_fast_model("gpt-5.3-fast"), ("gpt-5.3", false));
+    }
+
+    #[test]
+    fn split_fast_model_passes_through_normal_models() {
+        assert_eq!(split_fast_model("gpt-5.4"), ("gpt-5.4", false));
+        assert_eq!(split_fast_model("o3"), ("o3", false));
     }
 
     #[test]

@@ -313,13 +313,17 @@ export function useSession(
       }
 
       try {
-        logger.debug('Loading session', { sessionId })
+        logger.debug('[useSession] fetching from disk', { sessionId })
         const session = await invoke<Session>('get_session', {
           worktreeId,
           worktreePath,
           sessionId,
         })
-        logger.info('Session loaded', { messageCount: session.messages.length })
+        logger.info('[useSession] loaded', {
+          sessionId,
+          messageCount: session.messages.length,
+          backend: session.backend,
+        })
 
         // Preserve optimistic messages from sendMessage.onMutate that the
         // backend hasn't persisted yet (race: refetchOnMount fires before
@@ -331,12 +335,16 @@ export function useSession(
           cached &&
           cached.messages.length > session.messages.length
         ) {
+          logger.debug('[useSession] preserving optimistic messages', {
+            cachedCount: cached.messages.length,
+            diskCount: session.messages.length,
+          })
           return { ...session, messages: cached.messages }
         }
 
         return session
       } catch (error) {
-        logger.warn('Failed to load session', { error, sessionId })
+        logger.warn('[useSession] FAILED to load session', { error, sessionId })
         return null
       }
     },
