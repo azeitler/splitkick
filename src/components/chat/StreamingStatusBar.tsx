@@ -34,8 +34,7 @@ export const StreamingStatusBar = memo(function StreamingStatusBar({
   if (!visible) return null
 
   return (
-    <div className="my-1">
-      <span className="text-xs leading-4 text-muted-foreground/50 tabular-nums font-mono select-none">
+    <span className="mt-1 block min-h-4 text-xs leading-4 text-muted-foreground/40 tabular-nums font-mono select-none">
         {showRestored ? (
           <span className="animate-dots">
             {getModeLabel(restoredExecutionMode)}
@@ -43,7 +42,6 @@ export const StreamingStatusBar = memo(function StreamingStatusBar({
         ) : (
           elapsed ?? '0s'
         )}
-      </span>
-    </div>
+    </span>
   )
 })

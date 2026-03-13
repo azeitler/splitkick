@@ -2112,70 +2112,73 @@ export function ChatWindow({
                                 completedDurationMs={completedDurationMs}
                               />
                             )}
-                            {isSending && activeSessionId && (currentStreamingContentBlocks.length > 0 || currentToolCalls.length > 0 || streamingContent.trim().length > 0) && (
-                              <StreamingMessage
-                                sessionId={activeSessionId}
-                                contentBlocks={currentStreamingContentBlocks}
-                                toolCalls={currentToolCalls}
-                                streamingContent={streamingContent}
-                                selectedThinkingLevel={selectedThinkingLevel}
-                                approveShortcut={approveShortcut}
-                                approveShortcutYolo={approveShortcutYolo}
-                                approveShortcutClearContext={approveShortcutClearContext}
-                                approveShortcutClearContextBuild={approveShortcutClearContextBuild}
-                                onQuestionAnswer={handleQuestionAnswer}
-                                onQuestionSkip={handleSkipQuestion}
-                                onFileClick={setViewingFilePath}
-                                onEditedFileClick={setViewingFilePath}
-                                isQuestionAnswered={isQuestionAnswered}
-                                getSubmittedAnswers={getSubmittedAnswers}
-                                areQuestionsSkipped={areQuestionsSkipped}
-                                isStreamingPlanApproved={
-                                  isStreamingPlanApproved
-                                }
-                                onStreamingPlanApproval={
-                                  handleStreamingPlanApproval
-                                }
-                                onStreamingPlanApprovalYolo={
-                                  handleStreamingPlanApprovalYolo
-                                }
-                                onStreamingClearContextApproval={
-                                  handleStreamingClearContextApproval
-                                }
-                                onStreamingClearContextApprovalBuild={
-                                  handleStreamingClearContextApprovalBuild
-                                }
-                                onStreamingWorktreeBuildApproval={
-                                  worktree?.project_id
-                                    ? handleStreamingWorktreeBuildApproval
-                                    : undefined
-                                }
-                                onStreamingWorktreeYoloApproval={
-                                  worktree?.project_id
-                                    ? handleStreamingWorktreeYoloApproval
-                                    : undefined
-                                }
-                                hideApproveButtons={isCodexBackend}
-                              />
+                            {/* Streaming response + elapsed timer in one wrapper to avoid space-y-4 gap */}
+                            {isSending && activeSessionId && (
+                              <div>
+                                {(currentStreamingContentBlocks.length > 0 || currentToolCalls.length > 0 || streamingContent.trim().length > 0) && (
+                                  <StreamingMessage
+                                    sessionId={activeSessionId}
+                                    contentBlocks={currentStreamingContentBlocks}
+                                    toolCalls={currentToolCalls}
+                                    streamingContent={streamingContent}
+                                    selectedThinkingLevel={selectedThinkingLevel}
+                                    approveShortcut={approveShortcut}
+                                    approveShortcutYolo={approveShortcutYolo}
+                                    approveShortcutClearContext={approveShortcutClearContext}
+                                    approveShortcutClearContextBuild={approveShortcutClearContextBuild}
+                                    onQuestionAnswer={handleQuestionAnswer}
+                                    onQuestionSkip={handleSkipQuestion}
+                                    onFileClick={setViewingFilePath}
+                                    onEditedFileClick={setViewingFilePath}
+                                    isQuestionAnswered={isQuestionAnswered}
+                                    getSubmittedAnswers={getSubmittedAnswers}
+                                    areQuestionsSkipped={areQuestionsSkipped}
+                                    isStreamingPlanApproved={
+                                      isStreamingPlanApproved
+                                    }
+                                    onStreamingPlanApproval={
+                                      handleStreamingPlanApproval
+                                    }
+                                    onStreamingPlanApprovalYolo={
+                                      handleStreamingPlanApprovalYolo
+                                    }
+                                    onStreamingClearContextApproval={
+                                      handleStreamingClearContextApproval
+                                    }
+                                    onStreamingClearContextApprovalBuild={
+                                      handleStreamingClearContextApprovalBuild
+                                    }
+                                    onStreamingWorktreeBuildApproval={
+                                      worktree?.project_id
+                                        ? handleStreamingWorktreeBuildApproval
+                                        : undefined
+                                    }
+                                    onStreamingWorktreeYoloApproval={
+                                      worktree?.project_id
+                                        ? handleStreamingWorktreeYoloApproval
+                                        : undefined
+                                    }
+                                    hideApproveButtons={isCodexBackend}
+                                  />
+                                )}
+                                <StreamingStatusBar
+                                  isSending={isSending}
+                                  sendStartedAt={sendStartedAt}
+                                  streamingExecutionMode={streamingExecutionMode}
+                                  restoredRunStatus={
+                                    !isSending &&
+                                    !isWaitingForInput &&
+                                    !hasPendingQuestions &&
+                                    !isSessionReviewing
+                                      ? session?.last_run_status
+                                      : undefined
+                                  }
+                                  restoredExecutionMode={
+                                    session?.last_run_execution_mode
+                                  }
+                                />
+                              </div>
                             )}
-
-                            {/* Streaming elapsed timer - shown inline after last response */}
-                            <StreamingStatusBar
-                              isSending={isSending}
-                              sendStartedAt={sendStartedAt}
-                              streamingExecutionMode={streamingExecutionMode}
-                              restoredRunStatus={
-                                !isSending &&
-                                !isWaitingForInput &&
-                                !hasPendingQuestions &&
-                                !isSessionReviewing
-                                  ? session?.last_run_status
-                                  : undefined
-                              }
-                              restoredExecutionMode={
-                                session?.last_run_execution_mode
-                              }
-                            />
 
                             {/* Permission approval UI - shown when tools require approval (never in yolo mode) */}
                             {showPermissionApproval &&
