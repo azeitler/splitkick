@@ -112,7 +112,7 @@ describe('dedupeInFlightAssistantMessage', () => {
     ).toEqual([messages[0]])
   })
 
-  it('keeps a trailing assistant when there is no live stream evidence', () => {
+  it('hides a trailing assistant even before streaming starts (prevents flicker)', () => {
     const messages = [
       createMessage({ id: 'user-1', role: 'user', content: 'Prompt' }),
       createMessage({
@@ -129,6 +129,6 @@ describe('dedupeInFlightAssistantMessage', () => {
         streamingContentBlocks: [],
         streamingToolCalls: [],
       })
-    ).toEqual(messages)
+    ).toEqual([messages[0]])
   })
 })

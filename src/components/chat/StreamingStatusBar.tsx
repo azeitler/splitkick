@@ -17,8 +17,8 @@ function getModeLabel(mode: string | undefined): string {
 }
 
 /**
- * Always-mounted status bar for streaming progress / restored-running indicator.
- * Uses h-0 + overflow-hidden when not visible so it takes zero space without mount/unmount flicker.
+ * Inline streaming timer shown after the last response message.
+ * Returns null when not visible.
  */
 export const StreamingStatusBar = memo(function StreamingStatusBar({
   isSending,
@@ -32,16 +32,11 @@ export const StreamingStatusBar = memo(function StreamingStatusBar({
   const showRestored = !isSending && restoredRunStatus === 'running'
   const visible = isSending || showRestored
 
+  if (!visible) return null
+
   return (
-    <div className="my-1 min-h-4">
-      <span
-        className={
-          visible
-            ? 'block text-xs leading-4 dark:text-yellow-500 tabular-nums font-mono select-none'
-            : 'invisible block text-xs leading-4 text-muted-foreground/40 tabular-nums font-mono select-none'
-        }
-        aria-hidden={!visible}
-      >
+    <div className="my-1">
+      <span className="text-xs leading-4 text-yellow-500 tabular-nums font-mono select-none">
         {showRestored ? (
           <span className="animate-dots">
             {getModeLabel(restoredExecutionMode)}

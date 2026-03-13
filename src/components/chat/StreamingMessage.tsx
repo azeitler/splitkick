@@ -105,22 +105,8 @@ export const StreamingMessage = memo(function StreamingMessage({
   onStreamingWorktreeYoloApproval,
   hideApproveButtons,
 }: StreamingMessageProps) {
-  const hasVisibleStreamingContent =
-    contentBlocks.length > 0 ||
-    toolCalls.length > 0 ||
-    streamingContent.trim().length > 0
-
   return (
-    <div className="min-h-4 text-muted-foreground">
-      {!hasVisibleStreamingContent && (
-        <div
-          className="py-1"
-          aria-hidden="true"
-          data-testid="streaming-response-placeholder"
-        >
-          <div className="h-4 w-[min(20rem,52%)]" />
-        </div>
-      )}
+    <div className="text-muted-foreground">
       {/* Render streaming content blocks inline if available */}
       {contentBlocks.length > 0 ? (
         (() => {

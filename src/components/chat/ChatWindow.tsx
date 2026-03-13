@@ -802,6 +802,7 @@ export function ChatWindow({
     isAtBottom,
     areFindingsVisible,
     scrollToBottom,
+    markAtBottom,
     beginKeyboardScroll,
     endKeyboardScroll,
     scrollToFindings,
@@ -1507,7 +1508,7 @@ export function ChatWindow({
     preferences,
     sendMessage,
     queryClient,
-    scrollToBottom,
+    markAtBottom,
     sessionsData,
     setInputDraft,
     clearInputDraft,
@@ -2111,7 +2112,7 @@ export function ChatWindow({
                                 completedDurationMs={completedDurationMs}
                               />
                             )}
-                            {isSending && activeSessionId && (
+                            {isSending && activeSessionId && (currentStreamingContentBlocks.length > 0 || currentToolCalls.length > 0 || streamingContent.trim().length > 0) && (
                               <StreamingMessage
                                 sessionId={activeSessionId}
                                 contentBlocks={currentStreamingContentBlocks}
@@ -2158,6 +2159,24 @@ export function ChatWindow({
                               />
                             )}
 
+                            {/* Streaming elapsed timer - shown inline after last response */}
+                            <StreamingStatusBar
+                              isSending={isSending}
+                              sendStartedAt={sendStartedAt}
+                              streamingExecutionMode={streamingExecutionMode}
+                              restoredRunStatus={
+                                !isSending &&
+                                !isWaitingForInput &&
+                                !hasPendingQuestions &&
+                                !isSessionReviewing
+                                  ? session?.last_run_status
+                                  : undefined
+                              }
+                              restoredExecutionMode={
+                                session?.last_run_execution_mode
+                              }
+                            />
+
                             {/* Permission approval UI - shown when tools require approval (never in yolo mode) */}
                             {showPermissionApproval &&
                               activeSessionId && (
@@ -2199,6 +2218,7 @@ export function ChatWindow({
                         onScrollToFindings={scrollToFindings}
                         onScrollToBottom={scrollToBottom}
                       />
+
                     </div>
 
                     {/* Error banner - shows when request fails */}
@@ -2215,25 +2235,6 @@ export function ChatWindow({
                     <div>
                       <div className="mx-auto max-w-7xl">
                         <div className="relative sm:mx-auto sm:mb-3 sm:max-w-3xl">
-                          <div className="px-4 md:px-6">
-                            <StreamingStatusBar
-                              isSending={isSending}
-                              sendStartedAt={sendStartedAt}
-                              streamingExecutionMode={streamingExecutionMode}
-                              restoredRunStatus={
-                                !isSending &&
-                                !isWaitingForInput &&
-                                !hasPendingQuestions &&
-                                !isSessionReviewing
-                                  ? session?.last_run_status
-                                  : undefined
-                              }
-                              restoredExecutionMode={
-                                session?.last_run_execution_mode
-                              }
-                            />
-                          </div>
-
                           {/* Input area - unified container with textarea and toolbar */}
                           <form
                             ref={formRef}

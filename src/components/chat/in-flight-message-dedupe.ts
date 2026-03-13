@@ -93,17 +93,24 @@ export function dedupeInFlightAssistantMessage(
   const lastMessage = messages[messages.length - 1]
   const previousMessage = messages[messages.length - 2]
 
+  // If the last message is an assistant following a user message while we're
+  // actively sending, hide it immediately. The backend persists the assistant
+  // message to disk before streaming content reaches the frontend, creating a
+  // one-render window where the message appears then gets removed by dedupe —
+  // causing visible flicker (message count bounces N → N+1 → N).
+  if (lastMessage?.role !== 'assistant' || previousMessage?.role !== 'user') {
+    return messages
+  }
+
   const hasLiveStreaming =
     options.streamingContent.trim().length > 0 ||
     options.streamingContentBlocks.length > 0 ||
     options.streamingToolCalls.length > 0
 
-  if (
-    !hasLiveStreaming ||
-    lastMessage?.role !== 'assistant' ||
-    previousMessage?.role !== 'user'
-  ) {
-    return messages
+  // Always hide trailing assistant during send — either streaming hasn't
+  // started yet (backend persisted early) or it matches the live stream.
+  if (!hasLiveStreaming) {
+    return messages.slice(0, -1)
   }
 
   return isTransientTrailingAssistant(lastMessage, options)

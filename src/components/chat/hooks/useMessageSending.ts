@@ -43,7 +43,7 @@ interface UseMessageSendingParams {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sendMessage: { mutate: (args: any, opts?: any) => void }
   queryClient: QueryClient
-  scrollToBottom: (instant?: boolean) => void
+  markAtBottom: () => void
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sessionsData: any
   setInputDraft: (sessionId: string, draft: string) => void
@@ -73,7 +73,7 @@ export function useMessageSending({
   preferences,
   sendMessage,
   queryClient,
-  scrollToBottom,
+  markAtBottom,
   sessionsData,
   setInputDraft,
   clearInputDraft,
@@ -436,7 +436,7 @@ export function useMessageSending({
         queuedAt: Date.now(),
       }
 
-      scrollToBottom(true)
+      markAtBottom()
 
       const isSendingNow = checkIsSendingNow(activeSessionId)
       console.log(`[Send] handleSubmit sessionId=${activeSessionId} isSending=${isSendingNow}`)
@@ -455,7 +455,7 @@ export function useMessageSending({
       activeWorktreePath,
       clearInputDraft,
       clearChatInputState,
-      scrollToBottom,
+      markAtBottom,
       sendMessageNow,
       sessionsData,
     ]
