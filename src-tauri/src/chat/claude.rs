@@ -70,6 +70,24 @@ const DEFAULT_GLOBAL_SYSTEM_PROMPT: &str = "\
 \n\
 - After each finished task, please write a few bullet points on how to test the changes.";
 
+fn execution_mode_instruction(execution_mode: Option<&str>) -> Option<&'static str> {
+    match execution_mode.unwrap_or("plan") {
+        "build" => Some(
+            "You are in BUILD MODE. Start implementing immediately. \
+             Do NOT enter plan mode and do NOT use ExitPlanMode unless the user explicitly asks \
+             for a new plan. If a required decision is missing, use AskUserQuestion instead of \
+             ExitPlanMode.",
+        ),
+        "yolo" => Some(
+            "You are in YOLO EXECUTION MODE. Start implementing immediately. \
+             Do NOT enter plan mode and do NOT use ExitPlanMode unless the user explicitly asks \
+             for a new plan. Do not ask for confirmation before routine implementation steps. \
+             If a required decision is missing, use AskUserQuestion instead of ExitPlanMode.",
+        ),
+        _ => None,
+    }
+}
+
 // =============================================================================
 // Claude CLI execution
 // =============================================================================
@@ -410,6 +428,12 @@ fn build_claude_args(
                 system_prompt_parts.push(prompt.to_string());
             }
         }
+    }
+
+    // Explicit mode override for Claude so build/yolo do not fall back into plan mode
+    // due to the default global prompt.
+    if let Some(mode_instruction) = execution_mode_instruction(execution_mode) {
+        system_prompt_parts.push(mode_instruction.to_string());
     }
 
     // Parallel execution prompt - encourages sub-agent parallelization

@@ -383,8 +383,6 @@ export function useMessageHandlers({
       if (!sessionId || !worktreeId || !worktreePath) return
 
       // Mark plan as approved in the message (persisted to disk)
-      markPlanApprovedService(worktreeId, worktreePath, sessionId, messageId)
-
       // Optimistically update the UI to hide the approve button
       queryClient.setQueryData<Session>(
         chatQueryKeys.session(sessionId),
@@ -403,10 +401,25 @@ export function useMessageHandlers({
         }
       )
 
-      // Invalidate sessions list so canvas cards update
-      queryClient.invalidateQueries({
-        queryKey: chatQueryKeys.sessions(worktreeId),
-      })
+      queryClient.setQueryData<WorktreeSessions>(
+        chatQueryKeys.sessions(worktreeId),
+        old => {
+          if (!old) return old
+          return {
+            ...old,
+            sessions: old.sessions.map(s =>
+              s.id === sessionId
+                ? {
+                    ...s,
+                    waiting_for_input: false,
+                    pending_plan_message_id: undefined,
+                    waiting_for_input_type: undefined,
+                  }
+                : s
+            ),
+          }
+        }
+      )
 
       // Explicitly set to build mode (not toggle, to avoid switching back to plan if already in build)
       const {
@@ -418,6 +431,7 @@ export function useMessageHandlers({
         setExecutingMode,
         setSessionReviewing,
         setWaitingForInput,
+        setPendingPlanMessageId,
         clearToolCalls,
         clearStreamingContentBlocks,
       } = useChatStore.getState()
@@ -428,6 +442,7 @@ export function useMessageHandlers({
       clearStreamingContentBlocks(sessionId)
       setSessionReviewing(sessionId, false)
       setWaitingForInput(sessionId, false)
+      setPendingPlanMessageId(sessionId, null)
 
       // Scroll to bottom after DOM updates from collapsing the plan approval UI
       requestAnimationFrame(() => {
@@ -456,28 +471,59 @@ export function useMessageHandlers({
       addSendingSession(sessionId)
       setSelectedModel(sessionId, selectedModelRef.current)
       setExecutingMode(sessionId, 'build')
+      const markPromise = markPlanApprovedService(
+        worktreeId,
+        worktreePath,
+        sessionId,
+        messageId
+      ).catch(err => {
+        console.error('[useMessageHandlers] markPlanApproved failed:', err)
+      })
 
-      sendMessage.mutate(
-        {
-          sessionId,
-          worktreeId,
-          worktreePath,
-          message,
-          model: selectedModelRef.current,
-          executionMode: 'build',
-          thinkingLevel: selectedThinkingLevelRef.current,
-          effortLevel: useAdaptiveThinkingRef.current
-            ? selectedEffortLevelRef.current
-            : undefined,
-          mcpConfig: getMcpConfig(),
-          customProfileName: getCustomProfileName(),
-        },
-        {
-          onSettled: () => {
-            inputRef.current?.focus()
-          },
-        }
-      )
+      markPromise
+        .then(() =>
+          invoke('update_session_state', {
+            worktreeId,
+            worktreePath,
+            sessionId,
+            waitingForInput: false,
+            waitingForInputType: null,
+            selectedExecutionMode: 'build',
+          })
+        )
+        .catch(err => {
+          console.error(
+            '[useMessageHandlers] Failed to clear waiting state:',
+            err
+          )
+        })
+        .finally(() => {
+          queryClient.invalidateQueries({
+            queryKey: chatQueryKeys.sessions(worktreeId),
+          })
+
+          sendMessage.mutate(
+            {
+              sessionId,
+              worktreeId,
+              worktreePath,
+              message,
+              model: selectedModelRef.current,
+              executionMode: 'build',
+              thinkingLevel: selectedThinkingLevelRef.current,
+              effortLevel: useAdaptiveThinkingRef.current
+                ? selectedEffortLevelRef.current
+                : undefined,
+              mcpConfig: getMcpConfig(),
+              customProfileName: getCustomProfileName(),
+            },
+            {
+              onSettled: () => {
+                inputRef.current?.focus()
+              },
+            }
+          )
+        })
     },
     [
       activeSessionIdRef,
@@ -506,8 +552,6 @@ export function useMessageHandlers({
       if (!sessionId || !worktreeId || !worktreePath) return
 
       // Mark plan as approved in the message (persisted to disk)
-      markPlanApprovedService(worktreeId, worktreePath, sessionId, messageId)
-
       // Optimistically update the UI to hide the approve button
       queryClient.setQueryData<Session>(
         chatQueryKeys.session(sessionId),
@@ -526,10 +570,25 @@ export function useMessageHandlers({
         }
       )
 
-      // Invalidate sessions list so canvas cards update
-      queryClient.invalidateQueries({
-        queryKey: chatQueryKeys.sessions(worktreeId),
-      })
+      queryClient.setQueryData<WorktreeSessions>(
+        chatQueryKeys.sessions(worktreeId),
+        old => {
+          if (!old) return old
+          return {
+            ...old,
+            sessions: old.sessions.map(s =>
+              s.id === sessionId
+                ? {
+                    ...s,
+                    waiting_for_input: false,
+                    pending_plan_message_id: undefined,
+                    waiting_for_input_type: undefined,
+                  }
+                : s
+            ),
+          }
+        }
+      )
 
       // Set to yolo mode for auto-approval of all future tools
       const {
@@ -541,6 +600,7 @@ export function useMessageHandlers({
         setExecutingMode,
         setSessionReviewing,
         setWaitingForInput,
+        setPendingPlanMessageId,
         clearToolCalls,
         clearStreamingContentBlocks,
       } = useChatStore.getState()
@@ -551,6 +611,7 @@ export function useMessageHandlers({
       clearStreamingContentBlocks(sessionId)
       setSessionReviewing(sessionId, false)
       setWaitingForInput(sessionId, false)
+      setPendingPlanMessageId(sessionId, null)
 
       // Scroll to bottom after DOM updates from collapsing the plan approval UI
       requestAnimationFrame(() => {
@@ -576,28 +637,59 @@ export function useMessageHandlers({
       addSendingSession(sessionId)
       setSelectedModel(sessionId, selectedModelRef.current)
       setExecutingMode(sessionId, 'yolo')
+      const markPromise = markPlanApprovedService(
+        worktreeId,
+        worktreePath,
+        sessionId,
+        messageId
+      ).catch(err => {
+        console.error('[useMessageHandlers] markPlanApproved failed:', err)
+      })
 
-      sendMessage.mutate(
-        {
-          sessionId,
-          worktreeId,
-          worktreePath,
-          message,
-          model: selectedModelRef.current,
-          executionMode: 'yolo',
-          thinkingLevel: selectedThinkingLevelRef.current,
-          effortLevel: useAdaptiveThinkingRef.current
-            ? selectedEffortLevelRef.current
-            : undefined,
-          mcpConfig: getMcpConfig(),
-          customProfileName: getCustomProfileName(),
-        },
-        {
-          onSettled: () => {
-            inputRef.current?.focus()
-          },
-        }
-      )
+      markPromise
+        .then(() =>
+          invoke('update_session_state', {
+            worktreeId,
+            worktreePath,
+            sessionId,
+            waitingForInput: false,
+            waitingForInputType: null,
+            selectedExecutionMode: 'yolo',
+          })
+        )
+        .catch(err => {
+          console.error(
+            '[useMessageHandlers] Failed to clear waiting state:',
+            err
+          )
+        })
+        .finally(() => {
+          queryClient.invalidateQueries({
+            queryKey: chatQueryKeys.sessions(worktreeId),
+          })
+
+          sendMessage.mutate(
+            {
+              sessionId,
+              worktreeId,
+              worktreePath,
+              message,
+              model: selectedModelRef.current,
+              executionMode: 'yolo',
+              thinkingLevel: selectedThinkingLevelRef.current,
+              effortLevel: useAdaptiveThinkingRef.current
+                ? selectedEffortLevelRef.current
+                : undefined,
+              mcpConfig: getMcpConfig(),
+              customProfileName: getCustomProfileName(),
+            },
+            {
+              onSettled: () => {
+                inputRef.current?.focus()
+              },
+            }
+          )
+        })
     },
     [
       activeSessionIdRef,

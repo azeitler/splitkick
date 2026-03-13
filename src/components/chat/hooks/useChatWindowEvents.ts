@@ -420,6 +420,7 @@ export function useChatWindowEvents({
   useEffect(() => {
     if (isCodexBackend) return
     const handler = () => {
+      if (!isModal && useUIStore.getState().sessionChatModalOpen) return
       if (hasStreamingPlan) {
         handleStreamingPlanApproval()
         return
@@ -488,6 +489,7 @@ export function useChatWindowEvents({
   useEffect(() => {
     if (isCodexBackend) return
     const handler = () => {
+      if (!isModal && useUIStore.getState().sessionChatModalOpen) return
       if (hasStreamingPlan) {
         handleStreamingPlanApprovalYolo()
         return
@@ -511,6 +513,7 @@ export function useChatWindowEvents({
   useEffect(() => {
     if (isCodexBackend) return
     const handler = () => {
+      if (!isModal && useUIStore.getState().sessionChatModalOpen) return
       if (hasStreamingPlan) {
         handleStreamingClearContextApproval()
         return
@@ -534,6 +537,7 @@ export function useChatWindowEvents({
   useEffect(() => {
     if (isCodexBackend) return
     const handler = () => {
+      if (!isModal && useUIStore.getState().sessionChatModalOpen) return
       if (hasStreamingPlan) {
         handleStreamingClearContextApprovalBuild()
         return
