@@ -7,6 +7,7 @@
 //! One-shot operations (commit messages, PR content, etc.) still use `codex exec`
 //! directly since they don't need streaming.
 
+use super::claude::CancelledEvent;
 use super::types::{ContentBlock, PermissionDenial, PermissionDeniedEvent, ToolCall, UsageData};
 use crate::http_server::EmitExt;
 
@@ -439,6 +440,7 @@ fn process_turn_events(
     let mut pending_tool_ids: HashMap<String, String> = HashMap::new();
     let mut completed = false;
     let mut cancelled = false;
+    let mut server_interrupted = false;
     let mut error_emitted = false;
     let mut usage: Option<UsageData> = None;
     let mut received_completed_agent_message = false;
@@ -496,6 +498,7 @@ fn process_turn_events(
                     &mut pending_tool_ids,
                     &mut completed,
                     &mut cancelled,
+                    &mut server_interrupted,
                     &mut usage,
                     &mut error_emitted,
                     &mut received_completed_agent_message,
@@ -601,6 +604,26 @@ fn process_turn_events(
                 waiting_for_plan: is_plan_mode && !full_content.is_empty(),
             },
         );
+    } else if server_interrupted && !error_emitted {
+        // Server-initiated interruption (e.g., Codex ended the turn while an
+        // approval request was still pending). User-initiated cancellation is
+        // handled by registry::cancel_process() which emits chat:cancelled
+        // before the event loop sees turn/completed. Emitting a duplicate is
+        // safe — cancelSession() in the store is idempotent.
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let emitted_at_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        let _ = app.emit_all(
+            "chat:cancelled",
+            &CancelledEvent {
+                session_id: session_id.to_string(),
+                worktree_id: worktree_id.to_string(),
+                undo_send: false,
+                emitted_at_ms,
+            },
+        );
     }
 
     CodexResponse {
@@ -692,6 +715,7 @@ fn process_server_notification(
     pending_tool_ids: &mut HashMap<String, String>,
     completed: &mut bool,
     cancelled: &mut bool,
+    server_interrupted: &mut bool,
     usage: &mut Option<UsageData>,
     error_emitted: &mut bool,
     received_completed_agent_message: &mut bool,
@@ -800,11 +824,13 @@ fn process_server_notification(
                     );
                     *error_emitted = true;
                 } else if status == "interrupted" {
-                    // Turn was interrupted (cancelled by user).
-                    // Mark cancelled so chat:done is NOT emitted — the registry
-                    // already emitted chat:cancelled for immediate frontend response.
+                    // Turn was interrupted — either by user cancel (registry already
+                    // emitted chat:cancelled) or by server (e.g., pending approval
+                    // timeout). We flag both so the post-loop code can emit a
+                    // fallback chat:cancelled for the server-initiated case.
                     log::trace!("Turn interrupted for session {session_id}");
                     *cancelled = true;
+                    *server_interrupted = true;
                 }
             }
             *completed = true;
