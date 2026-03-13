@@ -294,7 +294,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           { name: '{remote_info}', description: 'Remote repository info' },
         ],
         defaultValue: DEFAULT_COMMIT_MESSAGE_PROMPT,
-        defaultModel: 'haiku',
+        defaultModel: 'sonnet',
       },
       {
         key: 'pr_content',
@@ -321,7 +321,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           { name: '{diff}', description: 'Git diff of all changes' },
         ],
         defaultValue: DEFAULT_PR_CONTENT_PROMPT,
-        defaultModel: 'haiku',
+        defaultModel: 'sonnet',
       },
       {
         key: 'resolve_conflicts',
@@ -357,7 +357,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_RELEASE_NOTES_PROMPT,
-        defaultModel: 'haiku',
+        defaultModel: 'sonnet',
       },
     ],
   },
@@ -384,7 +384,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_CONTEXT_SUMMARY_PROMPT,
-        defaultModel: 'haiku',
+        defaultModel: 'sonnet',
       },
       {
         key: 'session_naming',
@@ -401,7 +401,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_SESSION_NAMING_PROMPT,
-        defaultModel: 'haiku',
+        defaultModel: 'sonnet',
       },
       {
         key: 'session_recap',
@@ -418,7 +418,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_SESSION_RECAP_PROMPT,
-        defaultModel: 'haiku',
+        defaultModel: 'sonnet',
       },
     ],
   },
