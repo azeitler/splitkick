@@ -1534,8 +1534,14 @@ pub fn execute_one_shot_opencode(
     // the Tokio async runtime that Tauri async commands use.
     let handle = std::thread::spawn(move || {
         let base_url = crate::opencode_server::acquire(&app)?;
-        let result =
-            one_shot_opencode_blocking(&base_url, &prompt, &model, schema_value.as_ref(), &dir, reasoning.as_deref());
+        let result = one_shot_opencode_blocking(
+            &base_url,
+            &prompt,
+            &model,
+            schema_value.as_ref(),
+            &dir,
+            reasoning.as_deref(),
+        );
         crate::opencode_server::release();
         result
     });

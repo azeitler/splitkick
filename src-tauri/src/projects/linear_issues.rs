@@ -83,6 +83,17 @@ pub struct LinearIssueListResult {
     pub issues: Vec<LinearIssue>,
 }
 
+/// Context for creating a worktree from a Linear issue (passed from frontend)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinearIssueContext {
+    pub id: String,
+    pub identifier: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub comments: Vec<LinearComment>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LoadedLinearIssueContext {
@@ -944,7 +955,7 @@ pub fn remove_linear_reference(
 }
 
 /// Get all Linear issue keys referenced by a session
-fn get_session_linear_refs(app: &AppHandle, session_id: &str) -> Result<Vec<String>, String> {
+pub fn get_session_linear_refs(app: &AppHandle, session_id: &str) -> Result<Vec<String>, String> {
     let refs = load_context_references(app)?;
     Ok(refs
         .linear
@@ -952,4 +963,40 @@ fn get_session_linear_refs(app: &AppHandle, session_id: &str) -> Result<Vec<Stri
         .filter(|(_, entry)| entry.sessions.contains(&session_id.to_string()))
         .map(|(key, _)| key.clone())
         .collect())
+}
+
+/// Get Linear issue identifiers (e.g. "ENG-123") referenced by a session, filtered by project name.
+pub fn get_session_linear_identifiers(
+    app: &AppHandle,
+    session_id: &str,
+    project_name: &str,
+) -> Result<Vec<String>, String> {
+    let keys = get_session_linear_refs(app, session_id)?;
+    let prefix = format!("{project_name}-");
+    Ok(keys
+        .into_iter()
+        .filter_map(|key| key.strip_prefix(&prefix).map(|id| id.to_string()))
+        .collect())
+}
+
+/// Convert a LinearIssueContext into a LinearIssueDetail for formatting
+pub fn linear_context_to_detail(ctx: &LinearIssueContext) -> LinearIssueDetail {
+    LinearIssueDetail {
+        id: ctx.id.clone(),
+        identifier: ctx.identifier.clone(),
+        title: ctx.title.clone(),
+        description: ctx.description.clone(),
+        state: LinearIssueState {
+            name: "Unknown".to_string(),
+            state_type: "started".to_string(),
+            color: "#000000".to_string(),
+        },
+        labels: vec![],
+        assignee: None,
+        created_at: String::new(),
+        url: String::new(),
+        priority: 0,
+        priority_label: "No priority".to_string(),
+        comments: ctx.comments.clone(),
+    }
 }

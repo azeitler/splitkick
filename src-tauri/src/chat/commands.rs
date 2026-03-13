@@ -936,6 +936,7 @@ pub async fn restore_session_with_base(
         pr_number: None,
         pr_url: None,
         issue_number: None,
+        linear_issue_identifier: None,
         cached_pr_status: None,
         cached_check_status: None,
         cached_behind_count: None,
@@ -1299,7 +1300,9 @@ pub async fn send_chat_message(
     // Without this, a double-send (frontend race, page reload, etc.) creates
     // duplicate run entries and orphans the first process in the registry.
     if super::registry::is_session_actively_managed(&session_id) {
-        log::warn!("[SendChat] REJECTED session={session_id} — already actively managed (duplicate send)");
+        log::warn!(
+            "[SendChat] REJECTED session={session_id} — already actively managed (duplicate send)"
+        );
         return Err("Session already has an active request".to_string());
     }
 
@@ -3939,7 +3942,12 @@ fn format_messages_for_summary(messages: &[ChatMessage]) -> String {
             };
             // Truncate very long messages to avoid context overflow (char-safe for multi-byte UTF-8)
             let content = if msg.content.len() > 5000 {
-                let end = msg.content.char_indices().nth(5000).map(|(i, _)| i).unwrap_or(msg.content.len());
+                let end = msg
+                    .content
+                    .char_indices()
+                    .nth(5000)
+                    .map(|(i, _)| i)
+                    .unwrap_or(msg.content.len());
                 format!(
                     "{}...\n[Message truncated - {} chars total]",
                     &msg.content[..end],
@@ -4440,7 +4448,10 @@ pub async fn get_session_debug_info(
             if jsonl_path.exists() {
                 // Truncate user message preview to 50 chars (char-safe for multi-byte UTF-8)
                 let preview = if run.user_message.chars().count() > 50 {
-                    format!("{}...", run.user_message.chars().take(47).collect::<String>())
+                    format!(
+                        "{}...",
+                        run.user_message.chars().take(47).collect::<String>()
+                    )
                 } else {
                     run.user_message.clone()
                 };
@@ -4956,8 +4967,16 @@ pub async fn generate_session_digest(
     let effort = prefs.magic_prompt_efforts.session_recap_effort.as_deref();
 
     // Call Claude CLI with JSON schema (non-streaming)
-    let response =
-        execute_digest_claude(&app, &prompt, model, provider, None, None, magic_backend, effort)?;
+    let response = execute_digest_claude(
+        &app,
+        &prompt,
+        model,
+        provider,
+        None,
+        None,
+        magic_backend,
+        effort,
+    )?;
 
     Ok(SessionDigest {
         chat_summary: response.chat_summary,

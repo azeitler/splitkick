@@ -45,6 +45,7 @@ import {
   useLoadedPRContexts,
   useAttachedSavedContexts,
 } from '@/services/github'
+import { useLoadedLinearIssueContexts } from '@/services/linear'
 import {
   useChatStore,
   DEFAULT_MODEL,
@@ -426,6 +427,13 @@ export function ChatWindow({
   const { data: loadedPRContexts } = useLoadedPRContexts(
     activeSessionId ?? null,
     activeWorktreeId
+  )
+
+  // Loaded Linear issue contexts for indicator
+  const { data: loadedLinearContexts } = useLoadedLinearIssueContexts(
+    activeSessionId ?? null,
+    activeWorktreeId ?? null,
+    worktree?.project_id ?? null
   )
 
   // Attached saved contexts for indicator
@@ -2360,6 +2368,7 @@ export function ChatWindow({
                               projectId={worktree?.project_id}
                               loadedIssueContexts={loadedIssueContexts ?? []}
                               loadedPRContexts={loadedPRContexts ?? []}
+                              loadedLinearContexts={loadedLinearContexts ?? []}
                               attachedSavedContexts={
                                 attachedSavedContexts ?? []
                               }

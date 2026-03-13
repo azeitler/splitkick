@@ -340,10 +340,7 @@ pub fn start_run(
         |metadata| {
             // Guard: if there's already a Running run, reject to prevent duplicates.
             // This is a safety net — the primary guard is in send_chat_message.
-            let has_running = metadata
-                .runs
-                .iter()
-                .any(|r| r.status == RunStatus::Running);
+            let has_running = metadata.runs.iter().any(|r| r.status == RunStatus::Running);
             if has_running {
                 return Err(format!(
                     "Session {session_id} already has a Running run — refusing to create duplicate"
@@ -872,7 +869,9 @@ pub fn persist_partial_cancelled_content(
         line.contains("\"type\":\"assistant\"") || line.contains("\"type\": \"assistant\"")
     });
     if has_assistant_content {
-        log::trace!("JSONL already has assistant content, skipping persist for session {session_id}");
+        log::trace!(
+            "JSONL already has assistant content, skipping persist for session {session_id}"
+        );
         return Ok(());
     }
 
@@ -952,7 +951,8 @@ pub fn persist_partial_cancelled_content(
             .map_err(|e| format!("Failed to write partial content: {e}"))?;
     }
 
-    file.flush().map_err(|e| format!("Failed to flush partial content: {e}"))?;
+    file.flush()
+        .map_err(|e| format!("Failed to flush partial content: {e}"))?;
 
     log::trace!(
         "Persisted partial cancelled content ({} chars, {} blocks, {} tool calls) for session {session_id}",

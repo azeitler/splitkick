@@ -591,9 +591,7 @@ fn process_turn_events(
     // Codex never emitted a completed agent_message item. If one was already
     // written to history, appending another synthetic completion duplicates the
     // final assistant text on reload and after query invalidation.
-    if (cancelled || error_emitted)
-        && !full_content.is_empty()
-        && !received_completed_agent_message
+    if (cancelled || error_emitted) && !full_content.is_empty() && !received_completed_agent_message
     {
         if let Some(ref mut writer) = output_writer {
             let synthetic = serde_json::json!({
@@ -603,7 +601,11 @@ fn process_turn_events(
                     "text": full_content,
                 }
             });
-            let _ = writeln!(writer, "{}", serde_json::to_string(&synthetic).unwrap_or_default());
+            let _ = writeln!(
+                writer,
+                "{}",
+                serde_json::to_string(&synthetic).unwrap_or_default()
+            );
         }
     }
 
@@ -2134,7 +2136,11 @@ pub fn execute_one_shot_codex(
         } else {
             let trimmed = stderr.trim();
             if trimmed.len() > 200 {
-                let end = trimmed.char_indices().nth(200).map(|(i, _)| i).unwrap_or(trimmed.len());
+                let end = trimmed
+                    .char_indices()
+                    .nth(200)
+                    .map(|(i, _)| i)
+                    .unwrap_or(trimmed.len());
                 format!(
                     "Codex CLI failed (exit {}): {}…",
                     output.status,

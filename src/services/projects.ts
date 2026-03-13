@@ -453,6 +453,7 @@ export function useCreateWorktree() {
       prContext,
       securityContext,
       advisoryContext,
+      linearContext,
       customName,
       background: _background,
     }: {
@@ -501,6 +502,18 @@ export function useCreateWorktree() {
       }
       /** Advisory context to pass when creating a worktree from a repository advisory */
       advisoryContext?: AdvisoryContext
+      /** Linear issue context to pass when creating a worktree from a Linear issue */
+      linearContext?: {
+        id: string
+        identifier: string
+        title: string
+        description?: string
+        comments: {
+          body: string
+          user?: { name: string; displayName: string }
+          createdAt: string
+        }[]
+      }
       /** Custom worktree name (used when retrying after path conflict) */
       customName?: string
       /** When true, skip auto-navigation (CMD+Click from new session modal) */
@@ -526,6 +539,7 @@ export function useCreateWorktree() {
         prContext,
         securityContext,
         advisoryContext,
+        linearContext,
         customName,
       })
       return worktree

@@ -96,6 +96,8 @@ export interface Worktree {
   pr_url?: string
   /** GitHub issue number (if created from an issue) */
   issue_number?: number
+  /** Linear issue identifier (e.g. "ENG-123", if created from a Linear issue) */
+  linear_issue_identifier?: string
   /** Cached PR display status (draft, open, review, merged, closed) */
   cached_pr_status?: string
   /** Cached CI check status (success, failure, pending, error) */

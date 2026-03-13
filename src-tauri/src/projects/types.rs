@@ -131,6 +131,9 @@ pub struct Worktree {
     /// GitHub issue number (if created from an issue)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub issue_number: Option<u32>,
+    /// Linear issue identifier (e.g. "ENG-123", if created from a Linear issue)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub linear_issue_identifier: Option<String>,
     /// Cached PR display status (draft, open, review, merged, closed)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cached_pr_status: Option<String>,

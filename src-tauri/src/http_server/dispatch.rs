@@ -81,6 +81,7 @@ pub async fn dispatch_command(
             let pr_context = field_opt(&args, "prContext", "pr_context")?;
             let security_context = field_opt(&args, "securityContext", "security_context")?;
             let advisory_context = field_opt(&args, "advisoryContext", "advisory_context")?;
+            let linear_context = field_opt(&args, "linearContext", "linear_context")?;
             let custom_name = field_opt(&args, "customName", "custom_name")?;
             let result = crate::projects::create_worktree(
                 app.clone(),
@@ -90,6 +91,7 @@ pub async fn dispatch_command(
                 pr_context,
                 security_context,
                 advisory_context,
+                linear_context,
                 custom_name,
             )
             .await?;
@@ -265,8 +267,7 @@ pub async fn dispatch_command(
         }
         "merge_github_pr" => {
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
-            let result =
-                crate::projects::merge_github_pr(app.clone(), worktree_path).await?;
+            let result = crate::projects::merge_github_pr(app.clone(), worktree_path).await?;
             emit_cache_invalidation(app, &["projects"]);
             to_value(result)
         }
@@ -1142,6 +1143,7 @@ pub async fn dispatch_command(
             let pr_context = field_opt(&args, "prContext", "pr_context")?;
             let security_context = field_opt(&args, "securityContext", "security_context")?;
             let advisory_context = field_opt(&args, "advisoryContext", "advisory_context")?;
+            let linear_context = field_opt(&args, "linearContext", "linear_context")?;
             let result = crate::projects::create_worktree_from_existing_branch(
                 app.clone(),
                 project_id,
@@ -1150,6 +1152,7 @@ pub async fn dispatch_command(
                 pr_context,
                 security_context,
                 advisory_context,
+                linear_context,
             )
             .await?;
             to_value(result)

@@ -70,6 +70,7 @@ export const ChatToolbar = memo(function ChatToolbar({
   projectId,
   loadedIssueContexts,
   loadedPRContexts,
+  loadedLinearContexts,
   attachedSavedContexts,
   onOpenMagicModal,
   onSaveContext,
@@ -328,6 +329,7 @@ export const ChatToolbar = memo(function ChatToolbar({
           mcpStatuses={mcpStatuses}
           loadedIssueContexts={loadedIssueContexts}
           loadedPRContexts={loadedPRContexts}
+          loadedLinearContexts={loadedLinearContexts}
           attachedSavedContexts={attachedSavedContexts}
           providerDropdownOpen={providerDropdownOpen}
           modelDropdownOpen={modelDropdownOpen}
