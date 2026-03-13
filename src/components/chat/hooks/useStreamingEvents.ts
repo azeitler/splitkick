@@ -400,6 +400,13 @@ export default function useStreamingEvents({
       const toolCalls = activeToolCalls[sessionId]
       const contentBlocks = streamingContentBlocks[sessionId]
 
+      if (!content && !toolCalls?.length) {
+        console.warn(
+          `[chat:done] No streaming content for session=${sessionId}. ` +
+          `Optimistic message will be empty; messages will load from JSONL on refetch.`
+        )
+      }
+
       // Codex has no native plan approval flow — skip synthetic ExitPlanMode injection.
       // Codex plan completions fall through to the "no blocking tools" path → status = "review".
       const effectiveToolCalls = toolCalls
@@ -700,7 +707,12 @@ export default function useStreamingEvents({
           queryClient.setQueryData<Session>(
             chatQueryKeys.session(sessionId),
             old => {
-              if (!old) return old
+              if (!old) {
+                console.warn(
+                  `[chat:done] Session ${sessionId} not in cache — optimistic assistant message skipped. Will recover from JSONL on next fetch.`
+                )
+                return old
+              }
               return {
                 ...old,
                 messages: upsertAssistantMessage(old.messages, {

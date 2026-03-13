@@ -335,7 +335,8 @@ export function useSession(
           cached &&
           cached.messages.length > session.messages.length
         ) {
-          logger.debug('[useSession] preserving optimistic messages', {
+          logger.warn('[useSession] preserving cached messages over fresh fetch', {
+            sessionId,
             cachedCount: cached.messages.length,
             diskCount: session.messages.length,
           })

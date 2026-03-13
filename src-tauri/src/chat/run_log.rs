@@ -767,6 +767,21 @@ pub fn load_session_messages(
                     "*Response lost - Jean was closed before receiving a response.*".to_string();
             }
 
+            // For completed runs with no content, add placeholder so the
+            // assistant message isn't rendered as invisible/empty (#188).
+            if run.status == RunStatus::Completed
+                && assistant_msg.content.is_empty()
+                && assistant_msg.tool_calls.is_empty()
+            {
+                log::warn!(
+                    "Completed run {} for session {} has empty JSONL content",
+                    run.run_id,
+                    session_id
+                );
+                assistant_msg.content =
+                    "*Response content was not captured for this completed run.*".to_string();
+            }
+
             // Skip cancelled runs with no content (instant cancel race window).
             // During the brief period between mark_running_run_cancelled() setting
             // a placeholder assistant_message_id and the command handler setting it
