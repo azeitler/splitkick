@@ -12,6 +12,7 @@ import type {
   LoadedPullRequestContext,
   AttachedSavedContext,
 } from '@/types/github'
+import type { LoadedLinearIssueContext } from '@/types/linear'
 
 export interface ViewingContext {
   type: 'issue' | 'pr' | 'saved'
@@ -56,6 +57,7 @@ export interface ChatToolbarProps {
 
   loadedIssueContexts: LoadedIssueContext[]
   loadedPRContexts: LoadedPullRequestContext[]
+  loadedLinearContexts: LoadedLinearIssueContext[]
   attachedSavedContexts: AttachedSavedContext[]
 
   onOpenMagicModal: () => void

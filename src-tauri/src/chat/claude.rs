@@ -8,6 +8,7 @@ use crate::http_server::EmitExt;
 use crate::projects::github_issues::{
     get_github_contexts_dir, get_session_issue_refs, get_session_pr_refs,
 };
+use crate::projects::linear_issues::get_session_linear_refs;
 use crate::projects::storage::load_projects_data;
 
 // =============================================================================
@@ -553,6 +554,37 @@ fn build_claude_args(
         }
     }
 
+    // Check for Linear issue context files (shared storage)
+    let mut linear_keys = get_session_linear_refs(app, session_id).unwrap_or_default();
+    if let Ok(wt_keys) = get_session_linear_refs(app, worktree_id) {
+        for key in wt_keys {
+            if !linear_keys.contains(&key) {
+                linear_keys.push(key);
+            }
+        }
+    }
+    if !linear_keys.is_empty() {
+        if let Ok(contexts_dir) = get_github_contexts_dir(app) {
+            for key in linear_keys {
+                // key format: "{project_name}-{identifier}" where identifier is "TEAM-123"
+                // context file format: "{project_name}-linear-{identifier_lower}.md"
+                // Linear identifiers always have exactly one dash (e.g. "ENG-123"),
+                // so rsplitn(3, '-') safely separates the number, team key, and project name.
+                let parts: Vec<&str> = key.rsplitn(3, '-').collect();
+                if parts.len() == 3 {
+                    let project_name_part = parts[2];
+                    let identifier_lower = format!("{}-{}", parts[1].to_lowercase(), parts[0]);
+                    let file_path = contexts_dir
+                        .join(format!("{project_name_part}-linear-{identifier_lower}.md"));
+                    if file_path.exists() {
+                        log::trace!("Adding Linear issue context file: {:?}", file_path);
+                        all_context_paths.push(file_path);
+                    }
+                }
+            }
+        }
+    }
+
     // Check for attached saved context files
     if let Ok(app_data_dir) = app.path().app_data_dir() {
         let saved_contexts_dir = app_data_dir.join("session-context");
@@ -605,6 +637,13 @@ fn build_claude_args(
                     s.contains("git-context") && s.contains("-pr-")
                 })
                 .count();
+            let linear_count = all_context_paths
+                .iter()
+                .filter(|p| {
+                    let s = p.to_string_lossy();
+                    s.contains("git-context") && s.contains("-linear-")
+                })
+                .count();
             let saved_context_count = all_context_paths
                 .iter()
                 .filter(|p| {
@@ -633,7 +672,7 @@ fn build_claude_args(
                 combined_content
                     .push_str("You should be aware of this when working on this task.\n\n");
 
-                if issue_count > 0 || pr_count > 0 || saved_context_count > 0 {
+                if issue_count > 0 || pr_count > 0 || linear_count > 0 || saved_context_count > 0 {
                     combined_content.push_str("**Summary:**\n");
                     if issue_count > 0 {
                         combined_content.push_str(&format!("- {} GitHub Issue(s)\n", issue_count));
@@ -641,6 +680,9 @@ fn build_claude_args(
                     if pr_count > 0 {
                         combined_content
                             .push_str(&format!("- {} GitHub Pull Request(s)\n", pr_count));
+                    }
+                    if linear_count > 0 {
+                        combined_content.push_str(&format!("- {} Linear Issue(s)\n", linear_count));
                     }
                     if saved_context_count > 0 {
                         combined_content

@@ -699,24 +699,19 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
           issueId: issue.id,
         })
 
-        const issueContext: IssueContext = {
-          number: parseInt(detail.identifier.split('-').pop() ?? '0', 10),
+        const linearContext = {
+          id: detail.id,
+          identifier: detail.identifier,
           title: detail.title,
-          body: detail.description,
-          comments: (detail.comments ?? []).map(c => ({
-            body: c.body ?? '',
-            author: {
-              login: c.user?.displayName ?? 'Unknown',
-            },
-            createdAt: c.createdAt,
-          })),
+          description: detail.description,
+          comments: detail.comments ?? [],
         }
 
         if (background)
           useUIStore.getState().incrementPendingBackgroundCreations()
         createWorktree.mutate({
           projectId: selectedProjectId,
-          issueContext,
+          linearContext,
           background,
         })
 
@@ -748,38 +743,23 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
           issueId: issue.id,
         })
 
-        const issueContext: IssueContext = {
-          number: parseInt(detail.identifier.split('-').pop() ?? '0', 10),
+        const linearContext = {
+          id: detail.id,
+          identifier: detail.identifier,
           title: detail.title,
-          body: detail.description,
-          comments: (detail.comments ?? []).map(c => ({
-            body: c.body ?? '',
-            author: {
-              login: c.user?.displayName ?? 'Unknown',
-            },
-            createdAt: c.createdAt,
-          })),
+          description: detail.description,
+          comments: detail.comments ?? [],
         }
 
         if (background)
           useUIStore.getState().incrementPendingBackgroundCreations()
         const worktree = await createWorktree.mutateAsync({
           projectId: selectedProjectId,
-          issueContext,
+          linearContext,
           background,
         })
 
         if (worktree) {
-          // Save issue in Linear context system so the investigation prompt can find it.
-          // The worktree creation saves it as a GitHub-style IssueContext, but the Linear
-          // investigation queries the Linear-specific context refs.
-          invoke('load_linear_issue_context', {
-            sessionId: worktree.id,
-            projectId: selectedProjectId,
-            issueId: issue.id,
-          }).catch(err => {
-            console.warn('Failed to save Linear issue context for investigation:', err)
-          })
           useUIStore.getState().markWorktreeForAutoInvestigateLinearIssue(worktree.id)
         }
 

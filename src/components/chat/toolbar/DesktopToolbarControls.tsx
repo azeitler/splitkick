@@ -46,6 +46,7 @@ import type {
   LoadedIssueContext,
   LoadedPullRequestContext,
 } from '@/types/github'
+import type { LoadedLinearIssueContext } from '@/types/linear'
 import type {
   CheckStatus,
   MergeableStatus,
@@ -101,6 +102,7 @@ interface DesktopToolbarControlsProps {
 
   loadedIssueContexts: LoadedIssueContext[]
   loadedPRContexts: LoadedPullRequestContext[]
+  loadedLinearContexts: LoadedLinearIssueContext[]
   attachedSavedContexts: AttachedSavedContext[]
 
   providerDropdownOpen: boolean
@@ -159,6 +161,7 @@ export function DesktopToolbarControls({
   mcpStatuses,
   loadedIssueContexts,
   loadedPRContexts,
+  loadedLinearContexts,
   attachedSavedContexts,
   providerDropdownOpen,
   modelDropdownOpen,
@@ -193,6 +196,7 @@ export function DesktopToolbarControls({
 
   const loadedIssueCount = loadedIssueContexts.length
   const loadedPRCount = loadedPRContexts.length
+  const loadedLinearCount = loadedLinearContexts.length
   const loadedContextCount = attachedSavedContexts.length
   const providerDisplayName = getProviderDisplayName(selectedProvider)
   const [modelSearchQuery, setModelSearchQuery] = useState('')
@@ -338,6 +342,7 @@ export function DesktopToolbarControls({
 
       {(loadedIssueCount > 0 ||
         loadedPRCount > 0 ||
+        loadedLinearCount > 0 ||
         loadedContextCount > 0) && (
         <>
           <div className="hidden @xl:block h-4 w-px bg-border/50" />
@@ -352,11 +357,14 @@ export function DesktopToolbarControls({
                   {loadedIssueCount > 0 &&
                     `${loadedIssueCount} Issue${loadedIssueCount > 1 ? 's' : ''}`}
                   {loadedIssueCount > 0 &&
-                    (loadedPRCount > 0 || loadedContextCount > 0) &&
+                    (loadedPRCount > 0 || loadedLinearCount > 0 || loadedContextCount > 0) &&
                     ', '}
                   {loadedPRCount > 0 &&
                     `${loadedPRCount} PR${loadedPRCount > 1 ? 's' : ''}`}
-                  {loadedPRCount > 0 && loadedContextCount > 0 && ', '}
+                  {loadedPRCount > 0 && (loadedLinearCount > 0 || loadedContextCount > 0) && ', '}
+                  {loadedLinearCount > 0 &&
+                    `${loadedLinearCount} Linear${loadedLinearCount > 1 ? ' Issues' : ''}`}
+                  {loadedLinearCount > 0 && loadedContextCount > 0 && ', '}
                   {loadedContextCount > 0 &&
                     `${loadedContextCount} Context${loadedContextCount > 1 ? 's' : ''}`}
                 </span>
@@ -425,10 +433,29 @@ export function DesktopToolbarControls({
                 </>
               )}
 
-              {attachedSavedContexts.length > 0 && (
+              {loadedLinearContexts.length > 0 && (
                 <>
                   {(loadedIssueContexts.length > 0 ||
                     loadedPRContexts.length > 0) && <DropdownMenuSeparator />}
+                  <DropdownMenuLabel className="text-xs text-muted-foreground">
+                    Linear Issues
+                  </DropdownMenuLabel>
+                  {loadedLinearContexts.map(ctx => (
+                    <DropdownMenuItem key={ctx.identifier}>
+                      <CircleDot className="h-4 w-4 text-violet-500" />
+                      <span className="truncate">
+                        {ctx.identifier} {ctx.title}
+                      </span>
+                    </DropdownMenuItem>
+                  ))}
+                </>
+              )}
+
+              {attachedSavedContexts.length > 0 && (
+                <>
+                  {(loadedIssueContexts.length > 0 ||
+                    loadedPRContexts.length > 0 ||
+                    loadedLinearContexts.length > 0) && <DropdownMenuSeparator />}
                   <DropdownMenuLabel className="text-xs text-muted-foreground">
                     Contexts
                   </DropdownMenuLabel>

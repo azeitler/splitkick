@@ -323,10 +323,9 @@ pub fn cancel_process(
                         .build();
                     match client {
                         Ok(c) => match c.post(&interrupt_url).send() {
-                            Ok(resp) => log::info!(
-                                "OpenCode interrupt response: status={}",
-                                resp.status()
-                            ),
+                            Ok(resp) => {
+                                log::info!("OpenCode interrupt response: status={}", resp.status())
+                            }
                             Err(e) => log::warn!("OpenCode interrupt request failed: {e}"),
                         },
                         Err(e) => log::warn!("OpenCode interrupt client build failed: {e}"),

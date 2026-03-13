@@ -1624,13 +1624,12 @@ pub async fn get_pr_review_comments(
     let raw_comments: Vec<RawReviewComment> =
         serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse gh response: {e}"))?;
 
-    let comments: Vec<GitHubReviewComment> =
-        raw_comments.into_iter().map(GitHubReviewComment::from).collect();
+    let comments: Vec<GitHubReviewComment> = raw_comments
+        .into_iter()
+        .map(GitHubReviewComment::from)
+        .collect();
 
-    log::trace!(
-        "Got {} review comments for PR #{pr_number}",
-        comments.len()
-    );
+    log::trace!("Got {} review comments for PR #{pr_number}", comments.len());
     Ok(comments)
 }
 
@@ -1746,7 +1745,12 @@ pub fn get_pr_diff(
     const MAX_DIFF_SIZE: usize = 100_000;
     if diff.len() > MAX_DIFF_SIZE {
         // Find a safe UTF-8 char boundary near MAX_DIFF_SIZE
-        let end = diff.char_indices().take_while(|(i, _)| *i < MAX_DIFF_SIZE).last().map(|(i, c)| i + c.len_utf8()).unwrap_or(MAX_DIFF_SIZE.min(diff.len()));
+        let end = diff
+            .char_indices()
+            .take_while(|(i, _)| *i < MAX_DIFF_SIZE)
+            .last()
+            .map(|(i, c)| i + c.len_utf8())
+            .unwrap_or(MAX_DIFF_SIZE.min(diff.len()));
         Ok(format!(
             "{}...\n\n[Diff truncated at 100KB - {} bytes total. Run `gh pr diff {}` to see the full diff.]",
             &diff[..end],
