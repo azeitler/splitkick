@@ -2536,6 +2536,7 @@ pub fn run() {
             projects::get_pr_prompt,
             projects::get_review_prompt,
             projects::save_worktree_pr,
+            projects::detect_and_link_pr,
             projects::clear_worktree_pr,
             projects::update_worktree_cached_status,
             projects::rebase_worktree,

@@ -238,6 +238,15 @@ pub async fn dispatch_command(
             emit_cache_invalidation(app, &["projects"]);
             Ok(Value::Null)
         }
+        "detect_and_link_pr" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let result = crate::projects::detect_and_link_pr(app.clone(), worktree_id, worktree_path).await?;
+            if result.is_some() {
+                emit_cache_invalidation(app, &["projects"]);
+            }
+            to_value(result)
+        }
         "clear_worktree_pr" => {
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
             crate::projects::clear_worktree_pr(app.clone(), worktree_id).await?;

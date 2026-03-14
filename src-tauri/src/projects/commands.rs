@@ -4466,6 +4466,69 @@ pub async fn save_worktree_pr(
     Ok(())
 }
 
+/// Response from detecting an existing PR for the current branch
+#[derive(Serialize, Clone)]
+pub struct DetectPrResponse {
+    pub pr_number: u32,
+    pub pr_url: String,
+    pub title: String,
+}
+
+/// Detect and link an existing PR for the current branch of a worktree.
+///
+/// Runs `gh pr view` to check if a PR exists. If found, saves the PR info
+/// to the worktree and returns the PR details. Returns None if no PR exists.
+#[tauri::command]
+pub async fn detect_and_link_pr(
+    app: AppHandle,
+    worktree_id: String,
+    worktree_path: String,
+) -> Result<Option<DetectPrResponse>, String> {
+    log::trace!("Detecting PR for worktree {worktree_id} at {worktree_path}");
+
+    let gh = resolve_gh_binary(&app);
+    let view_output = silent_command(&gh)
+        .args(["pr", "view", "--json", "number,url,title"])
+        .current_dir(&worktree_path)
+        .output();
+
+    if let Ok(view_out) = view_output {
+        if view_out.status.success() {
+            if let Ok(view_json) =
+                serde_json::from_slice::<serde_json::Value>(&view_out.stdout)
+            {
+                let pr_number = view_json["number"].as_u64().unwrap_or(0) as u32;
+                let pr_url = view_json["url"].as_str().unwrap_or("").to_string();
+                let title = view_json["title"].as_str().unwrap_or("").to_string();
+
+                if pr_number > 0 && !pr_url.is_empty() {
+                    log::trace!("Found existing PR #{pr_number} for worktree {worktree_id}");
+
+                    // Save PR info to worktree
+                    if let Ok(mut data) = load_projects_data(&app) {
+                        if let Some(wt) =
+                            data.worktrees.iter_mut().find(|w| w.id == worktree_id)
+                        {
+                            wt.pr_number = Some(pr_number);
+                            wt.pr_url = Some(pr_url.clone());
+                            let _ = save_projects_data(&app, &data);
+                        }
+                    }
+
+                    return Ok(Some(DetectPrResponse {
+                        pr_number,
+                        pr_url,
+                        title,
+                    }));
+                }
+            }
+        }
+    }
+
+    log::trace!("No PR found for worktree {worktree_id}");
+    Ok(None)
+}
+
 /// Clear PR information from a worktree
 ///
 /// Called when a PR is closed or merged and the user wants to create a new one.

@@ -292,6 +292,13 @@ export interface CreatePrResponse {
   existing: boolean
 }
 
+/** Response from detecting an existing PR for the current branch */
+export interface DetectPrResponse {
+  pr_number: number
+  pr_url: string
+  title: string
+}
+
 // =============================================================================
 // GitHub PR Merge
 // =============================================================================

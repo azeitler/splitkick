@@ -21,6 +21,7 @@ import { isBaseSession } from '@/types/projects'
 import type {
   CreatePrResponse,
   CreateCommitResponse,
+  DetectPrResponse,
   ReviewResponse,
   MergeWorktreeResponse,
   MergeConflictsResponse,
@@ -418,6 +419,27 @@ export function useGitOperations({
           },
         },
       })
+
+      // Fire-and-forget: detect and link PR if not already linked
+      if (!worktree?.pr_number) {
+        invoke<DetectPrResponse | null>('detect_and_link_pr', {
+          worktreeId: activeWorktreeId,
+          worktreePath: activeWorktreePath,
+        })
+          .then(result => {
+            if (result && worktree?.project_id) {
+              queryClient.invalidateQueries({
+                queryKey: projectsQueryKeys.worktrees(worktree.project_id),
+              })
+              queryClient.invalidateQueries({
+                queryKey: [...projectsQueryKeys.all, 'worktree', activeWorktreeId],
+              })
+            }
+          })
+          .catch(() => {
+            /* noop - PR detection is best-effort */
+          })
+      }
 
       try {
         const result = await invoke<ReviewResponse>('run_review_with_ai', {

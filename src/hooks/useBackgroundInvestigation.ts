@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { invoke } from '@/lib/transport'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
@@ -37,6 +37,15 @@ export function useBackgroundInvestigation(): void {
   const queryClient = useQueryClient()
   const sendMessage = useSendMessage()
   const processingRef = useRef<Set<string>>(new Set())
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [retryTick, setRetryTick] = useState(0)
+
+  // Refs for unstable dependencies — sendMessage is a new object every render,
+  // preferences changes when data loads. Using refs keeps the effect deps stable.
+  const sendMessageRef = useRef(sendMessage)
+  sendMessageRef.current = sendMessage
+  const preferencesRef = useRef(preferences)
+  preferencesRef.current = preferences
 
   // Subscribe to auto-investigate flags — re-run effect when they change
   const hasAutoInvestigate = useUIStore(state =>
@@ -68,10 +77,6 @@ export function useBackgroundInvestigation(): void {
 
     const { worktreePaths, activeWorktreeId } = useChatStore.getState()
 
-    // Helper: check if worktree is ready (directory exists on disk).
-    // Only worktrees marked 'ready' by handleWorktreeReady have their
-    // git directory created. Without this check, worktreePaths may be
-    // populated early by setActiveWorktree before the directory exists.
     const isWorktreeReady = (worktreeId: string): boolean => {
       const cached = queryClient.getQueryData<Worktree>(
         [...projectsQueryKeys.all, 'worktree', worktreeId]
@@ -81,59 +86,53 @@ export function useBackgroundInvestigation(): void {
 
     // Collect all worktree IDs that need background investigation
     const candidates: { worktreeId: string; type: InvestigationType }[] = []
+    let skippedNotReady = 0
+
+    const checkCandidate = (worktreeId: string): boolean => {
+      if (worktreeId === activeWorktreeId) return false
+      if (autoOpenSessionWorktreeIds.has(worktreeId)) return false
+      if (!worktreePaths[worktreeId]) return false
+      if (!isWorktreeReady(worktreeId)) { skippedNotReady++; return false }
+      if (processingRef.current.has(worktreeId)) return false
+      return true
+    }
 
     for (const worktreeId of autoInvestigateWorktreeIds) {
-      // Skip foreground worktrees — ChatWindow handles those
-      if (worktreeId === activeWorktreeId) continue
-      // Skip worktrees about to open in foreground — ChatWindow will handle investigation
-      if (autoOpenSessionWorktreeIds.has(worktreeId)) continue
-      // Skip if worktree path not yet registered (still pending)
-      if (!worktreePaths[worktreeId]) continue
-      // Skip if worktree directory not yet created (status !== 'ready')
-      if (!isWorktreeReady(worktreeId)) continue
-      // Skip if already being processed
-      if (processingRef.current.has(worktreeId)) continue
-      candidates.push({ worktreeId, type: 'issue' })
+      if (checkCandidate(worktreeId)) candidates.push({ worktreeId, type: 'issue' })
     }
 
     for (const worktreeId of autoInvestigatePRWorktreeIds) {
-      if (worktreeId === activeWorktreeId) continue
-      if (autoOpenSessionWorktreeIds.has(worktreeId)) continue
-      if (!worktreePaths[worktreeId]) continue
-      if (!isWorktreeReady(worktreeId)) continue
-      if (processingRef.current.has(worktreeId)) continue
       if (candidates.some(c => c.worktreeId === worktreeId)) continue
-      candidates.push({ worktreeId, type: 'pr' })
+      if (checkCandidate(worktreeId)) candidates.push({ worktreeId, type: 'pr' })
     }
 
     for (const worktreeId of autoInvestigateSecurityAlertWorktreeIds) {
-      if (worktreeId === activeWorktreeId) continue
-      if (autoOpenSessionWorktreeIds.has(worktreeId)) continue
-      if (!worktreePaths[worktreeId]) continue
-      if (!isWorktreeReady(worktreeId)) continue
-      if (processingRef.current.has(worktreeId)) continue
       if (candidates.some(c => c.worktreeId === worktreeId)) continue
-      candidates.push({ worktreeId, type: 'security-alert' })
+      if (checkCandidate(worktreeId)) candidates.push({ worktreeId, type: 'security-alert' })
     }
 
     for (const worktreeId of autoInvestigateAdvisoryWorktreeIds) {
-      if (worktreeId === activeWorktreeId) continue
-      if (autoOpenSessionWorktreeIds.has(worktreeId)) continue
-      if (!worktreePaths[worktreeId]) continue
-      if (!isWorktreeReady(worktreeId)) continue
-      if (processingRef.current.has(worktreeId)) continue
       if (candidates.some(c => c.worktreeId === worktreeId)) continue
-      candidates.push({ worktreeId, type: 'advisory' })
+      if (checkCandidate(worktreeId)) candidates.push({ worktreeId, type: 'advisory' })
     }
 
     for (const worktreeId of autoInvestigateLinearIssueWorktreeIds) {
-      if (worktreeId === activeWorktreeId) continue
-      if (autoOpenSessionWorktreeIds.has(worktreeId)) continue
-      if (!worktreePaths[worktreeId]) continue
-      if (!isWorktreeReady(worktreeId)) continue
-      if (processingRef.current.has(worktreeId)) continue
       if (candidates.some(c => c.worktreeId === worktreeId)) continue
-      candidates.push({ worktreeId, type: 'linear-issue' })
+      if (checkCandidate(worktreeId)) candidates.push({ worktreeId, type: 'linear-issue' })
+    }
+
+    // Clear any pending retry timer
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current)
+      retryTimerRef.current = null
+    }
+
+    // If worktrees are flagged but not ready yet, retry after 2s.
+    // The effect has no dependency that changes when worktree status goes
+    // from pending → ready, so without this retry the effect would never
+    // re-fire for those worktrees.
+    if (skippedNotReady > 0) {
+      retryTimerRef.current = setTimeout(() => setRetryTick(t => t + 1), 2000)
     }
 
     if (candidates.length === 0) return
@@ -159,17 +158,18 @@ export function useBackgroundInvestigation(): void {
       processBackgroundInvestigation(
         worktreeId,
         type,
-        preferences,
+        preferencesRef.current,
         null,
         queryClient,
-        sendMessage,
+        sendMessageRef.current,
       ).catch(err => {
         logger.error('Background investigation failed', { worktreeId, err })
       }).finally(() => {
         processingRef.current.delete(worktreeId)
       })
     }
-  }, [hasAutoInvestigate, worktreePathCount, preferences, queryClient, sendMessage])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasAutoInvestigate, worktreePathCount, queryClient, retryTick])
 }
 
 /**

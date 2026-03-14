@@ -43,6 +43,7 @@ import {
 import type {
   CreateCommitResponse,
   CreatePrResponse,
+  DetectPrResponse,
   MergeConflictsResponse,
   MergePrResponse,
   ReviewResponse,
@@ -638,6 +639,28 @@ ${resolveInstructions}`
               },
             },
           })
+
+          // Fire-and-forget: detect and link PR if not already linked
+          if (!worktree.pr_number) {
+            invoke<DetectPrResponse | null>('detect_and_link_pr', {
+              worktreeId: selectedWorktreeId,
+              worktreePath: worktree.path,
+            })
+              .then(result => {
+                if (result && worktree.project_id) {
+                  queryClient.invalidateQueries({
+                    queryKey: projectsQueryKeys.worktrees(worktree.project_id),
+                  })
+                  queryClient.invalidateQueries({
+                    queryKey: [...projectsQueryKeys.all, 'worktree', selectedWorktreeId],
+                  })
+                }
+              })
+              .catch(() => {
+                /* noop - PR detection is best-effort */
+              })
+          }
+
           try {
             const result = await invoke<ReviewResponse>('run_review_with_ai', {
               worktreePath: worktree.path,
