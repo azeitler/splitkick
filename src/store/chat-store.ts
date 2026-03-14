@@ -1147,7 +1147,7 @@ export const useChatStore = create<ChatUIState>()(
               const newBlocks = [...blocks]
               newBlocks[newBlocks.length - 1] = {
                 type: 'thinking',
-                thinking: lastBlock.thinking + '\n\n---\n\n' + thinking,
+                thinking: lastBlock.thinking + thinking,
               }
               return {
                 streamingContentBlocks: {
