@@ -182,6 +182,8 @@ pub struct AppPreferences {
     pub canvas_layout: String, // Canvas display mode: grid or list
     #[serde(default = "default_confirm_session_close")]
     pub confirm_session_close: bool, // Show confirmation dialog before closing sessions/worktrees
+    #[serde(default = "default_execution_mode")]
+    pub default_execution_mode: String, // Default execution mode: "plan", "build", or "yolo"
     #[serde(default = "default_backend")]
     pub default_backend: String, // Default CLI backend: "claude", "codex", or "opencode"
     #[serde(default = "default_codex_model")]
@@ -362,6 +364,10 @@ fn default_canvas_layout() -> String {
 
 fn default_confirm_session_close() -> bool {
     true // Enabled by default
+}
+
+fn default_execution_mode() -> String {
+    "plan".to_string()
 }
 
 fn default_backend() -> String {
@@ -1095,6 +1101,7 @@ impl Default for AppPreferences {
             default_provider: None,
             canvas_layout: default_canvas_layout(),
             confirm_session_close: default_confirm_session_close(),
+            default_execution_mode: default_execution_mode(),
             default_backend: default_backend(),
             selected_codex_model: default_codex_model(),
             selected_opencode_model: default_opencode_model(),

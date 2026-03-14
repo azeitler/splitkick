@@ -566,14 +566,15 @@ export function ChatWindow({
   // PERFORMANCE: Track hasValue via callback from ChatInput instead of store subscription
   // ChatInput notifies on mount, session change, and empty/non-empty boundary changes
   const [hasInputValue, setHasInputValue] = useState(false)
-  // Per-session execution mode (defaults to 'plan' for new sessions)
+  // Per-session execution mode (defaults to preference or 'plan' for new sessions)
   // Uses deferredSessionId for display consistency with other content
+  const defaultExecutionMode = preferences?.default_execution_mode ?? 'plan'
   const executionMode = useChatStore(state =>
     deferredSessionId
       ? (state.executionModes[deferredSessionId] ??
         session?.selected_execution_mode ??
-        'plan')
-      : 'plan'
+        defaultExecutionMode)
+      : defaultExecutionMode
   )
   // Executing mode - the mode the currently-running prompt was sent with
   // Uses activeSessionId for immediate status feedback (not deferred)

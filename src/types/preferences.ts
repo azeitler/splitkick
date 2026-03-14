@@ -1,4 +1,4 @@
-import type { ThinkingLevel, EffortLevel } from './chat'
+import type { ThinkingLevel, EffortLevel, ExecutionMode } from './chat'
 import { DEFAULT_KEYBINDINGS, type KeybindingsMap } from './keybindings'
 
 // =============================================================================
@@ -895,6 +895,7 @@ export interface AppPreferences {
   default_provider: string | null // Default provider profile name (null = Anthropic direct)
 
   confirm_session_close: boolean // Show confirmation dialog before closing sessions/worktrees
+  default_execution_mode: ExecutionMode // Default execution mode for new sessions: 'plan', 'build', or 'yolo'
   default_backend: CliBackend // Default CLI backend for new sessions: 'claude', 'codex', or 'opencode'
   selected_codex_model: CodexModel // Default Codex model
   selected_opencode_model: string // Default OpenCode model (provider/model)
@@ -1414,6 +1415,7 @@ export const defaultPreferences: AppPreferences = {
   custom_cli_profiles: [],
   default_provider: null,
   confirm_session_close: true, // Default: enabled (show confirmation)
+  default_execution_mode: 'plan', // Default: plan mode
   default_backend: 'claude', // Default: Claude
   selected_codex_model: 'gpt-5.4', // Default: latest Codex model
   selected_opencode_model: 'opencode/gpt-5.3-codex', // Default OpenCode model
