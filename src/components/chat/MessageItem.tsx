@@ -614,20 +614,14 @@ export const MessageItem = memo(function MessageItem({
             </Tooltip>
           )}
           <div
-            className={cn(
-              'text-foreground border border-border rounded-lg px-3 py-2 bg-muted/20 min-w-0 break-words',
-              message.cancelled && 'opacity-60'
-            )}
+            className="text-foreground border border-border rounded-lg px-3 py-2 bg-muted/20 min-w-0 break-words"
           >
             {messageBoxContent}
           </div>
         </div>
       ) : (
         <div
-          className={cn(
-            'text-muted-foreground w-full min-w-0 break-words',
-            message.cancelled && 'opacity-60'
-          )}
+          className="text-muted-foreground w-full min-w-0 break-words"
         >
           {messageBoxContent}
         </div>
