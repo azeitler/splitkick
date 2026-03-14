@@ -232,10 +232,28 @@ export default function useStreamingEvents({
       }
     )
 
-    // Handle thinking content blocks (extended thinking)
+    // Buffer thinking deltas and flush on animation frames (same pattern as chunks).
+    // OpenCode/Codex stream thinking as frequent small deltas; without batching,
+    // each delta triggers a store mutation + re-render.
+    const thinkingBuffer: Record<string, string> = {}
+    let thinkingRafId: number | null = null
+
+    function flushThinkingBuffer() {
+      thinkingRafId = null
+      for (const [sid, buffered] of Object.entries(thinkingBuffer)) {
+        addThinkingBlock(sid, buffered)
+      }
+      for (const key of Object.keys(thinkingBuffer)) {
+        delete thinkingBuffer[key]
+      }
+    }
+
     const unlistenThinking = listen<ThinkingEvent>('chat:thinking', event => {
       const { session_id, content } = event.payload
-      addThinkingBlock(session_id, content)
+      thinkingBuffer[session_id] = (thinkingBuffer[session_id] ?? '') + content
+      if (thinkingRafId === null) {
+        thinkingRafId = requestAnimationFrame(flushThinkingBuffer)
+      }
     })
 
     // Handle tool result events (tool execution output)
@@ -304,10 +322,14 @@ export default function useStreamingEvents({
       const sessionId = event.payload.session_id
       const worktreeId = event.payload.worktree_id
 
-      // Flush any buffered chunks so streamingContents is up to date
+      // Flush any buffered chunks/thinking so streaming state is up to date
       if (chunkRafId !== null) {
         cancelAnimationFrame(chunkRafId)
         flushChunkBuffer()
+      }
+      if (thinkingRafId !== null) {
+        cancelAnimationFrame(thinkingRafId)
+        flushThinkingBuffer()
       }
 
       console.log(`[Done] chat:done received session=${sessionId}`, { currentSending: Object.keys(useChatStore.getState().sendingSessionIds) })
@@ -1121,10 +1143,14 @@ export default function useStreamingEvents({
           emitted_at_ms,
         } = event.payload
 
-        // Flush any buffered chunks so streamingContents is up to date
+        // Flush any buffered chunks/thinking so streaming state is up to date
         if (chunkRafId !== null) {
           cancelAnimationFrame(chunkRafId)
           flushChunkBuffer()
+        }
+        if (thinkingRafId !== null) {
+          cancelAnimationFrame(thinkingRafId)
+          flushThinkingBuffer()
         }
 
         console.log(`[Cancelled] chat:cancelled received session=${session_id} undo_send=${undo_send}`, { currentSending: Object.keys(useChatStore.getState().sendingSessionIds) })
@@ -1491,10 +1517,14 @@ export default function useStreamingEvents({
     })
 
     return () => {
-      // Flush any buffered chunks before tearing down
+      // Flush any buffered chunks/thinking before tearing down
       if (chunkRafId !== null) {
         cancelAnimationFrame(chunkRafId)
         flushChunkBuffer()
+      }
+      if (thinkingRafId !== null) {
+        cancelAnimationFrame(thinkingRafId)
+        flushThinkingBuffer()
       }
       unlistenSending.then(f => f())
       unlistenChunk.then(f => f())
