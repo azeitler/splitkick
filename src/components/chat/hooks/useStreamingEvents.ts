@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import type { QueryClient } from '@tanstack/react-query'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
-import { chatQueryKeys } from '@/services/chat'
+import { chatQueryKeys, persistEnqueue } from '@/services/chat'
 import { isTauri, saveWorktreePr, projectsQueryKeys } from '@/services/projects'
 import type { Project, Worktree } from '@/types/projects'
 import { preferencesQueryKeys } from '@/services/preferences'
@@ -437,6 +437,71 @@ export default function useStreamingEvents({
       let persistencePromise: Promise<unknown> | null = null
 
       if (hasUnansweredBlockingTool) {
+        // YOLO mode auto-continue: automatically answer blocking tools and continue
+        // without showing the question/plan UI. This prevents YOLO mode from getting
+        // stuck when Claude asks questions or proposes plans.
+        const executingMode = useChatStore.getState().executingModes[sessionId]
+        if (executingMode === 'yolo') {
+          console.log(`[chat:done] YOLO auto-continue: session=${sessionId}, auto-answering blocking tools`)
+
+          // Mark all blocking tools as answered
+          const { markQuestionAnswered, worktreePaths, selectedModels, effortLevels } = useChatStore.getState()
+          for (const tc of effectiveToolCalls ?? []) {
+            if ((isAskUserQuestion(tc) || isExitPlanMode(tc)) && !isQuestionAnswered(sessionId, tc.id)) {
+              markQuestionAnswered(sessionId, tc.id, [])
+            }
+          }
+
+          // Add optimistic assistant message so the content is preserved in history
+          if (content || (effectiveToolCalls && effectiveToolCalls.length > 0)) {
+            queryClient.setQueryData<Session>(
+              chatQueryKeys.session(sessionId),
+              old => {
+                if (!old) return old
+                return {
+                  ...old,
+                  messages: upsertAssistantMessage(old.messages, {
+                    id: generateId(),
+                    session_id: sessionId,
+                    role: 'assistant' as const,
+                    content: content ?? '',
+                    timestamp: Math.floor(Date.now() / 1000),
+                    tool_calls: effectiveToolCalls ?? [],
+                    content_blocks: effectiveContentBlocks ?? [],
+                  }),
+                }
+              }
+            )
+          }
+
+          // Queue a continuation message so the queue processor sends it
+          // after the current send_chat_message completes
+          const autoMessage = 'Continue — make your best judgment and proceed autonomously.'
+          const wtPath = worktreePaths[worktreeId]
+          if (wtPath) {
+            const queuedMsg = {
+              id: generateId(),
+              message: autoMessage,
+              pendingImages: [] as never[],
+              pendingFiles: [] as never[],
+              pendingSkills: [] as never[],
+              pendingTextFiles: [] as never[],
+              model: selectedModels[sessionId] ?? 'sonnet',
+              provider: null,
+              executionMode: 'yolo' as const,
+              thinkingLevel: 'off' as const,
+              effortLevel: effortLevels[sessionId],
+              queuedAt: Date.now(),
+            }
+            useChatStore.getState().enqueueMessage(sessionId, queuedMsg)
+            persistEnqueue(worktreeId, wtPath, sessionId, queuedMsg)
+          }
+
+          // Complete session (clears sending state) — queue processor will pick up the auto-message
+          completeSession(sessionId)
+
+          // Skip the normal blocking tool handling below
+        } else {
         // Check if there are queued messages AND only ExitPlanMode is blocking (not AskUserQuestion)
         const { messageQueues } = useChatStore.getState()
         const hasQueuedMessages = (messageQueues[sessionId]?.length ?? 0) > 0
@@ -577,6 +642,7 @@ export default function useStreamingEvents({
             playNotificationSound(waitingSound)
           }
         }
+        } // end non-YOLO else
       } else if (event.payload.waiting_for_plan && !isCurrentlyViewing) {
         // Codex/Opencode plan-mode run completed with content — enter plan-waiting state.
         // The backend signals this via the waiting_for_plan field in chat:done.
