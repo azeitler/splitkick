@@ -134,6 +134,7 @@ describe('preferences service', () => {
 
         auto_pull_base_branch: true,
         confirm_session_close: true,
+        default_execution_mode: 'plan',
         default_backend: 'claude',
         selected_codex_model: 'gpt-5.4',
         selected_opencode_model: 'opencode/gpt-5.3-codex',
@@ -249,6 +250,7 @@ describe('preferences service', () => {
 
         auto_pull_base_branch: true,
         confirm_session_close: true,
+        default_execution_mode: 'plan',
         default_backend: 'claude',
         selected_codex_model: 'gpt-5.4',
         selected_opencode_model: 'opencode/gpt-5.3-codex',
@@ -336,6 +338,7 @@ describe('preferences service', () => {
 
         auto_pull_base_branch: true,
         confirm_session_close: true,
+        default_execution_mode: 'plan',
         default_backend: 'claude',
         selected_codex_model: 'gpt-5.3-fast' as AppPreferences['selected_codex_model'],
         selected_opencode_model: 'opencode/gpt-5.3-codex',
@@ -424,6 +427,7 @@ describe('preferences service', () => {
 
         auto_pull_base_branch: true,
         confirm_session_close: true,
+        default_execution_mode: 'plan',
         default_backend: 'claude',
         selected_codex_model: 'gpt-5.4',
         selected_opencode_model: 'opencode/gpt-5.3-codex',
@@ -514,6 +518,7 @@ describe('preferences service', () => {
 
         auto_pull_base_branch: true,
         confirm_session_close: true,
+        default_execution_mode: 'plan',
         default_backend: 'claude',
         selected_codex_model: 'gpt-5.4',
         selected_opencode_model: 'opencode/gpt-5.3-codex',
@@ -604,6 +609,7 @@ describe('preferences service', () => {
 
         auto_pull_base_branch: true,
         confirm_session_close: true,
+        default_execution_mode: 'plan',
         default_backend: 'claude',
         selected_codex_model: 'gpt-5.4',
         selected_opencode_model: 'opencode/gpt-5.3-codex',
@@ -692,6 +698,7 @@ describe('preferences service', () => {
 
         auto_pull_base_branch: true,
         confirm_session_close: true,
+        default_execution_mode: 'plan',
         default_backend: 'claude',
         selected_codex_model: 'gpt-5.4',
         selected_opencode_model: 'opencode/gpt-5.3-codex',
