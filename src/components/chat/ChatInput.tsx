@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { invoke } from '@/lib/transport'
 import { generateId } from '@/lib/uuid'
 import { toast } from 'sonner'
@@ -65,6 +66,8 @@ export const ChatInput = memo(function ChatInput({
   formRef,
   inputRef,
 }: ChatInputProps) {
+  const isMobile = useIsMobile()
+
   // PERFORMANCE: Use uncontrolled input pattern - track value in ref, not state
   // This avoids React re-renders on every keystroke
   const valueRef = useRef<string>('')
@@ -422,8 +425,8 @@ export const ChatInput = memo(function ChatInput({
         return
       }
 
-      // Enter without shift sends the message
-      if (e.key === 'Enter' && !e.shiftKey) {
+      // Enter without shift sends the message (on mobile, Enter adds a newline instead)
+      if (e.key === 'Enter' && !e.shiftKey && !isMobile) {
         e.preventDefault()
         // Cancel any pending debounced save
         clearTimeout(debouncedSaveRef.current)
@@ -451,6 +454,7 @@ export const ChatInput = memo(function ChatInput({
       onSubmit,
       canSwitchBackendWithTab,
       onSwitchBackendWithTab,
+      isMobile,
     ]
   )
 

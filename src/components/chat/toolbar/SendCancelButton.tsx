@@ -3,6 +3,7 @@ import { getModifierSymbol, isMacOS } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 import { Kbd } from '@/components/ui/kbd'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { useIsMobile } from '@/hooks/use-mobile'
 
 interface SendCancelButtonProps {
   isSending: boolean
@@ -27,6 +28,8 @@ export function SendCancelButton({
   queuedMessageCount,
   onCancel,
 }: SendCancelButtonProps) {
+  const isMobile = useIsMobile()
+
   if (isSending) {
     return (
       <Tooltip>
@@ -68,7 +71,9 @@ export function SendCancelButton({
           <Rocket className="h-3.5 w-3.5" />
         </button>
       </TooltipTrigger>
-      <TooltipContent>Send message (Enter)</TooltipContent>
+      <TooltipContent>
+        {isMobile ? 'Send message' : 'Send message (Enter)'}
+      </TooltipContent>
     </Tooltip>
   )
 }
