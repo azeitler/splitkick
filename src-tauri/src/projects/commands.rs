@@ -4939,9 +4939,9 @@ fn truncate_diff_at_file_boundaries(diff: &str, max_chars: usize) -> String {
 }
 
 /// Get git diff between current branch and target branch
-fn get_branch_diff(repo_path: &str, target_branch: &str) -> Result<String, String> {
+fn get_branch_diff(repo_path: &str, target_branch: &str, head_ref: &str) -> Result<String, String> {
     let output = silent_command("git")
-        .args(["diff", "-U10", &format!("origin/{target_branch}...HEAD")])
+        .args(["diff", "-U10", &format!("origin/{target_branch}...{head_ref}")])
         .current_dir(repo_path)
         .output()
         .map_err(|e| format!("Failed to get git diff: {e}"))?;
@@ -4957,9 +4957,9 @@ fn get_branch_diff(repo_path: &str, target_branch: &str) -> Result<String, Strin
 }
 
 /// Get commit messages between current branch and target branch
-fn get_branch_commits(repo_path: &str, target_branch: &str) -> Result<String, String> {
+fn get_branch_commits(repo_path: &str, target_branch: &str, head_ref: &str) -> Result<String, String> {
     let output = silent_command("git")
-        .args(["log", "--oneline", &format!("origin/{target_branch}..HEAD")])
+        .args(["log", "--oneline", &format!("origin/{target_branch}..{head_ref}")])
         .current_dir(repo_path)
         .output()
         .map_err(|e| format!("Failed to get git log: {e}"))?;
@@ -4973,12 +4973,12 @@ fn get_branch_commits(repo_path: &str, target_branch: &str) -> Result<String, St
 }
 
 /// Count commits between current branch and target branch
-fn count_branch_commits(repo_path: &str, target_branch: &str) -> Result<u32, String> {
+fn count_branch_commits(repo_path: &str, target_branch: &str, head_ref: &str) -> Result<u32, String> {
     let output = silent_command("git")
         .args([
             "rev-list",
             "--count",
-            &format!("origin/{target_branch}..HEAD"),
+            &format!("origin/{target_branch}..{head_ref}"),
         ])
         .current_dir(repo_path)
         .output()
@@ -5008,15 +5008,16 @@ fn generate_pr_content(
     worktree_id: Option<&str>,
     magic_backend: Option<&str>,
     reasoning_effort: Option<&str>,
+    head_ref: &str,
 ) -> Result<PrContentResponse, String> {
     // Get diff and commits
-    let diff = get_branch_diff(repo_path, target_branch)?;
+    let diff = get_branch_diff(repo_path, target_branch, head_ref)?;
     if diff.trim().is_empty() {
         return Err("No changes to create PR for".to_string());
     }
 
-    let commits = get_branch_commits(repo_path, target_branch)?;
-    let commit_count = count_branch_commits(repo_path, target_branch)?;
+    let commits = get_branch_commits(repo_path, target_branch, head_ref)?;
+    let commit_count = count_branch_commits(repo_path, target_branch, head_ref)?;
 
     // Build prompt - use custom if provided and non-empty, otherwise use default
     let prompt_template = custom_prompt
@@ -5382,6 +5383,7 @@ pub async fn create_pr_with_ai_content(
         Some(worktree_id),
         pr_magic_backend.as_deref(),
         reasoning_effort.as_deref(),
+        "HEAD",
     )?;
 
     // Gather Linear identifiers
@@ -5652,7 +5654,8 @@ pub async fn generate_pr_update_content(
         }
     }
 
-    // Generate PR content using Claude CLI
+    // Generate PR content using Claude CLI — only include pushed commits
+    let remote_head = format!("origin/{current_branch}");
     let pr_magic_backend = crate::get_preferences_path(&app)
         .ok()
         .and_then(|p| std::fs::read_to_string(p).ok())
@@ -5670,6 +5673,7 @@ pub async fn generate_pr_update_content(
         Some(worktree_id),
         pr_magic_backend.as_deref(),
         reasoning_effort.as_deref(),
+        &remote_head,
     )?;
 
     // Gather Linear identifiers
@@ -6625,10 +6629,10 @@ pub async fn run_review_with_ai(
     let current_branch = git::get_current_branch(&worktree_path)?;
 
     // Get branch diff (non-fatal — may fail if origin ref doesn't exist)
-    let diff = get_branch_diff(&worktree_path, target_branch).unwrap_or_default();
+    let diff = get_branch_diff(&worktree_path, target_branch, "HEAD").unwrap_or_default();
 
     // Get commit history (non-fatal — same reason)
-    let commits = get_branch_commits(&worktree_path, target_branch).unwrap_or_default();
+    let commits = get_branch_commits(&worktree_path, target_branch, "HEAD").unwrap_or_default();
 
     // Get uncommitted changes (staged + unstaged for tracked files)
     let uncommitted_output = silent_command("git")
