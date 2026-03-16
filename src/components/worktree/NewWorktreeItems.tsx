@@ -37,7 +37,7 @@ export function SessionTabBar({
   tabs: Tab[]
 }) {
   return (
-    <div className="flex border-b border-border">
+    <div className="flex overflow-x-auto border-b border-border scrollbar-hide">
       {tabs.map(tab => (
         <button
           key={tab.id}

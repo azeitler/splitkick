@@ -34,6 +34,15 @@ export function setAppDataDir(dir: string): void {
  */
 export function convertFileSrc(filePath: string, protocol = 'asset'): string {
   if (isNativeApp()) {
+    // Use Tauri's native implementation which correctly percent-encodes paths
+    // on all platforms (JS encodeURIComponent misses dots/hyphens/underscores
+    // that Tauri's Rust encoder expects on Windows).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const internals = (window as any).__TAURI_INTERNALS__
+    if (internals?.convertFileSrc) {
+      return internals.convertFileSrc(filePath, protocol)
+    }
+    // Fallback (should not reach in native app)
     const path = encodeURIComponent(filePath)
     return navigator.userAgent.includes('Windows')
       ? `https://${protocol}.localhost/${path}`
@@ -129,6 +138,7 @@ export interface InitialData {
   worktreesByProject: Record<string, unknown[]>
   sessionsByWorktree: Record<string, unknown> // worktreeId -> WorktreeSessions
   activeSessions?: Record<string, unknown> // sessionId -> Session (with messages)
+  runningSessions?: string[] // sessionIds with active CLI processes
   preferences: unknown
   uiState: unknown
   appDataDir?: string
@@ -172,6 +182,28 @@ export async function preloadInitialData(): Promise<InitialData | null> {
   })()
 
   return initialDataPromise
+}
+
+/**
+ * Re-fetch initial data via HTTP (bypasses memoization).
+ * Used on WebSocket reconnect to bulk-reload fresh state.
+ */
+export async function refetchInitialData(): Promise<InitialData | null> {
+  if (isNativeApp()) return null
+
+  const urlToken = new URLSearchParams(window.location.search).get('token')
+  const token = urlToken || localStorage.getItem('jean-http-token') || ''
+
+  try {
+    const url = token
+      ? `/api/init?token=${encodeURIComponent(token)}`
+      : '/api/init'
+    const response = await fetch(url)
+    if (!response.ok) return null
+    return (await response.json()) as InitialData
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -224,6 +256,14 @@ class WsTransport {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private connectWatchdog: ReturnType<typeof setTimeout> | null = null
   private queue: { data: string; resolve: () => void }[] = []
+  // Buffer for events that arrive before listeners are registered.
+  // Covers the ~16ms gap between WS onopen and React effect listener setup.
+  private eventBuffer = new Map<
+    string,
+    { msg: WsMessage; bufferedAt: number }[]
+  >()
+  private static readonly EVENT_BUFFER_MAX_AGE = 5_000
+  private static readonly EVENT_BUFFER_MAX_SIZE = 50
   private _connected = false
   private _connecting = false
   private _authError: string | null = null
@@ -375,6 +415,10 @@ class WsTransport {
       this.ws = null
       this.setConnected(false)
 
+      // Clear event buffer — stale events from a dead connection
+      // must not be delivered when the next connection opens.
+      this.eventBuffer.clear()
+
       // Reject all pending command promises immediately — the server
       // response will never arrive on this socket. Prevents waiting
       // the full timeout (up to 10 min for long-running commands).
@@ -409,7 +453,7 @@ class WsTransport {
     'install_opencode_cli',
     'install_gh_cli',
   ])
-  private static readonly LONG_TIMEOUT = 10 * 60_000
+  private static readonly LONG_TIMEOUT = 30 * 60_000
   private static readonly DEFAULT_TIMEOUT = 60_000
   private static readonly CONNECT_TIMEOUT = 12_000
   private static readonly MAX_QUEUE_SIZE = 500
@@ -484,6 +528,22 @@ class WsTransport {
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     this.listeners.get(event)!.add(typedHandler)
 
+    // Drain buffered events that arrived before this listener was registered
+    // (covers the gap between WS onopen and React effect listener setup)
+    const buffered = this.eventBuffer.get(event)
+    if (buffered && buffered.length > 0) {
+      this.eventBuffer.delete(event)
+      const now = Date.now()
+      for (const { msg, bufferedAt } of buffered) {
+        if (now - bufferedAt > WsTransport.EVENT_BUFFER_MAX_AGE) continue
+        try {
+          typedHandler({ payload: msg.payload })
+        } catch (e) {
+          console.error(`[WsTransport] Error draining buffered '${event}':`, e)
+        }
+      }
+    }
+
     // Ensure connected
     this.connect()
 
@@ -512,13 +572,21 @@ class WsTransport {
       }
     } else if (msg.type === 'event' && msg.event) {
       const handlers = this.listeners.get(msg.event)
-      if (handlers) {
+      if (handlers && handlers.size > 0) {
         for (const handler of handlers) {
           try {
             handler({ payload: msg.payload })
           } catch (e) {
             console.error(`[WsTransport] Error in '${msg.event}' handler:`, e)
           }
+        }
+      } else {
+        // Buffer events that arrive before listeners are registered
+        // (happens during the React render cycle gap after WS connects)
+        const buffered = this.eventBuffer.get(msg.event) ?? []
+        if (buffered.length < WsTransport.EVENT_BUFFER_MAX_SIZE) {
+          buffered.push({ msg, bufferedAt: Date.now() })
+          this.eventBuffer.set(msg.event, buffered)
         }
       }
     }

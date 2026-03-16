@@ -1,4 +1,5 @@
 import { useEffect, useRef, type RefObject } from 'react'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 import { useChatStore } from '@/store/chat-store'
@@ -20,7 +21,6 @@ interface UseChatWindowEventsParams {
   activeWorktreeId: string | null | undefined
   activeWorktreePath: string | null | undefined
   isModal: boolean
-  isViewingCanvasTab: boolean
   // Plan dialog
   latestPlanContent: string | null
   latestPlanFilePath: string | null
@@ -46,7 +46,6 @@ interface UseChatWindowEventsParams {
   // Auto-scroll
   isAtBottom: boolean
   scrollToBottom: (instant?: boolean) => void
-  streamingContent: string
   currentStreamingContentBlocks: ContentBlock[]
   isSending: boolean
   currentQueuedMessages: QueuedMessage[]
@@ -55,7 +54,7 @@ interface UseChatWindowEventsParams {
   // Debug/preferences
   preferences: { debug_mode_enabled?: boolean } | undefined
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  savePreferences: { mutate: (prefs: any) => void }
+  patchPreferences: { mutate: (prefs: any) => void }
   // Context operations
   handleSaveContext: () => void
   handleLoadContext: () => void
@@ -93,7 +92,6 @@ export function useChatWindowEvents({
   activeWorktreeId,
   activeWorktreePath,
   isModal,
-  isViewingCanvasTab,
   latestPlanContent,
   latestPlanFilePath,
   setPlanDialogContent,
@@ -108,13 +106,12 @@ export function useChatWindowEvents({
   setDiffRequest,
   isAtBottom,
   scrollToBottom,
-  streamingContent,
   currentStreamingContentBlocks,
   isSending,
   currentQueuedMessages,
   createSession,
   preferences,
-  savePreferences,
+  patchPreferences,
   handleSaveContext,
   handleLoadContext,
   runScript,
@@ -133,10 +130,14 @@ export function useChatWindowEvents({
   beginKeyboardScroll,
   endKeyboardScroll,
 }: UseChatWindowEventsParams) {
-  // Focus input on mount, session change, or worktree change
+  const isMobile = useIsMobile()
+
+  // Focus input on mount, session change, or worktree change (skip on mobile to avoid keyboard popup)
   useEffect(() => {
-    inputRef.current?.focus()
-  }, [activeSessionId, activeWorktreeId, inputRef])
+    if (!isMobile) {
+      inputRef.current?.focus()
+    }
+  }, [activeSessionId, activeWorktreeId, inputRef, isMobile])
 
   // Scroll to bottom on worktree switch
   useEffect(() => {
@@ -144,17 +145,18 @@ export function useChatWindowEvents({
   }, [activeWorktreeId, scrollToBottom])
 
   // Auto-scroll on new messages/streaming
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- isAtBottom and scrollToBottom are intentionally
+  // read but not deps: isAtBottom changing shouldn't re-trigger scroll, and scrollToBottom is stable.
+  // streamingContent is excluded because it changes every ~50ms during streaming, causing cascading
+  // smooth scroll animations. Content block length changes are sufficient to track streaming progress.
   useEffect(() => {
     if (isAtBottom) {
       scrollToBottom()
     }
   }, [
     session?.messages.length,
-    streamingContent,
     currentStreamingContentBlocks.length,
     isSending,
-    isAtBottom,
-    scrollToBottom,
     currentQueuedMessages.length,
   ])
 
@@ -167,7 +169,6 @@ export function useChatWindowEvents({
 
   // P key: Open plan dialog
   useEffect(() => {
-    if (isViewingCanvasTab) return
     const handler = () => {
       if (latestPlanContent) {
         setPlanDialogContent(latestPlanContent)
@@ -180,11 +181,10 @@ export function useChatWindowEvents({
     }
     window.addEventListener('open-plan', handler)
     return () => window.removeEventListener('open-plan', handler)
-  }, [latestPlanContent, latestPlanFilePath, isViewingCanvasTab, setPlanDialogContent, setIsPlanDialogOpen])
+  }, [latestPlanContent, latestPlanFilePath, setPlanDialogContent, setIsPlanDialogOpen])
 
   // R key: Open recap dialog
   useEffect(() => {
-    if (isViewingCanvasTab && !isModal) return
     const handleOpenRecap = async () => {
       if (!activeSessionId) return
 
@@ -242,7 +242,6 @@ export function useChatWindowEvents({
     window.addEventListener('open-recap', handleOpenRecap)
     return () => window.removeEventListener('open-recap', handleOpenRecap)
   }, [
-    isViewingCanvasTab,
     isModal,
     activeSessionId,
     session,
@@ -253,10 +252,9 @@ export function useChatWindowEvents({
     setIsGeneratingRecap,
   ])
 
-  // CMD+T: Create new session (canvas view handles its own creation)
+  // CMD+T: Create new session
   useEffect(() => {
     const handler = () => {
-      if (!isModal && isViewingCanvasTab) return
       if (!activeWorktreeId || !activeWorktreePath) return
       createSession.mutate(
         { worktreeId: activeWorktreeId, worktreePath: activeWorktreePath },
@@ -276,22 +274,37 @@ export function useChatWindowEvents({
     }
     window.addEventListener('create-new-session', handler)
     return () => window.removeEventListener('create-new-session', handler)
-  }, [activeWorktreeId, activeWorktreePath, isModal, isViewingCanvasTab, createSession])
+  }, [activeWorktreeId, activeWorktreePath, createSession])
 
   // SHIFT+TAB: Cycle execution mode
   useEffect(() => {
     if (!activeSessionId) return
     const handler = () => {
-      useChatStore.getState().cycleExecutionMode(activeSessionId)
+      const store = useChatStore.getState()
+      store.cycleExecutionMode(activeSessionId)
+      const mode = useChatStore.getState().executionModes[activeSessionId] ?? 'plan'
+      // Broadcast to other clients (native ↔ web access)
+      invoke('broadcast_session_setting', {
+        sessionId: activeSessionId,
+        key: 'executionMode',
+        value: mode,
+      }).catch(() => undefined)
+      // Persist immediately
+      if (activeWorktreeId && activeWorktreePath) {
+        invoke('update_session_state', {
+          worktreeId: activeWorktreeId,
+          worktreePath: activeWorktreePath,
+          sessionId: activeSessionId,
+          selectedExecutionMode: mode,
+        }).catch(() => undefined)
+      }
     }
     window.addEventListener('cycle-execution-mode', handler)
     return () => window.removeEventListener('cycle-execution-mode', handler)
-  }, [activeSessionId])
+  }, [activeSessionId, activeWorktreeId, activeWorktreePath])
 
   // CMD+G: Open git diff
   useEffect(() => {
-    if (!isModal && isViewingCanvasTab) return
-
     const handler = () => {
       if (!activeWorktreePath) return
       const baseBranch = gitStatus?.base_branch ?? 'main'
@@ -307,7 +320,7 @@ export function useChatWindowEvents({
     }
     window.addEventListener('open-git-diff', handler)
     return () => window.removeEventListener('open-git-diff', handler)
-  }, [isModal, isViewingCanvasTab, activeWorktreePath, gitStatus?.base_branch, setDiffRequest])
+  }, [activeWorktreePath, gitStatus?.base_branch, setDiffRequest])
 
   // ESC: Cancel prompt
   const cancelContextRef = useRef({ activeWorktreeId, activeSessionId })
@@ -333,25 +346,14 @@ export function useChatWindowEvents({
         return
       }
 
-      const activeSession =
+      const sessionToCancel =
         cancelContextRef.current.activeSessionId ??
         state.activeSessionIds[wtId] ??
         null
 
-      let sessionToCancel: string | null
-      if (isModal) {
-        // Modal: always use active session (what the user is looking at)
-        sessionToCancel = activeSession
-      } else {
-        // Canvas: use canvas-selected session; Chat tab: use active session
-        const isCanvas = state.viewingCanvasTab[wtId] ?? true
-        const canvasSession = state.canvasSelectedSessionIds[wtId] ?? null
-        sessionToCancel = isCanvas && canvasSession ? canvasSession : activeSession
-      }
-
       if (!sessionToCancel) {
         logger.debug('cancel-prompt: no sessionToCancel', {
-          activeSession,
+          sessionToCancel,
           isModal,
         })
         return
@@ -395,14 +397,13 @@ export function useChatWindowEvents({
   useEffect(() => {
     const handler = () => {
       if (!preferences) return
-      savePreferences.mutate({
-        ...preferences,
+      patchPreferences.mutate({
         debug_mode_enabled: !preferences.debug_mode_enabled,
       })
     }
     window.addEventListener('command:toggle-debug-mode', handler)
     return () => window.removeEventListener('command:toggle-debug-mode', handler)
-  }, [preferences, savePreferences])
+  }, [preferences, patchPreferences])
 
   // Set chat input from external (conflict resolution flow)
   useEffect(() => {
@@ -422,9 +423,9 @@ export function useChatWindowEvents({
 
   // Approve plan keyboard shortcut (no-op for Codex which has no native approval flow)
   useEffect(() => {
-    if (!isModal && isViewingCanvasTab) return
     if (isCodexBackend) return
     const handler = () => {
+      if (!isModal && useUIStore.getState().sessionChatModalOpen) return
       if (hasStreamingPlan) {
         handleStreamingPlanApproval()
         return
@@ -437,7 +438,6 @@ export function useChatWindowEvents({
     return () => window.removeEventListener('approve-plan', handler)
   }, [
     isModal,
-    isViewingCanvasTab,
     isCodexBackend,
     hasStreamingPlan,
     pendingPlanMessage,
@@ -492,9 +492,9 @@ export function useChatWindowEvents({
 
   // Approve plan yolo keyboard shortcut (no-op for Codex)
   useEffect(() => {
-    if (!isModal && isViewingCanvasTab) return
     if (isCodexBackend) return
     const handler = () => {
+      if (!isModal && useUIStore.getState().sessionChatModalOpen) return
       if (hasStreamingPlan) {
         handleStreamingPlanApprovalYolo()
         return
@@ -507,7 +507,6 @@ export function useChatWindowEvents({
     return () => window.removeEventListener('approve-plan-yolo', handler)
   }, [
     isModal,
-    isViewingCanvasTab,
     isCodexBackend,
     hasStreamingPlan,
     pendingPlanMessage,
@@ -517,9 +516,9 @@ export function useChatWindowEvents({
 
   // Clear context and yolo keyboard shortcut (no-op for Codex)
   useEffect(() => {
-    if (!isModal && isViewingCanvasTab) return
     if (isCodexBackend) return
     const handler = () => {
+      if (!isModal && useUIStore.getState().sessionChatModalOpen) return
       if (hasStreamingPlan) {
         handleStreamingClearContextApproval()
         return
@@ -532,7 +531,6 @@ export function useChatWindowEvents({
     return () => window.removeEventListener('approve-plan-clear-context', handler)
   }, [
     isModal,
-    isViewingCanvasTab,
     isCodexBackend,
     hasStreamingPlan,
     pendingPlanMessage,
@@ -542,9 +540,9 @@ export function useChatWindowEvents({
 
   // Clear context and build keyboard shortcut (no-op for Codex)
   useEffect(() => {
-    if (!isModal && isViewingCanvasTab) return
     if (isCodexBackend) return
     const handler = () => {
+      if (!isModal && useUIStore.getState().sessionChatModalOpen) return
       if (hasStreamingPlan) {
         handleStreamingClearContextApprovalBuild()
         return
@@ -557,7 +555,6 @@ export function useChatWindowEvents({
     return () => window.removeEventListener('approve-plan-clear-context-build', handler)
   }, [
     isModal,
-    isViewingCanvasTab,
     isCodexBackend,
     hasStreamingPlan,
     pendingPlanMessage,

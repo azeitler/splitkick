@@ -33,6 +33,8 @@ pub struct NamingRequest {
     pub custom_profile_name: Option<String>,
     /// Per-operation backend override from magic prompt settings (None = use project/global default)
     pub backend_override: Option<String>,
+    /// Per-operation reasoning effort override (None = use default)
+    pub reasoning_effort: Option<String>,
 }
 
 /// Successful session rename result (for event emission)
@@ -531,6 +533,7 @@ fn generate_names_codex(
         model,
         NAMING_SCHEMA,
         Some(&request.worktree_path),
+        request.reasoning_effort.as_deref(),
     )?;
     log::trace!("Codex generated naming response: {json_str}");
     serde_json::from_str(&json_str)
@@ -730,7 +733,7 @@ fn generate_names_opencode_inner(
     };
 
     let msg_url = format!("{base_url}/session/{opencode_session_id}/message");
-    let payload = serde_json::json!({
+    let mut payload = serde_json::json!({
         "agent": "plan",
         "model": {
             "providerID": selected_model.0,
@@ -743,6 +746,10 @@ fn generate_names_opencode_inner(
             }
         ],
     });
+
+    if let Some(effort) = &request.reasoning_effort {
+        payload["reasoning_effort"] = serde_json::Value::String(effort.clone());
+    }
 
     let response = client
         .post(msg_url)
@@ -807,9 +814,14 @@ fn validate_session_name(name: &str) -> Result<String, String> {
         return Err("Generated session name is empty".to_string());
     }
 
-    // Enforce character limit (50 chars max)
-    let final_name = if final_name.len() > 50 {
-        final_name[..50].trim().to_string()
+    // Enforce character limit (50 chars max, char-safe for multi-byte UTF-8)
+    let final_name = if final_name.chars().count() > 50 {
+        final_name
+            .chars()
+            .take(50)
+            .collect::<String>()
+            .trim()
+            .to_string()
     } else {
         final_name
     };

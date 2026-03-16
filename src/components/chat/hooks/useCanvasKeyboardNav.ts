@@ -13,8 +13,6 @@ interface UseCanvasKeyboardNavOptions<T> {
   onSelect: (index: number) => void
   /** Whether keyboard navigation is enabled (disable when modal open) */
   enabled: boolean
-  /** Layout mode: 'grid' uses horizontal + visual-position nav, 'list' uses simple up/down */
-  layout?: 'grid' | 'list'
   /** Optional callback when selection changes (for tracking in store) */
   onSelectionChange?: (index: number) => void
 }
@@ -38,7 +36,6 @@ export function useCanvasKeyboardNav<T>({
   onSelectedIndexChange,
   onSelect,
   enabled,
-  layout = 'grid',
   onSelectionChange,
 }: UseCanvasKeyboardNavOptions<T>): UseCanvasKeyboardNavResult {
   const cardRefs = useRef<(HTMLDivElement | null)[]>([])
@@ -54,54 +51,6 @@ export function useCanvasKeyboardNav<T>({
 
   // Throttle rapid key presses
   const lastKeyTimeRef = useRef(0)
-
-  // Find the card visually below/above the current one (visual-position based)
-  const findVerticalNeighbor = useCallback(
-    (currentIndex: number, direction: 'up' | 'down'): number | null => {
-      const currentRef = cardRefs.current[currentIndex]
-      if (!currentRef) return null
-
-      const currentRect = currentRef.getBoundingClientRect()
-      const currentCenterX = currentRect.left + currentRect.width / 2
-
-      let bestIndex: number | null = null
-      let bestDistance = Infinity
-
-      for (let i = 0; i < cardRefs.current.length; i++) {
-        if (i === currentIndex) continue
-        const ref = cardRefs.current[i]
-        if (!ref) continue
-
-        const rect = ref.getBoundingClientRect()
-
-        // Check if card is in the correct direction
-        if (direction === 'down' && rect.top <= currentRect.bottom) continue
-        if (direction === 'up' && rect.bottom >= currentRect.top) continue
-
-        // Calculate horizontal distance (how aligned it is)
-        const cardCenterX = rect.left + rect.width / 2
-        const horizontalDistance = Math.abs(cardCenterX - currentCenterX)
-
-        // Calculate vertical distance
-        const verticalDistance =
-          direction === 'down'
-            ? rect.top - currentRect.bottom
-            : currentRect.top - rect.bottom
-
-        // Prefer cards that are horizontally aligned and close vertically
-        // Weight horizontal alignment more heavily
-        const distance = horizontalDistance + verticalDistance * 0.5
-
-        if (distance < bestDistance) {
-          bestDistance = distance
-          bestIndex = i
-        }
-      }
-
-      return bestIndex
-    },
-    []
-  )
 
   // Track when command palette (or any modal) closes to prevent Enter key leaking
   const lastModalCloseRef = useRef(0)
@@ -175,64 +124,24 @@ export function useCanvasKeyboardNav<T>({
         onSelectionChange?.(newIndex)
       }
 
-      if (layout === 'list') {
-        // List layout: simple up/down navigation, left/right ignored
-        switch (e.key) {
-          case 'ArrowDown':
-            e.preventDefault()
-            if (currentIndex < total - 1) {
-              updateSelection(currentIndex + 1)
-            }
-            break
-          case 'ArrowUp':
-            e.preventDefault()
-            if (currentIndex > 0) {
-              updateSelection(currentIndex - 1)
-            }
-            break
-          case 'Enter':
-            if (e.metaKey || e.ctrlKey) return
-            e.preventDefault()
-            onSelect(currentIndex)
-            break
-        }
-      } else {
-        // Grid layout: horizontal left/right, visual-position up/down
-        switch (e.key) {
-          case 'ArrowRight':
-            e.preventDefault()
-            if (currentIndex < total - 1) {
-              updateSelection(currentIndex + 1)
-            }
-            break
-          case 'ArrowLeft':
-            e.preventDefault()
-            if (currentIndex > 0) {
-              updateSelection(currentIndex - 1)
-            }
-            break
-          case 'ArrowDown': {
-            e.preventDefault()
-            const nextIndex = findVerticalNeighbor(currentIndex, 'down')
-            if (nextIndex !== null) {
-              updateSelection(nextIndex)
-            }
-            break
+      switch (e.key) {
+        case 'ArrowDown':
+          e.preventDefault()
+          if (currentIndex < total - 1) {
+            updateSelection(currentIndex + 1)
           }
-          case 'ArrowUp': {
-            e.preventDefault()
-            const prevIndex = findVerticalNeighbor(currentIndex, 'up')
-            if (prevIndex !== null) {
-              updateSelection(prevIndex)
-            }
-            break
+          break
+        case 'ArrowUp':
+          e.preventDefault()
+          if (currentIndex > 0) {
+            updateSelection(currentIndex - 1)
           }
-          case 'Enter':
-            if (e.metaKey || e.ctrlKey) return
-            e.preventDefault()
-            onSelect(currentIndex)
-            break
-        }
+          break
+        case 'Enter':
+          if (e.metaKey || e.ctrlKey) return
+          e.preventDefault()
+          onSelect(currentIndex)
+          break
       }
     }
 
@@ -240,8 +149,6 @@ export function useCanvasKeyboardNav<T>({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [
     enabled,
-    layout,
-    findVerticalNeighbor,
     onSelectedIndexChange,
     onSelect,
     onSelectionChange,

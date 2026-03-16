@@ -26,6 +26,8 @@ jobs:
             args: '--target universal-apple-darwin --bundles app,dmg'
           - platform: 'ubuntu-22.04'
             args: '--bundles deb,rpm'
+          - platform: 'ubuntu-22.04-arm'
+            args: '--bundles deb,rpm'
           - platform: 'windows-latest'
             args: '--bundles msi,nsis'
 
@@ -44,7 +46,7 @@ jobs:
           sed -i.bak "s/^version = \"[^\"]*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml && rm -f src-tauri/Cargo.toml.bak
 
       - name: Install Linux dependencies
-        if: matrix.platform == 'ubuntu-22.04'
+        if: startsWith(matrix.platform, 'ubuntu')
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
@@ -92,18 +94,19 @@ jobs:
       # the LD_LIBRARY_PATH fix that prevents white screen crashes.
       # See: https://github.com/coollabsio/jean/issues/54
       - name: Build AppImage with WebKitGTK fix
-        if: matrix.platform == 'ubuntu-22.04'
+        if: startsWith(matrix.platform, 'ubuntu')
         run: bash scripts/build-appimage.sh
 
       - name: Upload AppImage to release
-        if: matrix.platform == 'ubuntu-22.04'
+        if: startsWith(matrix.platform, 'ubuntu')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ github.event.release.tag_name || inputs.version }}
         run: |
           VERSION="${RELEASE_TAG#v}"
-          APPIMAGE="src-tauri/target/release/bundle/appimage/Jean_${VERSION}_amd64.AppImage"
-          if [ -f "$APPIMAGE" ]; then
+          # Find the AppImage regardless of arch suffix (amd64 or aarch64)
+          APPIMAGE=$(find src-tauri/target/release/bundle/appimage -name "Jean_${VERSION}_*.AppImage" -print -quit 2>/dev/null)
+          if [ -n "$APPIMAGE" ] && [ -f "$APPIMAGE" ]; then
             gh release upload "$RELEASE_TAG" "$APPIMAGE" --clobber
           fi
 

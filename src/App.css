@@ -275,6 +275,9 @@
 
 .animate-dots::after {
   content: '';
+  display: inline-block;
+  width: 1.5ch;
+  text-align: left;
   animation: dots 1.5s steps(1, end) infinite;
 }
 
@@ -361,6 +364,11 @@
 
   body.native-app * {
     cursor: default;
+  }
+
+  /* Use app background color so native titlebar overlay area blends in */
+  html:has(body.native-app) {
+    background: hsl(var(--background));
   }
 
   svg {
@@ -474,6 +482,10 @@ kbd {
 .font-mono .text-2xl {
   font-size: calc(var(--chat-font-size) * 1.5) !important;
 }
+
+/* Hidden scrollbar for horizontally scrollable tab bars */
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
 
 /* Custom scrollbar styling to match Radix ScrollArea */
 .custom-scrollbar::-webkit-scrollbar {

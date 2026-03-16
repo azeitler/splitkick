@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { openExternal } from '@/lib/platform'
+import { copyToClipboard } from '@/lib/clipboard'
 import { isGhAuthError } from '@/services/github'
 import { useGhLogin } from '@/hooks/useGhLogin'
 import { GhAuthError } from '@/components/shared/GhAuthError'
@@ -148,6 +149,7 @@ export function ReleaseNotesDialog() {
               'release_notes_provider',
               preferences?.default_provider
             ),
+            reasoningEffort: preferences?.magic_prompt_efforts?.release_notes_effort ?? null,
           }
         )
         setGeneratedTitle(result.title)
@@ -179,7 +181,7 @@ export function ReleaseNotesDialog() {
 
   const handleCopy = useCallback(async () => {
     const text = `# ${generatedTitle}\n\n${generatedBody}`
-    await navigator.clipboard.writeText(text)
+    await copyToClipboard(text)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }, [generatedTitle, generatedBody])

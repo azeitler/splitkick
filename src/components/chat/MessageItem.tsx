@@ -28,6 +28,7 @@ import {
 import { ThinkingBlock } from './ThinkingBlock'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import { logger } from '@/lib/logger'
+import { formatDuration } from './time-utils'
 import {
   parseReviewFindings,
   hasReviewFindings,
@@ -115,6 +116,8 @@ interface MessageItemProps {
   onCopyToInput?: (message: ChatMessage) => void
   /** Hide approve buttons (e.g. for Codex which has no native approval flow) */
   hideApproveButtons?: boolean
+  /** Duration of this assistant message in ms (computed from user→assistant timestamp delta) */
+  durationMs?: number | null
 }
 
 /**
@@ -153,6 +156,7 @@ export const MessageItem = memo(function MessageItem({
   isFindingFixed,
   onCopyToInput,
   hideApproveButtons,
+  durationMs,
 }: MessageItemProps) {
   // Only show Approve button for the last message with ExitPlanMode
   const isLatestPlanRequest = messageIndex === lastPlanMessageIndex
@@ -317,7 +321,7 @@ export const MessageItem = memo(function MessageItem({
                 return (
                   <div className="text-sm text-muted-foreground italic">
                     <span>[Message could not be rendered]</span>
-                    {message.content && <Markdown>{message.content}</Markdown>}
+                    {message.content && <Markdown streaming={message.cancelled}>{message.content}</Markdown>}
                   </div>
                 )
               }
@@ -345,7 +349,7 @@ export const MessageItem = memo(function MessageItem({
                           const strippedText = stripFindingBlocks(item.text)
                           return (
                             <div>
-                              <Markdown>{strippedText}</Markdown>
+                              <Markdown streaming={message.cancelled}>{strippedText}</Markdown>
                               {findings.length > 0 && (
                                 <ReviewFindingsList
                                   findings={findings}
@@ -359,7 +363,7 @@ export const MessageItem = memo(function MessageItem({
                             </div>
                           )
                         }
-                        return <Markdown>{item.text}</Markdown>
+                        return <Markdown streaming={message.cancelled}>{item.text}</Markdown>
                       }
                       case 'task':
                         return (
@@ -517,7 +521,7 @@ export const MessageItem = memo(function MessageItem({
               {message.role === 'assistant' &&
               hasReviewFindings(displayContent) ? (
                 <>
-                  <Markdown>{stripFindingBlocks(displayContent)}</Markdown>
+                  <Markdown streaming={message.cancelled}>{stripFindingBlocks(displayContent)}</Markdown>
                   <ReviewFindingsList
                     findings={parseReviewFindings(displayContent)}
                     sessionId={sessionId}
@@ -532,7 +536,7 @@ export const MessageItem = memo(function MessageItem({
                   {displayContent}
                 </div>
               ) : (
-                <Markdown>{displayContent}</Markdown>
+                <Markdown streaming={message.cancelled}>{displayContent}</Markdown>
               )}
             </div>
           )}
@@ -576,6 +580,12 @@ export const MessageItem = memo(function MessageItem({
           (cancelled)
         </span>
       )}
+
+      {message.role === 'assistant' && durationMs != null && durationMs > 0 && (
+        <span className="mt-1 block min-h-4 text-xs leading-4 text-muted-foreground/40 tabular-nums font-mono">
+          {formatDuration(durationMs)}
+        </span>
+      )}
     </>
   )
 
@@ -604,20 +614,14 @@ export const MessageItem = memo(function MessageItem({
             </Tooltip>
           )}
           <div
-            className={cn(
-              'text-foreground border border-border rounded-lg px-3 py-2 bg-muted/20 min-w-0 break-words',
-              message.cancelled && 'opacity-60'
-            )}
+            className="text-foreground border border-border rounded-lg px-3 py-2 bg-muted/20 min-w-0 break-words"
           >
             {messageBoxContent}
           </div>
         </div>
       ) : (
         <div
-          className={cn(
-            'text-muted-foreground w-full min-w-0 break-words',
-            message.cancelled && 'opacity-60'
-          )}
+          className="text-muted-foreground w-full min-w-0 break-words"
         >
           {messageBoxContent}
         </div>

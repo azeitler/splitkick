@@ -83,7 +83,7 @@ pub struct AppPreferences {
     #[serde(default = "default_effort_level")]
     pub default_effort_level: String, // Effort level for Opus 4.6: low, medium, high, max
     #[serde(default = "default_terminal")]
-    pub terminal: String, // Terminal app: terminal, warp, ghostty, iterm2
+    pub terminal: String, // Terminal app: terminal, warp, ghostty, iterm2, powershell, windows-terminal
     #[serde(default = "default_editor")]
     pub editor: String, // Editor app: zed, vscode, cursor, xcode
     #[serde(default = "default_open_in")]
@@ -128,6 +128,8 @@ pub struct AppPreferences {
     pub magic_prompt_providers: MagicPromptProviders, // Per-prompt provider overrides (None = use default_provider)
     #[serde(default)]
     pub magic_prompt_backends: MagicPromptBackends, // Per-prompt backend overrides (None = use project/global default_backend)
+    #[serde(default)]
+    pub magic_prompt_efforts: MagicPromptReasoningEfforts, // Per-prompt reasoning effort overrides
     #[serde(default)]
     pub magic_models_auto_initialized: bool, // Whether magic prompt models were auto-set based on installed backends
     #[serde(default = "default_file_edit_mode")]
@@ -180,6 +182,8 @@ pub struct AppPreferences {
     pub canvas_layout: String, // Canvas display mode: grid or list
     #[serde(default = "default_confirm_session_close")]
     pub confirm_session_close: bool, // Show confirmation dialog before closing sessions/worktrees
+    #[serde(default = "default_execution_mode")]
+    pub default_execution_mode: String, // Default execution mode: "plan", "build", or "yolo"
     #[serde(default = "default_backend")]
     pub default_backend: String, // Default CLI backend: "claude", "codex", or "opencode"
     #[serde(default = "default_codex_model")]
@@ -290,7 +294,7 @@ fn default_effort_level() -> String {
 fn default_terminal() -> String {
     #[cfg(target_os = "windows")]
     {
-        "windows-terminal".to_string()
+        "powershell".to_string()
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -360,6 +364,10 @@ fn default_canvas_layout() -> String {
 
 fn default_confirm_session_close() -> bool {
     true // Enabled by default
+}
+
+fn default_execution_mode() -> String {
+    "plan".to_string()
 }
 
 fn default_backend() -> String {
@@ -459,6 +467,8 @@ pub struct MagicPrompts {
     pub investigate_advisory: Option<String>,
     #[serde(default)]
     pub investigate_linear_issue: Option<String>,
+    #[serde(default)]
+    pub review_comments: Option<String>,
 }
 
 fn default_investigate_issue_prompt() -> String {
@@ -952,6 +962,39 @@ pub struct MagicPromptBackends {
     pub investigate_linear_issue_backend: Option<String>,
 }
 
+/// Per-prompt reasoning effort overrides for magic prompts (None = use model default)
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MagicPromptReasoningEfforts {
+    #[serde(default)]
+    pub investigate_issue_effort: Option<String>,
+    #[serde(default)]
+    pub investigate_pr_effort: Option<String>,
+    #[serde(default)]
+    pub investigate_workflow_run_effort: Option<String>,
+    #[serde(default)]
+    pub pr_content_effort: Option<String>,
+    #[serde(default)]
+    pub commit_message_effort: Option<String>,
+    #[serde(default)]
+    pub code_review_effort: Option<String>,
+    #[serde(default)]
+    pub context_summary_effort: Option<String>,
+    #[serde(default)]
+    pub resolve_conflicts_effort: Option<String>,
+    #[serde(default)]
+    pub release_notes_effort: Option<String>,
+    #[serde(default)]
+    pub session_naming_effort: Option<String>,
+    #[serde(default)]
+    pub session_recap_effort: Option<String>,
+    #[serde(default)]
+    pub investigate_security_alert_effort: Option<String>,
+    #[serde(default)]
+    pub investigate_advisory_effort: Option<String>,
+    #[serde(default)]
+    pub investigate_linear_issue_effort: Option<String>,
+}
+
 impl MagicPrompts {
     /// Migrate prompts that match the current default to None.
     /// This ensures users who never customized a prompt get auto-updated defaults.
@@ -1032,6 +1075,7 @@ impl Default for AppPreferences {
             magic_prompt_models: MagicPromptModels::default(),
             magic_prompt_providers: MagicPromptProviders::default(),
             magic_prompt_backends: MagicPromptBackends::default(),
+            magic_prompt_efforts: MagicPromptReasoningEfforts::default(),
             magic_models_auto_initialized: false,
             file_edit_mode: default_file_edit_mode(),
             ai_language: String::new(),
@@ -1059,6 +1103,7 @@ impl Default for AppPreferences {
             default_provider: None,
             canvas_layout: default_canvas_layout(),
             confirm_session_close: default_confirm_session_close(),
+            default_execution_mode: default_execution_mode(),
             default_backend: default_backend(),
             selected_codex_model: default_codex_model(),
             selected_opencode_model: default_opencode_model(),
@@ -1345,6 +1390,23 @@ async fn save_preferences(app: AppHandle, preferences: AppPreferences) -> Result
 
     log::trace!("Successfully saved preferences to {prefs_path:?}");
     Ok(())
+}
+
+/// Atomically patch preferences: loads current from disk, merges patch on top, saves.
+/// This avoids race conditions when multiple components save concurrently.
+#[tauri::command]
+async fn patch_preferences(app: AppHandle, patch: Value) -> Result<(), String> {
+    let current = load_preferences(app.clone()).await?;
+    let mut current_json =
+        serde_json::to_value(&current).map_err(|e| format!("Serialize error: {e}"))?;
+    if let (Some(base), Some(patch_obj)) = (current_json.as_object_mut(), patch.as_object()) {
+        for (key, value) in patch_obj {
+            base.insert(key.clone(), value.clone());
+        }
+    }
+    let merged: AppPreferences =
+        serde_json::from_value(current_json).map_err(|e| format!("Merge error: {e}"))?;
+    save_preferences(app, merged).await
 }
 
 #[tauri::command]
@@ -2181,9 +2243,11 @@ pub fn run() {
             // Spawned async — cleanup involves blocking I/O (HTTP health check with
             // 1.2s timeout, process kill, 300ms sleep) that can delay startup by ~1.5s.
             let cleanup_handle = app.handle().clone();
+            let codex_cleanup_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 tokio::task::spawn_blocking(move || {
                     opencode_server::cleanup_orphaned_server(&cleanup_handle);
+                    chat::codex_server::cleanup_orphaned_server(&codex_cleanup_handle);
                 })
                 .await
                 .ok();
@@ -2403,6 +2467,7 @@ pub fn run() {
             greet,
             load_preferences,
             save_preferences,
+            patch_preferences,
             save_cli_profile,
             delete_cli_profile,
             load_ui_state,
@@ -2436,6 +2501,7 @@ pub fn run() {
             projects::import_worktree,
             projects::permanently_delete_worktree,
             projects::cleanup_old_archives,
+            projects::cleanup_combined_contexts,
             projects::delete_all_archives,
             projects::rename_worktree,
             projects::update_worktree_label,
@@ -2447,9 +2513,11 @@ pub fn run() {
             projects::open_worktree_in_editor,
             projects::open_pull_request,
             projects::create_pr_with_ai_content,
+            projects::merge_github_pr,
             projects::generate_pr_update_content,
             projects::update_pr_description,
             projects::create_commit_with_ai,
+            projects::revert_last_local_commit,
             projects::run_review_with_ai,
             projects::cancel_review_with_ai,
             projects::list_github_releases,
@@ -2470,6 +2538,7 @@ pub fn run() {
             projects::get_pr_prompt,
             projects::get_review_prompt,
             projects::save_worktree_pr,
+            projects::detect_and_link_pr,
             projects::clear_worktree_pr,
             projects::update_worktree_cached_status,
             projects::rebase_worktree,
@@ -2515,6 +2584,7 @@ pub fn run() {
             projects::list_github_prs,
             projects::search_github_prs,
             projects::get_github_pr,
+            projects::get_pr_review_comments,
             projects::get_github_pr_by_number,
             projects::load_pr_context,
             projects::list_loaded_pr_contexts,
@@ -2594,6 +2664,11 @@ pub fn run() {
             chat::save_cancelled_message,
             chat::mark_plan_approved,
             chat::approve_codex_command,
+            // Chat commands - Queue management (cross-client sync)
+            chat::enqueue_message,
+            chat::dequeue_message,
+            chat::remove_queued_message,
+            chat::clear_message_queue,
             // Chat commands - Image handling
             chat::read_clipboard_image,
             chat::save_pasted_image,
@@ -2683,6 +2758,7 @@ pub fn run() {
                     Ok(false) => {}
                     Err(e) => eprintln!("[OPENCODE CLEANUP] Failed during Exit: {e}"),
                 }
+                chat::codex_server::shutdown_server();
             }
             tauri::RunEvent::ExitRequested { api, .. } => {
                 // In headless mode, prevent exit when window closes
@@ -2702,6 +2778,7 @@ pub fn run() {
                         eprintln!("[OPENCODE CLEANUP] Failed during ExitRequested: {e}")
                     }
                 }
+                chat::codex_server::shutdown_server();
             }
             tauri::RunEvent::WindowEvent { label, event, .. } => {
                 if let tauri::WindowEvent::CloseRequested { .. } = event {
@@ -2721,6 +2798,7 @@ pub fn run() {
                             eprintln!("[OPENCODE CLEANUP] Failed during CloseRequested: {e}")
                         }
                     }
+                    chat::codex_server::shutdown_server();
                 }
                 if let tauri::WindowEvent::Destroyed = event {
                     eprintln!("[TERMINAL CLEANUP] Window {label} destroyed");

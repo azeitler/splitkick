@@ -1288,6 +1288,59 @@ pub struct GitHubReview {
     pub submitted_at: Option<String>,
 }
 
+/// Raw GitHub REST API review comment (snake_case from API)
+#[derive(Debug, Clone, Deserialize)]
+struct RawReviewComment {
+    user: Option<RawReviewCommentUser>,
+    body: Option<String>,
+    created_at: Option<String>,
+    diff_hunk: Option<String>,
+    path: Option<String>,
+    #[serde(default)]
+    start_line: Option<u32>,
+    #[serde(default)]
+    line: Option<u32>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct RawReviewCommentUser {
+    login: Option<String>,
+}
+
+/// GitHub inline review comment (on specific diff lines), normalized to camelCase for frontend
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubReviewComment {
+    pub author: GitHubAuthor,
+    pub body: String,
+    pub created_at: String,
+    pub diff_hunk: String,
+    pub path: String,
+    #[serde(default)]
+    pub start_line: Option<u32>,
+    #[serde(default)]
+    pub line: Option<u32>,
+}
+
+impl From<RawReviewComment> for GitHubReviewComment {
+    fn from(raw: RawReviewComment) -> Self {
+        Self {
+            author: GitHubAuthor {
+                login: raw
+                    .user
+                    .and_then(|u| u.login)
+                    .unwrap_or_else(|| "unknown".to_string()),
+            },
+            body: raw.body.unwrap_or_default(),
+            created_at: raw.created_at.unwrap_or_default(),
+            diff_hunk: raw.diff_hunk.unwrap_or_default(),
+            path: raw.path.unwrap_or_default(),
+            start_line: raw.start_line,
+            line: raw.line,
+        }
+    }
+}
+
 /// GitHub PR detail with comments and reviews
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1531,6 +1584,55 @@ pub async fn get_github_pr(
     Ok(pr)
 }
 
+/// Fetch inline review comments for a PR.
+///
+/// Uses `gh api /repos/{owner}/{repo}/pulls/{number}/comments` to get code-level
+/// review comments (inline comments on specific diff lines).
+#[tauri::command]
+pub async fn get_pr_review_comments(
+    app: AppHandle,
+    project_path: String,
+    pr_number: u32,
+) -> Result<Vec<GitHubReviewComment>, String> {
+    log::trace!("Getting review comments for PR #{pr_number} in {project_path}");
+
+    let gh = resolve_gh_binary(&app);
+    let repo_id = get_repo_identifier(&project_path)?;
+    let endpoint = format!(
+        "/repos/{}/{}/pulls/{pr_number}/comments?per_page=100",
+        repo_id.owner, repo_id.repo
+    );
+
+    let output = silent_command(&gh)
+        .args(["api", &endpoint])
+        .current_dir(&project_path)
+        .output()
+        .map_err(|e| format!("Failed to run gh api: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("gh auth login") || stderr.contains("authentication") {
+            return Err("GitHub CLI not authenticated. Run 'gh auth login' first.".to_string());
+        }
+        if stderr.contains("404") || stderr.contains("Not Found") {
+            return Err(format!("PR #{pr_number} not found"));
+        }
+        return Err(format!("gh api failed: {stderr}"));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let raw_comments: Vec<RawReviewComment> =
+        serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse gh response: {e}"))?;
+
+    let comments: Vec<GitHubReviewComment> = raw_comments
+        .into_iter()
+        .map(GitHubReviewComment::from)
+        .collect();
+
+    log::trace!("Got {} review comments for PR #{pr_number}", comments.len());
+    Ok(comments)
+}
+
 /// Generate a branch name from a PR
 /// e.g., PR #123 "Fix the login bug" -> "pr-123-fix-the-login-bug"
 pub fn generate_branch_name_from_pr(pr_number: u32, title: &str) -> String {
@@ -1642,9 +1744,16 @@ pub fn get_pr_diff(
     // Truncate if > 100KB
     const MAX_DIFF_SIZE: usize = 100_000;
     if diff.len() > MAX_DIFF_SIZE {
+        // Find a safe UTF-8 char boundary near MAX_DIFF_SIZE
+        let end = diff
+            .char_indices()
+            .take_while(|(i, _)| *i < MAX_DIFF_SIZE)
+            .last()
+            .map(|(i, c)| i + c.len_utf8())
+            .unwrap_or(MAX_DIFF_SIZE.min(diff.len()));
         Ok(format!(
             "{}...\n\n[Diff truncated at 100KB - {} bytes total. Run `gh pr diff {}` to see the full diff.]",
-            &diff[..MAX_DIFF_SIZE],
+            &diff[..end],
             diff.len(),
             pr_number
         ))
@@ -2144,7 +2253,13 @@ pub fn generate_branch_name_from_security_alert(
     let slug = slugify_issue_title(summary);
     // Include package name in branch, truncated
     let pkg = package_name.replace('/', "-").replace('@', "");
-    let pkg_short = if pkg.len() > 20 { &pkg[..20] } else { &pkg };
+    let pkg_truncated;
+    let pkg_short = if pkg.len() > 20 {
+        pkg_truncated = pkg.chars().take(20).collect::<String>();
+        &pkg_truncated
+    } else {
+        &pkg
+    };
     format!("security-{alert_number}-{pkg_short}-{slug}")
 }
 

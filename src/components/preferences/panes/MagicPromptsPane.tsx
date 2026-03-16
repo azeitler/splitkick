@@ -22,7 +22,7 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
-import { usePreferences, useSavePreferences } from '@/services/preferences'
+import { usePreferences, usePatchPreferences } from '@/services/preferences'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { useAvailableOpencodeModels } from '@/services/opencode-cli'
 import { formatOpencodeModelLabel } from '@/components/chat/toolbar/toolbar-utils'
@@ -40,6 +40,7 @@ import {
   DEFAULT_INVESTIGATE_ADVISORY_PROMPT,
   DEFAULT_INVESTIGATE_LINEAR_ISSUE_PROMPT,
   DEFAULT_RELEASE_NOTES_PROMPT,
+  DEFAULT_REVIEW_COMMENTS_PROMPT,
   DEFAULT_SESSION_NAMING_PROMPT,
   DEFAULT_SESSION_RECAP_PROMPT,
   DEFAULT_PARALLEL_EXECUTION_PROMPT,
@@ -255,6 +256,27 @@ const PROMPT_SECTIONS: PromptSection[] = [
         defaultModel: 'opus',
       },
       {
+        key: 'review_comments',
+        modelKey: 'review_comments_model',
+        providerKey: 'review_comments_provider',
+        backendKey: 'review_comments_backend',
+        label: 'Review Comments',
+        description:
+          'Prompt for addressing inline PR review comments selected from the Review Comments dialog.',
+        variables: [
+          {
+            name: '{prNumber}',
+            description: 'Pull request number',
+          },
+          {
+            name: '{reviewComments}',
+            description: 'Formatted selected review comments with file paths, diffs, and bodies',
+          },
+        ],
+        defaultValue: DEFAULT_REVIEW_COMMENTS_PROMPT,
+        defaultModel: 'opus',
+      },
+      {
         key: 'commit_message',
         modelKey: 'commit_message_model',
         providerKey: 'commit_message_provider',
@@ -263,16 +285,19 @@ const PROMPT_SECTIONS: PromptSection[] = [
         description:
           'Prompt for generating commit messages from staged changes.',
         variables: [
+          {
+            name: '{diff_stat}',
+            description: 'Compact file change summary (git diff --stat)',
+          },
           { name: '{status}', description: 'Git status output' },
           { name: '{diff}', description: 'Staged changes diff' },
           {
             name: '{recent_commits}',
             description: 'Recent commit messages for style',
           },
-          { name: '{remote_info}', description: 'Remote repository info' },
         ],
         defaultValue: DEFAULT_COMMIT_MESSAGE_PROMPT,
-        defaultModel: 'haiku',
+        defaultModel: 'sonnet',
       },
       {
         key: 'pr_content',
@@ -299,7 +324,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           { name: '{diff}', description: 'Git diff of all changes' },
         ],
         defaultValue: DEFAULT_PR_CONTENT_PROMPT,
-        defaultModel: 'haiku',
+        defaultModel: 'sonnet',
       },
       {
         key: 'resolve_conflicts',
@@ -335,7 +360,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_RELEASE_NOTES_PROMPT,
-        defaultModel: 'haiku',
+        defaultModel: 'sonnet',
       },
     ],
   },
@@ -362,7 +387,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_CONTEXT_SUMMARY_PROMPT,
-        defaultModel: 'haiku',
+        defaultModel: 'sonnet',
       },
       {
         key: 'session_naming',
@@ -379,7 +404,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_SESSION_NAMING_PROMPT,
-        defaultModel: 'haiku',
+        defaultModel: 'sonnet',
       },
       {
         key: 'session_recap',
@@ -396,7 +421,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_SESSION_RECAP_PROMPT,
-        defaultModel: 'haiku',
+        defaultModel: 'sonnet',
       },
     ],
   },
@@ -439,7 +464,7 @@ const CODEX_MODEL_OPTIONS: { value: MagicPromptModel; label: string }[] =
 
 export const MagicPromptsPane: React.FC = () => {
   const { data: preferences } = usePreferences()
-  const savePreferences = useSavePreferences()
+  const patchPreferences = usePatchPreferences()
   const [selectedKey, setSelectedKey] =
     useState<keyof MagicPrompts>('investigate_issue')
   const [localValue, setLocalValue] = useState('')
@@ -559,8 +584,7 @@ export const MagicPromptsPane: React.FC = () => {
         // Save null if matches default (auto-updates on new versions), otherwise save the value
         const valueToSave =
           newValue === selectedConfig.defaultValue ? null : newValue
-        savePreferences.mutate({
-          ...preferences,
+        patchPreferences.mutate({
           magic_prompts: {
             ...currentPrompts,
             [selectedKey]: valueToSave,
@@ -570,7 +594,7 @@ export const MagicPromptsPane: React.FC = () => {
     },
     [
       preferences,
-      savePreferences,
+      patchPreferences,
       currentPrompts,
       selectedKey,
       selectedConfig.defaultValue,
@@ -585,8 +609,7 @@ export const MagicPromptsPane: React.FC = () => {
     if (localValue !== currentValue && preferences) {
       const valueToSave =
         localValue === selectedConfig.defaultValue ? null : localValue
-      savePreferences.mutate({
-        ...preferences,
+      patchPreferences.mutate({
         magic_prompts: {
           ...currentPrompts,
           [selectedKey]: valueToSave,
@@ -597,7 +620,7 @@ export const MagicPromptsPane: React.FC = () => {
     localValue,
     currentValue,
     preferences,
-    savePreferences,
+    patchPreferences,
     currentPrompts,
     selectedKey,
     selectedConfig.defaultValue,
@@ -605,34 +628,31 @@ export const MagicPromptsPane: React.FC = () => {
 
   const handleReset = useCallback(() => {
     if (!preferences) return
-    savePreferences.mutate({
-      ...preferences,
+    patchPreferences.mutate({
       magic_prompts: {
         ...currentPrompts,
         [selectedKey]: null,
       },
     })
-  }, [preferences, savePreferences, currentPrompts, selectedKey])
+  }, [preferences, patchPreferences, currentPrompts, selectedKey])
 
   const handleModelChange = useCallback(
     (model: MagicPromptModel) => {
       if (!preferences || !selectedConfig.modelKey) return
-      savePreferences.mutate({
-        ...preferences,
+      patchPreferences.mutate({
         magic_prompt_models: {
           ...currentModels,
           [selectedConfig.modelKey]: model,
         },
       })
     },
-    [preferences, savePreferences, currentModels, selectedConfig.modelKey]
+    [preferences, patchPreferences, currentModels, selectedConfig.modelKey]
   )
 
   const handleProviderChange = useCallback(
     (provider: string) => {
       if (!preferences || !selectedConfig.providerKey) return
-      savePreferences.mutate({
-        ...preferences,
+      patchPreferences.mutate({
         magic_prompt_providers: {
           ...currentProviders,
           [selectedConfig.providerKey]:
@@ -640,7 +660,7 @@ export const MagicPromptsPane: React.FC = () => {
         },
       })
     },
-    [preferences, savePreferences, currentProviders, selectedConfig.providerKey]
+    [preferences, patchPreferences, currentProviders, selectedConfig.providerKey]
   )
 
   const handleBackendChange = useCallback(
@@ -657,8 +677,7 @@ export const MagicPromptsPane: React.FC = () => {
           defaultModel = opencodeModelOptions[0]?.value
         }
       }
-      savePreferences.mutate({
-        ...preferences,
+      patchPreferences.mutate({
         magic_prompt_backends: {
           ...currentBackends,
           [selectedConfig.backendKey]: backend,
@@ -675,7 +694,7 @@ export const MagicPromptsPane: React.FC = () => {
     },
     [
       preferences,
-      savePreferences,
+      patchPreferences,
       currentBackends,
       currentModels,
       selectedConfig.backendKey,
@@ -687,31 +706,28 @@ export const MagicPromptsPane: React.FC = () => {
 
   const handleApplyClaudeDefaults = useCallback(() => {
     if (!preferences) return
-    savePreferences.mutate({
-      ...preferences,
+    patchPreferences.mutate({
       magic_prompt_models: DEFAULT_MAGIC_PROMPT_MODELS,
       magic_prompt_providers: DEFAULT_MAGIC_PROMPT_PROVIDERS,
       magic_prompt_backends: CLAUDE_DEFAULT_MAGIC_PROMPT_BACKENDS,
     })
-  }, [preferences, savePreferences])
+  }, [preferences, patchPreferences])
 
   const handleApplyCodexDefaults = useCallback(() => {
     if (!preferences) return
-    savePreferences.mutate({
-      ...preferences,
+    patchPreferences.mutate({
       magic_prompt_models: CODEX_DEFAULT_MAGIC_PROMPT_MODELS,
       magic_prompt_backends: CODEX_DEFAULT_MAGIC_PROMPT_BACKENDS,
     })
-  }, [preferences, savePreferences])
+  }, [preferences, patchPreferences])
 
   const handleApplyOpenCodeDefaults = useCallback(() => {
     if (!preferences) return
-    savePreferences.mutate({
-      ...preferences,
+    patchPreferences.mutate({
       magic_prompt_models: OPENCODE_DEFAULT_MAGIC_PROMPT_MODELS,
       magic_prompt_backends: OPENCODE_DEFAULT_MAGIC_PROMPT_BACKENDS,
     })
-  }, [preferences, savePreferences])
+  }, [preferences, patchPreferences])
 
   // Flush pending save when switching prompts
   const prevSelectedKeyRef = useRef(selectedKey)
@@ -729,8 +745,7 @@ export const MagicPromptsPane: React.FC = () => {
         if (localValue !== prevValue) {
           const valueToSave =
             localValue === prevConfig.defaultValue ? null : localValue
-          savePreferences.mutate({
-            ...preferences,
+          patchPreferences.mutate({
             magic_prompts: {
               ...currentPrompts,
               [prevKey]: valueToSave,

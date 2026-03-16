@@ -35,6 +35,20 @@ export const DEFAULT_CODEX_MODEL: CodexModel = 'gpt-5.4'
 /** Default thinking level */
 export const DEFAULT_THINKING_LEVEL: ThinkingLevel = 'off'
 
+function hasActiveStreamingState(
+  state: Pick<
+    ChatUIState,
+    'streamingContents' | 'streamingContentBlocks' | 'activeToolCalls'
+  >,
+  sessionId: string
+): boolean {
+  return (
+    !!state.streamingContents[sessionId] ||
+    (state.streamingContentBlocks[sessionId]?.length ?? 0) > 0 ||
+    (state.activeToolCalls[sessionId]?.length ?? 0) > 0
+  )
+}
+
 interface ChatUIState {
   // Currently active worktree for chat
   activeWorktreeId: string | null
@@ -57,9 +71,6 @@ interface ChatUIState {
   // Whether the review sidebar is visible (global toggle)
   reviewSidebarVisible: boolean
 
-  // Track if user is viewing canvas tab (session overview grid) per worktree
-  viewingCanvasTab: Record<string, boolean>
-
   // Fixed AI review findings per session (sessionId → fixed finding keys)
   fixedReviewFindings: Record<string, Set<string>>
 
@@ -68,6 +79,13 @@ interface ChatUIState {
 
   // Set of session IDs currently sending (supports multiple concurrent sessions)
   sendingSessionIds: Record<string, boolean>
+
+  // Timestamp of last addSendingSession call per session — used to protect new sends
+  // from stale completion events arriving from a previous cancelled run
+  sendStartedAt: Record<string, number>
+
+  // Duration (ms) of the last completed run per session — set by completeSession
+  completedDurations: Record<string, number>
 
   // Session IDs initiated by the user (e.g. Clear Context & YOLO) — auto-mark as opened on completion
   userInitiatedSessionIds: Record<string, true>
@@ -217,12 +235,9 @@ interface ChatUIState {
   // User-assigned labels per session (e.g. "Needs testing")
   sessionLabels: Record<string, LabelData>
 
-  // Canvas-selected session per worktree (for magic menu targeting)
-  canvasSelectedSessionIds: Record<string, string | null>
-
   // Pending magic command to execute when ChatWindow mounts (from canvas navigation)
-  pendingMagicCommand: { command: string } | null
-  setPendingMagicCommand: (cmd: { command: string } | null) => void
+  pendingMagicCommand: { command: string; prompt?: string } | null
+  setPendingMagicCommand: (cmd: { command: string; prompt?: string } | null) => void
 
   // Actions - Session management
   setActiveSession: (
@@ -237,10 +252,6 @@ interface ChatUIState {
   clearReviewResults: (sessionId: string) => void
   setReviewSidebarVisible: (visible: boolean) => void
   toggleReviewSidebar: () => void
-
-  // Actions - Canvas tab management
-  setViewingCanvasTab: (worktreeId: string, viewing: boolean) => void
-  isViewingCanvasTab: (worktreeId: string) => boolean
 
   // Actions - AI Review fixed findings (session-scoped)
   markReviewFindingFixed: (sessionId: string, findingKey: string) => void
@@ -275,7 +286,7 @@ interface ChatUIState {
   getWorktreePath: (worktreeId: string) => string | undefined
 
   // Actions - Session-based sending state
-  addSendingSession: (sessionId: string) => void
+  addSendingSession: (sessionId: string, startTime?: number) => void
   removeSendingSession: (sessionId: string) => void
   isSending: (sessionId: string) => boolean
 
@@ -493,6 +504,8 @@ interface ChatUIState {
   // Actions - Batch state transitions (single set() to avoid render cascades)
   /** Atomically clear all streaming state and mark session as reviewing */
   completeSession: (sessionId: string) => void
+  /** Atomically clear all streaming state for a user cancellation */
+  cancelSession: (sessionId: string) => void
   /** Atomically clear streaming state and mark session as waiting for input */
   pauseSession: (sessionId: string) => void
   /** Atomically clear streaming state after an error, mark as reviewing */
@@ -526,12 +539,6 @@ interface ChatUIState {
   getWorktreeLoadingOperation: (worktreeId: string) => string | null
 
   // Actions - Canvas-selected session (for magic menu targeting)
-  setCanvasSelectedSession: (
-    worktreeId: string,
-    sessionId: string | null
-  ) => void
-  getCanvasSelectedSession: (worktreeId: string) => string | null
-
   // Legacy actions (deprecated - for backward compatibility)
   /** @deprecated Use addSendingSession instead */
   addSendingWorktree: (worktreeId: string) => void
@@ -550,10 +557,11 @@ export const useChatStore = create<ChatUIState>()(
       activeSessionIds: {},
       reviewResults: {},
       reviewSidebarVisible: false,
-      viewingCanvasTab: {},
       fixedReviewFindings: {},
       worktreePaths: {},
       sendingSessionIds: {},
+      sendStartedAt: {},
+      completedDurations: {},
       userInitiatedSessionIds: {},
       waitingForInputSessionIds: {},
       sessionWorktreeMap: {},
@@ -598,7 +606,6 @@ export const useChatStore = create<ChatUIState>()(
       sessionDigests: {},
       worktreeLoadingOperations: {},
       sessionLabels: {},
-      canvasSelectedSessionIds: {},
       pendingMagicCommand: null,
 
       // Session management
@@ -669,22 +676,6 @@ export const useChatStore = create<ChatUIState>()(
           undefined,
           'toggleReviewSidebar'
         ),
-
-      // Canvas tab management
-      setViewingCanvasTab: (worktreeId, viewing) =>
-        set(
-          state => ({
-            viewingCanvasTab: {
-              ...state.viewingCanvasTab,
-              [worktreeId]: viewing,
-            },
-          }),
-          undefined,
-          'setViewingCanvasTab'
-        ),
-
-      isViewingCanvasTab: worktreeId =>
-        get().viewingCanvasTab[worktreeId] ?? true, // Default to canvas view
 
       // AI Review fixed findings (session-scoped)
       markReviewFindingFixed: (sessionId, findingKey) =>
@@ -880,15 +871,20 @@ export const useChatStore = create<ChatUIState>()(
       getWorktreePath: worktreeId => get().worktreePaths[worktreeId],
 
       // Sending state (session-based)
-      addSendingSession: sessionId =>
+      addSendingSession: (sessionId, startTime) =>
         set(
           state => {
+            // Guard: skip no-op updates to avoid re-renders on every streaming chunk
             if (state.sendingSessionIds[sessionId]) return state
+            const now = startTime ?? Date.now()
+            const { [sessionId]: _, ...restDurations } = state.completedDurations
             return {
               sendingSessionIds: {
                 ...state.sendingSessionIds,
                 [sessionId]: true,
               },
+              sendStartedAt: { ...state.sendStartedAt, [sessionId]: now },
+              completedDurations: restDurations,
             }
           },
           undefined,
@@ -898,6 +894,7 @@ export const useChatStore = create<ChatUIState>()(
       removeSendingSession: sessionId =>
         set(
           state => {
+            console.log(`[Store] removeSendingSession id=${sessionId}`, { wasSending: !!state.sendingSessionIds[sessionId], currentSending: Object.keys(state.sendingSessionIds) })
             const { [sessionId]: _, ...rest } = state.sendingSessionIds
             return { sendingSessionIds: rest }
           },
@@ -1150,7 +1147,7 @@ export const useChatStore = create<ChatUIState>()(
               const newBlocks = [...blocks]
               newBlocks[newBlocks.length - 1] = {
                 type: 'thinking',
-                thinking: lastBlock.thinking + '\n\n---\n\n' + thinking,
+                thinking: lastBlock.thinking + thinking,
               }
               return {
                 streamingContentBlocks: {
@@ -2014,8 +2011,8 @@ export const useChatStore = create<ChatUIState>()(
         ),
 
       // Pending permission denials
-      setPendingDenials: (sessionId, denials) =>
-        set(
+      setPendingDenials: (sessionId, denials) => {
+        return set(
           state => {
             const current = state.pendingPermissionDenials[sessionId]
             if (!current && denials.length === 0) return state
@@ -2028,7 +2025,8 @@ export const useChatStore = create<ChatUIState>()(
           },
           undefined,
           'setPendingDenials'
-        ),
+        )
+      },
 
       clearPendingDenials: sessionId =>
         set(
@@ -2074,6 +2072,23 @@ export const useChatStore = create<ChatUIState>()(
       completeSession: sessionId =>
         set(
           state => {
+            // Protection window: if this session just started sending (within 500ms)
+            // and the NEW run has not emitted any streaming state yet, this is
+            // likely a stale completion from a previous cancelled run. Skip it.
+            const sendStarted = state.sendStartedAt[sessionId] ?? 0
+            const elapsed = Date.now() - sendStarted
+            const hasStreamingState = hasActiveStreamingState(state, sessionId)
+            if (sendStarted > 0 && elapsed < 500 && !hasStreamingState) {
+              console.warn(
+                `[Store] completeSession BLOCKED for session=${sessionId} — send started ${elapsed}ms ago with no current streaming state (stale event from previous run)`
+              )
+              return state
+            }
+            console.log(`[Store] completeSession id=${sessionId}`, {
+              wasSending: !!state.sendingSessionIds[sessionId],
+              elapsed: sendStarted > 0 ? elapsed : 'n/a',
+              hasStreamingState,
+            })
             const { [sessionId]: _sc, ...streamingContents } =
               state.streamingContents
             const { [sessionId]: _sb, ...streamingContentBlocks } =
@@ -2088,6 +2103,8 @@ export const useChatStore = create<ChatUIState>()(
               state.streamingPlanApprovals
             const { [sessionId]: _em, ...executingModes } =
               state.executingModes
+            const { [sessionId]: _sa, ...sendStartedAtRest } =
+              state.sendStartedAt
             return {
               streamingContents,
               streamingContentBlocks,
@@ -2096,6 +2113,11 @@ export const useChatStore = create<ChatUIState>()(
               waitingForInputSessionIds,
               streamingPlanApprovals,
               executingModes,
+              sendStartedAt: sendStartedAtRest,
+              completedDurations:
+                sendStarted > 0
+                  ? { ...state.completedDurations, [sessionId]: elapsed }
+                  : state.completedDurations,
               reviewingSessions: {
                 ...state.reviewingSessions,
                 [sessionId]: true,
@@ -2106,19 +2128,83 @@ export const useChatStore = create<ChatUIState>()(
           'completeSession'
         ),
 
+      cancelSession: sessionId =>
+        set(
+          state => {
+            const sendStarted = state.sendStartedAt[sessionId] ?? 0
+            const elapsed = Date.now() - sendStarted
+            const { [sessionId]: _sc, ...streamingContents } =
+              state.streamingContents
+            const { [sessionId]: _sb, ...streamingContentBlocks } =
+              state.streamingContentBlocks
+            const { [sessionId]: _tc, ...activeToolCalls } =
+              state.activeToolCalls
+            const { [sessionId]: _ss, ...sendingSessionIds } =
+              state.sendingSessionIds
+            const { [sessionId]: _wi, ...waitingForInputSessionIds } =
+              state.waitingForInputSessionIds
+            const { [sessionId]: _sp, ...streamingPlanApprovals } =
+              state.streamingPlanApprovals
+            const { [sessionId]: _em, ...executingModes } =
+              state.executingModes
+            const { [sessionId]: _pd, ...pendingPermissionDenials } =
+              state.pendingPermissionDenials
+            const { [sessionId]: _dc, ...deniedMessageContext } =
+              state.deniedMessageContext
+            const { [sessionId]: _sa, ...sendStartedAtRest } =
+              state.sendStartedAt
+            return {
+              streamingContents,
+              streamingContentBlocks,
+              activeToolCalls,
+              sendingSessionIds,
+              waitingForInputSessionIds,
+              streamingPlanApprovals,
+              executingModes,
+              pendingPermissionDenials,
+              deniedMessageContext,
+              sendStartedAt: sendStartedAtRest,
+              completedDurations:
+                sendStarted > 0
+                  ? { ...state.completedDurations, [sessionId]: elapsed }
+                  : state.completedDurations,
+              reviewingSessions: {
+                ...state.reviewingSessions,
+                [sessionId]: true,
+              },
+            }
+          },
+          undefined,
+          'cancelSession'
+        ),
+
       pauseSession: sessionId =>
         set(
           state => {
+            // Same stale-event protection as completeSession: only block if the
+            // new run has not emitted any streaming state yet.
+            const sendStarted = state.sendStartedAt[sessionId] ?? 0
+            const elapsed = Date.now() - sendStarted
+            const hasStreamingState = hasActiveStreamingState(state, sessionId)
+            if (sendStarted > 0 && elapsed < 500 && !hasStreamingState) {
+              console.warn(
+                `[Store] pauseSession BLOCKED for session=${sessionId} — send started ${elapsed}ms ago with no current streaming state`
+              )
+              return state
+            }
             const { [sessionId]: _sc, ...streamingContents } =
               state.streamingContents
             const { [sessionId]: _ss, ...sendingSessionIds } =
               state.sendingSessionIds
             const { [sessionId]: _em, ...executingModes } =
               state.executingModes
+            const { [sessionId]: _sa, ...sendStartedAtRest } =
+              state.sendStartedAt
             return {
               streamingContents,
               sendingSessionIds,
               executingModes,
+              sendStartedAt: sendStartedAtRest,
               waitingForInputSessionIds: {
                 ...state.waitingForInputSessionIds,
                 [sessionId]: true,
@@ -2132,6 +2218,14 @@ export const useChatStore = create<ChatUIState>()(
       failSession: sessionId =>
         set(
           state => {
+            const sendStarted = state.sendStartedAt[sessionId] ?? 0
+            const elapsed = Date.now() - sendStarted
+            if (sendStarted > 0 && elapsed < 500) {
+              console.warn(
+                `[Store] failSession BLOCKED for session=${sessionId} — send started ${elapsed}ms ago (stale event from previous run)`
+              )
+              return state
+            }
             const { [sessionId]: _sc, ...streamingContents } =
               state.streamingContents
             const { [sessionId]: _sb, ...streamingContentBlocks } =
@@ -2142,12 +2236,15 @@ export const useChatStore = create<ChatUIState>()(
               state.sendingSessionIds
             const { [sessionId]: _wi, ...waitingForInputSessionIds } =
               state.waitingForInputSessionIds
+            const { [sessionId]: _sa, ...sendStartedAtRest } =
+              state.sendStartedAt
             return {
               streamingContents,
               streamingContentBlocks,
               activeToolCalls,
               sendingSessionIds,
               waitingForInputSessionIds,
+              sendStartedAt: sendStartedAtRest,
               reviewingSessions: {
                 ...state.reviewingSessions,
                 [sessionId]: true,
@@ -2331,30 +2428,6 @@ export const useChatStore = create<ChatUIState>()(
 
       getWorktreeLoadingOperation: worktreeId =>
         get().worktreeLoadingOperations[worktreeId] ?? null,
-
-      // Canvas-selected session (for magic menu targeting)
-      setCanvasSelectedSession: (worktreeId, sessionId) =>
-        set(
-          state => {
-            if (sessionId) {
-              return {
-                canvasSelectedSessionIds: {
-                  ...state.canvasSelectedSessionIds,
-                  [worktreeId]: sessionId,
-                },
-              }
-            } else {
-              const { [worktreeId]: _, ...rest } =
-                state.canvasSelectedSessionIds
-              return { canvasSelectedSessionIds: rest }
-            }
-          },
-          undefined,
-          'setCanvasSelectedSession'
-        ),
-
-      getCanvasSelectedSession: worktreeId =>
-        get().canvasSelectedSessionIds[worktreeId] ?? null,
 
       // Pending magic command (set when navigating from canvas, consumed by ChatWindow on mount)
       setPendingMagicCommand: cmd =>

@@ -75,10 +75,12 @@ export function useWorktreeMenuActions({
   const handleArchiveOrClose = useCallback(() => {
     if (isBase) {
       closeBaseSession.mutate({ worktreeId: worktree.id, projectId })
+    } else if (preferences?.removal_behavior === 'delete') {
+      deleteWorktree.mutate({ worktreeId: worktree.id, projectId })
     } else {
       archiveWorktree.mutate({ worktreeId: worktree.id, projectId })
     }
-  }, [isBase, closeBaseSession, archiveWorktree, worktree.id, projectId])
+  }, [isBase, closeBaseSession, archiveWorktree, deleteWorktree, worktree.id, projectId, preferences?.removal_behavior])
 
   const handleDelete = useCallback(() => {
     deleteWorktree.mutate({ worktreeId: worktree.id, projectId })

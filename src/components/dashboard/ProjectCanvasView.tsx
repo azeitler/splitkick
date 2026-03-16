@@ -12,12 +12,11 @@ import { invoke } from '@/lib/transport'
 import { cn } from '@/lib/utils'
 import {
   Search,
+  X,
   MoreHorizontal,
   Settings,
   Plus,
   FileJson,
-  LayoutGrid,
-  List,
   Clock3,
   GitBranch,
   MessageSquare,
@@ -73,8 +72,8 @@ import { SecurityAlertsBadge } from '@/components/shared/SecurityAlertsBadge'
 import { PlanDialog } from '@/components/chat/PlanDialog'
 import { RecapDialog } from '@/components/chat/RecapDialog'
 import { SessionChatModal } from '@/components/chat/SessionChatModal'
-import { SessionCard } from '@/components/chat/SessionCard'
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+
+
 import { LabelModal } from '@/components/chat/LabelModal'
 import { getLabelTextColor } from '@/lib/label-colors'
 import {
@@ -97,10 +96,10 @@ import {
   useCloseBaseSessionClean,
   useCloseBaseSessionArchive,
 } from '@/services/projects'
-import { useArchiveSession, useCloseSession, useRenameSession } from '@/services/chat'
-import { usePreferences, useSavePreferences } from '@/services/preferences'
+import { usePreferences } from '@/services/preferences'
 import { DEFAULT_KEYBINDINGS, formatShortcutDisplay } from '@/types/keybindings'
 import { CloseWorktreeDialog } from '@/components/chat/CloseWorktreeDialog'
+import { useIsMobile } from '@/hooks/use-mobile'
 const GitDiffModal = lazy(() =>
   import('@/components/chat/GitDiffModal').then(mod => ({
     default: mod.GitDiffModal,
@@ -492,11 +491,7 @@ function WorktreeSectionHeader({
 }
 
 export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
-  // Preferences for canvas layout
   const { data: preferences } = usePreferences()
-  const savePreferences = useSavePreferences()
-  const canvasLayout = preferences?.canvas_layout ?? 'list'
-  const isListLayout = canvasLayout === 'list'
 
   // Project action mutations
   const createBaseSession = useCreateBaseSession()
@@ -508,6 +503,8 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   const openInEditor = useOpenWorktreeInEditor()
 
   const [searchQuery, setSearchQuery] = useState('')
+  const isMobile = useIsMobile()
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false)
 
   // Get project info
   const { data: projects = [], isLoading: projectsLoading } = useProjects()
@@ -612,24 +609,22 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       const sessionData = sessionsByWorktreeId.get(worktree.id)
       const sessions = sessionData?.sessions ?? []
 
-      // Base sessions are always visible (not searchable)
-      const isBase = isBaseSession(worktree)
-
-      // Filter sessions based on search query
+      // Filter sessions based on search query (includes labels)
       const filteredSessions =
-        searchQuery.trim() && !isBase
-          ? sessions.filter(
-              session =>
-                session.name
+        searchQuery.trim()
+          ? sessions.filter(session => {
+              const q = searchQuery.toLowerCase()
+              return (
+                session.name.toLowerCase().includes(q) ||
+                worktree.name.toLowerCase().includes(q) ||
+                worktree.branch.toLowerCase().includes(q) ||
+                (session.label?.name ?? '').toLowerCase().includes(q) ||
+                (storeState.sessionLabels[session.id]?.name ?? '')
                   .toLowerCase()
-                  .includes(searchQuery.toLowerCase()) ||
-                worktree.name
-                  .toLowerCase()
-                  .includes(searchQuery.toLowerCase()) ||
-                worktree.branch
-                  .toLowerCase()
-                  .includes(searchQuery.toLowerCase())
-            )
+                  .includes(q) ||
+                (worktree.label?.name ?? '').toLowerCase().includes(q)
+              )
+            })
           : sessions
 
       // Compute card data for each session
@@ -690,39 +685,18 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     const result: FlatCard[] = []
     let globalIndex = 0
     for (const section of worktreeSections) {
-      if (isListLayout) {
-        // List view: one entry per worktree
-        result.push({
-          worktreeId: section.worktree.id,
-          worktreePath: section.worktree.path,
-          card: section.cards[0] ?? null,
-          globalIndex,
-          isPending: section.isPending,
-        })
-        globalIndex++
-      } else if (section.isPending) {
-        result.push({
-          worktreeId: section.worktree.id,
-          worktreePath: section.worktree.path,
-          card: null,
-          globalIndex,
-          isPending: true,
-        })
-        globalIndex++
-      } else {
-        for (const card of section.cards) {
-          result.push({
-            worktreeId: section.worktree.id,
-            worktreePath: section.worktree.path,
-            card,
-            globalIndex,
-          })
-          globalIndex++
-        }
-      }
+      // One entry per worktree
+      result.push({
+        worktreeId: section.worktree.id,
+        worktreePath: section.worktree.path,
+        card: section.cards[0] ?? null,
+        globalIndex,
+        isPending: section.isPending,
+      })
+      globalIndex++
     }
     return result
-  }, [worktreeSections, isListLayout])
+  }, [worktreeSections])
 
   // Selection state
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
@@ -773,8 +747,6 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   })
 
   // Archive mutations - need to handle per-worktree
-  const archiveSession = useArchiveSession()
-  const closeSession = useCloseSession()
   const archiveWorktree = useArchiveWorktree()
   const deleteWorktree = useDeleteWorktree()
   const closeBaseSessionClean = useCloseBaseSessionClean()
@@ -822,11 +794,23 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
 
   // Listen for focus-canvas-search event
   useEffect(() => {
-    const handleFocusSearch = () => searchInputRef.current?.focus()
+    const handleFocusSearch = () => {
+      if (isMobile) {
+        setIsMobileSearchOpen(true)
+      }
+      setTimeout(() => searchInputRef.current?.focus(), 0)
+    }
     window.addEventListener('focus-canvas-search', handleFocusSearch)
     return () =>
       window.removeEventListener('focus-canvas-search', handleFocusSearch)
-  }, [])
+  }, [isMobile])
+
+  // Auto-focus search input when mobile search overlay opens
+  useEffect(() => {
+    if (isMobileSearchOpen) {
+      requestAnimationFrame(() => searchInputRef.current?.focus())
+    }
+  }, [isMobileSearchOpen])
 
   // Track session modal open state for magic command keybindings
   useEffect(() => {
@@ -849,6 +833,21 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     return () =>
       window.removeEventListener('close-worktree-modal', handleCloseModal as EventListener)
   }, [selectedWorktreeModal?.worktreeId])
+
+  // Open modal from external triggers (e.g. base session switch)
+  useEffect(() => {
+    const handleOpenModal = (
+      e: CustomEvent<{ worktreeId: string; worktreePath: string }>
+    ) => {
+      setSelectedWorktreeModal({
+        worktreeId: e.detail.worktreeId,
+        worktreePath: e.detail.worktreePath,
+      })
+    }
+    window.addEventListener('open-worktree-modal', handleOpenModal as EventListener)
+    return () =>
+      window.removeEventListener('open-worktree-modal', handleOpenModal as EventListener)
+  }, [])
 
   // Record last opened worktree+session per project for restoration on project switch
   const activeSessionIdForModal = useChatStore(state =>
@@ -888,19 +887,11 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       ? { worktreeId: selectedWorktreeModal.worktreeId }
       : highlightedCardRef.current
     if (!highlighted) return
-    const cardIndex = isListLayout
-      ? flatCards.findIndex(fc => fc.worktreeId === highlighted.worktreeId)
-      : flatCards.findIndex(
-          fc =>
-            fc.worktreeId === highlighted.worktreeId &&
-            ('sessionId' in highlighted
-              ? fc.card?.session.id === highlighted.sessionId
-              : true)
-        )
+    const cardIndex = flatCards.findIndex(fc => fc.worktreeId === highlighted.worktreeId)
     if (cardIndex !== -1 && cardIndex !== selectedIndex) {
       setSelectedIndex(cardIndex)
     }
-  }, [selectedWorktreeModal, flatCards, selectedIndex, isListLayout])
+  }, [selectedWorktreeModal, flatCards, selectedIndex])
 
   // Keep a valid selection when the selected item disappears (archive/delete/close).
   // In list layout this prefers the previous row, matching expected canvas behavior.
@@ -1082,12 +1073,6 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     const targetCard = flatCards[targetIndex]
     setSelectedIndex(targetIndex)
     if (targetCard?.card) {
-      useChatStore
-        .getState()
-        .setCanvasSelectedSession(
-          targetCard.worktreeId,
-          targetCard.card.session.id
-        )
       // Sync projects store so commands (CMD+O, open terminal, etc.) work immediately
       useProjectsStore.getState().selectWorktree(targetCard.worktreeId)
       useChatStore
@@ -1117,24 +1102,6 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     projectId,
     preferences?.restore_last_session,
   ])
-
-  // Sync selection to store for cancel shortcut - updates when user navigates with arrow keys
-  useEffect(() => {
-    if (selectedWorktreeModal?.worktreeId) {
-      const activeSessionId =
-        useChatStore.getState().activeSessionIds[
-          selectedWorktreeModal.worktreeId
-        ]
-      if (activeSessionId) {
-        useChatStore
-          .getState()
-          .setCanvasSelectedSession(
-            selectedWorktreeModal.worktreeId,
-            activeSessionId
-          )
-      }
-    }
-  }, [selectedWorktreeModal?.worktreeId])
 
   // Mutations
   const createSession = useCreateSession()
@@ -1262,8 +1229,6 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     isGeneratingRecap,
     regenerateRecap,
     closeRecapDialog,
-    handlePlanView,
-    handleRecapView,
   } = useCanvasShortcutEvents({
     selectedCard,
     enabled: !selectedWorktreeModal && selectedIndex !== null,
@@ -1379,22 +1344,6 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     [worktreeLabelTarget, queryClient, projectId]
   )
 
-  const handleOpenWorktreeLabelModal = useCallback(
-    (card: SessionCardData) => {
-      const section = worktreeSections.find(s =>
-        s.cards.some(c => c.session.id === card.session.id)
-      )
-      if (!section) return
-
-      setWorktreeLabelTarget({
-        worktreeId: section.worktree.id,
-        currentLabel: section.worktree.label ?? null,
-      })
-      setWorktreeLabelModalOpen(true)
-    },
-    [worktreeSections]
-  )
-
   // Keyboard navigation - disable when any modal/dialog is open
   const isModalOpen =
     !!selectedWorktreeModal ||
@@ -1408,7 +1357,6 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     onSelectedIndexChange: handleSelectedIndexChange,
     onSelect: handleSelect,
     enabled: !isModalOpen,
-    layout: canvasLayout,
     onSelectionChange: syncSelectionToStore,
   })
 
@@ -1466,138 +1414,6 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     },
     [planDialogCard, handleWorktreeApprovalYolo]
   )
-
-  // Handle archive session for a specific worktree
-  const handleArchiveSessionForWorktree = useCallback(
-    (worktreeId: string, worktreePath: string, sessionId: string) => {
-      const worktree = readyWorktrees.find(w => w.id === worktreeId)
-      const sessionData = sessionsByWorktreeIdRef.current.get(worktreeId)
-      const activeSessions =
-        sessionData?.sessions?.filter(s => !s.archived_at) ?? []
-
-      if (activeSessions.length <= 1 && worktree && project) {
-        if (isBaseSession(worktree)) {
-          closeBaseSessionClean.mutate({
-            worktreeId,
-            projectId: project.id,
-          })
-        } else {
-          archiveWorktree.mutate({
-            worktreeId,
-            projectId: project.id,
-          })
-        }
-      } else {
-        archiveSession.mutate({
-          worktreeId,
-          worktreePath,
-          sessionId,
-        })
-      }
-    },
-    [
-      readyWorktrees,
-      project,
-      archiveSession,
-      archiveWorktree,
-      closeBaseSessionClean,
-    ]
-  )
-
-  // Handle delete session for a specific worktree (respects removal_behavior preference)
-  const removalBehavior = preferences?.removal_behavior ?? 'archive'
-  const handleDeleteSessionForWorktree = useCallback(
-    (worktreeId: string, worktreePath: string, sessionId: string) => {
-      const worktree = readyWorktrees.find(w => w.id === worktreeId)
-      const sessionData = sessionsByWorktreeIdRef.current.get(worktreeId)
-      const activeSessions =
-        sessionData?.sessions?.filter(s => !s.archived_at) ?? []
-
-      if (activeSessions.length <= 1 && worktree && project) {
-        if (isBaseSession(worktree)) {
-          closeBaseSessionClean.mutate({
-            worktreeId,
-            projectId: project.id,
-          })
-        } else if (removalBehavior === 'delete') {
-          deleteWorktree.mutate({
-            worktreeId,
-            projectId: project.id,
-          })
-        } else {
-          archiveWorktree.mutate({
-            worktreeId,
-            projectId: project.id,
-          })
-        }
-      } else if (removalBehavior === 'delete') {
-        closeSession.mutate({
-          worktreeId,
-          worktreePath,
-          sessionId,
-        })
-      } else {
-        archiveSession.mutate({
-          worktreeId,
-          worktreePath,
-          sessionId,
-        })
-      }
-    },
-    [
-      readyWorktrees,
-      project,
-      removalBehavior,
-      closeSession,
-      archiveSession,
-      archiveWorktree,
-      deleteWorktree,
-      closeBaseSessionClean,
-    ]
-  )
-
-  // Rename session state
-  const renameSessionMutation = useRenameSession()
-  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null)
-  const [renameValue, setRenameValue] = useState('')
-  // Track which worktree the renaming session belongs to
-  const renamingWorktreeRef = useRef<{ id: string; path: string } | null>(null)
-
-  const handleStartRenameForWorktree = useCallback(
-    (worktreeId: string, worktreePath: string, sessionId: string, currentName: string) => {
-      renamingWorktreeRef.current = { id: worktreeId, path: worktreePath }
-      setRenameValue(currentName)
-      setRenamingSessionId(sessionId)
-    },
-    []
-  )
-
-  const handleRenameSubmit = useCallback(
-    (sessionId: string) => {
-      const newName = renameValue.trim()
-      const wt = renamingWorktreeRef.current
-      if (newName && wt) {
-        // Find the current name to avoid no-op mutations
-        const currentSession = flatCards.find(c => c.card?.session.id === sessionId)
-        if (currentSession && currentSession.card?.session.name !== newName) {
-          renameSessionMutation.mutate({
-            worktreeId: wt.id,
-            worktreePath: wt.path,
-            sessionId,
-            newName,
-          })
-        }
-      }
-      setRenamingSessionId(null)
-      renamingWorktreeRef.current = null
-    },
-    [renameValue, flatCards, renameSessionMutation]
-  )
-
-  const handleRenameCancel = useCallback(() => {
-    setRenamingSessionId(null)
-    renamingWorktreeRef.current = null
-  }, [])
 
   // Listen for close-session-or-worktree event to handle CMD+W
   useEffect(() => {
@@ -1789,7 +1605,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     <div className="relative flex h-full flex-col">
       <div className="flex-1 flex flex-col overflow-auto">
         {/* Header with Search - sticky over content */}
-        <div className="sticky top-0 z-10 flex items-center gap-4 bg-background/60 backdrop-blur-md px-4 py-3 border-b border-border/30 min-h-[61px]">
+        <div className="sticky top-0 z-10 relative grid grid-cols-[auto_1fr_auto] items-center gap-4 bg-background/60 backdrop-blur-md px-4 py-2 sm:py-3 border-b border-border/30 sm:min-h-[61px]">
           <div className="flex flex-col shrink-0">
             <div className="flex items-center gap-2">
               <h2 className="truncate text-lg font-semibold">{project.name}</h2>
@@ -1906,6 +1722,21 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+              {/* Mobile: magnifier icon inline with badges */}
+              {isMobile && (worktreeSections.length > 0 || searchQuery) && !isMobileSearchOpen && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="relative h-7 w-7 text-muted-foreground"
+                  onClick={() => setIsMobileSearchOpen(true)}
+                  aria-label="Open search"
+                >
+                  <Search className="h-4 w-4" />
+                  {searchQuery && (
+                    <span className="absolute top-0.5 right-0.5 h-2 w-2 rounded-full bg-primary" />
+                  )}
+                </Button>
+              )}
             </div>
             <p className="text-xs text-muted-foreground whitespace-nowrap">
               {projectSummary.totalReady > 0 ? (
@@ -1925,52 +1756,78 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
           </div>
           {(worktreeSections.length > 0 || searchQuery) && (
             <>
-              <div className="flex-1 flex justify-center max-w-md mx-auto">
-                <div className="relative w-full">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    ref={searchInputRef}
-                    placeholder="Search worktrees and sessions..."
-                    value={searchQuery}
-                    onChange={e => setSearchQuery(e.target.value)}
-                    aria-label="Search worktrees and sessions"
-                    name="worktree-search"
-                    className="pl-9 bg-transparent border-border/30"
-                  />
-                </div>
-              </div>
+              {/* Desktop: inline search bar */}
+              {!isMobile && (
+                <>
+                  <div className="flex justify-center">
+                    <div className="relative w-full max-w-md">
+                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        ref={searchInputRef}
+                        placeholder="Search worktrees and sessions..."
+                        value={searchQuery}
+                        onChange={e => setSearchQuery(e.target.value)}
+                        aria-label="Search worktrees and sessions"
+                        name="worktree-search"
+                        className="pl-9 bg-transparent border-border/30"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0 justify-end">
+                    <OpenInButton worktreePath={project.path} />
+                  </div>
+                </>
+              )}
 
-              <div className="flex items-center gap-2 shrink-0">
-                <OpenInButton worktreePath={project.path} />
-                <ToggleGroup
-                  type="single"
-                  size="sm"
-                  variant="outline"
-                  value={canvasLayout}
-                  onValueChange={value => {
-                    if (value && preferences) {
-                      savePreferences.mutate({
-                        ...preferences,
-                        canvas_layout: value as 'grid' | 'list',
-                      })
-                    }
-                  }}
-                >
-                  <ToggleGroupItem value="grid" aria-label="Grid view">
-                    <LayoutGrid className="h-3.5 w-3.5" />
-                  </ToggleGroupItem>
-                  <ToggleGroupItem value="list" aria-label="List view">
-                    <List className="h-3.5 w-3.5" />
-                  </ToggleGroupItem>
-                </ToggleGroup>
-              </div>
+              {/* Mobile: full-width search overlay */}
+              {isMobile && isMobileSearchOpen && (
+                <div className="absolute inset-0 z-20 flex items-center gap-2 bg-background/95 backdrop-blur-md px-4">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      ref={searchInputRef}
+                      placeholder="Search worktrees and sessions..."
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Escape') {
+                          setIsMobileSearchOpen(false)
+                        }
+                      }}
+                      aria-label="Search worktrees and sessions"
+                      name="worktree-search"
+                      className="pl-9 bg-transparent border-border/30"
+                    />
+                  </div>
+                  {searchQuery && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0 text-muted-foreground"
+                      onClick={() => setSearchQuery('')}
+                      aria-label="Clear search"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="shrink-0 text-muted-foreground text-sm"
+                    onClick={() => setIsMobileSearchOpen(false)}
+                    aria-label="Close search"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              )}
             </>
           )}
         </div>
 
         {/* Canvas View */}
         <div
-          className={`flex-1 pb-16 ${worktreeSections.length === 0 && !searchQuery ? '' : isListLayout ? 'pt-5 px-4' : 'pt-6 px-4'}`}
+          className={`flex-1 pb-16 ${worktreeSections.length === 0 && !searchQuery ? '' : 'pt-5 px-4'}`}
         >
           {worktreeSections.length === 0 ? (
             searchQuery ? (
@@ -1983,8 +1840,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                 projectPath={project?.path ?? null}
               />
             )
-          ) : isListLayout ? (
-            /* List view: one compact row per worktree */
+          ) : (
             <div className="flex flex-col gap-1">
               {(() => {
                 let shortcutNum = 0
@@ -2000,7 +1856,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                         worktree={section.worktree}
                         layout="list"
                         isSelected={selectedIndex === currentIndex}
-                        onSelect={() => setSelectedIndex(currentIndex)}
+                        onSelect={() => handleSelectedIndexChange(currentIndex)}
                       />
                     )
                   }
@@ -2021,7 +1877,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                         isSelected={selectedIndex === currentIndex}
                         shortcutNumber={thisShortcut}
                         onRowClick={() => {
-                          setSelectedIndex(currentIndex)
+                          handleSelectedIndexChange(currentIndex)
                           handleWorktreeClick(
                             section.worktree.id,
                             section.worktree.path
@@ -2032,127 +1888,6 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                   )
                 })
               })()}
-            </div>
-          ) : (
-            /* Grid view: full card rendering */
-            <div className="space-y-6">
-              {worktreeSections.map(section => (
-                <div key={section.worktree.id}>
-                  <WorktreeSectionHeader
-                    worktree={section.worktree}
-                    projectId={projectId}
-                    defaultBranch={project.default_branch}
-                  />
-
-                  {section.isPending ? (
-                    <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3">
-                      {(() => {
-                        const currentIndex = cardIndex++
-                        return (
-                          <WorktreeSetupCard
-                            key={section.worktree.id}
-                            ref={el => {
-                              cardRefs.current[currentIndex] = el
-                            }}
-                            worktree={section.worktree}
-                            layout={canvasLayout}
-                            isSelected={selectedIndex === currentIndex}
-                            onSelect={() => setSelectedIndex(currentIndex)}
-                          />
-                        )
-                      })()}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col gap-4">
-                      {groupCardsByStatus(section.cards).map(group => (
-                        <div key={group.key}>
-                          <div className="mb-2 flex items-baseline gap-1.5">
-                            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                              {group.title}
-                            </span>
-                            <span className="text-[10px] text-muted-foreground/60">
-                              {group.cards.length}
-                            </span>
-                          </div>
-                          <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3">
-                            {group.cards.map(card => {
-                              const currentIndex = cardIndex++
-                              return (
-                                <SessionCard
-                                  key={card.session.id}
-                                  ref={el => {
-                                    cardRefs.current[currentIndex] = el
-                                  }}
-                                  card={card}
-                                  isSelected={selectedIndex === currentIndex}
-                                  onSelect={() => {
-                                    setSelectedIndex(currentIndex)
-                                    handleWorktreeClick(
-                                      section.worktree.id,
-                                      section.worktree.path
-                                    )
-                                  }}
-                                  onArchive={() =>
-                                    handleArchiveSessionForWorktree(
-                                      section.worktree.id,
-                                      section.worktree.path,
-                                      card.session.id
-                                    )
-                                  }
-                                  onDelete={() =>
-                                    handleDeleteSessionForWorktree(
-                                      section.worktree.id,
-                                      section.worktree.path,
-                                      card.session.id
-                                    )
-                                  }
-                                  onPlanView={() => handlePlanView(card)}
-                                  onRecapView={() => handleRecapView(card)}
-                                  onApprove={() => handlePlanApproval(card)}
-                                  onYolo={() => handlePlanApprovalYolo(card)}
-                                  onClearContextApprove={() => handleClearContextApproval(card)}
-                                  onClearContextBuildApprove={() => handleClearContextApprovalBuild(card)}
-                                  onWorktreeBuildApprove={handleWorktreeApproval ? () => handleWorktreeApproval(card) : undefined}
-                                  onWorktreeYoloApprove={handleWorktreeApprovalYolo ? () => handleWorktreeApprovalYolo(card) : undefined}
-                                  onToggleLabel={() =>
-                                    handleOpenWorktreeLabelModal(card)
-                                  }
-                                  onToggleReview={() => {
-                                    const {
-                                      reviewingSessions,
-                                      setSessionReviewing,
-                                    } = useChatStore.getState()
-                                    const isReviewing =
-                                      reviewingSessions[card.session.id] ||
-                                      !!card.session.review_results
-                                    setSessionReviewing(
-                                      card.session.id,
-                                      !isReviewing
-                                    )
-                                  }}
-                                  isRenaming={renamingSessionId === card.session.id}
-                                  renameValue={renameValue}
-                                  onRenameValueChange={setRenameValue}
-                                  onRenameStart={(sessionId, currentName) =>
-                                    handleStartRenameForWorktree(
-                                      section.worktree.id,
-                                      section.worktree.path,
-                                      sessionId,
-                                      currentName
-                                    )
-                                  }
-                                  onRenameSubmit={handleRenameSubmit}
-                                  onRenameCancel={handleRenameCancel}
-                                />
-                              )
-                            })}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
             </div>
           )}
         </div>

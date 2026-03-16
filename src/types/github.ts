@@ -90,6 +90,17 @@ export interface GitHubReview {
   submittedAt?: string
 }
 
+/** Inline code review comment on specific diff lines */
+export interface GitHubReviewComment {
+  author: GitHubAuthor
+  body: string
+  createdAt: string
+  diffHunk: string
+  path: string
+  startLine?: number
+  line?: number
+}
+
 export interface GitHubPullRequestDetail extends GitHubPullRequest {
   url: string
   comments: GitHubComment[]

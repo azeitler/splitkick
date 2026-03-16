@@ -316,29 +316,22 @@ The helper is defined in `src-tauri/src/platform/process.rs` and exported via `p
 
 #### Canvas Views Architecture
 
-**"Canvas"** refers to two distinct grid views that display session cards:
-
-1. **WorktreeCanvasView** (`src/components/chat/WorktreeCanvasView.tsx`)
-   - Worktree-level canvas showing sessions within a single worktree
-   - Uses the shared `CanvasGrid` component
-
-2. **ProjectCanvasView** (`src/components/dashboard/ProjectCanvasView.tsx`)
-   - Project-level canvas showing sessions grouped by worktree (with section headers)
-   - Has its own rendering logic but uses shared hooks
+**"Canvas"** refers to **ProjectCanvasView** (`src/components/dashboard/ProjectCanvasView.tsx`):
+- Project-level canvas showing worktrees as compact list rows (with section headers)
+- Sessions are opened via `SessionChatModal` overlay
+- Navigation: clicking "back" from ChatWindow returns to ProjectCanvasView via `clearActiveWorktree()`
+- Clicking a worktree in the sidebar stays on ProjectCanvasView (does not open ChatWindow)
 
 **Shared Hooks** (in `src/components/chat/hooks/`):
 
-- `useCanvasKeyboardNav.ts` - Arrow key navigation, Enter selection, visual-position vertical neighbor finding
+- `useCanvasKeyboardNav.ts` - Arrow key navigation (up/down), Enter selection
 - `useCanvasShortcutEvents.ts` - Event handlers for `open-plan`, `open-recap`, `approve-plan`, etc.
 - `useCanvasStoreState.ts` - Subscribes to chat store state needed for `SessionCardData`
 
 **Shared Components**:
 
-- `SessionCard.tsx` - Individual card component used by both canvas views
-- `CanvasGrid.tsx` - Shared grid component (used by WorktreeCanvasView only)
-- `session-card-utils.tsx` - `computeSessionCardData()` function and `SessionCardData` type
-
-When user mentions "Canvas", consider both views and their shared infrastructure.
+- `SessionListRow.tsx` - Compact row component for list view
+- `session-card-utils.tsx` - `computeSessionCardData()`, `SessionCardData`, and `SessionCardProps` types
 
 #### Image Processing on Paste/Drop
 

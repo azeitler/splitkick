@@ -65,7 +65,7 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from '@/components/ui/tooltip'
-import { usePreferences, useSavePreferences } from '@/services/preferences'
+import { usePreferences, usePatchPreferences } from '@/services/preferences'
 import type { AppPreferences } from '@/types/preferences'
 import {
   modelOptions,
@@ -98,6 +98,7 @@ import { playNotificationSound } from '@/lib/sounds'
 import type { ThinkingLevel, EffortLevel } from '@/types/chat'
 import { isNativeApp } from '@/lib/environment'
 import { cn } from '@/lib/utils'
+import { copyToClipboard } from '@/lib/clipboard'
 import {
   setGitPollInterval,
   setRemotePollInterval,
@@ -146,7 +147,7 @@ const InlineField: React.FC<{
 export const GeneralPane: React.FC = () => {
   const queryClient = useQueryClient()
   const { data: preferences } = usePreferences()
-  const savePreferences = useSavePreferences()
+  const patchPreferences = usePatchPreferences()
   const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
 
@@ -229,26 +230,25 @@ export const GeneralPane: React.FC = () => {
 
   const handleModelChange = (value: ClaudeModel) => {
     if (preferences) {
-      savePreferences.mutate({ ...preferences, selected_model: value })
+      patchPreferences.mutate({ selected_model: value })
     }
   }
 
   const handleThinkingLevelChange = (value: ThinkingLevel) => {
     if (preferences) {
-      savePreferences.mutate({ ...preferences, thinking_level: value })
+      patchPreferences.mutate({ thinking_level: value })
     }
   }
 
   const handleEffortLevelChange = (value: EffortLevel) => {
     if (preferences) {
-      savePreferences.mutate({ ...preferences, default_effort_level: value })
+      patchPreferences.mutate({ default_effort_level: value })
     }
   }
 
   const handleBuildModelChange = (value: string) => {
     if (preferences) {
-      savePreferences.mutate({
-        ...preferences,
+      patchPreferences.mutate({
         build_model: value === 'default' ? null : value,
       })
     }
@@ -256,8 +256,7 @@ export const GeneralPane: React.FC = () => {
 
   const handleBuildBackendChange = (value: string) => {
     if (preferences) {
-      savePreferences.mutate({
-        ...preferences,
+      patchPreferences.mutate({
         build_backend: value === 'default' ? null : value,
         // Reset model and thinking/effort when backend changes
         build_model: null,
@@ -268,8 +267,7 @@ export const GeneralPane: React.FC = () => {
 
   const handleYoloModelChange = (value: string) => {
     if (preferences) {
-      savePreferences.mutate({
-        ...preferences,
+      patchPreferences.mutate({
         yolo_model: value === 'default' ? null : value,
       })
     }
@@ -277,8 +275,7 @@ export const GeneralPane: React.FC = () => {
 
   const handleYoloBackendChange = (value: string) => {
     if (preferences) {
-      savePreferences.mutate({
-        ...preferences,
+      patchPreferences.mutate({
         yolo_backend: value === 'default' ? null : value,
         // Reset model and thinking/effort when backend changes
         yolo_model: null,
@@ -289,8 +286,7 @@ export const GeneralPane: React.FC = () => {
 
   const handleBuildThinkingLevelChange = (value: string) => {
     if (preferences) {
-      savePreferences.mutate({
-        ...preferences,
+      patchPreferences.mutate({
         build_thinking_level: value === 'default' ? null : value,
       })
     }
@@ -298,8 +294,7 @@ export const GeneralPane: React.FC = () => {
 
   const handleYoloThinkingLevelChange = (value: string) => {
     if (preferences) {
-      savePreferences.mutate({
-        ...preferences,
+      patchPreferences.mutate({
         yolo_thinking_level: value === 'default' ? null : value,
       })
     }
@@ -307,7 +302,7 @@ export const GeneralPane: React.FC = () => {
 
   const handleBackendChange = (value: CliBackend) => {
     if (preferences) {
-      savePreferences.mutate({ ...preferences, default_backend: value })
+      patchPreferences.mutate({ default_backend: value })
     }
   }
 
@@ -329,14 +324,13 @@ export const GeneralPane: React.FC = () => {
 
   const handleCodexModelChange = (value: CodexModel) => {
     if (preferences) {
-      savePreferences.mutate({ ...preferences, selected_codex_model: value })
+      patchPreferences.mutate({ selected_codex_model: value })
     }
   }
 
   const handleCodexReasoningChange = (value: CodexReasoningEffort) => {
     if (preferences) {
-      savePreferences.mutate({
-        ...preferences,
+      patchPreferences.mutate({
         default_codex_reasoning_effort: value,
       })
     }
@@ -344,7 +338,7 @@ export const GeneralPane: React.FC = () => {
 
   const handleOpenCodeModelChange = (value: string) => {
     if (preferences) {
-      savePreferences.mutate({ ...preferences, selected_opencode_model: value })
+      patchPreferences.mutate({ selected_opencode_model: value })
     }
   }
 
@@ -370,8 +364,7 @@ export const GeneralPane: React.FC = () => {
 
   const handleCodexMultiAgentToggle = (enabled: boolean) => {
     if (preferences) {
-      savePreferences.mutate({
-        ...preferences,
+      patchPreferences.mutate({
         codex_multi_agent_enabled: enabled,
       })
     }
@@ -380,8 +373,7 @@ export const GeneralPane: React.FC = () => {
   const handleCodexMaxThreadsChange = (value: string) => {
     if (preferences) {
       const num = Math.max(1, Math.min(8, parseInt(value, 10) || 3))
-      savePreferences.mutate({
-        ...preferences,
+      patchPreferences.mutate({
         codex_max_agent_threads: num,
       })
     }
@@ -389,38 +381,38 @@ export const GeneralPane: React.FC = () => {
 
   const handleTerminalChange = (value: TerminalApp) => {
     if (preferences) {
-      savePreferences.mutate({ ...preferences, terminal: value })
+      patchPreferences.mutate({ terminal: value })
     }
   }
 
   const handleEditorChange = (value: EditorApp) => {
     if (preferences) {
-      savePreferences.mutate({ ...preferences, editor: value })
+      patchPreferences.mutate({ editor: value })
     }
   }
 
   const handleOpenInChange = (value: OpenInDefault) => {
     if (preferences) {
-      savePreferences.mutate({ ...preferences, open_in: value })
+      patchPreferences.mutate({ open_in: value })
     }
   }
 
   const handleAutoBranchNamingChange = (checked: boolean) => {
     if (preferences) {
-      savePreferences.mutate({ ...preferences, auto_branch_naming: checked })
+      patchPreferences.mutate({ auto_branch_naming: checked })
     }
   }
 
   const handleAutoSessionNamingChange = (checked: boolean) => {
     if (preferences) {
-      savePreferences.mutate({ ...preferences, auto_session_naming: checked })
+      patchPreferences.mutate({ auto_session_naming: checked })
     }
   }
 
   const handleGitPollIntervalChange = (value: string) => {
     const seconds = parseInt(value, 10)
     if (preferences && !isNaN(seconds)) {
-      savePreferences.mutate({ ...preferences, git_poll_interval: seconds })
+      patchPreferences.mutate({ git_poll_interval: seconds })
       // Also update the backend immediately
       setGitPollInterval(seconds)
     }
@@ -429,7 +421,7 @@ export const GeneralPane: React.FC = () => {
   const handleRemotePollIntervalChange = (value: string) => {
     const seconds = parseInt(value, 10)
     if (preferences && !isNaN(seconds)) {
-      savePreferences.mutate({ ...preferences, remote_poll_interval: seconds })
+      patchPreferences.mutate({ remote_poll_interval: seconds })
       // Also update the backend immediately
       setRemotePollInterval(seconds)
     }
@@ -438,13 +430,13 @@ export const GeneralPane: React.FC = () => {
   const handleArchiveRetentionChange = (value: string) => {
     const days = parseInt(value, 10)
     if (preferences && !isNaN(days)) {
-      savePreferences.mutate({ ...preferences, archive_retention_days: days })
+      patchPreferences.mutate({ archive_retention_days: days })
     }
   }
 
   const handleWaitingSoundChange = (value: NotificationSound) => {
     if (preferences) {
-      savePreferences.mutate({ ...preferences, waiting_sound: value })
+      patchPreferences.mutate({ waiting_sound: value })
       // Play preview of the selected sound
       playNotificationSound(value)
     }
@@ -452,7 +444,7 @@ export const GeneralPane: React.FC = () => {
 
   const handleReviewSoundChange = (value: NotificationSound) => {
     if (preferences) {
-      savePreferences.mutate({ ...preferences, review_sound: value })
+      patchPreferences.mutate({ review_sound: value })
       // Play preview of the selected sound
       playNotificationSound(value)
     }
@@ -561,6 +553,27 @@ export const GeneralPane: React.FC = () => {
     openCliLoginModal('opencode', opencodeStatus.path, ['auth', 'login'])
   }, [opencodeStatus?.path, openCliLoginModal, queryClient])
 
+  const handleClaudeRelogin = useCallback(() => {
+    if (!cliStatus?.path) return
+    const args = cliStatus.supports_auth_command ? ['auth', 'login'] : ['login']
+    openCliLoginModal('claude', cliStatus.path, args)
+  }, [cliStatus?.path, cliStatus?.supports_auth_command, openCliLoginModal])
+
+  const handleGhRelogin = useCallback(() => {
+    if (!ghStatus?.path) return
+    openCliLoginModal('gh', ghStatus.path, ['auth', 'login'])
+  }, [ghStatus?.path, openCliLoginModal])
+
+  const handleCodexRelogin = useCallback(() => {
+    if (!codexStatus?.path) return
+    openCliLoginModal('codex', codexStatus.path, ['login'])
+  }, [codexStatus?.path, openCliLoginModal])
+
+  const handleOpenCodeRelogin = useCallback(() => {
+    if (!opencodeStatus?.path) return
+    openCliLoginModal('opencode', opencodeStatus.path, ['auth', 'login'])
+  }, [opencodeStatus?.path, openCliLoginModal])
+
   const claudeStatusDescription = cliStatus?.installed
     ? cliStatus.path
     : 'Claude CLI is required for chat functionality'
@@ -571,7 +584,7 @@ export const GeneralPane: React.FC = () => {
 
   const handleCopyPath = useCallback((path: string | null | undefined) => {
     if (!path) return
-    navigator.clipboard.writeText(path)
+    copyToClipboard(path)
     toast.success('Path copied to clipboard')
   }, [])
 
@@ -588,7 +601,12 @@ export const GeneralPane: React.FC = () => {
                   Checking...
                 </span>
               ) : claudeAuth?.authenticated ? (
-                <span className="text-sm text-muted-foreground">Logged in</span>
+                <span className="text-sm text-muted-foreground flex items-center gap-2">
+                  Logged in
+                  <Button variant="outline" size="sm" onClick={handleClaudeRelogin}>
+                    Relogin
+                  </Button>
+                </span>
               ) : (
                 <Button variant="outline" size="sm" onClick={handleClaudeLogin}>
                   Login
@@ -657,7 +675,12 @@ export const GeneralPane: React.FC = () => {
                   Checking...
                 </span>
               ) : ghAuth?.authenticated ? (
-                <span className="text-sm text-muted-foreground">Logged in</span>
+                <span className="text-sm text-muted-foreground flex items-center gap-2">
+                  Logged in
+                  <Button variant="outline" size="sm" onClick={handleGhRelogin}>
+                    Relogin
+                  </Button>
+                </span>
               ) : (
                 <Button variant="outline" size="sm" onClick={handleGhLogin}>
                   Login
@@ -733,7 +756,12 @@ export const GeneralPane: React.FC = () => {
                   Checking...
                 </span>
               ) : codexAuth?.authenticated ? (
-                <span className="text-sm text-muted-foreground">Logged in</span>
+                <span className="text-sm text-muted-foreground flex items-center gap-2">
+                  Logged in
+                  <Button variant="outline" size="sm" onClick={handleCodexRelogin}>
+                    Relogin
+                  </Button>
+                </span>
               ) : (
                 <Button variant="outline" size="sm" onClick={handleCodexLogin}>
                   Login
@@ -809,13 +837,14 @@ export const GeneralPane: React.FC = () => {
                   Checking...
                 </span>
               ) : opencodeAuth?.authenticated ? (
-                <span className="text-sm text-muted-foreground">Logged in</span>
+                <span className="text-sm text-muted-foreground flex items-center gap-2">
+                  Logged in
+                  <Button variant="outline" size="sm" onClick={handleOpenCodeRelogin}>
+                    Relogin
+                  </Button>
+                </span>
               ) : (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleOpenCodeLogin}
-                >
+                <Button variant="outline" size="sm" onClick={handleOpenCodeLogin}>
                   Login
                 </Button>
               )
@@ -898,6 +927,27 @@ export const GeneralPane: React.FC = () => {
                       {option.label}
                     </SelectItem>
                   ))}
+              </SelectContent>
+            </Select>
+          </InlineField>
+
+          <InlineField
+            label="Default mode"
+            description="Permission mode for new sessions"
+          >
+            <Select
+              value={preferences?.default_execution_mode ?? 'plan'}
+              onValueChange={(value: 'plan' | 'build' | 'yolo') => {
+                patchPreferences.mutate({ default_execution_mode: value })
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="plan">Plan</SelectItem>
+                <SelectItem value="build">Build</SelectItem>
+                <SelectItem value="yolo">Yolo</SelectItem>
               </SelectContent>
             </Select>
           </InlineField>
@@ -1256,8 +1306,7 @@ export const GeneralPane: React.FC = () => {
               checked={preferences?.chrome_enabled ?? true}
               onCheckedChange={checked => {
                 if (preferences) {
-                  savePreferences.mutate({
-                    ...preferences,
+                  patchPreferences.mutate({
                     chrome_enabled: checked,
                   })
                 }
@@ -1422,7 +1471,7 @@ export const GeneralPane: React.FC = () => {
 
           <AiLanguageField
             preferences={preferences}
-            savePreferences={savePreferences}
+            patchPreferences={patchPreferences}
           />
 
           <InlineField
@@ -1433,8 +1482,7 @@ export const GeneralPane: React.FC = () => {
               checked={preferences?.allow_web_tools_in_plan_mode ?? true}
               onCheckedChange={checked => {
                 if (preferences) {
-                  savePreferences.mutate({
-                    ...preferences,
+                  patchPreferences.mutate({
                     allow_web_tools_in_plan_mode: checked,
                   })
                 }
@@ -1631,8 +1679,7 @@ export const GeneralPane: React.FC = () => {
               checked={preferences?.auto_pull_base_branch ?? true}
               onCheckedChange={checked => {
                 if (preferences) {
-                  savePreferences.mutate({
-                    ...preferences,
+                  patchPreferences.mutate({
                     auto_pull_base_branch: checked,
                   })
                 }
@@ -1648,8 +1695,7 @@ export const GeneralPane: React.FC = () => {
               checked={preferences?.restore_last_session ?? false}
               onCheckedChange={checked => {
                 if (preferences) {
-                  savePreferences.mutate({
-                    ...preferences,
+                  patchPreferences.mutate({
                     restore_last_session: checked,
                   })
                 }
@@ -1669,8 +1715,7 @@ export const GeneralPane: React.FC = () => {
               checked={preferences?.confirm_session_close ?? true}
               onCheckedChange={checked => {
                 if (preferences) {
-                  savePreferences.mutate({
-                    ...preferences,
+                  patchPreferences.mutate({
                     confirm_session_close: checked,
                   })
                 }
@@ -1686,8 +1731,7 @@ export const GeneralPane: React.FC = () => {
               checked={preferences?.close_original_on_clear_context ?? true}
               onCheckedChange={checked => {
                 if (preferences) {
-                  savePreferences.mutate({
-                    ...preferences,
+                  patchPreferences.mutate({
                     close_original_on_clear_context: checked,
                   })
                 }
@@ -1703,8 +1747,7 @@ export const GeneralPane: React.FC = () => {
               value={preferences?.removal_behavior ?? 'delete'}
               onValueChange={(value: RemovalBehavior) => {
                 if (preferences) {
-                  savePreferences.mutate({
-                    ...preferences,
+                  patchPreferences.mutate({
                     removal_behavior: value,
                   })
                 }
@@ -1731,8 +1774,7 @@ export const GeneralPane: React.FC = () => {
               checked={preferences?.auto_archive_on_pr_merged ?? true}
               onCheckedChange={checked => {
                 if (preferences) {
-                  savePreferences.mutate({
-                    ...preferences,
+                  patchPreferences.mutate({
                     auto_archive_on_pr_merged: checked,
                   })
                 }
@@ -1833,19 +1875,16 @@ export const GeneralPane: React.FC = () => {
 
 const AiLanguageField: FC<{
   preferences: AppPreferences | undefined
-  savePreferences: ReturnType<typeof useSavePreferences>
-}> = ({ preferences, savePreferences }) => {
+  patchPreferences: ReturnType<typeof usePatchPreferences>
+}> = ({ preferences, patchPreferences }) => {
   const [localValue, setLocalValue] = useState(preferences?.ai_language ?? '')
 
   const hasChanges = localValue !== (preferences?.ai_language ?? '')
 
   const handleSave = useCallback(() => {
     if (!preferences) return
-    savePreferences.mutate({
-      ...preferences,
-      ai_language: localValue,
-    })
-  }, [preferences, savePreferences, localValue])
+    patchPreferences.mutate({ ai_language: localValue })
+  }, [preferences, patchPreferences, localValue])
 
   return (
     <InlineField
@@ -1862,9 +1901,9 @@ const AiLanguageField: FC<{
         <Button
           size="sm"
           onClick={handleSave}
-          disabled={!hasChanges || savePreferences.isPending}
+          disabled={!hasChanges || patchPreferences.isPending}
         >
-          {savePreferences.isPending && (
+          {patchPreferences.isPending && (
             <Loader2 className="h-4 w-4 animate-spin" />
           )}
           Save

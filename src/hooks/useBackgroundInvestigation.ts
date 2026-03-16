@@ -1,9 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { invoke } from '@/lib/transport'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 import { usePreferences } from '@/services/preferences'
-import { chatQueryKeys } from '@/services/chat'
+import { useSendMessage, chatQueryKeys } from '@/services/chat'
 import { resolveBackend, supportsAdaptiveThinking } from '@/lib/model-utils'
 import {
   DEFAULT_INVESTIGATE_ISSUE_PROMPT,
@@ -11,9 +11,10 @@ import {
   DEFAULT_INVESTIGATE_SECURITY_ALERT_PROMPT,
   DEFAULT_INVESTIGATE_ADVISORY_PROMPT,
   DEFAULT_INVESTIGATE_LINEAR_ISSUE_PROMPT,
+  DEFAULT_PARALLEL_EXECUTION_PROMPT,
   resolveMagicPromptProvider,
 } from '@/types/preferences'
-import type { WorktreeSessions, QueuedMessage } from '@/types/chat'
+import type { WorktreeSessions } from '@/types/chat'
 import { logger } from '@/lib/logger'
 import { useQueryClient } from '@tanstack/react-query'
 import { projectsQueryKeys } from '@/services/projects'
@@ -26,15 +27,25 @@ type InvestigationType = 'issue' | 'pr' | 'security-alert' | 'advisory' | 'linea
  *
  * When a worktree is created via CMD+Click with auto-investigate, the ChatWindow
  * never mounts (no modal opens), so the auto-investigate flag is never consumed.
- * This hook watches those flags, builds the investigation prompt, and enqueues
- * it into messageQueues for useQueueProcessor to send — no modal needed.
+ * This hook watches those flags, builds the investigation prompt, and sends it
+ * directly via sendMessage — no modal needed.
  *
  * Must be mounted at App level alongside useQueueProcessor.
  */
 export function useBackgroundInvestigation(): void {
   const { data: preferences } = usePreferences()
   const queryClient = useQueryClient()
+  const sendMessage = useSendMessage()
   const processingRef = useRef<Set<string>>(new Set())
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [retryTick, setRetryTick] = useState(0)
+
+  // Refs for unstable dependencies — sendMessage is a new object every render,
+  // preferences changes when data loads. Using refs keeps the effect deps stable.
+  const sendMessageRef = useRef(sendMessage)
+  sendMessageRef.current = sendMessage
+  const preferencesRef = useRef(preferences)
+  preferencesRef.current = preferences
 
   // Subscribe to auto-investigate flags — re-run effect when they change
   const hasAutoInvestigate = useUIStore(state =>
@@ -61,14 +72,11 @@ export function useBackgroundInvestigation(): void {
       autoInvestigateSecurityAlertWorktreeIds,
       autoInvestigateAdvisoryWorktreeIds,
       autoInvestigateLinearIssueWorktreeIds,
+      autoOpenSessionWorktreeIds,
     } = useUIStore.getState()
 
     const { worktreePaths, activeWorktreeId } = useChatStore.getState()
 
-    // Helper: check if worktree is ready (directory exists on disk).
-    // Only worktrees marked 'ready' by handleWorktreeReady have their
-    // git directory created. Without this check, worktreePaths may be
-    // populated early by setActiveWorktree before the directory exists.
     const isWorktreeReady = (worktreeId: string): boolean => {
       const cached = queryClient.getQueryData<Worktree>(
         [...projectsQueryKeys.all, 'worktree', worktreeId]
@@ -78,53 +86,53 @@ export function useBackgroundInvestigation(): void {
 
     // Collect all worktree IDs that need background investigation
     const candidates: { worktreeId: string; type: InvestigationType }[] = []
+    let skippedNotReady = 0
+
+    const checkCandidate = (worktreeId: string): boolean => {
+      if (worktreeId === activeWorktreeId) return false
+      if (autoOpenSessionWorktreeIds.has(worktreeId)) return false
+      if (!worktreePaths[worktreeId]) return false
+      if (!isWorktreeReady(worktreeId)) { skippedNotReady++; return false }
+      if (processingRef.current.has(worktreeId)) return false
+      return true
+    }
 
     for (const worktreeId of autoInvestigateWorktreeIds) {
-      // Skip foreground worktrees — ChatWindow handles those
-      if (worktreeId === activeWorktreeId) continue
-      // Skip if worktree path not yet registered (still pending)
-      if (!worktreePaths[worktreeId]) continue
-      // Skip if worktree directory not yet created (status !== 'ready')
-      if (!isWorktreeReady(worktreeId)) continue
-      // Skip if already being processed
-      if (processingRef.current.has(worktreeId)) continue
-      candidates.push({ worktreeId, type: 'issue' })
+      if (checkCandidate(worktreeId)) candidates.push({ worktreeId, type: 'issue' })
     }
 
     for (const worktreeId of autoInvestigatePRWorktreeIds) {
-      if (worktreeId === activeWorktreeId) continue
-      if (!worktreePaths[worktreeId]) continue
-      if (!isWorktreeReady(worktreeId)) continue
-      if (processingRef.current.has(worktreeId)) continue
       if (candidates.some(c => c.worktreeId === worktreeId)) continue
-      candidates.push({ worktreeId, type: 'pr' })
+      if (checkCandidate(worktreeId)) candidates.push({ worktreeId, type: 'pr' })
     }
 
     for (const worktreeId of autoInvestigateSecurityAlertWorktreeIds) {
-      if (worktreeId === activeWorktreeId) continue
-      if (!worktreePaths[worktreeId]) continue
-      if (!isWorktreeReady(worktreeId)) continue
-      if (processingRef.current.has(worktreeId)) continue
       if (candidates.some(c => c.worktreeId === worktreeId)) continue
-      candidates.push({ worktreeId, type: 'security-alert' })
+      if (checkCandidate(worktreeId)) candidates.push({ worktreeId, type: 'security-alert' })
     }
 
     for (const worktreeId of autoInvestigateAdvisoryWorktreeIds) {
-      if (worktreeId === activeWorktreeId) continue
-      if (!worktreePaths[worktreeId]) continue
-      if (!isWorktreeReady(worktreeId)) continue
-      if (processingRef.current.has(worktreeId)) continue
       if (candidates.some(c => c.worktreeId === worktreeId)) continue
-      candidates.push({ worktreeId, type: 'advisory' })
+      if (checkCandidate(worktreeId)) candidates.push({ worktreeId, type: 'advisory' })
     }
 
     for (const worktreeId of autoInvestigateLinearIssueWorktreeIds) {
-      if (worktreeId === activeWorktreeId) continue
-      if (!worktreePaths[worktreeId]) continue
-      if (!isWorktreeReady(worktreeId)) continue
-      if (processingRef.current.has(worktreeId)) continue
       if (candidates.some(c => c.worktreeId === worktreeId)) continue
-      candidates.push({ worktreeId, type: 'linear-issue' })
+      if (checkCandidate(worktreeId)) candidates.push({ worktreeId, type: 'linear-issue' })
+    }
+
+    // Clear any pending retry timer
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current)
+      retryTimerRef.current = null
+    }
+
+    // If worktrees are flagged but not ready yet, retry after 2s.
+    // The effect has no dependency that changes when worktree status goes
+    // from pending → ready, so without this retry the effect would never
+    // re-fire for those worktrees.
+    if (skippedNotReady > 0) {
+      retryTimerRef.current = setTimeout(() => setRetryTick(t => t + 1), 2000)
     }
 
     if (candidates.length === 0) return
@@ -150,16 +158,18 @@ export function useBackgroundInvestigation(): void {
       processBackgroundInvestigation(
         worktreeId,
         type,
-        preferences,
+        preferencesRef.current,
         null,
         queryClient,
+        sendMessageRef.current,
       ).catch(err => {
         logger.error('Background investigation failed', { worktreeId, err })
       }).finally(() => {
         processingRef.current.delete(worktreeId)
       })
     }
-  }, [hasAutoInvestigate, worktreePathCount, preferences, queryClient])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasAutoInvestigate, worktreePathCount, queryClient, retryTick])
 }
 
 /**
@@ -284,7 +294,11 @@ function resolveModelProviderKeys(type: InvestigationType) {
 }
 
 /**
- * Process a single background investigation: fetch session, build prompt, enqueue message.
+ * Process a single background investigation: fetch session, build prompt, send directly.
+ *
+ * Sends via sendMessage.mutateAsync() instead of the message queue to avoid a race
+ * condition where useQueueProcessor calls persistDequeue before persistEnqueue
+ * completes on the backend, causing the message to be lost.
  */
 async function processBackgroundInvestigation(
   worktreeId: string,
@@ -292,6 +306,8 @@ async function processBackgroundInvestigation(
   preferences: ReturnType<typeof usePreferences>['data'],
   cliVersion: string | null,
   queryClient: ReturnType<typeof useQueryClient>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sendMessage: { mutateAsync: (args: any) => Promise<any> },
 ): Promise<void> {
   const worktreePath = useChatStore.getState().worktreePaths[worktreeId]
   if (!worktreePath) return
@@ -311,7 +327,7 @@ async function processBackgroundInvestigation(
     return
   }
 
-  // Register session-worktree mapping so useQueueProcessor can find the worktree
+  // Register session-worktree mapping so streaming events can find the worktree
   const { setActiveSession } = useChatStore.getState()
   setActiveSession(worktreeId, sessionId)
 
@@ -380,7 +396,12 @@ async function processBackgroundInvestigation(
     setSelectedProvider,
     setSelectedBackend,
     setExecutingMode,
-    enqueueMessage,
+    clearStreamingContent,
+    clearToolCalls,
+    clearStreamingContentBlocks,
+    setLastSentMessage,
+    setError,
+    setSessionReviewing,
   } = useChatStore.getState()
 
   setSelectedModel(sessionId, selectedModel)
@@ -393,26 +414,39 @@ async function processBackgroundInvestigation(
   const useAdaptive =
     !isCustomProvider && supportsAdaptiveThinking(selectedModel, cliVersion)
 
-  // Build and enqueue the message
-  const queuedMessage: QueuedMessage = {
-    id: `bg-investigate-${worktreeId}-${Date.now()}`,
+  // Pre-send state setup (mirrors useQueueProcessor)
+  clearStreamingContent(sessionId)
+  clearToolCalls(sessionId)
+  clearStreamingContentBlocks(sessionId)
+  setLastSentMessage(sessionId, prompt)
+  setError(sessionId, null)
+  setSessionReviewing(sessionId, false)
+  // Note: addSendingSession is handled by sendMessage's onMutate
+
+  // Send the message directly — no queue involved.
+  // This avoids the race condition where useQueueProcessor's persistDequeue
+  // runs before persistEnqueue completes, causing the message to be lost.
+  await sendMessage.mutateAsync({
+    sessionId,
+    worktreeId,
+    worktreePath,
     message: prompt,
-    pendingImages: [],
-    pendingFiles: [],
-    pendingSkills: [],
-    pendingTextFiles: [],
     model: selectedModel,
-    provider: customProfileName ?? null,
     executionMode: 'plan',
     thinkingLevel: 'think',
     effortLevel: useAdaptive ? 'high' : undefined,
+    customProfileName,
+    parallelExecutionPrompt:
+      preferences?.parallel_execution_prompt_enabled
+        ? (preferences.magic_prompts?.parallel_execution ??
+          DEFAULT_PARALLEL_EXECUTION_PROMPT)
+        : undefined,
+    chromeEnabled: preferences?.chrome_enabled ?? false,
+    aiLanguage: preferences?.ai_language,
     backend,
-    queuedAt: Date.now(),
-  }
+  })
 
-  enqueueMessage(sessionId, queuedMessage)
-
-  logger.info('Background investigation enqueued', {
+  logger.info('Background investigation sent', {
     worktreeId,
     sessionId,
     type,

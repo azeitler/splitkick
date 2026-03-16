@@ -2,6 +2,7 @@ import { useCallback, type RefObject } from 'react'
 import { invoke } from '@/lib/transport'
 import { generateId } from '@/lib/uuid'
 import { toast } from 'sonner'
+import { persistEnqueue, persistRemoveQueued } from '@/services/chat'
 import { useChatStore } from '@/store/chat-store'
 import { buildMcpConfigJson } from '@/services/mcp'
 import { getFilename } from '@/lib/path-utils'
@@ -28,6 +29,7 @@ interface UsePendingAttachmentsParams {
   isCodexBackendRef: RefObject<boolean>
   mcpServersDataRef: RefObject<McpServerInfo[] | undefined>
   enabledMcpServersRef: RefObject<string[]>
+  selectedBackendRef: RefObject<'claude' | 'codex' | 'opencode'>
   setInputDraft: (sessionId: string, draft: string) => void
   sendMessageNow: (queuedMsg: QueuedMessage) => void
 }
@@ -48,6 +50,7 @@ export function usePendingAttachments({
   isCodexBackendRef,
   mcpServersDataRef,
   enabledMcpServersRef,
+  selectedBackendRef,
   setInputDraft,
   sendMessageNow,
 }: UsePendingAttachmentsParams) {
@@ -135,7 +138,8 @@ export function usePendingAttachments({
                 : undefined,
             mcpConfig: buildMcpConfigJson(
               mcpServersDataRef.current ?? [],
-              enabledMcpServersRef.current
+              enabledMcpServersRef.current,
+              selectedBackendRef.current
             ),
             commandAllowedTools: resolved.allowed_tools,
             queuedAt: Date.now(),
@@ -145,6 +149,9 @@ export function usePendingAttachments({
             useChatStore.getState()
           if (checkIsSendingNow(activeSessionId)) {
             enqueueMessage(activeSessionId, queuedMessage)
+            if (activeWorktreeId && activeWorktreePath) {
+              persistEnqueue(activeWorktreeId, activeWorktreePath, activeSessionId, queuedMessage)
+            }
           } else {
             sendMessageNow(queuedMessage)
           }
@@ -164,6 +171,13 @@ export function usePendingAttachments({
   const handleRemoveQueuedMessage = useCallback(
     (sessionId: string, messageId: string) => {
       useChatStore.getState().removeQueuedMessage(sessionId, messageId)
+      // Persist removal to backend for cross-client sync
+      const { sessionWorktreeMap, worktreePaths } = useChatStore.getState()
+      const wtId = sessionWorktreeMap[sessionId]
+      const wtPath = wtId ? worktreePaths[wtId] : undefined
+      if (wtId && wtPath) {
+        persistRemoveQueued(wtId, wtPath, sessionId, messageId)
+      }
     },
     []
   )

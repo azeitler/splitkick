@@ -6,6 +6,7 @@ import {
   chatQueryKeys,
   markPlanApproved as markPlanApprovedService,
   readPlanFile,
+  persistEnqueue,
 } from '@/services/chat'
 import { useChatStore } from '@/store/chat-store'
 import type {
@@ -22,9 +23,12 @@ import type { ReviewFinding } from '@/types/chat'
 import { formatAnswersAsNaturalLanguage } from '@/services/chat'
 import { parseReviewFindings, getFindingKey } from '../review-finding-utils'
 import { findPlanContent, findPlanFilePath } from '../tool-call-utils'
+import { navigateToApprovedWorktree } from '../worktree-approval-navigation'
+import { getCodexPermissionApprovalMode } from '../permission-approval-utils'
 import { generateId } from '@/lib/uuid'
 import { preferencesQueryKeys } from '@/services/preferences'
 import { useProjectsStore } from '@/store/projects-store'
+import { useUIStore } from '@/store/ui-store'
 import type { AppPreferences } from '@/types/preferences'
 import type { Worktree, WorktreeCreatedEvent, WorktreeCreateErrorEvent } from '@/types/projects'
 
@@ -379,8 +383,6 @@ export function useMessageHandlers({
       if (!sessionId || !worktreeId || !worktreePath) return
 
       // Mark plan as approved in the message (persisted to disk)
-      markPlanApprovedService(worktreeId, worktreePath, sessionId, messageId)
-
       // Optimistically update the UI to hide the approve button
       queryClient.setQueryData<Session>(
         chatQueryKeys.session(sessionId),
@@ -399,10 +401,25 @@ export function useMessageHandlers({
         }
       )
 
-      // Invalidate sessions list so canvas cards update
-      queryClient.invalidateQueries({
-        queryKey: chatQueryKeys.sessions(worktreeId),
-      })
+      queryClient.setQueryData<WorktreeSessions>(
+        chatQueryKeys.sessions(worktreeId),
+        old => {
+          if (!old) return old
+          return {
+            ...old,
+            sessions: old.sessions.map(s =>
+              s.id === sessionId
+                ? {
+                    ...s,
+                    waiting_for_input: false,
+                    pending_plan_message_id: undefined,
+                    waiting_for_input_type: undefined,
+                  }
+                : s
+            ),
+          }
+        }
+      )
 
       // Explicitly set to build mode (not toggle, to avoid switching back to plan if already in build)
       const {
@@ -414,6 +431,7 @@ export function useMessageHandlers({
         setExecutingMode,
         setSessionReviewing,
         setWaitingForInput,
+        setPendingPlanMessageId,
         clearToolCalls,
         clearStreamingContentBlocks,
       } = useChatStore.getState()
@@ -424,6 +442,7 @@ export function useMessageHandlers({
       clearStreamingContentBlocks(sessionId)
       setSessionReviewing(sessionId, false)
       setWaitingForInput(sessionId, false)
+      setPendingPlanMessageId(sessionId, null)
 
       // Scroll to bottom after DOM updates from collapsing the plan approval UI
       requestAnimationFrame(() => {
@@ -452,28 +471,59 @@ export function useMessageHandlers({
       addSendingSession(sessionId)
       setSelectedModel(sessionId, selectedModelRef.current)
       setExecutingMode(sessionId, 'build')
+      const markPromise = markPlanApprovedService(
+        worktreeId,
+        worktreePath,
+        sessionId,
+        messageId
+      ).catch(err => {
+        console.error('[useMessageHandlers] markPlanApproved failed:', err)
+      })
 
-      sendMessage.mutate(
-        {
-          sessionId,
-          worktreeId,
-          worktreePath,
-          message,
-          model: selectedModelRef.current,
-          executionMode: 'build',
-          thinkingLevel: selectedThinkingLevelRef.current,
-          effortLevel: useAdaptiveThinkingRef.current
-            ? selectedEffortLevelRef.current
-            : undefined,
-          mcpConfig: getMcpConfig(),
-          customProfileName: getCustomProfileName(),
-        },
-        {
-          onSettled: () => {
-            inputRef.current?.focus()
-          },
-        }
-      )
+      markPromise
+        .then(() =>
+          invoke('update_session_state', {
+            worktreeId,
+            worktreePath,
+            sessionId,
+            waitingForInput: false,
+            waitingForInputType: null,
+            selectedExecutionMode: 'build',
+          })
+        )
+        .catch(err => {
+          console.error(
+            '[useMessageHandlers] Failed to clear waiting state:',
+            err
+          )
+        })
+        .finally(() => {
+          queryClient.invalidateQueries({
+            queryKey: chatQueryKeys.sessions(worktreeId),
+          })
+
+          sendMessage.mutate(
+            {
+              sessionId,
+              worktreeId,
+              worktreePath,
+              message,
+              model: selectedModelRef.current,
+              executionMode: 'build',
+              thinkingLevel: selectedThinkingLevelRef.current,
+              effortLevel: useAdaptiveThinkingRef.current
+                ? selectedEffortLevelRef.current
+                : undefined,
+              mcpConfig: getMcpConfig(),
+              customProfileName: getCustomProfileName(),
+            },
+            {
+              onSettled: () => {
+                inputRef.current?.focus()
+              },
+            }
+          )
+        })
     },
     [
       activeSessionIdRef,
@@ -502,8 +552,6 @@ export function useMessageHandlers({
       if (!sessionId || !worktreeId || !worktreePath) return
 
       // Mark plan as approved in the message (persisted to disk)
-      markPlanApprovedService(worktreeId, worktreePath, sessionId, messageId)
-
       // Optimistically update the UI to hide the approve button
       queryClient.setQueryData<Session>(
         chatQueryKeys.session(sessionId),
@@ -522,10 +570,25 @@ export function useMessageHandlers({
         }
       )
 
-      // Invalidate sessions list so canvas cards update
-      queryClient.invalidateQueries({
-        queryKey: chatQueryKeys.sessions(worktreeId),
-      })
+      queryClient.setQueryData<WorktreeSessions>(
+        chatQueryKeys.sessions(worktreeId),
+        old => {
+          if (!old) return old
+          return {
+            ...old,
+            sessions: old.sessions.map(s =>
+              s.id === sessionId
+                ? {
+                    ...s,
+                    waiting_for_input: false,
+                    pending_plan_message_id: undefined,
+                    waiting_for_input_type: undefined,
+                  }
+                : s
+            ),
+          }
+        }
+      )
 
       // Set to yolo mode for auto-approval of all future tools
       const {
@@ -537,6 +600,7 @@ export function useMessageHandlers({
         setExecutingMode,
         setSessionReviewing,
         setWaitingForInput,
+        setPendingPlanMessageId,
         clearToolCalls,
         clearStreamingContentBlocks,
       } = useChatStore.getState()
@@ -547,6 +611,7 @@ export function useMessageHandlers({
       clearStreamingContentBlocks(sessionId)
       setSessionReviewing(sessionId, false)
       setWaitingForInput(sessionId, false)
+      setPendingPlanMessageId(sessionId, null)
 
       // Scroll to bottom after DOM updates from collapsing the plan approval UI
       requestAnimationFrame(() => {
@@ -572,28 +637,59 @@ export function useMessageHandlers({
       addSendingSession(sessionId)
       setSelectedModel(sessionId, selectedModelRef.current)
       setExecutingMode(sessionId, 'yolo')
+      const markPromise = markPlanApprovedService(
+        worktreeId,
+        worktreePath,
+        sessionId,
+        messageId
+      ).catch(err => {
+        console.error('[useMessageHandlers] markPlanApproved failed:', err)
+      })
 
-      sendMessage.mutate(
-        {
-          sessionId,
-          worktreeId,
-          worktreePath,
-          message,
-          model: selectedModelRef.current,
-          executionMode: 'yolo',
-          thinkingLevel: selectedThinkingLevelRef.current,
-          effortLevel: useAdaptiveThinkingRef.current
-            ? selectedEffortLevelRef.current
-            : undefined,
-          mcpConfig: getMcpConfig(),
-          customProfileName: getCustomProfileName(),
-        },
-        {
-          onSettled: () => {
-            inputRef.current?.focus()
-          },
-        }
-      )
+      markPromise
+        .then(() =>
+          invoke('update_session_state', {
+            worktreeId,
+            worktreePath,
+            sessionId,
+            waitingForInput: false,
+            waitingForInputType: null,
+            selectedExecutionMode: 'yolo',
+          })
+        )
+        .catch(err => {
+          console.error(
+            '[useMessageHandlers] Failed to clear waiting state:',
+            err
+          )
+        })
+        .finally(() => {
+          queryClient.invalidateQueries({
+            queryKey: chatQueryKeys.sessions(worktreeId),
+          })
+
+          sendMessage.mutate(
+            {
+              sessionId,
+              worktreeId,
+              worktreePath,
+              message,
+              model: selectedModelRef.current,
+              executionMode: 'yolo',
+              thinkingLevel: selectedThinkingLevelRef.current,
+              effortLevel: useAdaptiveThinkingRef.current
+                ? selectedEffortLevelRef.current
+                : undefined,
+              mcpConfig: getMcpConfig(),
+              customProfileName: getCustomProfileName(),
+            },
+            {
+              onSettled: () => {
+                inputRef.current?.focus()
+              },
+            }
+          )
+        })
     },
     [
       activeSessionIdRef,
@@ -1339,13 +1435,6 @@ export function useMessageHandlers({
 
       toast.loading('Sending plan...', { id: toastId })
 
-      // Navigate to new worktree
-      const projectsStore = useProjectsStore.getState()
-      projectsStore.expandProject(readyWorktree.project_id)
-      projectsStore.selectWorktree(readyWorktree.id)
-      store.registerWorktreePath(readyWorktree.id, readyWorktree.path)
-      store.setActiveWorktree(readyWorktree.id, readyWorktree.path)
-
       // Use the default session auto-created by the backend, or create one if none exists
       let newSession: Session
       try {
@@ -1368,6 +1457,28 @@ export function useMessageHandlers({
 
       store.setActiveSession(readyWorktree.id, newSession.id)
       store.addUserInitiatedSession(newSession.id)
+      const projectsStore = useProjectsStore.getState()
+      const uiStore = useUIStore.getState()
+      navigateToApprovedWorktree(
+        readyWorktree,
+        {
+          activeWorktreePath: store.activeWorktreePath,
+          sessionChatModalOpen: uiStore.sessionChatModalOpen,
+        },
+        {
+          expandProject: projectsStore.expandProject,
+          selectWorktree: projectsStore.selectWorktree,
+          registerWorktreePath: store.registerWorktreePath,
+          setActiveWorktree: store.setActiveWorktree,
+          openWorktreeModal: (worktreeId, worktreePath) => {
+            window.dispatchEvent(
+              new CustomEvent('open-worktree-modal', {
+                detail: { worktreeId, worktreePath },
+              })
+            )
+          },
+        }
+      )
 
       // Resolve model/backend/thinking based on mode
       const isYolo = mode === 'yolo'
@@ -1452,6 +1563,35 @@ export function useMessageHandlers({
       })
 
       toast.success(`Plan sent to new worktree (${modeLabel})`, { id: toastId })
+
+      // Optionally close the original session
+      if (prefs?.close_original_on_clear_context) {
+        const closeCommand =
+          prefs.removal_behavior === 'archive'
+            ? 'archive_session'
+            : 'close_session'
+
+        queryClient.setQueryData<WorktreeSessions>(
+          chatQueryKeys.sessions(worktreeId),
+          old => {
+            if (!old) return old
+            return {
+              ...old,
+              sessions: old.sessions.filter(s => s.id !== sessionId),
+            }
+          }
+        )
+
+        invoke(closeCommand, { worktreeId, worktreePath, sessionId })
+          .then(() =>
+            queryClient.invalidateQueries({
+              queryKey: chatQueryKeys.sessions(worktreeId),
+            })
+          )
+          .catch(err =>
+            console.error('[worktreeApproval] Failed to close original session:', err)
+          )
+      }
     },
     [
       activeSessionIdRef,
@@ -1570,13 +1710,6 @@ export function useMessageHandlers({
 
     toast.loading('Sending plan...', { id: toastId })
 
-    // Navigate to new worktree
-    const projectsStore = useProjectsStore.getState()
-    projectsStore.expandProject(readyWorktree.project_id)
-    projectsStore.selectWorktree(readyWorktree.id)
-    store.registerWorktreePath(readyWorktree.id, readyWorktree.path)
-    store.setActiveWorktree(readyWorktree.id, readyWorktree.path)
-
     // Use the default session auto-created by the backend, or create one if none exists
     let newSession: Session
     try {
@@ -1599,6 +1732,28 @@ export function useMessageHandlers({
 
     store.setActiveSession(readyWorktree.id, newSession.id)
     store.addUserInitiatedSession(newSession.id)
+    const projectsStore = useProjectsStore.getState()
+    const uiStore = useUIStore.getState()
+    navigateToApprovedWorktree(
+      readyWorktree,
+      {
+        activeWorktreePath: store.activeWorktreePath,
+        sessionChatModalOpen: uiStore.sessionChatModalOpen,
+      },
+      {
+        expandProject: projectsStore.expandProject,
+        selectWorktree: projectsStore.selectWorktree,
+        registerWorktreePath: store.registerWorktreePath,
+        setActiveWorktree: store.setActiveWorktree,
+        openWorktreeModal: (worktreeId, worktreePath) => {
+          window.dispatchEvent(
+            new CustomEvent('open-worktree-modal', {
+              detail: { worktreeId, worktreePath },
+            })
+          )
+        },
+      }
+    )
 
     // Resolve model/backend/thinking based on mode
     const isYolo = mode === 'yolo'
@@ -1683,6 +1838,35 @@ export function useMessageHandlers({
     })
 
     toast.success(`Plan sent to new worktree (${modeLabel})`, { id: toastId })
+
+    // Optionally close the original session
+    if (prefs?.close_original_on_clear_context) {
+      const closeCommand =
+        prefs.removal_behavior === 'archive'
+          ? 'archive_session'
+          : 'close_session'
+
+      queryClient.setQueryData<WorktreeSessions>(
+        chatQueryKeys.sessions(worktreeId),
+        old => {
+          if (!old) return old
+          return {
+            ...old,
+            sessions: old.sessions.filter(s => s.id !== sessionId),
+          }
+        }
+      )
+
+      invoke(closeCommand, { worktreeId, worktreePath, sessionId })
+        .then(() =>
+          queryClient.invalidateQueries({
+            queryKey: chatQueryKeys.sessions(worktreeId),
+          })
+        )
+        .catch(err =>
+          console.error('[streamingWorktreeApproval] Failed to close original session:', err)
+        )
+    }
   }, [
     activeSessionIdRef,
     activeWorktreeIdRef,
@@ -1728,6 +1912,7 @@ export function useMessageHandlers({
   // PERFORMANCE: Uses refs for session/worktree IDs to keep callback stable across session switches
   const handlePermissionApproval = useCallback(
     (sessionId: string, approvedPatterns: string[]) => {
+      console.warn('[useMessageHandlers] handlePermissionApproval CALLED', sessionId, approvedPatterns)
       const worktreeId = activeWorktreeIdRef.current
       const worktreePath = activeWorktreePathRef.current
       if (!worktreeId || !worktreePath) return
@@ -1754,10 +1939,43 @@ export function useMessageHandlers({
       // Codex path: send approval response via JSON-RPC (process is still running)
       if (backend === 'codex') {
         const denials = getPendingDenials(sessionId)
+        const currentMode =
+          useChatStore.getState().executionModes[sessionId] ??
+          executionModeRef.current
+        const nextMode = getCodexPermissionApprovalMode(currentMode, false)
         clearPendingDenials(sessionId)
         clearDeniedMessageContext(sessionId)
         setWaitingForInput(sessionId, false)
-        setExecutionMode(sessionId, 'build')
+        if (nextMode !== currentMode) {
+          setExecutionMode(sessionId, nextMode)
+          console.log(
+            '[useMessageHandlers] Codex path: Broadcasting executionMode for session',
+            sessionId,
+            nextMode
+          )
+          invoke('broadcast_session_setting', {
+            sessionId,
+            key: 'executionMode',
+            value: nextMode,
+          })
+            .then(() => {
+              console.log(
+                '[useMessageHandlers] Codex broadcast executionMode succeeded'
+              )
+            })
+            .catch(err => {
+              console.error(
+                '[useMessageHandlers] Codex broadcast executionMode failed:',
+                err
+              )
+            })
+          invoke('update_session_state', {
+            worktreeId,
+            worktreePath,
+            sessionId,
+            selectedExecutionMode: nextMode,
+          }).catch(() => undefined)
+        }
 
         requestAnimationFrame(() => {
           scrollToBottom(true)
@@ -1802,6 +2020,22 @@ export function useMessageHandlers({
       clearDeniedMessageContext(sessionId)
       setWaitingForInput(sessionId, false)
       setExecutionMode(sessionId, 'build')
+      console.log('[useMessageHandlers] Claude path: Broadcasting executionMode=build for session', sessionId)
+      invoke('broadcast_session_setting', {
+        sessionId,
+        key: 'executionMode',
+        value: 'build',
+      }).then(() => {
+        console.log('[useMessageHandlers] Claude broadcast executionMode=build succeeded')
+      }).catch(err => {
+        console.error('[useMessageHandlers] Claude broadcast executionMode=build failed:', err)
+      })
+      invoke('update_session_state', {
+        worktreeId,
+        worktreePath,
+        sessionId,
+        selectedExecutionMode: 'build',
+      }).catch(() => undefined)
 
       requestAnimationFrame(() => {
         scrollToBottom(true)
@@ -1908,10 +2142,30 @@ export function useMessageHandlers({
       // Codex path: accept current denial and switch to yolo for future messages
       if (backend === 'codex') {
         const denials = getPendingDenials(sessionId)
+        const currentMode =
+          useChatStore.getState().executionModes[sessionId] ??
+          executionModeRef.current
+        const nextMode = getCodexPermissionApprovalMode(currentMode, true)
         clearPendingDenials(sessionId)
         clearDeniedMessageContext(sessionId)
         setWaitingForInput(sessionId, false)
-        setMode(sessionId, 'yolo')
+        setMode(sessionId, nextMode)
+        invoke('broadcast_session_setting', {
+          sessionId,
+          key: 'executionMode',
+          value: nextMode,
+        }).catch(err => {
+          console.error(
+            '[useMessageHandlers] Codex broadcast executionMode=yolo failed:',
+            err
+          )
+        })
+        invoke('update_session_state', {
+          worktreeId,
+          worktreePath,
+          sessionId,
+          selectedExecutionMode: nextMode,
+        }).catch(() => undefined)
 
         requestAnimationFrame(() => {
           scrollToBottom(true)
@@ -2063,6 +2317,11 @@ export function useMessageHandlers({
           })
         }
       }
+      clearPendingDenials(sessionId)
+      clearDeniedMessageContext(sessionId)
+      setWaitingForInput(sessionId, false)
+      toast.info('Request cancelled')
+      return
     }
 
     clearPendingDenials(sessionId)
@@ -2139,23 +2398,25 @@ Please apply this fix to the file.`
 
       // If session is already busy, queue the fix message
       if (isSending(sessionId)) {
-        enqueueMessage(sessionId, {
+        const queuedMsg = {
           id: generateId(),
           message,
-          pendingImages: [],
-          pendingFiles: [],
-          pendingSkills: [],
-          pendingTextFiles: [],
+          pendingImages: [] as never[],
+          pendingFiles: [] as never[],
+          pendingSkills: [] as never[],
+          pendingTextFiles: [] as never[],
           model: selectedModelRef.current,
           provider: getCustomProfileName() ?? null,
-          executionMode: 'build',
+          executionMode: 'build' as const,
           thinkingLevel: selectedThinkingLevelRef.current,
           effortLevel: useAdaptiveThinkingRef.current
             ? selectedEffortLevelRef.current
             : undefined,
           mcpConfig: getMcpConfig(),
           queuedAt: Date.now(),
-        })
+        }
+        enqueueMessage(sessionId, queuedMsg)
+        persistEnqueue(worktreeId, worktreePath, sessionId, queuedMsg)
         toast.info('Fix queued — will start when current task completes')
         return
       }
@@ -2277,23 +2538,25 @@ Please apply all these fixes to the respective files.`
 
       // If session is already busy, queue the fix message
       if (isSending(sessionId)) {
-        enqueueMessage(sessionId, {
+        const queuedMsg = {
           id: generateId(),
           message,
-          pendingImages: [],
-          pendingFiles: [],
-          pendingSkills: [],
-          pendingTextFiles: [],
+          pendingImages: [] as never[],
+          pendingFiles: [] as never[],
+          pendingSkills: [] as never[],
+          pendingTextFiles: [] as never[],
           model: selectedModelRef.current,
           provider: getCustomProfileName() ?? null,
-          executionMode: 'build',
+          executionMode: 'build' as const,
           thinkingLevel: selectedThinkingLevelRef.current,
           effortLevel: useAdaptiveThinkingRef.current
             ? selectedEffortLevelRef.current
             : undefined,
           mcpConfig: getMcpConfig(),
           queuedAt: Date.now(),
-        })
+        }
+        enqueueMessage(sessionId, queuedMsg)
+        persistEnqueue(worktreeId, worktreePath, sessionId, queuedMsg)
         toast.info('Fix queued — will start when current task completes')
         return
       }

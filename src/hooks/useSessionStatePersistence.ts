@@ -1,11 +1,18 @@
 import { useEffect, useRef, useCallback, useMemo } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useChatStore } from '@/store/chat-store'
-import { useUpdateSessionState, useSessions } from '@/services/chat'
+import {
+  useUpdateSessionState,
+  useSessions,
+  chatQueryKeys,
+} from '@/services/chat'
 import { logger } from '@/lib/logger'
 import type {
   QuestionAnswer,
   PermissionDenial,
   ExecutionMode,
+  Session,
+  WorktreeSessions,
 } from '@/types/chat'
 
 // Simple debounce implementation with flush support
@@ -82,10 +89,7 @@ export function useSessionStatePersistence() {
     if (state.activeWorktreeId) {
       return state.activeSessionIds[state.activeWorktreeId] ?? null
     }
-    return (
-      Object.values(state.canvasSelectedSessionIds).find(id => id != null) ??
-      null
-    )
+    return null
   })
 
   // Derive worktree context via getState() (non-reactive) keyed on the reactive activeSessionId
@@ -113,6 +117,7 @@ export function useSessionStatePersistence() {
     effectiveWorktreePath
   )
 
+  const queryClient = useQueryClient()
   const { mutate: updateSessionState } = useUpdateSessionState()
 
   // Track if we're loading from session (to avoid save loop)
@@ -194,7 +199,12 @@ export function useSessionStatePersistence() {
         pendingPermissionDenials: state.pendingPermissionDenials,
         deniedMessageContext: state.deniedMessageContext,
         isReviewing: state.isReviewing,
-        waitingForInput: state.waitingForInput,
+        // Only persist waitingForInput when clearing it (user approval action).
+        // Setting it to true is handled by useStreamingEvents' chat:done handler
+        // which persists directly via invoke(). Persisting true here risks
+        // cross-client overwrites: native client's pauseSession sets true in its
+        // Zustand, then this debounced save writes it to disk after web cleared it.
+        waitingForInput: state.waitingForInput ? undefined : state.waitingForInput,
         planFilePath: state.planFilePath,
         pendingPlanMessageId: state.pendingPlanMessageId,
         enabledMcpServers: state.enabledMcpServers,
@@ -375,6 +385,11 @@ export function useSessionStatePersistence() {
       }
     }
 
+    // NOTE: Do NOT load queued_messages from session data into Zustand here.
+    // Queue state is synced in real-time via the queue:updated Tauri event
+    // (useMainWindowEventListeners). Loading from TanStack cache is redundant
+    // and can restore stale data, causing double execution.
+
     // When opening a session that's in plan-waiting state (Codex/Opencode plan mode),
     // transition it to review — viewing the session acts as acknowledgment.
     if (
@@ -390,6 +405,41 @@ export function useSessionStatePersistence() {
       updates.reviewingSessions = {
         ...(updates.reviewingSessions ?? currentState.reviewingSessions),
         [activeSessionId]: true,
+      }
+      // Update TanStack Query cache immediately to prevent timing gap
+      // where persistedWaitingForInput keeps status as "waiting"
+      queryClient.setQueryData<Session>(
+        chatQueryKeys.session(activeSessionId),
+        old =>
+          old
+            ? {
+                ...old,
+                waiting_for_input: false,
+                is_reviewing: true,
+                waiting_for_input_type: null,
+              }
+            : old
+      )
+      if (effectiveWorktreeId) {
+        queryClient.setQueryData<WorktreeSessions>(
+          chatQueryKeys.sessions(effectiveWorktreeId),
+          old => {
+            if (!old) return old
+            return {
+              ...old,
+              sessions: old.sessions.map(s =>
+                s.id === activeSessionId
+                  ? {
+                      ...s,
+                      waiting_for_input: false,
+                      is_reviewing: true,
+                      waiting_for_input_type: null,
+                    }
+                  : s
+              ),
+            }
+          }
+        )
       }
       // Persist the transition to disk
       if (effectiveWorktreeId && effectiveWorktreePath) {
@@ -419,6 +469,100 @@ export function useSessionStatePersistence() {
 
     logger.debug('Session state loaded', { sessionId: activeSessionId })
   }, [activeSessionId, sessionsData, getCurrentSessionState])
+
+  // Auto-transition plan-waiting codex/opencode sessions to review when viewed.
+  // This runs independently of the load effect and is NOT blocked by loadedSessionRef,
+  // handling cases where the session was already loaded when it entered plan-waiting.
+  useEffect(() => {
+    if (
+      !activeSessionId ||
+      !sessionsData ||
+      !effectiveWorktreeId ||
+      !effectiveWorktreePath
+    )
+      return
+
+    const session = sessionsData.sessions.find(s => s.id === activeSessionId)
+    if (!session) return
+
+    // Only for non-claude sessions in plan-waiting state
+    if (
+      !session.waiting_for_input ||
+      session.waiting_for_input_type !== 'plan' ||
+      session.backend === 'claude'
+    )
+      return
+
+    // Guard: if Zustand already shows review + not waiting, skip (prevents loops)
+    const state = useChatStore.getState()
+    if (
+      (state.reviewingSessions[activeSessionId] ?? false) &&
+      !(state.waitingForInputSessionIds[activeSessionId] ?? false)
+    )
+      return
+
+    // Transition Zustand state
+    useChatStore.setState({
+      waitingForInputSessionIds: {
+        ...state.waitingForInputSessionIds,
+        [activeSessionId]: false,
+      },
+      reviewingSessions: {
+        ...state.reviewingSessions,
+        [activeSessionId]: true,
+      },
+    })
+
+    // Update TanStack Query cache immediately to prevent timing gap
+    queryClient.setQueryData<Session>(
+      chatQueryKeys.session(activeSessionId),
+      old =>
+        old
+          ? {
+              ...old,
+              waiting_for_input: false,
+              is_reviewing: true,
+              waiting_for_input_type: null,
+            }
+          : old
+    )
+    queryClient.setQueryData<WorktreeSessions>(
+      chatQueryKeys.sessions(effectiveWorktreeId),
+      old => {
+        if (!old) return old
+        return {
+          ...old,
+          sessions: old.sessions.map(s =>
+            s.id === activeSessionId
+              ? {
+                  ...s,
+                  waiting_for_input: false,
+                  is_reviewing: true,
+                  waiting_for_input_type: null,
+                }
+              : s
+          ),
+        }
+      }
+    )
+
+    // Persist to disk
+    updateSessionState({
+      worktreeId: effectiveWorktreeId,
+      worktreePath: effectiveWorktreePath,
+      sessionId: activeSessionId,
+      isReviewing: true,
+      waitingForInput: false,
+      waitingForInputType: null,
+    })
+  }, [
+    activeSessionId,
+    sessionsData,
+    effectiveWorktreeId,
+    effectiveWorktreePath,
+    updateSessionState,
+    queryClient,
+  ])
 
   // Subscribe to Zustand changes and save to session file
   useEffect(() => {

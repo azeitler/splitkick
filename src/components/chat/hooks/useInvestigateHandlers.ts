@@ -313,7 +313,8 @@ export function useInvestigateHandlers({
             : undefined,
           mcpConfig: buildMcpConfigJson(
             mcpServersDataRef.current ?? [],
-            enabledMcpServersRef.current
+            enabledMcpServersRef.current,
+            investigateBackend
           ),
           customProfileName: resolvedInvestigateProfile,
           parallelExecutionPrompt:
@@ -547,7 +548,8 @@ export function useInvestigateHandlers({
               : undefined,
             mcpConfig: buildMcpConfigJson(
               mcpServersDataRef.current ?? [],
-              enabledMcpServersRef.current
+              enabledMcpServersRef.current,
+              investigateBackend
             ),
             customProfileName: resolvedInvestigateProfile,
             parallelExecutionPrompt:
@@ -618,5 +620,167 @@ export function useInvestigateHandlers({
     ]
   )
 
-  return { handleInvestigate, handleInvestigateWorkflowRun }
+  const handleReviewComments = useCallback(
+    async (prompt: string) => {
+      const worktreeId = activeWorktreeIdRef.current
+      const worktreePath = activeWorktreePathRef.current
+      if (!worktreeId || !worktreePath) return
+
+      const reviewCommentsModel =
+        preferences?.magic_prompt_models?.review_comments_model ??
+        selectedModelRef.current
+      const reviewCommentsProvider = resolveMagicPromptProvider(
+        preferences?.magic_prompt_providers,
+        'review_comments_provider',
+        preferences?.default_provider
+      )
+      const { customProfileName: resolvedProfile } = resolveCustomProfile(
+        reviewCommentsModel,
+        reviewCommentsProvider
+      )
+
+      const isCustom = Boolean(
+        reviewCommentsProvider && reviewCommentsProvider !== '__anthropic__'
+      )
+      const useAdaptive =
+        !isCustom &&
+        supportsAdaptiveThinking(reviewCommentsModel, cliVersion)
+      const reviewCommentsBackend = resolveBackend(reviewCommentsModel)
+
+      // Helper to send the message once we have a session ID
+      const sendInSession = (sessionId: string) => {
+        const {
+          addSendingSession,
+          setLastSentMessage,
+          setError,
+          setSelectedModel,
+          setSelectedProvider,
+          setExecutingMode,
+          setSelectedBackend: setZustandBackend,
+        } = useChatStore.getState()
+
+        setLastSentMessage(sessionId, prompt)
+        setError(sessionId, null)
+        addSendingSession(sessionId)
+        setSelectedModel(sessionId, reviewCommentsModel)
+        setSelectedProvider(sessionId, reviewCommentsProvider)
+        setExecutingMode(sessionId, executionModeRef.current)
+        setZustandBackend(sessionId, reviewCommentsBackend)
+
+        useChatStore.getState().setSelectedModel(sessionId, reviewCommentsModel)
+
+        setSessionProvider.mutate({
+          sessionId,
+          worktreeId,
+          worktreePath,
+          provider: reviewCommentsProvider,
+        })
+        setSessionBackend.mutate({
+          sessionId,
+          worktreeId,
+          worktreePath,
+          backend: reviewCommentsBackend,
+        })
+        setSessionModel.mutate({
+          sessionId,
+          worktreeId,
+          worktreePath,
+          model: reviewCommentsModel,
+        })
+
+        queryClient.setQueryData(
+          chatQueryKeys.session(sessionId),
+          (old: Session | null | undefined) =>
+            old
+              ? {
+                  ...old,
+                  backend: reviewCommentsBackend,
+                  selected_model: reviewCommentsModel,
+                }
+              : old
+        )
+
+        sendMessage.mutate(
+          {
+            sessionId,
+            worktreeId,
+            worktreePath,
+            message: prompt,
+            model: reviewCommentsModel,
+            executionMode: executionModeRef.current,
+            thinkingLevel: selectedThinkingLevelRef.current,
+            effortLevel: useAdaptive
+              ? selectedEffortLevelRef.current
+              : undefined,
+            mcpConfig: buildMcpConfigJson(
+              mcpServersDataRef.current ?? [],
+              enabledMcpServersRef.current,
+              reviewCommentsBackend
+            ),
+            customProfileName: resolvedProfile,
+            parallelExecutionPrompt:
+              preferences?.parallel_execution_prompt_enabled
+                ? (preferences.magic_prompts?.parallel_execution ??
+                  DEFAULT_PARALLEL_EXECUTION_PROMPT)
+                : undefined,
+            chromeEnabled: preferences?.chrome_enabled ?? false,
+            aiLanguage: preferences?.ai_language,
+            backend: reviewCommentsBackend,
+          },
+          { onSettled: () => inputRef.current?.focus() }
+        )
+      }
+
+      // Create a new session for review comments
+      createSession.mutate(
+        { worktreeId, worktreePath },
+        {
+          onSuccess: session => {
+            const { setActiveSession, copySessionSettings, activeSessionIds } =
+              useChatStore.getState()
+            const currentSessionId = activeSessionIds[worktreeId]
+            if (currentSessionId) {
+              copySessionSettings(currentSessionId, session.id)
+            }
+            setActiveSession(worktreeId, session.id)
+            queryClient.invalidateQueries({
+              queryKey: chatQueryKeys.sessions(worktreeId),
+            })
+            sendInSession(session.id)
+          },
+          onError: error => {
+            console.error('[REVIEW-COMMENTS] Failed to create session:', error)
+          },
+        }
+      )
+    },
+    [
+      sendMessage,
+      createSession,
+      queryClient,
+      preferences?.default_provider,
+      preferences?.parallel_execution_prompt_enabled,
+      preferences?.magic_prompts?.parallel_execution,
+      preferences?.magic_prompt_models?.review_comments_model,
+      preferences?.magic_prompt_providers,
+      preferences?.chrome_enabled,
+      preferences?.ai_language,
+      setSessionProvider,
+      setSessionBackend,
+      setSessionModel,
+      resolveCustomProfile,
+      cliVersion,
+      inputRef,
+      activeWorktreeIdRef,
+      activeWorktreePathRef,
+      selectedModelRef,
+      selectedThinkingLevelRef,
+      selectedEffortLevelRef,
+      executionModeRef,
+      mcpServersDataRef,
+      enabledMcpServersRef,
+    ]
+  )
+
+  return { handleInvestigate, handleInvestigateWorkflowRun, handleReviewComments }
 }

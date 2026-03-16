@@ -23,13 +23,12 @@ interface MagicCommandHandlers {
   handleResolveConflicts: () => void
   handleInvestigateWorkflowRun: (detail: WorkflowRunDetail) => void
   handleInvestigate: (type: 'issue' | 'pr') => void
+  handleReviewComments: (prompt: string) => void
 }
 
 interface UseMagicCommandsOptions extends MagicCommandHandlers {
   /** Whether this ChatWindow is rendered in modal mode */
   isModal?: boolean
-  /** Whether the main ChatWindow is currently showing canvas tab */
-  isViewingCanvasTab?: boolean
   /** Whether the session chat modal is currently open */
   sessionModalOpen?: boolean
 }
@@ -40,7 +39,7 @@ interface UseMagicCommandsOptions extends MagicCommandHandlers {
  * PERFORMANCE: Uses refs to keep event listener stable across handler changes.
  * The event listener is set up once and uses refs to access current handler versions.
  *
- * DEDUPLICATION: When main ChatWindow shows canvas view, it skips listener registration.
+ * DEDUPLICATION: When a session modal is open, the main ChatWindow skips listener registration.
  * The modal ChatWindow (inside SessionChatModal) will handle events instead.
  */
 export function useMagicCommands({
@@ -56,8 +55,8 @@ export function useMagicCommands({
   handleResolveConflicts,
   handleInvestigateWorkflowRun,
   handleInvestigate,
+  handleReviewComments,
   isModal = false,
-  isViewingCanvasTab = false,
   sessionModalOpen = false,
 }: UseMagicCommandsOptions): void {
   // Store handlers in ref so event listener always has access to current versions
@@ -74,6 +73,7 @@ export function useMagicCommands({
     handleResolveConflicts,
     handleInvestigateWorkflowRun,
     handleInvestigate,
+    handleReviewComments,
   })
 
   // Update refs in useLayoutEffect to avoid linter warning about ref updates during render
@@ -92,14 +92,14 @@ export function useMagicCommands({
       handleResolveConflicts,
       handleInvestigateWorkflowRun,
       handleInvestigate,
+      handleReviewComments,
     }
   })
 
   useEffect(() => {
-    // If main ChatWindow is showing canvas view AND a session modal is open,
-    // don't register listener here — the modal ChatWindow will handle events instead.
-    // When on canvas WITHOUT a modal, the main ChatWindow still listens (for canvas-allowed commands).
-    if (!isModal && isViewingCanvasTab && sessionModalOpen) {
+    // If a session modal is open, don't register listener here — the modal
+    // ChatWindow will handle events instead.
+    if (!isModal && sessionModalOpen) {
       return
     }
 
@@ -149,6 +149,9 @@ export function useMagicCommands({
         case 'investigate-workflow-run':
           handlers.handleInvestigateWorkflowRun(rest as WorkflowRunDetail)
           break
+        case 'review-comments':
+          handlers.handleReviewComments((rest as { prompt: string }).prompt)
+          break
       }
     }
 
@@ -161,15 +164,13 @@ export function useMagicCommands({
         'magic-command',
         handleMagicCommand as EventListener
       )
-  }, [isModal, isViewingCanvasTab, sessionModalOpen]) // Re-register when modal/canvas state changes
+  }, [isModal, sessionModalOpen]) // Re-register when modal state changes
 
-  // Consume pending magic command set by MagicModal when navigating from canvas.
-  // Only the non-modal, non-canvas ChatWindow should consume it (the one that just mounted).
+  // Consume pending magic command set by MagicModal or ReviewCommentsDialog.
+  // Any mounted ChatWindow can consume it (cleared immediately to prevent double-processing).
   const pendingMagicCommand = useChatStore(state => state.pendingMagicCommand)
   useEffect(() => {
     if (!pendingMagicCommand) return
-    if (isModal) return
-    if (isViewingCanvasTab) return
 
     useChatStore.getState().setPendingMagicCommand(null)
 
@@ -181,6 +182,11 @@ export function useMagicCommands({
       case 'resolve-conflicts':
         handlers.handleResolveConflicts()
         break
+      case 'review-comments':
+        if (pendingMagicCommand.prompt) {
+          handlers.handleReviewComments(pendingMagicCommand.prompt)
+        }
+        break
     }
-  }, [pendingMagicCommand, isModal, isViewingCanvasTab])
+  }, [pendingMagicCommand, isModal])
 }

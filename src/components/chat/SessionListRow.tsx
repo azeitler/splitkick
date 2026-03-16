@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getLabelTextColor } from '@/lib/label-colors'
+import { copyToClipboard } from '@/lib/clipboard'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Kbd } from '@/components/ui/kbd'
@@ -30,8 +31,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
-import { getResumeCommand, statusConfig } from './session-card-utils'
-import type { SessionCardProps } from './SessionCard'
+import { getResumeCommand, statusConfig, type SessionCardProps } from './session-card-utils'
 import { useIsMobile } from '@/hooks/use-mobile'
 
 export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
@@ -322,8 +322,7 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
           {resumeCommand && (
             <ContextMenuItem
               onSelect={() => {
-                void navigator.clipboard
-                  .writeText(resumeCommand)
+                void copyToClipboard(resumeCommand)
                   .then(() => toast.success('Resume command copied'))
                   .catch(() => toast.error('Failed to copy resume command'))
               }}

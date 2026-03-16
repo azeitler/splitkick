@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect, useCallback } from 'react'
+import { Fragment, useState, useEffect, useCallback, useSyncExternalStore } from 'react'
 import {
   LayoutDashboard,
   Command,
@@ -9,6 +9,8 @@ import {
   Terminal,
   Sparkles,
   FileText,
+  Github,
+  GitPullRequest,
 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -33,20 +35,24 @@ import {
   PopoverContent,
 } from '@/components/ui/popover'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { invoke } from '@/lib/transport'
 import { useWsConnectionStatus } from '@/lib/transport'
 import { isNativeApp } from '@/lib/environment'
+import { openExternal, preOpenWindow } from '@/lib/platform'
+import { copyToClipboard } from '@/lib/clipboard'
 import { useUIStore } from '@/store/ui-store'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { chatQueryKeys } from '@/services/chat'
 import { usePreferences } from '@/services/preferences'
+import { useWorktree, type GitHubRemote } from '@/services/projects'
 import { useCodexCliAuth, useCodexCliStatus, useCodexUsage } from '@/services/codex-cli'
 import type { WorktreeSessions } from '@/types/chat'
 import { DEFAULT_KEYBINDINGS, formatShortcutDisplay } from '@/types/keybindings'
 import type { KeybindingHint } from '@/components/ui/keybinding-hints'
 import { getResumeCommand } from '@/components/chat/session-card-utils'
 
-// Canvas-specific hints (same set used in both WorktreeCanvasView and ProjectCanvasView)
+// Canvas-specific hints (used in ProjectCanvasView)
 const CANVAS_HINTS: KeybindingHint[] = [
   { shortcut: 'Enter', label: 'open' },
   { shortcut: DEFAULT_KEYBINDINGS.open_in_modal as string, label: 'open in...' },
@@ -57,7 +63,7 @@ const CANVAS_HINTS: KeybindingHint[] = [
   { shortcut: DEFAULT_KEYBINDINGS.close_session_or_worktree as string, label: 'close' },
 ]
 
-function KeybindingHintsButton({ hints }: { hints: KeybindingHint[] }) {
+function KeybindingHintsButton({ hints, side = 'top' }: { hints: KeybindingHint[]; side?: 'top' | 'right' }) {
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -70,7 +76,7 @@ function KeybindingHintsButton({ hints }: { hints: KeybindingHint[] }) {
           <span className="sr-only">Keyboard shortcuts</span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent side="top" align="start" className="w-auto min-w-[200px] p-3">
+      <PopoverContent side={side} align="start" className="w-auto min-w-[200px] p-3">
         <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 items-center">
           {hints.map(hint => (
             <Fragment key={hint.shortcut}>
@@ -113,11 +119,25 @@ function CodexIcon({ className }: { className: string }) {
   )
 }
 
+const WIDE_BREAKPOINT = 1280
+const lgQuery = `(min-width: ${WIDE_BREAKPOINT}px)`
+function subscribeLg(cb: () => void) {
+  const mql = window.matchMedia(lgQuery)
+  mql.addEventListener('change', cb)
+  return () => mql.removeEventListener('change', cb)
+}
+function snapshotLg() {
+  return window.matchMedia(lgQuery).matches
+}
+const serverLg = () => true
+
 export function FloatingDock() {
   const isMobile = useIsMobile()
+  const isLg = useSyncExternalStore(subscribeLg, snapshotLg, serverLg)
   const { data: preferences } = usePreferences()
   const queryClient = useQueryClient()
 
+  const selectedProjectId = useProjectsStore(state => state.selectedProjectId)
   const selectedWorktreeId = useProjectsStore(state => state.selectedWorktreeId)
   const activeWorktreeId = useChatStore(state => state.activeWorktreeId)
   const sessionChatModalOpen = useUIStore(state => state.sessionChatModalOpen)
@@ -127,6 +147,7 @@ export function FloatingDock() {
   const currentWorktreeId = sessionChatModalOpen
     ? (sessionChatModalWorktreeId ?? activeWorktreeId ?? selectedWorktreeId)
     : (activeWorktreeId ?? selectedWorktreeId)
+  const { data: worktree } = useWorktree(isMobile ? currentWorktreeId : null)
   const activeSessionId = useChatStore(state =>
     currentWorktreeId ? state.activeSessionIds[currentWorktreeId] : undefined
   )
@@ -222,11 +243,54 @@ export function FloatingDock() {
   const handleCopyResumeCommand = useCallback(() => {
     const commandToCopy = getActiveResumeCommand() ?? resumeCommand
     if (!commandToCopy) return
-    void navigator.clipboard
-      .writeText(commandToCopy)
+    void copyToClipboard(commandToCopy)
       .then(() => toast.success('Resume command copied'))
       .catch(() => toast.error('Failed to copy resume command'))
   }, [getActiveResumeCommand, resumeCommand])
+
+  const handleOpenGitHub = useCallback(() => {
+    const branch = worktree?.branch
+    if (!branch) {
+      if (isNativeApp()) {
+        if (selectedProjectId) {
+          invoke('open_project_on_github', { projectId: selectedProjectId })
+        }
+      } else {
+        // Web access: get URL and open client-side (open_project_on_github opens on the server)
+        const targetPath = worktree?.path
+        if (targetPath) {
+          const win = preOpenWindow()
+          invoke<string>('get_github_repo_url', { repoPath: targetPath })
+            .then(url => openExternal(url, win))
+            .catch(() => { win?.close(); toast.error('Failed to open GitHub') })
+        }
+      }
+      return
+    }
+    const targetPath = worktree?.path
+    if (!targetPath) return
+    // Pre-open window to avoid mobile popup blockers
+    const win = preOpenWindow()
+    invoke<GitHubRemote[]>('get_github_remotes', { repoPath: targetPath })
+      .then(remotes => {
+        if (!remotes || remotes.length <= 1) {
+          const url = remotes?.[0]?.url
+          if (url) openExternal(`${url}/tree/${branch}`, win)
+          else win?.close()
+        } else {
+          win?.close()
+          useUIStore.getState().openRemotePicker(targetPath, remoteName => {
+            const remote = remotes.find(r => r.name === remoteName)
+            if (remote) openExternal(`${remote.url}/tree/${branch}`)
+          })
+        }
+      })
+      .catch(() => { win?.close(); toast.error('Failed to fetch remotes') })
+  }, [worktree?.branch, worktree?.path, selectedProjectId])
+
+  const handleOpenPR = useCallback(() => {
+    if (worktree?.pr_url) openExternal(worktree.pr_url)
+  }, [worktree?.pr_url])
 
   // Listen for keyboard shortcut event
   useEffect(() => {
@@ -262,9 +326,11 @@ export function FloatingDock() {
   const isWebAccess = !isNativeApp()
   const showConnectionIndicator = isWebAccess
   const showKeybindingHints = isNativeApp() && !isMobile
+  const popoverSide = (isMobile || isLg) ? 'top' : 'right' as const
+  const popoverAlign = isMobile ? 'end' : 'start' as const
 
   return (
-    <div className="absolute bottom-4 right-4 z-10 flex items-center gap-0.5 rounded-full border border-border/30 bg-background/60 backdrop-blur-md px-1 py-0.5 sm:left-4 sm:right-auto">
+    <div className="absolute bottom-4 right-4 z-10 flex flex-row items-center gap-0.5 rounded-full border border-border/30 bg-background/60 backdrop-blur-md px-1 py-0.5 sm:left-4 sm:right-auto sm:flex-col sm:rounded-2xl sm:px-0.5 sm:py-1 xl:flex-row xl:rounded-full xl:px-1 xl:py-0.5">
       <DropdownMenu open={menuOpen} onOpenChange={handleQuickMenuOpenChange}>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -279,14 +345,14 @@ export function FloatingDock() {
               </Button>
             </DropdownMenuTrigger>
           </TooltipTrigger>
-          <TooltipContent side="top">
+          <TooltipContent side={popoverSide}>
             Menu{' '}
             <kbd className="ml-1 text-[0.625rem] opacity-60">{menuShortcut}</kbd>
           </TooltipContent>
         </Tooltip>
         <DropdownMenuContent
-          side="top"
-          align="start"
+          side={popoverSide}
+          align={popoverAlign}
           className="min-w-[200px]"
           onEscapeKeyDown={e => e.stopPropagation()}
         >
@@ -321,6 +387,21 @@ export function FloatingDock() {
             <FileText className="mr-2 h-4 w-4" />
             View Plan
           </DropdownMenuItem>
+          {isMobile && currentWorktreeId && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleOpenGitHub}>
+                <Github className="mr-2 h-4 w-4" />
+                GitHub
+              </DropdownMenuItem>
+              {worktree?.pr_url && (
+                <DropdownMenuItem onClick={handleOpenPR}>
+                  <GitPullRequest className="mr-2 h-4 w-4" />
+                  PR #{worktree.pr_number}
+                </DropdownMenuItem>
+              )}
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -336,7 +417,7 @@ export function FloatingDock() {
             <span className="sr-only">Command Palette</span>
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="top">
+        <TooltipContent side={popoverSide}>
           Command Palette{' '}
           <kbd className="ml-1 text-[0.625rem] opacity-60">⌘K</kbd>
         </TooltipContent>
@@ -349,22 +430,25 @@ export function FloatingDock() {
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
-                  size="sm"
-                  className="h-7 w-[88px] justify-center rounded-full px-2 text-muted-foreground hover:text-foreground"
+                  size={isLg ? 'sm' : 'icon'}
+                  className={isLg
+                    ? 'h-7 w-[88px] justify-center rounded-full px-2 text-muted-foreground hover:text-foreground'
+                    : 'h-7 w-7 rounded-full text-muted-foreground hover:text-foreground'
+                  }
                 >
-                  <activeUsageEntry.Icon className="mr-1 size-3.5 shrink-0" />
-                  <span className="text-[11px] leading-none tabular-nums">{usageBadge.text}</span>
+                  <activeUsageEntry.Icon className={isLg ? 'mr-1 size-3.5 shrink-0' : 'size-4'} />
+                  {isLg && <span className="text-[11px] leading-none tabular-nums">{usageBadge.text}</span>}
                 </Button>
               </DropdownMenuTrigger>
             </TooltipTrigger>
-            <TooltipContent side="top">
+            <TooltipContent side={popoverSide}>
               {activeUsageEntry.label} Session|Weekly{' '}
               <kbd className="ml-1 text-[0.625rem] opacity-60">{usageShortcut}</kbd>
             </TooltipContent>
           </Tooltip>
           <DropdownMenuContent
-            side="top"
-            align="start"
+            side={popoverSide}
+            align={popoverAlign}
             className="min-w-[180px]"
             onEscapeKeyDown={e => e.stopPropagation()}
           >
@@ -405,7 +489,7 @@ export function FloatingDock() {
       )}
 
       {showConnectionIndicator && <ConnectionIndicator />}
-      {showKeybindingHints && <KeybindingHintsButton hints={CANVAS_HINTS} />}
+      {showKeybindingHints && <KeybindingHintsButton hints={CANVAS_HINTS} side={popoverSide} />}
     </div>
   )
 }

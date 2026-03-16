@@ -262,12 +262,30 @@ export async function performGitPull(opts: GitPullOptions): Promise<void> {
           stashErrStr.includes('CONFLICT') ||
           stashErrStr.includes('Merge conflict')
         ) {
-          toast.warning('Stash pop caused conflicts. Resolve manually.', {
+          toast.warning('Auto-stash pop caused merge conflicts', {
             id: toastId,
+            duration: Infinity,
+            action: {
+              label: 'Resolve Conflicts',
+              onClick: () => {
+                window.dispatchEvent(
+                  new CustomEvent('magic-command', {
+                    detail: { command: 'resolve-conflicts' },
+                  })
+                )
+              },
+            },
           })
           onMergeConflict?.()
         } else {
-          toast.error(`Auto-stash failed: ${stashErrStr}`, { id: toastId })
+          toast.error('Auto-stash failed', {
+            id: toastId,
+            duration: Infinity,
+            description:
+              stashErrStr.length > 200
+                ? stashErrStr.slice(0, 200) + '…'
+                : stashErrStr,
+          })
         }
       }
       return
@@ -275,7 +293,20 @@ export async function performGitPull(opts: GitPullOptions): Promise<void> {
 
     // Merge conflict path
     if (errorStr.includes('Merge conflicts in:')) {
-      toast.warning('Pull resulted in merge conflicts', { id: toastId })
+      toast.warning('Pull resulted in merge conflicts', {
+        id: toastId,
+        duration: Infinity,
+        action: {
+          label: 'Resolve Conflicts',
+          onClick: () => {
+            window.dispatchEvent(
+              new CustomEvent('magic-command', {
+                detail: { command: 'resolve-conflicts' },
+              })
+            )
+          },
+        },
+      })
       onMergeConflict?.()
       return
     }
