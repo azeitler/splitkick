@@ -8445,24 +8445,27 @@ fn resolve_command_interpolations(content: &str, working_dir: &str) -> String {
     resolved
 }
 
-/// List Claude CLI skills from ~/.claude/skills/
-/// Skills are directories containing a SKILL.md file
-#[tauri::command]
-pub async fn list_claude_skills() -> Result<Vec<ClaudeSkill>, String> {
-    log::trace!("Listing Claude CLI skills");
+/// Get home directory with Windows USERPROFILE fallback
+fn get_home_dir() -> Option<std::path::PathBuf> {
+    dirs::home_dir().or_else(|| std::env::var("USERPROFILE").ok().map(std::path::PathBuf::from))
+}
 
-    let home = dirs::home_dir().ok_or_else(|| "Failed to get home directory".to_string())?;
-    let skills_dir = home.join(".claude").join("skills");
-
-    if !skills_dir.exists() {
-        log::trace!("Skills directory does not exist: {:?}", skills_dir);
-        return Ok(Vec::new());
+/// Collect skills from a directory into a map (later inserts override earlier ones)
+fn collect_skills_from_dir(
+    dir: &std::path::Path,
+    skills: &mut std::collections::HashMap<String, ClaudeSkill>,
+) {
+    if !dir.exists() {
+        return;
     }
 
-    let mut skills = Vec::new();
-
-    let entries = std::fs::read_dir(&skills_dir)
-        .map_err(|e| format!("Failed to read skills directory: {e}"))?;
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(e) => {
+            log::warn!("Failed to read skills directory {dir:?}: {e}");
+            return;
+        }
+    };
 
     for entry in entries {
         let entry = match entry {
@@ -8474,13 +8477,10 @@ pub async fn list_claude_skills() -> Result<Vec<ClaudeSkill>, String> {
         };
 
         let path = entry.path();
-
-        // Only process directories
         if !path.is_dir() {
             continue;
         }
 
-        // Check for SKILL.md inside the directory
         let skill_file = path.join("SKILL.md");
         if !skill_file.exists() {
             continue;
@@ -8496,7 +8496,6 @@ pub async fn list_claude_skills() -> Result<Vec<ClaudeSkill>, String> {
             continue;
         }
 
-        // Try to extract description from first line of SKILL.md (if starts with #)
         let description = std::fs::read_to_string(&skill_file)
             .ok()
             .and_then(|content| {
@@ -8506,35 +8505,33 @@ pub async fn list_claude_skills() -> Result<Vec<ClaudeSkill>, String> {
                     .and_then(|line| line.strip_prefix("# ").map(|s| s.to_string()))
             });
 
-        skills.push(ClaudeSkill {
-            name,
-            path: skill_file.to_string_lossy().to_string(),
-            description,
-        });
+        skills.insert(
+            name.clone(),
+            ClaudeSkill {
+                name,
+                path: skill_file.to_string_lossy().to_string(),
+                description,
+            },
+        );
     }
-
-    skills.sort_by(|a, b| a.name.cmp(&b.name));
-    log::trace!("Found {} Claude CLI skills", skills.len());
-    Ok(skills)
 }
 
-/// List Claude CLI custom commands from ~/.claude/commands/
-#[tauri::command]
-pub async fn list_claude_commands() -> Result<Vec<ClaudeCommand>, String> {
-    log::trace!("Listing Claude CLI custom commands");
-
-    let home = dirs::home_dir().ok_or_else(|| "Failed to get home directory".to_string())?;
-    let commands_dir = home.join(".claude").join("commands");
-
-    if !commands_dir.exists() {
-        log::trace!("Commands directory does not exist: {:?}", commands_dir);
-        return Ok(Vec::new());
+/// Collect commands from a directory into a map (later inserts override earlier ones)
+fn collect_commands_from_dir(
+    dir: &std::path::Path,
+    commands: &mut std::collections::HashMap<String, ClaudeCommand>,
+) {
+    if !dir.exists() {
+        return;
     }
 
-    let mut commands = Vec::new();
-
-    let entries = std::fs::read_dir(&commands_dir)
-        .map_err(|e| format!("Failed to read commands directory: {e}"))?;
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(e) => {
+            log::warn!("Failed to read commands directory {dir:?}: {e}");
+            return;
+        }
+    };
 
     for entry in entries {
         let entry = match entry {
@@ -8546,8 +8543,6 @@ pub async fn list_claude_commands() -> Result<Vec<ClaudeCommand>, String> {
         };
 
         let path = entry.path();
-
-        // Only process .md files
         if path.extension().is_none_or(|ext| ext != "md") {
             continue;
         }
@@ -8567,13 +8562,65 @@ pub async fn list_claude_commands() -> Result<Vec<ClaudeCommand>, String> {
             description
         });
 
-        commands.push(ClaudeCommand {
-            name,
-            path: path.to_string_lossy().to_string(),
-            description,
-        });
+        commands.insert(
+            name.clone(),
+            ClaudeCommand {
+                name,
+                path: path.to_string_lossy().to_string(),
+                description,
+            },
+        );
+    }
+}
+
+/// List Claude CLI skills from ~/.claude/skills/ and optionally <worktree>/.claude/skills/
+/// Skills are directories containing a SKILL.md file
+#[tauri::command]
+pub async fn list_claude_skills(
+    worktree_path: Option<String>,
+) -> Result<Vec<ClaudeSkill>, String> {
+    log::trace!("Listing Claude CLI skills (worktree: {worktree_path:?})");
+
+    let mut skills_map = std::collections::HashMap::new();
+
+    // Global skills (~/.claude/skills/)
+    if let Some(home) = get_home_dir() {
+        collect_skills_from_dir(&home.join(".claude").join("skills"), &mut skills_map);
     }
 
+    // Project-level skills (<worktree>/.claude/skills/)
+    if let Some(ref wt) = worktree_path {
+        let project_skills_dir = Path::new(wt).join(".claude").join("skills");
+        collect_skills_from_dir(&project_skills_dir, &mut skills_map);
+    }
+
+    let mut skills: Vec<ClaudeSkill> = skills_map.into_values().collect();
+    skills.sort_by(|a, b| a.name.cmp(&b.name));
+    log::trace!("Found {} Claude CLI skills", skills.len());
+    Ok(skills)
+}
+
+/// List Claude CLI custom commands from ~/.claude/commands/ and optionally <worktree>/.claude/commands/
+#[tauri::command]
+pub async fn list_claude_commands(
+    worktree_path: Option<String>,
+) -> Result<Vec<ClaudeCommand>, String> {
+    log::trace!("Listing Claude CLI custom commands (worktree: {worktree_path:?})");
+
+    let mut commands_map = std::collections::HashMap::new();
+
+    // Global commands (~/.claude/commands/)
+    if let Some(home) = get_home_dir() {
+        collect_commands_from_dir(&home.join(".claude").join("commands"), &mut commands_map);
+    }
+
+    // Project-level commands (<worktree>/.claude/commands/)
+    if let Some(ref wt) = worktree_path {
+        let project_commands_dir = Path::new(wt).join(".claude").join("commands");
+        collect_commands_from_dir(&project_commands_dir, &mut commands_map);
+    }
+
+    let mut commands: Vec<ClaudeCommand> = commands_map.into_values().collect();
     commands.sort_by(|a, b| a.name.cmp(&b.name));
     log::trace!("Found {} Claude CLI custom commands", commands.len());
     Ok(commands)
