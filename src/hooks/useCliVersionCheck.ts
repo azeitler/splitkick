@@ -244,8 +244,8 @@ function showUpdateToasts(updates: CliUpdateInfo[]) {
       action: {
         label: 'Update',
         onClick: () => {
-          if (isClaudePath) {
-            openCliLoginModal('claude', update.claudePath ?? 'claude', ['update'])
+          if (isClaudePath && update.claudePath) {
+            openCliLoginModal('claude', update.claudePath, ['update'])
           } else {
             openCliUpdateModal(update.type)
           }

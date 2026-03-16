@@ -500,6 +500,10 @@ function OnboardingDialogContent() {
           setStep('claude-auth-checking')
           claudeAuth.refetch()
         },
+        onError: () => {
+          setClaudePathSelected(false)
+          toast.error('Failed to save CLI source preference')
+        },
       })
     }
   }, [preferences, patchPreferences, claudeAuth])
@@ -937,7 +941,7 @@ function OnboardingDialogContent() {
               isLoading={claudePathSelected}
               onSelectPath={handleClaudePathSelect}
               onSelectJean={() => {
-                setClaudePathSelected(false)
+                setClaudePathSelected(true)
               }}
             />
           ) : step === 'claude-auth-login' ? (
