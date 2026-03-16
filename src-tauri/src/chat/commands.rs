@@ -10,8 +10,9 @@ use super::naming::{spawn_naming_task, NamingRequest};
 use super::registry::{cancel_process, cancel_process_if_running};
 use super::run_log;
 use super::storage::{
-    delete_session_data, get_base_index_path, get_data_dir, get_index_path, get_session_dir,
-    load_metadata, load_sessions, save_metadata, with_existing_metadata_mut, with_sessions_mut,
+    cleanup_combined_context_files, delete_session_data, get_base_index_path, get_data_dir,
+    get_index_path, get_session_dir, load_metadata, load_sessions, save_metadata,
+    with_existing_metadata_mut, with_sessions_mut,
 };
 use super::types::{
     AllSessionsEntry, AllSessionsResponse, Backend, ChatMessage, ClaudeContext, EffortLevel,
@@ -571,7 +572,7 @@ pub async fn update_session_state(
 
 /// Extract pasted image paths from message content
 /// Matches: [Image attached: /path/to/image.png - Use the Read tool to view this image]
-fn extract_image_paths(content: &str) -> Vec<String> {
+pub(crate) fn extract_image_paths(content: &str) -> Vec<String> {
     use regex::Regex;
     // Lazy static would be better, but for simplicity we'll compile here
     let re = Regex::new(r"\[Image attached: (.+?) - Use the Read tool to view this image\]")
@@ -583,7 +584,7 @@ fn extract_image_paths(content: &str) -> Vec<String> {
 
 /// Extract pasted text file paths from message content
 /// Matches: [Text file attached: /path/to/file.txt - Use the Read tool to view this file]
-fn extract_text_file_paths(content: &str) -> Vec<String> {
+pub(crate) fn extract_text_file_paths(content: &str) -> Vec<String> {
     use regex::Regex;
     let re = Regex::new(r"\[Text file attached: (.+?) - Use the Read tool to view this file\]")
         .expect("Invalid regex");
@@ -656,6 +657,9 @@ pub async fn close_session(
     {
         log::warn!("Failed to cleanup saved contexts for session: {e}");
     }
+
+    // Clean up combined-context files for this session
+    cleanup_combined_context_files(&app, &session_id);
 
     // Resolve default backend for fallback session creation
     let fallback_backend = resolve_default_backend(&app, Some(&worktree_id));
@@ -1012,6 +1016,9 @@ pub async fn delete_archived_session(
     {
         log::warn!("Failed to cleanup saved contexts for session: {e}");
     }
+
+    // Clean up combined-context files for this session
+    cleanup_combined_context_files(&app, &session_id);
 
     with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
         let session_idx = sessions
@@ -2668,6 +2675,9 @@ pub async fn clear_session_history(
     if let Err(e) = delete_session_data(&app, &session_id) {
         log::warn!("Failed to delete session data: {e}");
     }
+
+    // Clean up combined-context files for this session
+    cleanup_combined_context_files(&app, &session_id);
 
     with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
         if let Some(session) = sessions.find_session_mut(&session_id) {

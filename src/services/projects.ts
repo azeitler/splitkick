@@ -8,6 +8,7 @@ import { disposeAllWorktreeTerminals } from '@/lib/terminal-instances'
 import type {
   Project,
   Worktree,
+  DetectPrResponse,
   WorktreeCreatingEvent,
   WorktreeCreatedEvent,
   WorktreeCreateErrorEvent,
@@ -27,7 +28,7 @@ import { useUIStore } from '@/store/ui-store'
 import type { AppPreferences } from '@/types/preferences'
 import type { AdvisoryContext } from '@/types/github'
 import { hasBackend } from '@/lib/environment'
-import { openExternal } from '@/lib/platform'
+import { openExternal, preOpenWindow } from '@/lib/platform'
 
 // Check if a backend is available (Tauri IPC or WebSocket)
 // Kept as `isTauri` for backward compatibility across the codebase
@@ -809,6 +810,27 @@ function handleWorktreeReady(
   // Register worktree path
   const { setActiveWorktree, registerWorktreePath } = useChatStore.getState()
   registerWorktreePath(worktree.id, worktree.path)
+
+  // Fire-and-forget: detect and link PR if not already linked
+  if (!worktree.pr_url) {
+    invoke<DetectPrResponse | null>('detect_and_link_pr', {
+      worktreeId: worktree.id,
+      worktreePath: worktree.path,
+    })
+      .then(result => {
+        if (result) {
+          queryClient.invalidateQueries({
+            queryKey: projectsQueryKeys.worktrees(worktree.project_id),
+          })
+          queryClient.invalidateQueries({
+            queryKey: [...projectsQueryKeys.all, 'worktree', worktree.id],
+          })
+        }
+      })
+      .catch(() => {
+        /* noop - PR detection is best-effort */
+      })
+  }
 
   if (!isBackground) {
     const uiStore = useUIStore.getState()
@@ -1837,17 +1859,24 @@ export function useOpenBranchOnGitHub() {
         throw new Error('No backend available')
       }
 
+      // Pre-open window synchronously to avoid mobile popup blockers
+      const win = preOpenWindow()
+
       logger.debug('Opening branch on GitHub', { repoPath, branch })
 
-      // Get the GitHub URL from backend
-      const url = await invoke<string>('get_github_branch_url', {
-        repoPath,
-        branch,
-      })
+      try {
+        const url = await invoke<string>('get_github_branch_url', {
+          repoPath,
+          branch,
+        })
 
-      await openExternal(url)
+        await openExternal(url, win)
+      } catch (e) {
+        win?.close()
+        throw e
+      }
 
-      logger.info('Opened branch on GitHub', { url })
+      logger.info('Opened branch on GitHub')
     },
     onError: error => {
       const message =
@@ -2143,19 +2172,26 @@ export function useOpenProjectOnGitHub() {
         throw new Error('Project not found or has no path')
       }
 
+      // Pre-open window synchronously to avoid mobile popup blockers
+      const win = preOpenWindow()
+
       logger.debug('Opening project on GitHub', {
         projectId,
         path: project.path,
       })
 
-      // Get the GitHub URL from backend
-      const url = await invoke<string>('get_github_repo_url', {
-        repoPath: project.path,
-      })
+      try {
+        const url = await invoke<string>('get_github_repo_url', {
+          repoPath: project.path,
+        })
 
-      await openExternal(url)
+        await openExternal(url, win)
+      } catch (e) {
+        win?.close()
+        throw e
+      }
 
-      logger.info('Opened project on GitHub', { url })
+      logger.info('Opened project on GitHub')
     },
     onError: error => {
       const message =

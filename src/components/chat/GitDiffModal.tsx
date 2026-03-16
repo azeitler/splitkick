@@ -526,6 +526,18 @@ export function GitDiffModal({
     return fromPatch
   }, [parsedFiles, diff?.files])
 
+  // Compute diff stats from loaded files (more accurate than polling-based props)
+  const loadedDiffStats = useMemo(() => {
+    if (!flattenedFiles.length) return null
+    let added = 0,
+      removed = 0
+    for (const f of flattenedFiles) {
+      added += f.additions
+      removed += f.deletions
+    }
+    return { added, removed }
+  }, [flattenedFiles])
+
   // Filter files by search pattern
   const filteredFiles = useMemo(() => {
     if (!fileFilter) return flattenedFiles
@@ -694,10 +706,22 @@ export function GitDiffModal({
   const hasUncommitted = uncommittedStats !== undefined
   const hasBranchDiff = branchStats !== undefined
   const showSwitcher = hasUncommitted && hasBranchDiff
-  const uncommittedAdded = uncommittedStats?.added ?? 0
-  const uncommittedRemoved = uncommittedStats?.removed ?? 0
-  const branchAdded = branchStats?.added ?? 0
-  const branchRemoved = branchStats?.removed ?? 0
+  const uncommittedAdded =
+    activeDiffType === 'uncommitted' && loadedDiffStats
+      ? loadedDiffStats.added
+      : (uncommittedStats?.added ?? 0)
+  const uncommittedRemoved =
+    activeDiffType === 'uncommitted' && loadedDiffStats
+      ? loadedDiffStats.removed
+      : (uncommittedStats?.removed ?? 0)
+  const branchAdded =
+    activeDiffType === 'branch' && loadedDiffStats
+      ? loadedDiffStats.added
+      : (branchStats?.added ?? 0)
+  const branchRemoved =
+    activeDiffType === 'branch' && loadedDiffStats
+      ? loadedDiffStats.removed
+      : (branchStats?.removed ?? 0)
 
   // Handle switching between diff types
   const handleSwitchDiffType = useCallback(

@@ -1,5 +1,6 @@
 import { useMemo, useCallback, useRef, useEffect, useState, lazy, Suspense } from 'react'
 import { TitleBar } from '@/components/titlebar/TitleBar'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { DevModeBanner } from './DevModeBanner'
 import { SidebarWidthProvider } from './SidebarWidthContext'
 import { MainWindowContent } from './MainWindowContent'
@@ -202,6 +203,8 @@ export function MainWindow() {
     state => state.jeanConfigWizardOpen
   )
 
+  const isMobile = useIsMobile()
+
   // Fetch worktree data for polling initialization
   const { data: worktree } = useWorktree(selectedWorktreeId ?? null)
   const { data: projects } = useProjects()
@@ -210,13 +213,15 @@ export function MainWindow() {
     : null
 
   // Compute window title based on selected project/worktree
+  // On mobile, show only project name (worktree name is in the content header)
   const windowTitle = useMemo(() => {
     if (!project || !worktree) return 'Jean'
+    if (isMobile) return project.name
     const branchSuffix =
       worktree.branch !== worktree.name ? ` (${worktree.branch})` : ''
 
     return `${project.name} › ${worktree.name}${branchSuffix}`
-  }, [project, worktree])
+  }, [project, worktree, isMobile])
 
   // Compute polling info - null if no worktree or data not loaded
   const pollingInfo: WorktreePollingInfo | null = useMemo(() => {

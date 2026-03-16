@@ -1099,6 +1099,11 @@ pub async fn dispatch_command(
             to_value(result)
         }
 
+        "cleanup_combined_contexts" => {
+            let result = crate::projects::cleanup_combined_contexts(app.clone()).await?;
+            to_value(result)
+        }
+
         // =====================================================================
         // HTTP Server control (exposed so web clients can check status)
         // =====================================================================

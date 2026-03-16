@@ -2501,6 +2501,7 @@ pub fn run() {
             projects::import_worktree,
             projects::permanently_delete_worktree,
             projects::cleanup_old_archives,
+            projects::cleanup_combined_contexts,
             projects::delete_all_archives,
             projects::rename_worktree,
             projects::update_worktree_label,

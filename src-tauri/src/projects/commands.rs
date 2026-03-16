@@ -3026,6 +3026,12 @@ pub async fn permanently_delete_worktree(
     save_projects_data(&app, &data)?;
     log::trace!("Worktree removed from storage: {worktree_id}");
 
+    // Collect session IDs for cleanup before the index file is deleted
+    let session_ids: Vec<String> =
+        crate::chat::storage::load_sessions(&app, &worktree.path, &worktree.id)
+            .map(|ws| ws.sessions.iter().map(|s| s.id.clone()).collect())
+            .unwrap_or_default();
+
     // Clone values for background thread
     let app_clone = app.clone();
     let worktree_id_clone = worktree_id.clone();
@@ -3068,6 +3074,11 @@ pub async fn permanently_delete_worktree(
                     log::trace!("Deleted sessions file for worktree: {worktree_id_clone}");
                 }
             }
+        }
+
+        // Clean up combined-context files for each session
+        for sid in &session_ids {
+            crate::chat::storage::cleanup_combined_context_files(&app_clone, sid);
         }
 
         // Emit success event
@@ -5207,14 +5218,15 @@ pub async fn create_pr_with_ai_content(
         let commit_msg = match (|| -> Result<String, String> {
             let status = get_git_status(&worktree_path)?;
             let diff = get_staged_diff(&worktree_path)?;
-            let recent_commits = get_recent_commits(&worktree_path, 10)?;
-            let remote_info = get_remote_info(&worktree_path)?;
+            let diff_stat = get_staged_diff_stat(&worktree_path)?;
+            let recent_commits = get_recent_commits(&worktree_path, 5)?;
 
             let prompt = COMMIT_MESSAGE_PROMPT
+                .replace("{diff_stat}", &diff_stat)
                 .replace("{status}", &status)
                 .replace("{diff}", &diff)
                 .replace("{recent_commits}", &recent_commits)
-                .replace("{remote_info}", &remote_info);
+                .replace("{remote_info}", "");
 
             let commit_magic_backend = crate::get_preferences_path(&app)
                 .ok()
@@ -5746,23 +5758,19 @@ pub async fn update_pr_description(
 const COMMIT_MESSAGE_SCHEMA: &str = r#"{"type":"object","properties":{"message":{"type":"string","description":"Commit message using Conventional Commits format. First line: type(scope): description (max 72 chars). Types: feat, fix, docs, style, refactor, perf, test, chore. Followed by blank line and optional body explaining what and why."}},"required":["message"],"additionalProperties":false}"#;
 
 /// Prompt template for commit message generation
-const COMMIT_MESSAGE_PROMPT: &str = r#"<task>Generate a commit message for the following changes</task>
+const COMMIT_MESSAGE_PROMPT: &str = r#"Generate a conventional commit message for these staged changes.
 
-<git_status>
+Files changed:
+{diff_stat}
+
+Git status:
 {status}
-</git_status>
 
-<staged_diff>
+Diff:
 {diff}
-</staged_diff>
 
-<recent_commits>
-{recent_commits}
-</recent_commits>
-
-<remote_info>
-{remote_info}
-</remote_info>"#;
+Recent commits (style reference):
+{recent_commits}"#;
 
 /// Structured response from commit message generation
 #[derive(Debug, Deserialize)]
@@ -5810,7 +5818,27 @@ fn get_git_status(repo_path: &str) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
-/// Get staged diff
+/// Get compact diff stat summary (e.g. "src/main.rs | 5 ++--")
+fn get_staged_diff_stat(repo_path: &str) -> Result<String, String> {
+    let output = silent_command("git")
+        .args(["diff", "--cached", "--stat"])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to get staged diff stat: {e}"))?;
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+/// Max lines of hunk content to keep per file
+const DIFF_MAX_LINES_PER_FILE: usize = 50;
+/// Global char budget for the truncated diff
+const DIFF_MAX_CHARS: usize = 15_000;
+
+/// Get staged diff with smart per-file truncation.
+///
+/// Splits the raw diff by file, keeps headers + up to DIFF_MAX_LINES_PER_FILE
+/// lines of hunk content per file, and stops adding files once DIFF_MAX_CHARS
+/// is reached.
 fn get_staged_diff(repo_path: &str) -> Result<String, String> {
     let output = silent_command("git")
         .args(["diff", "--cached"])
@@ -5818,23 +5846,72 @@ fn get_staged_diff(repo_path: &str) -> Result<String, String> {
         .output()
         .map_err(|e| format!("Failed to get staged diff: {e}"))?;
 
-    let diff = String::from_utf8_lossy(&output.stdout).to_string();
+    let raw = String::from_utf8_lossy(&output.stdout).to_string();
 
-    // Truncate very long diffs (char-safe for multi-byte UTF-8)
-    if diff.len() > 50000 {
-        let end = diff
-            .char_indices()
-            .nth(50000)
-            .map(|(i, _)| i)
-            .unwrap_or(diff.len());
-        Ok(format!(
-            "{}...\n\n[Diff truncated - {} chars total]",
-            &diff[..end],
-            diff.len()
-        ))
-    } else {
-        Ok(diff)
+    // Fast path: small diffs need no processing
+    if raw.len() <= DIFF_MAX_CHARS {
+        return Ok(raw);
     }
+
+    // Split into per-file chunks on "diff --git" boundaries
+    let mut file_chunks: Vec<&str> = Vec::new();
+    let mut last = 0;
+    for (i, _) in raw.match_indices("\ndiff --git ") {
+        if last < i {
+            file_chunks.push(&raw[last..i]);
+        }
+        last = i + 1; // skip the leading newline
+    }
+    if last < raw.len() {
+        file_chunks.push(&raw[last..]);
+    }
+
+    let total_files = file_chunks.len();
+    let mut result = String::with_capacity(DIFF_MAX_CHARS + 256);
+    let mut files_included = 0;
+
+    for chunk in &file_chunks {
+        let lines: Vec<&str> = chunk.lines().collect();
+
+        // Find where hunk content starts (after header lines like diff, index, ---, +++)
+        let hunk_start = lines
+            .iter()
+            .position(|l| l.starts_with("@@"))
+            .unwrap_or(lines.len());
+
+        // Header always kept; hunk content truncated
+        let header = &lines[..hunk_start];
+        let hunks = &lines[hunk_start..];
+
+        let mut file_result = header.join("\n");
+        if hunks.len() > DIFF_MAX_LINES_PER_FILE {
+            let kept: String = hunks[..DIFF_MAX_LINES_PER_FILE].join("\n");
+            file_result.push('\n');
+            file_result.push_str(&kept);
+            file_result.push_str(&format!(
+                "\n[... {} more lines in this file]",
+                hunks.len() - DIFF_MAX_LINES_PER_FILE
+            ));
+        } else if !hunks.is_empty() {
+            file_result.push('\n');
+            file_result.push_str(&hunks.join("\n"));
+        }
+
+        // Check global budget before adding
+        if result.len() + file_result.len() > DIFF_MAX_CHARS && files_included > 0 {
+            let remaining = total_files - files_included;
+            result.push_str(&format!("\n[... {remaining} more files omitted]"));
+            break;
+        }
+
+        if files_included > 0 {
+            result.push('\n');
+        }
+        result.push_str(&file_result);
+        files_included += 1;
+    }
+
+    Ok(result)
 }
 
 /// Get recent commit messages for style reference
@@ -5848,16 +5925,7 @@ fn get_recent_commits(repo_path: &str, count: u32) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
-/// Get remote info
-fn get_remote_info(repo_path: &str) -> Result<String, String> {
-    let output = silent_command("git")
-        .args(["remote", "-v"])
-        .current_dir(repo_path)
-        .output()
-        .map_err(|e| format!("Failed to get remote info: {e}"))?;
 
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
-}
 
 /// Stage all changes
 fn stage_all_changes(repo_path: &str) -> Result<(), String> {
@@ -5948,7 +6016,7 @@ fn generate_commit_message(
     magic_backend: Option<&str>,
     reasoning_effort: Option<&str>,
 ) -> Result<CommitMessageResponse, String> {
-    let model_str = model.unwrap_or("haiku");
+    let model_str = model.unwrap_or("sonnet");
 
     // Per-operation backend > project/global default_backend
     let backend = crate::chat::resolve_magic_prompt_backend(app, magic_backend, worktree_id);
@@ -5996,7 +6064,6 @@ fn generate_commit_message(
     crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
     cmd.args([
         "--print",
-        "--verbose",
         "--input-format",
         "stream-json",
         "--output-format",
@@ -6105,8 +6172,8 @@ pub async fn create_commit_with_ai(
     }
 
     // 4. Get context for commit message generation
-    let recent_commits = get_recent_commits(&worktree_path, 10)?;
-    let remote_info = get_remote_info(&worktree_path)?;
+    let diff_stat = get_staged_diff_stat(&worktree_path)?;
+    let recent_commits = get_recent_commits(&worktree_path, 5)?;
 
     // 5. Build prompt - use custom if provided and non-empty, otherwise use default
     let prompt_template = custom_prompt
@@ -6116,10 +6183,11 @@ pub async fn create_commit_with_ai(
         .unwrap_or(COMMIT_MESSAGE_PROMPT);
 
     let prompt = prompt_template
+        .replace("{diff_stat}", &diff_stat)
         .replace("{status}", &status)
         .replace("{diff}", &diff)
         .replace("{recent_commits}", &recent_commits)
-        .replace("{remote_info}", &remote_info);
+        .replace("{remote_info}", "");
 
     // 6. Generate commit message with Claude CLI
     let commit_magic_backend = crate::get_preferences_path(&app)
@@ -7151,15 +7219,16 @@ pub async fn merge_worktree_to_base(
         // Get context for commit message generation
         let status = get_git_status(&worktree.path).unwrap_or_default();
         let diff = get_staged_diff(&worktree.path).unwrap_or_default();
-        let recent_commits = get_recent_commits(&worktree.path, 10).unwrap_or_default();
-        let remote_info = get_remote_info(&worktree.path).unwrap_or_default();
+        let diff_stat = get_staged_diff_stat(&worktree.path).unwrap_or_default();
+        let recent_commits = get_recent_commits(&worktree.path, 5).unwrap_or_default();
 
         // Build prompt and generate commit message
         let prompt = COMMIT_MESSAGE_PROMPT
+            .replace("{diff_stat}", &diff_stat)
             .replace("{status}", &status)
             .replace("{diff}", &diff)
             .replace("{recent_commits}", &recent_commits)
-            .replace("{remote_info}", &remote_info);
+            .replace("{remote_info}", "");
 
         let merge_magic_backend = crate::get_preferences_path(&app)
             .ok()
@@ -7530,11 +7599,12 @@ pub async fn cleanup_old_archives(
                 .map(|ws| ws.sessions.iter().map(|s| s.id.clone()).collect())
                 .unwrap_or_default();
 
-        // Delete session data directories
+        // Delete session data directories and combined-context files
         for sid in &session_ids {
             if let Err(e) = crate::chat::storage::delete_session_data(&app, sid) {
                 log::warn!("Failed to delete session data for {sid}: {e}");
             }
+            crate::chat::storage::cleanup_combined_context_files(&app, sid);
         }
 
         // Delete the sessions index file
@@ -7596,12 +7666,13 @@ pub async fn cleanup_old_archives(
                 }
             });
 
-        // Delete session data directories for removed sessions
+        // Delete session data directories and combined-context files for removed sessions
         if let Ok(ids) = removed_ids.lock() {
             for sid in ids.iter() {
                 if let Err(e) = crate::chat::storage::delete_session_data(&app, sid) {
                     log::warn!("Failed to delete session data for {sid}: {e}");
                 }
+                crate::chat::storage::cleanup_combined_context_files(&app, sid);
             }
         }
 
@@ -7618,6 +7689,12 @@ pub async fn cleanup_old_archives(
     let deleted_contexts =
         super::github_issues::cleanup_orphaned_contexts(&app, retention_days as u64).unwrap_or(0);
 
+    // --- Clean up orphaned combined-context files ---
+    let _ = crate::chat::storage::cleanup_orphaned_combined_contexts(&app);
+
+    // --- Clean up orphaned pasted images and text files ---
+    let _ = crate::chat::storage::cleanup_orphaned_pasted_files(&app);
+
     log::trace!(
         "Archive cleanup complete: deleted {} worktrees, {} sessions, and {} contexts",
         deleted_worktrees,
@@ -7630,6 +7707,15 @@ pub async fn cleanup_old_archives(
         deleted_sessions,
         deleted_contexts,
     })
+}
+
+/// Clean up orphaned combined-context files.
+///
+/// Removes combined-context files whose session IDs are not referenced
+/// by any worktree index file. Returns the number of deleted files.
+#[tauri::command]
+pub async fn cleanup_combined_contexts(app: AppHandle) -> Result<u32, String> {
+    crate::chat::storage::cleanup_orphaned_combined_contexts(&app)
 }
 
 /// Delete ALL archived worktrees and sessions (manual cleanup)
@@ -7687,11 +7773,12 @@ pub async fn delete_all_archives(app: AppHandle) -> Result<CleanupResult, String
                 .map(|ws| ws.sessions.iter().map(|s| s.id.clone()).collect())
                 .unwrap_or_default();
 
-        // Delete session data directories
+        // Delete session data directories and combined-context files
         for sid in &session_ids {
             if let Err(e) = crate::chat::storage::delete_session_data(&app, sid) {
                 log::warn!("Failed to delete session data for {sid}: {e}");
             }
+            crate::chat::storage::cleanup_combined_context_files(&app, sid);
         }
 
         // Delete the sessions index file
@@ -7746,12 +7833,13 @@ pub async fn delete_all_archives(app: AppHandle) -> Result<CleanupResult, String
                 }
             });
 
-        // Delete session data directories for removed sessions
+        // Delete session data directories and combined-context files for removed sessions
         if let Ok(ids) = removed_ids.lock() {
             for sid in ids.iter() {
                 if let Err(e) = crate::chat::storage::delete_session_data(&app, sid) {
                     log::warn!("Failed to delete session data for {sid}: {e}");
                 }
+                crate::chat::storage::cleanup_combined_context_files(&app, sid);
             }
         }
 
@@ -7762,6 +7850,12 @@ pub async fn delete_all_archives(app: AppHandle) -> Result<CleanupResult, String
 
     // Also clean up orphaned contexts (pass 0 for retention_days to clean all orphans)
     let deleted_contexts = super::github_issues::cleanup_orphaned_contexts(&app, 0).unwrap_or(0);
+
+    // Clean up orphaned combined-context files
+    let _ = crate::chat::storage::cleanup_orphaned_combined_contexts(&app);
+
+    // Clean up orphaned pasted images and text files
+    let _ = crate::chat::storage::cleanup_orphaned_pasted_files(&app);
 
     log::trace!(
         "Deleted all archives: {} worktrees, {} sessions, and {} contexts",

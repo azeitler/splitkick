@@ -188,23 +188,19 @@ export const DEFAULT_PR_CONTENT_PROMPT = `<task>Generate a pull request title an
 </diff>`
 
 /** Default prompt for commit message generation */
-export const DEFAULT_COMMIT_MESSAGE_PROMPT = `<task>Generate a commit message for the following changes</task>
+export const DEFAULT_COMMIT_MESSAGE_PROMPT = `Generate a conventional commit message for these staged changes.
 
-<git_status>
+Files changed:
+{diff_stat}
+
+Git status:
 {status}
-</git_status>
 
-<staged_diff>
+Diff:
 {diff}
-</staged_diff>
 
-<recent_commits>
-{recent_commits}
-</recent_commits>
-
-<remote_info>
-{remote_info}
-</remote_info>`
+Recent commits (style reference):
+{recent_commits}`
 
 /** Default prompt for code review */
 export const DEFAULT_CODE_REVIEW_PROMPT = `<task>Review the following code changes and provide structured feedback</task>

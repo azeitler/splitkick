@@ -371,7 +371,6 @@ export const ChatToolbar = memo(function ChatToolbar({
         <div className="shrink-0">
           <SendCancelButton
             isSending={isSending}
-            hasPendingQuestions={hasPendingQuestions}
             canSend={canSend}
             executionMode={executionMode}
             queuedMessageCount={queuedMessageCount}
