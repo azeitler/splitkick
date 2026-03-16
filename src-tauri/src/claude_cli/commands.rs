@@ -1070,6 +1070,7 @@ pub struct ClaudePathDetection {
     pub found: bool,
     pub path: Option<String>,
     pub version: Option<String>,
+    pub package_manager: Option<String>,
 }
 
 /// Detect Claude CLI in system PATH (excluding Jean-managed binary)
@@ -1093,7 +1094,8 @@ pub async fn detect_claude_in_path(app: AppHandle) -> Result<ClaudePathDetection
         .output()
     {
         Ok(output) if output.status.success() => {
-            String::from_utf8_lossy(&output.stdout).trim().to_string()
+            // On Windows, `where` can return multiple paths; take only the first line
+            String::from_utf8_lossy(&output.stdout).lines().next().unwrap_or("").trim().to_string()
         }
         _ => {
             log::trace!("Claude CLI not found in PATH");
@@ -1101,6 +1103,7 @@ pub async fn detect_claude_in_path(app: AppHandle) -> Result<ClaudePathDetection
                 found: false,
                 path: None,
                 version: None,
+                package_manager: None,
             });
         }
     };
@@ -1110,6 +1113,7 @@ pub async fn detect_claude_in_path(app: AppHandle) -> Result<ClaudePathDetection
             found: false,
             path: None,
             version: None,
+            package_manager: None,
         });
     }
 
@@ -1124,6 +1128,7 @@ pub async fn detect_claude_in_path(app: AppHandle) -> Result<ClaudePathDetection
                     found: false,
                     path: None,
                     version: None,
+                    package_manager: None,
                 });
             }
         }
@@ -1141,16 +1146,20 @@ pub async fn detect_claude_in_path(app: AppHandle) -> Result<ClaudePathDetection
         _ => None,
     };
 
+    let package_manager = crate::platform::detect_package_manager(&found_path);
+
     log::trace!(
-        "Found Claude CLI in PATH: {} (version: {:?})",
+        "Found Claude CLI in PATH: {} (version: {:?}, pkg_mgr: {:?})",
         output,
-        version
+        version,
+        package_manager
     );
 
     Ok(ClaudePathDetection {
         found: true,
         path: Some(output),
         version,
+        package_manager,
     })
 }
 

@@ -17,19 +17,20 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useUIStore } from '@/store/ui-store'
 import { useClaudeCliSetup, useClaudeCliAuth, useClaudePathDetection } from '@/services/claude-cli'
-import { useCodexCliSetup, useCodexCliAuth } from '@/services/codex-cli'
+import { useCodexCliSetup, useCodexCliAuth, useCodexPathDetection } from '@/services/codex-cli'
 import {
   useOpenCodeCliSetup,
   useOpenCodeCliAuth,
+  useOpenCodePathDetection,
 } from '@/services/opencode-cli'
-import { useGhCliSetup, useGhCliAuth } from '@/services/gh-cli'
+import { useGhCliSetup, useGhCliAuth, useGhPathDetection } from '@/services/gh-cli'
 import {
   SetupState,
   InstallingState,
   ErrorState,
   AuthCheckingState,
   AuthLoginState,
-  ClaudePathSelector,
+  CliPathSelector,
 } from './CliSetupComponents'
 import { toast } from 'sonner'
 import { usePreferences, usePatchPreferences } from '@/services/preferences'
@@ -125,8 +126,11 @@ function OnboardingDialogContent() {
 
   const claudeSetup = useClaudeCliSetup()
   const pathDetection = useClaudePathDetection()
+  const codexPathDetection = useCodexPathDetection()
+  const opencodePathDetection = useOpenCodePathDetection()
   const codexSetup = useCodexCliSetup()
   const opencodeSetup = useOpenCodeCliSetup()
+  const ghPathDetection = useGhPathDetection()
   const ghSetup = useGhCliSetup()
 
   const claudeAuth = useClaudeCliAuth({
@@ -152,6 +156,9 @@ function OnboardingDialogContent() {
   const [opencodeInstallFailed, setOpencodeInstallFailed] = useState(false)
   const [ghInstallFailed, setGhInstallFailed] = useState(false)
   const [claudePathSelected, setClaudePathSelected] = useState(false)
+  const [codexPathSelected, setCodexPathSelected] = useState(false)
+  const [opencodePathSelected, setOpencodePathSelected] = useState(false)
+  const [ghPathSelected, setGhPathSelected] = useState(false)
   const [claudeLoginAttempt, setClaudeLoginAttempt] = useState(0)
   const [codexLoginAttempt, setCodexLoginAttempt] = useState(0)
   const [opencodeLoginAttempt, setOpencodeLoginAttempt] = useState(0)
@@ -314,6 +321,9 @@ function OnboardingDialogContent() {
       setOpencodeInstallFailed(false)
       setGhInstallFailed(false)
       setClaudePathSelected(false)
+      setCodexPathSelected(false)
+      setOpencodePathSelected(false)
+      setGhPathSelected(false)
       setClaudeLoginAttempt(0)
       setCodexLoginAttempt(0)
       setOpencodeLoginAttempt(0)
@@ -507,6 +517,54 @@ function OnboardingDialogContent() {
       })
     }
   }, [preferences, patchPreferences, claudeAuth])
+
+  const handleCodexPathSelect = useCallback(() => {
+    setCodexPathSelected(true)
+    if (preferences) {
+      patchPreferences.mutate({ codex_cli_source: 'path' }, {
+        onSuccess: () => {
+          setStep('codex-auth-checking')
+          codexAuth.refetch()
+        },
+        onError: () => {
+          setCodexPathSelected(false)
+          toast.error('Failed to save CLI source preference')
+        },
+      })
+    }
+  }, [preferences, patchPreferences, codexAuth])
+
+  const handleOpencodePathSelect = useCallback(() => {
+    setOpencodePathSelected(true)
+    if (preferences) {
+      patchPreferences.mutate({ opencode_cli_source: 'path' }, {
+        onSuccess: () => {
+          setStep('opencode-auth-checking')
+          opencodeAuth.refetch()
+        },
+        onError: () => {
+          setOpencodePathSelected(false)
+          toast.error('Failed to save CLI source preference')
+        },
+      })
+    }
+  }, [preferences, patchPreferences, opencodeAuth])
+
+  const handleGhPathSelect = useCallback(() => {
+    setGhPathSelected(true)
+    if (preferences) {
+      patchPreferences.mutate({ gh_cli_source: 'path' }, {
+        onSuccess: () => {
+          setStep('gh-auth-checking')
+          ghAuth.refetch()
+        },
+        onError: () => {
+          setGhPathSelected(false)
+          toast.error('Failed to save CLI source preference')
+        },
+      })
+    }
+  }, [preferences, patchPreferences, ghAuth])
 
   const handleCodexInstall = useCallback(() => {
     if (!codexVersion) return
@@ -743,13 +801,16 @@ function OnboardingDialogContent() {
     }
 
     if (step === 'gh-setup' || step === 'gh-installing') {
+      const hasPathCli = ghPathDetection.data?.found
       return {
         title: isGhReinstall
           ? 'Change GitHub CLI Version'
-          : 'Install GitHub CLI',
+          : 'Setup GitHub CLI',
         description: isGhReinstall
           ? 'Select a version to install. This will replace the current installation.'
-          : 'GitHub CLI is required for GitHub integration.',
+          : hasPathCli
+            ? 'Choose to use your system GitHub CLI or install with Jean.'
+            : 'GitHub CLI is required for GitHub integration.',
       }
     }
 
@@ -785,21 +846,39 @@ function OnboardingDialogContent() {
 
     if (
       step === 'codex-setup' ||
-      step === 'codex-installing' ||
-      step === 'opencode-setup' ||
-      step === 'opencode-installing'
+      step === 'codex-installing'
     ) {
-      const isReinstall =
-        (currentBackend === 'codex' && isCodexReinstall) ||
-        (currentBackend === 'opencode' && isOpencodeReinstall)
+      const isReinstall = isCodexReinstall
+      const hasPathCli = codexPathDetection.data?.found
 
       return {
         title: isReinstall
           ? `Change ${backendName} Version`
-          : `Install ${backendName}`,
+          : `Setup ${backendName}`,
         description: isReinstall
           ? 'Select a version to install. This will replace the current installation.'
-          : `Select a version to install.`,
+          : hasPathCli
+            ? 'Choose to use your system Codex or install with Jean.'
+            : 'Select a version to install.',
+      }
+    }
+
+    if (
+      step === 'opencode-setup' ||
+      step === 'opencode-installing'
+    ) {
+      const isReinstall = isOpencodeReinstall
+      const hasPathCli = opencodePathDetection.data?.found
+
+      return {
+        title: isReinstall
+          ? `Change ${backendName} Version`
+          : `Setup ${backendName}`,
+        description: isReinstall
+          ? 'Select a version to install. This will replace the current installation.'
+          : hasPathCli
+            ? 'Choose to use your system OpenCode or install with Jean.'
+            : 'Select a version to install.',
       }
     }
 
@@ -935,13 +1014,36 @@ function OnboardingDialogContent() {
           ) : step === 'gh-auth-checking' ? (
             <AuthCheckingState cliName="GitHub CLI" />
           ) : step === 'claude-setup' && pathDetection.data?.found && !claudePathSelected ? (
-            <ClaudePathSelector
+            <CliPathSelector
+              cliName="Claude CLI"
               pathVersion={pathDetection.data.version}
               pathPath={pathDetection.data.path}
               isLoading={claudePathSelected}
               onSelectPath={handleClaudePathSelect}
               onSelectJean={() => {
                 setClaudePathSelected(true)
+              }}
+            />
+          ) : step === 'codex-setup' && codexPathDetection.data?.found && !codexPathSelected ? (
+            <CliPathSelector
+              cliName="Codex CLI"
+              pathVersion={codexPathDetection.data.version}
+              pathPath={codexPathDetection.data.path}
+              isLoading={codexPathSelected}
+              onSelectPath={handleCodexPathSelect}
+              onSelectJean={() => {
+                setCodexPathSelected(true)
+              }}
+            />
+          ) : step === 'opencode-setup' && opencodePathDetection.data?.found && !opencodePathSelected ? (
+            <CliPathSelector
+              cliName="OpenCode CLI"
+              pathVersion={opencodePathDetection.data.version}
+              pathPath={opencodePathDetection.data.path}
+              isLoading={opencodePathSelected}
+              onSelectPath={handleOpencodePathSelect}
+              onSelectJean={() => {
+                setOpencodePathSelected(true)
               }}
             />
           ) : step === 'claude-auth-login' ? (
@@ -970,6 +1072,17 @@ function OnboardingDialogContent() {
               commandArgs={opencodeLoginArgs}
               onComplete={handleOpencodeLoginComplete}
               onRetry={handleOpencodeLoginRetry}
+            />
+          ) : step === 'gh-setup' && ghPathDetection.data?.found && !ghPathSelected ? (
+            <CliPathSelector
+              cliName="GitHub CLI"
+              pathVersion={ghPathDetection.data.version}
+              pathPath={ghPathDetection.data.path}
+              isLoading={ghPathSelected}
+              onSelectPath={handleGhPathSelect}
+              onSelectJean={() => {
+                setGhPathSelected(true)
+              }}
             />
           ) : step === 'gh-auth-login' ? (
             <AuthLoginState

@@ -33,6 +33,28 @@ export const codexCliQueryKeys = {
   versions: () => [...codexCliQueryKeys.all, 'versions'] as const,
 }
 
+/**
+ * Hook to detect Codex CLI in system PATH
+ */
+export function useCodexPathDetection(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: [...codexCliQueryKeys.all, 'path-detection'],
+    queryFn: async (): Promise<{ found: boolean; path: string | null; version: string | null; package_manager: string | null }> => {
+      if (!isTauri()) {
+        return { found: false, path: null, version: null, package_manager: null }
+      }
+      try {
+        return await invoke<{ found: boolean; path: string | null; version: string | null; package_manager: string | null }>('detect_codex_in_path')
+      } catch {
+        return { found: false, path: null, version: null, package_manager: null }
+      }
+    },
+    enabled: options?.enabled ?? true,
+    staleTime: 1000 * 60 * 30,
+    gcTime: 1000 * 60 * 60,
+  })
+}
+
 function getUsageStaleTime(snapshot?: CodexUsageSnapshot): number {
   if (!snapshot?.fetchedAt) return 0
   const expiresAtMs = snapshot.fetchedAt * 1000 + USAGE_REFRESH_MS

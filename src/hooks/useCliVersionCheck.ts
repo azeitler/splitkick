@@ -10,15 +10,18 @@ import { toast } from 'sonner'
 import {
   useClaudeCliStatus,
   useAvailableCliVersions,
+  useClaudePathDetection,
 } from '@/services/claude-cli'
-import { useGhCliStatus, useAvailableGhVersions } from '@/services/gh-cli'
+import { useGhCliStatus, useAvailableGhVersions, useGhPathDetection } from '@/services/gh-cli'
 import {
   useCodexCliStatus,
   useAvailableCodexVersions,
+  useCodexPathDetection,
 } from '@/services/codex-cli'
 import {
   useOpencodeCliStatus,
   useAvailableOpencodeVersions,
+  useOpencodePathDetection,
 } from '@/services/opencode-cli'
 import { useUIStore } from '@/store/ui-store'
 import { isNewerVersion } from '@/lib/version-utils'
@@ -30,8 +33,17 @@ interface CliUpdateInfo {
   type: 'claude' | 'gh' | 'codex' | 'opencode'
   currentVersion: string
   latestVersion: string
-  claudeCliSource?: 'jean' | 'path'
-  claudePath?: string | null
+  cliSource?: 'jean' | 'path'
+  cliPath?: string | null
+  packageManager?: string | null
+}
+
+/** Map CLI type to the binary name used by the package manager */
+const CLI_BINARY_NAMES: Record<CliUpdateInfo['type'], string> = {
+  claude: 'claude-code',
+  gh: 'gh',
+  codex: 'codex',
+  opencode: 'opencode',
 }
 
 const CLI_DISPLAY_NAMES: Record<CliUpdateInfo['type'], string> = {
@@ -49,6 +61,10 @@ const CLI_DISPLAY_NAMES: Record<CliUpdateInfo['type'], string> = {
 export function useCliVersionCheck() {
   const shouldCheck = isNativeApp()
   const { data: preferences } = usePreferences()
+  const { data: claudePathInfo } = useClaudePathDetection({ enabled: shouldCheck })
+  const { data: ghPathInfo } = useGhPathDetection({ enabled: shouldCheck })
+  const { data: codexPathInfo } = useCodexPathDetection({ enabled: shouldCheck })
+  const { data: opencodePathInfo } = useOpencodePathDetection({ enabled: shouldCheck })
 
   // Defer version fetches (GitHub API) by 10s — they're only for update toasts,
   // no reason to compete with startup-critical queries.
@@ -114,8 +130,9 @@ export function useCliVersionCheck() {
             type: 'claude',
             currentVersion: claudeStatus.version,
             latestVersion: latestStable.version,
-            claudeCliSource: preferences?.claude_cli_source,
-            claudePath: claudeStatus.path,
+            cliSource: preferences?.claude_cli_source,
+            cliPath: claudeStatus.path,
+            packageManager: claudePathInfo?.package_manager,
           })
         }
       }
@@ -135,6 +152,9 @@ export function useCliVersionCheck() {
             type: 'gh',
             currentVersion: ghStatus.version,
             latestVersion: latestStable.version,
+            cliSource: preferences?.gh_cli_source,
+            cliPath: ghStatus.path,
+            packageManager: ghPathInfo?.package_manager,
           })
         }
       }
@@ -158,6 +178,9 @@ export function useCliVersionCheck() {
             type: 'codex',
             currentVersion: codexStatus.version,
             latestVersion: latestStable.version,
+            cliSource: preferences?.codex_cli_source,
+            cliPath: codexStatus.path,
+            packageManager: codexPathInfo?.package_manager,
           })
         }
       }
@@ -181,6 +204,9 @@ export function useCliVersionCheck() {
             type: 'opencode',
             currentVersion: opencodeStatus.version,
             latestVersion: latestStable.version,
+            cliSource: preferences?.opencode_cli_source,
+            cliPath: opencodeStatus.path,
+            packageManager: opencodePathInfo?.package_manager,
           })
         }
       }
@@ -218,7 +244,25 @@ export function useCliVersionCheck() {
     codexVersionsLoading,
     opencodeVersionsLoading,
     preferences?.claude_cli_source,
+    preferences?.codex_cli_source,
+    preferences?.opencode_cli_source,
+    preferences?.gh_cli_source,
   ])
+}
+
+/** Get the correct self-update args for each CLI type, or null if no built-in update */
+function getPathModeUpdateArgs(
+  type: CliUpdateInfo['type']
+): string[] | null {
+  switch (type) {
+    case 'claude':
+      return ['update']
+    case 'opencode':
+      return ['upgrade']
+    // gh and codex have no built-in self-update command
+    default:
+      return null
+  }
 }
 
 /**
@@ -233,9 +277,8 @@ function showUpdateToasts(updates: CliUpdateInfo[]) {
     const cliName = CLI_DISPLAY_NAMES[update.type]
     const toastId = `cli-update-${update.type}`
 
-    // For Claude in PATH mode, open a terminal with `claude update`
-    const isClaudePath =
-      update.type === 'claude' && update.claudeCliSource === 'path'
+    const isPathMode = update.cliSource === 'path'
+    const isHomebrew = update.packageManager === 'homebrew'
 
     toast.info(`${cliName} update available`, {
       id: toastId,
@@ -244,8 +287,20 @@ function showUpdateToasts(updates: CliUpdateInfo[]) {
       action: {
         label: 'Update',
         onClick: () => {
-          if (isClaudePath && update.claudePath) {
-            openCliLoginModal('claude', update.claudePath, ['update'])
+          if (isPathMode && isHomebrew) {
+            const brewPkg = CLI_BINARY_NAMES[update.type]
+            logger.debug(`[CliVersionCheck] Homebrew update: brew upgrade ${brewPkg}`)
+            openCliLoginModal(update.type, 'brew', ['upgrade', brewPkg])
+          } else if (isPathMode && update.cliPath) {
+            const pathUpdateArgs = getPathModeUpdateArgs(update.type)
+            if (pathUpdateArgs) {
+              logger.debug(
+                `[CliVersionCheck] PATH-mode update: type=${update.type} path=${update.cliPath} args=${pathUpdateArgs}`
+              )
+              openCliLoginModal(update.type, update.cliPath, pathUpdateArgs)
+            } else {
+              openCliUpdateModal(update.type)
+            }
           } else {
             openCliUpdateModal(update.type)
           }

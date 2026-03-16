@@ -19,6 +19,13 @@ pub async fn start_terminal(
     command_args: Option<Vec<String>>,
 ) -> Result<(), String> {
     log::trace!("start_terminal called for terminal: {terminal_id}");
+    if command.is_some() || command_args.is_some() {
+        log::debug!(
+            "start_terminal {terminal_id}: worktree_path={worktree_path}, command={:?}, command_args={:?}",
+            command,
+            command_args
+        );
+    }
 
     // Check if terminal already exists
     if has_terminal(&terminal_id) {

@@ -1710,6 +1710,10 @@ pub async fn dispatch_command(
             let result = crate::opencode_cli::check_opencode_cli_installed(app.clone()).await?;
             to_value(result)
         }
+        "detect_opencode_in_path" => {
+            let result = crate::opencode_cli::detect_opencode_in_path(app.clone()).await?;
+            to_value(result)
+        }
         "check_opencode_cli_auth" => {
             let result = crate::opencode_cli::check_opencode_cli_auth(app.clone()).await?;
             to_value(result)
@@ -1729,6 +1733,10 @@ pub async fn dispatch_command(
         }
         "check_gh_cli_installed" => {
             let result = crate::gh_cli::check_gh_cli_installed(app.clone()).await?;
+            to_value(result)
+        }
+        "detect_gh_in_path" => {
+            let result = crate::gh_cli::detect_gh_in_path(app.clone()).await?;
             to_value(result)
         }
         "check_gh_cli_auth" => {
@@ -1779,6 +1787,10 @@ pub async fn dispatch_command(
         // =====================================================================
         "check_codex_cli_installed" => {
             let result = crate::codex_cli::check_codex_cli_installed(app.clone()).await?;
+            to_value(result)
+        }
+        "detect_codex_in_path" => {
+            let result = crate::codex_cli::detect_codex_in_path(app.clone()).await?;
             to_value(result)
         }
         "check_codex_cli_auth" => {

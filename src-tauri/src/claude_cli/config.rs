@@ -62,7 +62,8 @@ pub fn resolve_cli_binary(app: &AppHandle) -> PathBuf {
 
         if let Ok(output) = silent_command(which_cmd).arg("claude").output() {
             if output.status.success() {
-                let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                // On Windows, `where` can return multiple paths; take only the first line
+                let path_str = String::from_utf8_lossy(&output.stdout).lines().next().unwrap_or("").trim().to_string();
                 if !path_str.is_empty() {
                     let path = PathBuf::from(&path_str);
                     if path.exists() {

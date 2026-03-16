@@ -132,6 +132,11 @@ pub fn spawn_terminal(
         );
         fallback
     };
+    log::debug!(
+        "Terminal {terminal_id}: cwd={cwd}, command={:?}, args={:?}",
+        command,
+        command_args
+    );
     cmd.cwd(&cwd);
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
@@ -141,7 +146,14 @@ pub fn spawn_terminal(
     let child = pair
         .slave
         .spawn_command(cmd)
-        .map_err(|e| format!("Failed to spawn shell: {e}"))?;
+        .map_err(|e| {
+            log::error!(
+                "Failed to spawn terminal {terminal_id}: {e} (cwd={cwd}, command={:?}, args={:?})",
+                command,
+                command_args
+            );
+            format!("Failed to spawn shell: {e}")
+        })?;
 
     log::trace!("Spawned terminal process");
 

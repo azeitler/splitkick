@@ -29,6 +29,29 @@ export const opencodeCliQueryKeys = {
 // Backward-compatible alias used by existing components.
 export const openCodeCliQueryKeys = opencodeCliQueryKeys
 
+/**
+ * Hook to detect OpenCode CLI in system PATH
+ */
+export function useOpencodePathDetection(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: [...opencodeCliQueryKeys.all, 'path-detection'],
+    queryFn: async (): Promise<{ found: boolean; path: string | null; version: string | null; package_manager: string | null }> => {
+      if (!isTauri()) {
+        return { found: false, path: null, version: null, package_manager: null }
+      }
+      try {
+        return await invoke<{ found: boolean; path: string | null; version: string | null; package_manager: string | null }>('detect_opencode_in_path')
+      } catch {
+        return { found: false, path: null, version: null, package_manager: null }
+      }
+    },
+    enabled: options?.enabled ?? true,
+    staleTime: 1000 * 60 * 30,
+    gcTime: 1000 * 60 * 60,
+  })
+}
+export const useOpenCodePathDetection = useOpencodePathDetection
+
 export function useOpencodeCliStatus(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: opencodeCliQueryKeys.status(),

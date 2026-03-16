@@ -384,7 +384,8 @@ export function AuthLoginState({
   )
 }
 
-export interface ClaudePathSelectorProps {
+export interface CliPathSelectorProps {
+  cliName: string
   pathVersion: string | null
   pathPath: string | null
   isLoading: boolean
@@ -392,17 +393,18 @@ export interface ClaudePathSelectorProps {
   onSelectJean: () => void
 }
 
-export function ClaudePathSelector({
+export function CliPathSelector({
+  cliName,
   pathVersion,
   pathPath,
   isLoading,
   onSelectPath,
   onSelectJean,
-}: ClaudePathSelectorProps) {
+}: CliPathSelectorProps) {
   return (
     <div className="space-y-4">
       <div className="text-center text-sm text-muted-foreground">
-        We detected Claude CLI in your system PATH
+        We detected {cliName} in your system PATH
       </div>
 
       <div className="space-y-3">
@@ -411,7 +413,7 @@ export function ClaudePathSelector({
           disabled={isLoading}
           className="w-full p-4 rounded-lg border-2 border-primary/50 hover:border-primary bg-primary/5 hover:bg-primary/10 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <div className="font-medium">Use system Claude</div>
+          <div className="font-medium">Use system {cliName}</div>
           <div className="text-sm text-muted-foreground">
             Version: {pathVersion || 'unknown'}
           </div>
@@ -436,3 +438,7 @@ export function ClaudePathSelector({
     </div>
   )
 }
+
+/** @deprecated Use CliPathSelector instead */
+export const ClaudePathSelector = (props: Omit<CliPathSelectorProps, 'cliName'>) =>
+  CliPathSelector({ ...props, cliName: 'Claude CLI' })

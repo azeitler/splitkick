@@ -7,8 +7,10 @@
  */
 
 import { useCallback, useEffect, useRef, useMemo, useState } from 'react'
-import { invoke } from '@/lib/transport'
+import { invoke, listen } from '@/lib/transport'
 import { useQueryClient } from '@tanstack/react-query'
+import { logger } from '@/lib/logger'
+import { claudeCliQueryKeys } from '@/services/claude-cli'
 import { ghCliQueryKeys } from '@/services/gh-cli'
 import { codexCliQueryKeys } from '@/services/codex-cli'
 import { opencodeCliQueryKeys } from '@/services/opencode-cli'
@@ -92,6 +94,25 @@ function CliLoginModalContent({
     return id
   }, [])
 
+  // Buffer last N lines of terminal output for debug logging on error
+  const outputBufferRef = useRef<string[]>([])
+  const MAX_OUTPUT_LINES = 50
+
+  useEffect(() => {
+    const unlisten = listen<{ terminal_id: string; data: string }>(
+      'terminal:output',
+      event => {
+        if (event.payload.terminal_id !== terminalId) return
+        const lines = event.payload.data.split('\n')
+        outputBufferRef.current.push(...lines)
+        if (outputBufferRef.current.length > MAX_OUTPUT_LINES) {
+          outputBufferRef.current = outputBufferRef.current.slice(-MAX_OUTPUT_LINES)
+        }
+      }
+    )
+    return () => { unlisten.then(fn => fn()) }
+  }, [terminalId])
+
   // Use a synthetic worktreeId for CLI login (not associated with any real worktree)
   const { initTerminal, fit } = useTerminal({
     terminalId,
@@ -162,16 +183,16 @@ function CliLoginModalContent({
         // Dispose xterm instance
         disposeTerminal(terminalId)
 
-        // Invalidate caches so views auto-refetch after login
-        if (cliType === 'gh') {
-          queryClient.invalidateQueries({ queryKey: ghCliQueryKeys.auth() })
+        // Invalidate caches so views auto-refetch after login/update
+        if (cliType === 'claude') {
+          queryClient.invalidateQueries({ queryKey: claudeCliQueryKeys.all })
+        } else if (cliType === 'gh') {
+          queryClient.invalidateQueries({ queryKey: ghCliQueryKeys.all })
           queryClient.invalidateQueries({ queryKey: githubQueryKeys.all })
         } else if (cliType === 'codex') {
-          queryClient.invalidateQueries({ queryKey: codexCliQueryKeys.auth() })
+          queryClient.invalidateQueries({ queryKey: codexCliQueryKeys.all })
         } else if (cliType === 'opencode') {
-          queryClient.invalidateQueries({
-            queryKey: opencodeCliQueryKeys.auth(),
-          })
+          queryClient.invalidateQueries({ queryKey: opencodeCliQueryKeys.all })
         }
 
         onClose()
@@ -183,9 +204,19 @@ function CliLoginModalContent({
   // Auto-close modal on success, show error on failure
   useEffect(() => {
     setOnStopped(terminalId, (exitCode, signal) => {
+      const output = outputBufferRef.current.join('\n').trim()
+      const logBase =
+        `[CliLoginModal] ${cliName} exited code=${exitCode} signal=${signal ?? 'none'}` +
+        ` command=${command} args=${JSON.stringify(commandArgs)}`
+      const logOutput = output
+        ? `\nTerminal output (last ${MAX_OUTPUT_LINES} lines):\n${output}`
+        : '\nNo terminal output captured'
+
       if (exitCode === 0) {
+        logger.debug(logBase + logOutput)
         setTimeout(() => handleOpenChange(false), 1500)
       } else {
+        logger.error(logBase + logOutput)
         setExitStatus({ exitCode, signal })
       }
     })

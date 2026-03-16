@@ -216,6 +216,12 @@ pub struct AppPreferences {
     pub linear_api_key: Option<String>, // Global Linear personal API key (inherited by all projects)
     #[serde(default = "default_cli_source")]
     pub claude_cli_source: String, // Claude CLI source: "jean" (managed) or "path" (system PATH)
+    #[serde(default = "default_cli_source")]
+    pub codex_cli_source: String, // Codex CLI source: "jean" (managed) or "path" (system PATH)
+    #[serde(default = "default_cli_source")]
+    pub opencode_cli_source: String, // OpenCode CLI source: "jean" (managed) or "path" (system PATH)
+    #[serde(default = "default_cli_source")]
+    pub gh_cli_source: String, // GitHub CLI source: "jean" (managed) or "path" (system PATH)
 }
 
 fn default_true() -> Option<bool> {
@@ -1126,6 +1132,9 @@ impl Default for AppPreferences {
             yolo_thinking_level: None,
             linear_api_key: None,
             claude_cli_source: default_cli_source(),
+            codex_cli_source: default_cli_source(),
+            opencode_cli_source: default_cli_source(),
+            gh_cli_source: default_cli_source(),
         }
     }
 }
@@ -2788,18 +2797,21 @@ pub fn run() {
             claude_cli::install_claude_cli,
             // Codex CLI management commands
             codex_cli::check_codex_cli_installed,
+            codex_cli::detect_codex_in_path,
             codex_cli::check_codex_cli_auth,
             codex_cli::get_codex_usage,
             codex_cli::get_available_codex_versions,
             codex_cli::install_codex_cli,
             // OpenCode CLI management commands
             opencode_cli::check_opencode_cli_installed,
+            opencode_cli::detect_opencode_in_path,
             opencode_cli::check_opencode_cli_auth,
             opencode_cli::get_available_opencode_versions,
             opencode_cli::install_opencode_cli,
             opencode_cli::list_opencode_models,
             // GitHub CLI management commands
             gh_cli::check_gh_cli_installed,
+            gh_cli::detect_gh_in_path,
             gh_cli::check_gh_cli_auth,
             gh_cli::get_available_gh_versions,
             gh_cli::install_gh_cli,
