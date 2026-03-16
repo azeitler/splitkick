@@ -2529,8 +2529,22 @@ pub async fn send_chat_message(
         });
     }
 
-    // Create assistant message with tool calls and content blocks
+    // Pre-compute completion state flags before moving unified_response fields
     let has_content = !unified_response.content.is_empty();
+    let was_cancelled = unified_response.cancelled;
+    let has_blocking_tool = unified_response
+        .tool_calls
+        .iter()
+        .any(|tc| tc.name == "AskUserQuestion" || tc.name == "ExitPlanMode");
+    let has_question_tool = unified_response
+        .tool_calls
+        .iter()
+        .any(|tc| tc.name == "AskUserQuestion");
+    let is_plan_mode_with_content = matches!(response_backend, Backend::Codex | Backend::Opencode)
+        && execution_mode.as_deref() == Some("plan")
+        && has_content;
+
+    // Create assistant message with tool calls and content blocks
     let assistant_msg_id = Uuid::new_v4().to_string();
     let assistant_msg = ChatMessage {
         id: assistant_msg_id.clone(),
@@ -2553,7 +2567,7 @@ pub async fn send_chat_message(
     // Messages are loaded from NDJSON on demand via load_session_messages().
 
     // Finalize run log (complete or cancel based on response status)
-    if unified_response.cancelled {
+    if was_cancelled {
         let cancel_resume_sid =
             if response_backend != Backend::Claude || resume_id_for_log.is_empty() {
                 None
@@ -2594,16 +2608,43 @@ pub async fn send_chat_message(
                     }
                 }
             }
+
+            // Persist completion state (single authoritative write).
+            // This eliminates the dual-client race where both native and web frontends
+            // independently call update_session_state with conflicting decisions.
+            // Flags are pre-computed above before unified_response fields are moved.
+            if was_cancelled {
+                // Cancelled: don't change waiting/reviewing state
+            } else if has_blocking_tool {
+                session.waiting_for_input = true;
+                session.is_reviewing = false;
+                session.waiting_for_input_type = Some(
+                    if has_question_tool {
+                        "question"
+                    } else {
+                        "plan"
+                    }
+                    .to_string(),
+                );
+            } else if is_plan_mode_with_content {
+                // Codex/OpenCode plan-mode with content → waiting for plan approval
+                session.waiting_for_input = true;
+                session.is_reviewing = false;
+                session.waiting_for_input_type = Some("plan".to_string());
+            } else {
+                // Normal completion
+                session.waiting_for_input = false;
+                session.is_reviewing = true;
+                session.waiting_for_input_type = None;
+            }
         }
         Ok(())
     })?;
 
-    // NOTE: Plan-waiting state for Codex/Opencode is now signaled via the
-    // `waiting_for_plan` field in the chat:done event, and persisted by the
-    // frontend's chat:done handler. The previous approach of setting it here
-    // raced with the frontend (chat:done fires before this code runs).
+    // Emit cache invalidation so all clients (native + web) refetch authoritative state
+    emit_sessions_cache_invalidation(&app);
 
-    if unified_response.cancelled {
+    if was_cancelled {
         log::info!("[SendChat] EXIT session={session_id} reason=cancelled_with_content");
     } else {
         log::info!("[SendChat] EXIT session={session_id} reason=success");
