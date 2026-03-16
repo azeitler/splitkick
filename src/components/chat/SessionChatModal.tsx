@@ -5,8 +5,6 @@ import {
   useMemo,
   useRef,
   useState,
-  lazy,
-  Suspense,
   type RefObject,
 } from 'react'
 import {
@@ -65,10 +63,6 @@ import { isNativeApp } from '@/lib/environment'
 import { notify } from '@/lib/notifications'
 import { copyToClipboard } from '@/lib/clipboard'
 import { toast } from 'sonner'
-const GitDiffModal = lazy(() =>
-  import('./GitDiffModal').then(mod => ({ default: mod.GitDiffModal }))
-)
-import type { DiffRequest } from '@/types/git-diff'
 import { ChatWindow } from './ChatWindow'
 import { ModalTerminalDrawer } from './ModalTerminalDrawer'
 import { OpenInButton } from '@/components/open-in/OpenInButton'
@@ -341,8 +335,6 @@ export function SessionChatModal({
   const openInTerminal = useOpenWorktreeInTerminal()
   const openInFinder = useOpenWorktreeInFinder()
   const openOnGitHub = useOpenBranchOnGitHub()
-
-  const [diffRequest, setDiffRequest] = useState<DiffRequest | null>(null)
 
   const hasSetActiveRef = useRef<string | null>(null)
 
@@ -646,20 +638,16 @@ export function SessionChatModal({
   )
 
   const handleUncommittedDiffClick = useCallback(() => {
-    setDiffRequest({
-      type: 'uncommitted',
-      worktreePath,
-      baseBranch: defaultBranch,
-    })
-  }, [setDiffRequest, worktreePath, defaultBranch])
+    window.dispatchEvent(
+      new CustomEvent('open-git-diff', { detail: { type: 'uncommitted' } })
+    )
+  }, [])
 
   const handleBranchDiffClick = useCallback(() => {
-    setDiffRequest({
-      type: 'branch',
-      worktreePath,
-      baseBranch: defaultBranch,
-    })
-  }, [setDiffRequest, worktreePath, defaultBranch])
+    window.dispatchEvent(
+      new CustomEvent('open-git-diff', { detail: { type: 'branch' } })
+    )
+  }, [])
 
   const handleRun = useCallback(() => {
     if (!runScript) {
@@ -1302,22 +1290,6 @@ export function SessionChatModal({
             worktreeId={worktreeId}
             worktreePath={worktreePath}
           />
-        )}
-        {diffRequest && (
-          <Suspense fallback={null}>
-            <GitDiffModal
-              diffRequest={diffRequest}
-              onClose={() => setDiffRequest(null)}
-              uncommittedStats={{
-                added: uncommittedAdded,
-                removed: uncommittedRemoved,
-              }}
-              branchStats={{
-                added: branchDiffAdded,
-                removed: branchDiffRemoved,
-              }}
-            />
-          </Suspense>
         )}
       </div>
       <LabelModal

@@ -254,6 +254,7 @@ export function ChatWindow({
   const hasReviewResults = useChatStore(state =>
     activeSessionId ? !!state.reviewResults[activeSessionId] : false
   )
+  const showReviewFullWidth = hasReviewResults && reviewSidebarVisible
   // Whether session is in review state (used to hide "restored session" indicator after prompt finishes)
   const isSessionReviewing = useChatStore(state =>
     activeSessionId
@@ -901,6 +902,7 @@ export function ChatWindow({
       mcpServersDataRef,
       enabledMcpServersRef,
       selectedBackendRef,
+      scrollToBottom,
     })
 
   // Clear context approval handler for PlanDialog
@@ -2002,9 +2004,14 @@ export function ChatWindow({
       )}
     >
       <div className="flex h-full w-full min-w-0 flex-col overflow-hidden">
+        {showReviewFullWidth && activeSessionId ? (
+          <div className="flex-1 min-h-0">
+            <ReviewResultsPanel sessionId={activeSessionId} onSendFix={handleReviewFix} />
+          </div>
+        ) : (
         <ResizablePanelGroup direction="horizontal" className="flex-1">
             <ResizablePanel
-              defaultSize={hasReviewResults && reviewSidebarVisible ? 50 : 100}
+              defaultSize={100}
               minSize={40}
             >
               <ResizablePanelGroup direction="vertical" className="h-full">
@@ -2518,6 +2525,7 @@ export function ChatWindow({
               </>
             )}
           </ResizablePanelGroup>
+        )}
 
         {/* File content modal for viewing files from tool calls */}
         <FileContentModal

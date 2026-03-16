@@ -303,13 +303,23 @@ export function useChatWindowEvents({
     return () => window.removeEventListener('cycle-execution-mode', handler)
   }, [activeSessionId, activeWorktreeId, activeWorktreePath])
 
-  // CMD+G: Open git diff
+  // CMD+G: Open git diff (also handles button clicks that dispatch with detail.type)
   useEffect(() => {
-    const handler = () => {
+    const handler = (e: Event) => {
       if (!activeWorktreePath) return
       const baseBranch = gitStatus?.base_branch ?? 'main'
+      const requestedType = (e as CustomEvent).detail?.type as
+        | 'uncommitted'
+        | 'branch'
+        | undefined
+
       setDiffRequest(prev => {
+        if (requestedType) {
+          // Explicit type from button click — open or switch to that type
+          return { type: requestedType, worktreePath: activeWorktreePath, baseBranch }
+        }
         if (prev) {
+          // CMD+G toggle between types
           return {
             ...prev,
             type: prev.type === 'uncommitted' ? 'branch' : 'uncommitted',

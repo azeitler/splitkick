@@ -216,6 +216,7 @@ function WorktreeSectionHeader({
   isSelected,
   shortcutNumber,
   onRowClick,
+  onDiffClick,
 }: {
   worktree: Worktree
   projectId: string
@@ -225,16 +226,10 @@ function WorktreeSectionHeader({
   isSelected?: boolean
   shortcutNumber?: number
   onRowClick?: () => void
+  onDiffClick?: (worktreePath: string, baseBranch: string, type: 'uncommitted' | 'branch') => void
 }) {
   const isBase = isBaseSession(worktree)
   const { data: gitStatus } = useGitStatus(worktree.id)
-  const [diffRequest, setDiffRequest] = useState<DiffRequest | null>(null)
-
-  // Sync git diff modal open state to UI store (blocks execute_run keybinding)
-  useEffect(() => {
-    useUIStore.getState().setGitDiffModalOpen(!!diffRequest)
-    return () => useUIStore.getState().setGitDiffModalOpen(false)
-  }, [diffRequest])
 
   const hasRunningTerminal = useTerminalStore(state => {
     const terminals = state.terminals[worktree.id] ?? []
@@ -303,12 +298,8 @@ function WorktreeSectionHeader({
   )
 
   const handleDiffClick = useCallback(() => {
-    setDiffRequest({
-      type: isBase ? 'uncommitted' : 'branch',
-      worktreePath: worktree.path,
-      baseBranch: defaultBranch,
-    })
-  }, [isBase, worktree.path, defaultBranch])
+    onDiffClick?.(worktree.path, defaultBranch, isBase ? 'uncommitted' : 'branch')
+  }, [onDiffClick, isBase, worktree.path, defaultBranch])
 
   const sessionMetrics = useMemo(
     () => (cards && cards.length > 0 ? getSessionMetrics(cards) : null),
@@ -475,17 +466,6 @@ function WorktreeSectionHeader({
           )}
         </div>
       </div>
-      <Suspense fallback={null}>
-        <GitDiffModal
-          diffRequest={diffRequest}
-          onClose={() => setDiffRequest(null)}
-          uncommittedStats={{
-            added: uncommittedAdded,
-            removed: uncommittedRemoved,
-          }}
-          branchStats={{ added: branchDiffAdded, removed: branchDiffRemoved }}
-        />
-      </Suspense>
     </>
   )
 }
@@ -1288,7 +1268,12 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   useEffect(() => {
     if (!!selectedWorktreeModal || selectedIndex === null) return
 
-    const handleOpenGitDiff = () => {
+    const handleOpenGitDiff = (e: Event) => {
+      const requestedType = (e as CustomEvent).detail?.type as
+        | 'uncommitted'
+        | 'branch'
+        | undefined
+
       const flatCard = flatCards[selectedIndex]
       if (!flatCard) return
 
@@ -1301,6 +1286,13 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       const baseBranch = project?.default_branch ?? 'main'
 
       setCanvasDiffRequest(prev => {
+        if (requestedType) {
+          return {
+            type: requestedType,
+            worktreePath: section.worktree.path,
+            baseBranch,
+          }
+        }
         if (prev) {
           return {
             ...prev,
@@ -1882,6 +1874,9 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                             section.worktree.id,
                             section.worktree.path
                           )
+                        }}
+                        onDiffClick={(worktreePath, baseBranch, type) => {
+                          setCanvasDiffRequest({ type, worktreePath, baseBranch })
                         }}
                       />
                     </div>

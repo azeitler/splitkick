@@ -38,6 +38,7 @@ interface UsePlanDialogApprovalParams {
   mcpServersDataRef: RefObject<McpServerInfo[] | undefined>
   enabledMcpServersRef: RefObject<string[]>
   selectedBackendRef: RefObject<'claude' | 'codex' | 'opencode'>
+  scrollToBottom: (instant?: boolean) => void
 }
 
 /**
@@ -62,6 +63,7 @@ export function usePlanDialogApproval({
   mcpServersDataRef,
   enabledMcpServersRef,
   selectedBackendRef,
+  scrollToBottom,
 }: UsePlanDialogApprovalParams) {
   const queryClient = useQueryClient()
 
@@ -128,6 +130,16 @@ export function usePlanDialogApproval({
       clearToolCalls(activeSessionId)
       clearStreamingContentBlocks(activeSessionId)
       setSessionReviewing(activeSessionId, false)
+
+      // Scroll to bottom after DOM updates from collapsing the plan approval UI
+      requestAnimationFrame(() => {
+        scrollToBottom(true)
+      })
+      // Safety net: if React committed after our rAF scroll (large content blocks),
+      // the scroll position may be past the now-shorter content → empty viewport.
+      setTimeout(() => {
+        scrollToBottom(true)
+      }, 100)
 
       // Chain: mark_plan_approved → update_session_state → broadcast
       // On WebSocket, commands dispatch concurrently. update_session_state emits
@@ -238,6 +250,7 @@ export function usePlanDialogApproval({
       isCodexBackendRef,
       mcpServersDataRef,
       enabledMcpServersRef,
+      scrollToBottom,
     ]
   )
 
