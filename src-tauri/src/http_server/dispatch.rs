@@ -1315,11 +1315,13 @@ pub async fn dispatch_command(
         // Skills & Search
         // =====================================================================
         "list_claude_skills" => {
-            let result = crate::projects::list_claude_skills().await?;
+            let worktree_path: Option<String> = field_opt(&args, "worktreePath", "worktree_path")?;
+            let result = crate::projects::list_claude_skills(worktree_path).await?;
             to_value(result)
         }
         "list_claude_commands" => {
-            let result = crate::projects::list_claude_commands().await?;
+            let worktree_path: Option<String> = field_opt(&args, "worktreePath", "worktree_path")?;
+            let result = crate::projects::list_claude_commands(worktree_path).await?;
             to_value(result)
         }
         "search_github_issues" => {
