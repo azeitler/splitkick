@@ -9,7 +9,6 @@ import {
   GitBranch,
   GitPullRequestArrow,
   MoreHorizontal,
-  Pencil,
   Play,
   Plus,
   Settings,
