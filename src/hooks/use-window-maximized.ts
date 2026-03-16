@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { isWindows } from '@/lib/platform'
 
 /**
  * Hook to track whether the current window is maximized.
@@ -9,12 +10,15 @@ export function useWindowMaximized() {
   const [isMaximized, setIsMaximized] = useState(false)
 
   useEffect(() => {
+    if (!isWindows) return
+
     const appWindow = getCurrentWindow()
 
     // Check initial state
     appWindow
       .isMaximized()
       .then(setIsMaximized)
+      // eslint-disable-next-line @typescript-eslint/no-empty-function
       .catch(() => {})
 
     // Listen for resize events to update maximized state

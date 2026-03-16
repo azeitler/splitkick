@@ -137,10 +137,7 @@ import { useWindowMaximized } from '@/hooks/use-window-maximized'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useMainWindowEventListeners } from '@/hooks/useMainWindowEventListeners'
-import {
-  useCloseSessionOrWorktreeKeybinding,
-  useSessions,
-} from '@/services/chat'
+import { useCloseSessionOrWorktreeKeybinding } from '@/services/chat'
 import { useUIStatePersistence } from '@/hooks/useUIStatePersistence'
 import { useSessionStatePersistence } from '@/hooks/useSessionStatePersistence'
 import { useSessionPrefetch } from '@/hooks/useSessionPrefetch'
@@ -159,8 +156,6 @@ import {
   useCreateWorktreeKeybinding,
   useWorktreeEvents,
 } from '@/services/projects'
-import { usePreferences } from '@/services/preferences'
-import { useChatStore } from '@/store/chat-store'
 import { isNativeApp } from '@/lib/environment'
 import { isWindows } from '@/lib/platform'
 
@@ -221,22 +216,6 @@ export function MainWindow() {
     ? projects?.find(p => p.id === worktree.project_id)
     : null
 
-  // Fetch preferences and session data for title
-  const { data: preferences } = usePreferences()
-  const { data: sessionsData } = useSessions(
-    selectedWorktreeId ?? null,
-    worktree?.path ?? null
-  )
-  const activeSessionId = useChatStore(state =>
-    selectedWorktreeId ? state.activeSessionIds[selectedWorktreeId] : undefined
-  )
-
-  // Find active session name
-  const activeSessionName = useMemo(() => {
-    if (!sessionsData?.sessions || !activeSessionId) return undefined
-    return sessionsData.sessions.find(s => s.id === activeSessionId)?.name
-  }, [sessionsData?.sessions, activeSessionId])
-
   // Compute window title based on selected project/worktree
   // On mobile, show only project name (worktree name is in the content header)
   const windowTitle = useMemo(() => {
@@ -245,13 +224,8 @@ export function MainWindow() {
     const branchSuffix =
       worktree.branch !== worktree.name ? ` (${worktree.branch})` : ''
 
-    // Add session name when grouping enabled
-    if (preferences?.session_grouping_enabled && activeSessionName) {
-      return `${project.name} › ${worktree.name} › ${activeSessionName}`
-    }
-
     return `${project.name} › ${worktree.name}${branchSuffix}`
-  }, [project, worktree, isMobile, preferences?.session_grouping_enabled, activeSessionName])
+  }, [project, worktree, isMobile])
 
   // Compute polling info - null if no worktree or data not loaded
   const pollingInfo: WorktreePollingInfo | null = useMemo(() => {

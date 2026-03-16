@@ -3378,11 +3378,6 @@ pub async fn open_worktree_in_terminal(
                     .args(["-d", &worktree_path])
                     .spawn()
             }
-            "cmd" => {
-                std::process::Command::new("cmd")
-                    .args(["/k", &format!("cd /d \"{worktree_path}\"")])
-                    .spawn()
-            }
             _ => {
                 // Default: PowerShell
                 std::process::Command::new("powershell")
