@@ -25,9 +25,9 @@ jobs:
           - platform: 'macos-latest'
             args: '--target universal-apple-darwin --bundles app,dmg'
           - platform: 'ubuntu-22.04'
-            args: '--bundles deb,appimage,rpm'
+            args: '--bundles deb,rpm'
           - platform: 'ubuntu-22.04-arm'
-            args: '--bundles deb,appimage,rpm'
+            args: '--bundles deb,rpm'
           - platform: 'windows-latest'
             args: '--bundles msi,nsis'
 
@@ -87,6 +87,28 @@ jobs:
           releaseId: ${{ github.event.release.id }}
           includeUpdaterJson: true
           args: ${{ matrix.args }} -vv
+
+      # Build AppImage separately with the custom AppRun script that fixes
+      # WebKitGTK/GLib compatibility on Ubuntu 24.04+ and rolling-release distros.
+      # The Tauri action builds deb/rpm above; this step handles AppImage with
+      # the LD_LIBRARY_PATH fix that prevents white screen crashes.
+      # See: https://github.com/coollabsio/jean/issues/54
+      - name: Build AppImage with WebKitGTK fix
+        if: startsWith(matrix.platform, 'ubuntu')
+        run: bash scripts/build-appimage.sh
+
+      - name: Upload AppImage to release
+        if: startsWith(matrix.platform, 'ubuntu')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.version }}
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          # Find the AppImage regardless of arch suffix (amd64 or aarch64)
+          APPIMAGE=$(find src-tauri/target/release/bundle/appimage -name "Jean_${VERSION}_*.AppImage" -print -quit 2>/dev/null)
+          if [ -n "$APPIMAGE" ] && [ -f "$APPIMAGE" ]; then
+            gh release upload "$RELEASE_TAG" "$APPIMAGE" --clobber
+          fi
 
   update-homebrew-tap:
     name: Update Homebrew Tap
