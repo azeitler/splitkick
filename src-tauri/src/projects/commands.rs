@@ -4494,9 +4494,7 @@ pub async fn detect_and_link_pr(
 
     if let Ok(view_out) = view_output {
         if view_out.status.success() {
-            if let Ok(view_json) =
-                serde_json::from_slice::<serde_json::Value>(&view_out.stdout)
-            {
+            if let Ok(view_json) = serde_json::from_slice::<serde_json::Value>(&view_out.stdout) {
                 let pr_number = view_json["number"].as_u64().unwrap_or(0) as u32;
                 let pr_url = view_json["url"].as_str().unwrap_or("").to_string();
                 let title = view_json["title"].as_str().unwrap_or("").to_string();
@@ -4506,9 +4504,7 @@ pub async fn detect_and_link_pr(
 
                     // Save PR info to worktree
                     if let Ok(mut data) = load_projects_data(&app) {
-                        if let Some(wt) =
-                            data.worktrees.iter_mut().find(|w| w.id == worktree_id)
-                        {
+                        if let Some(wt) = data.worktrees.iter_mut().find(|w| w.id == worktree_id) {
                             wt.pr_number = Some(pr_number);
                             wt.pr_url = Some(pr_url.clone());
                             let _ = save_projects_data(&app, &data);
