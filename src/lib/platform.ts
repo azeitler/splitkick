@@ -36,3 +36,13 @@ export const getModifierSymbol = (): string => {
   if (!isMacOS) return 'Ctrl'
   return isNativeApp() ? '⌘' : '⌃'
 }
+
+/**
+ * Get the platform-specific file manager name.
+ * Returns "Finder" on macOS, "Explorer" on Windows, "Files" on Linux.
+ */
+export function getFileManagerName(): string {
+  if (isMacOS) return 'Finder'
+  if (isWindows) return 'Explorer'
+  return 'Files'
+}

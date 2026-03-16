@@ -24,6 +24,7 @@ import type {
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
+import { getFileManagerName } from '@/lib/platform'
 
 import type { AppPreferences } from '@/types/preferences'
 import type { AdvisoryContext } from '@/types/github'
@@ -1921,9 +1922,9 @@ export function useOpenWorktreeInFinder() {
         throw new Error('Not in Tauri context')
       }
 
-      logger.debug('Opening worktree in Finder', { worktreePath })
+      logger.debug(`Opening worktree in ${getFileManagerName()}`, { worktreePath })
       await invoke('open_worktree_in_finder', { worktreePath })
-      logger.info('Opened worktree in Finder')
+      logger.info(`Opened worktree in ${getFileManagerName()}`)
     },
     onError: error => {
       const message =
@@ -1932,8 +1933,8 @@ export function useOpenWorktreeInFinder() {
           : typeof error === 'string'
             ? error
             : 'Unknown error occurred'
-      logger.error('Failed to open in Finder', { error })
-      toast.error('Failed to open in Finder', { description: message })
+      logger.error(`Failed to open in ${getFileManagerName()}`, { error })
+      toast.error(`Failed to open in ${getFileManagerName()}`, { description: message })
     },
   })
 }

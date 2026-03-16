@@ -1,4 +1,5 @@
 import { useMemo, useCallback, useRef, useEffect, useState, lazy, Suspense } from 'react'
+import { cn } from '@/lib/utils'
 import { TitleBar } from '@/components/titlebar/TitleBar'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { DevModeBanner } from './DevModeBanner'
@@ -132,6 +133,7 @@ const CloseWorktreeDialog = lazy(() =>
 )
 import { FloatingDock } from '@/components/ui/floating-dock'
 import { Toaster } from '@/components/ui/sonner'
+import { useWindowMaximized } from '@/hooks/use-window-maximized'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useMainWindowEventListeners } from '@/hooks/useMainWindowEventListeners'
@@ -155,6 +157,7 @@ import {
   useWorktreeEvents,
 } from '@/services/projects'
 import { isNativeApp } from '@/lib/environment'
+import { isWindows } from '@/lib/platform'
 
 // Left sidebar resize constraints (pixels)
 const MIN_SIDEBAR_WIDTH = 150
@@ -173,6 +176,7 @@ function useRetainedMount(active: boolean) {
 }
 
 export function MainWindow() {
+  const isMaximized = useWindowMaximized()
   const leftSidebarVisible = useUIStore(state => state.leftSidebarVisible)
   const leftSidebarSize = useUIStore(state => state.leftSidebarSize)
   const setLeftSidebarSize = useUIStore(state => state.setLeftSidebarSize)
@@ -374,9 +378,18 @@ export function MainWindow() {
   const shouldRenderCloseWorktreeDialog = useRetainedMount(closeConfirmOpen)
   const shouldRenderGitHubDashboardModal = useRetainedMount(githubDashboardOpen)
 
+  // On Windows, use smaller border radius and remove it when maximized
+  // On other platforms, use rounded-xl only in native app mode
+  const roundedClass = isWindows
+    ? (!isMaximized && 'rounded-sm')
+    : (isNativeApp() && 'rounded-xl')
+
   return (
     <div
-      className={`flex h-dvh w-full flex-col overflow-hidden bg-background ${isNativeApp() ? 'rounded-xl' : ''}`}
+      className={cn(
+        'flex h-dvh w-full flex-col overflow-hidden bg-background',
+        roundedClass
+      )}
     >
       {/* Title Bar - semi-transparent overlay */}
       <TitleBar title={windowTitle} className="absolute top-0 left-0 right-0" />
