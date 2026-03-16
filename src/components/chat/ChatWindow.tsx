@@ -43,8 +43,11 @@ import type { Worktree, WorktreeCreatedEvent, WorktreeCreateErrorEvent } from '@
 import {
   useLoadedIssueContexts,
   useLoadedPRContexts,
+  useLoadedSecurityContexts,
+  useLoadedAdvisoryContexts,
   useAttachedSavedContexts,
 } from '@/services/github'
+import { useLoadedLinearIssueContexts } from '@/services/linear'
 import {
   useChatStore,
   DEFAULT_MODEL,
@@ -83,12 +86,12 @@ import { ChatInput } from './ChatInput'
 import { SessionDebugPanel } from './SessionDebugPanel'
 import { ChatToolbar } from './ChatToolbar'
 import { ReviewResultsPanel } from './ReviewResultsPanel'
-import { WorktreeCanvasView } from './WorktreeCanvasView'
 import { QueuedMessagesList } from './QueuedMessageItem'
 import { FloatingButtons } from './FloatingButtons'
 import { PlanDialog } from './PlanDialog'
 import { RecapDialog } from './RecapDialog'
 import { StreamingMessage } from './StreamingMessage'
+import { StreamingStatusBar } from './StreamingStatusBar'
 import { ChatErrorFallback } from './ChatErrorFallback'
 import { logger } from '@/lib/logger'
 import { saveCrashState } from '@/lib/recovery'
@@ -112,6 +115,7 @@ import { useGitStatus } from '@/services/git-status'
 import { useRemotePicker } from '@/hooks/useRemotePicker'
 import { isNativeApp } from '@/lib/environment'
 import { supportsAdaptiveThinking } from '@/lib/model-utils'
+import { copyToClipboard, copyHtmlToClipboard } from '@/lib/clipboard'
 import { useClaudeCliStatus } from '@/services/claude-cli'
 import { usePrStatus, usePrStatusEvents } from '@/services/pr-status'
 import type { PrDisplayStatus, CheckStatus } from '@/types/pr-status'
@@ -155,6 +159,7 @@ import { usePlanState } from './hooks/usePlanState'
 import { useActiveTodosAndAgents } from './hooks/useActiveTodosAndAgents'
 import { usePendingAttachments } from './hooks/usePendingAttachments'
 import { dedupeInFlightAssistantMessage } from './in-flight-message-dedupe'
+import { shouldShowPermissionApproval } from './permission-approval-utils'
 
 // PERFORMANCE: Stable empty array references to prevent infinite render loops
 // When Zustand selectors return [], a new reference is created each time
@@ -191,6 +196,16 @@ export function ChatWindow({
   const storeWorktreePath = useChatStore(state => state.activeWorktreePath)
   const activeWorktreeId = propWorktreeId ?? storeWorktreeId
   const activeWorktreePath = propWorktreePath ?? storeWorktreePath
+  const hasPendingAutoInvestigate = useUIStore(state => {
+    if (!activeWorktreeId) return false
+    return (
+      state.autoInvestigateWorktreeIds.has(activeWorktreeId) ||
+      state.autoInvestigatePRWorktreeIds.has(activeWorktreeId) ||
+      state.autoInvestigateSecurityAlertWorktreeIds.has(activeWorktreeId) ||
+      state.autoInvestigateAdvisoryWorktreeIds.has(activeWorktreeId) ||
+      state.autoInvestigateLinearIssueWorktreeIds.has(activeWorktreeId)
+    )
+  })
 
   // PERFORMANCE: Proper selector for activeSessionId - subscribes to changes
   // This triggers re-render when tabs are clicked (setActiveSession updates activeSessionIds)
@@ -205,6 +220,18 @@ export function ChatWindow({
     activeSessionId
       ? (state.sendingSessionIds[activeSessionId] ?? false)
       : false
+  )
+  // Timestamp when current send started (for elapsed timer)
+  const sendStartedAt = useChatStore(state =>
+    activeSessionId
+      ? (state.sendStartedAt[activeSessionId] ?? null)
+      : null
+  )
+  // Duration of last completed run (ms) — stored by completeSession
+  const completedDurationMs = useChatStore(state =>
+    activeSessionId
+      ? (state.completedDurations[activeSessionId] ?? null)
+      : null
   )
   // Session label for top-right badge
   const sessionLabel = useChatStore(state =>
@@ -233,14 +260,6 @@ export function ChatWindow({
       ? (state.reviewingSessions[activeSessionId] ?? false)
       : false
   )
-  // PERFORMANCE: Proper selector for isViewingCanvasTab - subscribes to actual data
-  // Default to true so Canvas is the initial view when opening a worktree
-  const isViewingCanvasTabRaw = useChatStore(state =>
-    state.activeWorktreeId
-      ? (state.viewingCanvasTab[state.activeWorktreeId] ?? true)
-      : false
-  )
-
   const isStreamingPlanApproved = useChatStore(
     state => state.isStreamingPlanApproved
   )
@@ -361,7 +380,6 @@ export function ChatWindow({
 
   const { data: preferences } = usePreferences()
   const patchPreferences = usePatchPreferences()
-  const isViewingCanvasTab = isViewingCanvasTabRaw
   const sessionModalOpen = useUIStore(state => state.sessionChatModalOpen)
   const focusChatShortcut = formatShortcutDisplay(
     (preferences?.keybindings?.focus_chat_input ??
@@ -412,6 +430,25 @@ export function ChatWindow({
   const { data: loadedPRContexts } = useLoadedPRContexts(
     activeSessionId ?? null,
     activeWorktreeId
+  )
+
+  // Loaded security alert contexts for indicator
+  const { data: loadedSecurityContexts } = useLoadedSecurityContexts(
+    activeSessionId ?? null,
+    activeWorktreeId
+  )
+
+  // Loaded advisory contexts for indicator
+  const { data: loadedAdvisoryContexts } = useLoadedAdvisoryContexts(
+    activeSessionId ?? null,
+    activeWorktreeId
+  )
+
+  // Loaded Linear issue contexts for indicator
+  const { data: loadedLinearContexts } = useLoadedLinearIssueContexts(
+    activeSessionId ?? null,
+    activeWorktreeId ?? null,
+    worktree?.project_id ?? null
   )
 
   // Attached saved contexts for indicator
@@ -576,14 +613,15 @@ export function ChatWindow({
   // PERFORMANCE: Track hasValue via callback from ChatInput instead of store subscription
   // ChatInput notifies on mount, session change, and empty/non-empty boundary changes
   const [hasInputValue, setHasInputValue] = useState(false)
-  // Per-session execution mode (defaults to 'plan' for new sessions)
+  // Per-session execution mode (defaults to preference or 'plan' for new sessions)
   // Uses deferredSessionId for display consistency with other content
+  const defaultExecutionMode = preferences?.default_execution_mode ?? 'plan'
   const executionMode = useChatStore(state =>
     deferredSessionId
       ? (state.executionModes[deferredSessionId] ??
         session?.selected_execution_mode ??
-        'plan')
-      : 'plan'
+        defaultExecutionMode)
+      : defaultExecutionMode
   )
   // Executing mode - the mode the currently-running prompt was sent with
   // Uses activeSessionId for immediate status feedback (not deferred)
@@ -656,6 +694,12 @@ export function ChatWindow({
         EMPTY_PERMISSION_DENIALS)
       : EMPTY_PERMISSION_DENIALS
   )
+  const showPermissionApproval = shouldShowPermissionApproval({
+    pendingDenialsCount: pendingDenials.length,
+    isSending,
+    executionMode,
+    isCodexBackend,
+  })
 
 
   // PERFORMANCE: Pre-compute last assistant message to avoid rescanning in multiple memos
@@ -739,7 +783,8 @@ export function ChatWindow({
     () =>
       buildMcpConfigJson(
         mcpServersDataRef.current,
-        enabledMcpServersRef.current
+        enabledMcpServersRef.current,
+        selectedBackendRef.current
       ),
     []
   )
@@ -760,6 +805,7 @@ export function ChatWindow({
     isAtBottom,
     areFindingsVisible,
     scrollToBottom,
+    markAtBottom,
     beginKeyboardScroll,
     endKeyboardScroll,
     scrollToFindings,
@@ -854,6 +900,7 @@ export function ChatWindow({
       isCodexBackendRef,
       mcpServersDataRef,
       enabledMcpServersRef,
+      selectedBackendRef,
     })
 
   // Clear context approval handler for PlanDialog
@@ -1465,7 +1512,7 @@ export function ChatWindow({
     preferences,
     sendMessage,
     queryClient,
-    scrollToBottom,
+    markAtBottom,
     sessionsData,
     setInputDraft,
     clearInputDraft,
@@ -1522,27 +1569,7 @@ export function ChatWindow({
     [pickRemoteOrRun, handlePull]
   )
 
-  // Keyboard shortcuts for merge dialog
-  useEffect(() => {
-    if (!showMergeDialog) return
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const key = e.key.toLowerCase()
-      if (key === 'p') {
-        e.preventDefault()
-        executeMerge('merge')
-      } else if (key === 's') {
-        e.preventDefault()
-        executeMerge('squash')
-      } else if (key === 'r') {
-        e.preventDefault()
-        executeMerge('rebase')
-      }
-    }
-
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [showMergeDialog, executeMerge])
 
   // Global cancel keyboard shortcut (Cmd+Option+Backspace / Ctrl+Alt+Backspace)
   // ChatInput handles this when focused, but we need a global handler for when
@@ -1619,7 +1646,7 @@ export function ChatWindow({
   })
 
   // Investigate issue/PR and workflow run handlers
-  const { handleInvestigate, handleInvestigateWorkflowRun } =
+  const { handleInvestigate, handleInvestigateWorkflowRun, handleReviewComments } =
     useInvestigateHandlers({
       activeSessionId,
       activeWorktreeId,
@@ -1645,7 +1672,6 @@ export function ChatWindow({
     })
 
   // Listen for magic-command events from MagicModal
-  // Pass isModal and isViewingCanvasTab to prevent duplicate listeners when modal is open over canvas
   useMagicCommands({
     handleSaveContext,
     handleLoadContext,
@@ -1659,8 +1685,8 @@ export function ChatWindow({
     handleResolveConflicts,
     handleInvestigateWorkflowRun,
     handleInvestigate,
+    handleReviewComments,
     isModal,
-    isViewingCanvasTab,
     sessionModalOpen,
   })
 
@@ -1673,6 +1699,7 @@ export function ChatWindow({
   useEffect(() => {
     if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
     if (worktreeStatus !== 'ready') return
+    if (!hasPendingAutoInvestigate) return
     const uiStore = useUIStore.getState()
     if (uiStore.consumeAutoInvestigate(activeWorktreeId)) {
       handleInvestigate('issue')
@@ -1685,7 +1712,14 @@ export function ChatWindow({
     } else if (uiStore.consumeAutoInvestigateLinearIssue(activeWorktreeId)) {
       handleInvestigate('linear-issue')
     }
-  }, [activeSessionId, activeWorktreeId, activeWorktreePath, worktreeStatus, handleInvestigate])
+  }, [
+    activeSessionId,
+    activeWorktreeId,
+    activeWorktreePath,
+    worktreeStatus,
+    hasPendingAutoInvestigate,
+    handleInvestigate,
+  ])
 
   // Message handlers hook - handles questions, plan approval, permission approval, finding fixes
   const {
@@ -1772,16 +1806,11 @@ export function ChatWindow({
     const htmlContent = `<span data-jean-prompt="${encodeURIComponent(metadata)}">${cleanText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>`
 
     try {
-      await navigator.clipboard.write([
-        new ClipboardItem({
-          'text/plain': new Blob([cleanText], { type: 'text/plain' }),
-          'text/html': new Blob([htmlContent], { type: 'text/html' }),
-        }),
-      ])
+      await copyHtmlToClipboard(htmlContent, cleanText)
       toast.success('Prompt copied')
     } catch {
       // Fallback to plain text
-      await navigator.clipboard.writeText(cleanText)
+      await copyToClipboard(cleanText)
       toast.success('Text copied (without attachments)')
     }
   }, [])
@@ -1793,7 +1822,6 @@ export function ChatWindow({
     activeWorktreeId,
     activeWorktreePath,
     isModal,
-    isViewingCanvasTab,
     latestPlanContent,
     latestPlanFilePath,
     setPlanDialogContent,
@@ -1886,6 +1914,7 @@ export function ChatWindow({
     isCodexBackendRef,
     mcpServersDataRef,
     enabledMcpServersRef,
+    selectedBackendRef,
     setInputDraft,
     sendMessageNow,
   })
@@ -1973,14 +2002,7 @@ export function ChatWindow({
       )}
     >
       <div className="flex h-full w-full min-w-0 flex-col overflow-hidden">
-        {/* Canvas view (when canvas tab is active) */}
-        {!isModal && isViewingCanvasTab ? (
-          <WorktreeCanvasView
-            worktreeId={activeWorktreeId}
-            worktreePath={activeWorktreePath}
-          />
-        ) : (
-          <ResizablePanelGroup direction="horizontal" className="flex-1">
+        <ResizablePanelGroup direction="horizontal" className="flex-1">
             <ResizablePanel
               defaultSize={hasReviewResults && reviewSidebarVisible ? 50 : 100}
               minSize={40}
@@ -2016,7 +2038,7 @@ export function ChatWindow({
                         viewportRef={scrollViewportRef}
                         onScroll={handleScroll}
                       >
-                        <div className="mx-auto max-w-7xl px-4 pt-4 pb-8 md:px-6 min-w-0 w-full">
+                        <div className="mx-auto max-w-7xl px-4 pt-4 pb-6 md:px-6 min-w-0 w-full">
                           <div className="select-text space-y-4 font-mono text-sm min-w-0 break-words overflow-x-auto">
                             {/* Debug info (enabled via Settings → Experimental → Debug mode) */}
                             {preferences?.debug_mode_enabled &&
@@ -2087,75 +2109,80 @@ export function ChatWindow({
                                 onScrollToBottomHandled={
                                   handleScrollToBottomHandled
                                 }
+                                completedDurationMs={completedDurationMs}
                               />
                             )}
+                            {/* Streaming response + elapsed timer in one wrapper to avoid space-y-4 gap */}
                             {isSending && activeSessionId && (
-                              <StreamingMessage
-                                sessionId={activeSessionId}
-                                contentBlocks={currentStreamingContentBlocks}
-                                toolCalls={currentToolCalls}
-                                streamingContent={streamingContent}
-                                streamingExecutionMode={streamingExecutionMode}
-                                selectedThinkingLevel={selectedThinkingLevel}
-                                approveShortcut={approveShortcut}
-                                approveShortcutYolo={approveShortcutYolo}
-                                approveShortcutClearContext={approveShortcutClearContext}
-                                approveShortcutClearContextBuild={approveShortcutClearContextBuild}
-                                onQuestionAnswer={handleQuestionAnswer}
-                                onQuestionSkip={handleSkipQuestion}
-                                onFileClick={setViewingFilePath}
-                                onEditedFileClick={setViewingFilePath}
-                                isQuestionAnswered={isQuestionAnswered}
-                                getSubmittedAnswers={getSubmittedAnswers}
-                                areQuestionsSkipped={areQuestionsSkipped}
-                                isStreamingPlanApproved={
-                                  isStreamingPlanApproved
-                                }
-                                onStreamingPlanApproval={
-                                  handleStreamingPlanApproval
-                                }
-                                onStreamingPlanApprovalYolo={
-                                  handleStreamingPlanApprovalYolo
-                                }
-                                onStreamingClearContextApproval={
-                                  handleStreamingClearContextApproval
-                                }
-                                onStreamingClearContextApprovalBuild={
-                                  handleStreamingClearContextApprovalBuild
-                                }
-                                onStreamingWorktreeBuildApproval={
-                                  worktree?.project_id ? handleStreamingWorktreeBuildApproval : undefined
-                                }
-                                onStreamingWorktreeYoloApproval={
-                                  worktree?.project_id ? handleStreamingWorktreeYoloApproval : undefined
-                                }
-                                hideApproveButtons={isCodexBackend}
-                              />
+                              <div>
+                                {(currentStreamingContentBlocks.length > 0 || currentToolCalls.length > 0 || streamingContent.trim().length > 0) && (
+                                  <StreamingMessage
+                                    sessionId={activeSessionId}
+                                    contentBlocks={currentStreamingContentBlocks}
+                                    toolCalls={currentToolCalls}
+                                    streamingContent={streamingContent}
+                                    selectedThinkingLevel={selectedThinkingLevel}
+                                    approveShortcut={approveShortcut}
+                                    approveShortcutYolo={approveShortcutYolo}
+                                    approveShortcutClearContext={approveShortcutClearContext}
+                                    approveShortcutClearContextBuild={approveShortcutClearContextBuild}
+                                    onQuestionAnswer={handleQuestionAnswer}
+                                    onQuestionSkip={handleSkipQuestion}
+                                    onFileClick={setViewingFilePath}
+                                    onEditedFileClick={setViewingFilePath}
+                                    isQuestionAnswered={isQuestionAnswered}
+                                    getSubmittedAnswers={getSubmittedAnswers}
+                                    areQuestionsSkipped={areQuestionsSkipped}
+                                    isStreamingPlanApproved={
+                                      isStreamingPlanApproved
+                                    }
+                                    onStreamingPlanApproval={
+                                      handleStreamingPlanApproval
+                                    }
+                                    onStreamingPlanApprovalYolo={
+                                      handleStreamingPlanApprovalYolo
+                                    }
+                                    onStreamingClearContextApproval={
+                                      handleStreamingClearContextApproval
+                                    }
+                                    onStreamingClearContextApprovalBuild={
+                                      handleStreamingClearContextApprovalBuild
+                                    }
+                                    onStreamingWorktreeBuildApproval={
+                                      worktree?.project_id
+                                        ? handleStreamingWorktreeBuildApproval
+                                        : undefined
+                                    }
+                                    onStreamingWorktreeYoloApproval={
+                                      worktree?.project_id
+                                        ? handleStreamingWorktreeYoloApproval
+                                        : undefined
+                                    }
+                                    hideApproveButtons={isCodexBackend}
+                                  />
+                                )}
+                                <StreamingStatusBar
+                                  isSending={isSending}
+                                  sendStartedAt={sendStartedAt}
+                                  streamingExecutionMode={streamingExecutionMode}
+                                  restoredRunStatus={
+                                    !isSending &&
+                                    !isWaitingForInput &&
+                                    !hasPendingQuestions &&
+                                    !isSessionReviewing
+                                      ? session?.last_run_status
+                                      : undefined
+                                  }
+                                  restoredExecutionMode={
+                                    session?.last_run_execution_mode
+                                  }
+                                />
+                              </div>
                             )}
-
-                            {/* Restored session status - shown when session was running but app restarted */}
-                            {!isSending &&
-                              !isWaitingForInput &&
-                              !hasPendingQuestions &&
-                              !isSessionReviewing &&
-                              session?.last_run_status === 'running' && (
-                                <div className="text-sm text-muted-foreground/60 mt-4">
-                                  <span className="animate-dots">
-                                    {session.last_run_execution_mode === 'plan'
-                                      ? 'Planning'
-                                      : session.last_run_execution_mode ===
-                                          'yolo'
-                                        ? 'Yoloing'
-                                        : 'Vibing'}
-                                  </span>
-                                </div>
-                              )}
 
                             {/* Permission approval UI - shown when tools require approval (never in yolo mode) */}
-                            {pendingDenials.length > 0 &&
-                              activeSessionId &&
-                              !isSending &&
-                              executionMode !== 'yolo' && (
+                            {showPermissionApproval &&
+                              activeSessionId && (
                                 <PermissionApproval
                                   sessionId={activeSessionId}
                                   denials={pendingDenials}
@@ -2194,6 +2221,7 @@ export function ChatWindow({
                         onScrollToFindings={scrollToFindings}
                         onScrollToBottom={scrollToBottom}
                       />
+
                     </div>
 
                     {/* Error banner - shows when request fails */}
@@ -2358,6 +2386,9 @@ export function ChatWindow({
                               projectId={worktree?.project_id}
                               loadedIssueContexts={loadedIssueContexts ?? []}
                               loadedPRContexts={loadedPRContexts ?? []}
+                              loadedSecurityContexts={loadedSecurityContexts ?? []}
+                              loadedAdvisoryContexts={loadedAdvisoryContexts ?? []}
+                              loadedLinearContexts={loadedLinearContexts ?? []}
                               attachedSavedContexts={
                                 attachedSavedContexts ?? []
                               }
@@ -2487,7 +2518,6 @@ export function ChatWindow({
               </>
             )}
           </ResizablePanelGroup>
-        )}
 
         {/* File content modal for viewing files from tool calls */}
         <FileContentModal
@@ -2601,7 +2631,21 @@ export function ChatWindow({
 
         {/* Merge options dialog */}
         <AlertDialog open={showMergeDialog} onOpenChange={setShowMergeDialog}>
-          <AlertDialogContent>
+          <AlertDialogContent
+            onKeyDown={e => {
+              const key = e.key.toLowerCase()
+              if (key === 'p') {
+                e.preventDefault()
+                executeMerge('merge')
+              } else if (key === 's') {
+                e.preventDefault()
+                executeMerge('squash')
+              } else if (key === 'r') {
+                e.preventDefault()
+                executeMerge('rebase')
+              }
+            }}
+          >
             <AlertDialogHeader>
               <AlertDialogTitle>Merge to Base</AlertDialogTitle>
               <AlertDialogDescription>

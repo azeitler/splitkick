@@ -1,5 +1,7 @@
 import { useMemo, useCallback, useRef, useEffect, useState, lazy, Suspense } from 'react'
+import { cn } from '@/lib/utils'
 import { TitleBar } from '@/components/titlebar/TitleBar'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { DevModeBanner } from './DevModeBanner'
 import { SidebarWidthProvider } from './SidebarWidthContext'
 import { MainWindowContent } from './MainWindowContent'
@@ -74,6 +76,11 @@ const UpdatePrDialog = lazy(() =>
     default: mod.UpdatePrDialog,
   }))
 )
+const ReviewCommentsDialog = lazy(() =>
+  import('@/components/magic/ReviewCommentsDialog').then(mod => ({
+    default: mod.ReviewCommentsDialog,
+  }))
+)
 const NewWorktreeModal = lazy(() =>
   import('@/components/worktree/NewWorktreeModal').then(mod => ({
     default: mod.NewWorktreeModal,
@@ -126,6 +133,7 @@ const CloseWorktreeDialog = lazy(() =>
 )
 import { FloatingDock } from '@/components/ui/floating-dock'
 import { Toaster } from '@/components/ui/sonner'
+import { useWindowMaximized } from '@/hooks/use-window-maximized'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useMainWindowEventListeners } from '@/hooks/useMainWindowEventListeners'
@@ -148,8 +156,8 @@ import {
   useCreateWorktreeKeybinding,
   useWorktreeEvents,
 } from '@/services/projects'
-import { useChatStore } from '@/store/chat-store'
 import { isNativeApp } from '@/lib/environment'
+import { isWindows } from '@/lib/platform'
 
 // Left sidebar resize constraints (pixels)
 const MIN_SIDEBAR_WIDTH = 150
@@ -168,6 +176,7 @@ function useRetainedMount(active: boolean) {
 }
 
 export function MainWindow() {
+  const isMaximized = useWindowMaximized()
   const leftSidebarVisible = useUIStore(state => state.leftSidebarVisible)
   const leftSidebarSize = useUIStore(state => state.leftSidebarSize)
   const setLeftSidebarSize = useUIStore(state => state.setLeftSidebarSize)
@@ -181,6 +190,7 @@ export function MainWindow() {
   const newWorktreeModalOpen = useUIStore(state => state.newWorktreeModalOpen)
   const releaseNotesModalOpen = useUIStore(state => state.releaseNotesModalOpen)
   const updatePrModalOpen = useUIStore(state => state.updatePrModalOpen)
+  const reviewCommentsModalOpen = useUIStore(state => state.reviewCommentsModalOpen)
   const workflowRunsModalOpen = useUIStore(state => state.workflowRunsModalOpen)
   const cliUpdateModalOpen = useUIStore(state => state.cliUpdateModalOpen)
   const cliLoginModalOpen = useUIStore(state => state.cliLoginModalOpen)
@@ -197,6 +207,8 @@ export function MainWindow() {
     state => state.jeanConfigWizardOpen
   )
 
+  const isMobile = useIsMobile()
+
   // Fetch worktree data for polling initialization
   const { data: worktree } = useWorktree(selectedWorktreeId ?? null)
   const { data: projects } = useProjects()
@@ -204,23 +216,16 @@ export function MainWindow() {
     ? projects?.find(p => p.id === worktree.project_id)
     : null
 
-  const isViewingCanvasTabRaw = useChatStore(state =>
-    selectedWorktreeId
-      ? (state.viewingCanvasTab[selectedWorktreeId] ?? true)
-      : false
-  )
-
   // Compute window title based on selected project/worktree
+  // On mobile, show only project name (worktree name is in the content header)
   const windowTitle = useMemo(() => {
     if (!project || !worktree) return 'Jean'
+    if (isMobile) return project.name
     const branchSuffix =
       worktree.branch !== worktree.name ? ` (${worktree.branch})` : ''
 
     return `${project.name} › ${worktree.name}${branchSuffix}`
-  }, [project, worktree])
-
-  // Determine if canvas view is active (for hiding title bar)
-  const isViewingCanvasTab = isViewingCanvasTabRaw
+  }, [project, worktree, isMobile])
 
   // Compute polling info - null if no worktree or data not loaded
   const pollingInfo: WorktreePollingInfo | null = useMemo(() => {
@@ -359,6 +364,7 @@ export function MainWindow() {
   const shouldRenderOpenInModal = useRetainedMount(openInModalOpen)
   const shouldRenderRemotePickerModal = useRetainedMount(remotePickerOpen)
   const shouldRenderUpdatePrDialog = useRetainedMount(updatePrModalOpen)
+  const shouldRenderReviewCommentsDialog = useRetainedMount(reviewCommentsModalOpen)
   const shouldRenderWorkflowRunsModal = useRetainedMount(workflowRunsModalOpen)
   const shouldRenderMagicModal = useRetainedMount(magicModalOpen)
   const shouldRenderReleaseNotesDialog = useRetainedMount(
@@ -372,18 +378,27 @@ export function MainWindow() {
   const shouldRenderCloseWorktreeDialog = useRetainedMount(closeConfirmOpen)
   const shouldRenderGitHubDashboardModal = useRetainedMount(githubDashboardOpen)
 
+  // On Windows, use smaller border radius and remove it when maximized
+  // On other platforms, use rounded-xl only in native app mode
+  const roundedClass = isWindows
+    ? (!isMaximized && 'rounded-sm')
+    : (isNativeApp() && 'rounded-xl')
+
   return (
     <div
-      className={`flex h-dvh w-full flex-col overflow-hidden bg-background ${isNativeApp() ? 'rounded-xl' : ''}`}
+      className={cn(
+        'flex h-dvh w-full flex-col overflow-hidden bg-background',
+        roundedClass
+      )}
     >
-      {/* Title Bar */}
-      <TitleBar title={windowTitle} hideTitle={isViewingCanvasTab} />
+      {/* Title Bar - semi-transparent overlay */}
+      <TitleBar title={windowTitle} className="absolute top-0 left-0 right-0" />
 
       {/* Dev Mode Banner */}
       <DevModeBanner />
 
       {/* Main Content Area */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden pt-8">
         {/* Left Sidebar with pixel-based width - only render after UI state is initialized */}
         {leftSidebarVisible && isInitialized && (
           <SidebarWidthProvider value={leftSidebarSize}>
@@ -492,6 +507,11 @@ export function MainWindow() {
       {shouldRenderUpdatePrDialog && (
         <Suspense fallback={null}>
           <UpdatePrDialog />
+        </Suspense>
+      )}
+      {shouldRenderReviewCommentsDialog && (
+        <Suspense fallback={null}>
+          <ReviewCommentsDialog />
         </Suspense>
       )}
       {shouldRenderNewWorktreeModal && (

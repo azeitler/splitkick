@@ -265,12 +265,29 @@ function App() {
           }
         }
       }
-      // Seed active sessions (with full chat history/messages)
+      // Seed active sessions (with full chat history/messages).
+      // Use function updater to avoid overwriting cache that has MORE messages
+      // (e.g., from chat:done upsert that arrived before this reconnect seed).
       if (data.activeSessions) {
-        for (const [sessionId, session] of Object.entries(
+        for (const [sessionId, initSession] of Object.entries(
           data.activeSessions
         )) {
-          queryClient.setQueryData(chatQueryKeys.session(sessionId), session)
+          queryClient.setQueryData<Session>(
+            chatQueryKeys.session(sessionId),
+            old => {
+              if (!old) return initSession as Session
+              const init = initSession as Session
+              if (old.messages.length > init.messages.length) {
+                logger.warn('[seedCache] preserving cached messages', {
+                  sessionId,
+                  cachedCount: old.messages.length,
+                  initCount: init.messages.length,
+                })
+                return { ...init, messages: old.messages }
+              }
+              return init
+            }
+          )
         }
       }
       // Replace sendingSessionIds with exactly the server's running sessions.
@@ -623,6 +640,7 @@ function App() {
       user_message: string
       resumable: boolean
       execution_mode: string | null
+      started_at: number
     }
 
     const cancelIdleStartupWork = scheduleIdleWork(() => {
@@ -673,7 +691,7 @@ function App() {
               worktree_id: session.worktree_id,
             })
             const store = useChatStore.getState()
-            store.addSendingSession(session.session_id)
+            store.addSendingSession(session.session_id, session.started_at * 1000)
 
             let sessionSnapshot = queryClient.getQueryData<Session>(
               chatQueryKeys.session(session.session_id)

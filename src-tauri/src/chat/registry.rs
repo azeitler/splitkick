@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use once_cell::sync::Lazy;
 use tauri::AppHandle;
@@ -22,7 +23,9 @@ static PENDING_CANCELS: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new(H
 
 /// Cancel flags for OpenCode sessions (HTTP-based, no PID to kill).
 /// When cancel is requested, the flag is set so the blocking HTTP thread can detect it.
-static CANCEL_FLAGS: Lazy<Mutex<HashMap<String, Arc<AtomicBool>>>> =
+/// Stores (cancel_flag, optional_opencode_session_id) — the session ID is set after
+/// the OpenCode session is created, enabling server-side interrupt on cancel.
+static CANCEL_FLAGS: Lazy<Mutex<HashMap<String, (Arc<AtomicBool>, Option<String>)>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
 /// Codex app-server turn registry: maps session_id → (thread_id, turn_id).
@@ -37,6 +40,23 @@ fn lock_recover<'a, T>(mutex: &'a Mutex<T>, name: &str) -> std::sync::MutexGuard
             log::error!("[Registry] recovering poisoned mutex: {name}");
             poisoned.into_inner()
         }
+    }
+}
+
+fn emit_cancelled_event(app: &AppHandle, session_id: &str, worktree_id: &str, undo_send: bool) {
+    let emitted_at_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0);
+
+    let event = CancelledEvent {
+        session_id: session_id.to_string(),
+        worktree_id: worktree_id.to_string(),
+        undo_send,
+        emitted_at_ms,
+    };
+    if let Err(e) = app.emit_all("chat:cancelled", &event) {
+        log::error!("Failed to emit chat:cancelled event: {e}");
     }
 }
 
@@ -93,8 +113,18 @@ pub fn register_cancel_flag(session_id: String, flag: Arc<AtomicBool>) -> bool {
         }
     }
 
-    lock_recover(&CANCEL_FLAGS, "CANCEL_FLAGS").insert(session_id, flag);
+    lock_recover(&CANCEL_FLAGS, "CANCEL_FLAGS").insert(session_id, (flag, None));
     true
+}
+
+/// Update the OpenCode session ID for a registered cancel flag.
+/// Called after the OpenCode session is created so that `cancel_process` can
+/// send a server-side interrupt request.
+pub fn update_cancel_flag_session_id(session_id: &str, opencode_session_id: String) {
+    let mut flags = lock_recover(&CANCEL_FLAGS, "CANCEL_FLAGS");
+    if let Some(entry) = flags.get_mut(session_id) {
+        entry.1 = Some(opencode_session_id);
+    }
 }
 
 /// Register a Codex app-server turn for a session.
@@ -242,14 +272,7 @@ pub fn cancel_process(
         }
 
         // Emit cancelled event for responsive UI
-        let event = CancelledEvent {
-            session_id: session_id.to_string(),
-            worktree_id: worktree_id.to_string(),
-            undo_send: false, // Process was running, may have partial content
-        };
-        if let Err(e) = app.emit_all("chat:cancelled", &event) {
-            log::error!("Failed to emit chat:cancelled event: {e}");
-        }
+        emit_cancelled_event(app, session_id, worktree_id, false);
 
         return Ok(true);
     }
@@ -273,42 +296,55 @@ pub fn cancel_process(
             log::warn!("Failed to mark run as cancelled in manifest: {e}");
         }
 
-        let event = CancelledEvent {
-            session_id: session_id.to_string(),
-            worktree_id: worktree_id.to_string(),
-            undo_send: false,
-        };
-        if let Err(e) = app.emit_all("chat:cancelled", &event) {
-            log::error!("Failed to emit chat:cancelled event: {e}");
-        }
+        emit_cancelled_event(app, session_id, worktree_id, false);
 
         return Ok(true);
     }
 
-    let flag = {
+    let flag_entry = {
         lock_recover(&CANCEL_FLAGS, "CANCEL_FLAGS")
             .get(session_id)
             .cloned()
     };
-    if let Some(flag) = flag {
+    if let Some((flag, opencode_session_id)) = flag_entry {
         // OpenCode session: set the cancel flag so the HTTP thread detects it
         log::warn!("OpenCode session {session_id}: setting cancel flag");
         flag.store(true, Ordering::SeqCst);
+
+        // Fire-and-forget: call the OpenCode interrupt endpoint to abort server-side processing.
+        // This makes the in-flight blocking POST return immediately.
+        if let Some(oc_sid) = opencode_session_id {
+            if let Some(base_url) = crate::opencode_server::get_current_url() {
+                let interrupt_url = format!("{base_url}/session/{oc_sid}/interrupt");
+                std::thread::spawn(move || {
+                    log::info!("OpenCode: sending interrupt to {interrupt_url}");
+                    let client = reqwest::blocking::Client::builder()
+                        .timeout(std::time::Duration::from_secs(5))
+                        .build();
+                    match client {
+                        Ok(c) => match c.post(&interrupt_url).send() {
+                            Ok(resp) => {
+                                log::info!("OpenCode interrupt response: status={}", resp.status())
+                            }
+                            Err(e) => log::warn!("OpenCode interrupt request failed: {e}"),
+                        },
+                        Err(e) => log::warn!("OpenCode interrupt client build failed: {e}"),
+                    }
+                });
+            } else {
+                log::warn!("OpenCode: no server URL available for interrupt");
+            }
+        }
 
         // Mark run as cancelled immediately (before HTTP call returns)
         if let Err(e) = run_log::mark_running_run_cancelled(app, session_id) {
             log::warn!("Failed to mark run as cancelled in manifest: {e}");
         }
 
-        // Emit cancelled event with undo_send=true since no content has streamed yet
-        let event = CancelledEvent {
-            session_id: session_id.to_string(),
-            worktree_id: worktree_id.to_string(),
-            undo_send: true,
-        };
-        if let Err(e) = app.emit_all("chat:cancelled", &event) {
-            log::error!("Failed to emit chat:cancelled event: {e}");
-        }
+        // Emit cancelled event with undo_send=false — content may have already
+        // streamed to the frontend via SSE events. The frontend will decide
+        // based on actual streamed content whether to undo or preserve.
+        emit_cancelled_event(app, session_id, worktree_id, false);
 
         return Ok(true);
     }
@@ -325,14 +361,7 @@ pub fn cancel_process(
     let _ = run_log::mark_running_run_cancelled(app, session_id);
 
     // Emit cancelled event so frontend handles it immediately
-    let event = CancelledEvent {
-        session_id: session_id.to_string(),
-        worktree_id: worktree_id.to_string(),
-        undo_send: true, // No content was streamed yet
-    };
-    if let Err(e) = app.emit_all("chat:cancelled", &event) {
-        log::error!("Failed to emit chat:cancelled event: {e}");
-    }
+    emit_cancelled_event(app, session_id, worktree_id, true);
 
     Ok(true)
 }
@@ -374,14 +403,7 @@ pub fn cancel_process_if_running(
             log::warn!("Failed to mark run as cancelled in manifest: {e}");
         }
 
-        let event = CancelledEvent {
-            session_id: session_id.to_string(),
-            worktree_id: worktree_id.to_string(),
-            undo_send: false,
-        };
-        if let Err(e) = app.emit_all("chat:cancelled", &event) {
-            log::error!("Failed to emit chat:cancelled event: {e}");
-        }
+        emit_cancelled_event(app, session_id, worktree_id, false);
 
         return Ok(true);
     }
@@ -407,40 +429,42 @@ pub fn cancel_process_if_running(
             log::warn!("Failed to mark run as cancelled in manifest: {e}");
         }
 
-        let event = CancelledEvent {
-            session_id: session_id.to_string(),
-            worktree_id: worktree_id.to_string(),
-            undo_send: false,
-        };
-        if let Err(e) = app.emit_all("chat:cancelled", &event) {
-            log::error!("Failed to emit chat:cancelled event: {e}");
-        }
+        emit_cancelled_event(app, session_id, worktree_id, false);
 
         return Ok(true);
     }
 
-    let flag = {
+    let flag_entry = {
         lock_recover(&CANCEL_FLAGS, "CANCEL_FLAGS")
             .get(session_id)
             .cloned()
     };
-    if let Some(flag) = flag {
+    if let Some((flag, opencode_session_id)) = flag_entry {
         // OpenCode session actively running — set the cancel flag
         log::trace!("OpenCode session {session_id} is running, setting cancel flag");
         flag.store(true, Ordering::SeqCst);
+
+        // Fire-and-forget interrupt
+        if let Some(oc_sid) = opencode_session_id {
+            if let Some(base_url) = crate::opencode_server::get_current_url() {
+                let interrupt_url = format!("{base_url}/session/{oc_sid}/interrupt");
+                std::thread::spawn(move || {
+                    log::info!("OpenCode: sending interrupt to {interrupt_url}");
+                    let client = reqwest::blocking::Client::builder()
+                        .timeout(std::time::Duration::from_secs(5))
+                        .build();
+                    if let Ok(c) = client {
+                        let _ = c.post(&interrupt_url).send();
+                    }
+                });
+            }
+        }
 
         if let Err(e) = run_log::mark_running_run_cancelled(app, session_id) {
             log::warn!("Failed to mark run as cancelled in manifest: {e}");
         }
 
-        let event = CancelledEvent {
-            session_id: session_id.to_string(),
-            worktree_id: worktree_id.to_string(),
-            undo_send: true,
-        };
-        if let Err(e) = app.emit_all("chat:cancelled", &event) {
-            log::error!("Failed to emit chat:cancelled event: {e}");
-        }
+        emit_cancelled_event(app, session_id, worktree_id, true);
 
         return Ok(true);
     }

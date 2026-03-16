@@ -81,6 +81,7 @@ pub async fn dispatch_command(
             let pr_context = field_opt(&args, "prContext", "pr_context")?;
             let security_context = field_opt(&args, "securityContext", "security_context")?;
             let advisory_context = field_opt(&args, "advisoryContext", "advisory_context")?;
+            let linear_context = field_opt(&args, "linearContext", "linear_context")?;
             let custom_name = field_opt(&args, "customName", "custom_name")?;
             let result = crate::projects::create_worktree(
                 app.clone(),
@@ -90,6 +91,7 @@ pub async fn dispatch_command(
                 pr_context,
                 security_context,
                 advisory_context,
+                linear_context,
                 custom_name,
             )
             .await?;
@@ -236,6 +238,17 @@ pub async fn dispatch_command(
             emit_cache_invalidation(app, &["projects"]);
             Ok(Value::Null)
         }
+        "detect_and_link_pr" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let result =
+                crate::projects::detect_and_link_pr(app.clone(), worktree_id, worktree_path)
+                    .await?;
+            if result.is_some() {
+                emit_cache_invalidation(app, &["projects"]);
+            }
+            to_value(result)
+        }
         "clear_worktree_pr" => {
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
             crate::projects::clear_worktree_pr(app.clone(), worktree_id).await?;
@@ -263,6 +276,12 @@ pub async fn dispatch_command(
             .await?;
             to_value(result)
         }
+        "merge_github_pr" => {
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let result = crate::projects::merge_github_pr(app.clone(), worktree_path).await?;
+            emit_cache_invalidation(app, &["projects"]);
+            to_value(result)
+        }
         "create_commit_with_ai" => {
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
             let custom_prompt: Option<String> = field_opt(&args, "magicPrompt", "magic_prompt")?;
@@ -286,6 +305,13 @@ pub async fn dispatch_command(
                 reasoning_effort,
             )
             .await?;
+            to_value(result)
+        }
+        "revert_last_local_commit" => {
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let result =
+                crate::projects::revert_last_local_commit(worktree_path).await?;
+            emit_cache_invalidation(app, &["projects"]);
             to_value(result)
         }
         "run_review_with_ai" => {
@@ -392,6 +418,14 @@ pub async fn dispatch_command(
             let pr_number: u32 = field(&args, "prNumber", "pr_number")?;
             let result =
                 crate::projects::get_github_pr(app.clone(), project_path, pr_number).await?;
+            to_value(result)
+        }
+        "get_pr_review_comments" => {
+            let project_path: String = field(&args, "projectPath", "project_path")?;
+            let pr_number: u32 = field(&args, "prNumber", "pr_number")?;
+            let result =
+                crate::projects::get_pr_review_comments(app.clone(), project_path, pr_number)
+                    .await?;
             to_value(result)
         }
         "load_issue_context" => {
@@ -1072,6 +1106,11 @@ pub async fn dispatch_command(
             to_value(result)
         }
 
+        "cleanup_combined_contexts" => {
+            let result = crate::projects::cleanup_combined_contexts(app.clone()).await?;
+            to_value(result)
+        }
+
         // =====================================================================
         // HTTP Server control (exposed so web clients can check status)
         // =====================================================================
@@ -1127,6 +1166,7 @@ pub async fn dispatch_command(
             let pr_context = field_opt(&args, "prContext", "pr_context")?;
             let security_context = field_opt(&args, "securityContext", "security_context")?;
             let advisory_context = field_opt(&args, "advisoryContext", "advisory_context")?;
+            let linear_context = field_opt(&args, "linearContext", "linear_context")?;
             let result = crate::projects::create_worktree_from_existing_branch(
                 app.clone(),
                 project_id,
@@ -1135,6 +1175,7 @@ pub async fn dispatch_command(
                 pr_context,
                 security_context,
                 advisory_context,
+                linear_context,
             )
             .await?;
             to_value(result)
@@ -1286,11 +1327,13 @@ pub async fn dispatch_command(
         // Skills & Search
         // =====================================================================
         "list_claude_skills" => {
-            let result = crate::projects::list_claude_skills().await?;
+            let worktree_path: Option<String> = field_opt(&args, "worktreePath", "worktree_path")?;
+            let result = crate::projects::list_claude_skills(worktree_path).await?;
             to_value(result)
         }
         "list_claude_commands" => {
-            let result = crate::projects::list_claude_commands().await?;
+            let worktree_path: Option<String> = field_opt(&args, "worktreePath", "worktree_path")?;
+            let result = crate::projects::list_claude_commands(worktree_path).await?;
             to_value(result)
         }
         "search_github_issues" => {

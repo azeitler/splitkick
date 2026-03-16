@@ -3,6 +3,7 @@ import type { SessionCardData } from '../session-card-utils'
 import type { LabelData, SessionDigest } from '@/types/chat'
 import type { ApprovalContext } from '../PlanDialog'
 import { useChatStore } from '@/store/chat-store'
+import { useUIStore } from '@/store/ui-store'
 import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 
@@ -297,6 +298,7 @@ export function useCanvasShortcutEvents({
     if (!enabled || !selectedCard) return
 
     const handleApprovePlanEvent = () => {
+      if (useUIStore.getState().sessionChatModalOpen) return
       if (
         selectedCard.hasExitPlanMode &&
         !selectedCard.hasQuestion &&
@@ -307,6 +309,7 @@ export function useCanvasShortcutEvents({
     }
 
     const handleApprovePlanYoloEvent = () => {
+      if (useUIStore.getState().sessionChatModalOpen) return
       if (
         selectedCard.hasExitPlanMode &&
         !selectedCard.hasQuestion &&
@@ -317,6 +320,7 @@ export function useCanvasShortcutEvents({
     }
 
     const handleClearContextApproveEvent = () => {
+      if (useUIStore.getState().sessionChatModalOpen) return
       if (
         selectedCard.hasExitPlanMode &&
         !selectedCard.hasQuestion &&
@@ -327,6 +331,7 @@ export function useCanvasShortcutEvents({
     }
 
     const handleClearContextApproveBuildEvent = () => {
+      if (useUIStore.getState().sessionChatModalOpen) return
       if (
         selectedCard.hasExitPlanMode &&
         !selectedCard.hasQuestion &&
@@ -337,6 +342,7 @@ export function useCanvasShortcutEvents({
     }
 
     const handleWorktreeApproveEvent = () => {
+      if (useUIStore.getState().sessionChatModalOpen) return
       if (
         selectedCard.hasExitPlanMode &&
         !selectedCard.hasQuestion &&
@@ -348,6 +354,7 @@ export function useCanvasShortcutEvents({
     }
 
     const handleWorktreeApproveYoloEvent = () => {
+      if (useUIStore.getState().sessionChatModalOpen) return
       if (
         selectedCard.hasExitPlanMode &&
         !selectedCard.hasQuestion &&

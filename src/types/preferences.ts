@@ -1,5 +1,6 @@
-import type { ThinkingLevel, EffortLevel } from './chat'
+import type { ThinkingLevel, EffortLevel, ExecutionMode } from './chat'
 import { DEFAULT_KEYBINDINGS, type KeybindingsMap } from './keybindings'
+import { isMacOS, isWindows } from '../lib/platform'
 
 // =============================================================================
 // Notification Sounds
@@ -65,6 +66,8 @@ export interface MagicPrompts {
   investigate_advisory: string | null
   /** Prompt for investigating Linear issues (context embedded in prompt since Claude CLI cannot access Linear API) */
   investigate_linear_issue: string | null
+  /** Prompt for addressing inline PR review comments */
+  review_comments: string | null
 }
 
 /** Default prompt for investigating GitHub issues */
@@ -186,23 +189,19 @@ export const DEFAULT_PR_CONTENT_PROMPT = `<task>Generate a pull request title an
 </diff>`
 
 /** Default prompt for commit message generation */
-export const DEFAULT_COMMIT_MESSAGE_PROMPT = `<task>Generate a commit message for the following changes</task>
+export const DEFAULT_COMMIT_MESSAGE_PROMPT = `Generate a conventional commit message for these staged changes.
 
-<git_status>
+Files changed:
+{diff_stat}
+
+Git status:
 {status}
-</git_status>
 
-<staged_diff>
+Diff:
 {diff}
-</staged_diff>
 
-<recent_commits>
-{recent_commits}
-</recent_commits>
-
-<remote_info>
-{remote_info}
-</remote_info>`
+Recent commits (style reference):
+{recent_commits}`
 
 /** Default prompt for code review */
 export const DEFAULT_CODE_REVIEW_PROMPT = `<task>Review the following code changes and provide structured feedback</task>
@@ -556,6 +555,38 @@ Now provide a brief summary with exactly two fields:
 - chat_summary: One sentence (max 100 chars) describing the overall goal and current status
 - last_action: One sentence (max 200 chars) describing what was just completed in the last exchange`
 
+/** Default prompt for addressing inline PR review comments */
+export const DEFAULT_REVIEW_COMMENTS_PROMPT = `<task>
+
+Address the following review comments from PR #{prNumber}
+
+</task>
+
+
+<review_comments>
+{reviewComments}
+</review_comments>
+
+
+<instructions>
+
+1. Read each review comment carefully, noting the file path, line numbers, and diff context
+2. Understand what the reviewer is asking for in each comment
+3. Make the requested changes to address each comment
+4. If a comment is unclear or you disagree with it, explain your reasoning
+5. After making changes, briefly summarize what you changed for each comment
+
+</instructions>
+
+
+<guidelines>
+
+- Be thorough but focused — address exactly what was requested
+- If a comment requires a larger refactor, explain the scope before proceeding
+- Run tests after making changes to ensure nothing is broken
+
+</guidelines>`
+
 /** Default values for all magic prompts (null = use current app default) */
 export const DEFAULT_MAGIC_PROMPTS: MagicPrompts = {
   investigate_issue: null,
@@ -574,6 +605,7 @@ export const DEFAULT_MAGIC_PROMPTS: MagicPrompts = {
   investigate_security_alert: null,
   investigate_advisory: null,
   investigate_linear_issue: null,
+  review_comments: null,
 }
 
 /**
@@ -594,6 +626,7 @@ export interface MagicPromptModels {
   investigate_security_alert_model: MagicPromptModel
   investigate_advisory_model: MagicPromptModel
   investigate_linear_issue_model: MagicPromptModel
+  review_comments_model: MagicPromptModel
 }
 
 /**
@@ -615,6 +648,7 @@ export interface MagicPromptReasoningEfforts {
   investigate_security_alert_effort: MagicPromptReasoningEffort
   investigate_advisory_effort: MagicPromptReasoningEffort
   investigate_linear_issue_effort: MagicPromptReasoningEffort
+  review_comments_effort: MagicPromptReasoningEffort
 }
 
 /** Default models for each magic prompt */
@@ -633,6 +667,7 @@ export const DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
   investigate_security_alert_model: 'opus',
   investigate_advisory_model: 'opus',
   investigate_linear_issue_model: 'opus',
+  review_comments_model: 'opus',
 }
 
 /** Codex preset: heavy tasks use top model, light tasks use mini */
@@ -651,6 +686,7 @@ export const CODEX_DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
   investigate_security_alert_model: 'gpt-5.4',
   investigate_advisory_model: 'gpt-5.4',
   investigate_linear_issue_model: 'gpt-5.4',
+  review_comments_model: 'gpt-5.4',
 }
 
 /** OpenCode preset for all magic prompts */
@@ -669,6 +705,7 @@ export const OPENCODE_DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
   investigate_security_alert_model: 'opencode/gpt-5.3-codex',
   investigate_advisory_model: 'opencode/gpt-5.3-codex',
   investigate_linear_issue_model: 'opencode/gpt-5.3-codex',
+  review_comments_model: 'opencode/gpt-5.3-codex',
 }
 
 /** Default reasoning efforts for Claude backend (null = use model default) */
@@ -687,6 +724,7 @@ export const DEFAULT_MAGIC_PROMPT_EFFORTS: MagicPromptReasoningEfforts = {
   investigate_security_alert_effort: null,
   investigate_advisory_effort: null,
   investigate_linear_issue_effort: null,
+  review_comments_effort: null,
 }
 
 /** Codex preset: heavier reasoning for investigations, lighter for simple generation */
@@ -705,6 +743,7 @@ export const CODEX_DEFAULT_MAGIC_PROMPT_EFFORTS: MagicPromptReasoningEfforts = {
   investigate_security_alert_effort: 'medium',
   investigate_advisory_effort: 'medium',
   investigate_linear_issue_effort: 'medium',
+  review_comments_effort: 'medium',
 }
 
 /** OpenCode preset: same as Codex */
@@ -731,6 +770,7 @@ export interface MagicPromptProviders {
   investigate_security_alert_provider: string | null
   investigate_advisory_provider: string | null
   investigate_linear_issue_provider: string | null
+  review_comments_provider: string | null
 }
 
 /** Default providers for each magic prompt (null = use global default_provider) */
@@ -749,6 +789,7 @@ export const DEFAULT_MAGIC_PROMPT_PROVIDERS: MagicPromptProviders = {
   investigate_security_alert_provider: null,
   investigate_advisory_provider: null,
   investigate_linear_issue_provider: null,
+  review_comments_provider: null,
 }
 
 /**
@@ -771,6 +812,7 @@ export interface MagicPromptBackends {
   investigate_security_alert_backend: string | null
   investigate_advisory_backend: string | null
   investigate_linear_issue_backend: string | null
+  review_comments_backend: string | null
 }
 
 /** Default backends for each magic prompt (null = use project/global default_backend) */
@@ -789,6 +831,7 @@ export const DEFAULT_MAGIC_PROMPT_BACKENDS: MagicPromptBackends = {
   investigate_security_alert_backend: null,
   investigate_advisory_backend: null,
   investigate_linear_issue_backend: null,
+  review_comments_backend: null,
 }
 
 function makeBackendsPreset(backend: string): MagicPromptBackends {
@@ -807,6 +850,7 @@ function makeBackendsPreset(backend: string): MagicPromptBackends {
     investigate_security_alert_backend: backend,
     investigate_advisory_backend: backend,
     investigate_linear_issue_backend: backend,
+    review_comments_backend: backend,
   }
 }
 
@@ -846,7 +890,7 @@ export interface AppPreferences {
   selected_model: ClaudeModel // Claude model ID passed to --model flag
   thinking_level: ThinkingLevel // Thinking level: 'off' | 'think' | 'megathink' | 'ultrathink'
   default_effort_level: EffortLevel // Effort level for Opus 4.6 adaptive thinking: 'low' | 'medium' | 'high' | 'max'
-  terminal: TerminalApp // Terminal app: 'terminal' | 'warp' | 'ghostty' | 'iterm2'
+  terminal: TerminalApp // Terminal app: 'terminal' | 'warp' | 'ghostty' | 'iterm2' | 'powershell' | 'windows-terminal'
   editor: EditorApp // Editor app: 'zed' | 'vscode' | 'cursor' | 'xcode'
   open_in: OpenInDefault // Default Open In action: 'editor' | 'terminal' | 'finder' | 'github'
   auto_branch_naming: boolean // Automatically generate branch names from first message
@@ -895,6 +939,7 @@ export interface AppPreferences {
   default_provider: string | null // Default provider profile name (null = Anthropic direct)
 
   confirm_session_close: boolean // Show confirmation dialog before closing sessions/worktrees
+  default_execution_mode: ExecutionMode // Default execution mode for new sessions: 'plan', 'build', or 'yolo'
   default_backend: CliBackend // Default CLI backend for new sessions: 'claude', 'codex', or 'opencode'
   selected_codex_model: CodexModel // Default Codex model
   selected_opencode_model: string // Default OpenCode model (provider/model)
@@ -1004,15 +1049,19 @@ export const fileEditModeOptions: { value: FileEditMode; label: string }[] = [
 
 export type ClaudeModel =
   | 'opus'
+  | 'claude-opus-4-6[1m]'
   | 'opus-4.5'
   | 'sonnet'
+  | 'claude-sonnet-4-6[1m]'
   | 'sonnet-4.5'
   | 'haiku'
 
 export const modelOptions: { value: ClaudeModel; label: string }[] = [
   { value: 'opus', label: 'Claude Opus 4.6' },
+  { value: 'claude-opus-4-6[1m]', label: 'Claude Opus 4.6 (1M)' },
   { value: 'opus-4.5', label: 'Claude Opus 4.5' },
   { value: 'sonnet', label: 'Claude Sonnet 4.6' },
+  { value: 'claude-sonnet-4-6[1m]', label: 'Claude Sonnet 4.6 (1M)' },
   { value: 'sonnet-4.5', label: 'Claude Sonnet 4.5' },
   { value: 'haiku', label: 'Claude Haiku' },
 ]
@@ -1124,37 +1173,66 @@ export const backendOptions: { value: CliBackend; label: string }[] = [
   { value: 'opencode', label: 'OpenCode' },
 ]
 
+
 export type TerminalApp =
   | 'terminal'
   | 'warp'
   | 'ghostty'
   | 'iterm2'
-  | 'windows-terminal'
   | 'powershell'
-  | 'cmd'
+  | 'windows-terminal'
+
+type Platform = 'mac' | 'windows' | 'linux'
+
+function getCurrentPlatform(): Platform {
+  if (isMacOS) return 'mac'
+  if (isWindows) return 'windows'
+  return 'linux'
+}
+
+const allTerminalOptions: {
+  value: TerminalApp
+  label: string
+  platforms: Platform[]
+}[] = [
+  { value: 'terminal', label: 'Terminal', platforms: ['mac', 'linux'] },
+  { value: 'warp', label: 'Warp', platforms: ['mac', 'windows'] },
+  { value: 'ghostty', label: 'Ghostty', platforms: ['mac', 'linux'] },
+  { value: 'iterm2', label: 'iTerm2', platforms: ['mac'] },
+  { value: 'powershell', label: 'PowerShell', platforms: ['windows'] },
+  {
+    value: 'windows-terminal',
+    label: 'Windows Terminal',
+    platforms: ['windows'],
+  },
+]
 
 export const terminalOptions: { value: TerminalApp; label: string }[] =
-  navigator.platform.startsWith('Win')
-    ? [
-        { value: 'windows-terminal', label: 'Windows Terminal' },
-        { value: 'powershell', label: 'PowerShell' },
-        { value: 'cmd', label: 'Command Prompt' },
-      ]
-    : [
-        { value: 'terminal', label: 'Terminal' },
-        { value: 'warp', label: 'Warp' },
-        { value: 'ghostty', label: 'Ghostty' },
-        { value: 'iterm2', label: 'iTerm2' },
-      ]
+  allTerminalOptions.filter(opt => opt.platforms.includes(getCurrentPlatform()))
 
 export type EditorApp = 'zed' | 'vscode' | 'cursor' | 'xcode'
 
-export const editorOptions: { value: EditorApp; label: string }[] = [
-  { value: 'zed', label: 'Zed' },
-  { value: 'vscode', label: 'VS Code' },
-  { value: 'cursor', label: 'Cursor' },
-  { value: 'xcode', label: 'Xcode' },
+const allEditorOptions: {
+  value: EditorApp
+  label: string
+  platforms: Platform[]
+}[] = [
+  { value: 'zed', label: 'Zed', platforms: ['mac', 'windows', 'linux'] },
+  {
+    value: 'vscode',
+    label: 'VS Code',
+    platforms: ['mac', 'windows', 'linux'],
+  },
+  {
+    value: 'cursor',
+    label: 'Cursor',
+    platforms: ['mac', 'windows', 'linux'],
+  },
+  { value: 'xcode', label: 'Xcode', platforms: ['mac'] },
 ]
+
+export const editorOptions: { value: EditorApp; label: string }[] =
+  allEditorOptions.filter(opt => opt.platforms.includes(getCurrentPlatform()))
 
 export type OpenInDefault = 'editor' | 'terminal' | 'finder' | 'github'
 
@@ -1353,12 +1431,14 @@ export const syntaxThemeLightOptions: { value: SyntaxTheme; label: string }[] =
 
 // Helper functions to get display labels
 export function getTerminalLabel(terminal: TerminalApp | undefined): string {
-  const option = terminalOptions.find(opt => opt.value === terminal)
+  // Search all options (not just platform-filtered) so saved cross-platform values resolve
+  const option = allTerminalOptions.find(opt => opt.value === terminal)
   return option?.label ?? 'Terminal'
 }
 
 export function getEditorLabel(editor: EditorApp | undefined): string {
-  const option = editorOptions.find(opt => opt.value === editor)
+  // Search all options (not just platform-filtered) so saved cross-platform values resolve
+  const option = allEditorOptions.find(opt => opt.value === editor)
   return option?.label ?? 'Editor'
 }
 
@@ -1367,7 +1447,7 @@ export const defaultPreferences: AppPreferences = {
   selected_model: 'opus',
   thinking_level: 'ultrathink',
   default_effort_level: 'high',
-  terminal: 'terminal',
+  terminal: isWindows ? 'powershell' : 'terminal',
   editor: 'zed',
   open_in: 'editor',
   auto_branch_naming: true,
@@ -1415,6 +1495,7 @@ export const defaultPreferences: AppPreferences = {
   custom_cli_profiles: [],
   default_provider: null,
   confirm_session_close: true, // Default: enabled (show confirmation)
+  default_execution_mode: 'plan', // Default: plan mode
   default_backend: 'claude', // Default: Claude
   selected_codex_model: 'gpt-5.4', // Default: latest Codex model
   selected_opencode_model: 'opencode/gpt-5.3-codex', // Default OpenCode model

@@ -40,6 +40,7 @@ import {
   DEFAULT_INVESTIGATE_ADVISORY_PROMPT,
   DEFAULT_INVESTIGATE_LINEAR_ISSUE_PROMPT,
   DEFAULT_RELEASE_NOTES_PROMPT,
+  DEFAULT_REVIEW_COMMENTS_PROMPT,
   DEFAULT_SESSION_NAMING_PROMPT,
   DEFAULT_SESSION_RECAP_PROMPT,
   DEFAULT_PARALLEL_EXECUTION_PROMPT,
@@ -255,6 +256,27 @@ const PROMPT_SECTIONS: PromptSection[] = [
         defaultModel: 'opus',
       },
       {
+        key: 'review_comments',
+        modelKey: 'review_comments_model',
+        providerKey: 'review_comments_provider',
+        backendKey: 'review_comments_backend',
+        label: 'Review Comments',
+        description:
+          'Prompt for addressing inline PR review comments selected from the Review Comments dialog.',
+        variables: [
+          {
+            name: '{prNumber}',
+            description: 'Pull request number',
+          },
+          {
+            name: '{reviewComments}',
+            description: 'Formatted selected review comments with file paths, diffs, and bodies',
+          },
+        ],
+        defaultValue: DEFAULT_REVIEW_COMMENTS_PROMPT,
+        defaultModel: 'opus',
+      },
+      {
         key: 'commit_message',
         modelKey: 'commit_message_model',
         providerKey: 'commit_message_provider',
@@ -263,16 +285,19 @@ const PROMPT_SECTIONS: PromptSection[] = [
         description:
           'Prompt for generating commit messages from staged changes.',
         variables: [
+          {
+            name: '{diff_stat}',
+            description: 'Compact file change summary (git diff --stat)',
+          },
           { name: '{status}', description: 'Git status output' },
           { name: '{diff}', description: 'Staged changes diff' },
           {
             name: '{recent_commits}',
             description: 'Recent commit messages for style',
           },
-          { name: '{remote_info}', description: 'Remote repository info' },
         ],
         defaultValue: DEFAULT_COMMIT_MESSAGE_PROMPT,
-        defaultModel: 'haiku',
+        defaultModel: 'sonnet',
       },
       {
         key: 'pr_content',
@@ -299,7 +324,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           { name: '{diff}', description: 'Git diff of all changes' },
         ],
         defaultValue: DEFAULT_PR_CONTENT_PROMPT,
-        defaultModel: 'haiku',
+        defaultModel: 'sonnet',
       },
       {
         key: 'resolve_conflicts',
@@ -335,7 +360,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_RELEASE_NOTES_PROMPT,
-        defaultModel: 'haiku',
+        defaultModel: 'sonnet',
       },
     ],
   },
@@ -362,7 +387,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_CONTEXT_SUMMARY_PROMPT,
-        defaultModel: 'haiku',
+        defaultModel: 'sonnet',
       },
       {
         key: 'session_naming',
@@ -379,7 +404,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_SESSION_NAMING_PROMPT,
-        defaultModel: 'haiku',
+        defaultModel: 'sonnet',
       },
       {
         key: 'session_recap',
@@ -396,7 +421,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_SESSION_RECAP_PROMPT,
-        defaultModel: 'haiku',
+        defaultModel: 'sonnet',
       },
     ],
   },

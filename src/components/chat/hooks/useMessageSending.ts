@@ -11,6 +11,7 @@ import type {
   ThinkingLevel,
   EffortLevel,
   McpServerInfo,
+  Session,
 } from '@/types/chat'
 import type { QueryClient } from '@tanstack/react-query'
 import { GIT_ALLOWED_TOOLS } from './useMessageHandlers'
@@ -42,7 +43,7 @@ interface UseMessageSendingParams {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sendMessage: { mutate: (args: any, opts?: any) => void }
   queryClient: QueryClient
-  scrollToBottom: (instant?: boolean) => void
+  markAtBottom: () => void
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sessionsData: any
   setInputDraft: (sessionId: string, draft: string) => void
@@ -72,7 +73,7 @@ export function useMessageSending({
   preferences,
   sendMessage,
   queryClient,
-  scrollToBottom,
+  markAtBottom,
   sessionsData,
   setInputDraft,
   clearInputDraft,
@@ -153,7 +154,6 @@ export function useMessageSending({
       console.log(`[Send] sendMessageNow sessionId=${activeSessionId} worktreeId=${activeWorktreeId}`)
 
       const {
-        addSendingSession,
         setLastSentMessage,
         setError,
         setExecutingMode,
@@ -170,7 +170,8 @@ export function useMessageSending({
 
       setLastSentMessage(activeSessionId, queuedMsg.message)
       setError(activeSessionId, null)
-      addSendingSession(activeSessionId)
+      // NOTE: addSendingSession is called in onMutate (chat.ts) so it batches
+      // with the optimistic user message in a single React render pass.
       queryClient.invalidateQueries({
         queryKey: chatQueryKeys.sessions(activeWorktreeId),
       })
@@ -258,7 +259,6 @@ export function useMessageSending({
 
       const {
         inputDrafts,
-        addSendingSession,
         setLastSentMessage,
         setError,
         setSelectedModel,
@@ -275,7 +275,8 @@ export function useMessageSending({
       setLastSentMessage(activeSessionId, message)
       setError(activeSessionId, null)
       clearDraft(activeSessionId)
-      addSendingSession(activeSessionId)
+      // NOTE: addSendingSession is called in onMutate (chat.ts) so it batches
+      // with the optimistic user message in a single React render pass.
       setSelectedModel(activeSessionId, model)
       setExecutingMode(activeSessionId, 'build')
 
@@ -299,7 +300,8 @@ export function useMessageSending({
               : undefined,
           mcpConfig: buildMcpConfigJson(
             mcpServersDataRef.current ?? [],
-            enabledMcpServersRef.current
+            enabledMcpServersRef.current,
+            selectedBackendRef.current
           ),
           parallelExecutionPrompt:
             preferences?.parallel_execution_prompt_enabled
@@ -426,7 +428,8 @@ export function useMessageSending({
             : undefined,
         mcpConfig: buildMcpConfigJson(
           mcpServersDataRef.current ?? [],
-          enabledMcpServersRef.current
+          enabledMcpServersRef.current,
+          selectedBackendRef.current
         ),
         backend:
           selectedBackendRef.current !== 'claude'
@@ -435,7 +438,7 @@ export function useMessageSending({
         queuedAt: Date.now(),
       }
 
-      scrollToBottom(true)
+      markAtBottom()
 
       const isSendingNow = checkIsSendingNow(activeSessionId)
       console.log(`[Send] handleSubmit sessionId=${activeSessionId} isSending=${isSendingNow}`)
@@ -454,7 +457,7 @@ export function useMessageSending({
       activeWorktreePath,
       clearInputDraft,
       clearChatInputState,
-      scrollToBottom,
+      markAtBottom,
       sendMessageNow,
       sessionsData,
     ]
@@ -474,14 +477,20 @@ export function useMessageSending({
     if (!cancelled) {
       // Race condition: process already completed but chat:done hasn't been processed yet.
       // Force-clear the stale sending state so the UI doesn't stay stuck.
-      const stillSending =
-        useChatStore.getState().sendingSessionIds[activeSessionId] ?? false
+      const store = useChatStore.getState()
+      const stillSending = store.sendingSessionIds[activeSessionId] ?? false
       if (stillSending) {
         console.log('[Cancel] Force-clearing stale sending state')
-        useChatStore.getState().completeSession(activeSessionId)
+        store.cancelSession(activeSessionId)
+        const session = queryClient.getQueryData<Session>(
+          chatQueryKeys.session(activeSessionId)
+        )
+        if (!session || session.messages.length === 0) {
+          store.setSessionReviewing(activeSessionId, false)
+        }
       }
     }
-  }, [activeSessionId, activeWorktreeId])
+  }, [activeSessionId, activeWorktreeId, queryClient])
 
   return {
     resolveCustomProfile,

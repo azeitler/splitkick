@@ -276,6 +276,7 @@ pub fn start_run(
     execution_mode: Option<&str>,
     thinking_level: Option<&str>,
     effort_level: Option<&str>,
+    backend: Option<Backend>,
 ) -> Result<RunLogWriter, String> {
     let run_id = Uuid::new_v4().to_string();
     let now = now_timestamp();
@@ -337,6 +338,18 @@ pub fn start_run(
         session_name,
         order,
         |metadata| {
+            // Guard: if there's already a Running run, reject to prevent duplicates.
+            // This is a safety net — the primary guard is in send_chat_message.
+            let has_running = metadata.runs.iter().any(|r| r.status == RunStatus::Running);
+            if has_running {
+                return Err(format!(
+                    "Session {session_id} already has a Running run — refusing to create duplicate"
+                ));
+            }
+
+            if let Some(ref b) = backend {
+                metadata.backend = b.clone();
+            }
             metadata.runs.push(run_entry.clone());
             Ok(())
         },
@@ -640,7 +653,7 @@ pub fn parse_run_to_message(lines: &[String], run: &RunEntry) -> Result<ChatMess
         session_id: String::new(), // Will be set by caller
         role: MessageRole::Assistant,
         content,
-        timestamp: run.started_at,
+        timestamp: run.ended_at.unwrap_or(run.started_at),
         tool_calls,
         content_blocks,
         cancelled: run.cancelled,
@@ -666,8 +679,17 @@ pub fn load_session_messages(
 ) -> Result<Vec<ChatMessage>, String> {
     let metadata = match load_metadata(app, session_id)? {
         Some(m) => m,
-        None => return Ok(vec![]),
+        None => {
+            log::debug!("[LoadMessages] session={session_id} no metadata found");
+            return Ok(vec![]);
+        }
     };
+
+    log::debug!(
+        "[LoadMessages] session={session_id} metadata has {} runs (backend={:?})",
+        metadata.runs.len(),
+        metadata.backend
+    );
 
     let mut messages = Vec::new();
 
@@ -702,8 +724,28 @@ pub fn load_session_messages(
         if !is_undo_send {
             let lines = read_run_log(app, session_id, &run.run_id)?;
 
-            // Parse JSONL content — route by backend
-            let mut assistant_msg = if metadata.backend == Backend::Codex {
+            // Parse JSONL content — route by backend.
+            // Per-run model is authoritative when present. Only fall back to
+            // session-level metadata.backend for legacy runs with no model stored.
+            let run_is_codex = run
+                .model
+                .as_deref()
+                .map(crate::is_codex_model)
+                .unwrap_or(false);
+            let run_is_opencode = run
+                .model
+                .as_deref()
+                .map(crate::is_opencode_model)
+                .unwrap_or(false);
+            let use_codex_parser = if run.model.is_some() {
+                // Model stored per-run: use it directly (prevents misrouting
+                // when metadata.backend was overwritten by a later run).
+                run_is_codex || run_is_opencode
+            } else {
+                // Legacy run without model field: fall back to session backend.
+                metadata.backend == Backend::Codex || metadata.backend == Backend::Opencode
+            };
+            let mut assistant_msg = if use_codex_parser {
                 super::codex::parse_codex_run_to_message(&lines, run)?
             } else {
                 parse_run_to_message(&lines, run)?
@@ -720,6 +762,21 @@ pub fn load_session_messages(
             {
                 assistant_msg.content =
                     "*Response lost - Jean was closed before receiving a response.*".to_string();
+            }
+
+            // For completed runs with no content, add placeholder so the
+            // assistant message isn't rendered as invisible/empty (#188).
+            if run.status == RunStatus::Completed
+                && assistant_msg.content.is_empty()
+                && assistant_msg.tool_calls.is_empty()
+            {
+                log::warn!(
+                    "Completed run {} for session {} has empty JSONL content",
+                    run.run_id,
+                    session_id
+                );
+                assistant_msg.content =
+                    "*Response content was not captured for this completed run.*".to_string();
             }
 
             // Skip cancelled runs with no content (instant cancel race window).
@@ -779,6 +836,133 @@ pub fn mark_running_run_cancelled(app: &tauri::AppHandle, session_id: &str) -> R
     Ok(())
 }
 
+/// Persist partial assistant content to the latest cancelled run's JSONL file.
+/// Called by the frontend when a stream is cancelled but partial content was visible.
+/// This ensures the content survives app reload (the command handler may not have
+/// finished writing the synthetic JSONL line yet).
+pub fn persist_partial_cancelled_content(
+    app: &tauri::AppHandle,
+    session_id: &str,
+    content: &str,
+    tool_calls: &[ToolCall],
+    content_blocks: &[ContentBlock],
+) -> Result<(), String> {
+    let metadata = match load_metadata(app, session_id)? {
+        Some(m) => m,
+        None => return Err("No metadata for session".to_string()),
+    };
+
+    // Find the latest cancelled run
+    let run = metadata
+        .runs
+        .iter()
+        .rev()
+        .find(|r| r.status == RunStatus::Cancelled)
+        .ok_or("No cancelled run found")?;
+
+    let path = get_run_log_path(app, session_id, &run.run_id)?;
+
+    // Only write if the file doesn't already have content (avoid double-write
+    // if the command handler already wrote the synthetic line)
+    let existing_lines = read_run_log(app, session_id, &run.run_id).unwrap_or_default();
+    let has_assistant_content = existing_lines.iter().any(|line| {
+        line.contains("\"type\":\"assistant\"") || line.contains("\"type\": \"assistant\"")
+    });
+    if has_assistant_content {
+        log::trace!(
+            "JSONL already has assistant content, skipping persist for session {session_id}"
+        );
+        return Ok(());
+    }
+
+    use std::io::Write;
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map_err(|e| format!("Failed to open run log for partial content: {e}"))?;
+
+    // Build assistant message with structured content blocks if available,
+    // matching the format parse_run_to_message() expects
+    if !content_blocks.is_empty() {
+        let blocks: Vec<serde_json::Value> = content_blocks
+            .iter()
+            .map(|cb| match cb {
+                ContentBlock::Text { text } => {
+                    serde_json::json!({"type": "text", "text": text})
+                }
+                ContentBlock::ToolUse { tool_call_id } => {
+                    if let Some(tc) = tool_calls.iter().find(|t| t.id == *tool_call_id) {
+                        serde_json::json!({
+                            "type": "tool_use",
+                            "id": tc.id,
+                            "name": tc.name,
+                            "input": tc.input
+                        })
+                    } else {
+                        serde_json::json!({
+                            "type": "tool_use",
+                            "id": tool_call_id,
+                            "name": "",
+                            "input": null
+                        })
+                    }
+                }
+                ContentBlock::Thinking { thinking } => {
+                    serde_json::json!({"type": "thinking", "thinking": thinking})
+                }
+            })
+            .collect();
+
+        let synthetic = serde_json::json!({
+            "type": "assistant",
+            "message": { "content": blocks }
+        });
+        writeln!(file, "{synthetic}")
+            .map_err(|e| format!("Failed to write partial content: {e}"))?;
+
+        // Write tool results as user messages so parse_run_to_message() can
+        // associate outputs with tool calls
+        for tc in tool_calls {
+            if let Some(output) = &tc.output {
+                let tool_result = serde_json::json!({
+                    "type": "user",
+                    "message": {
+                        "content": [{
+                            "type": "tool_result",
+                            "tool_use_id": tc.id,
+                            "content": output
+                        }]
+                    }
+                });
+                writeln!(file, "{tool_result}")
+                    .map_err(|e| format!("Failed to write tool result: {e}"))?;
+            }
+        }
+    } else {
+        // Fallback: text-only (no structured blocks available)
+        let synthetic = serde_json::json!({
+            "type": "assistant",
+            "message": {
+                "content": [{"type": "text", "text": content}]
+            }
+        });
+        writeln!(file, "{synthetic}")
+            .map_err(|e| format!("Failed to write partial content: {e}"))?;
+    }
+
+    file.flush()
+        .map_err(|e| format!("Failed to flush partial content: {e}"))?;
+
+    log::trace!(
+        "Persisted partial cancelled content ({} chars, {} blocks, {} tool calls) for session {session_id}",
+        content.len(),
+        content_blocks.len(),
+        tool_calls.len(),
+    );
+    Ok(())
+}
+
 // ============================================================================
 // Recovery Functions
 // ============================================================================
@@ -794,6 +978,8 @@ pub struct RecoveredRun {
     pub resumable: bool,
     /// Execution mode of the run (plan/build/yolo) for UI status restoration
     pub execution_mode: Option<String>,
+    /// Unix timestamp (seconds) when the run started — used to restore elapsed time on reload
+    pub started_at: u64,
 }
 
 /// Check for and recover incomplete runs across all sessions
@@ -839,6 +1025,7 @@ pub fn recover_incomplete_runs(app: &tauri::AppHandle) -> Result<Vec<RecoveredRu
                         user_message: run.user_message.clone(),
                         resumable: true,
                         execution_mode: run.execution_mode.clone(),
+                        started_at: run.started_at,
                     });
 
                     log::trace!(
@@ -873,6 +1060,7 @@ pub fn recover_incomplete_runs(app: &tauri::AppHandle) -> Result<Vec<RecoveredRu
                         user_message: run.user_message.clone(),
                         resumable: false,
                         execution_mode: run.execution_mode.clone(),
+                        started_at: run.started_at,
                     });
 
                     log::trace!(

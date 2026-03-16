@@ -83,7 +83,7 @@ pub struct AppPreferences {
     #[serde(default = "default_effort_level")]
     pub default_effort_level: String, // Effort level for Opus 4.6: low, medium, high, max
     #[serde(default = "default_terminal")]
-    pub terminal: String, // Terminal app: terminal, warp, ghostty, iterm2
+    pub terminal: String, // Terminal app: terminal, warp, ghostty, iterm2, powershell, windows-terminal
     #[serde(default = "default_editor")]
     pub editor: String, // Editor app: zed, vscode, cursor, xcode
     #[serde(default = "default_open_in")]
@@ -182,6 +182,8 @@ pub struct AppPreferences {
     pub canvas_layout: String, // Canvas display mode: grid or list
     #[serde(default = "default_confirm_session_close")]
     pub confirm_session_close: bool, // Show confirmation dialog before closing sessions/worktrees
+    #[serde(default = "default_execution_mode")]
+    pub default_execution_mode: String, // Default execution mode: "plan", "build", or "yolo"
     #[serde(default = "default_backend")]
     pub default_backend: String, // Default CLI backend: "claude", "codex", or "opencode"
     #[serde(default = "default_codex_model")]
@@ -294,7 +296,7 @@ fn default_effort_level() -> String {
 fn default_terminal() -> String {
     #[cfg(target_os = "windows")]
     {
-        "windows-terminal".to_string()
+        "powershell".to_string()
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -364,6 +366,10 @@ fn default_canvas_layout() -> String {
 
 fn default_confirm_session_close() -> bool {
     true // Enabled by default
+}
+
+fn default_execution_mode() -> String {
+    "plan".to_string()
 }
 
 fn default_backend() -> String {
@@ -467,6 +473,8 @@ pub struct MagicPrompts {
     pub investigate_advisory: Option<String>,
     #[serde(default)]
     pub investigate_linear_issue: Option<String>,
+    #[serde(default)]
+    pub review_comments: Option<String>,
 }
 
 fn default_investigate_issue_prompt() -> String {
@@ -1101,6 +1109,7 @@ impl Default for AppPreferences {
             default_provider: None,
             canvas_layout: default_canvas_layout(),
             confirm_session_close: default_confirm_session_close(),
+            default_execution_mode: default_execution_mode(),
             default_backend: default_backend(),
             selected_codex_model: default_codex_model(),
             selected_opencode_model: default_opencode_model(),
@@ -2569,6 +2578,7 @@ pub fn run() {
             projects::import_worktree,
             projects::permanently_delete_worktree,
             projects::cleanup_old_archives,
+            projects::cleanup_combined_contexts,
             projects::delete_all_archives,
             projects::rename_worktree,
             projects::update_worktree_label,
@@ -2580,9 +2590,11 @@ pub fn run() {
             projects::open_worktree_in_editor,
             projects::open_pull_request,
             projects::create_pr_with_ai_content,
+            projects::merge_github_pr,
             projects::generate_pr_update_content,
             projects::update_pr_description,
             projects::create_commit_with_ai,
+            projects::revert_last_local_commit,
             projects::run_review_with_ai,
             projects::cancel_review_with_ai,
             projects::list_github_releases,
@@ -2603,6 +2615,7 @@ pub fn run() {
             projects::get_pr_prompt,
             projects::get_review_prompt,
             projects::save_worktree_pr,
+            projects::detect_and_link_pr,
             projects::clear_worktree_pr,
             projects::update_worktree_cached_status,
             projects::rebase_worktree,
@@ -2648,6 +2661,7 @@ pub fn run() {
             projects::list_github_prs,
             projects::search_github_prs,
             projects::get_github_pr,
+            projects::get_pr_review_comments,
             projects::get_github_pr_by_number,
             projects::load_pr_context,
             projects::list_loaded_pr_contexts,

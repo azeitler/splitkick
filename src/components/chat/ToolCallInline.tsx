@@ -21,6 +21,7 @@ import {
   CheckCircle2,
   Circle,
   Wand2,
+  Image as ImageIcon,
 } from 'lucide-react'
 import { diffLines } from 'diff'
 import type { ToolCall } from '@/types/chat'
@@ -756,6 +757,30 @@ function getToolDisplay(toolCall: ToolCall): ToolDisplay {
       }
     }
 
+    case 'FileChange': {
+      // Codex file_change items — input is the raw "changes" JSON
+      const changes = input as Record<string, unknown>
+      const filePath = (changes.file ?? changes.path ?? changes.file_path) as
+        | string
+        | undefined
+      const filename = filePath ? getFilename(filePath) : undefined
+
+      // If input is an array of changes, summarize
+      const isArray = Array.isArray(toolCall.input)
+      const fileCount = isArray ? (toolCall.input as unknown[]).length : undefined
+      const detail = isArray
+        ? `${fileCount} file${fileCount === 1 ? '' : 's'}`
+        : filename
+
+      return {
+        icon: <FileText className="h-4 w-4 shrink-0" />,
+        label: 'File Change',
+        detail,
+        filePath,
+        expandedContent: JSON.stringify(toolCall.input, null, 2),
+      }
+    }
+
     case 'EnterPlanMode': {
       return {
         icon: <Brain className="h-4 w-4 shrink-0" />,
@@ -796,6 +821,44 @@ function getToolDisplay(toolCall: ToolCall): ToolDisplay {
             )}
           </div>
         ),
+      }
+    }
+
+    case 'CodexWebSearch': {
+      const query = input.query as string | undefined
+      return {
+        icon: <Globe className="h-4 w-4 shrink-0" />,
+        label: 'Web Search',
+        detail: query,
+        expandedContent: toolCall.output ?? JSON.stringify(input, null, 2),
+      }
+    }
+
+    case 'CodexImageGeneration': {
+      const prompt = input.prompt as string | undefined
+      return {
+        icon: <ImageIcon className="h-4 w-4 shrink-0" />,
+        label: 'Image Generation',
+        detail: prompt,
+        expandedContent: toolCall.output ?? JSON.stringify(input, null, 2),
+      }
+    }
+
+    case 'CodexImageView': {
+      return {
+        icon: <ImageIcon className="h-4 w-4 shrink-0" />,
+        label: 'Image View',
+        detail: undefined,
+        expandedContent: toolCall.output ?? JSON.stringify(input, null, 2),
+      }
+    }
+
+    case 'CodexContextCompaction': {
+      return {
+        icon: <Layers className="h-4 w-4 shrink-0" />,
+        label: 'Context Compaction',
+        detail: undefined,
+        expandedContent: toolCall.output ?? JSON.stringify(input, null, 2),
       }
     }
 

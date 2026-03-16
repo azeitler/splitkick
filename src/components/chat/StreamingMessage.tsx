@@ -6,9 +6,7 @@ import type {
   Question,
   QuestionAnswer,
   ThinkingLevel,
-  ExecutionMode,
 } from '@/types/chat'
-import { isAskUserQuestion, isExitPlanMode } from '@/types/chat'
 import { AskUserQuestion } from './AskUserQuestion'
 import { ToolCallInline, TaskCallInline, StackedGroup } from './ToolCallInline'
 import { buildTimeline, findPlanFilePath } from './tool-call-utils'
@@ -29,8 +27,6 @@ interface StreamingMessageProps {
   toolCalls: ToolCall[]
   /** Raw streaming content (fallback for old format) */
   streamingContent: string
-  /** Execution mode that was active when message was sent */
-  streamingExecutionMode: ExecutionMode
   /** Current thinking level setting */
   selectedThinkingLevel: ThinkingLevel
   /** Keyboard shortcut for approve button */
@@ -89,7 +85,6 @@ export const StreamingMessage = memo(function StreamingMessage({
   contentBlocks,
   toolCalls,
   streamingContent,
-  streamingExecutionMode,
   approveShortcut,
   approveShortcutYolo,
   approveShortcutClearContext,
@@ -170,8 +165,23 @@ export const StreamingMessage = memo(function StreamingMessage({
                                 isStreaming={true}
                               />
                             )
-                          case 'text':
-                            return <Markdown streaming>{item.text}</Markdown>
+                          case 'text': {
+                            // Split at last newline: completed lines → markdown, trailing partial → plain div
+                            // This prevents reflow when remend reinterprets incomplete markdown
+                            const lastNewline = item.text.lastIndexOf('\n')
+                            const rawComplete = lastNewline !== -1 ? item.text.slice(0, lastNewline + 1) : ''
+                            // Trim trailing whitespace so markdown doesn't render a trailing <br> from "  \n"
+                            const completePart = rawComplete.trimEnd()
+                            const trailingPart = lastNewline !== -1 ? item.text.slice(lastNewline + 1) : item.text
+                            return (
+                              <div>
+                                {completePart && <Markdown streaming>{completePart}</Markdown>}
+                                {trailingPart && (
+                                  <p className="my-0 leading-relaxed">{trailingPart}</p>
+                                )}
+                              </div>
+                            )
+                          }
                           case 'task':
                             return (
                               <TaskCallInline
@@ -255,7 +265,7 @@ export const StreamingMessage = memo(function StreamingMessage({
                               isStreamingPlanApproved(sessionId)
 
                             return (
-                              <div>
+                              <div data-plan-display>
                                 {inlinePlan ? (
                                   <PlanDisplay
                                     content={inlinePlan}
@@ -341,22 +351,6 @@ export const StreamingMessage = memo(function StreamingMessage({
         onFileClick={onEditedFileClick}
       />
 
-      {/* Show status indicator - waiting when question pending, planning/vibing otherwise */}
-      <div className="text-sm text-muted-foreground/60 mt-4">
-        <span className="animate-dots">
-          {toolCalls.some(
-            tc =>
-              (isAskUserQuestion(tc) || isExitPlanMode(tc)) &&
-              !isQuestionAnswered(sessionId, tc.id)
-          )
-            ? 'Waiting for your input'
-            : streamingExecutionMode === 'plan'
-              ? 'Planning'
-              : streamingExecutionMode === 'yolo'
-                ? 'Yoloing'
-                : 'Vibing'}
-        </span>
-      </div>
     </div>
   )
 })

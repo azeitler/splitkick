@@ -66,6 +66,11 @@ pub fn spawn_terminal(
     // Build command - either run a specific command or start interactive shell
     let mut cmd = if let Some(ref run_command) = command {
         if let Some(ref args) = command_args {
+            // Validate absolute paths exist upfront for a clear error message.
+            if run_command.starts_with('/') && !std::path::Path::new(run_command).exists() {
+                return Err(format!("Binary not found: {run_command}"));
+            }
+
             // If the binary path contains spaces (e.g. "~/Library/Application Support/..."),
             // CommandBuilder::new() can fail on macOS. Use a shell wrapper instead.
             #[cfg(not(windows))]

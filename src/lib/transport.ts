@@ -34,6 +34,15 @@ export function setAppDataDir(dir: string): void {
  */
 export function convertFileSrc(filePath: string, protocol = 'asset'): string {
   if (isNativeApp()) {
+    // Use Tauri's native implementation which correctly percent-encodes paths
+    // on all platforms (JS encodeURIComponent misses dots/hyphens/underscores
+    // that Tauri's Rust encoder expects on Windows).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const internals = (window as any).__TAURI_INTERNALS__
+    if (internals?.convertFileSrc) {
+      return internals.convertFileSrc(filePath, protocol)
+    }
+    // Fallback (should not reach in native app)
     const path = encodeURIComponent(filePath)
     return navigator.userAgent.includes('Windows')
       ? `https://${protocol}.localhost/${path}`
