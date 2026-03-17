@@ -135,14 +135,18 @@ function CliLoginModalContent({
 
       const observer = new ResizeObserver(entries => {
         const entry = entries[0]
+        const { width, height } = entry?.contentRect ?? { width: 0, height: 0 }
 
-        if (!entry || entry.contentRect.width === 0) {
+        console.log(`[CliLoginModal] ResizeObserver: ${width}x${height}, initialized=${initialized.current}`)
+
+        if (!entry || width === 0 || height === 0) {
           return
         }
 
         // Initialize on first valid size
         if (!initialized.current) {
           initialized.current = true
+          console.log(`[CliLoginModal] Initializing terminal at ${width}x${height}`)
           initTerminal(container)
           return
         }

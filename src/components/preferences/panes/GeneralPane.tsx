@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, type FC } from 'react'
+import React, { useState, useCallback, useMemo, useEffect, useRef, type FC } from 'react'
 import { invoke } from '@/lib/transport'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -241,6 +241,42 @@ export const GeneralPane: React.FC = () => {
   const { data: availableOpencodeModels } = useAvailableOpencodeModels({
     enabled: !!opencodeStatus?.installed,
   })
+
+  // Re-check CLI status when the source preference changes (handles initial load
+  // with source already set to "path" and any timing issues with onSuccess invalidation)
+  const prevSources = useRef({
+    claude: preferences?.claude_cli_source,
+    gh: preferences?.gh_cli_source,
+    codex: preferences?.codex_cli_source,
+    opencode: preferences?.opencode_cli_source,
+  })
+  useEffect(() => {
+    const cur = {
+      claude: preferences?.claude_cli_source,
+      gh: preferences?.gh_cli_source,
+      codex: preferences?.codex_cli_source,
+      opencode: preferences?.opencode_cli_source,
+    }
+    if (cur.claude !== prevSources.current.claude) {
+      queryClient.invalidateQueries({ queryKey: claudeCliQueryKeys.status() })
+    }
+    if (cur.gh !== prevSources.current.gh) {
+      queryClient.invalidateQueries({ queryKey: ghCliQueryKeys.status() })
+    }
+    if (cur.codex !== prevSources.current.codex) {
+      queryClient.invalidateQueries({ queryKey: codexCliQueryKeys.status() })
+    }
+    if (cur.opencode !== prevSources.current.opencode) {
+      queryClient.invalidateQueries({ queryKey: opencodeCliQueryKeys.status() })
+    }
+    prevSources.current = cur
+  }, [
+    preferences?.claude_cli_source,
+    preferences?.gh_cli_source,
+    preferences?.codex_cli_source,
+    preferences?.opencode_cli_source,
+    queryClient,
+  ])
 
   // Track which auth check is in progress (for manual refresh)
   const [checkingClaudeAuth, setCheckingClaudeAuth] = useState(false)
@@ -779,7 +815,7 @@ export const GeneralPane: React.FC = () => {
                 </Button>
               )}
             </InlineField>
-            {cliStatus?.installed && (
+            {(cliStatus?.installed || pathDetection?.found) && (
               <InlineField
                 label="Source"
                 description={
@@ -789,13 +825,13 @@ export const GeneralPane: React.FC = () => {
                         onClick={() => handleCopyPath(
                           preferences?.claude_cli_source === 'path'
                             ? pathDetection?.path
-                            : cliStatus.path
+                            : cliStatus?.path
                         )}
                         className="text-left hover:underline cursor-pointer"
                       >
                         {preferences?.claude_cli_source === 'path'
                           ? pathDetection?.path ?? 'System PATH'
-                          : cliStatus.path}
+                          : cliStatus?.path ?? 'Not installed'}
                       </button>
                     </TooltipTrigger>
                     <TooltipContent>Click to copy path</TooltipContent>
@@ -905,7 +941,7 @@ export const GeneralPane: React.FC = () => {
                 </Button>
               )}
             </InlineField>
-            {ghStatus?.installed && (
+            {(ghStatus?.installed || ghPathDetection?.found) && (
               <InlineField
                 label="Source"
                 description={
@@ -915,13 +951,13 @@ export const GeneralPane: React.FC = () => {
                         onClick={() => handleCopyPath(
                           preferences?.gh_cli_source === 'path'
                             ? ghPathDetection?.path
-                            : ghStatus.path
+                            : ghStatus?.path
                         )}
                         className="text-left hover:underline cursor-pointer"
                       >
                         {preferences?.gh_cli_source === 'path'
                           ? ghPathDetection?.path ?? 'System PATH'
-                          : ghStatus.path}
+                          : ghStatus?.path ?? 'Not installed'}
                       </button>
                     </TooltipTrigger>
                     <TooltipContent>Click to copy path</TooltipContent>
@@ -1038,7 +1074,7 @@ export const GeneralPane: React.FC = () => {
                 </Button>
               )}
             </InlineField>
-            {codexStatus?.installed && (
+            {(codexStatus?.installed || codexPathDetection?.found) && (
               <InlineField
                 label="Source"
                 description={
@@ -1048,13 +1084,13 @@ export const GeneralPane: React.FC = () => {
                         onClick={() => handleCopyPath(
                           preferences?.codex_cli_source === 'path'
                             ? codexPathDetection?.path
-                            : codexStatus.path
+                            : codexStatus?.path
                         )}
                         className="text-left hover:underline cursor-pointer"
                       >
                         {preferences?.codex_cli_source === 'path'
                           ? codexPathDetection?.path ?? 'System PATH'
-                          : codexStatus.path}
+                          : codexStatus?.path ?? 'Not installed'}
                       </button>
                     </TooltipTrigger>
                     <TooltipContent>Click to copy path</TooltipContent>
@@ -1171,7 +1207,7 @@ export const GeneralPane: React.FC = () => {
                 </Button>
               )}
             </InlineField>
-            {opencodeStatus?.installed && (
+            {(opencodeStatus?.installed || opencodePathDetection?.found) && (
               <InlineField
                 label="Source"
                 description={
@@ -1181,13 +1217,13 @@ export const GeneralPane: React.FC = () => {
                         onClick={() => handleCopyPath(
                           preferences?.opencode_cli_source === 'path'
                             ? opencodePathDetection?.path
-                            : opencodeStatus.path
+                            : opencodeStatus?.path
                         )}
                         className="text-left hover:underline cursor-pointer"
                       >
                         {preferences?.opencode_cli_source === 'path'
                           ? opencodePathDetection?.path ?? 'System PATH'
-                          : opencodeStatus.path}
+                          : opencodeStatus?.path ?? 'Not installed'}
                       </button>
                     </TooltipTrigger>
                     <TooltipContent>Click to copy path</TooltipContent>

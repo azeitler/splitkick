@@ -44,8 +44,11 @@ export function useClaudePathDetection(options?: { enabled?: boolean }) {
         return { found: false, path: null, version: null, package_manager: null }
       }
       try {
-        return await invoke<{ found: boolean; path: string | null; version: string | null; package_manager: string | null }>('detect_claude_in_path')
-      } catch {
+        const result = await invoke<{ found: boolean; path: string | null; version: string | null; package_manager: string | null }>('detect_claude_in_path')
+        console.debug('[ONBOARDING:SVC] claude path detection:', result)
+        return result
+      } catch (err) {
+        console.debug('[ONBOARDING:SVC] claude path detection failed:', err)
         return { found: false, path: null, version: null, package_manager: null }
       }
     },
@@ -80,11 +83,11 @@ export function useClaudeCliStatus(options?: { enabled?: boolean }) {
       }
 
       try {
-        logger.debug('Checking Claude CLI installation status')
+        console.debug('[ONBOARDING:SVC] claude: checking installed status...')
         const status = await invoke<ClaudeCliStatus>(
           'check_claude_cli_installed'
         )
-        logger.info('Claude CLI status', { status })
+        console.debug('[ONBOARDING:SVC] claude: status =', status)
         return status
       } catch (error) {
         logger.error('Failed to check Claude CLI status', { error })
@@ -111,9 +114,9 @@ export function useClaudeCliAuth(options?: { enabled?: boolean }) {
       }
 
       try {
-        logger.debug('Checking Claude CLI authentication status')
+        console.debug('[ONBOARDING:SVC] claude: checking auth status...')
         const status = await invoke<ClaudeAuthStatus>('check_claude_cli_auth')
-        logger.info('Claude CLI auth status', { status })
+        console.debug('[ONBOARDING:SVC] claude: auth =', status)
         return status
       } catch (error) {
         logger.error('Failed to check Claude CLI auth', { error })

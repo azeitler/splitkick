@@ -40,8 +40,11 @@ export function useOpencodePathDetection(options?: { enabled?: boolean }) {
         return { found: false, path: null, version: null, package_manager: null }
       }
       try {
-        return await invoke<{ found: boolean; path: string | null; version: string | null; package_manager: string | null }>('detect_opencode_in_path')
-      } catch {
+        const result = await invoke<{ found: boolean; path: string | null; version: string | null; package_manager: string | null }>('detect_opencode_in_path')
+        console.debug('[ONBOARDING:SVC] opencode path detection:', result)
+        return result
+      } catch (err) {
+        console.debug('[ONBOARDING:SVC] opencode path detection failed:', err)
         return { found: false, path: null, version: null, package_manager: null }
       }
     },
@@ -58,8 +61,12 @@ export function useOpencodeCliStatus(options?: { enabled?: boolean }) {
     queryFn: async (): Promise<OpencodeCliStatus> => {
       if (!isTauri()) return { installed: false, version: null, path: null }
       try {
-        return await invoke<OpencodeCliStatus>('check_opencode_cli_installed')
+        console.debug('[ONBOARDING:SVC] opencode: checking installed status...')
+        const status = await invoke<OpencodeCliStatus>('check_opencode_cli_installed')
+        console.debug('[ONBOARDING:SVC] opencode: status =', status)
+        return status
       } catch (error) {
+        console.debug('[ONBOARDING:SVC] opencode: status check FAILED:', error)
         logger.error('Failed to check OpenCode CLI status', { error })
         return { installed: false, version: null, path: null }
       }
@@ -80,8 +87,12 @@ export function useOpencodeCliAuth(options?: { enabled?: boolean }) {
         return { authenticated: false, error: 'Not in Tauri context' }
       }
       try {
-        return await invoke<OpencodeAuthStatus>('check_opencode_cli_auth')
+        console.debug('[ONBOARDING:SVC] opencode: checking auth status...')
+        const status = await invoke<OpencodeAuthStatus>('check_opencode_cli_auth')
+        console.debug('[ONBOARDING:SVC] opencode: auth =', status)
+        return status
       } catch (error) {
+        console.debug('[ONBOARDING:SVC] opencode: auth check FAILED:', error)
         logger.error('Failed to check OpenCode CLI auth', { error })
         return {
           authenticated: false,

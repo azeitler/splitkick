@@ -41,8 +41,11 @@ export function useGhPathDetection(options?: { enabled?: boolean }) {
         return { found: false, path: null, version: null, package_manager: null }
       }
       try {
-        return await invoke<{ found: boolean; path: string | null; version: string | null; package_manager: string | null }>('detect_gh_in_path')
-      } catch {
+        const result = await invoke<{ found: boolean; path: string | null; version: string | null; package_manager: string | null }>('detect_gh_in_path')
+        console.debug('[ONBOARDING:SVC] gh path detection:', result)
+        return result
+      } catch (err) {
+        console.debug('[ONBOARDING:SVC] gh path detection failed:', err)
         return { found: false, path: null, version: null, package_manager: null }
       }
     },
@@ -65,9 +68,9 @@ export function useGhCliStatus(options?: { enabled?: boolean }) {
       }
 
       try {
-        logger.debug('Checking GitHub CLI installation status')
+        console.debug('[ONBOARDING:SVC] gh: checking installed status...')
         const status = await invoke<GhCliStatus>('check_gh_cli_installed')
-        logger.info('GitHub CLI status', { status })
+        console.debug('[ONBOARDING:SVC] gh: status =', status)
         return status
       } catch (error) {
         logger.error('Failed to check GitHub CLI status', { error })
@@ -94,9 +97,9 @@ export function useGhCliAuth(options?: { enabled?: boolean }) {
       }
 
       try {
-        logger.debug('Checking GitHub CLI authentication status')
+        console.debug('[ONBOARDING:SVC] gh: checking auth status...')
         const status = await invoke<GhAuthStatus>('check_gh_cli_auth')
-        logger.info('GitHub CLI auth status', { status })
+        console.debug('[ONBOARDING:SVC] gh: auth =', status)
         return status
       } catch (error) {
         logger.error('Failed to check GitHub CLI auth', { error })

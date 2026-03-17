@@ -39,15 +39,17 @@ pub fn spawn_terminal(
     command: Option<String>,
     command_args: Option<Vec<String>>,
 ) -> Result<(), String> {
-    log::trace!("Spawning terminal {terminal_id} at {worktree_path}");
-    if let Some(ref cmd) = command {
-        log::trace!("Running command: {cmd}");
-    }
-    if let Some(ref args) = command_args {
-        log::trace!("Command args: {args:?}");
-    }
+    log::info!(
+        "spawn_terminal {terminal_id}: cols={cols}, rows={rows}, cwd={worktree_path}, command={:?}, args={:?}",
+        command, command_args
+    );
 
     let pty_system = native_pty_system();
+
+    // Guard against degenerate dimensions that crash portable_pty
+    let cols = if cols == 0 { 80 } else { cols };
+    let rows = if rows == 0 { 24 } else { rows };
+    log::info!("spawn_terminal {terminal_id}: effective size={cols}x{rows}");
 
     // Create PTY pair
     let pair = pty_system
@@ -65,6 +67,9 @@ pub fn spawn_terminal(
 
     // Build command - either run a specific command or start interactive shell
     let mut cmd = if let Some(ref run_command) = command {
+        if run_command.is_empty() {
+            return Err("Command is empty".to_string());
+        }
         if let Some(ref args) = command_args {
             // Validate absolute paths exist upfront for a clear error message.
             if run_command.starts_with('/') && !std::path::Path::new(run_command).exists() {
