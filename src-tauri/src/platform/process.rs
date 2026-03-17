@@ -26,6 +26,21 @@ pub fn ensure_macos_path() {
     });
 }
 
+/// Detect the package manager that installed a binary by resolving symlinks.
+///
+/// Returns `Some("homebrew")` if the canonical path contains `/homebrew/` or `/Cellar/`,
+/// `None` otherwise.
+pub fn detect_package_manager(binary_path: &std::path::Path) -> Option<String> {
+    let canonical = std::fs::canonicalize(binary_path).ok()?;
+    let canonical_str = canonical.to_string_lossy();
+
+    if canonical_str.contains("/homebrew/") || canonical_str.contains("/Cellar/") {
+        return Some("homebrew".to_string());
+    }
+
+    None
+}
+
 /// Creates a Command that won't open a console window on Windows.
 /// Use for all background operations (git, gh, claude CLI, etc.).
 /// Do NOT use for commands that intentionally open UI (terminals, editors, file explorers).

@@ -216,6 +216,14 @@ pub struct AppPreferences {
     pub yolo_thinking_level: Option<String>, // Thinking level override for yolo mode, None = use session thinking level
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub linear_api_key: Option<String>, // Global Linear personal API key (inherited by all projects)
+    #[serde(default = "default_cli_source")]
+    pub claude_cli_source: String, // Claude CLI source: "jean" (managed) or "path" (system PATH)
+    #[serde(default = "default_cli_source")]
+    pub codex_cli_source: String, // Codex CLI source: "jean" (managed) or "path" (system PATH)
+    #[serde(default = "default_cli_source")]
+    pub opencode_cli_source: String, // OpenCode CLI source: "jean" (managed) or "path" (system PATH)
+    #[serde(default = "default_cli_source")]
+    pub gh_cli_source: String, // GitHub CLI source: "jean" (managed) or "path" (system PATH)
 }
 
 fn default_true() -> Option<bool> {
@@ -378,6 +386,10 @@ fn default_execution_mode() -> String {
 
 fn default_backend() -> String {
     "claude".to_string()
+}
+
+fn default_cli_source() -> String {
+    "jean".to_string()
 }
 
 fn default_codex_model() -> String {
@@ -1130,6 +1142,10 @@ impl Default for AppPreferences {
             build_thinking_level: None,
             yolo_thinking_level: None,
             linear_api_key: None,
+            claude_cli_source: default_cli_source(),
+            codex_cli_source: default_cli_source(),
+            opencode_cli_source: default_cli_source(),
+            gh_cli_source: default_cli_source(),
         }
     }
 }
@@ -1400,6 +1416,13 @@ async fn save_preferences(app: AppHandle, preferences: AppPreferences) -> Result
     })?;
 
     log::trace!("Successfully saved preferences to {prefs_path:?}");
+
+    // Sync native menu accelerator for magic menu (macOS only)
+    #[cfg(target_os = "macos")]
+    if let Some(shortcut) = prefs_for_disk.keybindings.get("open_magic_modal") {
+        sync_magic_menu_accelerator(&app, shortcut);
+    }
+
     Ok(())
 }
 
@@ -1917,6 +1940,48 @@ async fn regenerate_http_token(app: AppHandle) -> Result<String, String> {
     Ok(new_token)
 }
 
+/// Convert a frontend shortcut string (e.g. "mod+shift+m") to Tauri accelerator format (e.g. "CmdOrCtrl+Shift+M")
+#[cfg(target_os = "macos")]
+fn shortcut_to_accelerator(shortcut: &str) -> String {
+    shortcut
+        .split('+')
+        .map(|part| match part {
+            "mod" => "CmdOrCtrl",
+            "shift" => "Shift",
+            "alt" => "Alt",
+            "arrowup" => "Up",
+            "arrowdown" => "Down",
+            "arrowleft" => "Left",
+            "arrowright" => "Right",
+            "backspace" => "Backspace",
+            "enter" => "Enter",
+            "escape" => "Escape",
+            "tab" => "Tab",
+            "space" => "Space",
+            "comma" => ",",
+            "period" => ".",
+            other => other, // single letters/digits pass through as-is
+        })
+        .collect::<Vec<_>>()
+        .join("+")
+}
+
+/// Update the native magic menu accelerator to match the user's keybinding preference
+#[cfg(target_os = "macos")]
+fn sync_magic_menu_accelerator(app: &AppHandle, shortcut: &str) {
+    use tauri::menu::MenuItemKind;
+    if let Some(menu) = app.menu() {
+        if let Some(MenuItemKind::MenuItem(item)) = menu.get("magic-menu") {
+            let accel = shortcut_to_accelerator(shortcut);
+            if let Err(e) = item.set_accelerator(Some(&accel)) {
+                log::error!("Failed to set magic menu accelerator to '{accel}': {e}");
+            } else {
+                log::trace!("Updated magic menu accelerator to '{accel}'");
+            }
+        }
+    }
+}
+
 #[cfg(target_os = "macos")]
 // Create the native menu system
 fn create_app_menu(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
@@ -1959,11 +2024,25 @@ fn create_app_menu(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error
         .item(&MenuItemBuilder::with_id("toggle-right-sidebar", "Toggle Right Sidebar").build(app)?)
         .build()?;
 
+    // Build the Window submenu
+    // CMD+M is overridden to open the magic menu instead of macOS minimize
+    let window_submenu = SubmenuBuilder::new(app, "Window")
+        .item(
+            &MenuItemBuilder::with_id("magic-menu", "Magic Menu")
+                .accelerator("CmdOrCtrl+M")
+                .build(app)?,
+        )
+        .separator()
+        .item(&PredefinedMenuItem::minimize(app, None)?)
+        .item(&PredefinedMenuItem::maximize(app, None)?)
+        .build()?;
+
     // Build the main menu with submenus
     let menu = MenuBuilder::new(app)
         .item(&app_submenu)
         .item(&edit_submenu)
         .item(&view_submenu)
+        .item(&window_submenu)
         .build()?;
 
     // Set the menu for the app
@@ -2384,6 +2463,13 @@ pub fn run() {
                                 }
                             }
                         }
+                        "magic-menu" => {
+                            log::trace!("Magic Menu menu item clicked");
+                            match app.emit("menu-magic-menu", ()) {
+                                Ok(_) => log::trace!("Successfully emitted menu-magic-menu event"),
+                                Err(e) => log::error!("Failed to emit menu-magic-menu event: {e}"),
+                            }
+                        }
                         _ => {
                             log::trace!("Unhandled menu event: {:?}", event.id());
                         }
@@ -2716,23 +2802,27 @@ pub fn run() {
             // Claude CLI management commands
             claude_cli::check_claude_cli_installed,
             claude_cli::check_claude_cli_auth,
+            claude_cli::detect_claude_in_path,
             claude_cli::get_claude_usage,
             claude_cli::get_available_cli_versions,
             claude_cli::install_claude_cli,
             // Codex CLI management commands
             codex_cli::check_codex_cli_installed,
+            codex_cli::detect_codex_in_path,
             codex_cli::check_codex_cli_auth,
             codex_cli::get_codex_usage,
             codex_cli::get_available_codex_versions,
             codex_cli::install_codex_cli,
             // OpenCode CLI management commands
             opencode_cli::check_opencode_cli_installed,
+            opencode_cli::detect_opencode_in_path,
             opencode_cli::check_opencode_cli_auth,
             opencode_cli::get_available_opencode_versions,
             opencode_cli::install_opencode_cli,
             opencode_cli::list_opencode_models,
             // GitHub CLI management commands
             gh_cli::check_gh_cli_installed,
+            gh_cli::detect_gh_in_path,
             gh_cli::check_gh_cli_auth,
             gh_cli::get_available_gh_versions,
             gh_cli::install_gh_cli,

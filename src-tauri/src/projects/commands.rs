@@ -2605,8 +2605,9 @@ pub async fn create_base_session(app: AppHandle, project_id: String) -> Result<W
             let wt_id = session.id.clone();
             if let Err(e) = crate::chat::with_sessions_mut(&app, &wt_path, &wt_id, |sessions| {
                 for s in &mut sessions.sessions {
-                    if s.archived_at.is_some() {
+                    if s.archived_by_base_close == Some(true) {
                         s.archived_at = None;
+                        s.archived_by_base_close = None;
                     }
                 }
                 Ok(())
@@ -2704,6 +2705,7 @@ async fn close_base_session_internal(
                     );
                     if session.archived_at.is_none() {
                         session.archived_at = Some(ts);
+                        session.archived_by_base_close = Some(true);
                         archived_count += 1;
                         log::info!("[BASE_CLOSE] -> Archived session '{}'", session.name);
                     }

@@ -2,6 +2,7 @@
 
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
+use crate::platform::silent_command;
 
 /// Directory name for storing the Codex CLI binary
 pub const CLI_DIR_NAME: &str = "codex-cli";
@@ -30,10 +31,48 @@ pub fn get_cli_binary_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(get_cli_dir(app)?.join(CLI_BINARY_NAME))
 }
 
-/// Resolve Codex binary path in Jean-managed app data only.
+/// Resolve Codex binary path based on the user's preference.
 ///
-/// This intentionally does not fall back to PATH/global installs.
+/// If `codex_cli_source` preference is `"path"`, look up `codex` in system PATH.
+/// Otherwise (default `"jean"`), use the Jean-managed binary.
 pub fn resolve_cli_binary(app: &AppHandle) -> PathBuf {
+    let use_path = match crate::get_preferences_path(app) {
+        Ok(prefs_path) => {
+            if let Ok(contents) = std::fs::read_to_string(&prefs_path) {
+                if let Ok(prefs) = serde_json::from_str::<crate::AppPreferences>(&contents) {
+                    prefs.codex_cli_source == "path"
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        }
+        Err(_) => false,
+    };
+
+    if use_path {
+        let which_cmd = if cfg!(target_os = "windows") {
+            "where"
+        } else {
+            "which"
+        };
+
+        if let Ok(output) = silent_command(which_cmd).arg("codex").output() {
+            if output.status.success() {
+                // On Windows, `where` can return multiple paths; take only the first line
+                let path_str = String::from_utf8_lossy(&output.stdout).lines().next().unwrap_or("").trim().to_string();
+                if !path_str.is_empty() {
+                    let path = PathBuf::from(&path_str);
+                    if path.exists() {
+                        return path;
+                    }
+                }
+            }
+        }
+        log::warn!("codex_cli_source is 'path' but could not find codex in PATH, falling back to Jean-managed binary");
+    }
+
     get_cli_binary_path(app).unwrap_or_else(|_| PathBuf::from(CLI_DIR_NAME).join(CLI_BINARY_NAME))
 }
 

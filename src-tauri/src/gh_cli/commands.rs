@@ -69,7 +69,7 @@ struct GitHubAsset {
 pub async fn check_gh_cli_installed(app: AppHandle) -> Result<GhCliStatus, String> {
     log::trace!("Checking GitHub CLI installation status");
 
-    let binary_path = get_gh_cli_binary_path(&app)?;
+    let binary_path = resolve_gh_binary(&app);
 
     if !binary_path.exists() {
         log::trace!("GitHub CLI not found at {:?}", binary_path);
@@ -555,7 +555,7 @@ pub struct GhAuthStatus {
 pub async fn check_gh_cli_auth(app: AppHandle) -> Result<GhAuthStatus, String> {
     log::trace!("Checking GitHub CLI authentication status");
 
-    let binary_path = get_gh_cli_binary_path(&app)?;
+    let binary_path = resolve_gh_binary(&app);
 
     if !binary_path.exists() {
         return Ok(GhAuthStatus {
@@ -588,6 +588,96 @@ pub async fn check_gh_cli_auth(app: AppHandle) -> Result<GhAuthStatus, String> {
             error: Some(stderr),
         })
     }
+}
+
+/// Result of detecting GitHub CLI in system PATH
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GhPathDetection {
+    pub found: bool,
+    pub path: Option<String>,
+    pub version: Option<String>,
+    pub package_manager: Option<String>,
+}
+
+/// Detect GitHub CLI in system PATH (excluding Jean-managed binary)
+#[tauri::command]
+pub async fn detect_gh_in_path(app: AppHandle) -> Result<GhPathDetection, String> {
+    log::trace!("Detecting GitHub CLI in system PATH");
+
+    let jean_managed_path = get_gh_cli_binary_path(&app)
+        .ok()
+        .and_then(|p| std::fs::canonicalize(&p).ok());
+
+    let which_cmd = if cfg!(target_os = "windows") {
+        "where"
+    } else {
+        "which"
+    };
+
+    let output = match silent_command(which_cmd).arg("gh").output() {
+        Ok(output) if output.status.success() => {
+            // On Windows, `where` can return multiple paths; take only the first line
+            String::from_utf8_lossy(&output.stdout).lines().next().unwrap_or("").trim().to_string()
+        }
+        _ => {
+            log::trace!("GitHub CLI not found in PATH");
+            return Ok(GhPathDetection {
+                found: false,
+                path: None,
+                version: None,
+                package_manager: None,
+            });
+        }
+    };
+
+    if output.is_empty() {
+        return Ok(GhPathDetection {
+            found: false,
+            path: None,
+            version: None,
+            package_manager: None,
+        });
+    }
+
+    let found_path = std::path::PathBuf::from(&output);
+
+    // Exclude Jean-managed binary
+    if let Some(ref jean_path) = jean_managed_path {
+        if let Ok(canonical_found) = std::fs::canonicalize(&found_path) {
+            if canonical_found == *jean_path {
+                log::trace!("Found PATH gh is the Jean-managed binary, excluding");
+                return Ok(GhPathDetection {
+                    found: false,
+                    path: None,
+                    version: None,
+                    package_manager: None,
+                });
+            }
+        }
+    }
+
+    // gh --version returns "gh version 2.40.0 (2024-01-15)"
+    let version = match silent_command(&found_path).arg("--version").output() {
+        Ok(ver_output) if ver_output.status.success() => {
+            let ver_str = String::from_utf8_lossy(&ver_output.stdout).trim().to_string();
+            ver_str
+                .split_whitespace()
+                .nth(2)
+                .map(|s| s.to_string())
+        }
+        _ => None,
+    };
+
+    let package_manager = crate::platform::detect_package_manager(&found_path);
+
+    log::trace!("Found GitHub CLI in PATH: {output} (version: {version:?}, pkg_mgr: {package_manager:?})");
+
+    Ok(GhPathDetection {
+        found: true,
+        path: Some(output),
+        version,
+        package_manager,
+    })
 }
 
 /// Helper function to emit installation progress events
