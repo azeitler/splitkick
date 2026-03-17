@@ -44,6 +44,7 @@ export function useDragAndDropImages(
       const { getCurrentWindow } = await import('@tauri-apps/api/window')
       const appWindow = getCurrentWindow()
 
+      let lastDropTime = 0
       const unlistenFn = await appWindow.onDragDropEvent(event => {
         if (event.payload.type === 'enter') {
           // Files entered the window
@@ -54,6 +55,11 @@ export function useDragAndDropImages(
         } else if (event.payload.type === 'drop') {
           // Files dropped
           setIsDragging(false)
+
+          // Guard against duplicate drop events (macOS can fire twice)
+          const now = Date.now()
+          if (now - lastDropTime < 500) return
+          lastDropTime = now
 
           if (!sessionId) {
             toast.error('No active session')
