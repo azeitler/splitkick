@@ -16,18 +16,20 @@ const nativeOnlyEntryIds = [
 
 const setTauriInternals = (enabled: boolean) => {
   if (enabled) {
-    Object.defineProperty(globalThis, '__TAURI_INTERNALS__', {
+    Object.defineProperty(window, '__TAURI_INTERNALS__', {
       configurable: true,
       value: {},
     })
   } else {
-    delete (globalThis as any).__TAURI_INTERNALS__
+    delete (window as Window & { __TAURI_INTERNALS__?: unknown })
+      .__TAURI_INTERNALS__
   }
 }
 
 describe('preferences search index', () => {
   afterEach(() => {
-    delete (globalThis as any).__TAURI_INTERNALS__
+    delete (window as Window & { __TAURI_INTERNALS__?: unknown })
+      .__TAURI_INTERNALS__
   })
 
   it('omits native-only sections in browser builds', () => {

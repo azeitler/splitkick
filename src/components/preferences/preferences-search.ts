@@ -579,30 +579,25 @@ const buildPreferenceSearchEntries = (includeNativeSections: boolean) => [
   ...magicPromptEntries,
 ]
 
-let currentIsNative = isNativeApp()
-let cachedPreferenceSearchEntries = buildPreferenceSearchEntries(currentIsNative)
-let fuse = new Fuse(cachedPreferenceSearchEntries, fuseOptions)
+const browserPreferenceSearchEntries = buildPreferenceSearchEntries(false)
+const nativePreferenceSearchEntries = buildPreferenceSearchEntries(true)
 
-const ensureFuseUpToDate = () => {
-  const native = isNativeApp()
-  if (native === currentIsNative) return
-  currentIsNative = native
-  cachedPreferenceSearchEntries = buildPreferenceSearchEntries(native)
-  fuse = new Fuse(cachedPreferenceSearchEntries, fuseOptions)
-}
+const browserFuse = new Fuse(browserPreferenceSearchEntries, fuseOptions)
+const nativeFuse = new Fuse(nativePreferenceSearchEntries, fuseOptions)
 
 export function getPreferenceSearchEntries() {
-  ensureFuseUpToDate()
-  return cachedPreferenceSearchEntries
+  return isNativeApp()
+    ? nativePreferenceSearchEntries
+    : browserPreferenceSearchEntries
 }
 
 export function searchPreferenceEntries(
   query: string,
   limit = 30
 ): PreferenceSearchEntry[] {
-  ensureFuseUpToDate()
   const normalized = query.trim()
   if (!normalized) return []
 
+  const fuse = isNativeApp() ? nativeFuse : browserFuse
   return fuse.search(normalized, { limit }).map(result => result.item)
 }

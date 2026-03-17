@@ -226,7 +226,6 @@ export function PreferencesDialog() {
   const preferencesPane = useUIStore(state => state.preferencesPane)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const searchContainerRef = useRef<HTMLDivElement>(null)
-  const mobileSearchInputRef = useRef<HTMLInputElement>(null)
   const mobileSearchContainerRef = useRef<HTMLDivElement>(null)
 
   const searchResults = useMemo(
@@ -239,16 +238,13 @@ export function PreferencesDialog() {
   )
   const isSearching = searchValue.trim().length > 0
 
-  const resetSearch = useCallback(
-    (options?: { blur?: boolean }) => {
-      setSearchValue('')
-      setSearchOpen(false)
-      if (options?.blur) {
-        searchInputRef.current?.blur()
-      }
-    },
-    [searchInputRef]
-  )
+  const resetSearch = useCallback((options?: { blurActive?: boolean }) => {
+    setSearchValue('')
+    setSearchOpen(false)
+    if (options?.blurActive && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur()
+    }
+  }, [])
 
   const handlePaneSelect = useCallback(
     (pane: PreferencePane) => {
@@ -374,23 +370,18 @@ export function PreferencesDialog() {
     (e: KeyboardEvent) => {
       if (!searchOpen) return
 
-      const activeElement = document.activeElement as HTMLElement | null
-      const isDesktopSearchFocused =
-        !!activeElement &&
-        (searchContainerRef.current?.contains(activeElement) ?? false)
-      const isMobileSearchFocused =
-        !!activeElement &&
-        (mobileSearchContainerRef.current?.contains(activeElement) ?? false)
+      const activeElement = document.activeElement
+      const isSearchFocused =
+        (activeElement instanceof Element &&
+          searchContainerRef.current?.contains(activeElement)) ||
+        (activeElement instanceof Element &&
+          mobileSearchContainerRef.current?.contains(activeElement))
 
-      if (!isDesktopSearchFocused && !isMobileSearchFocused) return
+      if (!isSearchFocused) return
 
       e.preventDefault()
       e.stopPropagation()
-      resetSearch({
-        blur:
-          activeElement === searchInputRef.current ||
-          activeElement === mobileSearchInputRef.current,
-      })
+      resetSearch({ blurActive: true })
     },
     [resetSearch, searchOpen]
   )
@@ -576,7 +567,6 @@ export function PreferencesDialog() {
                   <div className="flex h-9 w-full items-center gap-2 rounded-md border border-input bg-background px-3 text-sm focus-within:ring-1 focus-within:ring-ring focus-within:border-ring transition-colors">
                     <Search className="size-3.5 shrink-0 text-muted-foreground" />
                     <input
-                      ref={mobileSearchInputRef}
                       placeholder="Search settings..."
                       value={searchValue}
                       onChange={e => {
