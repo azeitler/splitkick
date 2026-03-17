@@ -1,4 +1,10 @@
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+} from 'react'
 import {
   Settings,
   Palette,
@@ -220,6 +226,7 @@ export function PreferencesDialog() {
   const preferencesPane = useUIStore(state => state.preferencesPane)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const searchContainerRef = useRef<HTMLDivElement>(null)
+  const mobileSearchInputRef = useRef<HTMLInputElement>(null)
   const mobileSearchContainerRef = useRef<HTMLDivElement>(null)
 
   const searchResults = useMemo(
@@ -231,6 +238,39 @@ export function PreferencesDialog() {
     [searchResults]
   )
   const isSearching = searchValue.trim().length > 0
+
+  const resetSearch = useCallback(
+    (options?: { blur?: boolean }) => {
+      setSearchValue('')
+      setSearchOpen(false)
+      if (options?.blur) {
+        searchInputRef.current?.blur()
+      }
+    },
+    [searchInputRef]
+  )
+
+  const handlePaneSelect = useCallback(
+    (pane: PreferencePane) => {
+      resetSearch()
+      setPendingJump(null)
+      setSearchTargetAction(null)
+      setSearchTargetPromptKey(null)
+      setActivePane(pane)
+    },
+    [resetSearch]
+  )
+
+  const handleSearchResultSelect = useCallback(
+    (entry: PreferenceSearchEntry) => {
+      setActivePane(entry.pane)
+      resetSearch()
+      setPendingJump(entry)
+      setSearchTargetAction(entry.keybindingAction ?? null)
+      setSearchTargetPromptKey(entry.detailKey ?? null)
+    },
+    [resetSearch]
+  )
 
   // Handle open state change and navigate to specific pane if requested
   const handleOpenChange = useCallback(
@@ -330,31 +370,36 @@ export function PreferencesDialog() {
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [preferencesOpen])
 
-  const handlePaneSelect = useCallback((pane: PreferencePane) => {
-    setSearchValue('')
-    setSearchOpen(false)
-    setPendingJump(null)
-    setSearchTargetAction(null)
-    setSearchTargetPromptKey(null)
-    setActivePane(pane)
-  }, [])
+  const handleDialogEscape = useCallback(
+    (e: KeyboardEvent) => {
+      if (!searchOpen) return
 
-  const handleSearchResultSelect = useCallback(
-    (entry: PreferenceSearchEntry) => {
-      setActivePane(entry.pane)
-      setSearchValue('')
-      setSearchOpen(false)
-      setPendingJump(entry)
-      setSearchTargetAction(entry.keybindingAction ?? null)
-      setSearchTargetPromptKey(entry.detailKey ?? null)
+      const activeElement = document.activeElement as HTMLElement | null
+      const isDesktopSearchFocused =
+        !!activeElement &&
+        (searchContainerRef.current?.contains(activeElement) ?? false)
+      const isMobileSearchFocused =
+        !!activeElement &&
+        (mobileSearchContainerRef.current?.contains(activeElement) ?? false)
+
+      if (!isDesktopSearchFocused && !isMobileSearchFocused) return
+
+      e.preventDefault()
+      e.stopPropagation()
+      resetSearch({
+        blur:
+          activeElement === searchInputRef.current ||
+          activeElement === mobileSearchInputRef.current,
+      })
     },
-    []
+    [resetSearch, searchOpen]
   )
 
   return (
     <Dialog open={preferencesOpen} onOpenChange={handleOpenChange}>
       <DialogContent
         showCloseButton={false}
+        onEscapeKeyDown={handleDialogEscape}
         className="overflow-hidden p-0 !w-screen !h-dvh !max-w-screen !max-h-none !rounded-none sm:!w-[calc(100vw-4rem)] sm:!max-w-[calc(100vw-4rem)] sm:!h-[85vh] sm:!rounded-xl font-sans"
       >
         <DialogTitle className="sr-only">Settings</DialogTitle>
@@ -453,13 +498,6 @@ export function PreferencesDialog() {
                           onFocus={() => {
                             if (searchValue.trim()) setSearchOpen(true)
                           }}
-                          onKeyDown={e => {
-                            if (e.key === 'Escape') {
-                              setSearchValue('')
-                              setSearchOpen(false)
-                              searchInputRef.current?.blur()
-                            }
-                          }}
                           className="flex-1 bg-transparent outline-none placeholder:text-muted-foreground text-sm"
                         />
                         {!searchValue && (
@@ -538,6 +576,7 @@ export function PreferencesDialog() {
                   <div className="flex h-9 w-full items-center gap-2 rounded-md border border-input bg-background px-3 text-sm focus-within:ring-1 focus-within:ring-ring focus-within:border-ring transition-colors">
                     <Search className="size-3.5 shrink-0 text-muted-foreground" />
                     <input
+                      ref={mobileSearchInputRef}
                       placeholder="Search settings..."
                       value={searchValue}
                       onChange={e => {
@@ -546,12 +585,6 @@ export function PreferencesDialog() {
                       }}
                       onFocus={() => {
                         if (searchValue.trim()) setSearchOpen(true)
-                      }}
-                      onKeyDown={e => {
-                        if (e.key === 'Escape') {
-                          setSearchValue('')
-                          setSearchOpen(false)
-                        }
                       }}
                       className="flex-1 bg-transparent outline-none placeholder:text-muted-foreground text-sm"
                     />

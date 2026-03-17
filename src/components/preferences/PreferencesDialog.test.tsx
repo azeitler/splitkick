@@ -94,4 +94,62 @@ describe('PreferencesDialog', () => {
       expect(useUIStore.getState().preferencesOpen).toBe(false)
     })
   })
+
+  it('keeps the dialog open when Escape clears the desktop search', async () => {
+    const user = userEvent.setup()
+
+    render(<PreferencesDialog />)
+
+    const dialog = screen.getByRole('dialog')
+    const desktopHeaderActions = dialog.querySelector<HTMLElement>(
+      'div[class~=\"ml-auto\"][class~=\"md:flex\"]'
+    )
+
+    if (!desktopHeaderActions) {
+      throw new Error('Expected desktop header actions to be rendered')
+    }
+
+    const desktopSearchInput =
+      within(desktopHeaderActions).getByPlaceholderText('Search settings...')
+    await user.type(desktopSearchInput, 'provider')
+
+    await user.keyboard('{Escape}')
+
+    await waitFor(() => {
+      expect(desktopSearchInput).toHaveValue('')
+      expect(useUIStore.getState().preferencesOpen).toBe(true)
+    })
+  })
+
+  it('keeps the dialog open when Escape clears the mobile search', async () => {
+    const user = userEvent.setup()
+    const previousWidth = window.innerWidth
+    window.innerWidth = 500
+    window.dispatchEvent(new Event('resize'))
+
+    try {
+      render(<PreferencesDialog />)
+
+      const dialog = screen.getByRole('dialog')
+      const mobileSearchInput =
+        dialog.querySelector<HTMLInputElement>(
+          'div.md\\:hidden input[placeholder=\"Search settings...\"]'
+        )
+
+      if (!mobileSearchInput) {
+        throw new Error('Expected mobile search input to be rendered')
+      }
+
+      await user.type(mobileSearchInput, 'claude')
+      await user.keyboard('{Escape}')
+
+      await waitFor(() => {
+        expect(mobileSearchInput).toHaveValue('')
+        expect(useUIStore.getState().preferencesOpen).toBe(true)
+      })
+    } finally {
+      window.innerWidth = previousWidth
+      window.dispatchEvent(new Event('resize'))
+    }
+  })
 })

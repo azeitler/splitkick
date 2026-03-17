@@ -9,8 +9,14 @@
  */
 
 /** Running inside the native Tauri desktop app. */
-export const isNativeApp = (): boolean =>
-  typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+const hasTauriFlag = (): boolean => {
+  if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+    return true
+  }
+  return '__TAURI_INTERNALS__' in globalThis
+}
+
+export const isNativeApp = (): boolean => hasTauriFlag()
 
 /** A backend is available (either Tauri IPC, WebSocket connection, or E2E mock). */
 export const hasBackend = (): boolean => {

@@ -5,6 +5,7 @@ import type { KeybindingAction } from '@/types/keybindings'
 import type { MagicPrompts } from '@/types/preferences'
 import { getKeybindingRowId } from './panes/KeybindingsPane'
 import { getMagicPromptItemId } from './panes/MagicPromptsPane'
+import { isNativeApp } from '@/lib/environment'
 
 export interface PreferenceSearchEntry {
   id: string
@@ -398,6 +399,24 @@ const sectionEntries: PreferenceSearchEntry[] = [
   },
 ]
 
+const nativeOnlySectionIds = new Set([
+  'general-claude-cli',
+  'general-github-cli',
+  'general-codex-cli',
+  'general-opencode-cli',
+  'general-troubleshooting',
+  'web-access-server',
+  'web-access-authentication',
+])
+
+const getVisibleSectionEntries = (includeNativeOnlySections: boolean) =>
+  sectionEntries.filter(entry => {
+    if (nativeOnlySectionIds.has(entry.id)) {
+      return includeNativeOnlySections
+    }
+    return true
+  })
+
 const keybindingEntries: PreferenceSearchEntry[] = KEYBINDING_DEFINITIONS.map(
   def => ({
     id: `keybinding-${def.action}`,
@@ -540,14 +559,7 @@ const magicPromptEntries: PreferenceSearchEntry[] = magicPromptDefinitions.map(
   })
 )
 
-export const preferenceSearchEntries: PreferenceSearchEntry[] = [
-  ...paneEntries,
-  ...sectionEntries,
-  ...keybindingEntries,
-  ...magicPromptEntries,
-]
-
-const fuse = new Fuse(preferenceSearchEntries, {
+const fuseOptions = {
   includeScore: true,
   threshold: 0.38,
   ignoreLocation: true,
@@ -558,12 +570,37 @@ const fuse = new Fuse(preferenceSearchEntries, {
     { name: 'description', weight: 1 },
     { name: 'paneTitle', weight: 0.8 },
   ],
-})
+}
+
+const buildPreferenceSearchEntries = (includeNativeSections: boolean) => [
+  ...paneEntries,
+  ...getVisibleSectionEntries(includeNativeSections),
+  ...keybindingEntries,
+  ...magicPromptEntries,
+]
+
+let currentIsNative = isNativeApp()
+let cachedPreferenceSearchEntries = buildPreferenceSearchEntries(currentIsNative)
+let fuse = new Fuse(cachedPreferenceSearchEntries, fuseOptions)
+
+const ensureFuseUpToDate = () => {
+  const native = isNativeApp()
+  if (native === currentIsNative) return
+  currentIsNative = native
+  cachedPreferenceSearchEntries = buildPreferenceSearchEntries(native)
+  fuse = new Fuse(cachedPreferenceSearchEntries, fuseOptions)
+}
+
+export function getPreferenceSearchEntries() {
+  ensureFuseUpToDate()
+  return cachedPreferenceSearchEntries
+}
 
 export function searchPreferenceEntries(
   query: string,
   limit = 30
 ): PreferenceSearchEntry[] {
+  ensureFuseUpToDate()
   const normalized = query.trim()
   if (!normalized) return []
 
