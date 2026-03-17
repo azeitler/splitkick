@@ -26,9 +26,10 @@ import { copyToClipboard } from '@/lib/clipboard'
 
 const SettingsSection: React.FC<{
   title: string
+  anchorId?: string
   children: React.ReactNode
-}> = ({ title, children }) => (
-  <div className="space-y-4">
+}> = ({ title, anchorId, children }) => (
+  <div id={anchorId} className="space-y-4">
     <div>
       <h3 className="text-lg font-medium text-foreground">{title}</h3>
       <Separator className="mt-2" />
@@ -224,7 +225,7 @@ export const WebAccessPane: React.FC = () => {
         authentication.
       </p>
 
-      <SettingsSection title="Server">
+      <SettingsSection title="Server" anchorId="pref-web-access-section-server">
         <div className="space-y-4">
           <InlineField
             label="Enable HTTP server"
@@ -292,7 +293,10 @@ export const WebAccessPane: React.FC = () => {
         </div>
       </SettingsSection>
 
-      <SettingsSection title="Authentication">
+      <SettingsSection
+        title="Authentication"
+        anchorId="pref-web-access-section-authentication"
+      >
         <div className="space-y-4">
           <InlineField
             label="Require access token"

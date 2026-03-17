@@ -14,9 +14,10 @@ interface UsageWindow {
 
 const SettingsSection: React.FC<{
   title: string
+  anchorId?: string
   children: React.ReactNode
-}> = ({ title, children }) => (
-  <div className="space-y-4">
+}> = ({ title, anchorId, children }) => (
+  <div id={anchorId} className="space-y-4">
     <div>
       <h3 className="text-lg font-medium text-foreground">{title}</h3>
       <Separator className="mt-2" />
@@ -80,9 +81,7 @@ export const UsagePane: React.FC = () => {
     codexUsage.error,
     'Failed to load Codex usage.'
   )
-  const isRefreshing =
-    codexUsage.isFetching ||
-    codexAuth.isFetching
+  const isRefreshing = codexUsage.isFetching || codexAuth.isFetching
 
   return (
     <div className="space-y-6">
@@ -107,13 +106,14 @@ export const UsagePane: React.FC = () => {
         </div>
       </div>
 
-      <SettingsSection title="Claude">
+      <SettingsSection title="Claude" anchorId="pref-usage-section-claude">
         <p className="text-sm text-muted-foreground">
-          Claude usage tracking is temporarily disabled due to an authentication bug that causes repeated logouts.
+          Claude usage tracking is temporarily disabled due to an authentication
+          bug that causes repeated logouts.
         </p>
       </SettingsSection>
 
-      <SettingsSection title="Codex">
+      <SettingsSection title="Codex" anchorId="pref-usage-section-codex">
         {!codexStatus.data?.installed ? (
           <p className="text-sm text-muted-foreground">
             Codex CLI is not installed.
@@ -186,7 +186,9 @@ export const UsagePane: React.FC = () => {
             </p>
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">No usage data available.</p>
+          <p className="text-sm text-muted-foreground">
+            No usage data available.
+          </p>
         )}
       </SettingsSection>
     </div>

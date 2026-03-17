@@ -14,9 +14,10 @@ import { modelOptions, type ClaudeModel } from '@/types/preferences'
 
 const SettingsSection: React.FC<{
   title: string
+  anchorId?: string
   children: React.ReactNode
-}> = ({ title, children }) => (
-  <div className="space-y-4">
+}> = ({ title, anchorId, children }) => (
+  <div id={anchorId} className="space-y-4">
     <div>
       <h3 className="text-lg font-medium text-foreground">{title}</h3>
       <Separator className="mt-2" />
@@ -53,7 +54,10 @@ export const ExperimentalPane: React.FC = () => {
         </p>
       </div>
 
-      <SettingsSection title="AI Behavior">
+      <SettingsSection
+        title="AI Behavior"
+        anchorId="pref-experimental-section-ai-behavior"
+      >
         <div className="space-y-4">
           <InlineField
             label="Parallel execution prompting"
@@ -62,7 +66,9 @@ export const ExperimentalPane: React.FC = () => {
             <Switch
               checked={preferences?.parallel_execution_prompt_enabled ?? false}
               onCheckedChange={checked => {
-                patchPreferences.mutate({ parallel_execution_prompt_enabled: checked })
+                patchPreferences.mutate({
+                  parallel_execution_prompt_enabled: checked,
+                })
               }}
             />
           </InlineField>
@@ -84,7 +90,9 @@ export const ExperimentalPane: React.FC = () => {
             description="Claude model for automatic and on-demand session recaps"
           >
             <Select
-              value={preferences?.magic_prompt_models.session_recap_model ?? 'haiku'}
+              value={
+                preferences?.magic_prompt_models.session_recap_model ?? 'haiku'
+              }
               onValueChange={(value: ClaudeModel) => {
                 if (preferences) {
                   patchPreferences.mutate({
@@ -111,7 +119,10 @@ export const ExperimentalPane: React.FC = () => {
         </div>
       </SettingsSection>
 
-      <SettingsSection title="Developer Tools">
+      <SettingsSection
+        title="Developer Tools"
+        anchorId="pref-experimental-section-developer-tools"
+      >
         <InlineField
           label="Debug mode"
           description="Show session debug panel with file paths, run logs, and token usage"
@@ -123,9 +134,7 @@ export const ExperimentalPane: React.FC = () => {
             }}
           />
         </InlineField>
-
       </SettingsSection>
-
     </div>
   )
 }

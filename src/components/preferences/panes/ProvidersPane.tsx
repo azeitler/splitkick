@@ -22,9 +22,10 @@ import {
 const SettingsSection: React.FC<{
   title: string
   description?: string
+  anchorId?: string
   children: React.ReactNode
-}> = ({ title, description, children }) => (
-  <div className="space-y-4">
+}> = ({ title, description, anchorId, children }) => (
+  <div id={anchorId} className="space-y-4">
     <div>
       <h3 className="text-lg font-medium text-foreground">{title}</h3>
       {description && (
@@ -59,6 +60,7 @@ export const ProvidersPane: React.FC = () => {
       <SettingsSection
         title="Claude CLI"
         description="Custom settings profiles for the Claude CLI. Each profile can override the API endpoint, authentication, and model routing."
+        anchorId="pref-providers-section-claude-cli"
       >
         <CliProfilesEditor profiles={profiles} onSave={handleSaveProfiles} />
 

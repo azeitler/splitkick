@@ -138,9 +138,10 @@ interface CleanupResult {
 const SettingsSection: React.FC<{
   title: React.ReactNode
   actions?: React.ReactNode
+  anchorId?: string
   children: React.ReactNode
-}> = ({ title, actions, children }) => (
-  <div className="space-y-4">
+}> = ({ title, actions, anchorId, children }) => (
+  <div id={anchorId} className="space-y-4">
     <div>
       <div className="flex items-center gap-3">
         <h3 className="text-lg font-medium text-foreground">{title}</h3>
@@ -739,6 +740,7 @@ export const GeneralPane: React.FC = () => {
       {isNativeApp() && (
         <SettingsSection
           title="Claude CLI"
+          anchorId="pref-general-section-claude-cli"
           actions={
             cliStatus?.installed ? (
               checkingClaudeAuth || isClaudeAuthLoading ? (
@@ -749,7 +751,11 @@ export const GeneralPane: React.FC = () => {
               ) : claudeAuth?.authenticated ? (
                 <span className="text-sm text-muted-foreground flex items-center gap-2">
                   Logged in
-                  <Button variant="outline" size="sm" onClick={handleClaudeRelogin}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleClaudeRelogin}
+                  >
                     Relogin
                   </Button>
                 </span>
@@ -865,6 +871,7 @@ export const GeneralPane: React.FC = () => {
       {isNativeApp() && (
         <SettingsSection
           title="GitHub CLI"
+          anchorId="pref-general-section-github-cli"
           actions={
             ghStatus?.installed ? (
               checkingGhAuth || isGhAuthLoading ? (
@@ -998,6 +1005,7 @@ export const GeneralPane: React.FC = () => {
               </span>
             </>
           }
+          anchorId="pref-general-section-codex-cli"
           actions={
             codexStatus?.installed ? (
               checkingCodexAuth || isCodexAuthLoading ? (
@@ -1008,7 +1016,11 @@ export const GeneralPane: React.FC = () => {
               ) : codexAuth?.authenticated ? (
                 <span className="text-sm text-muted-foreground flex items-center gap-2">
                   Logged in
-                  <Button variant="outline" size="sm" onClick={handleCodexRelogin}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCodexRelogin}
+                  >
                     Relogin
                   </Button>
                 </span>
@@ -1131,6 +1143,7 @@ export const GeneralPane: React.FC = () => {
               </span>
             </>
           }
+          anchorId="pref-general-section-opencode-cli"
           actions={
             opencodeStatus?.installed ? (
               checkingOpenCodeAuth || isOpenCodeAuthLoading ? (
@@ -1141,12 +1154,20 @@ export const GeneralPane: React.FC = () => {
               ) : opencodeAuth?.authenticated ? (
                 <span className="text-sm text-muted-foreground flex items-center gap-2">
                   Logged in
-                  <Button variant="outline" size="sm" onClick={handleOpenCodeRelogin}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleOpenCodeRelogin}
+                  >
                     Relogin
                   </Button>
                 </span>
               ) : (
-                <Button variant="outline" size="sm" onClick={handleOpenCodeLogin}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleOpenCodeLogin}
+                >
                   Login
                 </Button>
               )
@@ -1254,7 +1275,10 @@ export const GeneralPane: React.FC = () => {
         </SettingsSection>
       )}
 
-      <SettingsSection title="Defaults">
+      <SettingsSection
+        title="Defaults"
+        anchorId="pref-general-section-defaults"
+      >
         <div className="space-y-4">
           <InlineField
             label="Default backend"
@@ -1344,17 +1368,18 @@ export const GeneralPane: React.FC = () => {
                       >
                         <span className="truncate text-left">
                           {preferences?.build_model
-                            ? (openCodeModelOptions.find(o => o.value === preferences.build_model)?.label
-                              ?? formatOpenCodeModelLabelForSettings(preferences.build_model))
+                            ? (openCodeModelOptions.find(
+                                o => o.value === preferences.build_model
+                              )?.label ??
+                              formatOpenCodeModelLabelForSettings(
+                                preferences.build_model
+                              ))
                             : 'Default model'}
                         </span>
                         <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent
-                      align="start"
-                      className="w-80 p-0"
-                    >
+                    <PopoverContent align="start" className="w-80 p-0">
                       <Command>
                         <CommandInput placeholder="Search models..." />
                         <CommandList onWheel={e => e.stopPropagation()}>
@@ -1368,7 +1393,15 @@ export const GeneralPane: React.FC = () => {
                               }}
                             >
                               Default model
-                              <Check className={cn('ml-auto h-4 w-4', !preferences?.build_model || preferences.build_model === 'default' ? 'opacity-100' : 'opacity-0')} />
+                              <Check
+                                className={cn(
+                                  'ml-auto h-4 w-4',
+                                  !preferences?.build_model ||
+                                    preferences.build_model === 'default'
+                                    ? 'opacity-100'
+                                    : 'opacity-0'
+                                )}
+                              />
                             </CommandItem>
                             {openCodeModelOptions.map(option => (
                               <CommandItem
@@ -1380,7 +1413,14 @@ export const GeneralPane: React.FC = () => {
                                 }}
                               >
                                 <span className="truncate">{option.label}</span>
-                                <Check className={cn('ml-auto h-4 w-4', preferences?.build_model === option.value ? 'opacity-100' : 'opacity-0')} />
+                                <Check
+                                  className={cn(
+                                    'ml-auto h-4 w-4',
+                                    preferences?.build_model === option.value
+                                      ? 'opacity-100'
+                                      : 'opacity-0'
+                                  )}
+                                />
                               </CommandItem>
                             ))}
                           </CommandGroup>
@@ -1430,7 +1470,9 @@ export const GeneralPane: React.FC = () => {
                       </>
                     ) : (
                       <>
-                        <SelectItem value="default">Default thinking</SelectItem>
+                        <SelectItem value="default">
+                          Default thinking
+                        </SelectItem>
                         {thinkingLevelOptions.map(option => (
                           <SelectItem key={option.value} value={option.value}>
                             {option.label}
@@ -1482,17 +1524,18 @@ export const GeneralPane: React.FC = () => {
                       >
                         <span className="truncate text-left">
                           {preferences?.yolo_model
-                            ? (openCodeModelOptions.find(o => o.value === preferences.yolo_model)?.label
-                              ?? formatOpenCodeModelLabelForSettings(preferences.yolo_model))
+                            ? (openCodeModelOptions.find(
+                                o => o.value === preferences.yolo_model
+                              )?.label ??
+                              formatOpenCodeModelLabelForSettings(
+                                preferences.yolo_model
+                              ))
                             : 'Default model'}
                         </span>
                         <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent
-                      align="start"
-                      className="w-80 p-0"
-                    >
+                    <PopoverContent align="start" className="w-80 p-0">
                       <Command>
                         <CommandInput placeholder="Search models..." />
                         <CommandList onWheel={e => e.stopPropagation()}>
@@ -1506,7 +1549,15 @@ export const GeneralPane: React.FC = () => {
                               }}
                             >
                               Default model
-                              <Check className={cn('ml-auto h-4 w-4', !preferences?.yolo_model || preferences.yolo_model === 'default' ? 'opacity-100' : 'opacity-0')} />
+                              <Check
+                                className={cn(
+                                  'ml-auto h-4 w-4',
+                                  !preferences?.yolo_model ||
+                                    preferences.yolo_model === 'default'
+                                    ? 'opacity-100'
+                                    : 'opacity-0'
+                                )}
+                              />
                             </CommandItem>
                             {openCodeModelOptions.map(option => (
                               <CommandItem
@@ -1518,7 +1569,14 @@ export const GeneralPane: React.FC = () => {
                                 }}
                               >
                                 <span className="truncate">{option.label}</span>
-                                <Check className={cn('ml-auto h-4 w-4', preferences?.yolo_model === option.value ? 'opacity-100' : 'opacity-0')} />
+                                <Check
+                                  className={cn(
+                                    'ml-auto h-4 w-4',
+                                    preferences?.yolo_model === option.value
+                                      ? 'opacity-100'
+                                      : 'opacity-0'
+                                  )}
+                                />
                               </CommandItem>
                             ))}
                           </CommandGroup>
@@ -1568,7 +1626,9 @@ export const GeneralPane: React.FC = () => {
                       </>
                     ) : (
                       <>
-                        <SelectItem value="default">Default thinking</SelectItem>
+                        <SelectItem value="default">
+                          Default thinking
+                        </SelectItem>
                         {thinkingLevelOptions.map(option => (
                           <SelectItem key={option.value} value={option.value}>
                             {option.label}
@@ -1954,7 +2014,10 @@ export const GeneralPane: React.FC = () => {
         </div>
       </SettingsSection>
 
-      <SettingsSection title="Notifications">
+      <SettingsSection
+        title="Notifications"
+        anchorId="pref-general-section-notifications"
+      >
         <div className="space-y-4">
           <InlineField
             label="Waiting sound"
@@ -2000,7 +2063,10 @@ export const GeneralPane: React.FC = () => {
         </div>
       </SettingsSection>
 
-      <SettingsSection title="Auto-generate">
+      <SettingsSection
+        title="Auto-generate"
+        anchorId="pref-general-section-auto-generate"
+      >
         <div className="space-y-4">
           <InlineField
             label="Branch names"
@@ -2023,7 +2089,10 @@ export const GeneralPane: React.FC = () => {
         </div>
       </SettingsSection>
 
-      <SettingsSection title="Worktrees">
+      <SettingsSection
+        title="Worktrees"
+        anchorId="pref-general-section-worktrees"
+      >
         <div className="space-y-4">
           <InlineField
             label="Auto-pull base branch"
@@ -2075,7 +2144,7 @@ export const GeneralPane: React.FC = () => {
         </div>
       </SettingsSection>
 
-      <SettingsSection title="Archive">
+      <SettingsSection title="Archive" anchorId="pref-general-section-archive">
         <div className="space-y-4">
           <InlineField
             label="Confirm before closing"
@@ -2190,7 +2259,10 @@ export const GeneralPane: React.FC = () => {
       </SettingsSection>
 
       {isNativeApp() && (
-        <SettingsSection title="Troubleshooting">
+        <SettingsSection
+          title="Troubleshooting"
+          anchorId="pref-general-section-troubleshooting"
+        >
           <div className="space-y-4">
             <InlineField
               label="Application logs"

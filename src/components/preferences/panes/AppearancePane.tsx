@@ -31,9 +31,10 @@ import { isMacOS } from '@/lib/platform'
 
 const SettingsSection: React.FC<{
   title: string
+  anchorId?: string
   children: React.ReactNode
-}> = ({ title, children }) => (
-  <div className="space-y-4">
+}> = ({ title, anchorId, children }) => (
+  <div id={anchorId} className="space-y-4">
     <div>
       <h3 className="text-lg font-medium text-foreground">{title}</h3>
       <Separator className="mt-2" />
@@ -135,7 +136,7 @@ export const AppearancePane: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <SettingsSection title="Theme">
+      <SettingsSection title="Theme" anchorId="pref-appearance-section-theme">
         <div className="space-y-4">
           <InlineField
             label="Color theme"
@@ -213,7 +214,7 @@ export const AppearancePane: React.FC = () => {
         </div>
       </SettingsSection>
 
-      <SettingsSection title="Fonts">
+      <SettingsSection title="Fonts" anchorId="pref-appearance-section-fonts">
         <div className="space-y-4">
           <InlineField label="UI font" description="Font for interface text">
             <Select
@@ -259,7 +260,10 @@ export const AppearancePane: React.FC = () => {
         </div>
       </SettingsSection>
 
-      <SettingsSection title="Scaling">
+      <SettingsSection
+        title="Scaling"
+        anchorId="pref-appearance-section-scaling"
+      >
         <div className="space-y-5">
           <ScalingField
             label="UI font scaling"
@@ -308,7 +312,10 @@ export const AppearancePane: React.FC = () => {
         </div>
       </SettingsSection>
 
-      <SettingsSection title="File Viewer">
+      <SettingsSection
+        title="File Viewer"
+        anchorId="pref-appearance-section-file-viewer"
+      >
         <div className="space-y-4">
           <InlineField
             label="Edit files in"

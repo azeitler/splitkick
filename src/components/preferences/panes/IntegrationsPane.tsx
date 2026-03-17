@@ -8,9 +8,10 @@ import { usePreferences, usePatchPreferences } from '@/services/preferences'
 
 const SettingsSection: React.FC<{
   title: string
+  anchorId?: string
   children: React.ReactNode
-}> = ({ title, children }) => (
-  <div className="space-y-4">
+}> = ({ title, anchorId, children }) => (
+  <div id={anchorId} className="space-y-4">
     <div>
       <h3 className="text-lg font-medium text-foreground">{title}</h3>
       <Separator className="mt-2" />
@@ -39,7 +40,9 @@ export const IntegrationsPane: React.FC = () => {
   const { data: preferences } = usePreferences()
   const patchPreferences = usePatchPreferences()
 
-  const [localLinearApiKey, setLocalLinearApiKey] = useState<string | null>(null)
+  const [localLinearApiKey, setLocalLinearApiKey] = useState<string | null>(
+    null
+  )
   const [showLinearApiKey, setShowLinearApiKey] = useState(false)
 
   const currentGlobalKey = preferences?.linear_api_key ?? ''
@@ -64,7 +67,10 @@ export const IntegrationsPane: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <SettingsSection title="Linear">
+      <SettingsSection
+        title="Linear"
+        anchorId="pref-integrations-section-linear"
+      >
         <InlineField
           label="Personal API Key"
           description={
