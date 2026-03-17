@@ -9,17 +9,6 @@ use super::types::{
     TerminalOutputEvent, TerminalSession, TerminalStartedEvent, TerminalStoppedEvent,
 };
 
-/// Quote a string for safe use in shell commands.
-/// Wraps in single quotes, escaping any embedded single quotes.
-fn shell_quote(s: &str) -> String {
-    // If no special characters, return as-is
-    if !s.contains(|c: char| c.is_whitespace() || c == '\'' || c == '"' || c == '\\' || c == '$' || c == '`' || c == '!' || c == '(' || c == ')') {
-        return s.to_string();
-    }
-    // Single-quote the string, replacing ' with '\'' (end quote, escaped quote, start quote)
-    format!("'{}'", s.replace('\'', "'\\''"))
-}
-
 /// Detect user's default shell (cross-platform)
 fn get_user_shell() -> String {
     crate::platform::get_default_shell()
@@ -94,8 +83,7 @@ pub fn spawn_terminal(
             #[cfg(not(windows))]
             {
                 c.arg("-c");
-                // Quote the command in case it contains spaces
-                c.arg(&shell_quote(run_command));
+                c.arg(run_command);
             }
             c
         }
