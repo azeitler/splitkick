@@ -555,7 +555,7 @@ pub struct GhAuthStatus {
 pub async fn check_gh_cli_auth(app: AppHandle) -> Result<GhAuthStatus, String> {
     log::trace!("Checking GitHub CLI authentication status");
 
-    let binary_path = get_gh_cli_binary_path(&app)?;
+    let binary_path = resolve_gh_binary(&app);
 
     if !binary_path.exists() {
         return Ok(GhAuthStatus {

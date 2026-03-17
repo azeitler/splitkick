@@ -1199,6 +1199,7 @@ function OnboardingDialogContent() {
           ) : step === 'claude-auth-login' ? (
             claudeLoginCommand ? (
               <AuthLoginState
+                key={claudeLoginTerminalId}
                 cliName="Claude CLI"
                 terminalId={claudeLoginTerminalId}
                 command={claudeLoginCommand}
@@ -1212,6 +1213,7 @@ function OnboardingDialogContent() {
           ) : step === 'codex-auth-login' ? (
             codexLoginCommand ? (
               <AuthLoginState
+                key={codexLoginTerminalId}
                 cliName="Codex CLI"
                 terminalId={codexLoginTerminalId}
                 command={codexLoginCommand}
@@ -1225,6 +1227,7 @@ function OnboardingDialogContent() {
           ) : step === 'opencode-auth-login' ? (
             opencodeLoginCommand ? (
               <AuthLoginState
+                key={opencodeLoginTerminalId}
                 cliName="OpenCode CLI"
                 terminalId={opencodeLoginTerminalId}
                 command={opencodeLoginCommand}
@@ -1249,6 +1252,7 @@ function OnboardingDialogContent() {
           ) : step === 'gh-auth-login' ? (
             ghLoginCommand ? (
               <AuthLoginState
+                key={ghLoginTerminalId}
                 cliName="GitHub CLI"
                 terminalId={ghLoginTerminalId}
                 command={ghLoginCommand}

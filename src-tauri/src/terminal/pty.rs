@@ -76,34 +76,13 @@ pub fn spawn_terminal(
                 return Err(format!("Binary not found: {run_command}"));
             }
 
-            // If the binary path contains spaces (e.g. "~/Library/Application Support/..."),
-            // CommandBuilder::new() can fail on macOS. Use a shell wrapper instead.
-            #[cfg(not(windows))]
-            let needs_shell_wrapper = run_command.contains(' ');
-            #[cfg(windows)]
-            let needs_shell_wrapper = false;
-
-            if needs_shell_wrapper {
-                log::trace!("Command path contains spaces, using shell wrapper");
-                // Build a properly quoted shell command: '/path/with spaces/bin' arg1 arg2
-                let mut parts = vec![shell_quote(run_command)];
-                for arg in args {
-                    parts.push(shell_quote(arg));
-                }
-                let full_command = parts.join(" ");
-                log::trace!("Shell command: {full_command}");
-                let mut c = CommandBuilder::new(&shell);
-                c.arg("-c");
-                c.arg(&full_command);
-                c
-            } else {
-                // Direct binary invocation — bypass shell to avoid argument mangling
-                let mut c = CommandBuilder::new(run_command);
-                for arg in args {
-                    c.arg(arg);
-                }
-                c
+            // Direct binary invocation — CommandBuilder uses execvp which handles
+            // spaces in paths natively. No shell wrapper needed.
+            let mut c = CommandBuilder::new(run_command);
+            for arg in args {
+                c.arg(arg);
             }
+            c
         } else {
             // Run the command wrapped in a shell
             let mut c = CommandBuilder::new(&shell);
