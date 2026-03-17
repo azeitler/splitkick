@@ -310,7 +310,9 @@
 
 /* Bell ring animation for unread notifications */
 @keyframes bell-ring {
-  0%, 70%, 100% {
+  0%,
+  70%,
+  100% {
     transform: rotate(0deg);
   }
   5% {
@@ -498,8 +500,33 @@ kbd {
 }
 
 /* Hidden scrollbar for horizontally scrollable tab bars */
-.scrollbar-hide::-webkit-scrollbar { display: none; }
-.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Settings search highlight flash */
+@keyframes settings-highlight-flash {
+  0% {
+    background-color: transparent;
+    box-shadow: none;
+  }
+  15% {
+    background-color: color-mix(in srgb, var(--primary) 12%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 25%, transparent);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: none;
+  }
+}
+.settings-search-highlight {
+  animation: settings-highlight-flash 1.8s ease-out;
+  border-radius: calc(var(--radius) - 2px);
+}
 
 /* Number input spinner — invert arrows in dark mode so they're visible */
 .dark input[type='number']::-webkit-inner-spin-button,
