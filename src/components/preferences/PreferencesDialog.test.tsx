@@ -1,0 +1,97 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import userEvent from '@testing-library/user-event'
+import { render, screen, waitFor, within } from '@/test/test-utils'
+import { useUIStore } from '@/store/ui-store'
+import type * as KeybindingsPaneModule from './panes/KeybindingsPane'
+import type * as MagicPromptsPaneModule from './panes/MagicPromptsPane'
+import { PreferencesDialog } from './PreferencesDialog'
+
+vi.mock('./panes/GeneralPane', () => ({
+  GeneralPane: () => <div>General pane</div>,
+}))
+
+vi.mock('./panes/AppearancePane', () => ({
+  AppearancePane: () => <div>Appearance pane</div>,
+}))
+
+vi.mock('./panes/KeybindingsPane', async importOriginal => {
+  const actual = await importOriginal<typeof KeybindingsPaneModule>()
+  return {
+    ...actual,
+    KeybindingsPane: () => <div>Keybindings pane</div>,
+  }
+})
+
+vi.mock('./panes/MagicPromptsPane', async importOriginal => {
+  const actual = await importOriginal<typeof MagicPromptsPaneModule>()
+  return {
+    ...actual,
+    MagicPromptsPane: () => <div>Magic prompts pane</div>,
+  }
+})
+
+vi.mock('./panes/McpServersPane', () => ({
+  McpServersPane: () => <div>MCP Servers pane</div>,
+}))
+
+vi.mock('./panes/ProvidersPane', () => ({
+  ProvidersPane: () => <div>Providers pane</div>,
+}))
+
+vi.mock('./panes/UsagePane', () => ({
+  UsagePane: () => <div>Usage pane</div>,
+}))
+
+vi.mock('./panes/IntegrationsPane', () => ({
+  IntegrationsPane: () => <div>Integrations pane</div>,
+}))
+
+vi.mock('./panes/ExperimentalPane', () => ({
+  ExperimentalPane: () => <div>Experimental pane</div>,
+}))
+
+vi.mock('./panes/WebAccessPane', () => ({
+  WebAccessPane: () => <div>Web access pane</div>,
+}))
+
+describe('PreferencesDialog', () => {
+  beforeEach(() => {
+    globalThis.ResizeObserver = class ResizeObserver {
+      observe = vi.fn()
+      unobserve = vi.fn()
+      disconnect = vi.fn()
+    }
+
+    useUIStore.setState({
+      preferencesOpen: true,
+      preferencesPane: null,
+    })
+  })
+
+  it('still closes from the desktop header close button while search is open', async () => {
+    const user = userEvent.setup()
+
+    render(<PreferencesDialog />)
+
+    const dialog = screen.getByRole('dialog')
+    const desktopHeaderActions = dialog.querySelector<HTMLElement>(
+      'div[class~="ml-auto"][class~="md:flex"]'
+    )
+
+    if (!desktopHeaderActions) {
+      throw new Error('Expected desktop header actions to be rendered')
+    }
+
+    const desktopSearchInput =
+      within(desktopHeaderActions).getByPlaceholderText('Search settings...')
+    await user.type(desktopSearchInput, 'provider')
+
+    await user.click(
+      within(desktopHeaderActions).getByRole('button', { name: 'Close' })
+    )
+
+    await waitFor(() => {
+      expect(useUIStore.getState().preferencesOpen).toBe(false)
+    })
+  })
+})

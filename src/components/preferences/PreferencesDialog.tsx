@@ -186,6 +186,23 @@ function groupResultsByPane(results: PreferenceSearchEntry[]) {
   return groups
 }
 
+function isEditableTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false
+
+  if (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement ||
+    target.isContentEditable
+  ) {
+    return true
+  }
+
+  return !!target.closest(
+    '.cm-editor, .cm-content, .monaco-editor, [contenteditable="true"], [role="textbox"]'
+  )
+}
+
 export function PreferencesDialog() {
   const [activePane, setActivePane] = useState<PreferencePane>('general')
   const [searchValue, setSearchValue] = useState('')
@@ -275,20 +292,34 @@ export function PreferencesDialog() {
         setSearchOpen(false)
       }
     }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
+    // Use click instead of mousedown so header actions like the dialog close
+    // button still receive their own click event before search state updates.
+    document.addEventListener('click', handleClick)
+    return () => document.removeEventListener('click', handleClick)
   }, [searchOpen])
 
-  // "/" keyboard shortcut to focus search when dialog is open
+  // "/" and Cmd+F keyboard shortcuts to focus search when dialog is open
   useEffect(() => {
     if (!preferencesOpen) return
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (isEditableTarget(e.target)) return
+
       if (
         e.key === '/' &&
         !e.metaKey &&
         !e.ctrlKey &&
-        !(e.target instanceof HTMLInputElement) &&
-        !(e.target instanceof HTMLTextAreaElement)
+        !e.altKey &&
+        !e.shiftKey
+      ) {
+        e.preventDefault()
+        searchInputRef.current?.focus()
+        setSearchOpen(true)
+      }
+      if (
+        e.key.toLowerCase() === 'f' &&
+        (e.metaKey || e.ctrlKey) &&
+        !e.altKey &&
+        !e.shiftKey
       ) {
         e.preventDefault()
         searchInputRef.current?.focus()
@@ -399,107 +430,98 @@ export function PreferencesDialog() {
                   </BreadcrumbList>
                 </Breadcrumb>
 
-                {/* Search bar — right side of header */}
-                <div
-                  ref={searchContainerRef}
-                  className="relative hidden md:block ml-auto"
-                >
-                  <Command
-                    shouldFilter={false}
-                    className="bg-transparent overflow-visible"
+                <div className="ml-auto hidden md:flex items-center gap-2">
+                  {/* Search bar — right side of header */}
+                  <div
+                    ref={searchContainerRef}
+                    className="relative shrink-0"
                   >
-                    <div className="flex h-8 w-52 items-center gap-2 rounded-md border border-input bg-background px-2.5 text-sm focus-within:ring-1 focus-within:ring-ring focus-within:border-ring transition-colors">
-                      <Search className="size-3.5 shrink-0 text-muted-foreground" />
-                      <input
-                        ref={searchInputRef}
-                        placeholder="Search settings..."
-                        value={searchValue}
-                        onChange={e => {
-                          setSearchValue(e.target.value)
-                          setSearchOpen(true)
-                        }}
-                        onFocus={() => {
-                          if (searchValue.trim()) setSearchOpen(true)
-                        }}
-                        onKeyDown={e => {
-                          if (e.key === 'Escape') {
-                            setSearchValue('')
-                            setSearchOpen(false)
-                            searchInputRef.current?.blur()
-                          }
-                          // Let cmdk handle ArrowDown/Up/Enter when dropdown is open
-                          if (
-                            searchOpen &&
-                            isSearching &&
-                            (e.key === 'ArrowDown' ||
-                              e.key === 'ArrowUp' ||
-                              e.key === 'Enter')
-                          ) {
-                            // Don't prevent — cmdk will handle via its Command wrapper
-                          }
-                        }}
-                        className="flex-1 bg-transparent outline-none placeholder:text-muted-foreground text-sm"
-                      />
-                      {!searchValue && (
-                        <kbd className="pointer-events-none text-[10px] font-mono text-muted-foreground/60">
-                          /
-                        </kbd>
-                      )}
-                    </div>
+                    <Command
+                      shouldFilter={false}
+                      className="bg-transparent overflow-visible h-auto w-auto"
+                    >
+                      <div className="flex h-8 w-52 items-center gap-2 rounded-md border border-input bg-background px-2.5 text-sm focus-within:ring-1 focus-within:ring-ring focus-within:border-ring transition-colors">
+                        <Search className="size-3.5 shrink-0 text-muted-foreground" />
+                        <input
+                          ref={searchInputRef}
+                          placeholder="Search settings..."
+                          value={searchValue}
+                          onChange={e => {
+                            setSearchValue(e.target.value)
+                            setSearchOpen(true)
+                          }}
+                          onFocus={() => {
+                            if (searchValue.trim()) setSearchOpen(true)
+                          }}
+                          onKeyDown={e => {
+                            if (e.key === 'Escape') {
+                              setSearchValue('')
+                              setSearchOpen(false)
+                              searchInputRef.current?.blur()
+                            }
+                          }}
+                          className="flex-1 bg-transparent outline-none placeholder:text-muted-foreground text-sm"
+                        />
+                        {!searchValue && (
+                          <kbd className="pointer-events-none text-[10px] font-mono text-muted-foreground/60">
+                            /
+                          </kbd>
+                        )}
+                      </div>
 
-                    {/* Results dropdown */}
-                    {searchOpen && isSearching && (
-                      <CommandList className="absolute top-full right-0 mt-1.5 w-80 max-h-[360px] overflow-y-auto rounded-lg border border-border bg-popover shadow-lg z-50">
-                        {searchResults.length === 0 ? (
-                          <CommandEmpty>No settings found.</CommandEmpty>
-                        ) : (
-                          groupedResults.map(group => {
-                            const Icon = paneIconMap[group.pane]
-                            return (
-                              <CommandGroup
-                                key={group.pane}
-                                heading={
-                                  <span className="flex items-center gap-1.5">
-                                    <Icon className="size-3" />
-                                    {group.title}
-                                  </span>
-                                }
-                              >
-                                {group.items.map(result => (
-                                  <CommandItem
-                                    key={result.id}
-                                    value={result.id}
-                                    onSelect={() =>
-                                      handleSearchResultSelect(result)
-                                    }
-                                  >
-                                    <div className="flex min-w-0 flex-1 items-center gap-2">
-                                      <span className="truncate text-sm">
-                                        {result.title}
-                                      </span>
-                                      {result.sectionTitle &&
-                                        result.sectionTitle !==
-                                          result.paneTitle && (
+                      {searchOpen && isSearching && (
+                        <CommandList className="absolute top-full right-0 mt-1.5 w-80 max-h-[360px] overflow-y-auto rounded-lg border border-border bg-popover shadow-lg z-50">
+                          {searchResults.length === 0 ? (
+                            <CommandEmpty>No settings found.</CommandEmpty>
+                          ) : (
+                            groupedResults.map(group => {
+                              const Icon = paneIconMap[group.pane]
+                              return (
+                                <CommandGroup
+                                  key={group.pane}
+                                  heading={
+                                    <span className="flex items-center gap-1.5">
+                                      <Icon className="size-3" />
+                                      {group.title}
+                                    </span>
+                                  }
+                                >
+                                  {group.items.map(result => (
+                                    <CommandItem
+                                      key={result.id}
+                                      value={result.id}
+                                      onSelect={() =>
+                                        handleSearchResultSelect(result)
+                                      }
+                                    >
+                                      <div className="flex min-w-0 flex-1 items-center gap-2">
+                                        <span className="truncate text-sm">
+                                          {result.title}
+                                        </span>
+                                        {result.sectionTitle &&
+                                          result.sectionTitle !==
+                                            result.paneTitle && (
                                           <span className="text-xs text-muted-foreground truncate">
                                             {result.sectionTitle}
                                           </span>
                                         )}
-                                    </div>
-                                  </CommandItem>
-                                ))}
-                              </CommandGroup>
-                            )
-                          })
-                        )}
-                      </CommandList>
-                    )}
-                  </Command>
-                </div>
+                                      </div>
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              )
+                            })
+                          )}
+                        </CommandList>
+                      )}
+                    </Command>
+                  </div>
 
-                <ModalCloseButton
-                  className="hidden md:inline-flex shrink-0"
-                  onClick={() => handleOpenChange(false)}
-                />
+                  <ModalCloseButton
+                    className="relative z-10 shrink-0"
+                    onClick={() => handleOpenChange(false)}
+                  />
+                </div>
               </div>
             </header>
 

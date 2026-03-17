@@ -13,6 +13,10 @@ test.describe('Preferences', () => {
     return dialog
   }
 
+  const getDesktopHeaderSearchInput = (
+    dialog: ReturnType<typeof openDialog> extends Promise<infer T> ? T : never
+  ) => dialog.locator('header').getByPlaceholder('Search settings...')
+
   test('Cmd+, opens settings dialog', async ({ mockPage }) => {
     await openDialog(mockPage)
     await expect(
@@ -33,9 +37,12 @@ test.describe('Preferences', () => {
 
   test('searching jumps to matching pane', async ({ mockPage }) => {
     const dialog = await openDialog(mockPage)
-    const searchInput = dialog.getByPlaceholder('Search settings...')
+    const searchInput = getDesktopHeaderSearchInput(dialog)
     await searchInput.fill('keybindings')
-    const result = await dialog.getByRole('option', { name: /Keybindings/i })
+    const result = dialog.getByRole('option', {
+      name: 'Keybindings',
+      exact: true,
+    })
     await expect(result).toBeVisible()
     await result.click()
     await expect(dialog.getByText('Focus chat input')).toBeVisible()
@@ -45,7 +52,7 @@ test.describe('Preferences', () => {
 
   test('keyboard navigation selects search result', async ({ mockPage }) => {
     const dialog = await openDialog(mockPage)
-    const searchInput = dialog.getByPlaceholder('Search settings...')
+    const searchInput = getDesktopHeaderSearchInput(dialog)
     await searchInput.fill('appearance')
     await searchInput.press('ArrowDown')
     await searchInput.press('ArrowDown')
@@ -53,5 +60,25 @@ test.describe('Preferences', () => {
     await expect(dialog.getByText('Color theme')).toBeVisible()
     const appearanceTab = dialog.getByRole('button', { name: 'Appearance' })
     await expect(appearanceTab).toHaveAttribute('data-active', 'true')
+  })
+
+  test('desktop header close button still closes while search results are open', async ({
+    mockPage,
+  }) => {
+    await mockPage.setViewportSize({ width: 1280, height: 720 })
+    const dialog = await openDialog(mockPage)
+    const searchInput = getDesktopHeaderSearchInput(dialog)
+    const desktopHeaderActions = searchInput.locator(
+      'xpath=ancestor::div[contains(@class, "ml-auto") and contains(@class, "md:flex")][1]'
+    )
+
+    await searchInput.fill('provider')
+    await expect(
+      dialog.getByRole('option', { name: /Provider/i }).first()
+    ).toBeVisible()
+
+    await desktopHeaderActions.getByRole('button', { name: 'Close' }).click()
+
+    await expect(dialog).toBeHidden()
   })
 })
