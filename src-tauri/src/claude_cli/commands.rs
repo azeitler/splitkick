@@ -160,6 +160,8 @@ pub async fn check_claude_cli_installed(app: AppHandle) -> Result<ClaudeCliStatu
 struct NpmPackageInfo {
     versions: std::collections::HashMap<String, serde_json::Value>,
     time: std::collections::HashMap<String, String>,
+    #[serde(rename = "dist-tags")]
+    dist_tags: std::collections::HashMap<String, String>,
 }
 
 /// Platform-specific release information from manifest
@@ -172,6 +174,14 @@ struct PlatformInfo {
 #[derive(Debug, Deserialize)]
 struct Manifest {
     platforms: std::collections::HashMap<String, PlatformInfo>,
+}
+
+/// Parse version string into comparable parts
+fn parse_version(version: &str) -> Vec<u32> {
+    version
+        .split('.')
+        .filter_map(|s| s.parse().ok())
+        .collect()
 }
 
 /// Get available Claude CLI versions from npm registry
@@ -198,34 +208,42 @@ pub async fn get_available_cli_versions() -> Result<Vec<ReleaseInfo>, String> {
         .await
         .map_err(|e| format!("Failed to parse npm response: {e}"))?;
 
-    // Get versions with their publish times
+    // Get the latest stable version from dist-tags
+    // Versions > latest (e.g., "next" tag) don't have manifests in the bucket
+    let latest_version = package_info
+        .dist_tags
+        .get("latest")
+        .ok_or("No 'latest' tag found in npm dist-tags")?;
+    let latest_parts = parse_version(latest_version);
+
+    // Filter versions to only include those <= latest (excludes prereleases like "next")
     let mut versions: Vec<ReleaseInfo> = package_info
         .versions
         .keys()
+        .filter(|version| {
+            // Exclude prerelease versions (e.g., 1.0.0-beta)
+            if version.contains('-') {
+                return false;
+            }
+            // Exclude versions > latest
+            let parts = parse_version(version);
+            parts <= latest_parts
+        })
         .map(|version| {
             let published_at = package_info.time.get(version).cloned().unwrap_or_default();
             ReleaseInfo {
                 version: version.clone(),
                 tag_name: format!("v{version}"),
                 published_at,
-                prerelease: version.contains('-'), // e.g., 1.0.0-beta
+                prerelease: false,
             }
         })
         .collect();
 
-    // Sort by version descending (newest first) using simple string comparison
-    // This works for semver since we compare major.minor.patch numerically
+    // Sort by version descending (newest first)
     versions.sort_by(|a, b| {
-        let a_parts: Vec<u32> = a
-            .version
-            .split('.')
-            .filter_map(|s| s.parse().ok())
-            .collect();
-        let b_parts: Vec<u32> = b
-            .version
-            .split('.')
-            .filter_map(|s| s.parse().ok())
-            .collect();
+        let a_parts = parse_version(&a.version);
+        let b_parts = parse_version(&b.version);
         b_parts.cmp(&a_parts)
     });
 
