@@ -156,11 +156,11 @@ export function RecentContexts({
     const isLoading = loadingIds.has(ctx.id)
     const isAttached = attachedKeys.has(ctx.filename.replace(/\.md$/, ''))
     return (
-      <div key={ctx.id} className="inline-flex items-center rounded-md border border-border bg-muted/50 text-xs text-foreground transition-colors max-w-[250px]">
+      <div key={ctx.id} className="flex items-center w-[200px] rounded-md border border-border bg-muted/50 text-xs text-foreground transition-colors">
         <button
           onClick={() => handleToggle(ctx)}
           disabled={isLoading}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-50 cursor-pointer rounded-l-md"
+          className="flex-1 min-w-0 inline-flex items-center gap-1.5 px-3 py-1.5 hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-50 cursor-pointer rounded-l-md"
         >
           {isLoading ? (
             <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
@@ -188,7 +188,7 @@ export function RecentContexts({
       {linkedContexts.length > 0 && (
         <div className="flex flex-col items-center gap-1.5">
           <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-            <Link2 className="h-3 w-3" />
+            <Link2 className="h-3 w-3 shrink-0" />
             Linked project contexts
           </span>
           <div className="flex flex-wrap justify-center gap-2 max-w-2xl">
