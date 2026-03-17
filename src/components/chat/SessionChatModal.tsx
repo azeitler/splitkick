@@ -693,7 +693,7 @@ export function SessionChatModal({
         key={worktreeId}
         className="absolute inset-0 z-10 flex flex-col overflow-hidden bg-background pb-2 pt-[3px]"
       >
-        <div className="flex shrink-0 flex-col gap-2 border-b px-4 py-2 sm:text-left">
+        <div className="flex shrink-0 flex-col gap-2 border-b px-4 pb-2 sm:text-left">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               <h2 className="text-sm font-medium shrink-0">

@@ -62,8 +62,8 @@ export function TitleBar({
     <div
       {...(native ? { 'data-tauri-drag-region': true } : {})}
       className={cn(
-        'relative flex h-8 w-full shrink-0 items-center justify-between',
-        'bg-background/80 backdrop-blur-md border-b border-border/50 md:px-2',
+        'relative flex h-10 w-full shrink-0 items-center justify-between',
+        'bg-background/80 backdrop-blur-md md:px-2',
         native ? 'z-[60]' : 'z-50',
         className
       )}
@@ -77,7 +77,7 @@ export function TitleBar({
         <div
           className={cn(
             'relative z-10 flex items-center gap-1',
-            native && isMacOS ? 'pl-[68px]' : 'pl-2'
+            native && isMacOS ? 'pl-[85px]' : 'pl-2'
           )}
         >
           <Tooltip>
