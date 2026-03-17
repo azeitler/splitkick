@@ -132,6 +132,7 @@ describe('preferences service', () => {
         custom_cli_profiles: [],
         default_provider: null,
 
+        auto_save_context: true,
         auto_pull_base_branch: true,
         confirm_session_close: true,
         default_execution_mode: 'plan',
@@ -248,6 +249,7 @@ describe('preferences service', () => {
         custom_cli_profiles: [],
         default_provider: null,
 
+        auto_save_context: true,
         auto_pull_base_branch: true,
         confirm_session_close: true,
         default_execution_mode: 'plan',
@@ -336,6 +338,7 @@ describe('preferences service', () => {
         custom_cli_profiles: [],
         default_provider: null,
 
+        auto_save_context: true,
         auto_pull_base_branch: true,
         confirm_session_close: true,
         default_execution_mode: 'plan',
@@ -425,6 +428,7 @@ describe('preferences service', () => {
         custom_cli_profiles: [],
         default_provider: null,
 
+        auto_save_context: true,
         auto_pull_base_branch: true,
         confirm_session_close: true,
         default_execution_mode: 'plan',
@@ -516,6 +520,7 @@ describe('preferences service', () => {
         custom_cli_profiles: [],
         default_provider: null,
 
+        auto_save_context: true,
         auto_pull_base_branch: true,
         confirm_session_close: true,
         default_execution_mode: 'plan',
@@ -607,6 +612,7 @@ describe('preferences service', () => {
         custom_cli_profiles: [],
         default_provider: null,
 
+        auto_save_context: true,
         auto_pull_base_branch: true,
         confirm_session_close: true,
         default_execution_mode: 'plan',
@@ -696,6 +702,7 @@ describe('preferences service', () => {
         custom_cli_profiles: [],
         default_provider: null,
 
+        auto_save_context: true,
         auto_pull_base_branch: true,
         confirm_session_close: true,
         default_execution_mode: 'plan',
