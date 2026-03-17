@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/popover'
 import { Kbd } from '@/components/ui/kbd'
 import { cn } from '@/lib/utils'
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from '@/lib/transport'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAllSessions } from '@/services/chat'
 import { useProjectsStore } from '@/store/projects-store'

@@ -5,8 +5,6 @@ import {
   useMemo,
   useRef,
   useState,
-  lazy,
-  Suspense,
   type RefObject,
 } from 'react'
 import {
@@ -65,10 +63,6 @@ import { isNativeApp } from '@/lib/environment'
 import { notify } from '@/lib/notifications'
 import { copyToClipboard } from '@/lib/clipboard'
 import { toast } from 'sonner'
-const GitDiffModal = lazy(() =>
-  import('./GitDiffModal').then(mod => ({ default: mod.GitDiffModal }))
-)
-import type { DiffRequest } from '@/types/git-diff'
 import { ChatWindow } from './ChatWindow'
 import { ModalTerminalDrawer } from './ModalTerminalDrawer'
 import { OpenInButton } from '@/components/open-in/OpenInButton'
@@ -341,8 +335,6 @@ export function SessionChatModal({
   const openInTerminal = useOpenWorktreeInTerminal()
   const openInFinder = useOpenWorktreeInFinder()
   const openOnGitHub = useOpenBranchOnGitHub()
-
-  const [diffRequest, setDiffRequest] = useState<DiffRequest | null>(null)
 
   const hasSetActiveRef = useRef<string | null>(null)
 
@@ -646,20 +638,16 @@ export function SessionChatModal({
   )
 
   const handleUncommittedDiffClick = useCallback(() => {
-    setDiffRequest({
-      type: 'uncommitted',
-      worktreePath,
-      baseBranch: defaultBranch,
-    })
-  }, [setDiffRequest, worktreePath, defaultBranch])
+    window.dispatchEvent(
+      new CustomEvent('open-git-diff', { detail: { type: 'uncommitted' } })
+    )
+  }, [])
 
   const handleBranchDiffClick = useCallback(() => {
-    setDiffRequest({
-      type: 'branch',
-      worktreePath,
-      baseBranch: defaultBranch,
-    })
-  }, [setDiffRequest, worktreePath, defaultBranch])
+    window.dispatchEvent(
+      new CustomEvent('open-git-diff', { detail: { type: 'branch' } })
+    )
+  }, [])
 
   const handleRun = useCallback(() => {
     if (!runScript) {
@@ -777,50 +765,6 @@ export function SessionChatModal({
                         size="sm"
                         className="h-7 px-2 text-xs"
                         onClick={() => {
-                          const { reviewResults, toggleReviewSidebar } =
-                            useChatStore.getState()
-                          const hasReviewResults =
-                            currentSessionId &&
-                            (reviewResults[currentSessionId] ||
-                              currentSession?.review_results)
-                          if (hasReviewResults) {
-                            if (
-                              currentSessionId &&
-                              !reviewResults[currentSessionId] &&
-                              currentSession?.review_results
-                            ) {
-                              useChatStore
-                                .getState()
-                                .setReviewResults(
-                                  currentSessionId,
-                                  currentSession.review_results
-                                )
-                            }
-                            toggleReviewSidebar()
-                          } else {
-                            window.dispatchEvent(
-                              new CustomEvent('magic-command', {
-                                detail: {
-                                  command: 'review',
-                                  sessionId: currentSessionId,
-                                },
-                              })
-                            )
-                          }
-                        }}
-                      >
-                        <Eye className="h-3 w-3" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Review</TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2 text-xs"
-                        onClick={() => {
                           useTerminalStore
                             .getState()
                             .toggleModalTerminal(worktreeId)
@@ -911,43 +855,6 @@ export function SessionChatModal({
                       </DropdownMenuItem>
                     )}
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onSelect={() => {
-                        const { reviewResults, toggleReviewSidebar } =
-                          useChatStore.getState()
-                        const hasReviewResults =
-                          currentSessionId &&
-                          (reviewResults[currentSessionId] ||
-                            currentSession?.review_results)
-                        if (hasReviewResults) {
-                          if (
-                            currentSessionId &&
-                            !reviewResults[currentSessionId] &&
-                            currentSession?.review_results
-                          ) {
-                            useChatStore
-                              .getState()
-                              .setReviewResults(
-                                currentSessionId,
-                                currentSession.review_results
-                              )
-                          }
-                          toggleReviewSidebar()
-                        } else {
-                          window.dispatchEvent(
-                            new CustomEvent('magic-command', {
-                              detail: {
-                                command: 'review',
-                                sessionId: currentSessionId,
-                              },
-                            })
-                          )
-                        }
-                      }}
-                    >
-                      <Eye className="h-4 w-4" />
-                      Review
-                    </DropdownMenuItem>
                     <DropdownMenuItem
                       onSelect={() =>
                         useTerminalStore
@@ -1231,44 +1138,6 @@ export function SessionChatModal({
               </div>
               <ScrollBar orientation="horizontal" className="h-1" />
             </ScrollArea>
-            {!isMobile && (
-              <div className="flex items-center gap-0.5">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        window.dispatchEvent(new CustomEvent('open-recap'))
-                      }
-                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
-                      aria-label="Recap"
-                    >
-                      <Sparkles
-                        className={cn('h-3 w-3', hasRecap && 'text-yellow-500')}
-                      />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>Recap (R)</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        window.dispatchEvent(new CustomEvent('open-plan'))
-                      }
-                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
-                      aria-label="Plan"
-                    >
-                      <FileText
-                        className={cn('h-3 w-3', hasPlan && 'text-yellow-500')}
-                      />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>Plan (P)</TooltipContent>
-                </Tooltip>
-              </div>
-            )}
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -1302,22 +1171,6 @@ export function SessionChatModal({
             worktreeId={worktreeId}
             worktreePath={worktreePath}
           />
-        )}
-        {diffRequest && (
-          <Suspense fallback={null}>
-            <GitDiffModal
-              diffRequest={diffRequest}
-              onClose={() => setDiffRequest(null)}
-              uncommittedStats={{
-                added: uncommittedAdded,
-                removed: uncommittedRemoved,
-              }}
-              branchStats={{
-                added: branchDiffAdded,
-                removed: branchDiffRemoved,
-              }}
-            />
-          </Suspense>
         )}
       </div>
       <LabelModal

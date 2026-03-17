@@ -749,6 +749,11 @@ export function useMessageHandlers({
     requestAnimationFrame(() => {
       scrollToBottom(true)
     })
+    // Safety net: if React committed after our rAF scroll (large content blocks),
+    // the scroll position may be past the now-shorter content → empty viewport.
+    setTimeout(() => {
+      scrollToBottom(true)
+    }, 100)
 
     // Explicitly set to build mode (not toggle, to avoid switching back to plan if already in build)
     setMode(sessionId, 'build')
@@ -833,6 +838,11 @@ export function useMessageHandlers({
     requestAnimationFrame(() => {
       scrollToBottom(true)
     })
+    // Safety net: if React committed after our rAF scroll (large content blocks),
+    // the scroll position may be past the now-shorter content → empty viewport.
+    setTimeout(() => {
+      scrollToBottom(true)
+    }, 100)
 
     // Set to yolo mode for auto-approval of all future tools
     setMode(sessionId, 'yolo')
