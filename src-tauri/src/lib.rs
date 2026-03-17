@@ -2329,6 +2329,26 @@ pub fn run() {
                 }
             }
 
+            // FIX: Remove system (GTK/WM) title bar on Linux to prevent double title bar.
+            //
+            // The app has its own custom title bar component (TitleBar.tsx) with window
+            // controls for non-macOS platforms. On macOS, `titleBarStyle: "Overlay"` merges
+            // the native title bar with the content area. On Linux, this setting is ignored
+            // by WebKitGTK, so both the system decorations and the custom title bar appear.
+            //
+            // Disabling decorations lets the custom title bar handle everything, matching
+            // the behavior users expect from the macOS overlay style.
+            #[cfg(target_os = "linux")]
+            if !headless {
+                if let Some(window) = app.get_webview_window("main") {
+                    if let Err(e) = window.set_decorations(false) {
+                        log::warn!("Failed to disable window decorations on Linux: {e}");
+                    } else {
+                        log::trace!("Disabled system decorations on Linux (custom title bar active)");
+                    }
+                }
+            }
+
             // Kill orphaned OpenCode server from a previous crash (if any).
             // Spawned async — cleanup involves blocking I/O (HTTP health check with
             // 1.2s timeout, process kill, 300ms sleep) that can delay startup by ~1.5s.
