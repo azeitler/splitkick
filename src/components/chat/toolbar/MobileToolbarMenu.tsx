@@ -5,19 +5,25 @@ import {
   Bot,
   BookmarkPlus,
   Brain,
+  Bug,
   Check,
   ChevronRight,
   ClipboardList,
   Eye,
+  FileText,
   FolderOpen,
   GitBranch,
   GitCommitHorizontal,
   GitMerge,
   GitPullRequest,
+  GitPullRequestArrow,
   Hammer,
+  Link2,
+  MessageSquare,
   MoreHorizontal,
   Pencil,
   Plug,
+  RefreshCw,
   Sparkles,
   Zap,
 } from 'lucide-react'
@@ -54,6 +60,7 @@ import {
   getPrStatusDisplay,
   getProviderDisplayName,
 } from '@/components/chat/toolbar/toolbar-utils'
+import { useUIStore } from '@/store/ui-store'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 
@@ -218,6 +225,26 @@ export function MobileToolbarMenu({
             L
           </span>
         </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => {
+          setMenuOpen(false)
+          useUIStore.getState().setLinkedProjectsModalOpen(true)
+        }}>
+          <Link2 className="h-4 w-4" />
+          Linked Projects
+          <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+            K
+          </span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => {
+          setMenuOpen(false)
+          window.dispatchEvent(new CustomEvent('open-recap'))
+        }}>
+          <Sparkles className="h-4 w-4" />
+          Create Recap
+          <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+            T
+          </span>
+        </DropdownMenuItem>
 
         <DropdownMenuSeparator />
 
@@ -278,6 +305,77 @@ export function MobileToolbarMenu({
             R
           </span>
         </DropdownMenuItem>
+        {hasOpenPr && (
+          <DropdownMenuItem onClick={() => {
+            setMenuOpen(false)
+            useUIStore.getState().setReviewCommentsModalOpen(true)
+          }}>
+            <MessageSquare className="h-4 w-4" />
+            Review Comments
+            <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+              V
+            </span>
+          </DropdownMenuItem>
+        )}
+
+        <DropdownMenuSeparator />
+
+        <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          Release
+        </div>
+        <DropdownMenuItem onClick={() => {
+          setMenuOpen(false)
+          useUIStore.getState().setReleaseNotesModalOpen(true)
+        }}>
+          <FileText className="h-4 w-4" />
+          Generate Notes
+          <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+            G
+          </span>
+        </DropdownMenuItem>
+        {hasOpenPr && (
+          <DropdownMenuItem onClick={() => {
+            setMenuOpen(false)
+            useUIStore.getState().setUpdatePrModalOpen(true)
+          }}>
+            <RefreshCw className="h-4 w-4" />
+            PR Description
+            <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+              E
+            </span>
+          </DropdownMenuItem>
+        )}
+
+        <DropdownMenuSeparator />
+
+        <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          Investigate
+        </div>
+        <DropdownMenuItem onClick={() => {
+          setMenuOpen(false)
+          window.dispatchEvent(new CustomEvent('magic-command', {
+            detail: { command: 'investigate', type: 'issue' },
+          }))
+        }}>
+          <Bug className="h-4 w-4" />
+          Issue
+          <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+            I
+          </span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => {
+          setMenuOpen(false)
+          window.dispatchEvent(new CustomEvent('magic-command', {
+            detail: { command: 'investigate', type: 'pr' },
+          }))
+        }}>
+          <GitPullRequestArrow className="h-4 w-4" />
+          PR
+          <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+            A
+          </span>
+        </DropdownMenuItem>
+
         <DropdownMenuSeparator />
 
         <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
