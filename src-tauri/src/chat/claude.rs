@@ -959,6 +959,7 @@ pub fn tail_claude_output(
     let mut content_blocks: Vec<ContentBlock> = Vec::new();
     let mut completed = false;
     let mut cancelled = false;
+    let mut user_cancelled = false; // True only for explicit user cancel (not process death)
     let mut usage: Option<UsageData> = None;
     let mut error_lines: Vec<String> = Vec::new();
 
@@ -1381,6 +1382,7 @@ pub fn tail_claude_output(
         // for the dead_process_timeout
         if !super::registry::is_process_running(session_id) {
             log::trace!("Session {session_id} cancelled externally, stopping tail");
+            user_cancelled = true;
             cancelled = true;
             break;
         }
@@ -1472,9 +1474,12 @@ pub fn tail_claude_output(
         );
     }
 
-    // Emit done event only if not cancelled
-    // (cancel_process already emitted chat:cancelled, avoid double event)
-    if !cancelled {
+    // Emit done event unless the user explicitly cancelled (cancel_process
+    // already emitted chat:cancelled in that case, avoid double event).
+    // When the process died naturally (not user cancel) but produced content,
+    // we still emit chat:done so the frontend properly transitions from
+    // streaming to persisted state (#209).
+    if !user_cancelled {
         let done_event = DoneEvent {
             session_id: session_id.to_string(),
             worktree_id: worktree_id.to_string(),

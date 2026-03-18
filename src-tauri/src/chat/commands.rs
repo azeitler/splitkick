@@ -2390,9 +2390,52 @@ pub async fn send_chat_message(
                 }
                 // If the flag was set, the cancel_process path already marked the run as Cancelled
             } else {
-                // Non-OpenCode error: mark as crashed too
-                if let Err(mark_err) = run_log_writer.mark_crashed() {
-                    log::warn!("Failed to mark run as crashed after thread error: {mark_err}");
+                // Non-OpenCode error: check if CLI actually completed despite the
+                // thread error (e.g. tailing timed out but CLI finished). If so,
+                // salvage the run as Completed with the resume ID (#209).
+                if run_log::jsonl_has_result_line(&app, &session_id, &run_id) {
+                    log::info!(
+                        "[SendChat] CLI completed despite thread error for session={session_id}, salvaging run"
+                    );
+                    let resume_sid =
+                        run_log::extract_session_id_from_jsonl(&app, &session_id, &run_id);
+                    let salvage_msg_id = Uuid::new_v4().to_string();
+                    if let Err(complete_err) = run_log_writer.complete(
+                        &salvage_msg_id,
+                        resume_sid.as_deref(),
+                        None,
+                    ) {
+                        log::warn!("Failed to complete salvaged run: {complete_err}");
+                    }
+                    // Also persist resume ID to session index so --resume works
+                    if let Some(ref sid) = resume_sid {
+                        if let Err(save_err) = with_sessions_mut(
+                            &app,
+                            &worktree_path,
+                            &worktree_id,
+                            |sessions| {
+                                if let Some(session) =
+                                    sessions.find_session_mut(&session_id)
+                                {
+                                    session.claude_session_id = Some(sid.clone());
+                                    session.is_reviewing = true;
+                                    session.waiting_for_input = false;
+                                }
+                                Ok(())
+                            },
+                        ) {
+                            log::warn!(
+                                "Failed to save salvaged resume ID (will recover on restart): {save_err}"
+                            );
+                        }
+                    }
+                    emit_sessions_cache_invalidation(&app);
+                } else {
+                    if let Err(mark_err) = run_log_writer.mark_crashed() {
+                        log::warn!(
+                            "Failed to mark run as crashed after thread error: {mark_err}"
+                        );
+                    }
                 }
             }
             return Err(e);
@@ -2400,8 +2443,24 @@ pub async fn send_chat_message(
         Err(_) => {
             log::info!("[SendChat] EXIT session={session_id} reason=thread_panic");
             super::registry::cleanup_session_registrations(&session_id);
-            if let Err(mark_err) = run_log_writer.mark_crashed() {
-                log::warn!("Failed to mark run as crashed after thread panic: {mark_err}");
+            // Check if CLI completed despite thread panic (#209)
+            if run_log::jsonl_has_result_line(&app, &session_id, &run_id) {
+                log::info!(
+                    "[SendChat] CLI completed despite thread panic for session={session_id}, salvaging run"
+                );
+                let resume_sid =
+                    run_log::extract_session_id_from_jsonl(&app, &session_id, &run_id);
+                let salvage_msg_id = Uuid::new_v4().to_string();
+                if let Err(complete_err) =
+                    run_log_writer.complete(&salvage_msg_id, resume_sid.as_deref(), None)
+                {
+                    log::warn!("Failed to complete salvaged run after panic: {complete_err}");
+                }
+                emit_sessions_cache_invalidation(&app);
+            } else {
+                if let Err(mark_err) = run_log_writer.mark_crashed() {
+                    log::warn!("Failed to mark run as crashed after thread panic: {mark_err}");
+                }
             }
             return Err(
                 "CLI execution thread closed unexpectedly (possible crash or panic)".to_string(),
@@ -2599,8 +2658,13 @@ pub async fn send_chat_message(
 
     // Atomically save session metadata (resume ID for session continuity)
     // Note: Messages are NOT saved here - they're in NDJSON only
-    // Only persist if the run produced meaningful content
-    with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
+    // Only persist if the run produced meaningful content.
+    // IMPORTANT: This is non-fatal — the critical data (run completion, JSONL content)
+    // is already persisted by run_log_writer.complete() above. If this fails, the
+    // resume ID and completion state will be recovered on next app startup via
+    // recover_incomplete_runs(). Making this fatal would cause the frontend to roll
+    // back the conversation cache even though the CLI ran successfully (#209).
+    if let Err(e) = with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
         if let Some(session) = sessions.find_session_mut(&session_id) {
             if !resume_id_for_log.is_empty() && has_content {
                 match response_backend {
@@ -2646,7 +2710,11 @@ pub async fn send_chat_message(
             }
         }
         Ok(())
-    })?;
+    }) {
+        log::error!(
+            "[SendChat] Failed to save session state for session={session_id} (non-fatal, will recover on restart): {e}"
+        );
+    }
 
     // Emit cache invalidation so all clients (native + web) refetch authoritative state
     emit_sessions_cache_invalidation(&app);
