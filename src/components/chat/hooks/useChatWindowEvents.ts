@@ -58,8 +58,8 @@ interface UseChatWindowEventsParams {
   // Context operations
   handleSaveContext: () => void
   handleLoadContext: () => void
-  // Run script
-  runScript: string | null | undefined
+  // Run scripts
+  runScripts: string[]
   // Plan approval (keyboard shortcuts)
   hasStreamingPlan: boolean
   pendingPlanMessage: { id: string } | null | undefined
@@ -114,7 +114,7 @@ export function useChatWindowEvents({
   patchPreferences,
   handleSaveContext,
   handleLoadContext,
-  runScript,
+  runScripts,
   hasStreamingPlan,
   pendingPlanMessage,
   handleStreamingPlanApproval,
@@ -390,8 +390,9 @@ export function useChatWindowEvents({
     const handleSave = () => handleSaveContext()
     const handleLoad = () => handleLoadContext()
     const handleRun = () => {
-      if (!isNativeApp() || !activeWorktreeId || !runScript) return
-      useTerminalStore.getState().startRun(activeWorktreeId, runScript)
+      const first = runScripts[0]
+      if (!isNativeApp() || !activeWorktreeId || !first) return
+      useTerminalStore.getState().startRun(activeWorktreeId, first)
     }
     window.addEventListener('command:save-context', handleSave)
     window.addEventListener('command:load-context', handleLoad)
@@ -401,7 +402,7 @@ export function useChatWindowEvents({
       window.removeEventListener('command:load-context', handleLoad)
       window.removeEventListener('command:run-script', handleRun)
     }
-  }, [handleSaveContext, handleLoadContext, activeWorktreeId, runScript])
+  }, [handleSaveContext, handleLoadContext, activeWorktreeId, runScripts])
 
   // Toggle debug mode
   useEffect(() => {
