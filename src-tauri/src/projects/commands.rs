@@ -2489,6 +2489,20 @@ pub async fn delete_worktree(app: AppHandle, worktree_id: String) -> Result<(), 
         // Remove the git worktree (this can be slow for large repos)
         if let Err(e) = git::remove_worktree(&project_path, &worktree_path) {
             log::error!("Background: Failed to remove worktree: {e}");
+
+            // Re-add worktree to storage since deletion failed
+            match load_projects_data(&app_clone) {
+                Ok(mut data) => {
+                    data.add_worktree(worktree_for_restore);
+                    if let Err(save_err) = save_projects_data(&app_clone, &data) {
+                        log::error!("Failed to restore worktree in storage: {save_err}");
+                    }
+                }
+                Err(load_err) => {
+                    log::error!("Failed to load projects data for restore: {load_err}");
+                }
+            }
+
             let error_event = WorktreeDeleteErrorEvent {
                 id: worktree_id_clone,
                 project_id: project_id_clone,
@@ -3250,19 +3264,14 @@ pub async fn open_worktree_in_terminal(
 
         let script = match terminal_app.as_str() {
             "warp" => {
-                // Warp uses a different AppleScript approach
-                format!(
-                    r#"tell application "Warp"
-                        activate
-                        tell application "System Events"
-                            keystroke "t" using command down
-                            delay 0.3
-                            keystroke "cd '{}' && clear"
-                            keystroke return
-                        end tell
-                    end tell"#,
-                    escaped_path
-                )
+                let output = std::process::Command::new("open")
+                    .arg(format!("warp://action/new_tab?path={escaped_path}"))
+                    .spawn();
+
+                match output {
+                    Ok(_) => return Ok(()),
+                    Err(e) => return Err(format_open_error("Warp", &e)),
+                }
             }
             "ghostty" => {
                 // Opening a directory path with Ghostty creates a new tab

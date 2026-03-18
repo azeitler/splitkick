@@ -487,6 +487,12 @@ kbd {
 .scrollbar-hide::-webkit-scrollbar { display: none; }
 .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
 
+/* Number input spinner — invert arrows in dark mode so they're visible */
+.dark input[type='number']::-webkit-inner-spin-button,
+.dark input[type='number']::-webkit-outer-spin-button {
+  filter: invert(1);
+}
+
 /* Custom scrollbar styling to match Radix ScrollArea */
 .custom-scrollbar::-webkit-scrollbar {
   width: 10px;

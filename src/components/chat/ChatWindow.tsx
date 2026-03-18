@@ -37,7 +37,7 @@ import {
   markPlanApproved as markPlanApprovedService,
   chatQueryKeys,
 } from '@/services/chat'
-import { useWorktree, useProjects, useRunScript } from '@/services/projects'
+import { useWorktree, useProjects, useRunScripts } from '@/services/projects'
 import { useProjectsStore } from '@/store/projects-store'
 import type { Worktree, WorktreeCreatedEvent, WorktreeCreateErrorEvent } from '@/types/projects'
 import {
@@ -484,8 +484,8 @@ export function ChatWindow({
     (worktree?.cached_check_status as CheckStatus | undefined)
   const mergeableStatus = prStatus?.mergeable ?? undefined
 
-  // Run script for this worktree (used by CMD+R keybinding)
-  const { data: runScript } = useRunScript(activeWorktreePath ?? null)
+  // Run scripts for this worktree (used by CMD+R keybinding)
+  const { data: runScripts = [] } = useRunScripts(activeWorktreePath ?? null)
 
   // Per-session provider selection: persisted session → zustand → project default → global default
   const projectDefaultProvider = project?.default_provider ?? null
@@ -1862,7 +1862,7 @@ export function ChatWindow({
     patchPreferences,
     handleSaveContext,
     handleLoadContext,
-    runScript,
+    runScripts,
     hasStreamingPlan,
     pendingPlanMessage,
     handleStreamingPlanApproval,

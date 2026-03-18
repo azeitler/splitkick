@@ -2033,14 +2033,34 @@ export function useOpenWorktreeInEditor() {
 }
 
 /**
+ * A port entry from jean.json
+ */
+export interface PortEntry {
+  port: number
+  label: string
+}
+
+/**
  * Jean.json config shape
  */
 export interface JeanConfig {
   scripts: {
     setup: string | null
     teardown: string | null
-    run: string | null
+    run: string | string[] | null
   }
+  ports?: PortEntry[] | null
+}
+
+/**
+ * Normalize a run script value (string | string[] | null) into a string array
+ */
+export function normalizeRunScripts(
+  run: string | string[] | null | undefined
+): string[] {
+  if (!run) return []
+  if (typeof run === 'string') return [run]
+  return run
 }
 
 /**
@@ -2079,7 +2099,8 @@ export function useSaveJeanConfig() {
     },
     onSuccess: (_, { projectPath }) => {
       queryClient.invalidateQueries({ queryKey: ['jean-config', projectPath] })
-      queryClient.invalidateQueries({ queryKey: ['run-script'] })
+      queryClient.invalidateQueries({ queryKey: ['run-scripts'] })
+      queryClient.invalidateQueries({ queryKey: ['ports'] })
     },
     onError: error => {
       toast.error('Failed to save jean.json', {
@@ -2090,23 +2111,41 @@ export function useSaveJeanConfig() {
 }
 
 /**
- * Hook to get the run script from jean.json for a worktree
+ * Hook to get the run script(s) from jean.json for a worktree.
+ * Returns string[] (empty = none configured).
  */
-export function useRunScript(worktreePath: string | null) {
-  return useQuery<string | null>({
-    queryKey: ['run-script', worktreePath],
+export function useRunScripts(worktreePath: string | null) {
+  return useQuery<string[]>({
+    queryKey: ['run-scripts', worktreePath],
     queryFn: async () => {
-      if (!isTauri() || !worktreePath) return null
+      if (!isTauri() || !worktreePath) return []
 
-      logger.debug('Fetching run script', { worktreePath })
-      const script = await invoke<string | null>('get_run_script', {
+      logger.debug('Fetching run scripts', { worktreePath })
+      const scripts = await invoke<string[]>('get_run_scripts', {
         worktreePath,
       })
-      logger.debug('Run script result', { script })
-      return script
+      logger.debug('Run scripts result', { scripts })
+      return scripts
     },
     enabled: !!worktreePath,
     staleTime: 30_000, // Cache for 30 seconds
+  })
+}
+
+/**
+ * Hook to get configured ports from jean.json for a worktree.
+ * Returns PortEntry[] (empty = none configured).
+ */
+export function usePorts(worktreePath: string | null) {
+  return useQuery<PortEntry[]>({
+    queryKey: ['ports', worktreePath],
+    queryFn: async () => {
+      if (!isTauri() || !worktreePath) return []
+      const ports = await invoke<PortEntry[]>('get_ports', { worktreePath })
+      return ports
+    },
+    enabled: !!worktreePath,
+    staleTime: 30_000,
   })
 }
 
