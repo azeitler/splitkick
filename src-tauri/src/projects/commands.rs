@@ -3250,19 +3250,14 @@ pub async fn open_worktree_in_terminal(
 
         let script = match terminal_app.as_str() {
             "warp" => {
-                // Warp uses a different AppleScript approach
-                format!(
-                    r#"tell application "Warp"
-                        activate
-                        tell application "System Events"
-                            keystroke "t" using command down
-                            delay 0.3
-                            keystroke "cd '{}' && clear"
-                            keystroke return
-                        end tell
-                    end tell"#,
-                    escaped_path
-                )
+                let output = std::process::Command::new("open")
+                    .arg(format!("warp://action/new_tab?path={escaped_path}"))
+                    .spawn();
+
+                match output {
+                    Ok(_) => return Ok(()),
+                    Err(e) => return Err(format_open_error("Warp", &e)),
+                }
             }
             "ghostty" => {
                 // Opening a directory path with Ghostty creates a new tab
