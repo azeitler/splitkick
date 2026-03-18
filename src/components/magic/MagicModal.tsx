@@ -594,7 +594,7 @@ export function MagicModal() {
             )
 
             const {
-              setActiveWorktree,
+              registerWorktreePath,
               setActiveSession,
               setInputDraft,
               copySessionSettings,
@@ -611,10 +611,14 @@ export function MagicModal() {
             // Inherit model/mode/thinking settings from current session
             if (currentSessionId) copySessionSettings(currentSessionId, newSession.id)
 
-            // Navigate to session in chat view
-            useProjectsStore.getState().selectWorktree(selectedWorktreeId)
-            setActiveWorktree(selectedWorktreeId, worktree.path)
+            // Open in SessionChatModal on canvas (not full ChatWindow)
+            registerWorktreePath(selectedWorktreeId, worktree.path)
             setActiveSession(selectedWorktreeId, newSession.id)
+            window.dispatchEvent(
+              new CustomEvent('open-worktree-modal', {
+                detail: { worktreeId: selectedWorktreeId, worktreePath: worktree.path },
+              })
+            )
 
             // Build conflict resolution prompt
             const conflictFiles = result.conflicts.join('\n- ')
