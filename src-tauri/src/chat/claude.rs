@@ -8,6 +8,7 @@ use crate::http_server::EmitExt;
 use crate::projects::github_issues::{
     get_github_contexts_dir, get_session_issue_refs, get_session_pr_refs,
 };
+use crate::projects::linear_issues::get_session_linear_refs;
 use crate::projects::storage::load_projects_data;
 
 // =============================================================================
@@ -69,6 +70,24 @@ const DEFAULT_GLOBAL_SYSTEM_PROMPT: &str = "\
 ## Important!\n\
 \n\
 - After each finished task, please write a few bullet points on how to test the changes.";
+
+fn execution_mode_instruction(execution_mode: Option<&str>) -> Option<&'static str> {
+    match execution_mode.unwrap_or("plan") {
+        "build" => Some(
+            "You are in BUILD MODE. Start implementing immediately. \
+             Do NOT enter plan mode and do NOT use ExitPlanMode unless the user explicitly asks \
+             for a new plan. If a required decision is missing, use AskUserQuestion instead of \
+             ExitPlanMode.",
+        ),
+        "yolo" => Some(
+            "You are in YOLO EXECUTION MODE. Start implementing immediately. \
+             Do NOT enter plan mode and do NOT use ExitPlanMode unless the user explicitly asks \
+             for a new plan. Do not ask for confirmation before routine implementation steps. \
+             If a required decision is missing, use AskUserQuestion instead of ExitPlanMode.",
+        ),
+        _ => None,
+    }
+}
 
 // =============================================================================
 // Claude CLI execution
@@ -134,6 +153,7 @@ pub struct CancelledEvent {
     pub session_id: String,
     pub worktree_id: String, // Kept for backward compatibility
     pub undo_send: bool, // True if user message should be restored to input (instant cancellation)
+    pub emitted_at_ms: u64,
 }
 
 /// Payload for tool block position events sent to frontend
@@ -205,6 +225,16 @@ pub fn apply_custom_profile_settings(cmd: &mut std::process::Command, profile_na
     }
 }
 
+/// Strip a `-fast` suffix from the model string.
+/// Returns `(actual_model, is_fast)`.
+/// E.g. `"opus-fast"` → `("opus", true)`, `"opus"` → `("opus", false)`.
+fn split_fast_model(model: &str) -> (&str, bool) {
+    match model.strip_suffix("-fast") {
+        Some(base) => (base, true),
+        None => (model, false),
+    }
+}
+
 /// Build CLI arguments for Claude CLI.
 ///
 /// Returns a tuple of (args, env_vars) where env_vars are (key, value) pairs.
@@ -271,11 +301,15 @@ fn build_claude_args(
         }
     }
 
-    // Model
-    if let Some(m) = model {
+    // Model (strip "-fast" suffix: "opus-fast" → model="opus" + fastMode setting)
+    let is_fast = if let Some(m) = model {
+        let (actual_model, fast) = split_fast_model(m);
         args.push("--model".to_string());
-        args.push(m.to_string());
-    }
+        args.push(actual_model.to_string());
+        fast
+    } else {
+        false
+    };
 
     // Permission mode
     let perm_mode = match execution_mode.unwrap_or("plan") {
@@ -335,6 +369,14 @@ fn build_claude_args(
         }
     }
 
+    // Fast mode: inject "fastMode": true into settings JSON
+    if is_fast {
+        let obj = settings_json.get_or_insert_with(|| serde_json::json!({}));
+        if let Some(map) = obj.as_object_mut() {
+            map.insert("fastMode".to_string(), serde_json::Value::Bool(true));
+        }
+    }
+
     // Emit --settings if we have any settings to pass
     if let Some(settings) = &settings_json {
         args.push("--settings".to_string());
@@ -363,6 +405,7 @@ fn build_claude_args(
         if !config.is_empty() {
             args.push("--mcp-config".to_string());
             args.push(config.to_string());
+            args.push("--strict-mcp-config".to_string());
 
             // Auto-allow all tools from configured MCP servers
             // Pattern "mcp__<name>" matches all tools from that server
@@ -409,6 +452,12 @@ fn build_claude_args(
                 system_prompt_parts.push(prompt.to_string());
             }
         }
+    }
+
+    // Explicit mode override for Claude so build/yolo do not fall back into plan mode
+    // due to the default global prompt.
+    if let Some(mode_instruction) = execution_mode_instruction(execution_mode) {
+        system_prompt_parts.push(mode_instruction.to_string());
     }
 
     // Parallel execution prompt - encourages sub-agent parallelization
@@ -528,6 +577,37 @@ fn build_claude_args(
         }
     }
 
+    // Check for Linear issue context files (shared storage)
+    let mut linear_keys = get_session_linear_refs(app, session_id).unwrap_or_default();
+    if let Ok(wt_keys) = get_session_linear_refs(app, worktree_id) {
+        for key in wt_keys {
+            if !linear_keys.contains(&key) {
+                linear_keys.push(key);
+            }
+        }
+    }
+    if !linear_keys.is_empty() {
+        if let Ok(contexts_dir) = get_github_contexts_dir(app) {
+            for key in linear_keys {
+                // key format: "{project_name}-{identifier}" where identifier is "TEAM-123"
+                // context file format: "{project_name}-linear-{identifier_lower}.md"
+                // Linear identifiers always have exactly one dash (e.g. "ENG-123"),
+                // so rsplitn(3, '-') safely separates the number, team key, and project name.
+                let parts: Vec<&str> = key.rsplitn(3, '-').collect();
+                if parts.len() == 3 {
+                    let project_name_part = parts[2];
+                    let identifier_lower = format!("{}-{}", parts[1].to_lowercase(), parts[0]);
+                    let file_path = contexts_dir
+                        .join(format!("{project_name_part}-linear-{identifier_lower}.md"));
+                    if file_path.exists() {
+                        log::trace!("Adding Linear issue context file: {:?}", file_path);
+                        all_context_paths.push(file_path);
+                    }
+                }
+            }
+        }
+    }
+
     // Check for attached saved context files
     if let Ok(app_data_dir) = app.path().app_data_dir() {
         let saved_contexts_dir = app_data_dir.join("session-context");
@@ -580,6 +660,13 @@ fn build_claude_args(
                     s.contains("git-context") && s.contains("-pr-")
                 })
                 .count();
+            let linear_count = all_context_paths
+                .iter()
+                .filter(|p| {
+                    let s = p.to_string_lossy();
+                    s.contains("git-context") && s.contains("-linear-")
+                })
+                .count();
             let saved_context_count = all_context_paths
                 .iter()
                 .filter(|p| {
@@ -608,7 +695,7 @@ fn build_claude_args(
                 combined_content
                     .push_str("You should be aware of this when working on this task.\n\n");
 
-                if issue_count > 0 || pr_count > 0 || saved_context_count > 0 {
+                if issue_count > 0 || pr_count > 0 || linear_count > 0 || saved_context_count > 0 {
                     combined_content.push_str("**Summary:**\n");
                     if issue_count > 0 {
                         combined_content.push_str(&format!("- {} GitHub Issue(s)\n", issue_count));
@@ -616,6 +703,9 @@ fn build_claude_args(
                     if pr_count > 0 {
                         combined_content
                             .push_str(&format!("- {} GitHub Pull Request(s)\n", pr_count));
+                    }
+                    if linear_count > 0 {
+                        combined_content.push_str(&format!("- {} Linear Issue(s)\n", linear_count));
                     }
                     if saved_context_count > 0 {
                         combined_content
@@ -869,6 +959,7 @@ pub fn tail_claude_output(
     let mut content_blocks: Vec<ContentBlock> = Vec::new();
     let mut completed = false;
     let mut cancelled = false;
+    let mut user_cancelled = false; // True only for explicit user cancel (not process death)
     let mut usage: Option<UsageData> = None;
     let mut error_lines: Vec<String> = Vec::new();
 
@@ -1291,6 +1382,7 @@ pub fn tail_claude_output(
         // for the dead_process_timeout
         if !super::registry::is_process_running(session_id) {
             log::trace!("Session {session_id} cancelled externally, stopping tail");
+            user_cancelled = true;
             cancelled = true;
             break;
         }
@@ -1382,9 +1474,12 @@ pub fn tail_claude_output(
         );
     }
 
-    // Emit done event only if not cancelled
-    // (cancel_process already emitted chat:cancelled, avoid double event)
-    if !cancelled {
+    // Emit done event unless the user explicitly cancelled (cancel_process
+    // already emitted chat:cancelled in that case, avoid double event).
+    // When the process died naturally (not user cancel) but produced content,
+    // we still emit chat:done so the frontend properly transitions from
+    // streaming to persisted state (#209).
+    if !user_cancelled {
         let done_event = DoneEvent {
             session_id: session_id.to_string(),
             worktree_id: worktree_id.to_string(),
@@ -1409,4 +1504,29 @@ pub fn tail_claude_output(
         cancelled,
         usage,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn split_fast_model_strips_suffix() {
+        assert_eq!(split_fast_model("opus-fast"), ("opus", true));
+        assert_eq!(
+            split_fast_model("claude-opus-4-6[1m]-fast"),
+            ("claude-opus-4-6[1m]", true)
+        );
+    }
+
+    #[test]
+    fn split_fast_model_passes_through_normal_models() {
+        assert_eq!(split_fast_model("opus"), ("opus", false));
+        assert_eq!(
+            split_fast_model("claude-opus-4-6[1m]"),
+            ("claude-opus-4-6[1m]", false)
+        );
+        assert_eq!(split_fast_model("sonnet"), ("sonnet", false));
+        assert_eq!(split_fast_model("haiku"), ("haiku", false));
+    }
 }

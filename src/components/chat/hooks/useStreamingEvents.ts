@@ -5,16 +5,24 @@ import { toast } from 'sonner'
 import type { QueryClient } from '@tanstack/react-query'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
-import { chatQueryKeys } from '@/services/chat'
+import { chatQueryKeys, persistEnqueue } from '@/services/chat'
 import { isTauri, saveWorktreePr, projectsQueryKeys } from '@/services/projects'
 import type { Project, Worktree } from '@/types/projects'
 import { preferencesQueryKeys } from '@/services/preferences'
-import type { AppPreferences, NotificationSound } from '@/types/preferences'
+import {
+  resolveMagicPromptProvider,
+  type AppPreferences,
+  type NotificationSound,
+} from '@/types/preferences'
 import { triggerImmediateGitPoll } from '@/services/git-status'
 import { isAskUserQuestion, isExitPlanMode } from '@/types/chat'
 import { playNotificationSound } from '@/lib/sounds'
 import { findPlanFilePath } from '@/components/chat/tool-call-utils'
 import { generateId } from '@/lib/uuid'
+import {
+  markBackendPersisting,
+  clearBackendPersisting,
+} from '@/lib/backend-persist-guard'
 import type {
   ChunkEvent,
   ToolUseEvent,
@@ -30,6 +38,7 @@ import type {
   Session,
   SessionDigest,
   WorktreeSessions,
+  SaveContextResponse,
 } from '@/types/chat'
 import {
   applySessionSettingToSession,
@@ -104,6 +113,65 @@ function lookupSessionLabel(
 
   const parts = [projectName, worktreeName, sessionName].filter(Boolean)
   return parts.length > 0 ? parts.join(' / ') : ''
+}
+
+/**
+ * Look up worktree path and project display name from query cache for auto-save context.
+ */
+function findWorktreeForAutoSave(
+  queryClient: QueryClient,
+  worktreeId: string
+): { path: string; projectName: string } | null {
+  const worktreesData = queryClient.getQueriesData<Worktree[]>({
+    queryKey: [...projectsQueryKeys.all, 'worktrees'],
+  })
+  for (const [, worktrees] of worktreesData) {
+    const wt = worktrees?.find(w => w.id === worktreeId)
+    if (wt) {
+      // Resolve project display name (e.g., "royal-camel") instead of worktree name (e.g., "main")
+      const projects = queryClient.getQueryData<Project[]>(projectsQueryKeys.list())
+      const projectName = projects?.find(p => p.id === wt.project_id)?.name ?? wt.name
+      return { path: wt.path, projectName }
+    }
+  }
+  return null
+}
+
+/**
+ * Auto-save context after session completion (fire-and-forget).
+ * Reuses the same `generate_context_from_session` command as manual save.
+ * Silent: no toasts, errors only logged to console.
+ */
+async function autoSaveContext(params: {
+  sessionId: string
+  worktreeId: string
+  worktreePath: string
+  projectName: string
+  preferences: AppPreferences | undefined
+  queryClient: QueryClient
+}) {
+  try {
+    await invoke<SaveContextResponse>('generate_context_from_session', {
+      worktreePath: params.worktreePath,
+      worktreeId: params.worktreeId,
+      sourceSessionId: params.sessionId,
+      projectName: params.projectName,
+      customPrompt: params.preferences?.magic_prompts?.context_summary,
+      model: params.preferences?.magic_prompt_models?.context_summary_model,
+      customProfileName: resolveMagicPromptProvider(
+        params.preferences?.magic_prompt_providers,
+        'context_summary_provider',
+        params.preferences?.default_provider
+      ),
+      reasoningEffort:
+        params.preferences?.magic_prompt_efforts?.context_summary_effort ??
+        null,
+    })
+    // Silently invalidate cache — no toast for auto-save
+    params.queryClient.invalidateQueries({ queryKey: ['session-context'] })
+  } catch (err) {
+    console.warn('[AutoSave] Failed to auto-save context:', err)
+  }
 }
 
 /**
@@ -232,10 +300,28 @@ export default function useStreamingEvents({
       }
     )
 
-    // Handle thinking content blocks (extended thinking)
+    // Buffer thinking deltas and flush on animation frames (same pattern as chunks).
+    // OpenCode/Codex stream thinking as frequent small deltas; without batching,
+    // each delta triggers a store mutation + re-render.
+    const thinkingBuffer: Record<string, string> = {}
+    let thinkingRafId: number | null = null
+
+    function flushThinkingBuffer() {
+      thinkingRafId = null
+      for (const [sid, buffered] of Object.entries(thinkingBuffer)) {
+        addThinkingBlock(sid, buffered)
+      }
+      for (const key of Object.keys(thinkingBuffer)) {
+        delete thinkingBuffer[key]
+      }
+    }
+
     const unlistenThinking = listen<ThinkingEvent>('chat:thinking', event => {
       const { session_id, content } = event.payload
-      addThinkingBlock(session_id, content)
+      thinkingBuffer[session_id] = (thinkingBuffer[session_id] ?? '') + content
+      if (thinkingRafId === null) {
+        thinkingRafId = requestAnimationFrame(flushThinkingBuffer)
+      }
     })
 
     // Handle tool result events (tool execution output)
@@ -304,10 +390,14 @@ export default function useStreamingEvents({
       const sessionId = event.payload.session_id
       const worktreeId = event.payload.worktree_id
 
-      // Flush any buffered chunks so streamingContents is up to date
+      // Flush any buffered chunks/thinking so streaming state is up to date
       if (chunkRafId !== null) {
         cancelAnimationFrame(chunkRafId)
         flushChunkBuffer()
+      }
+      if (thinkingRafId !== null) {
+        cancelAnimationFrame(thinkingRafId)
+        flushThinkingBuffer()
       }
 
       console.log(`[Done] chat:done received session=${sessionId}`, { currentSending: Object.keys(useChatStore.getState().sendingSessionIds) })
@@ -400,6 +490,13 @@ export default function useStreamingEvents({
       const toolCalls = activeToolCalls[sessionId]
       const contentBlocks = streamingContentBlocks[sessionId]
 
+      if (!content && !toolCalls?.length) {
+        console.warn(
+          `[chat:done] No streaming content for session=${sessionId}. ` +
+          `Optimistic message will be empty; messages will load from JSONL on refetch.`
+        )
+      }
+
       // Codex has no native plan approval flow — skip synthetic ExitPlanMode injection.
       // Codex plan completions fall through to the "no blocking tools" path → status = "review".
       const effectiveToolCalls = toolCalls
@@ -424,12 +521,78 @@ export default function useStreamingEvents({
       clearLastSentMessage(sessionId)
       useChatStore.getState().clearLastSentAttachments(sessionId)
 
-      // Track disk persistence promise so invalidateQueries waits for it.
-      // Without this, stale data is refetched before the write completes,
-      // causing waiting↔review oscillation via useSessionStatePersistence.
-      let persistencePromise: Promise<unknown> | null = null
+      // Completion state is now persisted by the backend (single authoritative write).
+      // Frontend only updates in-memory state (Zustand + TanStack Query caches).
+      // Guard: prevent useImmediateSessionStateSave from racing with backend write.
+      markBackendPersisting(sessionId)
+      setTimeout(() => clearBackendPersisting(sessionId), 2000)
 
       if (hasUnansweredBlockingTool) {
+        // YOLO mode auto-continue: automatically answer blocking tools and continue
+        // without showing the question/plan UI. This prevents YOLO mode from getting
+        // stuck when Claude asks questions or proposes plans.
+        const executingMode = useChatStore.getState().executingModes[sessionId]
+        if (executingMode === 'yolo') {
+          console.log(`[chat:done] YOLO auto-continue: session=${sessionId}, auto-answering blocking tools`)
+
+          // Mark all blocking tools as answered
+          const { markQuestionAnswered, worktreePaths, selectedModels, effortLevels } = useChatStore.getState()
+          for (const tc of effectiveToolCalls ?? []) {
+            if ((isAskUserQuestion(tc) || isExitPlanMode(tc)) && !isQuestionAnswered(sessionId, tc.id)) {
+              markQuestionAnswered(sessionId, tc.id, [])
+            }
+          }
+
+          // Add optimistic assistant message so the content is preserved in history
+          if (content || (effectiveToolCalls && effectiveToolCalls.length > 0)) {
+            queryClient.setQueryData<Session>(
+              chatQueryKeys.session(sessionId),
+              old => {
+                if (!old) return old
+                return {
+                  ...old,
+                  messages: upsertAssistantMessage(old.messages, {
+                    id: generateId(),
+                    session_id: sessionId,
+                    role: 'assistant' as const,
+                    content: content ?? '',
+                    timestamp: Math.floor(Date.now() / 1000),
+                    tool_calls: effectiveToolCalls ?? [],
+                    content_blocks: effectiveContentBlocks ?? [],
+                  }),
+                }
+              }
+            )
+          }
+
+          // Queue a continuation message so the queue processor sends it
+          // after the current send_chat_message completes
+          const autoMessage = 'Continue — make your best judgment and proceed autonomously.'
+          const wtPath = worktreePaths[worktreeId]
+          if (wtPath) {
+            const queuedMsg = {
+              id: generateId(),
+              message: autoMessage,
+              pendingImages: [] as never[],
+              pendingFiles: [] as never[],
+              pendingSkills: [] as never[],
+              pendingTextFiles: [] as never[],
+              model: selectedModels[sessionId] ?? 'sonnet',
+              provider: null,
+              executionMode: 'yolo' as const,
+              thinkingLevel: 'off' as const,
+              effortLevel: effortLevels[sessionId],
+              queuedAt: Date.now(),
+            }
+            useChatStore.getState().enqueueMessage(sessionId, queuedMsg)
+            persistEnqueue(worktreeId, wtPath, sessionId, queuedMsg)
+          }
+
+          // Complete session (clears sending state) — queue processor will pick up the auto-message
+          completeSession(sessionId)
+
+          // Skip the normal blocking tool handling below
+        } else {
         // Check if there are queued messages AND only ExitPlanMode is blocking (not AskUserQuestion)
         const { messageQueues } = useChatStore.getState()
         const hasQueuedMessages = (messageQueues[sessionId]?.length ?? 0) > 0
@@ -490,20 +653,6 @@ export default function useStreamingEvents({
           // Batch-clear text content, executing mode, sending — set waiting state
           pauseSession(sessionId)
 
-          // Determine waiting type: question or plan
-          const hasUnansweredQuestion = effectiveToolCalls?.some(
-            tc => isAskUserQuestion(tc) && !isQuestionAnswered(sessionId, tc.id)
-          )
-          const hasUnansweredPlan = effectiveToolCalls?.some(
-            tc => isExitPlanMode(tc) && !isQuestionAnswered(sessionId, tc.id)
-          )
-          // Questions take priority over plans for the type indicator
-          const waitingType: 'question' | 'plan' | null = hasUnansweredQuestion
-            ? 'question'
-            : hasUnansweredPlan
-              ? 'plan'
-              : null
-
           // Persist plan file path and pending message ID for ExitPlanMode
           if (effectiveToolCalls) {
             const planPath = findPlanFilePath(effectiveToolCalls)
@@ -523,44 +672,26 @@ export default function useStreamingEvents({
                 .getState()
                 .setPendingPlanMessageId(sessionId, pendingMessageId)
 
-              // Persist to disk BEFORE invalidateQueries (prevent stale refetch)
+              // Persist plan file path + pending message ID (non-state metadata).
+              // Completion state (waitingForInput) is persisted by the backend.
               const { worktreePaths } = useChatStore.getState()
               const wtPath = worktreePaths[worktreeId]
               if (wtPath) {
-                persistencePromise = invoke('update_session_state', {
+                invoke('update_session_state', {
                   worktreeId,
                   worktreePath: wtPath,
                   sessionId,
                   planFilePath: planPath ?? undefined,
                   pendingPlanMessageId: pendingMessageId,
-                  waitingForInput: true,
-                  waitingForInputType: waitingType,
                 }).catch(err => {
                   console.error(
-                    '[useStreamingEvents] Failed to persist plan state:',
-                    err
-                  )
-                })
-              }
-            } else if (waitingType === 'question') {
-              // Persist to disk BEFORE invalidateQueries (prevent stale refetch)
-              const { worktreePaths } = useChatStore.getState()
-              const wtPath = worktreePaths[worktreeId]
-              if (wtPath) {
-                persistencePromise = invoke('update_session_state', {
-                  worktreeId,
-                  worktreePath: wtPath,
-                  sessionId,
-                  waitingForInput: true,
-                  waitingForInputType: waitingType,
-                }).catch(err => {
-                  console.error(
-                    '[useStreamingEvents] Failed to persist question state:',
+                    '[useStreamingEvents] Failed to persist plan metadata:',
                     err
                   )
                 })
               }
             }
+            // Question waiting state is persisted by the backend — no frontend persist needed.
           }
 
           // Play waiting sound if not currently viewing this session
@@ -570,6 +701,7 @@ export default function useStreamingEvents({
             playNotificationSound(waitingSound)
           }
         }
+        } // end non-YOLO else
       } else if (event.payload.waiting_for_plan && !isCurrentlyViewing) {
         // Codex/Opencode plan-mode run completed with content — enter plan-waiting state.
         // The backend signals this via the waiting_for_plan field in chat:done.
@@ -653,24 +785,24 @@ export default function useStreamingEvents({
             .setPendingPlanMessageId(sessionId, planMessageId)
         }
 
-        // 4. Persist to disk BEFORE invalidating queries
-        const { worktreePaths: wtPaths2 } = useChatStore.getState()
-        const wtPath2 = wtPaths2[worktreeId]
-        if (wtPath2) {
-          persistencePromise = invoke('update_session_state', {
-            worktreeId,
-            worktreePath: wtPath2,
-            sessionId,
-            isReviewing: false,
-            waitingForInput: true,
-            waitingForInputType: 'plan',
-            pendingPlanMessageId: planMessageId ?? null,
-          }).catch(err =>
-            console.error(
-              '[useStreamingEvents] Failed to persist plan-waiting state:',
-              err
+        // Plan-waiting state is persisted by the backend.
+        // Persist plan metadata (pendingPlanMessageId) only.
+        if (planMessageId) {
+          const { worktreePaths: wtPaths2 } = useChatStore.getState()
+          const wtPath2 = wtPaths2[worktreeId]
+          if (wtPath2) {
+            invoke('update_session_state', {
+              worktreeId,
+              worktreePath: wtPath2,
+              sessionId,
+              pendingPlanMessageId: planMessageId,
+            }).catch(err =>
+              console.error(
+                '[useStreamingEvents] Failed to persist plan metadata:',
+                err
+              )
             )
-          )
+          }
         }
 
         // Play waiting sound if not currently viewing this session
@@ -700,7 +832,12 @@ export default function useStreamingEvents({
           queryClient.setQueryData<Session>(
             chatQueryKeys.session(sessionId),
             old => {
-              if (!old) return old
+              if (!old) {
+                console.warn(
+                  `[chat:done] Session ${sessionId} not in cache — optimistic assistant message skipped. Will recover from JSONL on next fetch.`
+                )
+                return old
+              }
               return {
                 ...old,
                 messages: upsertAssistantMessage(old.messages, {
@@ -756,31 +893,36 @@ export default function useStreamingEvents({
         console.log(`[Done] about to completeSession session=${sessionId}`, { currentSending: Object.keys(useChatStore.getState().sendingSessionIds) })
         completeSession(sessionId)
 
-        // Persist reviewing state to disk BEFORE invalidating queries.
-        // Without this, invalidateQueries can refetch stale is_reviewing: false
-        // and useSessionStatePersistence overwrites Zustand, causing idle↔review oscillation.
-        const { worktreePaths: wtPaths } = useChatStore.getState()
-        const wtPath = wtPaths[worktreeId]
-        if (wtPath) {
-          persistencePromise = invoke('update_session_state', {
-            worktreeId,
-            worktreePath: wtPath,
-            sessionId,
-            isReviewing: true,
-            waitingForInput: false,
-          }).catch(err =>
-            console.error(
-              '[useStreamingEvents] Failed to persist reviewing state:',
-              err
-            )
-          )
-        }
+        // Reviewing state is persisted by the backend — no frontend persist needed.
 
         // Play review sound if not currently viewing this session
         if (!isCurrentlyViewing) {
           const reviewSound = (preferences?.review_sound ??
             'none') as NotificationSound
           playNotificationSound(reviewSound)
+        }
+
+        // Auto-save context (fire-and-forget, no blocking)
+        if (preferences?.auto_save_context !== false) {
+          const sessionData = queryClient.getQueryData<Session>(
+            chatQueryKeys.session(sessionId)
+          )
+          // +1 for the optimistic assistant message just added
+          const messageCount = (sessionData?.messages?.length ?? 0) + 1
+
+          if (messageCount >= 3) {
+            const wtInfo = findWorktreeForAutoSave(queryClient, worktreeId)
+            if (wtInfo) {
+              autoSaveContext({
+                sessionId,
+                worktreeId,
+                worktreePath: wtInfo.path,
+                projectName: wtInfo.projectName,
+                preferences,
+                queryClient,
+              })
+            }
+          }
         }
       }
 
@@ -849,26 +991,17 @@ export default function useStreamingEvents({
       )
 
       // Invalidate sessions list to update metadata.
-      // Wait for disk persistence (if any) to complete first — otherwise
-      // invalidateQueries refetches stale data and useSessionStatePersistence
-      // overwrites Zustand, causing waiting↔review oscillation.
-      const invalidateSessions = () => {
-        queryClient.invalidateQueries({
-          queryKey: chatQueryKeys.sessions(worktreeId),
-        })
-        queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
-        // Invalidate individual session so cross-client viewers get the
-        // complete conversation (user message + assistant response).
-        queryClient.invalidateQueries({
-          queryKey: chatQueryKeys.session(sessionId),
-        })
-      }
-
-      if (persistencePromise) {
-        persistencePromise.finally(invalidateSessions)
-      } else {
-        invalidateSessions()
-      }
+      // Backend persists completion state and emits cache:invalidate, but we also
+      // invalidate here for optimistic cache consistency on the local client.
+      queryClient.invalidateQueries({
+        queryKey: chatQueryKeys.sessions(worktreeId),
+      })
+      queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
+      // Invalidate individual session so cross-client viewers get the
+      // complete conversation (user message + assistant response).
+      queryClient.invalidateQueries({
+        queryKey: chatQueryKeys.session(sessionId),
+      })
     })
 
     // Handle errors from Claude CLI
@@ -878,6 +1011,7 @@ export default function useStreamingEvents({
       // Store error for inline display and restore input
       const {
         lastSentMessages,
+        streamingContents,
         setInputDraft,
         clearLastSentMessage,
         setError,
@@ -962,9 +1096,14 @@ export default function useStreamingEvents({
       // Set error state for inline display
       setError(session_id, error)
 
+      // Check if CLI produced streaming content BEFORE clearing state.
+      // If content was streamed, the CLI ran — don't remove the user message
+      // or rollback, as the conversation is persisted in JSONL on disk (#209).
+      const hasStreamedContent = !!streamingContents[session_id]
+
       // Restore the input that failed so user can retry
       const lastMessage = lastSentMessages[session_id]
-      if (lastMessage) {
+      if (lastMessage && !hasStreamedContent) {
         setInputDraft(session_id, lastMessage)
         clearLastSentMessage(session_id)
 
@@ -991,6 +1130,9 @@ export default function useStreamingEvents({
           }
         )
 
+      } else if (lastMessage) {
+        // Had streaming content — don't restore to input, just clear tracking
+        clearLastSentMessage(session_id)
       }
 
       // Restore attachments that were cleared on send
@@ -1040,18 +1182,24 @@ export default function useStreamingEvents({
           session_id,
           worktree_id: eventWorktreeId,
           undo_send,
+          emitted_at_ms,
         } = event.payload
 
-        // Flush any buffered chunks so streamingContents is up to date
+        // Flush any buffered chunks/thinking so streaming state is up to date
         if (chunkRafId !== null) {
           cancelAnimationFrame(chunkRafId)
           flushChunkBuffer()
+        }
+        if (thinkingRafId !== null) {
+          cancelAnimationFrame(thinkingRafId)
+          flushThinkingBuffer()
         }
 
         console.log(`[Cancelled] chat:cancelled received session=${session_id} undo_send=${undo_send}`, { currentSending: Object.keys(useChatStore.getState().sendingSessionIds) })
 
         // Capture streaming state BEFORE clearing (like chat:done does)
         const {
+          sendStartedAt,
           streamingContents,
           activeToolCalls,
           streamingContentBlocks,
@@ -1059,6 +1207,13 @@ export default function useStreamingEvents({
           activeSessionIds,
           markSessionNeedsDigest,
         } = useChatStore.getState()
+        const sendStarted = sendStartedAt[session_id] ?? 0
+        if (sendStarted > emitted_at_ms) {
+          console.warn(
+            `[Cancelled] Ignoring stale cancel event for session=${session_id} emitted_at_ms=${emitted_at_ms} send_started_at=${sendStarted}`
+          )
+          return
+        }
         const content = streamingContents[session_id]
         const toolCalls = activeToolCalls[session_id]
         const contentBlocks = streamingContentBlocks[session_id]
@@ -1266,8 +1421,8 @@ export default function useStreamingEvents({
 
         // NOW batch-clear all streaming state in a single Zustand set()
         // This happens AFTER optimistic messages are in the cache, preventing flicker
-        console.log(`[Cancelled] about to completeSession session=${session_id} shouldRestore=${shouldRestoreMessage}`, { currentSending: Object.keys(useChatStore.getState().sendingSessionIds) })
-        useChatStore.getState().completeSession(session_id)
+        console.log(`[Cancelled] about to cancelSession session=${session_id} shouldRestore=${shouldRestoreMessage}`, { currentSending: Object.keys(useChatStore.getState().sendingSessionIds) })
+        useChatStore.getState().cancelSession(session_id)
 
         // For restore path: override reviewing state based on whether messages remain
         if (shouldRestoreMessage) {
@@ -1404,10 +1559,14 @@ export default function useStreamingEvents({
     })
 
     return () => {
-      // Flush any buffered chunks before tearing down
+      // Flush any buffered chunks/thinking before tearing down
       if (chunkRafId !== null) {
         cancelAnimationFrame(chunkRafId)
         flushChunkBuffer()
+      }
+      if (thinkingRafId !== null) {
+        cancelAnimationFrame(thinkingRafId)
+        flushThinkingBuffer()
       }
       unlistenSending.then(f => f())
       unlistenChunk.then(f => f())

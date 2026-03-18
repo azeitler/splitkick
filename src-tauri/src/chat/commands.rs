@@ -10,8 +10,9 @@ use super::naming::{spawn_naming_task, NamingRequest};
 use super::registry::{cancel_process, cancel_process_if_running};
 use super::run_log;
 use super::storage::{
-    delete_session_data, get_base_index_path, get_data_dir, get_index_path, get_session_dir,
-    load_metadata, load_sessions, save_metadata, with_existing_metadata_mut, with_sessions_mut,
+    cleanup_combined_context_files, delete_session_data, get_base_index_path, get_data_dir,
+    get_index_path, get_session_dir, load_metadata, load_sessions, save_metadata,
+    with_existing_metadata_mut, with_sessions_mut,
 };
 use super::types::{
     AllSessionsEntry, AllSessionsResponse, Backend, ChatMessage, ClaudeContext, EffortLevel,
@@ -281,7 +282,7 @@ pub async fn get_session(
     worktree_path: String,
     session_id: String,
 ) -> Result<Session, String> {
-    log::trace!("Getting session: {session_id}");
+    log::debug!("[GetSession] session={session_id} worktree={worktree_id}");
     let sessions = load_sessions(&app, &worktree_path, &worktree_id)?;
     let mut session = sessions
         .find_session(&session_id)
@@ -290,6 +291,11 @@ pub async fn get_session(
 
     // Load messages from NDJSON (single source of truth)
     let mut messages = run_log::load_session_messages(&app, &session_id)?;
+    log::debug!(
+        "[GetSession] session={session_id} loaded {} messages (backend={:?})",
+        messages.len(),
+        session.backend
+    );
 
     // Apply approved plan status from session metadata
     for msg in &mut messages {
@@ -566,7 +572,7 @@ pub async fn update_session_state(
 
 /// Extract pasted image paths from message content
 /// Matches: [Image attached: /path/to/image.png - Use the Read tool to view this image]
-fn extract_image_paths(content: &str) -> Vec<String> {
+pub(crate) fn extract_image_paths(content: &str) -> Vec<String> {
     use regex::Regex;
     // Lazy static would be better, but for simplicity we'll compile here
     let re = Regex::new(r"\[Image attached: (.+?) - Use the Read tool to view this image\]")
@@ -578,7 +584,7 @@ fn extract_image_paths(content: &str) -> Vec<String> {
 
 /// Extract pasted text file paths from message content
 /// Matches: [Text file attached: /path/to/file.txt - Use the Read tool to view this file]
-fn extract_text_file_paths(content: &str) -> Vec<String> {
+pub(crate) fn extract_text_file_paths(content: &str) -> Vec<String> {
     use regex::Regex;
     let re = Regex::new(r"\[Text file attached: (.+?) - Use the Read tool to view this file\]")
         .expect("Invalid regex");
@@ -651,6 +657,9 @@ pub async fn close_session(
     {
         log::warn!("Failed to cleanup saved contexts for session: {e}");
     }
+
+    // Clean up combined-context files for this session
+    cleanup_combined_context_files(&app, &session_id);
 
     // Resolve default backend for fallback session creation
     let fallback_backend = resolve_default_backend(&app, Some(&worktree_id));
@@ -931,6 +940,7 @@ pub async fn restore_session_with_base(
         pr_number: None,
         pr_url: None,
         issue_number: None,
+        linear_issue_identifier: None,
         cached_pr_status: None,
         cached_check_status: None,
         cached_behind_count: None,
@@ -1006,6 +1016,9 @@ pub async fn delete_archived_session(
     {
         log::warn!("Failed to cleanup saved contexts for session: {e}");
     }
+
+    // Clean up combined-context files for this session
+    cleanup_combined_context_files(&app, &session_id);
 
     with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
         let session_idx = sessions
@@ -1290,6 +1303,16 @@ pub async fn send_chat_message(
         return Err("Worktree path cannot be empty".to_string());
     }
 
+    // Guard: reject if this session already has an active process being tailed.
+    // Without this, a double-send (frontend race, page reload, etc.) creates
+    // duplicate run entries and orphans the first process in the registry.
+    if super::registry::is_session_actively_managed(&session_id) {
+        log::warn!(
+            "[SendChat] REJECTED session={session_id} — already actively managed (duplicate send)"
+        );
+        return Err("Session already has an active request".to_string());
+    }
+
     // Load sessions
     let mut sessions = load_sessions(&app, &worktree_path, &worktree_id)?;
 
@@ -1473,7 +1496,7 @@ pub async fn send_chat_message(
         Some("codex") => Backend::Codex,
         Some("opencode") => Backend::Opencode,
         Some("claude") => Backend::Claude,
-        _ => session_backend,
+        _ => session_backend.clone(),
     };
     // Override backend based on model string (safety net: model always wins)
     let effective_backend = if let Some(ref m) = model {
@@ -1487,6 +1510,18 @@ pub async fn send_chat_message(
     } else {
         effective_backend
     };
+
+    // Sync session.backend when model-based resolution overrides it
+    // (e.g. user switched from Claude model to Codex model mid-session).
+    // Without this, run_log reload uses the stale backend to pick the parser.
+    if effective_backend != session_backend {
+        with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
+            if let Some(session) = sessions.find_session_mut(&session_id) {
+                session.backend = effective_backend.clone();
+            }
+            Ok(())
+        })?;
+    }
 
     // Build context for Claude
     let context = ClaudeContext::new(worktree_path.clone());
@@ -1521,6 +1556,7 @@ pub async fn send_chat_message(
             .as_ref()
             .and_then(|e| e.effort_value())
             .or(None),
+        Some(effective_backend.clone()),
     )?;
 
     // Get file paths for detached execution
@@ -2354,9 +2390,52 @@ pub async fn send_chat_message(
                 }
                 // If the flag was set, the cancel_process path already marked the run as Cancelled
             } else {
-                // Non-OpenCode error: mark as crashed too
-                if let Err(mark_err) = run_log_writer.mark_crashed() {
-                    log::warn!("Failed to mark run as crashed after thread error: {mark_err}");
+                // Non-OpenCode error: check if CLI actually completed despite the
+                // thread error (e.g. tailing timed out but CLI finished). If so,
+                // salvage the run as Completed with the resume ID (#209).
+                if run_log::jsonl_has_result_line(&app, &session_id, &run_id) {
+                    log::info!(
+                        "[SendChat] CLI completed despite thread error for session={session_id}, salvaging run"
+                    );
+                    let resume_sid =
+                        run_log::extract_session_id_from_jsonl(&app, &session_id, &run_id);
+                    let salvage_msg_id = Uuid::new_v4().to_string();
+                    if let Err(complete_err) = run_log_writer.complete(
+                        &salvage_msg_id,
+                        resume_sid.as_deref(),
+                        None,
+                    ) {
+                        log::warn!("Failed to complete salvaged run: {complete_err}");
+                    }
+                    // Also persist resume ID to session index so --resume works
+                    if let Some(ref sid) = resume_sid {
+                        if let Err(save_err) = with_sessions_mut(
+                            &app,
+                            &worktree_path,
+                            &worktree_id,
+                            |sessions| {
+                                if let Some(session) =
+                                    sessions.find_session_mut(&session_id)
+                                {
+                                    session.claude_session_id = Some(sid.clone());
+                                    session.is_reviewing = true;
+                                    session.waiting_for_input = false;
+                                }
+                                Ok(())
+                            },
+                        ) {
+                            log::warn!(
+                                "Failed to save salvaged resume ID (will recover on restart): {save_err}"
+                            );
+                        }
+                    }
+                    emit_sessions_cache_invalidation(&app);
+                } else {
+                    if let Err(mark_err) = run_log_writer.mark_crashed() {
+                        log::warn!(
+                            "Failed to mark run as crashed after thread error: {mark_err}"
+                        );
+                    }
                 }
             }
             return Err(e);
@@ -2364,8 +2443,24 @@ pub async fn send_chat_message(
         Err(_) => {
             log::info!("[SendChat] EXIT session={session_id} reason=thread_panic");
             super::registry::cleanup_session_registrations(&session_id);
-            if let Err(mark_err) = run_log_writer.mark_crashed() {
-                log::warn!("Failed to mark run as crashed after thread panic: {mark_err}");
+            // Check if CLI completed despite thread panic (#209)
+            if run_log::jsonl_has_result_line(&app, &session_id, &run_id) {
+                log::info!(
+                    "[SendChat] CLI completed despite thread panic for session={session_id}, salvaging run"
+                );
+                let resume_sid =
+                    run_log::extract_session_id_from_jsonl(&app, &session_id, &run_id);
+                let salvage_msg_id = Uuid::new_v4().to_string();
+                if let Err(complete_err) =
+                    run_log_writer.complete(&salvage_msg_id, resume_sid.as_deref(), None)
+                {
+                    log::warn!("Failed to complete salvaged run after panic: {complete_err}");
+                }
+                emit_sessions_cache_invalidation(&app);
+            } else {
+                if let Err(mark_err) = run_log_writer.mark_crashed() {
+                    log::warn!("Failed to mark run as crashed after thread panic: {mark_err}");
+                }
             }
             return Err(
                 "CLI execution thread closed unexpectedly (possible crash or panic)".to_string(),
@@ -2500,8 +2595,22 @@ pub async fn send_chat_message(
         });
     }
 
-    // Create assistant message with tool calls and content blocks
+    // Pre-compute completion state flags before moving unified_response fields
     let has_content = !unified_response.content.is_empty();
+    let was_cancelled = unified_response.cancelled;
+    let has_blocking_tool = unified_response
+        .tool_calls
+        .iter()
+        .any(|tc| tc.name == "AskUserQuestion" || tc.name == "ExitPlanMode");
+    let has_question_tool = unified_response
+        .tool_calls
+        .iter()
+        .any(|tc| tc.name == "AskUserQuestion");
+    let is_plan_mode_with_content = matches!(response_backend, Backend::Codex | Backend::Opencode)
+        && execution_mode.as_deref() == Some("plan")
+        && has_content;
+
+    // Create assistant message with tool calls and content blocks
     let assistant_msg_id = Uuid::new_v4().to_string();
     let assistant_msg = ChatMessage {
         id: assistant_msg_id.clone(),
@@ -2524,7 +2633,7 @@ pub async fn send_chat_message(
     // Messages are loaded from NDJSON on demand via load_session_messages().
 
     // Finalize run log (complete or cancel based on response status)
-    if unified_response.cancelled {
+    if was_cancelled {
         let cancel_resume_sid =
             if response_backend != Backend::Claude || resume_id_for_log.is_empty() {
                 None
@@ -2549,8 +2658,13 @@ pub async fn send_chat_message(
 
     // Atomically save session metadata (resume ID for session continuity)
     // Note: Messages are NOT saved here - they're in NDJSON only
-    // Only persist if the run produced meaningful content
-    with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
+    // Only persist if the run produced meaningful content.
+    // IMPORTANT: This is non-fatal — the critical data (run completion, JSONL content)
+    // is already persisted by run_log_writer.complete() above. If this fails, the
+    // resume ID and completion state will be recovered on next app startup via
+    // recover_incomplete_runs(). Making this fatal would cause the frontend to roll
+    // back the conversation cache even though the CLI ran successfully (#209).
+    if let Err(e) = with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
         if let Some(session) = sessions.find_session_mut(&session_id) {
             if !resume_id_for_log.is_empty() && has_content {
                 match response_backend {
@@ -2565,16 +2679,47 @@ pub async fn send_chat_message(
                     }
                 }
             }
+
+            // Persist completion state (single authoritative write).
+            // This eliminates the dual-client race where both native and web frontends
+            // independently call update_session_state with conflicting decisions.
+            // Flags are pre-computed above before unified_response fields are moved.
+            if was_cancelled {
+                // Cancelled: don't change waiting/reviewing state
+            } else if has_blocking_tool {
+                session.waiting_for_input = true;
+                session.is_reviewing = false;
+                session.waiting_for_input_type = Some(
+                    if has_question_tool {
+                        "question"
+                    } else {
+                        "plan"
+                    }
+                    .to_string(),
+                );
+            } else if is_plan_mode_with_content {
+                // Codex/OpenCode plan-mode with content → waiting for plan approval
+                session.waiting_for_input = true;
+                session.is_reviewing = false;
+                session.waiting_for_input_type = Some("plan".to_string());
+            } else {
+                // Normal completion
+                session.waiting_for_input = false;
+                session.is_reviewing = true;
+                session.waiting_for_input_type = None;
+            }
         }
         Ok(())
-    })?;
+    }) {
+        log::error!(
+            "[SendChat] Failed to save session state for session={session_id} (non-fatal, will recover on restart): {e}"
+        );
+    }
 
-    // NOTE: Plan-waiting state for Codex/Opencode is now signaled via the
-    // `waiting_for_plan` field in the chat:done event, and persisted by the
-    // frontend's chat:done handler. The previous approach of setting it here
-    // raced with the frontend (chat:done fires before this code runs).
+    // Emit cache invalidation so all clients (native + web) refetch authoritative state
+    emit_sessions_cache_invalidation(&app);
 
-    if unified_response.cancelled {
+    if was_cancelled {
         log::info!("[SendChat] EXIT session={session_id} reason=cancelled_with_content");
     } else {
         log::info!("[SendChat] EXIT session={session_id} reason=success");
@@ -2598,6 +2743,9 @@ pub async fn clear_session_history(
     if let Err(e) = delete_session_data(&app, &session_id) {
         log::warn!("Failed to delete session data: {e}");
     }
+
+    // Clean up combined-context files for this session
+    cleanup_combined_context_files(&app, &session_id);
 
     with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
         if let Some(session) = sessions.find_session_mut(&session_id) {
@@ -2748,13 +2896,19 @@ pub async fn save_cancelled_message(
     tool_calls: Vec<super::types::ToolCall>,
     content_blocks: Vec<super::types::ContentBlock>,
 ) -> Result<(), String> {
-    let _ = (worktree_id, worktree_path, tool_calls, content_blocks);
+    let _ = (worktree_id, worktree_path);
 
-    if content.is_empty() {
+    if content.is_empty() && tool_calls.is_empty() && content_blocks.is_empty() {
         return Ok(());
     }
 
-    super::run_log::persist_partial_cancelled_content(&app, &session_id, &content)
+    super::run_log::persist_partial_cancelled_content(
+        &app,
+        &session_id,
+        &content,
+        &tool_calls,
+        &content_blocks,
+    )
 }
 
 /// Mark a message's plan as approved
@@ -3587,6 +3741,16 @@ fn parse_context_filename(path: &std::path::Path) -> Option<SavedContext> {
         return None;
     }
 
+    // Skip session-attached context files ({uuid}-context-{slug}.md)
+    if filename.contains("-context-") {
+        // Check if prefix before "-context-" looks like a UUID (36 chars with hyphens)
+        if let Some(prefix) = filename.split("-context-").next() {
+            if prefix.len() == 36 && prefix.chars().filter(|c| *c == '-').count() == 4 {
+                return None;
+            }
+        }
+    }
+
     // Get file metadata
     let metadata = std::fs::metadata(path).ok()?;
     let size = metadata.len();
@@ -3922,7 +4086,12 @@ fn format_messages_for_summary(messages: &[ChatMessage]) -> String {
             };
             // Truncate very long messages to avoid context overflow (char-safe for multi-byte UTF-8)
             let content = if msg.content.len() > 5000 {
-                let end = msg.content.char_indices().nth(5000).map(|(i, _)| i).unwrap_or(msg.content.len());
+                let end = msg
+                    .content
+                    .char_indices()
+                    .nth(5000)
+                    .map(|(i, _)| i)
+                    .unwrap_or(msg.content.len());
                 format!(
                     "{}...\n[Message truncated - {} chars total]",
                     &msg.content[..end],
@@ -4423,7 +4592,10 @@ pub async fn get_session_debug_info(
             if jsonl_path.exists() {
                 // Truncate user message preview to 50 chars (char-safe for multi-byte UTF-8)
                 let preview = if run.user_message.chars().count() > 50 {
-                    format!("{}...", run.user_message.chars().take(47).collect::<String>())
+                    format!(
+                        "{}...",
+                        run.user_message.chars().take(47).collect::<String>()
+                    )
                 } else {
                     run.user_message.clone()
                 };
@@ -4718,6 +4890,7 @@ pub async fn check_resumable_sessions(
                     user_message: run.user_message.clone(),
                     resumable: true,
                     execution_mode: run.execution_mode.clone(),
+                    started_at: run.started_at,
                 });
             }
         }
@@ -4938,8 +5111,16 @@ pub async fn generate_session_digest(
     let effort = prefs.magic_prompt_efforts.session_recap_effort.as_deref();
 
     // Call Claude CLI with JSON schema (non-streaming)
-    let response =
-        execute_digest_claude(&app, &prompt, model, provider, None, None, magic_backend, effort)?;
+    let response = execute_digest_claude(
+        &app,
+        &prompt,
+        model,
+        provider,
+        None,
+        None,
+        magic_backend,
+        effort,
+    )?;
 
     Ok(SessionDigest {
         chat_summary: response.chat_summary,

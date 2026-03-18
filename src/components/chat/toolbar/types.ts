@@ -10,13 +10,18 @@ import type { DiffRequest } from '@/types/git-diff'
 import type {
   LoadedIssueContext,
   LoadedPullRequestContext,
+  LoadedSecurityAlertContext,
+  LoadedAdvisoryContext,
   AttachedSavedContext,
 } from '@/types/github'
+import type { LoadedLinearIssueContext } from '@/types/linear'
 
 export interface ViewingContext {
-  type: 'issue' | 'pr' | 'saved'
+  type: 'issue' | 'pr' | 'saved' | 'security' | 'advisory' | 'linear'
   number?: number
   slug?: string
+  ghsaId?: string
+  identifier?: string
   title: string
   content: string
 }
@@ -56,6 +61,9 @@ export interface ChatToolbarProps {
 
   loadedIssueContexts: LoadedIssueContext[]
   loadedPRContexts: LoadedPullRequestContext[]
+  loadedSecurityContexts: LoadedSecurityAlertContext[]
+  loadedAdvisoryContexts: LoadedAdvisoryContext[]
+  loadedLinearContexts: LoadedLinearIssueContext[]
   attachedSavedContexts: AttachedSavedContext[]
 
   onOpenMagicModal: () => void

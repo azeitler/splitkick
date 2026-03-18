@@ -55,6 +55,8 @@ export interface Project {
   linear_api_key?: string | null
   /** Linear team ID to filter issues (undefined/null = show all teams) */
   linear_team_id?: string | null
+  /** IDs of linked projects for cross-project context sharing */
+  linked_project_ids?: string[]
 }
 
 /**
@@ -96,6 +98,8 @@ export interface Worktree {
   pr_url?: string
   /** GitHub issue number (if created from an issue) */
   issue_number?: number
+  /** Linear issue identifier (e.g. "ENG-123", if created from a Linear issue) */
+  linear_issue_identifier?: string
   /** Cached PR display status (draft, open, review, merged, closed) */
   cached_pr_status?: string
   /** Cached CI check status (success, failure, pending, error) */
@@ -150,6 +154,15 @@ export interface WorktreeCreatingEvent {
 /** Event payload when worktree creation completes */
 export interface WorktreeCreatedEvent {
   worktree: Worktree
+}
+
+/** Event payload when worktree setup script completes (after worktree:created) */
+export interface WorktreeSetupCompleteEvent {
+  id: string
+  project_id: string
+  setup_output: string
+  setup_script: string
+  setup_success: boolean
 }
 
 /** Event payload when worktree creation fails */
@@ -290,6 +303,23 @@ export interface CreatePrResponse {
   existing: boolean
 }
 
+/** Response from detecting an existing PR for the current branch */
+export interface DetectPrResponse {
+  pr_number: number
+  pr_url: string
+  title: string
+}
+
+// =============================================================================
+// GitHub PR Merge
+// =============================================================================
+
+/** Response from merging a GitHub PR */
+export interface MergePrResponse {
+  merged: boolean
+  message: string
+}
+
 // =============================================================================
 // AI-Powered Commit Creation
 // =============================================================================
@@ -306,6 +336,14 @@ export interface CreateCommitResponse {
   push_fell_back: boolean
   /** Whether the push failed due to permission/authentication errors */
   push_permission_denied: boolean
+}
+
+/** Response from reverting the last local commit */
+export interface RevertCommitResponse {
+  /** Hash of the reverted commit */
+  commit_hash: string
+  /** Subject line of the reverted commit */
+  commit_message: string
 }
 
 /** Response from git push */

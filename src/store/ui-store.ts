@@ -35,11 +35,13 @@ interface UIState {
   remotePickerOpen: boolean
   remotePickerRepoPath: string | null
   loadContextModalOpen: boolean
+  linkedProjectsModalOpen: boolean
   magicModalOpen: boolean
   newWorktreeModalOpen: boolean
   newWorktreeModalDefaultTab: 'quick' | 'issues' | 'prs' | 'security' | null
   releaseNotesModalOpen: boolean
   updatePrModalOpen: boolean
+  reviewCommentsModalOpen: boolean
   workflowRunsModalOpen: boolean
   workflowRunsModalProjectPath: string | null
   workflowRunsModalBranch: string | null
@@ -102,6 +104,7 @@ interface UIState {
   ) => void
   closeRemotePicker: () => void
   setLoadContextModalOpen: (open: boolean) => void
+  setLinkedProjectsModalOpen: (open: boolean) => void
   setMagicModalOpen: (open: boolean) => void
   setNewWorktreeModalOpen: (open: boolean) => void
   setNewWorktreeModalDefaultTab: (
@@ -109,6 +112,7 @@ interface UIState {
   ) => void
   setReleaseNotesModalOpen: (open: boolean) => void
   setUpdatePrModalOpen: (open: boolean) => void
+  setReviewCommentsModalOpen: (open: boolean) => void
   setWorkflowRunsModalOpen: (
     open: boolean,
     projectPath?: string | null,
@@ -179,11 +183,13 @@ export const useUIStore = create<UIState>()(
       remotePickerOpen: false,
       remotePickerRepoPath: null,
       loadContextModalOpen: false,
+      linkedProjectsModalOpen: false,
       magicModalOpen: false,
       newWorktreeModalOpen: false,
       newWorktreeModalDefaultTab: null,
       releaseNotesModalOpen: false,
       updatePrModalOpen: false,
+      reviewCommentsModalOpen: false,
       workflowRunsModalOpen: false,
       workflowRunsModalProjectPath: null,
       workflowRunsModalBranch: null,
@@ -317,6 +323,12 @@ export const useUIStore = create<UIState>()(
           undefined,
           'setLoadContextModalOpen'
         ),
+      setLinkedProjectsModalOpen: open =>
+        set(
+          { linkedProjectsModalOpen: open },
+          undefined,
+          'setLinkedProjectsModalOpen'
+        ),
 
       setMagicModalOpen: open =>
         set({ magicModalOpen: open }, undefined, 'setMagicModalOpen'),
@@ -347,6 +359,8 @@ export const useUIStore = create<UIState>()(
 
       setUpdatePrModalOpen: open =>
         set({ updatePrModalOpen: open }, undefined, 'setUpdatePrModalOpen'),
+      setReviewCommentsModalOpen: open =>
+        set({ reviewCommentsModalOpen: open }, undefined, 'setReviewCommentsModalOpen'),
 
       setWorkflowRunsModalOpen: (open, projectPath, branch) =>
         set(

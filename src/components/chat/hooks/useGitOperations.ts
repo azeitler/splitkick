@@ -21,6 +21,7 @@ import { isBaseSession } from '@/types/projects'
 import type {
   CreatePrResponse,
   CreateCommitResponse,
+  DetectPrResponse,
   ReviewResponse,
   MergeWorktreeResponse,
   MergeConflictsResponse,
@@ -419,6 +420,27 @@ export function useGitOperations({
         },
       })
 
+      // Fire-and-forget: detect and link PR if not already linked
+      if (!worktree?.pr_number) {
+        invoke<DetectPrResponse | null>('detect_and_link_pr', {
+          worktreeId: activeWorktreeId,
+          worktreePath: activeWorktreePath,
+        })
+          .then(result => {
+            if (result && worktree?.project_id) {
+              queryClient.invalidateQueries({
+                queryKey: projectsQueryKeys.worktrees(worktree.project_id),
+              })
+              queryClient.invalidateQueries({
+                queryKey: [...projectsQueryKeys.all, 'worktree', activeWorktreeId],
+              })
+            }
+          })
+          .catch(() => {
+            /* noop - PR detection is best-effort */
+          })
+      }
+
       try {
         const result = await invoke<ReviewResponse>('run_review_with_ai', {
           worktreePath: activeWorktreePath,
@@ -445,9 +467,7 @@ export function useGitOperations({
         const {
           setReviewResults,
           setActiveSession,
-          setActiveWorktree,
-          setViewingCanvasTab,
-          registerWorktreePath,
+          clearActiveWorktree,
           copySessionSettings,
           activeSessionIds,
         } = useChatStore.getState()
@@ -457,12 +477,10 @@ export function useGitOperations({
         // Inherit model/mode/thinking settings from current session
         if (currentReviewSessionId) copySessionSettings(currentReviewSessionId, targetSessionId)
 
-        // Switch to the new review session
+        // Navigate to ProjectCanvasView and open the review session
         setActiveSession(activeWorktreeId, targetSessionId)
         useProjectsStore.getState().selectWorktree(activeWorktreeId)
-        registerWorktreePath(activeWorktreeId, activeWorktreePath)
-        setActiveWorktree(activeWorktreeId, activeWorktreePath)
-        setViewingCanvasTab(activeWorktreeId, true)
+        clearActiveWorktree()
         useUIStore
           .getState()
           .markWorktreeForAutoOpenSession(activeWorktreeId, targetSessionId)
@@ -492,16 +510,12 @@ export function useGitOperations({
               onClick: () => {
                 if (!activeWorktreePath) return
                 const {
-                  setActiveWorktree,
                   setActiveSession,
-                  setViewingCanvasTab,
-                  registerWorktreePath,
+                  clearActiveWorktree,
                 } = useChatStore.getState()
                 useProjectsStore.getState().selectWorktree(activeWorktreeId)
-                registerWorktreePath(activeWorktreeId, activeWorktreePath)
-                setActiveWorktree(activeWorktreeId, activeWorktreePath)
+                clearActiveWorktree()
                 setActiveSession(activeWorktreeId, targetSessionId)
-                setViewingCanvasTab(activeWorktreeId, true)
                 useUIStore
                   .getState()
                   .markWorktreeForAutoOpenSession(

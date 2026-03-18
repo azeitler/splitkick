@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, type FC } from 'react'
+import React, { useState, useCallback, useMemo, useEffect, useRef, type FC } from 'react'
 import { invoke } from '@/lib/transport'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -24,19 +24,31 @@ import {
 import {
   useClaudeCliStatus,
   useClaudeCliAuth,
+  useAvailableCliVersions,
   claudeCliQueryKeys,
+  useClaudePathDetection,
 } from '@/services/claude-cli'
-import { useGhCliStatus, useGhCliAuth, ghCliQueryKeys } from '@/services/gh-cli'
+import {
+  useGhCliStatus,
+  useGhCliAuth,
+  useGhPathDetection,
+  useAvailableGhVersions,
+  ghCliQueryKeys,
+} from '@/services/gh-cli'
 import {
   useCodexCliStatus,
   useCodexCliAuth,
+  useAvailableCodexVersions,
   codexCliQueryKeys,
+  useCodexPathDetection,
 } from '@/services/codex-cli'
 import {
   useOpenCodeCliStatus,
   useOpenCodeCliAuth,
   useAvailableOpencodeModels,
+  useAvailableOpencodeVersions,
   opencodeCliQueryKeys,
+  useOpenCodePathDetection,
 } from '@/services/opencode-cli'
 import { useUIStore } from '@/store/ui-store'
 import type { ClaudeAuthStatus } from '@/types/claude-cli'
@@ -97,11 +109,26 @@ import { formatOpencodeModelLabel } from '@/components/chat/toolbar/toolbar-util
 import { playNotificationSound } from '@/lib/sounds'
 import type { ThinkingLevel, EffortLevel } from '@/types/chat'
 import { isNativeApp } from '@/lib/environment'
+import { isNewerVersion } from '@/lib/version-utils'
 import { cn } from '@/lib/utils'
+import { copyToClipboard } from '@/lib/clipboard'
 import {
   setGitPollInterval,
   setRemotePollInterval,
 } from '@/services/git-status'
+
+/** Get [command, args] for updating a PATH-mode CLI, respecting package manager */
+function getPathUpdateAction(
+  cliPath: string | null | undefined,
+  packageManager: string | null | undefined,
+  brewPkg: string,
+  selfUpdateArgs: string[],
+): [string, string[]] {
+  if (packageManager === 'homebrew') {
+    return ['brew', ['upgrade', brewPkg]]
+  }
+  return [cliPath ?? brewPkg, selfUpdateArgs]
+}
 
 interface CleanupResult {
   deleted_worktrees: number
@@ -150,12 +177,50 @@ export const GeneralPane: React.FC = () => {
   const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
 
+  // PATH detection
+  const { data: pathDetection } = useClaudePathDetection()
+  const { data: codexPathDetection } = useCodexPathDetection()
+  const { data: opencodePathDetection } = useOpenCodePathDetection()
+  const { data: ghPathDetection } = useGhPathDetection()
+
   // CLI status hooks
   const { data: cliStatus, isLoading: isCliLoading } = useClaudeCliStatus()
+  const isPathSource = preferences?.claude_cli_source === 'path'
+  const { data: claudeVersions, isLoading: isClaudeVersionsLoading } =
+    useAvailableCliVersions({ enabled: isPathSource && !!cliStatus?.installed })
+  const claudeLatestStable = claudeVersions?.find(v => !v.prerelease)
+  const claudeHasUpdate =
+    !!cliStatus?.version &&
+    !!claudeLatestStable &&
+    isNewerVersion(claudeLatestStable.version, cliStatus.version)
   const { data: ghStatus, isLoading: isGhLoading } = useGhCliStatus()
+  const isGhPathSource = preferences?.gh_cli_source === 'path'
+  const { data: ghVersions, isLoading: isGhVersionsLoading } =
+    useAvailableGhVersions({ enabled: isGhPathSource && !!ghStatus?.installed })
+  const ghLatestStable = ghVersions?.find(v => !v.prerelease)
+  const ghHasUpdate =
+    !!ghStatus?.version &&
+    !!ghLatestStable &&
+    isNewerVersion(ghLatestStable.version, ghStatus.version)
   const { data: codexStatus, isLoading: isCodexLoading } = useCodexCliStatus()
+  const isCodexPathSource = preferences?.codex_cli_source === 'path'
+  const { data: codexVersions, isLoading: isCodexVersionsLoading } =
+    useAvailableCodexVersions({ enabled: isCodexPathSource && !!codexStatus?.installed })
+  const codexLatestStable = codexVersions?.find(v => !v.prerelease)
+  const codexHasUpdate =
+    !!codexStatus?.version &&
+    !!codexLatestStable &&
+    isNewerVersion(codexLatestStable.version, codexStatus.version)
   const { data: opencodeStatus, isLoading: isOpenCodeLoading } =
     useOpenCodeCliStatus()
+  const isOpencodePathSource = preferences?.opencode_cli_source === 'path'
+  const { data: opencodeVersions, isLoading: isOpencodeVersionsLoading } =
+    useAvailableOpencodeVersions({ enabled: isOpencodePathSource && !!opencodeStatus?.installed })
+  const opencodeLatestStable = opencodeVersions?.find(v => !v.prerelease)
+  const opencodeHasUpdate =
+    !!opencodeStatus?.version &&
+    !!opencodeLatestStable &&
+    isNewerVersion(opencodeLatestStable.version, opencodeStatus.version)
 
   // Auth status queries - only enabled when CLI is installed
   const { data: claudeAuth, isLoading: isClaudeAuthLoading } = useClaudeCliAuth(
@@ -176,6 +241,42 @@ export const GeneralPane: React.FC = () => {
   const { data: availableOpencodeModels } = useAvailableOpencodeModels({
     enabled: !!opencodeStatus?.installed,
   })
+
+  // Re-check CLI status when the source preference changes (handles initial load
+  // with source already set to "path" and any timing issues with onSuccess invalidation)
+  const prevSources = useRef({
+    claude: preferences?.claude_cli_source,
+    gh: preferences?.gh_cli_source,
+    codex: preferences?.codex_cli_source,
+    opencode: preferences?.opencode_cli_source,
+  })
+  useEffect(() => {
+    const cur = {
+      claude: preferences?.claude_cli_source,
+      gh: preferences?.gh_cli_source,
+      codex: preferences?.codex_cli_source,
+      opencode: preferences?.opencode_cli_source,
+    }
+    if (cur.claude !== prevSources.current.claude) {
+      queryClient.invalidateQueries({ queryKey: claudeCliQueryKeys.status() })
+    }
+    if (cur.gh !== prevSources.current.gh) {
+      queryClient.invalidateQueries({ queryKey: ghCliQueryKeys.status() })
+    }
+    if (cur.codex !== prevSources.current.codex) {
+      queryClient.invalidateQueries({ queryKey: codexCliQueryKeys.status() })
+    }
+    if (cur.opencode !== prevSources.current.opencode) {
+      queryClient.invalidateQueries({ queryKey: opencodeCliQueryKeys.status() })
+    }
+    prevSources.current = cur
+  }, [
+    preferences?.claude_cli_source,
+    preferences?.gh_cli_source,
+    preferences?.codex_cli_source,
+    preferences?.opencode_cli_source,
+    queryClient,
+  ])
 
   // Track which auth check is in progress (for manual refresh)
   const [checkingClaudeAuth, setCheckingClaudeAuth] = useState(false)
@@ -296,6 +397,58 @@ export const GeneralPane: React.FC = () => {
       patchPreferences.mutate({
         yolo_thinking_level: value === 'default' ? null : value,
       })
+    }
+  }
+
+  const handleClaudeSourceChange = (value: 'jean' | 'path') => {
+    if (preferences) {
+      patchPreferences.mutate(
+        { claude_cli_source: value },
+        {
+          onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: claudeCliQueryKeys.all })
+          },
+        }
+      )
+    }
+  }
+
+  const handleCodexSourceChange = (value: 'jean' | 'path') => {
+    if (preferences) {
+      patchPreferences.mutate(
+        { codex_cli_source: value },
+        {
+          onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: codexCliQueryKeys.all })
+          },
+        }
+      )
+    }
+  }
+
+  const handleOpencodeSourceChange = (value: 'jean' | 'path') => {
+    if (preferences) {
+      patchPreferences.mutate(
+        { opencode_cli_source: value },
+        {
+          onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: opencodeCliQueryKeys.all })
+          },
+        }
+      )
+    }
+  }
+
+  const handleGhSourceChange = (value: 'jean' | 'path') => {
+    if (preferences) {
+      patchPreferences.mutate(
+        { gh_cli_source: value },
+        {
+          onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ghCliQueryKeys.all })
+          },
+        }
+      )
     }
   }
 
@@ -573,17 +726,11 @@ export const GeneralPane: React.FC = () => {
     openCliLoginModal('opencode', opencodeStatus.path, ['auth', 'login'])
   }, [opencodeStatus?.path, openCliLoginModal])
 
-  const claudeStatusDescription = cliStatus?.installed
-    ? cliStatus.path
-    : 'Claude CLI is required for chat functionality'
 
-  const ghStatusDescription = ghStatus?.installed
-    ? ghStatus.path
-    : 'GitHub CLI is required for GitHub integration'
 
   const handleCopyPath = useCallback((path: string | null | undefined) => {
     if (!path) return
-    navigator.clipboard.writeText(path)
+    copyToClipboard(path)
     toast.success('Path copied to clipboard')
   }, [])
 
@@ -622,34 +769,43 @@ export const GeneralPane: React.FC = () => {
             <InlineField
               label={cliStatus?.installed ? 'Version' : 'Status'}
               description={
-                cliStatus?.installed ? (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        onClick={() => handleCopyPath(cliStatus.path)}
-                        className="text-left hover:underline cursor-pointer"
-                      >
-                        {claudeStatusDescription}
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>Click to copy path</TooltipContent>
-                  </Tooltip>
-                ) : (
-                  'Optional — enables Claude AI sessions'
-                )
+                cliStatus?.installed
+                  ? 'Enables Claude AI sessions'
+                  : 'Optional — enables Claude AI sessions'
               }
             >
               {isCliLoading ? (
                 <Loader2 className="size-4 animate-spin text-muted-foreground" />
               ) : cliStatus?.installed ? (
-                <Button
-                  variant="outline"
-                  className="w-40 justify-between"
-                  onClick={() => openCliUpdateModal('claude')}
-                >
-                  {cliStatus.version ?? 'Installed'}
-                  <ChevronDown className="size-3" />
-                </Button>
+                isPathSource ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">{cliStatus.version ?? 'Installed'}</span>
+                    {isClaudeVersionsLoading ? (
+                      <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={!claudeHasUpdate}
+                        onClick={() => {
+                          const [cmd, args] = getPathUpdateAction(cliStatus.path, pathDetection?.package_manager, 'claude-code', ['update'])
+                          openCliLoginModal('claude', cmd, args)
+                        }}
+                      >
+                        {claudeHasUpdate ? `Update to ${claudeLatestStable?.version}` : 'Up to date'}
+                      </Button>
+                    )}
+                  </div>
+                ) : (
+                  <Button
+                    variant="outline"
+                    className="w-40 justify-between"
+                    onClick={() => openCliUpdateModal('claude')}
+                  >
+                    {cliStatus.version ?? 'Installed'}
+                    <ChevronDown className="size-3" />
+                  </Button>
+                )
               ) : (
                 <Button
                   className="w-40"
@@ -659,6 +815,49 @@ export const GeneralPane: React.FC = () => {
                 </Button>
               )}
             </InlineField>
+            {(cliStatus?.installed || pathDetection?.found) && (
+              <InlineField
+                label="Source"
+                description={
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => handleCopyPath(
+                          preferences?.claude_cli_source === 'path'
+                            ? pathDetection?.path
+                            : cliStatus?.path
+                        )}
+                        className="text-left hover:underline cursor-pointer"
+                      >
+                        {preferences?.claude_cli_source === 'path'
+                          ? pathDetection?.path ?? 'System PATH'
+                          : cliStatus?.path ?? 'Not installed'}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Click to copy path</TooltipContent>
+                  </Tooltip>
+                }
+              >
+                <Select
+                  value={preferences?.claude_cli_source ?? 'jean'}
+                  onValueChange={handleClaudeSourceChange}
+                >
+                  <SelectTrigger className="w-40">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="jean">Jean (managed)</SelectItem>
+                    <SelectItem
+                      value="path"
+                      disabled={!pathDetection?.found}
+                    >
+                      System PATH
+                      {!pathDetection?.found && ' (not found)'}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </InlineField>
+            )}
           </div>
         </SettingsSection>
       )}
@@ -696,34 +895,43 @@ export const GeneralPane: React.FC = () => {
             <InlineField
               label={ghStatus?.installed ? 'Version' : 'Status'}
               description={
-                ghStatus?.installed ? (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        onClick={() => handleCopyPath(ghStatus.path)}
-                        className="text-left hover:underline cursor-pointer"
-                      >
-                        {ghStatusDescription}
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>Click to copy path</TooltipContent>
-                  </Tooltip>
-                ) : (
-                  'Optional'
-                )
+                ghStatus?.installed
+                  ? 'Enables GitHub integration'
+                  : 'Optional — enables GitHub integration'
               }
             >
               {isGhLoading ? (
                 <Loader2 className="size-4 animate-spin text-muted-foreground" />
               ) : ghStatus?.installed ? (
-                <Button
-                  variant="outline"
-                  className="w-40 justify-between"
-                  onClick={() => openCliUpdateModal('gh')}
-                >
-                  {ghStatus.version ?? 'Installed'}
-                  <ChevronDown className="size-3" />
-                </Button>
+                isGhPathSource ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">{ghStatus.version ?? 'Installed'}</span>
+                    {isGhVersionsLoading ? (
+                      <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={!ghHasUpdate}
+                        onClick={() => {
+                          const [cmd, args] = getPathUpdateAction(ghStatus.path, ghPathDetection?.package_manager, 'gh', ['upgrade'])
+                          openCliLoginModal('gh', cmd, args)
+                        }}
+                      >
+                        {ghHasUpdate ? `Update to ${ghLatestStable?.version}` : 'Up to date'}
+                      </Button>
+                    )}
+                  </div>
+                ) : (
+                  <Button
+                    variant="outline"
+                    className="w-40 justify-between"
+                    onClick={() => openCliUpdateModal('gh')}
+                  >
+                    {ghStatus.version ?? 'Installed'}
+                    <ChevronDown className="size-3" />
+                  </Button>
+                )
               ) : (
                 <Button
                   className="w-40"
@@ -733,6 +941,49 @@ export const GeneralPane: React.FC = () => {
                 </Button>
               )}
             </InlineField>
+            {(ghStatus?.installed || ghPathDetection?.found) && (
+              <InlineField
+                label="Source"
+                description={
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => handleCopyPath(
+                          preferences?.gh_cli_source === 'path'
+                            ? ghPathDetection?.path
+                            : ghStatus?.path
+                        )}
+                        className="text-left hover:underline cursor-pointer"
+                      >
+                        {preferences?.gh_cli_source === 'path'
+                          ? ghPathDetection?.path ?? 'System PATH'
+                          : ghStatus?.path ?? 'Not installed'}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Click to copy path</TooltipContent>
+                  </Tooltip>
+                }
+              >
+                <Select
+                  value={preferences?.gh_cli_source ?? 'jean'}
+                  onValueChange={handleGhSourceChange}
+                >
+                  <SelectTrigger className="w-40">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="jean">Jean (managed)</SelectItem>
+                    <SelectItem
+                      value="path"
+                      disabled={!ghPathDetection?.found}
+                    >
+                      System PATH
+                      {!ghPathDetection?.found && ' (not found)'}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </InlineField>
+            )}
           </div>
         </SettingsSection>
       )}
@@ -777,34 +1028,43 @@ export const GeneralPane: React.FC = () => {
             <InlineField
               label={codexStatus?.installed ? 'Version' : 'Status'}
               description={
-                codexStatus?.installed ? (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        onClick={() => handleCopyPath(codexStatus.path)}
-                        className="text-left hover:underline cursor-pointer"
-                      >
-                        {codexStatus.path ?? 'Unknown path'}
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>Click to copy path</TooltipContent>
-                  </Tooltip>
-                ) : (
-                  'Optional — enables Codex AI sessions'
-                )
+                codexStatus?.installed
+                  ? 'Enables Codex AI sessions'
+                  : 'Optional — enables Codex AI sessions'
               }
             >
               {isCodexLoading ? (
                 <Loader2 className="size-4 animate-spin text-muted-foreground" />
               ) : codexStatus?.installed ? (
-                <Button
-                  variant="outline"
-                  className="w-40 justify-between"
-                  onClick={() => openCliUpdateModal('codex')}
-                >
-                  {codexStatus.version ?? 'Installed'}
-                  <ChevronDown className="size-3" />
-                </Button>
+                isCodexPathSource ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">{codexStatus.version ?? 'Installed'}</span>
+                    {isCodexVersionsLoading ? (
+                      <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={!codexHasUpdate}
+                        onClick={() => {
+                          const [cmd, args] = getPathUpdateAction(codexStatus.path, codexPathDetection?.package_manager, 'codex', ['update'])
+                          openCliLoginModal('codex', cmd, args)
+                        }}
+                      >
+                        {codexHasUpdate ? `Update to ${codexLatestStable?.version}` : 'Up to date'}
+                      </Button>
+                    )}
+                  </div>
+                ) : (
+                  <Button
+                    variant="outline"
+                    className="w-40 justify-between"
+                    onClick={() => openCliUpdateModal('codex')}
+                  >
+                    {codexStatus.version ?? 'Installed'}
+                    <ChevronDown className="size-3" />
+                  </Button>
+                )
               ) : (
                 <Button
                   className="w-40"
@@ -814,6 +1074,49 @@ export const GeneralPane: React.FC = () => {
                 </Button>
               )}
             </InlineField>
+            {(codexStatus?.installed || codexPathDetection?.found) && (
+              <InlineField
+                label="Source"
+                description={
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => handleCopyPath(
+                          preferences?.codex_cli_source === 'path'
+                            ? codexPathDetection?.path
+                            : codexStatus?.path
+                        )}
+                        className="text-left hover:underline cursor-pointer"
+                      >
+                        {preferences?.codex_cli_source === 'path'
+                          ? codexPathDetection?.path ?? 'System PATH'
+                          : codexStatus?.path ?? 'Not installed'}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Click to copy path</TooltipContent>
+                  </Tooltip>
+                }
+              >
+                <Select
+                  value={preferences?.codex_cli_source ?? 'jean'}
+                  onValueChange={handleCodexSourceChange}
+                >
+                  <SelectTrigger className="w-40">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="jean">Jean (managed)</SelectItem>
+                    <SelectItem
+                      value="path"
+                      disabled={!codexPathDetection?.found}
+                    >
+                      System PATH
+                      {!codexPathDetection?.found && ' (not found)'}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </InlineField>
+            )}
           </div>
         </SettingsSection>
       )}
@@ -858,34 +1161,43 @@ export const GeneralPane: React.FC = () => {
             <InlineField
               label={opencodeStatus?.installed ? 'Version' : 'Status'}
               description={
-                opencodeStatus?.installed ? (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        onClick={() => handleCopyPath(opencodeStatus.path)}
-                        className="text-left hover:underline cursor-pointer"
-                      >
-                        {opencodeStatus.path ?? 'Unknown path'}
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>Click to copy path</TooltipContent>
-                  </Tooltip>
-                ) : (
-                  'Optional — enables OpenCode AI sessions'
-                )
+                opencodeStatus?.installed
+                  ? 'Enables OpenCode AI sessions'
+                  : 'Optional — enables OpenCode AI sessions'
               }
             >
               {isOpenCodeLoading ? (
                 <Loader2 className="size-4 animate-spin text-muted-foreground" />
               ) : opencodeStatus?.installed ? (
-                <Button
-                  variant="outline"
-                  className="w-40 justify-between"
-                  onClick={() => openCliUpdateModal('opencode')}
-                >
-                  {opencodeStatus.version ?? 'Installed'}
-                  <ChevronDown className="size-3" />
-                </Button>
+                isOpencodePathSource ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">{opencodeStatus.version ?? 'Installed'}</span>
+                    {isOpencodeVersionsLoading ? (
+                      <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={!opencodeHasUpdate}
+                        onClick={() => {
+                          const [cmd, args] = getPathUpdateAction(opencodeStatus.path, opencodePathDetection?.package_manager, 'opencode', ['upgrade'])
+                          openCliLoginModal('opencode', cmd, args)
+                        }}
+                      >
+                        {opencodeHasUpdate ? `Update to ${opencodeLatestStable?.version}` : 'Up to date'}
+                      </Button>
+                    )}
+                  </div>
+                ) : (
+                  <Button
+                    variant="outline"
+                    className="w-40 justify-between"
+                    onClick={() => openCliUpdateModal('opencode')}
+                  >
+                    {opencodeStatus.version ?? 'Installed'}
+                    <ChevronDown className="size-3" />
+                  </Button>
+                )
               ) : (
                 <Button
                   className="w-40"
@@ -895,6 +1207,49 @@ export const GeneralPane: React.FC = () => {
                 </Button>
               )}
             </InlineField>
+            {(opencodeStatus?.installed || opencodePathDetection?.found) && (
+              <InlineField
+                label="Source"
+                description={
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => handleCopyPath(
+                          preferences?.opencode_cli_source === 'path'
+                            ? opencodePathDetection?.path
+                            : opencodeStatus?.path
+                        )}
+                        className="text-left hover:underline cursor-pointer"
+                      >
+                        {preferences?.opencode_cli_source === 'path'
+                          ? opencodePathDetection?.path ?? 'System PATH'
+                          : opencodeStatus?.path ?? 'Not installed'}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Click to copy path</TooltipContent>
+                  </Tooltip>
+                }
+              >
+                <Select
+                  value={preferences?.opencode_cli_source ?? 'jean'}
+                  onValueChange={handleOpencodeSourceChange}
+                >
+                  <SelectTrigger className="w-40">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="jean">Jean (managed)</SelectItem>
+                    <SelectItem
+                      value="path"
+                      disabled={!opencodePathDetection?.found}
+                    >
+                      System PATH
+                      {!opencodePathDetection?.found && ' (not found)'}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </InlineField>
+            )}
           </div>
         </SettingsSection>
       )}
@@ -926,6 +1281,27 @@ export const GeneralPane: React.FC = () => {
                       {option.label}
                     </SelectItem>
                   ))}
+              </SelectContent>
+            </Select>
+          </InlineField>
+
+          <InlineField
+            label="Default mode"
+            description="Permission mode for new sessions"
+          >
+            <Select
+              value={preferences?.default_execution_mode ?? 'plan'}
+              onValueChange={(value: 'plan' | 'build' | 'yolo') => {
+                patchPreferences.mutate({ default_execution_mode: value })
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="plan">Plan</SelectItem>
+                <SelectItem value="build">Build</SelectItem>
+                <SelectItem value="yolo">Yolo</SelectItem>
               </SelectContent>
             </Select>
           </InlineField>
@@ -1666,11 +2042,27 @@ export const GeneralPane: React.FC = () => {
           </InlineField>
 
           <InlineField
+            label="Auto-save context"
+            description="Automatically save session context after each AI response"
+          >
+            <Switch
+              checked={preferences?.auto_save_context ?? true}
+              onCheckedChange={checked => {
+                if (preferences) {
+                  patchPreferences.mutate({
+                    auto_save_context: checked,
+                  })
+                }
+              }}
+            />
+          </InlineField>
+
+          <InlineField
             label="Restore last session on project switch"
             description="Automatically reopen the last worktree and session when switching projects"
           >
             <Switch
-              checked={preferences?.restore_last_session ?? false}
+              checked={preferences?.restore_last_session ?? true}
               onCheckedChange={checked => {
                 if (preferences) {
                   patchPreferences.mutate({

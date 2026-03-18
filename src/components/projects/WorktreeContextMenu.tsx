@@ -24,11 +24,15 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
 import type { Worktree } from '@/types/projects'
 import { getEditorLabel, getTerminalLabel } from '@/types/preferences'
 import { isNativeApp } from '@/lib/environment'
+import { getFileManagerName } from '@/lib/platform'
 import { useWorktreeMenuActions } from './useWorktreeMenuActions'
 
 interface WorktreeContextMenuProps {
@@ -49,9 +53,10 @@ export function WorktreeContextMenu({
     setShowDeleteConfirm,
     isBase,
     hasMessages,
-    runScript,
+    runScripts,
     preferences,
     handleRun,
+    handleRunCommand,
     handleOpenInFinder,
     handleOpenInTerminal,
     handleOpenInEditor,
@@ -68,11 +73,30 @@ export function WorktreeContextMenu({
     <ContextMenu>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
       <ContextMenuContent className="w-48">
-        {isNativeApp() && runScript && (
+        {isNativeApp() && runScripts.length === 1 && (
           <ContextMenuItem onClick={handleRun}>
             <Play className="mr-2 h-4 w-4" />
             Run
           </ContextMenuItem>
+        )}
+        {isNativeApp() && runScripts.length > 1 && (
+          <ContextMenuSub>
+            <ContextMenuSubTrigger>
+              <Play className="mr-2 h-4 w-4" />
+              Run
+            </ContextMenuSubTrigger>
+            <ContextMenuSubContent>
+              {runScripts.map((cmd, i) => (
+                <ContextMenuItem
+                  key={i}
+                  onSelect={() => handleRunCommand(cmd)}
+                  className="font-mono text-xs"
+                >
+                  {cmd}
+                </ContextMenuItem>
+              ))}
+            </ContextMenuSubContent>
+          </ContextMenuSub>
         )}
 
         <ContextMenuItem onClick={handleOpenJeanConfig}>
@@ -99,7 +123,7 @@ export function WorktreeContextMenu({
         {isNativeApp() && (
           <ContextMenuItem onClick={handleOpenInFinder}>
             <FolderOpen className="mr-2 h-4 w-4" />
-            Open in Finder
+            Open in {getFileManagerName()}
           </ContextMenuItem>
         )}
 

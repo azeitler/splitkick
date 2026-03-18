@@ -246,6 +246,98 @@ where
     Ok(parsed)
 }
 
+/// Result of detecting Codex CLI in system PATH
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodexPathDetection {
+    pub found: bool,
+    pub path: Option<String>,
+    pub version: Option<String>,
+    pub package_manager: Option<String>,
+}
+
+/// Detect Codex CLI in system PATH (excluding Jean-managed binary)
+#[tauri::command]
+pub async fn detect_codex_in_path(app: AppHandle) -> Result<CodexPathDetection, String> {
+    log::trace!("Detecting Codex CLI in system PATH");
+
+    let jean_managed_path = get_cli_binary_path(&app)
+        .ok()
+        .and_then(|p| std::fs::canonicalize(&p).ok());
+
+    let which_cmd = if cfg!(target_os = "windows") {
+        "where"
+    } else {
+        "which"
+    };
+
+    let output = match silent_command(which_cmd).arg("codex").output() {
+        Ok(output) if output.status.success() => {
+            // On Windows, `where` can return multiple paths; take only the first line
+            String::from_utf8_lossy(&output.stdout).lines().next().unwrap_or("").trim().to_string()
+        }
+        _ => {
+            log::trace!("Codex CLI not found in PATH");
+            return Ok(CodexPathDetection {
+                found: false,
+                path: None,
+                version: None,
+                package_manager: None,
+            });
+        }
+    };
+
+    if output.is_empty() {
+        return Ok(CodexPathDetection {
+            found: false,
+            path: None,
+            version: None,
+            package_manager: None,
+        });
+    }
+
+    let found_path = std::path::PathBuf::from(&output);
+
+    // Exclude Jean-managed binary
+    if let Some(ref jean_path) = jean_managed_path {
+        if let Ok(canonical_found) = std::fs::canonicalize(&found_path) {
+            if canonical_found == *jean_path {
+                log::trace!("Found PATH codex is the Jean-managed binary, excluding");
+                return Ok(CodexPathDetection {
+                    found: false,
+                    path: None,
+                    version: None,
+                    package_manager: None,
+                });
+            }
+        }
+    }
+
+    let version = match silent_command(&found_path).arg("--version").output() {
+        Ok(ver_output) if ver_output.status.success() => {
+            let ver_str = String::from_utf8_lossy(&ver_output.stdout).trim().to_string();
+            let cleaned = ver_str
+                .split_whitespace()
+                .last()
+                .unwrap_or(&ver_str)
+                .trim_start_matches('v')
+                .to_string();
+            if cleaned.is_empty() { None } else { Some(cleaned) }
+        }
+        _ => None,
+    };
+
+    let package_manager = crate::platform::detect_package_manager(&found_path);
+
+    log::trace!("Found Codex CLI in PATH: {output} (version: {version:?}, pkg_mgr: {package_manager:?})");
+
+    Ok(CodexPathDetection {
+        found: true,
+        path: Some(output),
+        version,
+        package_manager,
+    })
+}
+
 fn emit_progress(app: &AppHandle, stage: &str, message: &str, percent: u8) {
     let _ = app.emit_all(
         "codex-cli:install-progress",

@@ -22,6 +22,78 @@ import {
   type KeybindingsMap,
 } from '@/types/keybindings'
 
+export function getTerminalShortcutWorktreeId(): string | null {
+  const activeElement = document.activeElement
+  const terminalFocused =
+    activeElement instanceof HTMLElement && !!activeElement.closest('.xterm')
+
+  if (!terminalFocused) return null
+
+  const uiState = useUIStore.getState()
+  const chatState = useChatStore.getState()
+  const terminalState = useTerminalStore.getState()
+
+  const worktreeId = uiState.sessionChatModalOpen
+    ? (uiState.sessionChatModalWorktreeId ?? chatState.activeWorktreeId)
+    : chatState.activeWorktreeId
+
+  if (!worktreeId) return null
+
+  const terminalOpen =
+    terminalState.terminalPanelOpen[worktreeId] ||
+    terminalState.modalTerminalOpen[worktreeId]
+
+  return terminalOpen ? worktreeId : null
+}
+
+export function addTerminalTabForShortcut(): boolean {
+  const worktreeId = getTerminalShortcutWorktreeId()
+  if (!worktreeId) return false
+
+  useTerminalStore.getState().addTerminal(worktreeId)
+  return true
+}
+
+export function closeActiveTerminalTabForShortcut(): boolean {
+  const worktreeId = getTerminalShortcutWorktreeId()
+  if (!worktreeId) return false
+
+  const terminalStore = useTerminalStore.getState()
+  const activeTerminalId = terminalStore.activeTerminalIds[worktreeId]
+
+  if (!activeTerminalId) return true
+
+  invoke('stop_terminal', { terminalId: activeTerminalId }).catch(() => {
+    /* noop */
+  })
+  disposeTerminal(activeTerminalId)
+  terminalStore.removeTerminal(worktreeId, activeTerminalId)
+
+  const remaining = useTerminalStore.getState().terminals[worktreeId] ?? []
+  if (remaining.length === 0) {
+    terminalStore.setTerminalPanelOpen(worktreeId, false)
+    terminalStore.setTerminalVisible(false)
+    terminalStore.setModalTerminalOpen(worktreeId, false)
+  }
+
+  return true
+}
+
+export function switchActiveTerminalTabByIndexForShortcut(index: number): boolean {
+  const worktreeId = getTerminalShortcutWorktreeId()
+  if (!worktreeId) return false
+
+  const terminalStore = useTerminalStore.getState()
+  const terminals = terminalStore.terminals[worktreeId] ?? []
+  const targetTerminal = terminals[index]
+
+  if (targetTerminal) {
+    terminalStore.setActiveTerminal(worktreeId, targetTerminal.id)
+  }
+
+  return true
+}
+
 /**
  * Main window event listeners - handles global keyboard shortcuts and other app-level events
  *
@@ -111,28 +183,29 @@ function executeKeybindingAction(
         break
       }
 
-      // Fetch run script - use fetchQuery to handle uncached dashboard worktrees
+      // Fetch run scripts - use fetchQuery to handle uncached dashboard worktrees
       ;(async () => {
-        let runScript = queryClient.getQueryData<string | null>([
-          'run-script',
+        let runScripts = queryClient.getQueryData<string[]>([
+          'run-scripts',
           targetWorktreePath,
         ])
 
-        if (runScript === undefined) {
+        if (runScripts === undefined) {
           try {
-            runScript = await queryClient.fetchQuery<string | null>({
-              queryKey: ['run-script', targetWorktreePath],
+            runScripts = await queryClient.fetchQuery<string[]>({
+              queryKey: ['run-scripts', targetWorktreePath],
               queryFn: () =>
-                invoke<string | null>('get_run_script', {
+                invoke<string[]>('get_run_scripts', {
                   worktreePath: targetWorktreePath,
                 }),
             })
           } catch {
-            runScript = null
+            runScripts = []
           }
         }
 
-        if (!runScript) {
+        const firstScript = runScripts?.[0]
+        if (!firstScript) {
           const projectId = useProjectsStore.getState().selectedProjectId
           toast.error('No run script configured in jean.json', {
             action: projectId
@@ -151,7 +224,7 @@ function executeKeybindingAction(
         // Start run
         const terminalId = useTerminalStore
           .getState()
-          .startRun(targetWorktreeId, runScript)
+          .startRun(targetWorktreeId, firstScript)
 
         if (sessionModalOpen) {
           // Modal view: open terminal drawer
@@ -163,7 +236,7 @@ function executeKeybindingAction(
           startHeadless(terminalId, {
             worktreeId: targetWorktreeId,
             worktreePath: targetWorktreePath!,
-            command: runScript,
+            command: firstScript,
           })
         }
       })()
@@ -194,15 +267,8 @@ function executeKeybindingAction(
       break
     }
     case 'new_session': {
-      // If terminal is focused, add a new terminal tab instead
-      if (document.activeElement?.closest('.xterm')) {
-        const chatStore = useChatStore.getState()
-        const wId = chatStore.activeWorktreeId
-        if (wId) {
-          useTerminalStore.getState().addTerminal(wId)
-          break
-        }
-      }
+      // When terminal is focused, CMD+T should create a terminal tab.
+      if (addTerminalTabForShortcut()) break
       logger.debug('Keybinding: new_session')
       window.dispatchEvent(new CustomEvent('create-new-session'))
       break
@@ -220,29 +286,8 @@ function executeKeybindingAction(
       )
       break
     case 'close_session_or_worktree': {
-      // If terminal is focused, close the active terminal tab instead
-      if (document.activeElement?.closest('.xterm')) {
-        const chatStore = useChatStore.getState()
-        const wId = chatStore.activeWorktreeId
-        if (wId) {
-          const termStore = useTerminalStore.getState()
-          const activeTerminalId = termStore.activeTerminalIds[wId]
-          if (activeTerminalId) {
-            invoke('stop_terminal', { terminalId: activeTerminalId }).catch(
-              () => {
-                /* noop */
-              }
-            )
-            disposeTerminal(activeTerminalId)
-            termStore.removeTerminal(wId, activeTerminalId)
-            const remaining = termStore.terminals[wId] ?? []
-            if (remaining.length === 0) {
-              termStore.setTerminalPanelOpen(wId, false)
-            }
-            break
-          }
-        }
-      }
+      // When terminal is focused, CMD+W should close the active terminal tab.
+      if (closeActiveTerminalTabForShortcut()) break
       // Default: close session/worktree
       logger.debug('Keybinding: close_session_or_worktree')
       window.dispatchEvent(new CustomEvent('close-session-or-worktree'))
@@ -448,6 +493,50 @@ export function useMainWindowEventListeners() {
         return
       if (useProjectsStore.getState().projectSettingsDialogOpen) return
 
+      // When terminal is focused, remap shortcuts for terminal-specific actions
+      // and block all others so they don't interfere with terminal usage.
+      {
+        const terminalShortcutWorktreeId = getTerminalShortcutWorktreeId()
+
+        if (terminalShortcutWorktreeId) {
+          const kb = keybindingsRef.current
+          const digitMatch = e.code.match(/^Digit(\d)$/)
+          const digit = digitMatch ? parseInt(digitMatch[1]!, 10) : NaN
+
+          if (
+            (e.metaKey || e.ctrlKey) &&
+            !e.shiftKey &&
+            !e.altKey &&
+            digit >= 1 &&
+            digit <= 9
+          ) {
+            e.preventDefault()
+            e.stopPropagation()
+            switchActiveTerminalTabByIndexForShortcut(digit - 1)
+            return
+          }
+
+          if (shortcut === kb.new_session) {
+            e.preventDefault()
+            e.stopPropagation()
+            addTerminalTabForShortcut()
+            return
+          }
+          if (shortcut === kb.close_session_or_worktree) {
+            e.preventDefault()
+            e.stopPropagation()
+            closeActiveTerminalTabForShortcut()
+            return
+          }
+          if (shortcut === kb.toggle_terminal || shortcut === kb.cancel_prompt) {
+            // Let these fall through to the normal keybinding handler below
+          } else {
+            // Block all other shortcuts
+            return
+          }
+        }
+      }
+
       // CMD/Ctrl+1–9: switch session tabs (when modal open), dashboard tabs, or worktree by index
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
         // Use e.code (physical key) since e.key can vary with CMD held on macOS
@@ -562,6 +651,11 @@ export function useMainWindowEventListeners() {
               useUIStore.getState()
             setRightSidebarVisible(!rightSidebarVisible)
           }
+        }),
+
+        listen('menu-magic-menu', () => {
+          logger.debug('Magic menu event received from native menu')
+          executeKeybindingAction('open_magic_modal', commandContext, queryClient)
         }),
 
         // Branch naming events (automatic branch renaming based on first message)

@@ -5,23 +5,31 @@ import {
   Bot,
   BookmarkPlus,
   Brain,
+  Bug,
   Check,
   ChevronRight,
   ClipboardList,
   Eye,
+  FileText,
   FolderOpen,
   GitBranch,
   GitCommitHorizontal,
   GitMerge,
   GitPullRequest,
+  GitPullRequestArrow,
   Hammer,
+  Link2,
+  MessageSquare,
   MoreHorizontal,
   Pencil,
+  Plug,
+  RefreshCw,
   Sparkles,
   Zap,
 } from 'lucide-react'
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -39,8 +47,9 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
-import type { CustomCliProfile } from '@/types/preferences'
-import type { EffortLevel, ExecutionMode, ThinkingLevel } from '@/types/chat'
+import type { CustomCliProfile, CliBackend } from '@/types/preferences'
+import type { EffortLevel, ExecutionMode, McpServerInfo, ThinkingLevel } from '@/types/chat'
+import { groupServersByBackend, BACKEND_LABELS } from '@/services/mcp'
 import type { CheckStatus, PrDisplayStatus } from '@/types/pr-status'
 import { CheckStatusButton } from '@/components/chat/toolbar/CheckStatusButton'
 import {
@@ -51,6 +60,7 @@ import {
   getPrStatusDisplay,
   getProviderDisplayName,
 } from '@/components/chat/toolbar/toolbar-utils'
+import { useUIStore } from '@/store/ui-store'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 
@@ -101,6 +111,11 @@ interface MobileToolbarMenuProps {
   handleModelChange: (value: string) => void
   handleEffortLevelChange: (value: string) => void
   handleThinkingLevelChange: (value: string) => void
+
+  availableMcpServers: McpServerInfo[]
+  enabledMcpServers: string[]
+  activeMcpCount: number
+  onToggleMcpServer: (name: string) => void
 }
 
 export function MobileToolbarMenu({
@@ -147,6 +162,10 @@ export function MobileToolbarMenu({
   handleModelChange,
   handleEffortLevelChange,
   handleThinkingLevelChange,
+  availableMcpServers,
+  enabledMcpServers,
+  activeMcpCount,
+  onToggleMcpServer,
 }: MobileToolbarMenuProps) {
   const isMobile = useIsMobile()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -204,6 +223,26 @@ export function MobileToolbarMenu({
           Load Context
           <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
             L
+          </span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => {
+          setMenuOpen(false)
+          useUIStore.getState().setLinkedProjectsModalOpen(true)
+        }}>
+          <Link2 className="h-4 w-4" />
+          Linked Projects
+          <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+            K
+          </span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => {
+          setMenuOpen(false)
+          window.dispatchEvent(new CustomEvent('open-recap'))
+        }}>
+          <Sparkles className="h-4 w-4" />
+          Create Recap
+          <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+            T
           </span>
         </DropdownMenuItem>
 
@@ -266,6 +305,77 @@ export function MobileToolbarMenu({
             R
           </span>
         </DropdownMenuItem>
+        {hasOpenPr && (
+          <DropdownMenuItem onClick={() => {
+            setMenuOpen(false)
+            useUIStore.getState().setReviewCommentsModalOpen(true)
+          }}>
+            <MessageSquare className="h-4 w-4" />
+            Review Comments
+            <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+              V
+            </span>
+          </DropdownMenuItem>
+        )}
+
+        <DropdownMenuSeparator />
+
+        <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          Release
+        </div>
+        <DropdownMenuItem onClick={() => {
+          setMenuOpen(false)
+          useUIStore.getState().setReleaseNotesModalOpen(true)
+        }}>
+          <FileText className="h-4 w-4" />
+          Generate Notes
+          <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+            G
+          </span>
+        </DropdownMenuItem>
+        {hasOpenPr && (
+          <DropdownMenuItem onClick={() => {
+            setMenuOpen(false)
+            useUIStore.getState().setUpdatePrModalOpen(true)
+          }}>
+            <RefreshCw className="h-4 w-4" />
+            PR Description
+            <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+              E
+            </span>
+          </DropdownMenuItem>
+        )}
+
+        <DropdownMenuSeparator />
+
+        <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          Investigate
+        </div>
+        <DropdownMenuItem onClick={() => {
+          setMenuOpen(false)
+          window.dispatchEvent(new CustomEvent('magic-command', {
+            detail: { command: 'investigate', type: 'issue' },
+          }))
+        }}>
+          <Bug className="h-4 w-4" />
+          Issue
+          <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+            I
+          </span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => {
+          setMenuOpen(false)
+          window.dispatchEvent(new CustomEvent('magic-command', {
+            detail: { command: 'investigate', type: 'pr' },
+          }))
+        }}>
+          <GitPullRequestArrow className="h-4 w-4" />
+          PR
+          <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+            A
+          </span>
+        </DropdownMenuItem>
+
         <DropdownMenuSeparator />
 
         <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -558,6 +668,60 @@ export function MobileToolbarMenu({
                 Yolo
               </DropdownMenuRadioItem>
             </DropdownMenuRadioGroup>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+
+        <DropdownMenuSeparator />
+
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger className="[&>svg:last-child]:!ml-2">
+            <Plug className={cn(
+              'mr-2 h-4 w-4',
+              activeMcpCount > 0 && 'text-emerald-600 dark:text-emerald-400'
+            )} />
+            <span>MCP</span>
+            <span className="ml-auto w-16 text-right text-xs text-muted-foreground">
+              {activeMcpCount > 0 ? `${activeMcpCount} on` : 'off'}
+            </span>
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent>
+            {availableMcpServers.length > 0 ? (() => {
+              const grouped = groupServersByBackend(availableMcpServers)
+              const backends = Object.keys(grouped) as CliBackend[]
+              const showHeaders = backends.length > 1
+              return backends.map((backend, idx) => (
+                <div key={backend}>
+                  {showHeaders && (
+                    <>
+                      {idx > 0 && <DropdownMenuSeparator />}
+                      <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-medium py-1">
+                        {BACKEND_LABELS[backend] ?? backend}
+                      </DropdownMenuLabel>
+                    </>
+                  )}
+                  {(grouped[backend] ?? []).map(server => (
+                    <DropdownMenuCheckboxItem
+                      key={`${backend}-${server.name}`}
+                      checked={!server.disabled && enabledMcpServers.includes(server.name)}
+                      onCheckedChange={() => onToggleMcpServer(server.name)}
+                      disabled={server.disabled}
+                      className={server.disabled ? 'opacity-50' : undefined}
+                    >
+                      {server.name}
+                      <span className="ml-auto pl-4 text-xs text-muted-foreground">
+                        {server.disabled ? 'disabled' : server.scope}
+                      </span>
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </div>
+              ))
+            })() : (
+              <DropdownMenuItem disabled>
+                <span className="text-xs text-muted-foreground">
+                  No MCP servers configured
+                </span>
+              </DropdownMenuItem>
+            )}
           </DropdownMenuSubContent>
         </DropdownMenuSub>
         </DropdownMenuContent>

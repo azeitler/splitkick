@@ -110,6 +110,8 @@ interface VirtualizedMessageListProps {
   shouldScrollToBottom?: boolean
   /** Callback when scroll-to-bottom is handled */
   onScrollToBottomHandled?: () => void
+  /** Duration of last completed run (ms) — shown on last assistant message */
+  completedDurationMs?: number | null
 }
 
 /**
@@ -153,6 +155,7 @@ export const VirtualizedMessageList = memo(
         hideApproveButtons,
         shouldScrollToBottom,
         onScrollToBottomHandled,
+        completedDurationMs,
       },
       ref
     ) {
@@ -300,6 +303,19 @@ export const VirtualizedMessageList = memo(
               message.role === 'assistant' &&
               (hasFollowUpMap.get(globalIndex) ?? false)
 
+            // Show completed duration on the last assistant message (from store),
+            // or fall back to timestamp-based computation for persisted messages (after reload)
+            let durationMs: number | null = null
+            if (message.role === 'assistant' && globalIndex === messages.length - 1 && completedDurationMs) {
+              durationMs = completedDurationMs
+            } else if (message.role === 'assistant' && globalIndex > 0) {
+              const prevMessage = messages[globalIndex - 1]
+              if (prevMessage?.role === 'user') {
+                const deltaSecs = message.timestamp - prevMessage.timestamp
+                if (deltaSecs > 0 && deltaSecs < 3600) durationMs = deltaSecs * 1000
+              }
+            }
+
             return (
               <div
                 key={message.id}
@@ -307,7 +323,7 @@ export const VirtualizedMessageList = memo(
                   if (el) messageRefs.current.set(globalIndex, el)
                   else messageRefs.current.delete(globalIndex)
                 }}
-                className="pb-4"
+                className={globalIndex === messages.length - 1 && isSending ? '' : 'pb-4'}
               >
                 <MessageItem
                   message={message}
@@ -345,6 +361,7 @@ export const VirtualizedMessageList = memo(
                   isFindingFixed={isFindingFixed}
                   onCopyToInput={onCopyToInput}
                   hideApproveButtons={hideApproveButtons}
+                  durationMs={durationMs}
                 />
               </div>
             )

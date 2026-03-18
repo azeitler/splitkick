@@ -6,6 +6,7 @@ import {
   Code,
   FileJson,
   FolderOpen,
+  GitBranch,
   GitPullRequestArrow,
   MoreHorizontal,
   Play,
@@ -34,6 +35,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
@@ -50,6 +54,7 @@ import {
 import { isNativeApp } from '@/lib/environment'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
+import { useIsMobile } from '@/hooks/use-mobile'
 import type { GhAuthStatus } from '@/types/gh-cli'
 import { useWorktreeMenuActions } from './useWorktreeMenuActions'
 
@@ -57,6 +62,12 @@ interface WorktreeDropdownMenuProps {
   worktree: Worktree
   projectId: string
   projectPath: string
+  uncommittedAdded?: number
+  uncommittedRemoved?: number
+  branchDiffAdded?: number
+  branchDiffRemoved?: number
+  onUncommittedDiffClick?: () => void
+  onBranchDiffClick?: () => void
 }
 
 const BADGE_STALE_TIME = 5 * 60 * 1000
@@ -65,6 +76,12 @@ export function WorktreeDropdownMenu({
   worktree,
   projectId,
   projectPath,
+  uncommittedAdded = 0,
+  uncommittedRemoved = 0,
+  branchDiffAdded = 0,
+  branchDiffRemoved = 0,
+  onUncommittedDiffClick,
+  onBranchDiffClick,
 }: WorktreeDropdownMenuProps) {
   const queryClient = useQueryClient()
   const {
@@ -72,9 +89,10 @@ export function WorktreeDropdownMenu({
     setShowDeleteConfirm,
     isBase,
     hasMessages,
-    runScript,
+    runScripts,
     preferences,
     handleRun,
+    handleRunCommand,
     handleOpenInFinder,
     handleOpenInTerminal,
     handleOpenInEditor,
@@ -113,8 +131,14 @@ export function WorktreeDropdownMenu({
       .length ?? 0)
   const workflowRunCount = workflowRuns?.runs.length ?? 0
   const failedWorkflowCount = workflowRuns?.failedCount ?? 0
+  const isMobile = useIsMobile()
+  const hasDiff = uncommittedAdded > 0 || uncommittedRemoved > 0
+  const hasBranchDiff = branchDiffAdded > 0 || branchDiffRemoved > 0
   const hasGitHubStatusItems =
-    issueCount > 0 || prCount > 0 || securityCount > 0 || workflowRunCount > 0
+    (isMobile && (issueCount > 0 || prCount > 0)) ||
+    securityCount > 0 ||
+    workflowRunCount > 0 ||
+    (isMobile && (hasDiff || hasBranchDiff))
 
   const handleOpenIssues = useCallback(() => {
     useProjectsStore.getState().selectProject(projectId)
@@ -167,11 +191,30 @@ export function WorktreeDropdownMenu({
             New Session
           </DropdownMenuItem>
 
-          {isNativeApp() && runScript && (
+          {isNativeApp() && runScripts.length === 1 && (
             <DropdownMenuItem onClick={handleRun}>
               <Play className="mr-2 h-4 w-4" />
               Run
             </DropdownMenuItem>
+          )}
+          {isNativeApp() && runScripts.length > 1 && (
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Play className="mr-4 h-4 w-4" />
+                Run
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                {runScripts.map((cmd, i) => (
+                  <DropdownMenuItem
+                    key={i}
+                    onSelect={() => handleRunCommand(cmd)}
+                    className="font-mono text-xs"
+                  >
+                    {cmd}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
           )}
 
           <DropdownMenuItem onClick={handleOpenJeanConfig}>
@@ -197,14 +240,38 @@ export function WorktreeDropdownMenu({
 
           {hasGitHubStatusItems && <DropdownMenuSeparator />}
 
-          {issueCount > 0 && (
+          {isMobile && hasDiff && (
+            <DropdownMenuItem onClick={onUncommittedDiffClick}>
+              <GitBranch className="mr-2 h-4 w-4" />
+              <span>Git</span>
+              <span className="ml-auto text-xs">
+                <span className="text-green-500">+{uncommittedAdded}</span>
+                {' '}
+                <span className="text-red-500">-{uncommittedRemoved}</span>
+              </span>
+            </DropdownMenuItem>
+          )}
+
+          {isMobile && hasBranchDiff && (
+            <DropdownMenuItem onClick={onBranchDiffClick}>
+              <GitBranch className="mr-2 h-4 w-4" />
+              <span>Branch diff</span>
+              <span className="ml-auto text-xs">
+                <span className="text-green-500">+{branchDiffAdded}</span>
+                {' / '}
+                <span className="text-red-500">-{branchDiffRemoved}</span>
+              </span>
+            </DropdownMenuItem>
+          )}
+
+          {isMobile && issueCount > 0 && (
             <DropdownMenuItem onClick={handleOpenIssues}>
               <CircleDot className="mr-2 h-4 w-4 text-green-600" />
               {issueCount} Open Issue{issueCount === 1 ? '' : 's'}
             </DropdownMenuItem>
           )}
 
-          {prCount > 0 && (
+          {isMobile && prCount > 0 && (
             <DropdownMenuItem onClick={handleOpenPRs}>
               <GitPullRequestArrow className="mr-2 h-4 w-4 text-blue-600" />
               {prCount} Open PR{prCount === 1 ? '' : 's'}

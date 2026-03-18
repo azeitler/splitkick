@@ -37,6 +37,8 @@ interface UsePlanDialogApprovalParams {
   isCodexBackendRef: RefObject<boolean>
   mcpServersDataRef: RefObject<McpServerInfo[] | undefined>
   enabledMcpServersRef: RefObject<string[]>
+  selectedBackendRef: RefObject<'claude' | 'codex' | 'opencode'>
+  scrollToBottom: (instant?: boolean) => void
 }
 
 /**
@@ -60,6 +62,8 @@ export function usePlanDialogApproval({
   isCodexBackendRef,
   mcpServersDataRef,
   enabledMcpServersRef,
+  selectedBackendRef,
+  scrollToBottom,
 }: UsePlanDialogApprovalParams) {
   const queryClient = useQueryClient()
 
@@ -127,10 +131,24 @@ export function usePlanDialogApproval({
       clearStreamingContentBlocks(activeSessionId)
       setSessionReviewing(activeSessionId, false)
 
-      // Chain: mark_plan_approved → update_session_state
+      // Scroll to bottom after DOM updates from collapsing the plan approval UI
+      requestAnimationFrame(() => {
+        scrollToBottom(true)
+      })
+      // Safety net: if React committed after our rAF scroll (large content blocks),
+      // the scroll position may be past the now-shorter content → empty viewport.
+      setTimeout(() => {
+        scrollToBottom(true)
+      }, 100)
+
+      // Chain: mark_plan_approved → update_session_state → broadcast
       // On WebSocket, commands dispatch concurrently. update_session_state emits
       // cache:invalidate which triggers refetch on other clients. mark_plan_approved
       // must complete first so the refetch includes plan_approved=true.
+      // Broadcasts are sequenced AFTER update_session_state so that any
+      // refetch triggered by the self-received session:setting-changed event
+      // returns the already-updated backend data (prevents stale overwrites
+      // of optimistic TanStack cache on web access).
       const markPromise = pendingPlanMessage
         ? markPlanApprovedService(
             activeWorktreeId,
@@ -149,6 +167,22 @@ export function usePlanDialogApproval({
           waitingForInputType: null,
           selectedExecutionMode: mode,
         }))
+        .then(() => {
+          invoke('broadcast_session_setting', {
+            sessionId: activeSessionId,
+            key: 'executionMode',
+            value: mode,
+          }).catch(err => {
+            console.error('[usePlanDialogApproval] Broadcast executionMode=' + mode + ' failed:', err)
+          })
+          invoke('broadcast_session_setting', {
+            sessionId: activeSessionId,
+            key: 'waitingForInput',
+            value: 'false',
+          }).catch(err => {
+            console.error('[usePlanDialogApproval] Broadcast waitingForInput=false failed:', err)
+          })
+        })
         .catch(err => {
           console.error('[usePlanDialogApproval] Failed to clear waiting state:', err)
         })
@@ -163,23 +197,6 @@ export function usePlanDialogApproval({
         : defaultText
 
       setExecutionMode(activeSessionId, mode)
-      console.log('[usePlanDialogApproval] Broadcasting executionMode=' + mode + ' for session', activeSessionId)
-      invoke('broadcast_session_setting', {
-        sessionId: activeSessionId,
-        key: 'executionMode',
-        value: mode,
-      }).then(() => {
-        console.log('[usePlanDialogApproval] Broadcast executionMode=' + mode + ' succeeded')
-      }).catch(err => {
-        console.error('[usePlanDialogApproval] Broadcast executionMode=' + mode + ' failed:', err)
-      })
-      invoke('broadcast_session_setting', {
-        sessionId: activeSessionId,
-        key: 'waitingForInput',
-        value: 'false',
-      }).catch(err => {
-        console.error('[usePlanDialogApproval] Broadcast waitingForInput=false failed:', err)
-      })
 
       const modelOverride = mode === 'yolo' ? yoloModelRef.current : buildModelRef.current
       const backendOverride = mode === 'yolo' ? yoloBackendRef.current : buildBackendRef.current
@@ -208,7 +225,8 @@ export function usePlanDialogApproval({
             : undefined,
         mcpConfig: buildMcpConfigJson(
           mcpServersDataRef.current ?? [],
-          enabledMcpServersRef.current
+          enabledMcpServersRef.current,
+          (backendOverride as string) ?? selectedBackendRef.current
         ),
         queuedAt: Date.now(),
       }
@@ -232,6 +250,7 @@ export function usePlanDialogApproval({
       isCodexBackendRef,
       mcpServersDataRef,
       enabledMcpServersRef,
+      scrollToBottom,
     ]
   )
 

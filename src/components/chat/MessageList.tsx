@@ -46,6 +46,7 @@ interface MessageListProps {
   isFindingFixed: (sessionId: string, key: string) => boolean
   onCopyToInput?: (message: ChatMessage) => void
   hideApproveButtons?: boolean
+  completedDurationMs?: number | null
 }
 
 /**
@@ -82,6 +83,7 @@ export const MessageList = memo(function MessageList({
   isFindingFixed,
   onCopyToInput,
   hideApproveButtons,
+  completedDurationMs,
 }: MessageListProps) {
   // Pre-compute hasFollowUpMessage for all messages in O(n) instead of O(n²)
   const hasFollowUpMap = useMemo(() => {
@@ -104,8 +106,21 @@ export const MessageList = memo(function MessageList({
         const hasFollowUpMessage =
           message.role === 'assistant' && (hasFollowUpMap.get(index) ?? false)
 
+        // Show completed duration on the last assistant message (from store),
+        // or fall back to timestamp-based computation for persisted messages (after reload)
+        let durationMs: number | null = null
+        if (message.role === 'assistant' && index === messages.length - 1 && completedDurationMs) {
+          durationMs = completedDurationMs
+        } else if (message.role === 'assistant' && index > 0) {
+          const prevMessage = messages[index - 1]
+          if (prevMessage?.role === 'user') {
+            const deltaSecs = message.timestamp - prevMessage.timestamp
+            if (deltaSecs > 0 && deltaSecs < 3600) durationMs = deltaSecs * 1000
+          }
+        }
+
         return (
-          <div key={message.id} className="pb-4">
+          <div key={message.id}>
             <MessageItem
               message={message}
               messageIndex={index}
@@ -140,6 +155,7 @@ export const MessageList = memo(function MessageList({
               isFindingFixed={isFindingFixed}
               onCopyToInput={onCopyToInput}
               hideApproveButtons={hideApproveButtons}
+              durationMs={durationMs}
             />
           </div>
         )

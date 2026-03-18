@@ -154,6 +154,8 @@ export interface Session {
   session_naming_completed?: boolean
   /** Unix timestamp when session was archived (undefined = not archived) */
   archived_at?: number
+  /** Whether this session was archived by the base close operation (vs user action) */
+  archived_by_base_close?: boolean
 
   // ========================================================================
   // Session-specific UI state (moved from ui-state.json)
@@ -345,6 +347,7 @@ export interface CancelledEvent {
   session_id: string
   worktree_id: string // Kept for backward compatibility
   undo_send: boolean // True if user message should be restored to input (instant cancellation)
+  emitted_at_ms: number
 }
 
 /**

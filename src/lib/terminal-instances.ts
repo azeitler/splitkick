@@ -76,13 +76,27 @@ export function getOrCreateTerminal(
     allowProposedApi: true,
   })
 
-  // Let CMD combos pass through to the app's global shortcut handler
-  // so CMD+T, CMD+W, CMD+1-9, etc. work while terminal is focused.
-  // Note: only intercept metaKey (CMD on macOS), NOT ctrlKey —
-  // Ctrl+C/D/Z/L etc. must reach the PTY for terminal signal handling.
+  // Block most app shortcuts when terminal is focused. Only let specific CMD
+  // combos bubble to the global handler for terminal-specific actions.
+  // Ctrl+C/D/Z/L etc. always reach the PTY for terminal signal handling.
   terminal.attachCustomKeyEventHandler(event => {
     if (event.metaKey) {
-      return false
+      const code = event.code
+      // CMD+` → toggle terminal panel
+      if (code === 'Backquote') return false
+      // CMD+T → new terminal tab
+      if (!event.shiftKey && !event.altKey && code === 'KeyT') return false
+      // CMD+W → close terminal tab
+      if (!event.shiftKey && !event.altKey && code === 'KeyW') return false
+      // CMD+1..9 → switch terminal tab
+      if (!event.shiftKey && !event.altKey && /^Digit[1-9]$/.test(code)) {
+        return false
+      }
+      // CMD+Alt+Backspace → cancel prompt
+      if (event.altKey && (code === 'Backspace' || code === 'Delete'))
+        return false
+      // All other CMD shortcuts: xterm consumes them (prevents app actions)
+      return true
     }
     return true
   })
@@ -218,7 +232,13 @@ export async function attachToContainer(
   // Fit terminal to container and start/reconnect PTY
   requestAnimationFrame(async () => {
     fitAddon.fit()
-    const { cols, rows } = terminal
+    // Enforce minimum dimensions — degenerate sizes (e.g. rows=0 during dialog
+    // animation) cause portable_pty to crash with an internal assertion failure.
+    const rawCols = terminal.cols
+    const rawRows = terminal.rows
+    let cols = rawCols < 2 ? 80 : rawCols
+    let rows = rawRows < 2 ? 24 : rawRows
+    console.log(`[terminal-instances] attachToContainer ${terminalId}: fit=${rawCols}x${rawRows} → used=${cols}x${rows}, initialized=${initialized}, container=${container.clientWidth}x${container.clientHeight}`)
 
     if (!initialized) {
       // First time - check if PTY already exists (reconnecting after app restart)

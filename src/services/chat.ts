@@ -313,13 +313,17 @@ export function useSession(
       }
 
       try {
-        logger.debug('Loading session', { sessionId })
+        logger.debug('[useSession] fetching from disk', { sessionId })
         const session = await invoke<Session>('get_session', {
           worktreeId,
           worktreePath,
           sessionId,
         })
-        logger.info('Session loaded', { messageCount: session.messages.length })
+        logger.info('[useSession] loaded', {
+          sessionId,
+          messageCount: session.messages.length,
+          backend: session.backend,
+        })
 
         // Preserve optimistic messages from sendMessage.onMutate that the
         // backend hasn't persisted yet (race: refetchOnMount fires before
@@ -331,12 +335,17 @@ export function useSession(
           cached &&
           cached.messages.length > session.messages.length
         ) {
+          logger.warn('[useSession] preserving cached messages over fresh fetch', {
+            sessionId,
+            cachedCount: cached.messages.length,
+            diskCount: session.messages.length,
+          })
           return { ...session, messages: cached.messages }
         }
 
         return session
       } catch (error) {
-        logger.warn('Failed to load session', { error, sessionId })
+        logger.warn('[useSession] FAILED to load session', { error, sessionId })
         return null
       }
     },
@@ -937,12 +946,12 @@ export function useCloseSessionOrWorktreeKeybinding(
       })
     }
 
-    // Last session: navigate to canvas instead of deleting the worktree
+    // Last session: navigate to project view instead of deleting the worktree
     if (sessionCount <= 1) {
-      logger.debug('Last session closed, navigating to canvas', {
+      logger.debug('Last session closed, navigating to project view', {
         worktreeId: activeWorktreeId,
       })
-      useChatStore.getState().setViewingCanvasTab(activeWorktreeId, true)
+      useChatStore.getState().clearActiveWorktree()
     }
   }, [
     archiveSession,
@@ -1244,6 +1253,10 @@ export function useSendMessage() {
         thinking_level: thinkingLevel,
       }
 
+      // Batch the optimistic user message AND sending state together so React
+      // renders both in a single pass (no two-phase scroll: message then placeholder).
+      useChatStore.getState().addSendingSession(sessionId)
+
       queryClient.setQueryData<Session>(
         chatQueryKeys.session(sessionId),
         old => {
@@ -1404,7 +1417,29 @@ export function useSendMessage() {
         return
       }
 
-      // Real errors — rollback to previous state
+      // Check if CLI produced streaming content before the error.
+      // If so, the CLI likely ran — don't destroy the conversation by
+      // rolling back to pre-send state. Instead, refetch from disk (#209).
+      const hasStreamedContent = !!useChatStore.getState().streamingContents[sessionId]
+      if (hasStreamedContent) {
+        logger.warn('Error after CLI produced content, refetching instead of rollback', {
+          sessionId,
+          error: errorMessage,
+        })
+        setError(sessionId, errorMessage || 'Unknown error occurred')
+        queryClient.invalidateQueries({
+          queryKey: chatQueryKeys.session(sessionId),
+        })
+        queryClient.invalidateQueries({
+          queryKey: chatQueryKeys.sessions(worktreeId),
+        })
+        toast.error('An error occurred, but your conversation was preserved.', {
+          description: errorMessage,
+        })
+        return
+      }
+
+      // Real errors with no streamed content — rollback to previous state
       setError(sessionId, errorMessage || 'Unknown error occurred')
 
       if (context?.previous) {

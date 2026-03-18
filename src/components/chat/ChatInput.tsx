@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { invoke } from '@/lib/transport'
 import { generateId } from '@/lib/uuid'
 import { toast } from 'sonner'
@@ -65,6 +66,8 @@ export const ChatInput = memo(function ChatInput({
   formRef,
   inputRef,
 }: ChatInputProps) {
+  const isMobile = useIsMobile()
+
   // PERFORMANCE: Use uncontrolled input pattern - track value in ref, not state
   // This avoids React re-renders on every keystroke
   const valueRef = useRef<string>('')
@@ -422,8 +425,8 @@ export const ChatInput = memo(function ChatInput({
         return
       }
 
-      // Enter without shift sends the message
-      if (e.key === 'Enter' && !e.shiftKey) {
+      // Enter without shift sends the message (on mobile, Enter adds a newline instead)
+      if (e.key === 'Enter' && !e.shiftKey && !isMobile) {
         e.preventDefault()
         // Cancel any pending debounced save
         clearTimeout(debouncedSaveRef.current)
@@ -451,6 +454,7 @@ export const ChatInput = memo(function ChatInput({
       onSubmit,
       canSwitchBackendWithTab,
       onSwitchBackendWithTab,
+      isMobile,
     ]
   )
 
@@ -952,7 +956,7 @@ export const ChatInput = memo(function ChatInput({
         disabled={false}
         className="custom-scrollbar min-h-[40px] max-h-[240px] w-full resize-none overflow-y-auto border-0 bg-transparent dark:bg-transparent p-0 font-mono text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
         rows={1}
-        autoFocus
+        autoFocus={!isMobile}
       />
       {showHint && (
         <span className="absolute top-0 right-0 hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground opacity-40">
@@ -983,6 +987,7 @@ export const ChatInput = memo(function ChatInput({
         anchorPosition={slashAnchor}
         containerRef={formRef}
         isAtPromptStart={isSlashAtPromptStart}
+        worktreePath={activeWorktreePath}
         handleRef={slashPopoverHandleRef}
       />
     </div>

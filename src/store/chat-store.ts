@@ -71,9 +71,6 @@ interface ChatUIState {
   // Whether the review sidebar is visible (global toggle)
   reviewSidebarVisible: boolean
 
-  // Track if user is viewing canvas tab (session overview grid) per worktree
-  viewingCanvasTab: Record<string, boolean>
-
   // Fixed AI review findings per session (sessionId → fixed finding keys)
   fixedReviewFindings: Record<string, Set<string>>
 
@@ -86,6 +83,9 @@ interface ChatUIState {
   // Timestamp of last addSendingSession call per session — used to protect new sends
   // from stale completion events arriving from a previous cancelled run
   sendStartedAt: Record<string, number>
+
+  // Duration (ms) of the last completed run per session — set by completeSession
+  completedDurations: Record<string, number>
 
   // Session IDs initiated by the user (e.g. Clear Context & YOLO) — auto-mark as opened on completion
   userInitiatedSessionIds: Record<string, true>
@@ -235,12 +235,9 @@ interface ChatUIState {
   // User-assigned labels per session (e.g. "Needs testing")
   sessionLabels: Record<string, LabelData>
 
-  // Canvas-selected session per worktree (for magic menu targeting)
-  canvasSelectedSessionIds: Record<string, string | null>
-
   // Pending magic command to execute when ChatWindow mounts (from canvas navigation)
-  pendingMagicCommand: { command: string } | null
-  setPendingMagicCommand: (cmd: { command: string } | null) => void
+  pendingMagicCommand: { command: string; prompt?: string } | null
+  setPendingMagicCommand: (cmd: { command: string; prompt?: string } | null) => void
 
   // Actions - Session management
   setActiveSession: (
@@ -255,10 +252,6 @@ interface ChatUIState {
   clearReviewResults: (sessionId: string) => void
   setReviewSidebarVisible: (visible: boolean) => void
   toggleReviewSidebar: () => void
-
-  // Actions - Canvas tab management
-  setViewingCanvasTab: (worktreeId: string, viewing: boolean) => void
-  isViewingCanvasTab: (worktreeId: string) => boolean
 
   // Actions - AI Review fixed findings (session-scoped)
   markReviewFindingFixed: (sessionId: string, findingKey: string) => void
@@ -293,7 +286,7 @@ interface ChatUIState {
   getWorktreePath: (worktreeId: string) => string | undefined
 
   // Actions - Session-based sending state
-  addSendingSession: (sessionId: string) => void
+  addSendingSession: (sessionId: string, startTime?: number) => void
   removeSendingSession: (sessionId: string) => void
   isSending: (sessionId: string) => boolean
 
@@ -511,6 +504,8 @@ interface ChatUIState {
   // Actions - Batch state transitions (single set() to avoid render cascades)
   /** Atomically clear all streaming state and mark session as reviewing */
   completeSession: (sessionId: string) => void
+  /** Atomically clear all streaming state for a user cancellation */
+  cancelSession: (sessionId: string) => void
   /** Atomically clear streaming state and mark session as waiting for input */
   pauseSession: (sessionId: string) => void
   /** Atomically clear streaming state after an error, mark as reviewing */
@@ -544,12 +539,6 @@ interface ChatUIState {
   getWorktreeLoadingOperation: (worktreeId: string) => string | null
 
   // Actions - Canvas-selected session (for magic menu targeting)
-  setCanvasSelectedSession: (
-    worktreeId: string,
-    sessionId: string | null
-  ) => void
-  getCanvasSelectedSession: (worktreeId: string) => string | null
-
   // Legacy actions (deprecated - for backward compatibility)
   /** @deprecated Use addSendingSession instead */
   addSendingWorktree: (worktreeId: string) => void
@@ -568,11 +557,11 @@ export const useChatStore = create<ChatUIState>()(
       activeSessionIds: {},
       reviewResults: {},
       reviewSidebarVisible: false,
-      viewingCanvasTab: {},
       fixedReviewFindings: {},
       worktreePaths: {},
       sendingSessionIds: {},
       sendStartedAt: {},
+      completedDurations: {},
       userInitiatedSessionIds: {},
       waitingForInputSessionIds: {},
       sessionWorktreeMap: {},
@@ -617,7 +606,6 @@ export const useChatStore = create<ChatUIState>()(
       sessionDigests: {},
       worktreeLoadingOperations: {},
       sessionLabels: {},
-      canvasSelectedSessionIds: {},
       pendingMagicCommand: null,
 
       // Session management
@@ -688,22 +676,6 @@ export const useChatStore = create<ChatUIState>()(
           undefined,
           'toggleReviewSidebar'
         ),
-
-      // Canvas tab management
-      setViewingCanvasTab: (worktreeId, viewing) =>
-        set(
-          state => ({
-            viewingCanvasTab: {
-              ...state.viewingCanvasTab,
-              [worktreeId]: viewing,
-            },
-          }),
-          undefined,
-          'setViewingCanvasTab'
-        ),
-
-      isViewingCanvasTab: worktreeId =>
-        get().viewingCanvasTab[worktreeId] ?? true, // Default to canvas view
 
       // AI Review fixed findings (session-scoped)
       markReviewFindingFixed: (sessionId, findingKey) =>
@@ -899,18 +871,20 @@ export const useChatStore = create<ChatUIState>()(
       getWorktreePath: worktreeId => get().worktreePaths[worktreeId],
 
       // Sending state (session-based)
-      addSendingSession: sessionId =>
+      addSendingSession: (sessionId, startTime) =>
         set(
           state => {
             // Guard: skip no-op updates to avoid re-renders on every streaming chunk
             if (state.sendingSessionIds[sessionId]) return state
-            const now = Date.now()
+            const now = startTime ?? Date.now()
+            const { [sessionId]: _, ...restDurations } = state.completedDurations
             return {
               sendingSessionIds: {
                 ...state.sendingSessionIds,
                 [sessionId]: true,
               },
               sendStartedAt: { ...state.sendStartedAt, [sessionId]: now },
+              completedDurations: restDurations,
             }
           },
           undefined,
@@ -1173,7 +1147,7 @@ export const useChatStore = create<ChatUIState>()(
               const newBlocks = [...blocks]
               newBlocks[newBlocks.length - 1] = {
                 type: 'thinking',
-                thinking: lastBlock.thinking + '\n\n---\n\n' + thinking,
+                thinking: lastBlock.thinking + thinking,
               }
               return {
                 streamingContentBlocks: {
@@ -2140,6 +2114,10 @@ export const useChatStore = create<ChatUIState>()(
               streamingPlanApprovals,
               executingModes,
               sendStartedAt: sendStartedAtRest,
+              completedDurations:
+                sendStarted > 0
+                  ? { ...state.completedDurations, [sessionId]: elapsed }
+                  : state.completedDurations,
               reviewingSessions: {
                 ...state.reviewingSessions,
                 [sessionId]: true,
@@ -2148,6 +2126,56 @@ export const useChatStore = create<ChatUIState>()(
           },
           undefined,
           'completeSession'
+        ),
+
+      cancelSession: sessionId =>
+        set(
+          state => {
+            const sendStarted = state.sendStartedAt[sessionId] ?? 0
+            const elapsed = Date.now() - sendStarted
+            const { [sessionId]: _sc, ...streamingContents } =
+              state.streamingContents
+            const { [sessionId]: _sb, ...streamingContentBlocks } =
+              state.streamingContentBlocks
+            const { [sessionId]: _tc, ...activeToolCalls } =
+              state.activeToolCalls
+            const { [sessionId]: _ss, ...sendingSessionIds } =
+              state.sendingSessionIds
+            const { [sessionId]: _wi, ...waitingForInputSessionIds } =
+              state.waitingForInputSessionIds
+            const { [sessionId]: _sp, ...streamingPlanApprovals } =
+              state.streamingPlanApprovals
+            const { [sessionId]: _em, ...executingModes } =
+              state.executingModes
+            const { [sessionId]: _pd, ...pendingPermissionDenials } =
+              state.pendingPermissionDenials
+            const { [sessionId]: _dc, ...deniedMessageContext } =
+              state.deniedMessageContext
+            const { [sessionId]: _sa, ...sendStartedAtRest } =
+              state.sendStartedAt
+            return {
+              streamingContents,
+              streamingContentBlocks,
+              activeToolCalls,
+              sendingSessionIds,
+              waitingForInputSessionIds,
+              streamingPlanApprovals,
+              executingModes,
+              pendingPermissionDenials,
+              deniedMessageContext,
+              sendStartedAt: sendStartedAtRest,
+              completedDurations:
+                sendStarted > 0
+                  ? { ...state.completedDurations, [sessionId]: elapsed }
+                  : state.completedDurations,
+              reviewingSessions: {
+                ...state.reviewingSessions,
+                [sessionId]: true,
+              },
+            }
+          },
+          undefined,
+          'cancelSession'
         ),
 
       pauseSession: sessionId =>
@@ -2400,30 +2428,6 @@ export const useChatStore = create<ChatUIState>()(
 
       getWorktreeLoadingOperation: worktreeId =>
         get().worktreeLoadingOperations[worktreeId] ?? null,
-
-      // Canvas-selected session (for magic menu targeting)
-      setCanvasSelectedSession: (worktreeId, sessionId) =>
-        set(
-          state => {
-            if (sessionId) {
-              return {
-                canvasSelectedSessionIds: {
-                  ...state.canvasSelectedSessionIds,
-                  [worktreeId]: sessionId,
-                },
-              }
-            } else {
-              const { [worktreeId]: _, ...rest } =
-                state.canvasSelectedSessionIds
-              return { canvasSelectedSessionIds: rest }
-            }
-          },
-          undefined,
-          'setCanvasSelectedSession'
-        ),
-
-      getCanvasSelectedSession: worktreeId =>
-        get().canvasSelectedSessionIds[worktreeId] ?? null,
 
       // Pending magic command (set when navigating from canvas, consumed by ChatWindow on mount)
       setPendingMagicCommand: cmd =>
