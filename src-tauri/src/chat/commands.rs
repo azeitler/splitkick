@@ -3580,7 +3580,7 @@ pub async fn write_file_content(path: String, content: String) -> Result<(), Str
 
 /// Open a file in the user's preferred editor
 ///
-/// Uses the editor preference (zed, vscode, cursor, xcode) to open files.
+/// Uses the editor preference (zed, vscode, cursor, xcode, intellij) to open files.
 #[tauri::command]
 pub async fn open_file_in_default_app(path: String, editor: Option<String>) -> Result<(), String> {
     let editor_app = editor.unwrap_or_else(|| "zed".to_string());
@@ -3591,6 +3591,7 @@ pub async fn open_file_in_default_app(path: String, editor: Option<String>) -> R
         "cursor" => "Cursor ('cursor')",
         "zed" => "Zed ('zed')",
         "xcode" => "Xcode ('xed')",
+        "intellij" => "IntelliJ IDEA ('idea')",
         _ => editor_app.as_str(),
     };
 
@@ -3616,6 +3617,15 @@ pub async fn open_file_in_default_app(path: String, editor: Option<String>) -> R
                 Err(e) => Err(e),
             },
             "xcode" => std::process::Command::new("xed").arg(&path).spawn(),
+            "intellij" => match std::process::Command::new("idea").arg(&path).spawn() {
+                Ok(child) => Ok(child),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    std::process::Command::new("open")
+                        .args(["-a", "IntelliJ IDEA", &path])
+                        .spawn()
+                }
+                Err(e) => Err(e),
+            },
             _ => match std::process::Command::new("code").arg(&path).spawn() {
                 Ok(child) => Ok(child),
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -3650,6 +3660,10 @@ pub async fn open_file_in_default_app(path: String, editor: Option<String>) -> R
                 .args(["/c", "cursor", &path])
                 .creation_flags(CREATE_NO_WINDOW)
                 .spawn(),
+            "intellij" => std::process::Command::new("cmd")
+                .args(["/c", "idea", &path])
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn(),
             "xcode" => return Err("Xcode is only available on macOS".to_string()),
             _ => std::process::Command::new("cmd")
                 .args(["/c", "code", &path])
@@ -3671,6 +3685,7 @@ pub async fn open_file_in_default_app(path: String, editor: Option<String>) -> R
         let result = match editor_app.as_str() {
             "zed" => std::process::Command::new("zed").arg(&path).spawn(),
             "cursor" => std::process::Command::new("cursor").arg(&path).spawn(),
+            "intellij" => std::process::Command::new("idea").arg(&path).spawn(),
             "xcode" => return Err("Xcode is only available on macOS".to_string()),
             _ => std::process::Command::new("code").arg(&path).spawn(),
         };

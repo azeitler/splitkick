@@ -3506,6 +3506,18 @@ pub async fn open_worktree_in_editor(
             "xcode" => std::process::Command::new("xed")
                 .arg(&worktree_path)
                 .spawn(),
+            "intellij" => match std::process::Command::new("idea")
+                .arg(&worktree_path)
+                .spawn()
+            {
+                Ok(child) => Ok(child),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    std::process::Command::new("open")
+                        .args(["-a", "IntelliJ IDEA", &worktree_path])
+                        .spawn()
+                }
+                Err(e) => Err(e),
+            },
             _ => match std::process::Command::new("code")
                 .arg(&worktree_path)
                 .spawn()
@@ -3546,6 +3558,10 @@ pub async fn open_worktree_in_editor(
                 .args(["/c", "cursor", &worktree_path])
                 .creation_flags(CREATE_NO_WINDOW)
                 .spawn(),
+            "intellij" => std::process::Command::new("cmd")
+                .args(["/c", "idea", &worktree_path])
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn(),
             "xcode" => {
                 return Err("Xcode is only available on macOS".to_string());
             }
@@ -3575,6 +3591,9 @@ pub async fn open_worktree_in_editor(
                 .arg(&worktree_path)
                 .spawn(),
             "cursor" => std::process::Command::new("cursor")
+                .arg(&worktree_path)
+                .spawn(),
+            "intellij" => std::process::Command::new("idea")
                 .arg(&worktree_path)
                 .spawn(),
             "xcode" => {

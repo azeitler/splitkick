@@ -1218,7 +1218,7 @@ const allTerminalOptions: {
 export const terminalOptions: { value: TerminalApp; label: string }[] =
   allTerminalOptions.filter(opt => opt.platforms.includes(getCurrentPlatform()))
 
-export type EditorApp = 'zed' | 'vscode' | 'cursor' | 'xcode'
+export type EditorApp = 'zed' | 'vscode' | 'cursor' | 'xcode' | 'intellij'
 
 const allEditorOptions: {
   value: EditorApp
@@ -1237,6 +1237,11 @@ const allEditorOptions: {
     platforms: ['mac', 'windows', 'linux'],
   },
   { value: 'xcode', label: 'Xcode', platforms: ['mac'] },
+  {
+    value: 'intellij',
+    label: 'IntelliJ IDEA',
+    platforms: ['mac', 'windows', 'linux'],
+  },
 ]
 
 export const editorOptions: { value: EditorApp; label: string }[] =

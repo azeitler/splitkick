@@ -85,7 +85,7 @@ pub struct AppPreferences {
     #[serde(default = "default_terminal")]
     pub terminal: String, // Terminal app: terminal, warp, ghostty, iterm2, powershell, windows-terminal
     #[serde(default = "default_editor")]
-    pub editor: String, // Editor app: zed, vscode, cursor, xcode
+    pub editor: String, // Editor app: zed, vscode, cursor, xcode, intellij
     #[serde(default = "default_open_in")]
     pub open_in: String, // Default Open In action: editor, terminal, finder, github
     #[serde(default = "default_auto_branch_naming")]
