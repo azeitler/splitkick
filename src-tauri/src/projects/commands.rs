@@ -2489,6 +2489,20 @@ pub async fn delete_worktree(app: AppHandle, worktree_id: String) -> Result<(), 
         // Remove the git worktree (this can be slow for large repos)
         if let Err(e) = git::remove_worktree(&project_path, &worktree_path) {
             log::error!("Background: Failed to remove worktree: {e}");
+
+            // Re-add worktree to storage since deletion failed
+            match load_projects_data(&app_clone) {
+                Ok(mut data) => {
+                    data.add_worktree(worktree_for_restore);
+                    if let Err(save_err) = save_projects_data(&app_clone, &data) {
+                        log::error!("Failed to restore worktree in storage: {save_err}");
+                    }
+                }
+                Err(load_err) => {
+                    log::error!("Failed to load projects data for restore: {load_err}");
+                }
+            }
+
             let error_event = WorktreeDeleteErrorEvent {
                 id: worktree_id_clone,
                 project_id: project_id_clone,
