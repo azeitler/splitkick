@@ -41,6 +41,7 @@ interface ModalOption {
   label: string
   icon: typeof Code
   key?: string
+  metaKey?: boolean
   url?: string
 }
 
@@ -146,12 +147,10 @@ export function OpenInModal() {
     worktree?.pr_number,
   ])
 
-  const portsCount = ports?.length ?? 0
-
-  // Context options (loaded PRs + issues, numbered after ports)
+  // Context options (loaded PRs + issues, numbered 1-9)
   const contextOptions = useMemo(() => {
     const items: ModalOption[] = []
-    let keyIndex = portsCount + 1
+    let keyIndex = 1
 
     if (loadedPRs) {
       for (const pr of loadedPRs) {
@@ -180,7 +179,7 @@ export function OpenInModal() {
     }
 
     return items
-  }, [loadedPRs, loadedIssues, portsCount])
+  }, [loadedPRs, loadedIssues])
 
   useEffect(() => {
     if (!openInModalOpen) {
@@ -206,6 +205,7 @@ export function OpenInModal() {
       label: `${p.label} (:${p.port})`,
       icon: Globe,
       key: i < 9 ? String(i + 1) : undefined,
+      metaKey: true,
       url: `http://localhost:${p.port}`,
     }))
   }, [ports])
@@ -314,10 +314,14 @@ export function OpenInModal() {
     (e: React.KeyboardEvent) => {
       const key = e.key.toLowerCase()
       const allIds = allOptions.map(opt => opt.id)
+      const hasMeta = e.metaKey || e.ctrlKey
 
-      // Quick select with shortcut keys
+      // Quick select with shortcut keys (metaKey options require Cmd/Ctrl)
       const matchedOption = allOptions.find(
-        opt => opt.key && opt.key.toLowerCase() === key
+        opt =>
+          opt.key &&
+          opt.key.toLowerCase() === key &&
+          (opt.metaKey ? hasMeta : !hasMeta)
       )
       if (matchedOption) {
         e.preventDefault()
@@ -370,7 +374,7 @@ export function OpenInModal() {
         </div>
         {option.key && (
           <kbd className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded ml-2 shrink-0">
-            {option.key}
+            {option.metaKey ? `⌘${option.key}` : option.key}
           </kbd>
         )}
       </button>
