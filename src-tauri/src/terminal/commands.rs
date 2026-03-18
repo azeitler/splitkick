@@ -43,10 +43,21 @@ pub async fn start_terminal(
     )
 }
 
-/// Get the run script from jean.json for a worktree
+/// Get the run script(s) from jean.json for a worktree
 #[tauri::command]
-pub async fn get_run_script(worktree_path: String) -> Option<String> {
-    read_jean_config(&worktree_path).and_then(|config| config.scripts.run)
+pub async fn get_run_scripts(worktree_path: String) -> Vec<String> {
+    read_jean_config(&worktree_path)
+        .and_then(|config| config.scripts.run)
+        .map(|r| r.into_vec())
+        .unwrap_or_default()
+}
+
+/// Get configured ports from jean.json for a worktree
+#[tauri::command]
+pub async fn get_ports(worktree_path: String) -> Vec<crate::projects::types::PortEntry> {
+    read_jean_config(&worktree_path)
+        .and_then(|config| config.ports)
+        .unwrap_or_default()
 }
 
 /// Write data to a terminal (stdin)
