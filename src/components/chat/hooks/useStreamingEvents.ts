@@ -1011,6 +1011,7 @@ export default function useStreamingEvents({
       // Store error for inline display and restore input
       const {
         lastSentMessages,
+        streamingContents,
         setInputDraft,
         clearLastSentMessage,
         setError,
@@ -1095,9 +1096,14 @@ export default function useStreamingEvents({
       // Set error state for inline display
       setError(session_id, error)
 
+      // Check if CLI produced streaming content BEFORE clearing state.
+      // If content was streamed, the CLI ran — don't remove the user message
+      // or rollback, as the conversation is persisted in JSONL on disk (#209).
+      const hasStreamedContent = !!streamingContents[session_id]
+
       // Restore the input that failed so user can retry
       const lastMessage = lastSentMessages[session_id]
-      if (lastMessage) {
+      if (lastMessage && !hasStreamedContent) {
         setInputDraft(session_id, lastMessage)
         clearLastSentMessage(session_id)
 
@@ -1124,6 +1130,9 @@ export default function useStreamingEvents({
           }
         )
 
+      } else if (lastMessage) {
+        // Had streaming content — don't restore to input, just clear tracking
+        clearLastSentMessage(session_id)
       }
 
       // Restore attachments that were cleared on send
