@@ -7,6 +7,7 @@ import {
   Github,
   GitPullRequest,
   CircleDot,
+  Globe,
 } from 'lucide-react'
 import {
   Dialog,
@@ -22,9 +23,10 @@ import {
   useOpenWorktreeInFinder,
   useOpenWorktreeInTerminal,
   useOpenWorktreeInEditor,
-  GitHubRemote,
+  type GitHubRemote,
   useProjects,
   useWorktree,
+  usePorts,
 } from '@/services/projects'
 import { useLoadedIssueContexts, useLoadedPRContexts } from '@/services/github'
 import { usePreferences } from '@/services/preferences'
@@ -79,6 +81,21 @@ export function OpenInModal() {
 
   const isNative = isNativeApp()
 
+  const targetPath = useMemo(() => {
+    if (worktree?.path) return worktree.path
+    if (selectedWorktreeId) {
+      const path = useChatStore.getState().getWorktreePath(selectedWorktreeId)
+      if (path) return path
+    }
+    if (selectedProjectId && projects) {
+      const project = projects.find(p => p.id === selectedProjectId)
+      if (project) return project.path
+    }
+    return null
+  }, [worktree?.path, selectedWorktreeId, selectedProjectId, projects])
+
+  const { data: ports } = usePorts(targetPath)
+
   // Base options (Editor, Terminal, Finder, GitHub)
   const baseOptions = useMemo(() => {
     const allOptions: ModalOption[] = [
@@ -129,10 +146,12 @@ export function OpenInModal() {
     worktree?.pr_number,
   ])
 
-  // Context options (loaded PRs + issues, numbered 1-9)
+  const portsCount = ports?.length ?? 0
+
+  // Context options (loaded PRs + issues, numbered after ports)
   const contextOptions = useMemo(() => {
     const items: ModalOption[] = []
-    let keyIndex = 1
+    let keyIndex = portsCount + 1
 
     if (loadedPRs) {
       for (const pr of loadedPRs) {
@@ -161,14 +180,7 @@ export function OpenInModal() {
     }
 
     return items
-  }, [loadedPRs, loadedIssues])
-
-  const allOptions = useMemo(
-    () => [...baseOptions, ...contextOptions],
-    [baseOptions, contextOptions]
-  )
-
-  const useWideLayout = contextOptions.length > 4
+  }, [loadedPRs, loadedIssues, portsCount])
 
   useEffect(() => {
     if (!openInModalOpen) {
@@ -187,21 +199,34 @@ export function OpenInModal() {
     [setOpenInModalOpen, isNative]
   )
 
-  const targetPath = useMemo(() => {
-    if (worktree?.path) return worktree.path
-    if (selectedWorktreeId) {
-      const path = useChatStore.getState().getWorktreePath(selectedWorktreeId)
-      if (path) return path
-    }
-    if (selectedProjectId && projects) {
-      const project = projects.find(p => p.id === selectedProjectId)
-      if (project) return project.path
-    }
-    return null
-  }, [worktree?.path, selectedWorktreeId, selectedProjectId, projects])
+  const portOptions: ModalOption[] = useMemo(() => {
+    if (!ports || ports.length === 0) return []
+    return ports.map((p, i) => ({
+      id: `port-${p.port}`,
+      label: `${p.label} (:${p.port})`,
+      icon: Globe,
+      key: i < 9 ? String(i + 1) : undefined,
+      url: `http://localhost:${p.port}`,
+    }))
+  }, [ports])
+
+  const allOptions = useMemo(
+    () => [...baseOptions, ...portOptions, ...contextOptions],
+    [baseOptions, portOptions, contextOptions]
+  )
+
+  const useWideLayout = portOptions.length + contextOptions.length > 4
 
   const executeAction = useCallback(
     (optionId: string) => {
+      // Handle port options
+      const portOpt = portOptions.find(o => o.id === optionId)
+      if (portOpt?.url) {
+        openExternal(portOpt.url)
+        setOpenInModalOpen(false)
+        return
+      }
+
       // Handle context options (PR/issue URLs)
       const contextOpt = contextOptions.find(o => o.id === optionId)
       if (contextOpt?.url) {
@@ -271,6 +296,7 @@ export function OpenInModal() {
       setOpenInModalOpen(false)
     },
     [
+      portOptions,
       contextOptions,
       targetPath,
       openInEditor,
@@ -371,6 +397,15 @@ export function OpenInModal() {
         </DialogHeader>
 
         <div className="pb-2">{baseOptions.map(renderOption)}</div>
+
+        {portOptions.length > 0 && (
+          <div className="border-t pb-2">
+            <div className="px-4 pt-2 pb-1">
+              <span className="text-xs text-muted-foreground">Ports</span>
+            </div>
+            {portOptions.map(renderOption)}
+          </div>
+        )}
 
         {contextOptions.length > 0 && (
           <div className="border-t pb-2">

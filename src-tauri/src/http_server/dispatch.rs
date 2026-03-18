@@ -1435,9 +1435,14 @@ pub async fn dispatch_command(
             // NATIVE ONLY: No terminals in browser mode
             to_value(false)
         }
-        "get_run_script" => {
+        "get_run_scripts" => {
             // NATIVE ONLY: Terminals don't work in browser mode
-            Ok(Value::Null)
+            Ok(Value::Array(vec![]))
+        }
+        "get_ports" => {
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let result = crate::terminal::get_ports(worktree_path).await;
+            to_value(result)
         }
 
         // =====================================================================

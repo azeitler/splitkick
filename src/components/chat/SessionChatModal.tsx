@@ -9,6 +9,7 @@ import {
 } from 'react'
 import {
   Archive,
+  ChevronDown,
   Code,
   Eye,
   EyeOff,
@@ -49,7 +50,7 @@ import {
   useRenameSession,
 } from '@/services/chat'
 import { usePreferences } from '@/services/preferences'
-import { useWorktree, useProjects, useRunScript } from '@/services/projects'
+import { useWorktree, useProjects, useRunScripts } from '@/services/projects'
 import {
   useGitStatus,
   gitPush,
@@ -71,6 +72,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
@@ -227,7 +231,7 @@ export function SessionChatModal({
     [sessionsData?.sessions]
   )
   const { data: preferences } = usePreferences()
-  const { data: runScript } = useRunScript(worktreePath)
+  const { data: runScripts = [] } = useRunScripts(worktreePath)
   const createSession = useCreateSession()
 
   // Horizontal scroll on session tabs
@@ -650,15 +654,24 @@ export function SessionChatModal({
   }, [])
 
   const handleRun = useCallback(() => {
-    if (!runScript) {
+    const first = runScripts[0]
+    if (!first) {
       notify('No run script configured in jean.json', undefined, {
         type: 'error',
       })
       return
     }
-    useTerminalStore.getState().startRun(worktreeId, runScript)
+    useTerminalStore.getState().startRun(worktreeId, first)
     useTerminalStore.getState().setModalTerminalOpen(worktreeId, true)
-  }, [worktreeId, runScript])
+  }, [worktreeId, runScripts])
+
+  const handleRunCommand = useCallback(
+    (cmd: string) => {
+      useTerminalStore.getState().startRun(worktreeId, cmd)
+      useTerminalStore.getState().setModalTerminalOpen(worktreeId, true)
+    },
+    [worktreeId]
+  )
 
   // Close on Escape key
   useEffect(() => {
@@ -693,7 +706,7 @@ export function SessionChatModal({
         key={worktreeId}
         className="absolute inset-0 z-10 flex flex-col overflow-hidden bg-background pb-2 pt-[3px]"
       >
-        <div className="flex shrink-0 flex-col gap-2 border-b px-4 pb-2 sm:text-left">
+        <div className="flex shrink-0 flex-col gap-2 border-b px-4 py-2 sm:text-left">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               <h2 className="text-sm font-medium shrink-0">
@@ -775,7 +788,7 @@ export function SessionChatModal({
                     </TooltipTrigger>
                     <TooltipContent>Terminal</TooltipContent>
                   </Tooltip>
-                  {runScript && (
+                  {runScripts.length === 1 && (
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
@@ -789,6 +802,45 @@ export function SessionChatModal({
                       </TooltipTrigger>
                       <TooltipContent>Run</TooltipContent>
                     </Tooltip>
+                  )}
+                  {runScripts.length > 1 && (
+                    <div className="flex items-center">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 rounded-r-none px-2 text-xs"
+                            onClick={handleRun}
+                          >
+                            <Play className="h-3 w-3" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Run first command</TooltipContent>
+                      </Tooltip>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 rounded-l-none border-l border-border/50 px-1 text-xs"
+                          >
+                            <ChevronDown className="h-3 w-3" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {runScripts.map((cmd, i) => (
+                            <DropdownMenuItem
+                              key={i}
+                              onSelect={() => handleRunCommand(cmd)}
+                              className="font-mono text-xs"
+                            >
+                              {cmd}
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   )}
                 </div>
               )}
@@ -865,11 +917,30 @@ export function SessionChatModal({
                       <Terminal className="h-4 w-4" />
                       Terminal
                     </DropdownMenuItem>
-                    {runScript && (
+                    {runScripts.length === 1 && (
                       <DropdownMenuItem onSelect={handleRun}>
                         <Play className="h-4 w-4" />
                         Run
                       </DropdownMenuItem>
+                    )}
+                    {runScripts.length > 1 && (
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger>
+                          <Play className="h-4 w-4" />
+                          Run
+                        </DropdownMenuSubTrigger>
+                        <DropdownMenuSubContent>
+                          {runScripts.map((cmd, i) => (
+                            <DropdownMenuItem
+                              key={i}
+                              onSelect={() => handleRunCommand(cmd)}
+                              className="font-mono text-xs"
+                            >
+                              {cmd}
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>
                     )}
                     {currentResumeCommand && (
                       <DropdownMenuItem
