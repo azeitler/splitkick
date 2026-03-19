@@ -213,6 +213,7 @@ export function PreferencesDialog() {
   const [activePane, setActivePane] = useState<PreferencePane>('general')
   const [searchValue, setSearchValue] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
+  const [searchSelection, setSearchSelection] = useState('')
   const [pendingJump, setPendingJump] = useState<PreferenceSearchEntry | null>(
     null
   )
@@ -237,10 +238,19 @@ export function PreferencesDialog() {
     [searchResults]
   )
   const isSearching = searchValue.trim().length > 0
+  const effectiveSearchSelection =
+    searchOpen &&
+    isSearching &&
+    searchResults.some(result => result.id === searchSelection)
+      ? searchSelection
+      : searchOpen && isSearching
+        ? (searchResults[0]?.id ?? '')
+        : ''
 
   const resetSearch = useCallback((options?: { blurActive?: boolean }) => {
     setSearchValue('')
     setSearchOpen(false)
+    setSearchSelection('')
     if (options?.blurActive && document.activeElement instanceof HTMLElement) {
       document.activeElement.blur()
     }
@@ -473,6 +483,8 @@ export function PreferencesDialog() {
                     className="relative shrink-0"
                   >
                     <Command
+                      value={effectiveSearchSelection}
+                      onValueChange={setSearchSelection}
                       shouldFilter={false}
                       className="bg-transparent overflow-visible h-auto w-auto"
                     >
@@ -561,6 +573,8 @@ export function PreferencesDialog() {
                 className="relative md:hidden"
               >
                 <Command
+                  value={effectiveSearchSelection}
+                  onValueChange={setSearchSelection}
                   shouldFilter={false}
                   className="bg-transparent overflow-visible"
                 >

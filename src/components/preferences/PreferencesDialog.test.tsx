@@ -102,7 +102,7 @@ describe('PreferencesDialog', () => {
 
     const dialog = screen.getByRole('dialog')
     const desktopHeaderActions = dialog.querySelector<HTMLElement>(
-      'div[class~=\"ml-auto\"][class~=\"md:flex\"]'
+      'div[class~="ml-auto"][class~="md:flex"]'
     )
 
     if (!desktopHeaderActions) {
@@ -133,7 +133,7 @@ describe('PreferencesDialog', () => {
       const dialog = screen.getByRole('dialog')
       const mobileSearchInput =
         dialog.querySelector<HTMLInputElement>(
-          'div.md\\:hidden input[placeholder=\"Search settings...\"]'
+          'div.md\\:hidden input[placeholder="Search settings..."]'
         )
 
       if (!mobileSearchInput) {
@@ -151,5 +151,31 @@ describe('PreferencesDialog', () => {
       window.innerWidth = previousWidth
       window.dispatchEvent(new Event('resize'))
     }
+  })
+
+  it('highlights the first desktop search result after typing', async () => {
+    const user = userEvent.setup()
+
+    render(<PreferencesDialog />)
+
+    const dialog = screen.getByRole('dialog')
+    const desktopHeaderActions = dialog.querySelector<HTMLElement>(
+      'div[class~="ml-auto"][class~="md:flex"]'
+    )
+
+    if (!desktopHeaderActions) {
+      throw new Error('Expected desktop header actions to be rendered')
+    }
+
+    const desktopSearchInput =
+      within(desktopHeaderActions).getByPlaceholderText('Search settings...')
+    await user.type(desktopSearchInput, 'provider')
+
+    await waitFor(() => {
+      const searchItems =
+        desktopHeaderActions.querySelectorAll<HTMLElement>('[cmdk-item]')
+      expect(searchItems.length).toBeGreaterThan(0)
+      expect(searchItems[0]).toHaveAttribute('aria-selected', 'true')
+    })
   })
 })
