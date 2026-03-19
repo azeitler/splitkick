@@ -1557,7 +1557,9 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       // If worktreeId/worktreePath provided, open the modal for that worktree
       // (e.g. from UnreadBell navigating to a session on the project canvas)
       if (worktreeId && worktreePath) {
-        useChatStore.getState().setActiveSession(worktreeId, sessionId)
+        if (sessionId) {
+          useChatStore.getState().setActiveSession(worktreeId, sessionId)
+        }
         setSelectedWorktreeModal({ worktreeId, worktreePath })
         return
       }
@@ -1792,25 +1794,20 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
             <>
               {/* Desktop: inline search bar */}
               {!isMobile && (
-                <>
-                  <div className="flex justify-center">
-                    <div className="relative w-full max-w-md">
-                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        ref={searchInputRef}
-                        placeholder="Search worktrees and sessions..."
-                        value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
-                        aria-label="Search worktrees and sessions"
-                        name="worktree-search"
-                        className="pl-9 bg-transparent border-border/30"
-                      />
-                    </div>
+                <div className="flex justify-center">
+                  <div className="relative w-full max-w-md">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      ref={searchInputRef}
+                      placeholder="Search worktrees and sessions..."
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                      aria-label="Search worktrees and sessions"
+                      name="worktree-search"
+                      className="pl-9 bg-transparent border-border/30"
+                    />
                   </div>
-                  <div className="flex items-center gap-2 shrink-0 justify-end">
-                    <OpenInButton worktreePath={project.path} />
-                  </div>
-                </>
+                </div>
               )}
 
               {/* Mobile: full-width search overlay */}
@@ -1856,6 +1853,12 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                 </div>
               )}
             </>
+          )}
+          {/* OpenInButton always visible on desktop (grid column 3) */}
+          {!isMobile && (
+            <div className="flex items-center gap-2 shrink-0 justify-end col-start-3">
+              <OpenInButton worktreePath={project.path} />
+            </div>
           )}
         </div>
 

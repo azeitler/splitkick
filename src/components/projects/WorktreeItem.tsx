@@ -378,18 +378,20 @@ export function WorktreeItem({
     const targetSessionId = activeSessionId ?? activeSessions[0]?.id
     if (targetSessionId) {
       useChatStore.getState().setActiveSession(worktree.id, targetSessionId)
-      setTimeout(() => {
-        window.dispatchEvent(
-          new CustomEvent('open-session-modal', {
-            detail: {
-              sessionId: targetSessionId,
-              worktreeId: worktree.id,
-              worktreePath: worktree.path,
-            },
-          })
-        )
-      }, 50)
     }
+    // Always open modal — SessionChatModal fetches sessions independently
+    // and falls back to first available session when no activeSessionId is set
+    setTimeout(() => {
+      window.dispatchEvent(
+        new CustomEvent('open-session-modal', {
+          detail: {
+            sessionId: targetSessionId ?? '',
+            worktreeId: worktree.id,
+            worktreePath: worktree.path,
+          },
+        })
+      )
+    }, 50)
 
     // Close sidebar on mobile after navigation
     if (isMobile) {
