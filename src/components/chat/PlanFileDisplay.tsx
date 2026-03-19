@@ -42,11 +42,22 @@ export function PlanDisplay({
   defaultCollapsed = false,
 }: PlanDisplayProps) {
   const [isOpen, setIsOpen] = useState(!defaultCollapsed)
+  // Track whether collapse is programmatic (approval/follow-up) vs user-initiated click.
+  // Programmatic collapses skip the 150ms CSS animation to avoid scroll timing races.
+  const [skipAnimation, setSkipAnimation] = useState(defaultCollapsed)
 
   // Sync collapse when plan gets approved (defaultCollapsed transitions to true)
   useEffect(() => {
-    if (defaultCollapsed) setIsOpen(false)
+    if (defaultCollapsed) {
+      setSkipAnimation(true)
+      setIsOpen(false)
+    }
   }, [defaultCollapsed])
+
+  const handleOpenChange = (open: boolean) => {
+    setSkipAnimation(false) // user-initiated toggle keeps animation
+    setIsOpen(open)
+  }
 
   // Extract filename from path for display (only for file-based plans)
   const filename = filePath ? getFilename(filePath) : null
@@ -102,7 +113,7 @@ export function PlanDisplay({
   return (
     <Collapsible
       open={isOpen}
-      onOpenChange={setIsOpen}
+      onOpenChange={handleOpenChange}
       className={cn(
         'rounded-md border border-border/50 bg-muted/30',
         className
@@ -123,7 +134,7 @@ export function PlanDisplay({
           )}
         />
       </CollapsibleTrigger>
-      <CollapsibleContent>
+      <CollapsibleContent skipAnimation={skipAnimation}>
         <div className="border-t border-border/50 px-3 py-3">
           <div>
             <Markdown className="text-sm">{content}</Markdown>

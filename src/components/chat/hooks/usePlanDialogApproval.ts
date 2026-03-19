@@ -131,10 +131,11 @@ export function usePlanDialogApproval({
       clearStreamingContentBlocks(activeSessionId)
       setSessionReviewing(activeSessionId, false)
 
-      // Scroll after plan collapse animation (150ms in App.css) completes
-      setTimeout(() => {
+      // Plan collapse is now instant (skipAnimation), so a single rAF is enough
+      // for React to commit the DOM update before we scroll.
+      requestAnimationFrame(() => {
         scrollToBottom(true)
-      }, 200)
+      })
 
       // Chain: mark_plan_approved → update_session_state → broadcast
       // On WebSocket, commands dispatch concurrently. update_session_state emits

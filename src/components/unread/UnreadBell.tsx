@@ -387,9 +387,6 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
                   <span className="text-[13px] truncate flex-1 min-w-0">
                     {item.session.name}
                   </span>
-                  <span className="text-[11px] text-muted-foreground/60 min-w-0 max-w-[40%] truncate">
-                    {item.worktreeName}
-                  </span>
                   <span className="text-[11px] text-muted-foreground/40 shrink-0">
                     {formatRelativeTime(item.session.updated_at)}
                   </span>
