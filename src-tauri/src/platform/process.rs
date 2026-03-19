@@ -186,16 +186,20 @@ pub fn kill_process_tree(pid: u32) -> Result<(), String> {
 /// 3. Renaming the `.tmp` file to the target path
 /// 4. Best-effort cleanup of the `.old` file
 ///
-/// On Unix, this simply writes directly (overwriting is safe even for running binaries).
+/// On macOS, overwriting a running binary in-place (same inode) causes the kernel's code-signing
+/// enforcement to taint the inode, resulting in SIGKILL for all subsequent executions from that
+/// path. To avoid this, we always write to a temp file and atomically rename it into place,
+/// which allocates a new inode while the old one stays alive for any running process.
 pub fn write_binary_file(path: &std::path::Path, content: &[u8]) -> Result<(), String> {
+    let temp_path = path.with_extension("tmp");
+
+    // Write new binary to temp file (always a new inode)
+    std::fs::write(&temp_path, content)
+        .map_err(|e| format!("Failed to write temp file: {e}"))?;
+
     #[cfg(windows)]
     {
-        let temp_path = path.with_extension("tmp");
         let old_path = path.with_extension("old");
-
-        // Write new binary to temp file
-        std::fs::write(&temp_path, content)
-            .map_err(|e| format!("Failed to write temp file: {e}"))?;
 
         // Move existing file out of the way (Windows allows renaming locked files)
         if path.exists() {
@@ -219,7 +223,13 @@ pub fn write_binary_file(path: &std::path::Path, content: &[u8]) -> Result<(), S
 
     #[cfg(not(windows))]
     {
-        std::fs::write(path, content).map_err(|e| format!("Failed to write file: {e}"))
+        // Atomic rename: replaces the directory entry so `path` points to the new inode.
+        // The old inode (if any running process has it mapped) stays alive until that process exits.
+        if let Err(e) = std::fs::rename(&temp_path, path) {
+            let _ = std::fs::remove_file(&temp_path);
+            return Err(format!("Failed to install new file: {e}"));
+        }
+        Ok(())
     }
 }
 
