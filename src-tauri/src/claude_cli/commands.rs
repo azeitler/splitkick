@@ -450,8 +450,9 @@ pub async fn install_claude_cli(app: AppHandle, version: Option<String>) -> Resu
     emit_progress(&app, "installing", "Installing Claude CLI...", 65);
 
     // Write the binary to the target path
-    // Uses platform::write_binary_file which handles Windows file-locking (OS error 32)
-    // via a rename strategy when the existing binary is in use by another process.
+    // Uses platform::write_binary_file which writes to a temp file then atomically renames.
+    // This handles Windows file-locking (OS error 32) and macOS code-signing inode taint
+    // (SIGKILL) when the existing binary is in use by another process.
     log::trace!("Creating binary file at {:?}", binary_path);
     crate::platform::write_binary_file(&binary_path, &binary_content)
         .map_err(|e| format!("Failed to create binary file: {e}"))?;
