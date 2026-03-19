@@ -114,11 +114,13 @@ pub async fn dispatch_command(
         }
         "update_project_settings" => {
             let project_id: String = field(&args, "projectId", "project_id")?;
+            let name: Option<String> = from_field_opt(&args, "name")?;
             let default_branch: Option<String> =
                 field_opt(&args, "defaultBranch", "default_branch")?;
             let result = crate::projects::update_project_settings(
                 app.clone(),
                 project_id,
+                name,
                 default_branch,
                 None,
                 None,
@@ -656,7 +658,8 @@ pub async fn dispatch_command(
         "attach_saved_context" => {
             let session_id: String = field(&args, "sessionId", "session_id")?;
             let source_path: String = field(&args, "sourcePath", "source_path")?;
-            let context_slug: String = field(&args, "contextSlug", "context_slug")?;
+            let context_slug: String = from_field(&args, "slug")
+                .or_else(|_| field(&args, "contextSlug", "context_slug"))?;
             crate::projects::attach_saved_context(
                 app.clone(),
                 session_id,
@@ -669,7 +672,8 @@ pub async fn dispatch_command(
         }
         "remove_saved_context" => {
             let session_id: String = field(&args, "sessionId", "session_id")?;
-            let context_slug: String = field(&args, "contextSlug", "context_slug")?;
+            let context_slug: String = from_field(&args, "slug")
+                .or_else(|_| field(&args, "contextSlug", "context_slug"))?;
             crate::projects::remove_saved_context(app.clone(), session_id, context_slug).await?;
             emit_cache_invalidation(app, &["contexts"]);
             Ok(Value::Null)
@@ -682,7 +686,8 @@ pub async fn dispatch_command(
         }
         "get_saved_context_content" => {
             let session_id: String = field(&args, "sessionId", "session_id")?;
-            let context_slug: String = field(&args, "contextSlug", "context_slug")?;
+            let context_slug: String = from_field(&args, "slug")
+                .or_else(|_| field(&args, "contextSlug", "context_slug"))?;
             let result =
                 crate::projects::get_saved_context_content(app.clone(), session_id, context_slug)
                     .await?;

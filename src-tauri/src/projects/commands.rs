@@ -4046,6 +4046,7 @@ pub async fn get_project_branches(
 pub async fn update_project_settings(
     app: AppHandle,
     project_id: String,
+    name: Option<String>,
     default_branch: Option<String>,
     enabled_mcp_servers: Option<Vec<String>>,
     known_mcp_servers: Option<Vec<String>>,
@@ -4064,6 +4065,15 @@ pub async fn update_project_settings(
     let project = data
         .find_project_mut(&project_id)
         .ok_or_else(|| format!("Project not found: {project_id}"))?;
+
+    if let Some(new_name) = name {
+        let new_name = new_name.trim().to_string();
+        if new_name.is_empty() {
+            return Err("Project name cannot be empty".to_string());
+        }
+        log::trace!("Renaming project from '{}' to '{new_name}'", project.name);
+        project.name = new_name;
+    }
 
     if let Some(branch) = default_branch {
         log::trace!(

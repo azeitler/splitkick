@@ -2434,6 +2434,7 @@ export function useUpdateProjectSettings() {
   return useMutation({
     mutationFn: async ({
       projectId,
+      name,
       defaultBranch,
       enabledMcpServers,
       knownMcpServers,
@@ -2446,6 +2447,7 @@ export function useUpdateProjectSettings() {
       linearTeamId,
     }: {
       projectId: string
+      name?: string
       defaultBranch?: string
       enabledMcpServers?: string[]
       knownMcpServers?: string[]
@@ -2461,9 +2463,10 @@ export function useUpdateProjectSettings() {
         throw new Error('Not in Tauri context')
       }
 
-      logger.debug('Updating project settings', { projectId, defaultBranch })
+      logger.debug('Updating project settings', { projectId, name, defaultBranch })
       const project = await invoke<Project>('update_project_settings', {
         projectId,
+        name,
         defaultBranch,
         enabledMcpServers,
         knownMcpServers,

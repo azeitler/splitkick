@@ -1065,7 +1065,7 @@ export function SessionChatModal({
                               className="w-full min-w-0 bg-transparent text-xs outline-none"
                             />
                           ) : (
-                            session.name
+                            <span className="truncate max-w-48">{session.name}</span>
                           )}
                           {renamingSessionId !== session.id && (
                             <DismissButton

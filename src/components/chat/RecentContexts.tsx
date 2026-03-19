@@ -2,7 +2,8 @@ import { useCallback, useMemo, useState } from 'react'
 import { useQuery, type QueryClient } from '@tanstack/react-query'
 import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
-import { FileText, Loader2, Check, Link2, Eye } from 'lucide-react'
+import { FileText, Loader2, Check, Link2, Eye, Ellipsis } from 'lucide-react'
+import { useUIStore } from '@/store/ui-store'
 import {
   Dialog,
   DialogContent,
@@ -198,7 +199,17 @@ export function RecentContexts({
       )}
       {otherContexts.length > 0 && (
         <div className="flex flex-col items-center gap-1.5">
-          <span className="text-xs text-muted-foreground">Recent contexts</span>
+          <span className="text-xs text-muted-foreground text-center items-center justify-center flex gap-2">
+            Recent contexts
+            {' '}
+            <button
+              onClick={() => useUIStore.getState().setLoadContextModalOpen(true)}
+              className="inline-flex items-center gap-0.5 text-muted-foreground/70 hover:text-foreground transition-colors cursor-pointer"
+              title="Browse all contexts"
+            >
+              <Ellipsis className="inline h-3 w-3" />
+            </button>
+          </span>
           <div className="flex flex-wrap justify-center gap-2 max-w-2xl">
             {otherContexts.map(renderButton)}
           </div>
