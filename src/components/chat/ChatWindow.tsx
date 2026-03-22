@@ -2060,6 +2060,7 @@ export function ChatWindow({
                       <ScrollArea
                         className="h-full w-full"
                         viewportRef={scrollViewportRef}
+                        viewportClassName="will-change-scroll"
                         onScroll={handleScroll}
                       >
                         <div className="mx-auto max-w-7xl px-4 pt-4 pb-6 md:px-6 min-w-0 w-full">
