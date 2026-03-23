@@ -304,6 +304,9 @@ export function WorktreeItem({
     (sessionId: string) => {
       selectProject(projectId)
       selectWorktree(worktree.id)
+      // Clear active worktree so MainWindowContent renders ProjectCanvasView
+      // (which hosts SessionChatModal with topbar + session tabs)
+      useChatStore.getState().clearActiveWorktree()
       useChatStore.getState().setActiveSession(worktree.id, sessionId)
       // Open session modal in ProjectCanvasView
       setTimeout(() => {
@@ -370,6 +373,9 @@ export function WorktreeItem({
   const handleClick = useCallback(() => {
     selectProject(projectId)
     selectWorktree(worktree.id)
+    // Clear active worktree so MainWindowContent renders ProjectCanvasView
+    // (which hosts SessionChatModal with topbar + session tabs)
+    useChatStore.getState().clearActiveWorktree()
 
     // Open session modal with the first active session
     const sessions = sessionsData?.sessions ?? []
