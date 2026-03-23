@@ -51,6 +51,7 @@ interface UIState {
   cliLoginModalType: CliLoginModalType
   cliLoginModalCommand: string | null
   cliLoginModalCommandArgs: string[] | null
+  cliLoginModalAction: 'login' | 'update'
   /** Worktree IDs that should auto-trigger investigate-issue when created */
   autoInvestigateWorktreeIds: Set<string>
   /** Worktree IDs that should auto-trigger investigate-pr when created */
@@ -123,7 +124,8 @@ interface UIState {
   openCliLoginModal: (
     type: 'claude' | 'gh' | 'codex' | 'opencode',
     command: string,
-    commandArgs?: string[]
+    commandArgs?: string[],
+    action?: 'login' | 'update'
   ) => void
   closeCliLoginModal: () => void
   incrementPendingBackgroundCreations: () => void
@@ -199,6 +201,7 @@ export const useUIStore = create<UIState>()(
       cliLoginModalType: null,
       cliLoginModalCommand: null,
       cliLoginModalCommandArgs: null,
+      cliLoginModalAction: 'login',
       autoInvestigateWorktreeIds: new Set(),
       autoInvestigatePRWorktreeIds: new Set(),
       autoInvestigateSecurityAlertWorktreeIds: new Set(),
@@ -387,13 +390,14 @@ export const useUIStore = create<UIState>()(
           'closeCliUpdateModal'
         ),
 
-      openCliLoginModal: (type, command, commandArgs) =>
+      openCliLoginModal: (type, command, commandArgs, action) =>
         set(
           {
             cliLoginModalOpen: true,
             cliLoginModalType: type,
             cliLoginModalCommand: command,
             cliLoginModalCommandArgs: commandArgs ?? null,
+            cliLoginModalAction: action ?? 'login',
           },
           undefined,
           'openCliLoginModal'
@@ -406,6 +410,7 @@ export const useUIStore = create<UIState>()(
             cliLoginModalType: null,
             cliLoginModalCommand: null,
             cliLoginModalCommandArgs: null,
+            cliLoginModalAction: 'login',
           },
           undefined,
           'closeCliLoginModal'

@@ -133,6 +133,9 @@ function getPathUpdateAction(
   if (selfUpdateArgs) {
     return [cliPath ?? brewPkg, selfUpdateArgs]
   }
+  if (packageManager === 'bun' && npmPkg && targetVersion) {
+    return ['bun', ['install', '-g', `${npmPkg}@${targetVersion}`]]
+  }
   if (packageManager === 'npm' && npmPkg && targetVersion) {
     return ['npm', ['install', '-g', `${npmPkg}@${targetVersion}`]]
   }
@@ -799,7 +802,7 @@ export const GeneralPane: React.FC = () => {
                         onClick={() => {
                           const action = getPathUpdateAction(cliStatus.path, pathDetection?.package_manager, 'claude-code', ['update'])
                           if (action) {
-                            openCliLoginModal('claude', action[0], action[1])
+                            openCliLoginModal('claude', action[0], action[1], 'update')
                           } else {
                             openCliUpdateModal('claude')
                           }
@@ -929,7 +932,7 @@ export const GeneralPane: React.FC = () => {
                         onClick={() => {
                           const action = getPathUpdateAction(ghStatus.path, ghPathDetection?.package_manager, 'gh', null)
                           if (action) {
-                            openCliLoginModal('gh', action[0], action[1])
+                            openCliLoginModal('gh', action[0], action[1], 'update')
                           } else {
                             openCliUpdateModal('gh')
                           }
@@ -1066,7 +1069,7 @@ export const GeneralPane: React.FC = () => {
                         onClick={() => {
                           const action = getPathUpdateAction(codexStatus.path, codexPathDetection?.package_manager, 'codex', null, '@openai/codex', codexLatestStable?.version)
                           if (action) {
-                            openCliLoginModal('codex', action[0], action[1])
+                            openCliLoginModal('codex', action[0], action[1], 'update')
                           } else {
                             openCliUpdateModal('codex')
                           }
@@ -1203,7 +1206,7 @@ export const GeneralPane: React.FC = () => {
                         onClick={() => {
                           const action = getPathUpdateAction(opencodeStatus.path, opencodePathDetection?.package_manager, 'opencode', ['upgrade'])
                           if (action) {
-                            openCliLoginModal('opencode', action[0], action[1])
+                            openCliLoginModal('opencode', action[0], action[1], 'update')
                           } else {
                             openCliUpdateModal('opencode')
                           }

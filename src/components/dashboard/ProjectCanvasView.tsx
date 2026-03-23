@@ -362,7 +362,7 @@ function WorktreeSectionHeader({
         )}
 
         <div className={cn(showDetails ? 'flex flex-col gap-1.5' : 'contents')}>
-          <div className="flex min-w-0 items-start gap-2 sm:items-center">
+          <div className="flex min-w-0 items-center gap-2">
             {shortcutNumber !== undefined && (
               <kbd className="hidden shrink-0 h-4 min-w-4 items-center justify-center rounded border border-border/50 bg-muted/50 px-0.5 font-mono text-muted-foreground sm:inline-flex">
                 <span className='text-[9px]'>⌘{shortcutNumber}</span>
@@ -380,30 +380,20 @@ function WorktreeSectionHeader({
             )}
             <span className="flex min-w-0 flex-1 flex-col gap-1 font-medium sm:flex-row sm:items-center sm:gap-1.5">
               <span className="flex min-w-0 items-center gap-1.5">
-                <span className="min-w-0 flex-1 truncate">
+                <span className="min-w-0 truncate sm:flex-1">
                   {isBase ? 'Base Session' : worktree.name}
                 </span>
                 {displayBranch && (
-                  <span className="hidden items-center gap-1 rounded-full border border-border/50 px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground sm:inline-flex">
+                  <span className="hidden items-center gap-1 rounded border border-border/50 px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground sm:inline-flex">
                     <GitBranch className="h-2.5 w-2.5" />
                     <span className="max-w-40 truncate">{displayBranch}</span>
-                  </span>
-                )}
-                {worktree.pr_number && (
-                  <span className="hidden items-center gap-1 rounded-full border border-border/50 px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground sm:inline-flex">
-                    <GitPullRequestArrow className="h-2.5 w-2.5" />
-                    #{worktree.pr_number}
-                  </span>
-                )}
-                {worktree.label && (
-                  <span
-                    className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
-                    style={{
-                      backgroundColor: worktree.label.color,
-                      color: getLabelTextColor(worktree.label.color),
-                    }}
-                  >
-                    {worktree.label.name}
+                    {worktree.pr_number && (
+                      <>
+                        <span className="text-border">·</span>
+                        <GitPullRequestArrow className="h-2.5 w-2.5" />
+                        #{worktree.pr_number}
+                      </>
+                    )}
                   </span>
                 )}
                 <span
@@ -422,12 +412,30 @@ function WorktreeSectionHeader({
                 </span>
               </span>
               {displayBranch && (
-                <span className="inline-flex max-w-full items-center gap-1 self-start rounded-full border border-border/50 px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground sm:hidden">
+                <span className="inline-flex max-w-full items-center gap-1 self-start rounded border border-border/50 px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground sm:hidden">
                   <GitBranch className="h-2.5 w-2.5 shrink-0" />
                   <span className="max-w-full truncate">{displayBranch}</span>
+                  {worktree.pr_number && (
+                    <>
+                      <span className="text-border">·</span>
+                      <GitPullRequestArrow className="h-2.5 w-2.5 shrink-0" />
+                      #{worktree.pr_number}
+                    </>
+                  )}
                 </span>
               )}
             </span>
+            {worktree.label && (
+              <span
+                className="ml-auto self-start shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
+                style={{
+                  backgroundColor: worktree.label.color,
+                  color: getLabelTextColor(worktree.label.color),
+                }}
+              >
+                {worktree.label.name}
+              </span>
+            )}
           </div>
           {showDetails && sessionMetrics && (
             <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">

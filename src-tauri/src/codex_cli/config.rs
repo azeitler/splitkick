@@ -40,15 +40,21 @@ pub fn resolve_cli_binary(app: &AppHandle) -> PathBuf {
         Ok(prefs_path) => {
             if let Ok(contents) = std::fs::read_to_string(&prefs_path) {
                 if let Ok(prefs) = serde_json::from_str::<crate::AppPreferences>(&contents) {
+                    log::debug!("resolve_cli_binary: codex_cli_source={:?}", prefs.codex_cli_source);
                     prefs.codex_cli_source == "path"
                 } else {
+                    log::debug!("resolve_cli_binary: failed to parse preferences, defaulting to jean");
                     false
                 }
             } else {
+                log::debug!("resolve_cli_binary: failed to read preferences file, defaulting to jean");
                 false
             }
         }
-        Err(_) => false,
+        Err(e) => {
+            log::debug!("resolve_cli_binary: failed to get preferences path: {e}, defaulting to jean");
+            false
+        }
     };
 
     if use_path {
@@ -58,22 +64,37 @@ pub fn resolve_cli_binary(app: &AppHandle) -> PathBuf {
             "which"
         };
 
-        if let Ok(output) = silent_command(which_cmd).arg("codex").output() {
-            if output.status.success() {
-                // On Windows, `where` can return multiple paths; take only the first line
-                let path_str = String::from_utf8_lossy(&output.stdout).lines().next().unwrap_or("").trim().to_string();
-                if !path_str.is_empty() {
-                    let path = PathBuf::from(&path_str);
-                    if path.exists() {
-                        return path;
+        match silent_command(which_cmd).arg("codex").output() {
+            Ok(output) => {
+                log::debug!("resolve_cli_binary: `{which_cmd} codex` exit_status={}, stdout={:?}",
+                    output.status,
+                    String::from_utf8_lossy(&output.stdout).trim());
+                if output.status.success() {
+                    // On Windows, `where` can return multiple paths; take only the first line
+                    let path_str = String::from_utf8_lossy(&output.stdout).lines().next().unwrap_or("").trim().to_string();
+                    if !path_str.is_empty() {
+                        let path = PathBuf::from(&path_str);
+                        if path.exists() {
+                            log::debug!("resolve_cli_binary: resolved to PATH binary: {path_str}");
+                            return path;
+                        } else {
+                            log::debug!("resolve_cli_binary: PATH binary does not exist on disk: {path_str}");
+                        }
+                    } else {
+                        log::debug!("resolve_cli_binary: `{which_cmd} codex` returned empty output");
                     }
                 }
+            }
+            Err(e) => {
+                log::debug!("resolve_cli_binary: `{which_cmd} codex` failed to execute: {e}");
             }
         }
         log::warn!("codex_cli_source is 'path' but could not find codex in PATH, falling back to Jean-managed binary");
     }
 
-    get_cli_binary_path(app).unwrap_or_else(|_| PathBuf::from(CLI_DIR_NAME).join(CLI_BINARY_NAME))
+    let fallback = get_cli_binary_path(app).unwrap_or_else(|_| PathBuf::from(CLI_DIR_NAME).join(CLI_BINARY_NAME));
+    log::debug!("resolve_cli_binary: using jean-managed binary: {fallback:?}");
+    fallback
 }
 
 /// Ensure the CLI directory exists, creating it if necessary

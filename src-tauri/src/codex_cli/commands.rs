@@ -262,11 +262,12 @@ pub struct CodexPathDetection {
 /// Detect Codex CLI in system PATH (excluding Jean-managed binary)
 #[tauri::command]
 pub async fn detect_codex_in_path(app: AppHandle) -> Result<CodexPathDetection, String> {
-    log::trace!("Detecting Codex CLI in system PATH");
+    log::debug!("detect_codex_in_path: starting");
 
     let jean_managed_path = get_cli_binary_path(&app)
         .ok()
         .and_then(|p| std::fs::canonicalize(&p).ok());
+    log::debug!("detect_codex_in_path: jean_managed_path={jean_managed_path:?}");
 
     let which_cmd = if cfg!(target_os = "windows") {
         "where"
@@ -277,10 +278,22 @@ pub async fn detect_codex_in_path(app: AppHandle) -> Result<CodexPathDetection, 
     let output = match silent_command(which_cmd).arg("codex").output() {
         Ok(output) if output.status.success() => {
             // On Windows, `where` can return multiple paths; take only the first line
-            String::from_utf8_lossy(&output.stdout).lines().next().unwrap_or("").trim().to_string()
+            let raw = String::from_utf8_lossy(&output.stdout).lines().next().unwrap_or("").trim().to_string();
+            log::debug!("detect_codex_in_path: `{which_cmd} codex` found: {raw:?}");
+            raw
         }
-        _ => {
-            log::trace!("Codex CLI not found in PATH");
+        Ok(output) => {
+            log::debug!("detect_codex_in_path: `{which_cmd} codex` exited with status={}, stderr={:?}",
+                output.status, String::from_utf8_lossy(&output.stderr).trim());
+            return Ok(CodexPathDetection {
+                found: false,
+                path: None,
+                version: None,
+                package_manager: None,
+            });
+        }
+        Err(e) => {
+            log::debug!("detect_codex_in_path: `{which_cmd} codex` failed to execute: {e}");
             return Ok(CodexPathDetection {
                 found: false,
                 path: None,
@@ -291,6 +304,7 @@ pub async fn detect_codex_in_path(app: AppHandle) -> Result<CodexPathDetection, 
     };
 
     if output.is_empty() {
+        log::debug!("detect_codex_in_path: which returned empty output");
         return Ok(CodexPathDetection {
             found: false,
             path: None,
@@ -305,7 +319,7 @@ pub async fn detect_codex_in_path(app: AppHandle) -> Result<CodexPathDetection, 
     if let Some(ref jean_path) = jean_managed_path {
         if let Ok(canonical_found) = std::fs::canonicalize(&found_path) {
             if canonical_found == *jean_path {
-                log::trace!("Found PATH codex is the Jean-managed binary, excluding");
+                log::debug!("detect_codex_in_path: found path is jean-managed binary, excluding");
                 return Ok(CodexPathDetection {
                     found: false,
                     path: None,
@@ -319,6 +333,7 @@ pub async fn detect_codex_in_path(app: AppHandle) -> Result<CodexPathDetection, 
     let version = match silent_command(&found_path).arg("--version").output() {
         Ok(ver_output) if ver_output.status.success() => {
             let ver_str = String::from_utf8_lossy(&ver_output.stdout).trim().to_string();
+            log::debug!("detect_codex_in_path: raw --version output={ver_str:?}");
             let cleaned = ver_str
                 .split_whitespace()
                 .last()
@@ -327,12 +342,20 @@ pub async fn detect_codex_in_path(app: AppHandle) -> Result<CodexPathDetection, 
                 .to_string();
             if cleaned.is_empty() { None } else { Some(cleaned) }
         }
-        _ => None,
+        Ok(ver_output) => {
+            log::debug!("detect_codex_in_path: --version failed, status={}, stderr={:?}",
+                ver_output.status, String::from_utf8_lossy(&ver_output.stderr).trim());
+            None
+        }
+        Err(e) => {
+            log::debug!("detect_codex_in_path: --version command error: {e}");
+            None
+        }
     };
 
     let package_manager = crate::platform::detect_package_manager(&found_path);
 
-    log::trace!("Found Codex CLI in PATH: {output} (version: {version:?}, pkg_mgr: {package_manager:?})");
+    log::debug!("detect_codex_in_path: result path={output} version={version:?} pkg_mgr={package_manager:?}");
 
     Ok(CodexPathDetection {
         found: true,
@@ -667,12 +690,13 @@ async fn refresh_codex_access_token(
 /// Check if Codex CLI is installed and get its status
 #[tauri::command]
 pub async fn check_codex_cli_installed(app: AppHandle) -> Result<CodexCliStatus, String> {
-    log::trace!("Checking Codex CLI installation status");
+    log::debug!("check_codex_cli_installed: starting");
 
     let binary_path = resolve_cli_binary(&app);
+    log::debug!("check_codex_cli_installed: resolved binary_path={:?}", binary_path);
 
     if !binary_path.exists() {
-        log::trace!("Codex CLI not found at {:?}", binary_path);
+        log::debug!("check_codex_cli_installed: binary not found at {:?}", binary_path);
         return Ok(CodexCliStatus {
             installed: false,
             version: None,
@@ -684,6 +708,7 @@ pub async fn check_codex_cli_installed(app: AppHandle) -> Result<CodexCliStatus,
     let version = match silent_command(&binary_path).arg("--version").output() {
         Ok(output) if output.status.success() => {
             let version_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            log::debug!("check_codex_cli_installed: raw --version output={:?}", version_str);
             if version_str.is_empty() {
                 None
             } else {
@@ -696,14 +721,27 @@ pub async fn check_codex_cli_installed(app: AppHandle) -> Result<CodexCliStatus,
                 Some(version)
             }
         }
-        _ => None,
+        Ok(output) => {
+            log::debug!("check_codex_cli_installed: --version failed, exit_status={}, stderr={:?}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr).trim());
+            None
+        }
+        Err(e) => {
+            log::debug!("check_codex_cli_installed: --version command error: {e}");
+            None
+        }
     };
 
-    Ok(CodexCliStatus {
+    let status = CodexCliStatus {
         installed: true,
-        version,
+        version: version.clone(),
         path: Some(binary_path.to_string_lossy().to_string()),
-    })
+    };
+    log::debug!("check_codex_cli_installed: returning installed={} version={:?} path={:?}",
+        status.installed, status.version, status.path);
+
+    Ok(status)
 }
 
 /// Check if Codex CLI is authenticated
@@ -945,13 +983,14 @@ struct CachedCodexVersions {
 }
 
 fn save_codex_versions_cache(app: &AppHandle, versions: &[CodexReleaseInfo]) {
-    let cache_path = match super::config::get_cli_dir(app) {
+    let cache_path = match super::config::ensure_cli_dir(app) {
         Ok(dir) => dir.join(CODEX_VERSIONS_CACHE_FILE),
         Err(e) => {
-            log::warn!("Cannot resolve Codex CLI dir for cache: {e}");
+            log::warn!("Cannot resolve/create Codex CLI dir for cache: {e}");
             return;
         }
     };
+    log::debug!("save_codex_versions_cache: writing {} versions to {cache_path:?}", versions.len());
     let cached = CachedCodexVersions {
         versions: versions.to_vec(),
         fetched_at: SystemTime::now()

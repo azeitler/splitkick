@@ -38,6 +38,12 @@ pub fn detect_package_manager(binary_path: &std::path::Path) -> Option<String> {
         return Some("homebrew".to_string());
     }
 
+    // Check bun before generic node_modules — bun's global installs also use node_modules/
+    // e.g. ~/.bun/install/global/node_modules/@openai/codex/bin/codex.js
+    if canonical_str.contains("/.bun/") {
+        return Some("bun".to_string());
+    }
+
     if canonical_str.contains("/node_modules/") {
         return Some("npm".to_string());
     }

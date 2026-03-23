@@ -18,7 +18,6 @@ import { githubQueryKeys } from '@/services/github'
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -30,12 +29,13 @@ import { disposeTerminal, setOnStopped } from '@/lib/terminal-instances'
 
 export function CliLoginModal() {
   const [retryKey, setRetryKey] = useState(0)
-  const { isOpen, cliType, command, commandArgs, closeModal } = useUIStore(
+  const { isOpen, cliType, command, commandArgs, action, closeModal } = useUIStore(
     useShallow(state => ({
       isOpen: state.cliLoginModalOpen,
       cliType: state.cliLoginModalType,
       command: state.cliLoginModalCommand,
       commandArgs: state.cliLoginModalCommandArgs,
+      action: state.cliLoginModalAction,
       closeModal: state.closeCliLoginModal,
     }))
   )
@@ -49,6 +49,7 @@ export function CliLoginModal() {
       cliType={cliType}
       command={command}
       commandArgs={commandArgs}
+      action={action}
       onClose={closeModal}
       onRetry={() => setRetryKey(k => k + 1)}
     />
@@ -59,6 +60,7 @@ interface CliLoginModalContentProps {
   cliType: 'claude' | 'gh' | 'codex' | 'opencode' | null
   command: string
   commandArgs: string[] | null
+  action: 'login' | 'update'
   onClose: () => void
   onRetry: () => void
 }
@@ -67,6 +69,7 @@ function CliLoginModalContent({
   cliType,
   command,
   commandArgs,
+  action,
   onClose,
   onRetry,
 }: CliLoginModalContentProps) {
@@ -231,10 +234,7 @@ function CliLoginModalContent({
     <Dialog open={true} onOpenChange={handleOpenChange}>
       <DialogContent className="!w-screen !h-dvh !max-w-screen !rounded-none sm:!w-[calc(100vw-64px)] sm:!max-w-[calc(100vw-64px)] sm:!h-[calc(100vh-64px)] sm:!rounded-lg flex flex-col">
         <DialogHeader>
-          <DialogTitle>{cliName} Login</DialogTitle>
-          <DialogDescription>
-            Complete the login process in the terminal below.
-          </DialogDescription>
+          <DialogTitle>{cliName} {action === 'update' ? 'Update' : 'Login'}</DialogTitle>
         </DialogHeader>
 
         <div
@@ -246,7 +246,7 @@ function CliLoginModalContent({
           <div className="flex items-center justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/5 p-3">
             <div>
               <p className="text-sm font-medium text-destructive">
-                Login process exited unexpectedly
+                {action === 'update' ? 'Update' : 'Login'} process exited unexpectedly
               </p>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {exitStatus.signal
