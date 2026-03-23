@@ -38,6 +38,10 @@ BUNDLED_LIBS="$APPDIR/usr/lib:$APPDIR/usr/lib/$ARCH_TRIPLET:$APPDIR/usr/lib64:$A
 SYSTEM_LIBS="/usr/lib:/usr/lib64:/usr/lib/$ARCH_TRIPLET:/lib/$ARCH_TRIPLET"
 EXISTING_LIBS="${LD_LIBRARY_PATH:-}"
 
+# Ensure XDG_DATA_DIRS is set before sourcing hooks; linuxdeploy-plugin-gtk.sh
+# references it on Wayland where it may not be initialized (set -u would abort).
+export XDG_DATA_DIRS="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+
 # Source GTK plugin hooks (sets GDK_BACKEND, GTK_THEME, etc.)
 for hook in "$APPDIR"/apprun-hooks/*.sh; do
     [ -f "$hook" ] && . "$hook"
