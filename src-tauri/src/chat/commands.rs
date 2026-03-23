@@ -4191,6 +4191,24 @@ fn extract_text_from_stream_json(output: &str) -> Result<String, String> {
         text_content.len()
     );
 
+    // If no StructuredOutput found, try stripping markdown code fences
+    if !text_content.is_empty() {
+        let trimmed = text_content.trim();
+        let stripped = trimmed
+            .strip_prefix("```json")
+            .or_else(|| trimmed.strip_prefix("```"))
+            .unwrap_or(trimmed)
+            .trim()
+            .strip_suffix("```")
+            .unwrap_or(trimmed)
+            .trim();
+
+        if stripped.starts_with('{') {
+            log::trace!("Extracted JSON from text content (code fence stripped)");
+            return Ok(stripped.to_string());
+        }
+    }
+
     if text_content.is_empty() {
         log::error!("No content found in stream-json output. Raw output: {output}");
         return Err("No text content found in Claude response".to_string());
@@ -4288,9 +4306,11 @@ fn execute_summarization_claude(
         model_str,
         "--no-session-persistence",
         "--max-turns",
-        "1",
+        "2", // Need 2 turns: one for thinking, one for structured output
         "--json-schema",
         CONTEXT_SUMMARY_SCHEMA,
+        "--permission-mode",
+        "plan", // Prevent tool use that could waste turns
     ]);
 
     cmd.stdin(Stdio::piped())
@@ -4351,8 +4371,13 @@ fn execute_summarization_claude(
 
     // Parse the JSON response
     serde_json::from_str(&text_content).map_err(|e| {
+        let preview = if text_content.len() > 200 {
+            format!("{}...", &text_content[..200])
+        } else {
+            text_content.to_string()
+        };
         log::error!(
-            "Failed to parse JSON response: {e}, content: {text_content}, stdout: {stdout}"
+            "Failed to parse JSON response: {e}, content preview: {preview}, full stdout: {stdout}"
         );
         format!("Failed to parse structured response: {e}")
     })
@@ -5058,8 +5083,13 @@ fn execute_digest_claude(
 
     // Parse the JSON response
     serde_json::from_str(&text_content).map_err(|e| {
+        let preview = if text_content.len() > 200 {
+            format!("{}...", &text_content[..200])
+        } else {
+            text_content.to_string()
+        };
         log::error!(
-            "Failed to parse JSON response: {e}, content: {text_content}, stdout: {stdout}"
+            "Failed to parse JSON response: {e}, content preview: {preview}, full stdout: {stdout}"
         );
         format!("Failed to parse structured response: {e}")
     })
