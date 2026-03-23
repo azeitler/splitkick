@@ -308,6 +308,14 @@
   animation: collapsible-up 150ms ease-out;
 }
 
+/* Force GPU compositing layer on scroll viewport to prevent WebKit blank-screen bug.
+   Without this, rapid programmatic scrollTop changes during CSS collapse animations
+   can leave the viewport visually blank until a user scroll gesture forces a repaint. */
+.will-change-scroll {
+  will-change: scroll-position;
+  -webkit-transform: translateZ(0);
+}
+
 /* Bell ring animation for unread notifications */
 @keyframes bell-ring {
   0%, 70%, 100% {
