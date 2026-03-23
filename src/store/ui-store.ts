@@ -74,6 +74,8 @@ interface UIState {
   sessionChatModalWorktreeId: string | null
   /** Whether a git diff modal is open (blocks execute_run keybinding) */
   gitDiffModalOpen: boolean
+  /** File paths selected for commit in GitDiffModal (uncommitted tab only) */
+  gitDiffSelectedFiles: Set<string>
   /** Whether a plan dialog is open (blocks canvas approve keybindings) */
   planDialogOpen: boolean
   /** Whether the feature tour dialog is open */
@@ -150,6 +152,8 @@ interface UIState {
   }
   setSessionChatModalOpen: (open: boolean, worktreeId?: string | null) => void
   setGitDiffModalOpen: (open: boolean) => void
+  toggleGitDiffSelectedFile: (filePath: string) => void
+  clearGitDiffSelectedFiles: () => void
   setPlanDialogOpen: (open: boolean) => void
   setFeatureTourOpen: (open: boolean) => void
   setUIStateInitialized: (initialized: boolean) => void
@@ -213,6 +217,7 @@ export const useUIStore = create<UIState>()(
       sessionChatModalOpen: false,
       sessionChatModalWorktreeId: null,
       gitDiffModalOpen: false,
+      gitDiffSelectedFiles: new Set<string>(),
       planDialogOpen: false,
       featureTourOpen: false,
       uiStateInitialized: false,
@@ -630,6 +635,28 @@ export const useUIStore = create<UIState>()(
 
       setGitDiffModalOpen: (open: boolean) =>
         set({ gitDiffModalOpen: open }, undefined, 'setGitDiffModalOpen'),
+
+      toggleGitDiffSelectedFile: (filePath: string) =>
+        set(
+          state => {
+            const next = new Set(state.gitDiffSelectedFiles)
+            if (next.has(filePath)) next.delete(filePath)
+            else next.add(filePath)
+            return { gitDiffSelectedFiles: next }
+          },
+          undefined,
+          'toggleGitDiffSelectedFile'
+        ),
+
+      clearGitDiffSelectedFiles: () =>
+        set(
+          state => {
+            if (state.gitDiffSelectedFiles.size === 0) return state
+            return { gitDiffSelectedFiles: new Set<string>() }
+          },
+          undefined,
+          'clearGitDiffSelectedFiles'
+        ),
 
       setPlanDialogOpen: (open: boolean) =>
         set({ planDialogOpen: open }, undefined, 'setPlanDialogOpen'),

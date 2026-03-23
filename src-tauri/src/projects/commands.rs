@@ -6058,6 +6058,43 @@ fn get_recent_commits(repo_path: &str, count: u32) -> Result<String, String> {
 
 
 
+/// Stage only specific files. Resets the index first to ensure a clean state.
+fn stage_specific_files(repo_path: &str, files: &[String]) -> Result<(), String> {
+    // Reset staging area to ensure only the specified files are staged
+    let reset_output = silent_command("git")
+        .args(["reset", "HEAD"])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to reset staging area: {e}"))?;
+
+    if !reset_output.status.success() {
+        let stderr = String::from_utf8_lossy(&reset_output.stderr);
+        // "Failed to resolve 'HEAD'" happens on initial commit — safe to ignore
+        if !stderr.contains("Failed to resolve") {
+            return Err(format!("Failed to reset staging area: {stderr}"));
+        }
+    }
+
+    // Stage only the specified files
+    let mut args = vec!["add", "--"];
+    for f in files {
+        args.push(f.as_str());
+    }
+
+    let output = silent_command("git")
+        .args(&args)
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to stage files: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to stage files: {stderr}"));
+    }
+
+    Ok(())
+}
+
 /// Stage all changes
 fn stage_all_changes(repo_path: &str) -> Result<(), String> {
     let output = silent_command("git")
@@ -6269,6 +6306,7 @@ pub async fn create_commit_with_ai(
     model: Option<String>,
     custom_profile_name: Option<String>,
     reasoning_effort: Option<String>,
+    specific_files: Option<Vec<String>>,
 ) -> Result<CreateCommitResponse, String> {
     log::trace!("Creating commit for: {worktree_path}");
 
@@ -6294,8 +6332,11 @@ pub async fn create_commit_with_ai(
         return Err("No changes to commit".to_string());
     }
 
-    // 2. Stage all changes
-    stage_all_changes(&worktree_path)?;
+    // 2. Stage changes (specific files or all)
+    match &specific_files {
+        Some(files) if !files.is_empty() => stage_specific_files(&worktree_path, files)?,
+        _ => stage_all_changes(&worktree_path)?,
+    }
 
     // 3. Get staged diff
     let diff = get_staged_diff(&worktree_path)?;

@@ -359,6 +359,10 @@ export function MagicModal() {
       const doCommit = async (isPush: boolean, remote?: string) => {
         setWorktreeLoading(selectedWorktreeId, 'commit')
         const branch = worktree.branch ?? ''
+        const { gitDiffSelectedFiles, clearGitDiffSelectedFiles } = useUIStore.getState()
+        const specificFiles = gitDiffSelectedFiles.size > 0
+          ? Array.from(gitDiffSelectedFiles)
+          : null
         const toastId = toast.loading(
           isPush
             ? `Committing and pushing on ${branch}...`
@@ -380,9 +384,12 @@ export function MagicModal() {
                 preferences?.default_provider
               ),
               reasoningEffort: preferences?.magic_prompt_efforts?.commit_message_effort ?? null,
+              specificFiles,
             }
           )
+          clearGitDiffSelectedFiles()
           triggerImmediateGitPoll()
+          window.dispatchEvent(new CustomEvent('git-commit-completed'))
           if (worktree.project_id) fetchWorktreesStatus(worktree.project_id)
           if (result.push_fell_back) {
             toast.warning('Could not push to PR branch, pushed to new branch instead', {

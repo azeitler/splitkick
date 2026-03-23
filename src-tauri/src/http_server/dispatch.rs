@@ -296,6 +296,8 @@ pub async fn dispatch_command(
                 field_opt(&args, "customProfileName", "custom_profile_name")?;
             let reasoning_effort: Option<String> =
                 field_opt(&args, "reasoningEffort", "reasoning_effort")?;
+            let specific_files: Option<Vec<String>> =
+                field_opt(&args, "specificFiles", "specific_files")?;
             let result = crate::projects::create_commit_with_ai(
                 app.clone(),
                 worktree_path,
@@ -306,6 +308,7 @@ pub async fn dispatch_command(
                 model,
                 custom_profile_name,
                 reasoning_effort,
+                specific_files,
             )
             .await?;
             to_value(result)
