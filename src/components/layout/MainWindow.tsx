@@ -398,7 +398,7 @@ export function MainWindow() {
       <DevModeBanner />
 
       {/* Main Content Area */}
-      <div className="flex flex-1 overflow-hidden pt-9">
+      <div className="flex flex-1 overflow-hidden pt-8">
         {/* Left Sidebar with pixel-based width - only render after UI state is initialized */}
         {leftSidebarVisible && isInitialized && (
           <SidebarWidthProvider value={leftSidebarSize}>
