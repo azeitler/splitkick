@@ -18,10 +18,6 @@ interface UseScrollManagementOptions {
   activeWorktreeId: string | null
   /** Whether a message is currently being streamed — enables ResizeObserver auto-scroll */
   isSending?: boolean
-  /** Current session ID — used for scroll position restoration */
-  sessionId?: string | null
-  /** Saved scroll top to restore instead of scrolling to bottom (null = use default behavior) */
-  restoreScrollTop?: number | null
 }
 
 interface UseScrollManagementReturn {
@@ -45,8 +41,6 @@ interface UseScrollManagementReturn {
   beginKeyboardScroll: () => void
   /** End a user-initiated keyboard scroll: unblocks handleScroll updates */
   endKeyboardScroll: () => void
-  /** Ref indicating scroll restore is in progress (checked by useChatWindowEvents to skip scrollToBottom) */
-  isRestoringScrollRef: React.RefObject<boolean>
 }
 
 export function useScrollManagement({
@@ -54,8 +48,6 @@ export function useScrollManagement({
   virtualizedListRef,
   activeWorktreeId,
   isSending,
-  sessionId,
-  restoreScrollTop,
 }: UseScrollManagementOptions): UseScrollManagementReturn {
   const scrollViewportRef = useRef<HTMLDivElement>(null)
 
@@ -63,10 +55,6 @@ export function useScrollManagement({
   const [isAtBottom, setIsAtBottom] = useState(true)
   // Ref to track scroll position without re-renders (for auto-scroll logic)
   const isAtBottomRef = useRef(true)
-  // Ref to signal that scroll restoration is in progress (prevents scrollToBottom in useChatWindowEvents)
-  const isRestoringScrollRef = useRef(false)
-  // Ref to hold the pending restore scroll top (set when restoreScrollTop changes, consumed on restore)
-  const pendingRestoreRef = useRef<number | null>(null)
   // Ref to track if we're currently auto-scrolling (to avoid race conditions)
   const isAutoScrollingRef = useRef(false)
   // State for tracking if findings are visible in viewport
@@ -262,15 +250,6 @@ export function useScrollManagement({
     wasSendingRef.current = !!isSending
   }, [isSending])
 
-  // Set pending restore when restoreScrollTop changes (from saved scroll position)
-  useEffect(() => {
-    if (restoreScrollTop != null && restoreScrollTop > 0) {
-      pendingRestoreRef.current = restoreScrollTop
-    } else {
-      pendingRestoreRef.current = null
-    }
-  }, [restoreScrollTop])
-
   // Scroll to bottom before paint when switching worktrees to prevent flash of top content
   useLayoutEffect(() => {
     const viewport = scrollViewportRef.current
@@ -279,35 +258,8 @@ export function useScrollManagement({
     }
   }, [activeWorktreeId])
 
-  // Restore scroll position on session switch when messages are already cached.
-  // This handles tab switches and worktree switches where TanStack Query has cached data.
-  const prevSessionIdRef = useRef(sessionId)
-  useLayoutEffect(() => {
-    if (sessionId === prevSessionIdRef.current) return
-    prevSessionIdRef.current = sessionId
-
-    const pending = pendingRestoreRef.current
-    if (pending == null) return
-
-    const currentLength = messages?.length ?? 0
-    if (currentLength === 0) return // Messages not loaded yet — 0→N handler will restore
-
-    const viewport = scrollViewportRef.current
-    if (!viewport) return
-
-    viewport.scrollTop = pending
-    pendingRestoreRef.current = null
-    isRestoringScrollRef.current = true
-
-    const { scrollHeight, clientHeight } = viewport
-    const atBottom = scrollHeight - pending - clientHeight < 100
-    isAtBottomRef.current = atBottom
-    setIsAtBottom(atBottom)
-  }, [sessionId, messages?.length])
-
   // Scroll to bottom when messages first load for a session (async data arrival).
   // Without this, opening a session shows the top of the message list.
-  // When a pending restore exists, restores saved scroll position instead.
   const prevMessageLengthRef = useRef(messages?.length ?? 0)
   useLayoutEffect(() => {
     const currentLength = messages?.length ?? 0
@@ -317,19 +269,7 @@ export function useScrollManagement({
     if (prevLength === 0 && currentLength > 0) {
       const viewport = scrollViewportRef.current
       if (viewport) {
-        const pending = pendingRestoreRef.current
-        if (pending != null) {
-          viewport.scrollTop = pending
-          pendingRestoreRef.current = null
-          isRestoringScrollRef.current = true
-
-          const { scrollHeight, clientHeight } = viewport
-          const atBottom = scrollHeight - pending - clientHeight < 100
-          isAtBottomRef.current = atBottom
-          setIsAtBottom(atBottom)
-        } else {
-          viewport.scrollTop = viewport.scrollHeight
-        }
+        viewport.scrollTop = viewport.scrollHeight
       }
     }
   }, [messages?.length])
@@ -509,6 +449,5 @@ export function useScrollManagement({
     endKeyboardScroll,
     scrollToFindings,
     handleScroll,
-    isRestoringScrollRef,
   }
 }

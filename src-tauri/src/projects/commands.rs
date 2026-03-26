@@ -736,7 +736,6 @@ pub async fn create_worktree(
         order: 0, // Placeholder, actual order is set in background thread
         archived_at: None,
         label: None,
-        has_notes: false,
         last_opened_at: None,
     };
 
@@ -1258,8 +1257,7 @@ pub async fn create_worktree(
                     order: max_order + 1,
                     archived_at: None,
                     label: None,
-                    has_notes: false,
-                    last_opened_at: None,
+                                last_opened_at: None,
                 };
 
                 data.add_worktree(worktree.clone());
@@ -1447,7 +1445,6 @@ pub async fn create_worktree_from_existing_branch(
         order: 0, // Placeholder, actual order is set in background thread
         archived_at: None,
         label: None,
-        has_notes: false,
         last_opened_at: None,
     };
 
@@ -1820,8 +1817,7 @@ pub async fn create_worktree_from_existing_branch(
                     order: max_order + 1,
                     archived_at: None,
                     label: None,
-                    has_notes: false,
-                    last_opened_at: None,
+                                last_opened_at: None,
                 };
 
                 data.add_worktree(worktree.clone());
@@ -2042,7 +2038,6 @@ pub async fn checkout_pr(
         order: 0, // Will be updated in background thread
         archived_at: None,
         label: None,
-        has_notes: false,
         last_opened_at: None,
     };
 
@@ -2345,8 +2340,7 @@ pub async fn checkout_pr(
                     order: max_order + 1,
                     archived_at: None,
                     label: None,
-                    has_notes: false,
-                    last_opened_at: None,
+                                last_opened_at: None,
                 };
 
                 data.add_worktree(worktree.clone());
@@ -2639,7 +2633,6 @@ pub async fn create_base_session(app: AppHandle, project_id: String) -> Result<W
         order: 0, // Base sessions are always first
         archived_at: None,
         label: None,
-        has_notes: false,
         last_opened_at: None,
     };
 
@@ -3033,7 +3026,6 @@ pub async fn import_worktree(
         order: max_order + 1,
         archived_at: None,
         label: None,
-        has_notes: false,
         last_opened_at: None,
     };
 
@@ -3815,53 +3807,6 @@ pub async fn update_worktree_label(
     save_projects_data(&app, &data)?;
 
     log::trace!("Successfully updated worktree label for: {worktree_id}");
-    Ok(())
-}
-
-/// Get the markdown notes for a worktree
-#[tauri::command]
-pub async fn get_worktree_notes(
-    app: AppHandle,
-    worktree_id: String,
-) -> Result<Option<String>, String> {
-    let path = super::storage::get_notes_path(&app, &worktree_id)?;
-    if path.exists() {
-        let content = std::fs::read_to_string(&path)
-            .map_err(|e| format!("Failed to read notes: {e}"))?;
-        Ok(Some(content))
-    } else {
-        Ok(None)
-    }
-}
-
-/// Save (or delete) markdown notes for a worktree
-#[tauri::command]
-pub async fn save_worktree_notes(
-    app: AppHandle,
-    worktree_id: String,
-    notes: Option<String>,
-) -> Result<(), String> {
-    let path = super::storage::get_notes_path(&app, &worktree_id)?;
-    let has_content = notes
-        .as_ref()
-        .map(|n| !n.trim().is_empty())
-        .unwrap_or(false);
-
-    if has_content {
-        std::fs::write(&path, notes.unwrap())
-            .map_err(|e| format!("Failed to write notes: {e}"))?;
-    } else if path.exists() {
-        std::fs::remove_file(&path)
-            .map_err(|e| format!("Failed to delete notes: {e}"))?;
-    }
-
-    // Update has_notes flag in projects data
-    let mut data = load_projects_data(&app)?;
-    if let Some(worktree) = data.find_worktree_mut(&worktree_id) {
-        worktree.has_notes = has_content;
-        save_projects_data(&app, &data)?;
-    }
-
     Ok(())
 }
 

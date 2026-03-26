@@ -209,9 +209,6 @@ pub struct Worktree {
     /// User-assigned label with color (e.g. "In Progress")
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<LabelData>,
-    /// Whether this worktree has notes stored in notes/{worktree_id}.md
-    #[serde(default)]
-    pub has_notes: bool,
     /// Unix timestamp when worktree was archived (None = not archived)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub archived_at: Option<u64>,

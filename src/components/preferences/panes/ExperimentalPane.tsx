@@ -115,20 +115,6 @@ export const ExperimentalPane: React.FC = () => {
         </div>
       </SettingsSection>
 
-      <SettingsSection title="Chat">
-        <InlineField
-          label="Preserve scroll position"
-          description="Remember scroll position per session. When switching back, restore position instead of scrolling to bottom."
-        >
-          <Switch
-            checked={preferences?.preserve_scroll_position ?? false}
-            onCheckedChange={checked => {
-              patchPreferences.mutate({ preserve_scroll_position: checked })
-            }}
-          />
-        </InlineField>
-      </SettingsSection>
-
       <SettingsSection title="Developer Tools">
         <InlineField
           label="Debug mode"

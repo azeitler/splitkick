@@ -275,6 +275,16 @@ export default function useStreamingEvents({
 
     const unlistenChunk = listen<ChunkEvent>('chat:chunk', event => {
       const { session_id, content } = event.payload
+      // Guard: drop stale chunks for sessions already cancelled/completed.
+      // Without this, late events re-add the session to sendingSessionIds
+      // after cancelSession() cleared it, causing the response to "still arrive".
+      const currentState = useChatStore.getState()
+      if (
+        currentState.reviewingSessions[session_id] &&
+        !currentState.sendingSessionIds[session_id]
+      ) {
+        return
+      }
       // Ensure session is marked as sending (recovers state after reconnect/refresh)
       addSendingSession(session_id)
       // Accumulate into buffer

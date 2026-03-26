@@ -1,3 +1,4 @@
+import type { Backend } from '@/types/chat'
 import type { PrDisplayStatus } from '@/types/pr-status'
 
 export function getPrStatusDisplay(status: PrDisplayStatus): {
@@ -27,6 +28,15 @@ export function getProviderDisplayName(
   return !selectedProvider || selectedProvider === '__anthropic__'
     ? 'Anthropic'
     : selectedProvider
+}
+
+export function getSessionProviderDisplayName(
+  selectedBackend: Backend | undefined,
+  selectedProvider: string | null | undefined
+): string {
+  if (selectedBackend === 'codex') return 'OpenAI'
+  if (selectedBackend === 'opencode') return 'OpenCode'
+  return getProviderDisplayName(selectedProvider ?? null)
 }
 
 function formatProviderName(provider: string): string {

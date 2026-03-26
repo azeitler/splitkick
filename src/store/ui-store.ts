@@ -699,6 +699,7 @@ export const useUIStore = create<UIState>()(
 
       setGitHubDashboardOpen: (open: boolean) =>
         set({ githubDashboardOpen: open }, undefined, 'setGitHubDashboardOpen'),
+
     }),
     {
       name: 'ui-store',

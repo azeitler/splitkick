@@ -142,12 +142,6 @@ interface ChatUIState {
   // Error state per session (for inline error display)
   errors: Record<string, string | null>
 
-  // Saved scroll positions per session (in-memory only, not persisted across restarts)
-  savedScrollPositions: Record<
-    string,
-    { scrollTop: number; visibleCount: number }
-  >
-
   // Last sent message per session (for restoring on error)
   lastSentMessages: Record<string, string>
 
@@ -336,14 +330,6 @@ interface ChatUIState {
   appendThinkingContent: (sessionId: string, content: string) => void
   clearThinkingContent: (sessionId: string) => void
   getThinkingContent: (sessionId: string) => string
-
-  // Actions - Scroll position preservation (in-memory only)
-  saveScrollPosition: (
-    sessionId: string,
-    scrollTop: number,
-    visibleCount: number
-  ) => void
-  clearSavedScrollPosition: (sessionId: string) => void
 
   // Actions - Input drafts (session-based)
   setInputDraft: (sessionId: string, value: string) => void
@@ -586,7 +572,6 @@ export const useChatStore = create<ChatUIState>()(
       streamingContentBlocks: {},
       streamingThinkingContent: {},
       inputDrafts: {},
-      savedScrollPositions: {},
       executionModes: {},
       thinkingLevels: {},
       effortLevels: {},
@@ -1228,39 +1213,6 @@ export const useChatStore = create<ChatUIState>()(
 
       getThinkingContent: sessionId =>
         get().streamingThinkingContent[sessionId] ?? '',
-
-      // Scroll position preservation (in-memory only)
-      saveScrollPosition: (sessionId, scrollTop, visibleCount) =>
-        set(
-          state => {
-            const existing = state.savedScrollPositions[sessionId]
-            if (
-              existing &&
-              existing.scrollTop === scrollTop &&
-              existing.visibleCount === visibleCount
-            )
-              return state
-            return {
-              savedScrollPositions: {
-                ...state.savedScrollPositions,
-                [sessionId]: { scrollTop, visibleCount },
-              },
-            }
-          },
-          undefined,
-          'saveScrollPosition'
-        ),
-
-      clearSavedScrollPosition: sessionId =>
-        set(
-          state => {
-            if (!(sessionId in state.savedScrollPositions)) return state
-            const { [sessionId]: _, ...rest } = state.savedScrollPositions
-            return { savedScrollPositions: rest }
-          },
-          undefined,
-          'clearSavedScrollPosition'
-        ),
 
       // Input drafts (session-based)
       setInputDraft: (sessionId, value) =>

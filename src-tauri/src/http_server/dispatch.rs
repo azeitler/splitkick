@@ -176,17 +176,6 @@ pub async fn dispatch_command(
             crate::projects::update_worktree_label(app.clone(), worktree_id, label).await?;
             Ok(Value::Null)
         }
-        "get_worktree_notes" => {
-            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
-            let result = crate::projects::get_worktree_notes(app.clone(), worktree_id).await?;
-            to_value(result)
-        }
-        "save_worktree_notes" => {
-            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
-            let notes: Option<String> = field_opt(&args, "notes", "notes")?;
-            crate::projects::save_worktree_notes(app.clone(), worktree_id, notes).await?;
-            Ok(Value::Null)
-        }
         "has_uncommitted_changes" => {
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
             let result = crate::projects::has_uncommitted_changes(app.clone(), worktree_id).await?;

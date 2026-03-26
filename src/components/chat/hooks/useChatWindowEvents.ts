@@ -96,8 +96,6 @@ interface UseChatWindowEventsParams {
   beginKeyboardScroll: () => void
   /** End a user-initiated keyboard scroll: unblocks handleScroll */
   endKeyboardScroll: () => void
-  /** Ref indicating scroll restore is in progress (skip scrollToBottom on worktree switch) */
-  isRestoringScrollRef: React.RefObject<boolean>
 }
 
 /**
@@ -148,7 +146,6 @@ export function useChatWindowEvents({
   scrollViewportRef,
   beginKeyboardScroll,
   endKeyboardScroll,
-  isRestoringScrollRef,
 }: UseChatWindowEventsParams) {
   const isMobile = useIsMobile()
 
@@ -159,14 +156,10 @@ export function useChatWindowEvents({
     }
   }, [activeSessionId, activeWorktreeId, inputRef, isMobile])
 
-  // Scroll to bottom on worktree switch (skip if scroll restore is pending)
+  // Scroll to bottom on worktree switch
   useEffect(() => {
-    if (isRestoringScrollRef.current) {
-      isRestoringScrollRef.current = false
-      return
-    }
     scrollToBottom(true)
-  }, [activeWorktreeId, scrollToBottom, isRestoringScrollRef])
+  }, [activeWorktreeId, scrollToBottom])
 
   // Auto-scroll on new messages/streaming
   // eslint-disable-next-line react-hooks/exhaustive-deps -- isAtBottom and scrollToBottom are intentionally

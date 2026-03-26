@@ -23,7 +23,6 @@ import {
   Terminal,
   Play,
   Plus,
-  StickyNote,
   Trash2,
 } from 'lucide-react'
 import { ModalCloseButton } from '@/components/ui/modal-close-button'
@@ -100,7 +99,6 @@ import {
 } from '@/components/ui/context-menu'
 import { WorktreeDropdownMenu } from '@/components/projects/WorktreeDropdownMenu'
 import { LabelModal } from './LabelModal'
-import { NotesModal } from './NotesModal'
 import { useSessionArchive } from './hooks/useSessionArchive'
 import { useIsMobile } from '@/hooks/use-mobile'
 
@@ -375,9 +373,6 @@ export function SessionChatModal({
       hasSetActiveRef.current = null
     }
   }, [isOpen])
-
-  // Notes modal state
-  const [notesModalOpen, setNotesModalOpen] = useState(false)
 
   // Label modal state
   const [labelModalOpen, setLabelModalOpen] = useState(false)
@@ -1101,9 +1096,16 @@ export function SessionChatModal({
                               className="w-full min-w-0 bg-transparent text-xs outline-none"
                             />
                           ) : (
-                            <span className="truncate max-w-48">
-                              {session.name}
-                            </span>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="truncate max-w-48">
+                                  {session.name}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent side="bottom">
+                                {session.name}
+                              </TooltipContent>
+                            </Tooltip>
                           )}
                           {renamingSessionId !== session.id && (
                             <DismissButton
@@ -1264,22 +1266,6 @@ export function SessionChatModal({
               </TooltipTrigger>
               <TooltipContent>New session</TooltipContent>
             </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={cn(
-                    'h-6 w-6 p-0 shrink-0',
-                    worktree?.has_notes && 'text-primary'
-                  )}
-                  onClick={() => setNotesModalOpen(true)}
-                >
-                  <StickyNote className="h-3 w-3" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Notes</TooltipContent>
-            </Tooltip>
           </div>
         )}
 
@@ -1302,12 +1288,6 @@ export function SessionChatModal({
           />
         )}
       </div>
-      <NotesModal
-        isOpen={notesModalOpen}
-        onClose={() => setNotesModalOpen(false)}
-        worktreeId={worktreeId}
-        hasNotes={worktree?.has_notes}
-      />
       <LabelModal
         isOpen={labelModalOpen}
         onClose={() => {

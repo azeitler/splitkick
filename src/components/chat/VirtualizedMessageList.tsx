@@ -34,8 +34,6 @@ export interface VirtualizedMessageListHandle {
   isIndexInView: (index: number) => boolean
   /** Get the current visible range */
   getVisibleRange: () => { start: number; end: number } | null
-  /** Get the current visible count (for saving scroll state) */
-  getVisibleCount: () => number
 }
 
 interface VirtualizedMessageListProps {
@@ -108,8 +106,6 @@ interface VirtualizedMessageListProps {
   onCopyToInput?: (message: ChatMessage) => void
   /** Hide approve buttons (e.g. for Codex which has no native approval flow) */
   hideApproveButtons?: boolean
-  /** Initial visible count override (for restoring scroll position) */
-  initialVisibleCount?: number
   /** Whether we should scroll to bottom (new message arrived while at bottom) */
   shouldScrollToBottom?: boolean
   /** Callback when scroll-to-bottom is handled */
@@ -157,7 +153,6 @@ export const VirtualizedMessageList = memo(
         isFindingFixed,
         onCopyToInput,
         hideApproveButtons,
-        initialVisibleCount,
         shouldScrollToBottom,
         onScrollToBottomHandled,
         completedDurationMs,
@@ -175,15 +170,15 @@ export const VirtualizedMessageList = memo(
       const visibleMessages = messages.slice(startIndex)
       const hasMoreMessages = startIndex > 0
 
-      // Reset visible count when session changes (use saved count for scroll restoration)
+      // Reset visible count when session changes
       const prevSessionRef = useRef(sessionId)
       useEffect(() => {
         if (sessionId !== prevSessionRef.current) {
           // eslint-disable-next-line react-hooks/set-state-in-effect
-          setVisibleCount(initialVisibleCount ?? INITIAL_VISIBLE_COUNT)
+          setVisibleCount(INITIAL_VISIBLE_COUNT)
           prevSessionRef.current = sessionId
         }
-      }, [sessionId, initialVisibleCount])
+      }, [sessionId])
 
       // Pre-compute hasFollowUpMessage for all messages in O(n) instead of O(n²)
       const hasFollowUpMap = useMemo(() => {
@@ -273,7 +268,6 @@ export const VirtualizedMessageList = memo(
           start: startIndex,
           end: messages.length - 1,
         }),
-        getVisibleCount: () => visibleCount,
       }))
 
       // Handle scroll-to-bottom when new messages arrive

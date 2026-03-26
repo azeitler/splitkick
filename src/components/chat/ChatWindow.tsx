@@ -2,7 +2,6 @@ import {
   useCallback,
   useDeferredValue,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -826,14 +825,6 @@ export function ChatWindow({
   // Review sidebar panel ref for imperative collapse/expand
   const reviewPanelRef = useRef<ImperativePanelHandle>(null)
 
-  // Scroll position preservation: compute saved position for current session
-  const savedScrollPosition =
-    preferences?.preserve_scroll_position && deferredSessionId
-      ? useChatStore.getState().savedScrollPositions[deferredSessionId]
-      : undefined
-  const restoreScrollTop = savedScrollPosition?.scrollTop ?? null
-  const initialVisibleCount = savedScrollPosition?.visibleCount
-
   // Scroll management hook - handles scroll state and callbacks
   const {
     scrollViewportRef,
@@ -846,83 +837,12 @@ export function ChatWindow({
     scrollToFindings,
     handleScroll,
     handleScrollToBottomHandled,
-    isRestoringScrollRef,
   } = useScrollManagement({
     messages: session?.messages,
     virtualizedListRef,
     activeWorktreeId,
     isSending,
-    sessionId: deferredSessionId,
-    restoreScrollTop,
   })
-
-  // Scroll position preservation: track scrollTop via ref (no re-renders), flush to store on session switch
-  const currentScrollTopRef = useRef(0)
-  const handleScrollWithSave = useCallback(
-    (e: React.UIEvent<HTMLDivElement>) => {
-      handleScroll(e)
-      currentScrollTopRef.current = (e.target as HTMLDivElement).scrollTop
-    },
-    [handleScroll]
-  )
-
-  // Save scroll position when switching away from a session
-  const prevDeferredSessionRef = useRef<string | null>(null)
-  useLayoutEffect(() => {
-    const prevSessionId = prevDeferredSessionRef.current
-    prevDeferredSessionRef.current = deferredSessionId ?? null
-
-    if (
-      prevSessionId &&
-      prevSessionId !== deferredSessionId &&
-      preferences?.preserve_scroll_position
-    ) {
-      const viewport = scrollViewportRef.current
-      const scrollTop = viewport
-        ? viewport.scrollTop
-        : currentScrollTopRef.current
-      // Only save if user wasn't at bottom (default scroll-to-bottom is fine otherwise)
-      const atBottom = viewport
-        ? viewport.scrollHeight - scrollTop - viewport.clientHeight < 100
-        : true
-      if (!atBottom) {
-        const visibleCount = virtualizedListRef.current?.getVisibleCount() ?? 10
-        useChatStore
-          .getState()
-          .saveScrollPosition(prevSessionId, scrollTop, visibleCount)
-      } else {
-        useChatStore.getState().clearSavedScrollPosition(prevSessionId)
-      }
-    }
-  }, [
-    deferredSessionId,
-    preferences?.preserve_scroll_position,
-    scrollViewportRef,
-    virtualizedListRef,
-  ])
-
-  // Save scroll position on unmount (e.g., closing modal, going back to dashboard)
-  const preserveScrollRef = useRef(preferences?.preserve_scroll_position)
-  preserveScrollRef.current = preferences?.preserve_scroll_position
-  useEffect(() => {
-    return () => {
-      const sessionId = prevDeferredSessionRef.current
-      if (!sessionId || !preserveScrollRef.current) return
-      const scrollTop = currentScrollTopRef.current
-      // Check if at bottom (skip save in that case)
-      const viewport = scrollViewportRef.current
-      const atBottom = viewport
-        ? viewport.scrollHeight - scrollTop - viewport.clientHeight < 100
-        : true
-      if (!atBottom) {
-        const visibleCount = virtualizedListRef.current?.getVisibleCount() ?? 10
-        useChatStore
-          .getState()
-          .saveScrollPosition(sessionId, scrollTop, visibleCount)
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: cleanup-only, refs are stable
-  }, [])
 
   // Drag and drop images into chat input
   const { isDragging } = useDragAndDropImages(activeSessionId)
@@ -2068,7 +1988,6 @@ export function ChatWindow({
     scrollViewportRef,
     beginKeyboardScroll,
     endKeyboardScroll,
-    isRestoringScrollRef,
   })
 
   // Combined floating-button approval callbacks (dispatch to streaming or pending variant)
@@ -2286,7 +2205,7 @@ export function ChatWindow({
                         className="h-full w-full"
                         viewportRef={scrollViewportRef}
                         viewportClassName="will-change-scroll"
-                        onScroll={handleScrollWithSave}
+                        onScroll={handleScroll}
                       >
                         <div className="mx-auto max-w-7xl px-4 pt-4 pb-6 md:px-6 min-w-0 w-full">
                           <div className="select-text space-y-4 font-mono text-sm min-w-0 break-words overflow-x-auto">
@@ -2393,7 +2312,6 @@ export function ChatWindow({
                                   isFindingFixed={isFindingFixed}
                                   onCopyToInput={handleCopyToInput}
                                   hideApproveButtons={isCodexBackend}
-                                  initialVisibleCount={initialVisibleCount}
                                   shouldScrollToBottom={isAtBottom}
                                   onScrollToBottomHandled={
                                     handleScrollToBottomHandled
