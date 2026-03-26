@@ -75,7 +75,12 @@ export const githubQueryKeys = {
   securityAlerts: (projectPath: string, state: string) =>
     [...githubQueryKeys.all, 'security-alerts', projectPath, state] as const,
   securityAlert: (projectPath: string, alertNumber: number) =>
-    [...githubQueryKeys.all, 'security-alert', projectPath, alertNumber] as const,
+    [
+      ...githubQueryKeys.all,
+      'security-alert',
+      projectPath,
+      alertNumber,
+    ] as const,
   loadedSecurityContexts: (sessionId: string) =>
     [...githubQueryKeys.all, 'loaded-security-contexts', sessionId] as const,
   advisories: (projectPath: string, state: string) =>
@@ -203,7 +208,10 @@ export function countNewIssues(issues: GitHubIssue[]): number {
  *   'label:"bug" crash'  → { labels: ['bug'], textQuery: 'crash' }
  *   'label:"bug" label:"high priority"' → { labels: ['bug', 'high priority'], textQuery: '' }
  */
-export function parseLabelQuery(query: string): { labels: string[]; textQuery: string } {
+export function parseLabelQuery(query: string): {
+  labels: string[]
+  textQuery: string
+} {
   const labels: string[] = []
   const textQuery = query
     .replace(/label:"([^"]+)"/gi, (_, name) => {

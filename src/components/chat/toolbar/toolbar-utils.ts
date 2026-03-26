@@ -21,7 +21,9 @@ export function getPrStatusDisplay(status: PrDisplayStatus): {
   }
 }
 
-export function getProviderDisplayName(selectedProvider: string | null): string {
+export function getProviderDisplayName(
+  selectedProvider: string | null
+): string {
   return !selectedProvider || selectedProvider === '__anthropic__'
     ? 'Anthropic'
     : selectedProvider
@@ -125,7 +127,10 @@ export function formatOpencodeModelLabel(raw: string): string {
     mergedTokens.push(current)
   }
 
-  const modelLabel = mergedTokens.filter(Boolean).map(formatModelToken).join(' ')
+  const modelLabel = mergedTokens
+    .filter(Boolean)
+    .map(formatModelToken)
+    .join(' ')
   const qualifierSuffix = qualifier ? ` [${qualifier}]` : ''
   return `${modelLabel} (${formatProviderName(provider)})${qualifierSuffix}`
 }

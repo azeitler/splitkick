@@ -62,7 +62,9 @@ export const ExperimentalPane: React.FC = () => {
             <Switch
               checked={preferences?.parallel_execution_prompt_enabled ?? false}
               onCheckedChange={checked => {
-                patchPreferences.mutate({ parallel_execution_prompt_enabled: checked })
+                patchPreferences.mutate({
+                  parallel_execution_prompt_enabled: checked,
+                })
               }}
             />
           </InlineField>
@@ -84,7 +86,9 @@ export const ExperimentalPane: React.FC = () => {
             description="Claude model for automatic and on-demand session recaps"
           >
             <Select
-              value={preferences?.magic_prompt_models.session_recap_model ?? 'haiku'}
+              value={
+                preferences?.magic_prompt_models.session_recap_model ?? 'haiku'
+              }
               onValueChange={(value: ClaudeModel) => {
                 if (preferences) {
                   patchPreferences.mutate({
@@ -111,6 +115,20 @@ export const ExperimentalPane: React.FC = () => {
         </div>
       </SettingsSection>
 
+      <SettingsSection title="Chat">
+        <InlineField
+          label="Preserve scroll position"
+          description="Remember scroll position per session. When switching back, restore position instead of scrolling to bottom."
+        >
+          <Switch
+            checked={preferences?.preserve_scroll_position ?? false}
+            onCheckedChange={checked => {
+              patchPreferences.mutate({ preserve_scroll_position: checked })
+            }}
+          />
+        </InlineField>
+      </SettingsSection>
+
       <SettingsSection title="Developer Tools">
         <InlineField
           label="Debug mode"
@@ -123,9 +141,7 @@ export const ExperimentalPane: React.FC = () => {
             }}
           />
         </InlineField>
-
       </SettingsSection>
-
     </div>
   )
 }

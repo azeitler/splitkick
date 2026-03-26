@@ -39,7 +39,9 @@ export const IntegrationsPane: React.FC = () => {
   const { data: preferences } = usePreferences()
   const patchPreferences = usePatchPreferences()
 
-  const [localLinearApiKey, setLocalLinearApiKey] = useState<string | null>(null)
+  const [localLinearApiKey, setLocalLinearApiKey] = useState<string | null>(
+    null
+  )
   const [showLinearApiKey, setShowLinearApiKey] = useState(false)
 
   const currentGlobalKey = preferences?.linear_api_key ?? ''

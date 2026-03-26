@@ -80,9 +80,7 @@ export const UsagePane: React.FC = () => {
     codexUsage.error,
     'Failed to load Codex usage.'
   )
-  const isRefreshing =
-    codexUsage.isFetching ||
-    codexAuth.isFetching
+  const isRefreshing = codexUsage.isFetching || codexAuth.isFetching
 
   return (
     <div className="space-y-6">
@@ -109,7 +107,8 @@ export const UsagePane: React.FC = () => {
 
       <SettingsSection title="Claude">
         <p className="text-sm text-muted-foreground">
-          Claude usage tracking is temporarily disabled due to an authentication bug that causes repeated logouts.
+          Claude usage tracking is temporarily disabled due to an authentication
+          bug that causes repeated logouts.
         </p>
       </SettingsSection>
 
@@ -186,7 +185,9 @@ export const UsagePane: React.FC = () => {
             </p>
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">No usage data available.</p>
+          <p className="text-sm text-muted-foreground">
+            No usage data available.
+          </p>
         )}
       </SettingsSection>
     </div>

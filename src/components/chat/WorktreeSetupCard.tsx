@@ -22,10 +22,7 @@ function getStatusText(worktree: Worktree): string {
 export const WorktreeSetupCard = forwardRef<
   HTMLDivElement,
   WorktreeSetupCardProps
->(function WorktreeSetupCard(
-  { worktree, isSelected, onSelect },
-  ref
-) {
+>(function WorktreeSetupCard({ worktree, isSelected, onSelect }, ref) {
   const statusText = getStatusText(worktree)
 
   return (

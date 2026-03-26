@@ -58,6 +58,20 @@ pub fn get_project_worktrees_dir(
     Ok(project_dir)
 }
 
+/// Get the path to a worktree's notes file: <app_data_dir>/notes/{worktree_id}.md
+pub fn get_notes_path(app: &AppHandle, worktree_id: &str) -> Result<PathBuf, String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {e}"))?;
+
+    let notes_dir = app_data_dir.join("notes");
+    std::fs::create_dir_all(&notes_dir)
+        .map_err(|e| format!("Failed to create notes directory: {e}"))?;
+
+    Ok(notes_dir.join(format!("{worktree_id}.md")))
+}
+
 /// Sanitize a string for use as a directory name
 pub fn sanitize_directory_name(name: &str) -> String {
     name.chars()

@@ -956,6 +956,7 @@ pub async fn restore_session_with_base(
         cached_unpushed_count: None,
         order: 0,
         label: None,
+        has_notes: false,
         archived_at: None,
         last_opened_at: None,
     };

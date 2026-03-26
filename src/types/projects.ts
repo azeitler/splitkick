@@ -128,6 +128,8 @@ export interface Worktree {
   cached_unpushed_count?: number
   /** User-assigned label with color (e.g. "In Progress") */
   label?: LabelData
+  /** Whether this worktree has notes stored */
+  has_notes?: boolean
   /** Display order within project (lower = higher in list, base sessions ignore this) */
   order: number
   /** Unix timestamp when worktree was archived (undefined = not archived) */

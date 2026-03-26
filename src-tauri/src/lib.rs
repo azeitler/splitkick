@@ -165,6 +165,8 @@ pub struct AppPreferences {
     #[serde(default)]
     pub debug_mode_enabled: bool, // Show debug panel in chat sessions (default: false)
     #[serde(default)]
+    pub preserve_scroll_position: bool, // Preserve scroll position per session (default: false)
+    #[serde(default)]
     pub default_enabled_mcp_servers: Vec<String>, // MCP server names enabled by default (empty = none)
     #[serde(default)]
     pub known_mcp_servers: Vec<String>, // All MCP server names ever seen (prevents re-enabling user-disabled servers)
@@ -1115,6 +1117,7 @@ impl Default for AppPreferences {
             auto_pull_base_branch: default_auto_pull_base_branch(),
             auto_archive_on_pr_merged: default_auto_archive_on_pr_merged(),
             debug_mode_enabled: false,
+            preserve_scroll_position: false,
             default_effort_level: default_effort_level(),
             default_enabled_mcp_servers: Vec::new(),
             known_mcp_servers: Vec::new(),
@@ -2623,6 +2626,8 @@ pub fn run() {
             projects::delete_all_archives,
             projects::rename_worktree,
             projects::update_worktree_label,
+            projects::get_worktree_notes,
+            projects::save_worktree_notes,
             projects::set_worktree_last_opened,
             projects::open_worktree_in_finder,
             projects::open_log_directory,

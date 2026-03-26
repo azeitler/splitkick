@@ -978,13 +978,14 @@ export function useWorktreeEvents() {
             // canvas is mounting (lazy-loaded), and a deferred event dispatch
             // for when it's already mounted. The auto-open effect consumes the
             // mark, so only one will take effect.
-            useUIStore
-              .getState()
-              .markWorktreeForAutoOpenSession(worktree.id)
+            useUIStore.getState().markWorktreeForAutoOpenSession(worktree.id)
             setTimeout(() => {
               window.dispatchEvent(
                 new CustomEvent('open-worktree-modal', {
-                  detail: { worktreeId: worktree.id, worktreePath: worktree.path },
+                  detail: {
+                    worktreeId: worktree.id,
+                    worktreePath: worktree.path,
+                  },
                 })
               )
             }, 0)
@@ -1120,7 +1121,9 @@ export function useWorktreeEvents() {
 
         // Close SessionChatModal if it's open for this worktree
         window.dispatchEvent(
-          new CustomEvent('close-worktree-modal', { detail: { worktreeId: id } })
+          new CustomEvent('close-worktree-modal', {
+            detail: { worktreeId: id },
+          })
         )
       })
     )
@@ -1950,7 +1953,9 @@ export function useOpenWorktreeInFinder() {
         throw new Error('Not in Tauri context')
       }
 
-      logger.debug(`Opening worktree in ${getFileManagerName()}`, { worktreePath })
+      logger.debug(`Opening worktree in ${getFileManagerName()}`, {
+        worktreePath,
+      })
       await invoke('open_worktree_in_finder', { worktreePath })
       logger.info(`Opened worktree in ${getFileManagerName()}`)
     },
@@ -1962,7 +1967,9 @@ export function useOpenWorktreeInFinder() {
             ? error
             : 'Unknown error occurred'
       logger.error(`Failed to open in ${getFileManagerName()}`, { error })
-      toast.error(`Failed to open in ${getFileManagerName()}`, { description: message })
+      toast.error(`Failed to open in ${getFileManagerName()}`, {
+        description: message,
+      })
     },
   })
 }
@@ -2463,7 +2470,11 @@ export function useUpdateProjectSettings() {
         throw new Error('Not in Tauri context')
       }
 
-      logger.debug('Updating project settings', { projectId, name, defaultBranch })
+      logger.debug('Updating project settings', {
+        projectId,
+        name,
+        defaultBranch,
+      })
       const project = await invoke<Project>('update_project_settings', {
         projectId,
         name,
