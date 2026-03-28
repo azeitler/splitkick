@@ -502,6 +502,7 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
           ghsaId: alertDetail.ghsaId,
           cveId: alertDetail.cveId,
           manifestPath: alertDetail.manifestPath,
+          htmlUrl: alertDetail.htmlUrl,
         }
 
         if (background)
@@ -554,6 +555,7 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
           ghsaId: alertDetail.ghsaId,
           cveId: alertDetail.cveId,
           manifestPath: alertDetail.manifestPath,
+          htmlUrl: alertDetail.htmlUrl,
         }
 
         if (background)
@@ -612,6 +614,7 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
             vulnerableVersionRange: v.vulnerableVersionRange,
             patchedVersions: v.patchedVersions,
           })),
+          htmlUrl: advisoryDetail.htmlUrl,
         }
 
         if (background)
@@ -666,6 +669,7 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
             vulnerableVersionRange: v.vulnerableVersionRange,
             patchedVersions: v.patchedVersions,
           })),
+          htmlUrl: advisoryDetail.htmlUrl,
         }
 
         if (background)

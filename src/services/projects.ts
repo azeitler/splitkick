@@ -502,6 +502,7 @@ export function useCreateWorktree() {
         ghsaId: string
         cveId?: string
         manifestPath: string
+        htmlUrl?: string
       }
       /** Advisory context to pass when creating a worktree from a repository advisory */
       advisoryContext?: AdvisoryContext
@@ -683,6 +684,7 @@ export function useCreateWorktreeFromExistingBranch() {
         ghsaId: string
         cveId?: string
         manifestPath: string
+        htmlUrl?: string
       }
       /** Advisory context to pass when creating a worktree from a repository advisory */
       advisoryContext?: AdvisoryContext
@@ -916,7 +918,7 @@ export function useWorktreeEvents() {
     // Listen for creation starting - add pending worktree immediately
     unlistenPromises.push(
       listen<WorktreeCreatingEvent>('worktree:creating', event => {
-        const { id, project_id, name, path, branch, pr_number, issue_number } =
+        const { id, project_id, name, path, branch, pr_number, issue_number, security_alert_number, advisory_ghsa_id } =
           event.payload
         logger.info('Worktree creating (background started)', { id, name })
 
@@ -934,6 +936,8 @@ export function useWorktreeEvents() {
               branch,
               pr_number,
               issue_number,
+              security_alert_number,
+              advisory_ghsa_id,
               created_at: Math.floor(Date.now() / 1000),
               status: 'pending' as const,
               session_type: 'worktree' as Worktree['session_type'],

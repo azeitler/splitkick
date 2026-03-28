@@ -62,28 +62,28 @@ export function useLoadContextData({
     data: loadedIssueContexts,
     isLoading: isLoadingIssueContexts,
     refetch: refetchIssueContexts,
-  } = useLoadedIssueContexts(activeSessionId)
+  } = useLoadedIssueContexts(activeSessionId, worktreeId)
 
   // PR contexts for this session
   const {
     data: loadedPRContexts,
     isLoading: isLoadingPRContexts,
     refetch: refetchPRContexts,
-  } = useLoadedPRContexts(activeSessionId)
+  } = useLoadedPRContexts(activeSessionId, worktreeId)
 
   // Security alert contexts for this session
   const {
     data: loadedSecurityContexts,
     isLoading: isLoadingSecurityContexts,
     refetch: refetchSecurityContexts,
-  } = useLoadedSecurityContexts(activeSessionId)
+  } = useLoadedSecurityContexts(activeSessionId, worktreeId)
 
   // Advisory contexts for this session
   const {
     data: loadedAdvisoryContexts,
     isLoading: isLoadingAdvisoryContexts,
     refetch: refetchAdvisoryContexts,
-  } = useLoadedAdvisoryContexts(activeSessionId)
+  } = useLoadedAdvisoryContexts(activeSessionId, worktreeId)
 
   // Attached saved contexts for this session
   const {

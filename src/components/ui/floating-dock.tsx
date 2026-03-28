@@ -17,6 +17,7 @@ import {
   FileText,
   Github,
   GitPullRequest,
+  ShieldAlert,
 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -343,6 +344,11 @@ export function FloatingDock() {
     if (worktree?.pr_url) openExternal(worktree.pr_url)
   }, [worktree?.pr_url])
 
+  const handleOpenSecurityAlert = useCallback(() => {
+    const url = worktree?.security_alert_url ?? worktree?.advisory_url
+    if (url) openExternal(url)
+  }, [worktree?.security_alert_url, worktree?.advisory_url])
+
   // Listen for keyboard shortcut event
   useEffect(() => {
     const handler = () => toggleMenu()
@@ -467,6 +473,14 @@ export function FloatingDock() {
                 <DropdownMenuItem onClick={handleOpenPR}>
                   <GitPullRequest className="mr-2 h-4 w-4" />
                   PR #{worktree.pr_number}
+                </DropdownMenuItem>
+              )}
+              {(worktree?.security_alert_url || worktree?.advisory_url) && (
+                <DropdownMenuItem onClick={handleOpenSecurityAlert}>
+                  <ShieldAlert className="mr-2 h-4 w-4" />
+                  {worktree?.security_alert_number
+                    ? `Alert #${worktree.security_alert_number}`
+                    : worktree?.advisory_ghsa_id}
                 </DropdownMenuItem>
               )}
             </>
