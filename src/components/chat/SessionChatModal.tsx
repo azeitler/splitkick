@@ -694,10 +694,12 @@ export function SessionChatModal({
         const portalAncestor = target?.closest?.(
           '[data-slot="dialog-portal"], [data-slot="alert-dialog-portal"], [data-slot="sheet-portal"]'
         )
-        const planDialogOpen = useUIStore.getState().planDialogOpen
+        const { planDialogOpen, gitDiffModalOpen } = useUIStore.getState()
 
         // Don't close if PlanDialog is open — let it handle ESC
         if (planDialogOpen) return
+        // Don't close if GitDiffModal is open — let it handle ESC
+        if (gitDiffModalOpen) return
         // Don't close if CloseWorktreeDialog is open — let it handle ESC
         if (closeConfirmOpen) return
         // Don't close if ESC originated inside a child dialog/sheet portal
