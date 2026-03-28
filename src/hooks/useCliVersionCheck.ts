@@ -63,6 +63,47 @@ const CLI_DISPLAY_NAMES: Record<CliUpdateInfo['type'], string> = {
 }
 
 /**
+ * Resolve the effective CLI version/path/source by falling back to path detection
+ * when the preference-based status shows the CLI is not installed (e.g. system-installed
+ * Codex with default 'jean' preference → Jean binary missing → use path detection instead).
+ */
+function resolveCliInfo(
+  status: { installed: boolean; version?: string | null; path?: string | null } | undefined,
+  pathInfo:
+    | {
+        found: boolean
+        version?: string | null
+        path?: string | null
+        package_manager?: string | null
+      }
+    | undefined,
+  preferredSource: 'jean' | 'path' | undefined
+): {
+  version: string | null
+  path: string | null
+  source: 'jean' | 'path'
+  packageManager: string | null
+} {
+  if (status?.installed && status.version) {
+    return {
+      version: status.version,
+      path: status.path ?? null,
+      source: preferredSource ?? 'jean',
+      packageManager: pathInfo?.package_manager ?? null,
+    }
+  }
+  if (pathInfo?.found && pathInfo.version) {
+    return {
+      version: pathInfo.version,
+      path: pathInfo.path ?? null,
+      source: 'path',
+      packageManager: pathInfo.package_manager ?? null,
+    }
+  }
+  return { version: null, path: null, source: 'path', packageManager: null }
+}
+
+/**
  * Hook that checks for CLI updates on startup and periodically (every hour).
  * Shows toast notifications when updates are detected.
  * Should be called once in App.tsx.
@@ -130,104 +171,39 @@ export function useCliVersionCheck() {
 
     const updates: CliUpdateInfo[] = []
 
-    // Check Claude CLI
-    if (
-      claudeStatus?.installed &&
-      claudeStatus.version &&
-      claudeVersions?.length
-    ) {
-      const latestStable = claudeVersions.find(v => !v.prerelease)
-      if (
-        latestStable &&
-        isNewerVersion(latestStable.version, claudeStatus.version)
-      ) {
-        const key = `claude:${claudeStatus.version}→${latestStable.version}`
-        if (!notifiedRef.current.has(key)) {
-          notifiedRef.current.add(key)
-          updates.push({
-            type: 'claude',
-            currentVersion: claudeStatus.version,
-            latestVersion: latestStable.version,
-            cliSource: preferences?.claude_cli_source,
-            cliPath: claudeStatus.path,
-            packageManager: claudePathInfo?.package_manager,
-          })
-        }
-      }
-    }
+    // Resolve effective CLI info (falls back to path detection when Jean binary is missing)
+    const claude = resolveCliInfo(claudeStatus, claudePathInfo, preferences?.claude_cli_source)
+    const gh = resolveCliInfo(ghStatus, ghPathInfo, preferences?.gh_cli_source)
+    const codex = resolveCliInfo(codexStatus, codexPathInfo, preferences?.codex_cli_source)
+    const opencode = resolveCliInfo(opencodeStatus, opencodePathInfo, preferences?.opencode_cli_source)
 
-    // Check GitHub CLI
-    if (ghStatus?.installed && ghStatus.version && ghVersions?.length) {
-      const latestStable = ghVersions.find(v => !v.prerelease)
-      if (
-        latestStable &&
-        isNewerVersion(latestStable.version, ghStatus.version)
-      ) {
-        const key = `gh:${ghStatus.version}→${latestStable.version}`
-        if (!notifiedRef.current.has(key)) {
-          notifiedRef.current.add(key)
-          updates.push({
-            type: 'gh',
-            currentVersion: ghStatus.version,
-            latestVersion: latestStable.version,
-            cliSource: preferences?.gh_cli_source,
-            cliPath: ghStatus.path,
-            packageManager: ghPathInfo?.package_manager,
-          })
-        }
-      }
-    }
+    const checks: {
+      type: CliUpdateInfo['type']
+      info: ReturnType<typeof resolveCliInfo>
+      versions: { version: string; prerelease: boolean }[] | undefined
+    }[] = [
+      { type: 'claude', info: claude, versions: claudeVersions },
+      { type: 'gh', info: gh, versions: ghVersions },
+      { type: 'codex', info: codex, versions: codexVersions },
+      { type: 'opencode', info: opencode, versions: opencodeVersions },
+    ]
 
-    // Check Codex CLI
-    if (
-      codexStatus?.installed &&
-      codexStatus.version &&
-      codexVersions?.length
-    ) {
-      const latestStable = codexVersions.find(v => !v.prerelease)
-      if (
-        latestStable &&
-        isNewerVersion(latestStable.version, codexStatus.version)
-      ) {
-        const key = `codex:${codexStatus.version}→${latestStable.version}`
-        if (!notifiedRef.current.has(key)) {
-          notifiedRef.current.add(key)
-          updates.push({
-            type: 'codex',
-            currentVersion: codexStatus.version,
-            latestVersion: latestStable.version,
-            cliSource: preferences?.codex_cli_source,
-            cliPath: codexStatus.path,
-            packageManager: codexPathInfo?.package_manager,
-          })
-        }
-      }
-    }
-
-    // Check OpenCode CLI
-    if (
-      opencodeStatus?.installed &&
-      opencodeStatus.version &&
-      opencodeVersions?.length
-    ) {
-      const latestStable = opencodeVersions.find(v => !v.prerelease)
-      if (
-        latestStable &&
-        isNewerVersion(latestStable.version, opencodeStatus.version)
-      ) {
-        const key = `opencode:${opencodeStatus.version}→${latestStable.version}`
-        if (!notifiedRef.current.has(key)) {
-          notifiedRef.current.add(key)
-          updates.push({
-            type: 'opencode',
-            currentVersion: opencodeStatus.version,
-            latestVersion: latestStable.version,
-            cliSource: preferences?.opencode_cli_source,
-            cliPath: opencodeStatus.path,
-            packageManager: opencodePathInfo?.package_manager,
-          })
-        }
-      }
+    for (const { type, info, versions } of checks) {
+      if (!info.version || !versions?.length) continue
+      const latestStable = versions.find(v => !v.prerelease)
+      if (!latestStable || !isNewerVersion(latestStable.version, info.version))
+        continue
+      const key = `${type}:${info.version}→${latestStable.version}`
+      if (notifiedRef.current.has(key)) continue
+      notifiedRef.current.add(key)
+      updates.push({
+        type,
+        currentVersion: info.version,
+        latestVersion: latestStable.version,
+        cliSource: info.source,
+        cliPath: info.path,
+        packageManager: info.packageManager,
+      })
     }
 
     if (updates.length > 0) {
@@ -249,6 +225,10 @@ export function useCliVersionCheck() {
     ghStatus,
     codexStatus,
     opencodeStatus,
+    claudePathInfo,
+    ghPathInfo,
+    codexPathInfo,
+    opencodePathInfo,
     claudeVersions,
     ghVersions,
     codexVersions,
