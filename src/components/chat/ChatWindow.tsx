@@ -2227,7 +2227,7 @@ export function ChatWindow({
                                 </div>
                               )}
                             {/* Setup script running indicator */}
-                            {worktree?.setup_script && !setupScriptResult && (
+                            {worktree?.setup_script && worktree.setup_success == null && !setupScriptResult && (
                               <div className="my-2 flex items-center gap-2 rounded border border-muted bg-muted/30 px-3 py-2 font-mono text-sm text-muted-foreground">
                                 <Loader2 className="h-4 w-4 animate-spin shrink-0" />
                                 <span>

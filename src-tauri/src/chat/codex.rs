@@ -212,16 +212,21 @@ pub fn build_turn_start_params(
         params["effort"] = serde_json::json!(effort);
     }
 
-    // Sandbox policy with writable roots (for build/yolo modes with add_dirs)
+    // Sandbox policy — grant read access to add_dirs (pasted files, contexts, etc.)
+    // in ALL modes, and writable roots only in build/yolo modes.
     let mode = execution_mode.unwrap_or("plan");
-    if mode == "build" && !add_dirs.is_empty() {
-        let mut writable_roots: Vec<serde_json::Value> =
-            vec![serde_json::json!(working_dir.to_string_lossy())];
-        for dir in add_dirs {
-            writable_roots.push(serde_json::json!(dir));
-        }
+    if !add_dirs.is_empty() {
+        let writable_roots: Vec<serde_json::Value> = if mode == "build" {
+            let mut roots = vec![serde_json::json!(working_dir.to_string_lossy())];
+            for dir in add_dirs {
+                roots.push(serde_json::json!(dir));
+            }
+            roots
+        } else {
+            vec![]
+        };
         params["sandboxPolicy"] = serde_json::json!({
-            "type": "workspaceWrite",
+            "type": if mode == "build" { "workspaceWrite" } else { "readOnly" },
             "writableRoots": writable_roots,
             "readOnlyAccess": { "type": "fullAccess" },
             "networkAccess": false,
