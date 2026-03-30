@@ -437,7 +437,7 @@ fn default_removal_behavior() -> String {
 }
 
 fn default_auto_save_context() -> bool {
-    true // Enabled by default
+    false // Disabled by default
 }
 
 fn default_auto_pull_base_branch() -> bool {

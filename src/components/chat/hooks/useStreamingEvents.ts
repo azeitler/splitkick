@@ -945,7 +945,7 @@ export default function useStreamingEvents({
         }
 
         // Auto-save context (fire-and-forget, no blocking)
-        if (preferences?.auto_save_context !== false) {
+        if (preferences?.auto_save_context === true) {
           const sessionData = queryClient.getQueryData<Session>(
             chatQueryKeys.session(sessionId)
           )

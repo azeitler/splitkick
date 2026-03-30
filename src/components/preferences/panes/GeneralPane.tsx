@@ -2197,7 +2197,7 @@ export const GeneralPane: React.FC = () => {
             description="Automatically save session context after each AI response"
           >
             <Switch
-              checked={preferences?.auto_save_context ?? true}
+              checked={preferences?.auto_save_context ?? false}
               onCheckedChange={checked => {
                 if (preferences) {
                   patchPreferences.mutate({
