@@ -1238,8 +1238,10 @@ pub async fn set_session_last_opened(
             .as_secs();
         metadata.last_opened_at = Some(now);
 
-        // Auto-transition waiting non-Claude sessions to review
+        // Auto-transition plan-waiting non-Claude sessions to review.
+        // Question-waiting sessions must NOT be auto-transitioned (user must answer).
         if metadata.waiting_for_input
+            && metadata.waiting_for_input_type.as_deref() == Some("plan")
             && metadata.backend != super::types::Backend::Claude
         {
             metadata.waiting_for_input = false;
@@ -2124,6 +2126,17 @@ pub async fn send_chat_message(
                     }
                 };
 
+                // Read the instructions file content to pass inline via developerInstructions
+                let codex_instructions_content: Option<String> =
+                    codex_instructions_file.and_then(|path| {
+                        std::fs::read_to_string(&path)
+                            .map_err(|e| {
+                                log::error!("Failed to read Codex instructions file: {e}");
+                                e
+                            })
+                            .ok()
+                    });
+
                 match super::codex::execute_codex_via_server(
                     &thread_app,
                     &thread_session_id,
@@ -2137,7 +2150,7 @@ pub async fn send_chat_message(
                     thread_codex_search,
                     &codex_add_dirs,
                     &thread_message,
-                    codex_instructions_file.as_deref(),
+                    codex_instructions_content.as_deref(),
                     thread_codex_multi_agent,
                     thread_codex_max_threads,
                 ) {

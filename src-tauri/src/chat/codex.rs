@@ -114,7 +114,7 @@ pub fn build_thread_start_params(
     model: Option<&str>,
     execution_mode: Option<&str>,
     search_enabled: bool,
-    instructions_file: Option<&std::path::Path>,
+    instructions_content: Option<&str>,
     multi_agent_enabled: bool,
     max_agent_threads: Option<u32>,
 ) -> serde_json::Value {
@@ -153,6 +153,13 @@ pub fn build_thread_start_params(
         }
     }
 
+    // Developer instructions (system-level context: issues, PRs, custom prompts)
+    if let Some(content) = instructions_content {
+        if !content.is_empty() {
+            params["developerInstructions"] = serde_json::json!(content);
+        }
+    }
+
     // Config overrides
     let mut config = serde_json::Map::new();
 
@@ -161,14 +168,6 @@ pub fn build_thread_start_params(
         "web_search".to_string(),
         serde_json::json!(if search_enabled { "live" } else { "disabled" }),
     );
-
-    // Custom instructions file
-    if let Some(path) = instructions_file {
-        config.insert(
-            "experimental_instructions_file".to_string(),
-            serde_json::json!(path.to_string_lossy()),
-        );
-    }
 
     // Multi-agent
     if multi_agent_enabled {
@@ -230,7 +229,7 @@ pub fn build_turn_start_params(
             "type": if is_writable { "workspaceWrite" } else { "readOnly" },
             "writableRoots": writable_roots,
             "readOnlyAccess": { "type": "fullAccess" },
-            "networkAccess": false,
+            "networkAccess": true,
             "excludeTmpdirEnvVar": false,
             "excludeSlashTmp": false,
         });
@@ -268,7 +267,7 @@ pub fn execute_codex_via_server(
     search_enabled: bool,
     add_dirs: &[String],
     prompt: &str,
-    instructions_file: Option<&std::path::Path>,
+    instructions_content: Option<&str>,
     multi_agent_enabled: bool,
     max_agent_threads: Option<u32>,
 ) -> Result<CodexResponse, String> {
@@ -296,7 +295,7 @@ pub fn execute_codex_via_server(
                 model,
                 execution_mode,
                 search_enabled,
-                instructions_file,
+                instructions_content,
                 multi_agent_enabled,
                 max_agent_threads,
             );
@@ -310,6 +309,7 @@ pub fn execute_codex_via_server(
                 "sandbox",
                 "config",
                 "serviceTier",
+                "developerInstructions",
             ] {
                 if let Some(v) = resume_params.get(key) {
                     full_params[key] = v.clone();
@@ -324,7 +324,7 @@ pub fn execute_codex_via_server(
                         model,
                         execution_mode,
                         search_enabled,
-                        instructions_file,
+                        instructions_content,
                         multi_agent_enabled,
                         max_agent_threads,
                     )
@@ -336,7 +336,7 @@ pub fn execute_codex_via_server(
                 model,
                 execution_mode,
                 search_enabled,
-                instructions_file,
+                instructions_content,
                 multi_agent_enabled,
                 max_agent_threads,
             )
@@ -414,7 +414,7 @@ fn start_new_thread(
     model: Option<&str>,
     execution_mode: Option<&str>,
     search_enabled: bool,
-    instructions_file: Option<&std::path::Path>,
+    instructions_content: Option<&str>,
     multi_agent_enabled: bool,
     max_agent_threads: Option<u32>,
 ) -> Result<String, String> {
@@ -425,7 +425,7 @@ fn start_new_thread(
         model,
         execution_mode,
         search_enabled,
-        instructions_file,
+        instructions_content,
         multi_agent_enabled,
         max_agent_threads,
     );
@@ -477,26 +477,43 @@ fn process_turn_events(
         .open(output_file)
         .ok();
 
-    loop {
-        let event = match event_rx.recv_timeout(Duration::from_secs(300)) {
-            Ok(e) => e,
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                log::warn!("Turn event timeout for session {session_id}");
-                let _ = app.emit_all(
-                    "chat:error",
-                    &ErrorEvent {
-                        session_id: session_id.to_string(),
-                        worktree_id: worktree_id.to_string(),
-                        error: "Codex response timed out".to_string(),
-                    },
-                );
-                error_emitted = true;
-                break;
-            }
-            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                log::warn!("Event channel disconnected for session {session_id}");
-                cancelled = true;
-                break;
+    let mut stall_count: u32 = 0;
+
+    'outer: loop {
+        // Receive with 30s intermediate timeouts for earlier stall detection
+        let event = loop {
+            match event_rx.recv_timeout(Duration::from_secs(30)) {
+                Ok(e) => {
+                    stall_count = 0;
+                    break e;
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                    stall_count += 1;
+                    if stall_count >= 10 {
+                        // 10 × 30s = 300s total
+                        log::warn!("Turn event timeout for session {session_id} after {stall_count} intervals");
+                        let _ = app.emit_all(
+                            "chat:error",
+                            &ErrorEvent {
+                                session_id: session_id.to_string(),
+                                worktree_id: worktree_id.to_string(),
+                                error: "Codex response timed out".to_string(),
+                            },
+                        );
+                        error_emitted = true;
+                        break 'outer;
+                    }
+                    log::info!(
+                        "No codex events for {}s (session {session_id}, interval {stall_count}/10)",
+                        stall_count * 30
+                    );
+                    continue;
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                    log::warn!("Event channel disconnected for session {session_id}");
+                    cancelled = true;
+                    break 'outer;
+                }
             }
         };
 
@@ -585,12 +602,12 @@ fn process_turn_events(
                     error_emitted = true;
                 }
                 cancelled = true;
-                break;
+                break 'outer;
             }
         }
 
         if completed {
-            break;
+            break 'outer;
         }
     }
 
@@ -978,10 +995,20 @@ fn handle_approval_request(
             if is_plan_mode {
                 // Deny file changes in plan mode — sandbox alone is not reliable
                 log::trace!("Denying file change in plan mode (rpc_id={rpc_id})");
-                let _ = super::codex_server::send_response(
+                if let Err(e) = super::codex_server::send_response(
                     rpc_id,
                     serde_json::json!({"decision": "deny"}),
-                );
+                ) {
+                    log::error!("Failed to deny file change in plan mode (rpc_id={rpc_id}): {e}");
+                    let _ = app.emit_all(
+                        "chat:error",
+                        &ErrorEvent {
+                            session_id: session_id.to_string(),
+                            worktree_id: worktree_id.to_string(),
+                            error: "Lost connection to Codex server".to_string(),
+                        },
+                    );
+                }
             } else {
                 // Auto-accept in build/yolo modes
                 log::trace!("Auto-accepting file change (rpc_id={rpc_id})");
@@ -989,7 +1016,15 @@ fn handle_approval_request(
                     rpc_id,
                     serde_json::json!({"decision": "accept"}),
                 ) {
-                    log::error!("Failed to auto-accept file change: {e}");
+                    log::error!("Failed to auto-accept file change (rpc_id={rpc_id}): {e}");
+                    let _ = app.emit_all(
+                        "chat:error",
+                        &ErrorEvent {
+                            session_id: session_id.to_string(),
+                            worktree_id: worktree_id.to_string(),
+                            error: "Lost connection to Codex server".to_string(),
+                        },
+                    );
                 }
             }
         }
@@ -1015,10 +1050,20 @@ fn handle_approval_request(
                 log::trace!(
                     "Auto-accepting CLI command (rpc_id={rpc_id}): {command}"
                 );
-                let _ = super::codex_server::send_response(
+                if let Err(e) = super::codex_server::send_response(
                     rpc_id,
                     serde_json::json!({"decision": "accept"}),
-                );
+                ) {
+                    log::error!("Failed to auto-accept CLI command (rpc_id={rpc_id}): {e}");
+                    let _ = app.emit_all(
+                        "chat:error",
+                        &ErrorEvent {
+                            session_id: session_id.to_string(),
+                            worktree_id: worktree_id.to_string(),
+                            error: "Lost connection to Codex server".to_string(),
+                        },
+                    );
+                }
                 return;
             }
 
@@ -1043,10 +1088,20 @@ fn handle_approval_request(
         _ => {
             log::debug!("Unknown approval request method: {method}");
             // Auto-accept unknown approvals to avoid blocking
-            let _ = super::codex_server::send_response(
+            if let Err(e) = super::codex_server::send_response(
                 rpc_id,
                 serde_json::json!({"decision": "accept"}),
-            );
+            ) {
+                log::error!("Failed to auto-accept unknown approval (rpc_id={rpc_id}): {e}");
+                let _ = app.emit_all(
+                    "chat:error",
+                    &ErrorEvent {
+                        session_id: session_id.to_string(),
+                        worktree_id: worktree_id.to_string(),
+                        error: "Lost connection to Codex server".to_string(),
+                    },
+                );
+            }
         }
     }
 }

@@ -617,14 +617,23 @@ fn route_server_request(
     method: String,
     params: Value,
 ) {
-    let thread_id = params.get("threadId").and_then(|v| v.as_str());
+    let thread_id = params
+        .get("threadId")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
 
     if let Some(tid) = thread_id {
         let sessions = active_sessions.lock().unwrap();
-        if let Some(ctx) = sessions.get(tid) {
-            let _ = ctx
+        if let Some(ctx) = sessions.get(&tid) {
+            let session_id = ctx.session_id.clone();
+            if let Err(e) = ctx
                 .event_tx
-                .send(ServerEvent::ServerRequest { id, method, params });
+                .send(ServerEvent::ServerRequest { id, method, params })
+            {
+                log::error!(
+                    "Failed to route approval to session {session_id} (thread {tid}, rpc_id={id}): {e}"
+                );
+            }
         } else {
             log::warn!("No active session for approval request on thread {tid}");
         }

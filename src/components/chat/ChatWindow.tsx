@@ -1769,6 +1769,7 @@ export function ChatWindow({
     activeWorktreePath,
     inputRef,
     preferences,
+    defaultBackend: projectDefaultBackend ?? globalDefaultBackend,
     selectedModelRef,
     selectedThinkingLevelRef,
     selectedEffortLevelRef,
@@ -2311,7 +2312,6 @@ export function ChatWindow({
                                   areQuestionsSkipped={areQuestionsSkipped}
                                   isFindingFixed={isFindingFixed}
                                   onCopyToInput={handleCopyToInput}
-                                  hideApproveButtons={isCodexBackend}
                                   shouldScrollToBottom={isAtBottom}
                                   onScrollToBottomHandled={
                                     handleScrollToBottomHandled
@@ -2376,7 +2376,6 @@ export function ChatWindow({
                                         ? handleStreamingWorktreeYoloApproval
                                         : undefined
                                     }
-                                    hideApproveButtons={isCodexBackend}
                                   />
                                 )}
                                 <StreamingStatusBar
@@ -2846,7 +2845,6 @@ export function ChatWindow({
                   ? handlePlanDialogWorktreeYoloApprove
                   : undefined
               }
-              hideApproveButtons={isCodexBackend}
             />
           ) : latestPlanFilePath ? (
             <PlanDialog
@@ -2880,7 +2878,6 @@ export function ChatWindow({
                   ? handlePlanDialogWorktreeYoloApprove
                   : undefined
               }
-              hideApproveButtons={isCodexBackend}
             />
           ) : null)}
 

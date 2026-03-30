@@ -93,6 +93,8 @@ const createMockContext = (): CommandContext => ({
   // Unread
   openUnreadSessions: vi.fn(),
 
+  // Developer
+  copySessionDebugDetails: vi.fn().mockResolvedValue(undefined),
   // State getters
   hasActiveSession: vi.fn().mockReturnValue(true),
   hasActiveWorktree: vi.fn().mockReturnValue(true),
@@ -210,6 +212,14 @@ describe('Project Commands', () => {
     const commands = getAllCommands(mockContext)
     const initCmd = commands.find(c => c.id === 'init-project')
     expect(initCmd).toBeDefined()
+  })
+
+  it('copy debug details command uses clipboard action', async () => {
+    const result = await executeCommand('toggle-debug-mode', mockContext)
+
+    expect(result.success).toBe(true)
+    expect(mockContext.copySessionDebugDetails).toHaveBeenCalled()
+    expect(mockContext.toggleDebugMode).not.toHaveBeenCalled()
   })
 })
 

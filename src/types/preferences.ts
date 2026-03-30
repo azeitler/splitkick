@@ -882,6 +882,25 @@ export function resolveMagicPromptProvider(
   return value !== undefined ? value : (globalDefaultProvider ?? null)
 }
 
+/**
+ * Resolve a magic prompt backend for a given key.
+ * Explicit per-prompt backend wins. When unset/null, fall back to the
+ * project/global default backend supplied by the caller.
+ */
+export function resolveMagicPromptBackend(
+  backends: MagicPromptBackends | undefined,
+  key: keyof MagicPromptBackends,
+  defaultBackend: CliBackend | string | null | undefined
+): CliBackend | null {
+  const merged = { ...DEFAULT_MAGIC_PROMPT_BACKENDS, ...backends }
+  const value = merged[key]
+  return (
+    value !== undefined && value !== null
+      ? value
+      : (defaultBackend ?? null)
+  ) as CliBackend | null
+}
+
 // Types that match the Rust AppPreferences struct
 // Only contains settings that should be persisted to disk
 // Note: Field names use snake_case to match Rust struct exactly

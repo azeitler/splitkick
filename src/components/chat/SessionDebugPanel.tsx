@@ -5,12 +5,7 @@ import { toast } from 'sonner'
 import { copyToClipboard } from '@/lib/clipboard'
 import { Button } from '@/components/ui/button'
 import { Copy, FileText } from 'lucide-react'
-import type {
-  Backend,
-  SessionDebugInfo,
-  RunStatus,
-  UsageData,
-} from '@/types/chat'
+import type { Backend, SessionDebugInfo, RunStatus } from '@/types/chat'
 import { cn } from '@/lib/utils'
 import { getSessionProviderDisplayName } from '@/components/chat/toolbar/toolbar-utils'
 import {
@@ -18,6 +13,12 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from '@/components/ui/tooltip'
+import {
+  formatSessionDebugDetails,
+  formatTokens,
+  formatUsage,
+  getStatusText,
+} from '@/lib/session-debug'
 
 interface SessionDebugPanelProps {
   worktreeId: string
@@ -27,23 +28,6 @@ interface SessionDebugPanelProps {
   selectedProvider?: string | null
   selectedBackend?: Backend
   onFileClick?: (path: string) => void
-}
-
-/** Format token count for display (e.g., 1234 -> "1.2k", 123456 -> "123k") */
-function formatTokens(tokens: number): string {
-  if (tokens >= 1_000_000) {
-    return `${(tokens / 1_000_000).toFixed(1)}M`
-  }
-  if (tokens >= 1_000) {
-    return `${(tokens / 1_000).toFixed(1)}k`
-  }
-  return tokens.toString()
-}
-
-/** Format usage data for display */
-function formatUsage(usage: UsageData | undefined): string {
-  if (!usage) return ''
-  return `${formatTokens(usage.input_tokens)} in / ${formatTokens(usage.output_tokens)} out`
 }
 
 /** Get status color */
@@ -60,18 +44,6 @@ function getStatusColor(status: RunStatus): string {
       return 'text-blue-500'
     default:
       return 'text-muted-foreground'
-  }
-}
-
-/** Get display text for status */
-function getStatusText(status: RunStatus): string {
-  switch (status) {
-    case 'crashed':
-      return 'completed (recovered)'
-    case 'resumable':
-      return 'resumable'
-    default:
-      return status
   }
 }
 
@@ -104,23 +76,13 @@ export function SessionDebugPanel({
   const handleCopyAll = useCallback(async () => {
     if (!debugInfo) return
 
-    const lines = [
-      `session: ${sessionId}`,
-      `model: ${selectedModel ?? 'unknown'} / provider: ${providerDisplay}`,
-      `sessions file: ${debugInfo.sessions_file}`,
-      `runs dir: ${debugInfo.runs_dir}`,
-      `manifest: ${debugInfo.manifest_file || 'none'}`,
-      `total usage: ${formatUsage(debugInfo.total_usage)}`,
-      '',
-      `Run logs (${debugInfo.run_log_files.length}):`,
-      ...debugInfo.run_log_files.map(
-        f =>
-          `  ${getStatusText(f.status)} ${f.usage ? `(${formatUsage(f.usage)})` : ''} ${f.user_message_preview}`
-      ),
-    ]
-
     try {
-      const text = lines.join('\n')
+      const text = formatSessionDebugDetails({
+        sessionId,
+        selectedModel,
+        providerDisplay,
+        debugInfo,
+      })
       await copyToClipboard(text)
       toast.success('Copied to clipboard')
     } catch (error) {

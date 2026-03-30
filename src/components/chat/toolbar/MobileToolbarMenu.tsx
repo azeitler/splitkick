@@ -69,7 +69,6 @@ import type {
 import type { LoadedLinearIssueContext } from '@/types/linear'
 import type { CheckStatus, PrDisplayStatus } from '@/types/pr-status'
 import { LinearIcon } from '@/components/icons/LinearIcon'
-import { CheckStatusButton } from '@/components/chat/toolbar/CheckStatusButton'
 import { openExternal } from '@/lib/platform'
 import {
   EFFORT_LEVEL_OPTIONS,
@@ -174,8 +173,8 @@ export function MobileToolbarMenu({
   prUrl,
   prNumber,
   displayStatus,
-  checkStatus,
-  activeWorktreePath,
+  checkStatus: _checkStatus,
+  activeWorktreePath: _activeWorktreePath,
   onSaveContext,
   onLoadContext,
   onCommit,
@@ -719,10 +718,6 @@ export function MobileToolbarMenu({
                   <GitPullRequest className="h-4 w-4" />
                 )}
                 <span>#{prNumber}</span>
-                <CheckStatusButton
-                  status={checkStatus ?? null}
-                  projectPath={activeWorktreePath}
-                />
               </a>
             </DropdownMenuItem>
           )}

@@ -67,14 +67,16 @@ export const projectCommands: AppCommand[] = [
 
   {
     id: 'toggle-debug-mode',
-    label: 'Toggle Debug Mode',
-    description: 'Show/hide session debug panel',
+    label: 'Copy Debug Details',
+    description: 'Copy current session debug details to clipboard',
     icon: Bug,
     group: 'settings',
-    keywords: ['debug', 'developer', 'dev', 'panel', 'toggle'],
+    keywords: ['debug', 'developer', 'dev', 'details', 'clipboard', 'copy'],
+    isAvailable: context =>
+      context.hasActiveSession() || context.hasActiveWorktree(),
 
-    execute: context => {
-      context.toggleDebugMode()
+    execute: async context => {
+      await context.copySessionDebugDetails()
     },
   },
 

@@ -392,9 +392,14 @@ export function useSessionStatePersistence() {
     // (useMainWindowEventListeners). Loading from TanStack cache is redundant
     // and can restore stale data, causing double execution.
 
-    // When opening a non-Claude session that's in waiting state (question or plan),
+    // When opening a non-Claude session that's in plan-waiting state,
     // transition it to review — viewing the session acts as acknowledgment.
-    if (session.waiting_for_input && session.backend !== 'claude') {
+    // Question-waiting sessions must NOT be auto-transitioned (user must answer).
+    if (
+      session.waiting_for_input &&
+      session.waiting_for_input_type === 'plan' &&
+      session.backend !== 'claude'
+    ) {
       updates.waitingForInputSessionIds = {
         ...(updates.waitingForInputSessionIds ??
           currentState.waitingForInputSessionIds),
@@ -468,9 +473,9 @@ export function useSessionStatePersistence() {
     logger.debug('Session state loaded', { sessionId: activeSessionId })
   }, [activeSessionId, sessionsData, getCurrentSessionState])
 
-  // Auto-transition waiting codex/opencode sessions to review when viewed.
+  // Auto-transition plan-waiting codex/opencode sessions to review when viewed.
   // This runs independently of the load effect and is NOT blocked by loadedSessionRef,
-  // handling cases where the session was already loaded when it entered waiting state.
+  // handling cases where the session was already loaded when it entered plan-waiting state.
   useEffect(() => {
     if (
       !activeSessionId ||
@@ -483,8 +488,13 @@ export function useSessionStatePersistence() {
     const session = sessionsData.sessions.find(s => s.id === activeSessionId)
     if (!session) return
 
-    // Only for non-claude sessions in waiting state
-    if (!session.waiting_for_input || session.backend === 'claude')
+    // Only for non-claude sessions in plan-waiting state
+    // Question-waiting sessions must NOT be auto-transitioned (user must answer).
+    if (
+      !session.waiting_for_input ||
+      session.waiting_for_input_type !== 'plan' ||
+      session.backend === 'claude'
+    )
       return
 
     // Guard: if Zustand already shows review + not waiting, skip (prevents loops)

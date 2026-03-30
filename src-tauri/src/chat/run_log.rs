@@ -667,6 +667,36 @@ pub fn parse_run_to_message(lines: &[String], run: &RunEntry) -> Result<ChatMess
     })
 }
 
+fn should_inject_synthetic_exit_plan(
+    backend: &Backend,
+    run: &RunEntry,
+    assistant_msg: &ChatMessage,
+) -> bool {
+    matches!(backend, Backend::Codex | Backend::Opencode)
+        && run.status == RunStatus::Completed
+        && run.execution_mode.as_deref() == Some("plan")
+        && !assistant_msg.cancelled
+        && !assistant_msg.content.trim().is_empty()
+        && !assistant_msg
+            .tool_calls
+            .iter()
+            .any(|tc| tc.name == "ExitPlanMode")
+}
+
+fn inject_synthetic_exit_plan(run_id: &str, assistant_msg: &mut ChatMessage) {
+    let synthetic_id = format!("synthetic-exit-plan-{run_id}");
+    assistant_msg.tool_calls.push(ToolCall {
+        id: synthetic_id.clone(),
+        name: "ExitPlanMode".to_string(),
+        input: serde_json::json!({}),
+        output: None,
+        parent_tool_use_id: None,
+    });
+    assistant_msg
+        .content_blocks
+        .push(ContentBlock::ToolUse { tool_call_id: synthetic_id });
+}
+
 // ============================================================================
 // Message Loading
 // ============================================================================
@@ -750,6 +780,14 @@ pub fn load_session_messages(
                 assistant_msg.id = format!("running-{}", run.run_id);
             }
 
+            // Codex/OpenCode plan-mode runs don't emit a native ExitPlanMode tool,
+            // but the approval UI keys off that tool-call shape. Recreate the
+            // same synthetic marker we use during live completion so recovered
+            // sessions render the same approval affordances.
+            if should_inject_synthetic_exit_plan(&metadata.backend, run, &assistant_msg) {
+                inject_synthetic_exit_plan(&run.run_id, &mut assistant_msg);
+            }
+
             // For crashed runs with no content (only metadata header), add placeholder
             if run.status == RunStatus::Crashed
                 && assistant_msg.content.is_empty()
@@ -790,6 +828,93 @@ pub fn load_session_messages(
     }
 
     Ok(messages)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_run() -> RunEntry {
+        RunEntry {
+            run_id: "run-123".to_string(),
+            user_message_id: "user-123".to_string(),
+            user_message: "continue".to_string(),
+            model: Some("gpt-5.4".to_string()),
+            execution_mode: Some("plan".to_string()),
+            thinking_level: None,
+            effort_level: None,
+            started_at: 1,
+            ended_at: Some(2),
+            status: RunStatus::Completed,
+            assistant_message_id: Some("assistant-123".to_string()),
+            cancelled: false,
+            recovered: false,
+            claude_session_id: None,
+            pid: None,
+            usage: None,
+        }
+    }
+
+    fn sample_assistant_message() -> ChatMessage {
+        ChatMessage {
+            id: "assistant-123".to_string(),
+            session_id: "session-123".to_string(),
+            role: MessageRole::Assistant,
+            content: "Here is the plan".to_string(),
+            timestamp: 2,
+            tool_calls: vec![],
+            content_blocks: vec![ContentBlock::Text {
+                text: "Here is the plan".to_string(),
+            }],
+            cancelled: false,
+            plan_approved: false,
+            model: None,
+            execution_mode: None,
+            thinking_level: None,
+            effort_level: None,
+            recovered: false,
+            usage: None,
+        }
+    }
+
+    #[test]
+    fn injects_synthetic_exit_plan_for_completed_codex_plan_runs() {
+        let run = sample_run();
+        let mut msg = sample_assistant_message();
+
+        assert!(should_inject_synthetic_exit_plan(&Backend::Codex, &run, &msg));
+
+        inject_synthetic_exit_plan(&run.run_id, &mut msg);
+
+        assert_eq!(msg.tool_calls.len(), 1);
+        assert_eq!(msg.tool_calls[0].name, "ExitPlanMode");
+        assert_eq!(msg.tool_calls[0].id, "synthetic-exit-plan-run-123");
+        assert_eq!(msg.content_blocks.len(), 2);
+        assert!(matches!(
+            msg.content_blocks.last(),
+            Some(ContentBlock::ToolUse { tool_call_id })
+                if tool_call_id == "synthetic-exit-plan-run-123"
+        ));
+    }
+
+    #[test]
+    fn does_not_inject_when_exit_plan_mode_already_exists() {
+        let run = sample_run();
+        let mut msg = sample_assistant_message();
+        msg.tool_calls.push(ToolCall {
+            id: "existing-exit".to_string(),
+            name: "ExitPlanMode".to_string(),
+            input: serde_json::json!({"plan": "keep existing"}),
+            output: None,
+            parent_tool_use_id: None,
+        });
+
+        assert!(!should_inject_synthetic_exit_plan(
+            &Backend::Codex,
+            &run,
+            &msg
+        ));
+    }
 }
 
 /// Mark any running run for this session as cancelled (called by cancel_process)

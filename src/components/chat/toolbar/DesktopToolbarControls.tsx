@@ -59,7 +59,6 @@ import type {
 } from '@/types/pr-status'
 import { openExternal } from '@/lib/platform'
 import { cn } from '@/lib/utils'
-import { CheckStatusButton } from '@/components/chat/toolbar/CheckStatusButton'
 import {
   McpStatusDot,
   mcpStatusHint,
@@ -161,9 +160,9 @@ export function DesktopToolbarControls({
   prUrl,
   prNumber,
   displayStatus,
-  checkStatus,
+  checkStatus: _checkStatus,
   mergeableStatus,
-  activeWorktreePath,
+  activeWorktreePath: _activeWorktreePath,
   availableMcpServers,
   enabledMcpServers,
   activeMcpCount,
@@ -378,8 +377,7 @@ export function DesktopToolbarControls({
                       `${loadedIssueCount} Issue${loadedIssueCount > 1 ? 's' : ''}`,
                     loadedPRCount > 0 &&
                       `${loadedPRCount} PR${loadedPRCount > 1 ? 's' : ''}`,
-                    loadedSecurityCount > 0 &&
-                      `${loadedSecurityCount} Security`,
+                    loadedSecurityCount > 0 && `${loadedSecurityCount}`,
                     loadedLinearCount > 0 && `${loadedLinearCount} Linear`,
                     loadedContextCount > 0 &&
                       `${loadedContextCount} Context${loadedContextCount > 1 ? 's' : ''}`,
@@ -611,10 +609,6 @@ export function DesktopToolbarControls({
                   <GitPullRequest className="h-3.5 w-3.5" />
                 )}
                 <span>#{prNumber}</span>
-                <CheckStatusButton
-                  status={checkStatus ?? null}
-                  projectPath={activeWorktreePath}
-                />
               </a>
             </TooltipTrigger>
             <TooltipContent>

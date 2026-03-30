@@ -16,6 +16,7 @@ import {
   DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT,
   DEFAULT_INVESTIGATE_LINEAR_ISSUE_PROMPT,
   DEFAULT_PARALLEL_EXECUTION_PROMPT,
+  resolveMagicPromptBackend,
   resolveMagicPromptProvider,
 } from '@/types/preferences'
 import type { Project, Worktree } from '@/types/projects'
@@ -44,6 +45,7 @@ interface UseInvestigateHandlersParams {
   activeWorktreePath: string | null | undefined
   inputRef: RefObject<HTMLTextAreaElement | null>
   preferences: AppPreferences | undefined
+  defaultBackend: string
   selectedModelRef: RefObject<string>
   selectedThinkingLevelRef: RefObject<ThinkingLevel>
   selectedEffortLevelRef: RefObject<EffortLevel>
@@ -88,6 +90,7 @@ export function useInvestigateHandlers({
   activeWorktreePath,
   inputRef,
   preferences,
+  defaultBackend,
   selectedModelRef,
   selectedThinkingLevelRef,
   selectedEffortLevelRef,
@@ -106,6 +109,41 @@ export function useInvestigateHandlers({
   worktreeProjectId,
 }: UseInvestigateHandlersParams) {
   const queryClient = useQueryClient()
+
+  const primeSessionSelection = useCallback(
+    (
+      sessionId: string,
+      backend: Session['backend'],
+      model: string,
+      provider: string | null
+    ) => {
+      const now = Math.floor(Date.now() / 1000)
+
+      queryClient.setQueryData(
+        chatQueryKeys.session(sessionId),
+        (old: Session | null | undefined) =>
+          old
+            ? {
+                ...old,
+                backend,
+                selected_model: model,
+                selected_provider: provider,
+              }
+            : {
+                id: sessionId,
+                name: '',
+                order: 0,
+                created_at: now,
+                updated_at: now,
+                messages: [],
+                backend,
+                selected_model: model,
+                selected_provider: provider,
+              }
+      )
+    },
+    [queryClient]
+  )
 
   const handleInvestigate = useCallback(
     async (
@@ -133,6 +171,16 @@ export function useInvestigateHandlers({
               : type === 'linear-issue'
                 ? 'investigate_linear_issue_provider'
                 : ('investigate_advisory_provider' as const)
+      const backendKey =
+        type === 'issue'
+          ? 'investigate_issue_backend'
+          : type === 'pr'
+            ? 'investigate_pr_backend'
+            : type === 'security-alert'
+              ? 'investigate_security_alert_backend'
+              : type === 'linear-issue'
+                ? 'investigate_linear_issue_backend'
+                : ('investigate_advisory_backend' as const)
       const investigateModel =
         preferences?.magic_prompt_models?.[modelKey] ?? selectedModelRef.current
       const investigateProvider = resolveMagicPromptProvider(
@@ -312,7 +360,12 @@ export function useInvestigateHandlers({
         !investigateIsCustom &&
         supportsAdaptiveThinking(investigateModel, cliVersion)
 
-      const investigateBackend = resolveBackend(investigateModel)
+      const investigateBackend =
+        resolveMagicPromptBackend(
+          preferences?.magic_prompt_backends,
+          backendKey,
+          defaultBackend
+        ) ?? resolveBackend(investigateModel)
 
       setSessionBackend.mutate({
         sessionId: activeSessionId,
@@ -335,16 +388,11 @@ export function useInvestigateHandlers({
         setZustandBackend(activeSessionId, investigateBackend)
         setZustandModel(activeSessionId, investigateModel)
       }
-      queryClient.setQueryData(
-        chatQueryKeys.session(activeSessionId),
-        (old: Session | null | undefined) =>
-          old
-            ? {
-                ...old,
-                backend: investigateBackend,
-                selected_model: investigateModel,
-              }
-            : old
+      primeSessionSelection(
+        activeSessionId,
+        investigateBackend,
+        investigateModel,
+        investigateProvider
       )
 
       sendMessage.mutate(
@@ -393,6 +441,7 @@ export function useInvestigateHandlers({
       preferences?.magic_prompts?.parallel_execution,
       preferences?.magic_prompt_models,
       preferences?.magic_prompt_providers,
+      preferences?.magic_prompt_backends,
       preferences?.chrome_enabled,
       preferences?.ai_language,
       setSessionProvider,
@@ -408,6 +457,8 @@ export function useInvestigateHandlers({
       mcpServersDataRef,
       enabledMcpServersRef,
       worktreeProjectId,
+      defaultBackend,
+      primeSessionSelection,
     ]
   )
 
@@ -520,6 +571,13 @@ export function useInvestigateHandlers({
       const worktreeId = targetWorktreeId
       const worktreePath = targetWorktreePath
 
+      const projectsForBackend = queryClient.getQueryData<Project[]>(
+        projectsQueryKeys.list()
+      )
+      const projectForBackend = projectsForBackend?.find(
+        p => p.path === detail.projectPath
+      )
+
       const investigateIsCustom = Boolean(
         investigateProvider && investigateProvider !== '__anthropic__'
       )
@@ -527,7 +585,12 @@ export function useInvestigateHandlers({
         !investigateIsCustom &&
         supportsAdaptiveThinking(investigateModel, cliVersion)
 
-      const investigateBackend = resolveBackend(investigateModel)
+      const investigateBackend =
+        resolveMagicPromptBackend(
+          preferences?.magic_prompt_backends,
+          'investigate_workflow_run_backend',
+          projectForBackend?.default_backend ?? defaultBackend
+        ) ?? resolveBackend(investigateModel)
 
       const sendInvestigateMessage = (targetSessionId: string) => {
         const {
@@ -572,16 +635,11 @@ export function useInvestigateHandlers({
           setZustandBackend(targetSessionId, investigateBackend)
           setZustandModel(targetSessionId, investigateModel)
         }
-        queryClient.setQueryData(
-          chatQueryKeys.session(targetSessionId),
-          (old: Session | null | undefined) =>
-            old
-              ? {
-                  ...old,
-                  backend: investigateBackend,
-                  selected_model: investigateModel,
-                }
-              : old
+        primeSessionSelection(
+          targetSessionId,
+          investigateBackend,
+          investigateModel,
+          investigateProvider
         )
 
         sendMessage.mutate(
@@ -631,6 +689,21 @@ export function useInvestigateHandlers({
         { worktreeId, worktreePath },
         {
           onSuccess: session => {
+            useChatStore
+              .getState()
+              .setSelectedBackend(session.id, investigateBackend)
+            useChatStore
+              .getState()
+              .setSelectedModel(session.id, investigateModel)
+            useChatStore
+              .getState()
+              .setSelectedProvider(session.id, investigateProvider)
+            primeSessionSelection(
+              session.id,
+              investigateBackend,
+              investigateModel,
+              investigateProvider
+            )
             setActiveSession(worktreeId, session.id)
             sendInvestigateMessage(session.id)
           },
@@ -651,6 +724,7 @@ export function useInvestigateHandlers({
       preferences?.parallel_execution_prompt_enabled,
       preferences?.magic_prompts?.parallel_execution,
       preferences?.magic_prompt_providers,
+      preferences?.magic_prompt_backends,
       preferences?.chrome_enabled,
       preferences?.ai_language,
       setSessionProvider,
@@ -667,6 +741,8 @@ export function useInvestigateHandlers({
       executionModeRef,
       mcpServersDataRef,
       enabledMcpServersRef,
+      defaultBackend,
+      primeSessionSelection,
     ]
   )
 
@@ -694,7 +770,12 @@ export function useInvestigateHandlers({
       )
       const useAdaptive =
         !isCustom && supportsAdaptiveThinking(reviewCommentsModel, cliVersion)
-      const reviewCommentsBackend = resolveBackend(reviewCommentsModel)
+      const reviewCommentsBackend =
+        resolveMagicPromptBackend(
+          preferences?.magic_prompt_backends,
+          'review_comments_backend',
+          defaultBackend
+        ) ?? resolveBackend(reviewCommentsModel)
 
       // Helper to send the message once we have a session ID
       const sendInSession = (sessionId: string) => {
@@ -745,8 +826,19 @@ export function useInvestigateHandlers({
                   ...old,
                   backend: reviewCommentsBackend,
                   selected_model: reviewCommentsModel,
+                  selected_provider: reviewCommentsProvider,
                 }
-              : old
+              : {
+                  id: sessionId,
+                  name: '',
+                  order: 0,
+                  created_at: Math.floor(Date.now() / 1000),
+                  updated_at: Math.floor(Date.now() / 1000),
+                  messages: [],
+                  backend: reviewCommentsBackend,
+                  selected_model: reviewCommentsModel,
+                  selected_provider: reviewCommentsProvider,
+                }
         )
 
         sendMessage.mutate(
@@ -791,6 +883,21 @@ export function useInvestigateHandlers({
             if (currentSessionId) {
               copySessionSettings(currentSessionId, session.id)
             }
+            useChatStore
+              .getState()
+              .setSelectedBackend(session.id, reviewCommentsBackend)
+            useChatStore
+              .getState()
+              .setSelectedModel(session.id, reviewCommentsModel)
+            useChatStore
+              .getState()
+              .setSelectedProvider(session.id, reviewCommentsProvider)
+            primeSessionSelection(
+              session.id,
+              reviewCommentsBackend,
+              reviewCommentsModel,
+              reviewCommentsProvider
+            )
             setActiveSession(worktreeId, session.id)
             queryClient.invalidateQueries({
               queryKey: chatQueryKeys.sessions(worktreeId),
@@ -812,6 +919,7 @@ export function useInvestigateHandlers({
       preferences?.magic_prompts?.parallel_execution,
       preferences?.magic_prompt_models?.review_comments_model,
       preferences?.magic_prompt_providers,
+      preferences?.magic_prompt_backends,
       preferences?.chrome_enabled,
       preferences?.ai_language,
       setSessionProvider,
@@ -828,6 +936,8 @@ export function useInvestigateHandlers({
       executionModeRef,
       mcpServersDataRef,
       enabledMcpServersRef,
+      defaultBackend,
+      primeSessionSelection,
     ]
   )
 
