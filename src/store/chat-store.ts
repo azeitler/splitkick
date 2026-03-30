@@ -629,9 +629,36 @@ export const useChatStore = create<ChatUIState>()(
         )
 
         if (options?.markOpened !== false) {
-          // Fire-and-forget: update last_opened_at on the backend
-          invoke('set_session_last_opened', { sessionId })
-            .then(() => window.dispatchEvent(new CustomEvent('session-opened')))
+          // Update last_opened_at on the backend; for non-Claude waiting sessions
+          // this also transitions to review (returns true when transitioned).
+          invoke<boolean>('set_session_last_opened', { sessionId })
+            .then(transitioned => {
+              window.dispatchEvent(new CustomEvent('session-opened'))
+              if (transitioned) {
+                // Sync Zustand state to match the backend transition
+                const s = get()
+                set(
+                  {
+                    reviewingSessions: {
+                      ...s.reviewingSessions,
+                      [sessionId]: true,
+                    },
+                    waitingForInputSessionIds: Object.fromEntries(
+                      Object.entries(s.waitingForInputSessionIds).filter(
+                        ([k]) => k !== sessionId
+                      )
+                    ),
+                    pendingPlanMessageIds: Object.fromEntries(
+                      Object.entries(s.pendingPlanMessageIds).filter(
+                        ([k]) => k !== sessionId
+                      )
+                    ),
+                  },
+                  undefined,
+                  'autoTransitionToReview'
+                )
+              }
+            })
             .catch(() => undefined)
         }
       },

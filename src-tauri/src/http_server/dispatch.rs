@@ -1967,8 +1967,9 @@ pub async fn dispatch_command(
         }
         "set_session_last_opened" => {
             let session_id: String = field(&args, "sessionId", "session_id")?;
-            crate::chat::set_session_last_opened(app.clone(), session_id).await?;
-            Ok(Value::Null)
+            let transitioned =
+                crate::chat::set_session_last_opened(app.clone(), session_id).await?;
+            to_value(transitioned)
         }
         "set_sessions_last_opened_bulk" => {
             let session_ids: Vec<String> = field(&args, "sessionIds", "session_ids")?;

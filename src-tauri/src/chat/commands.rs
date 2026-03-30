@@ -1218,10 +1218,18 @@ pub async fn set_active_session(
     Ok(())
 }
 
-/// Update the last_opened_at timestamp on a session's metadata
+/// Update the last_opened_at timestamp on a session's metadata.
+/// For non-Claude sessions that are waiting for input, also transition to review
+/// (viewing the session acts as acknowledgment).
+/// Returns true if the session was transitioned from waiting to review.
 #[tauri::command]
-pub async fn set_session_last_opened(app: AppHandle, session_id: String) -> Result<(), String> {
+pub async fn set_session_last_opened(
+    app: AppHandle,
+    session_id: String,
+) -> Result<bool, String> {
     log::trace!("Setting last_opened_at for session: {session_id}");
+
+    let mut transitioned = false;
 
     if let Ok(Some(mut metadata)) = load_metadata(&app, &session_id) {
         let now = SystemTime::now()
@@ -1229,10 +1237,29 @@ pub async fn set_session_last_opened(app: AppHandle, session_id: String) -> Resu
             .unwrap_or_default()
             .as_secs();
         metadata.last_opened_at = Some(now);
+
+        // Auto-transition waiting non-Claude sessions to review
+        if metadata.waiting_for_input
+            && metadata.backend != super::types::Backend::Claude
+        {
+            metadata.waiting_for_input = false;
+            metadata.waiting_for_input_type = None;
+            metadata.is_reviewing = true;
+            metadata.pending_plan_message_id = None;
+            transitioned = true;
+            log::debug!(
+                "Auto-transitioned session {session_id} from waiting to review"
+            );
+        }
+
         save_metadata(&app, &metadata)?;
+
+        if transitioned {
+            emit_sessions_cache_invalidation(&app);
+        }
     }
 
-    Ok(())
+    Ok(transitioned)
 }
 
 /// Bulk-update last_opened_at for multiple sessions in a single call.

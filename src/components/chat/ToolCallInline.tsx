@@ -22,6 +22,9 @@ import {
   Circle,
   Wand2,
   Image as ImageIcon,
+  FileCode,
+  List,
+  Code,
 } from 'lucide-react'
 import { diffLines } from 'diff'
 import type { ToolCall } from '@/types/chat'
@@ -922,6 +925,65 @@ function getToolDisplay(toolCall: ToolCall): ToolDisplay {
             )}
           </div>
         ),
+      }
+    }
+
+    // OpenCode-only tools
+    case 'apply_patch': {
+      const patchText = input.patchText as string | undefined
+      const fileCount = patchText
+        ? (patchText.match(/^---\s/gm) || []).length
+        : 0
+      return {
+        icon: <FileCode className="h-4 w-4 shrink-0" />,
+        label: 'Apply Patch',
+        detail: fileCount > 0 ? `${fileCount} file${fileCount === 1 ? '' : 's'}` : undefined,
+        expandedContent: patchText
+          ? patchText
+          : 'No patch text',
+      }
+    }
+
+    case 'multiedit': {
+      const edits = input.edits as { filePath?: string }[] | undefined
+      const fileCount = edits?.length ?? 0
+      return {
+        icon: <Edit className="h-4 w-4 shrink-0" />,
+        label: 'Multi Edit',
+        detail: fileCount > 0 ? `${fileCount} edit${fileCount === 1 ? '' : 's'}` : undefined,
+        expandedContent: JSON.stringify(input, null, 2),
+      }
+    }
+
+    case 'CodeSearch': {
+      const query = input.query as string | undefined
+      return {
+        icon: <Search className="h-4 w-4 shrink-0" />,
+        label: 'Code Search',
+        detail: query,
+        expandedContent: toolCall.output ?? JSON.stringify(input, null, 2),
+      }
+    }
+
+    case 'list': {
+      const path = input.path as string | undefined
+      return {
+        icon: <List className="h-4 w-4 shrink-0" />,
+        label: 'List',
+        detail: path,
+        expandedContent: toolCall.output ?? `Path: ${path ?? '(cwd)'}`,
+      }
+    }
+
+    case 'lsp': {
+      const action = input.action as string | undefined
+      const filePath = input.filePath as string | undefined
+      const filename = filePath ? getFilename(filePath) : undefined
+      return {
+        icon: <Code className="h-4 w-4 shrink-0" />,
+        label: 'LSP',
+        detail: action ? `${action}${filename ? ` ${filename}` : ''}` : filename,
+        expandedContent: toolCall.output ?? JSON.stringify(input, null, 2),
       }
     }
 

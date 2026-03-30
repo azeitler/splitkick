@@ -88,6 +88,8 @@ enum TrackedPartKind {
         tool_call_id: String,
         tool_name: String,
         emitted_started: bool,
+        /// True once a tool_use event with non-empty input has been emitted.
+        emitted_input: bool,
         last_output: Option<String>,
     },
     Other,
@@ -688,6 +690,59 @@ fn fetch_opencode_question_input(
     handle.join().ok().flatten()
 }
 
+/// Rename a single key in a JSON object (no-op if missing or not an object).
+fn rename_json_key(value: &mut serde_json::Value, from: &str, to: &str) {
+    if let Some(obj) = value.as_object_mut() {
+        if let Some(v) = obj.remove(from) {
+            obj.entry(to).or_insert(v);
+        }
+    }
+}
+
+/// Normalize OpenCode tool names and parameter keys to match Claude CLI conventions.
+///
+/// OpenCode uses lowercase tool IDs (`read`, `edit`, `bash`, …) with camelCase
+/// parameters (`filePath`, `oldString`, …), while the frontend expects PascalCase
+/// names (`Read`, `Edit`, `Bash`, …) with snake_case parameters (`file_path`,
+/// `old_string`, …). This function translates both in-place so a single set of
+/// frontend rendering logic handles tools from either backend.
+fn normalize_opencode_tool(name: &str, input: &mut serde_json::Value) -> String {
+    match name {
+        "read" => {
+            rename_json_key(input, "filePath", "file_path");
+            "Read".into()
+        }
+        "edit" => {
+            rename_json_key(input, "filePath", "file_path");
+            rename_json_key(input, "oldString", "old_string");
+            rename_json_key(input, "newString", "new_string");
+            rename_json_key(input, "replaceAll", "replace_all");
+            "Edit".into()
+        }
+        "write" => {
+            rename_json_key(input, "filePath", "file_path");
+            "Write".into()
+        }
+        "bash" => "Bash".into(),
+        "glob" => "Glob".into(),
+        "grep" => {
+            // OpenCode uses "include" for file filter; Claude uses "glob"
+            rename_json_key(input, "include", "glob");
+            "Grep".into()
+        }
+        "task" => "Task".into(),
+        "todowrite" => "TodoWrite".into(),
+        "webfetch" => "WebFetch".into(),
+        "websearch" => "WebSearch".into(),
+        "codesearch" => "CodeSearch".into(),
+        "skill" => "Skill".into(),
+        "plan_exit" => "ExitPlanMode".into(),
+        "plan_enter" => "EnterPlanMode".into(),
+        // OpenCode-only tools and everything else pass through unchanged
+        _ => name.to_string(),
+    }
+}
+
 fn unseen_suffix(full_text: &str, emitted_len: usize) -> &str {
     if emitted_len >= full_text.len() {
         // Already emitted past this point (stale snapshot or exact match)
@@ -1230,12 +1285,11 @@ fn process_message_part_event(
             Some(false)
         }
         "tool" | "tool_call" => {
-            let tool_name = part
+            let raw_tool_name = part
                 .get("tool")
                 .or_else(|| part.get("tool_name"))
                 .and_then(|v| v.as_str())
-                .unwrap_or("tool")
-                .to_string();
+                .unwrap_or("tool");
             let tool_call_id = part
                 .get("callID")
                 .or_else(|| part.get("tool_call_id"))
@@ -1254,13 +1308,17 @@ fn process_message_part_event(
             // value (e.g. 0) rather than the actual question data. Fetch the real
             // question data from the OpenCode Question API so the frontend can
             // render the question UI.
-            if tool_name == "question" {
+            if raw_tool_name == "question" {
                 if let Some(enriched) =
                     fetch_opencode_question_input(working_dir, &tool_call_id)
                 {
                     input = enriched;
                 }
             }
+
+            // Normalize OpenCode lowercase tool names + camelCase params to match
+            // the Claude CLI conventions expected by the frontend.
+            let tool_name = normalize_opencode_tool(raw_tool_name, &mut input);
 
             subscriber.accumulate_tool(&part_id, &tool_call_id, &tool_name, input.clone());
             let existing_output = subscriber
@@ -1284,6 +1342,7 @@ fn process_message_part_event(
                             tool_call_id: tool_call_id.clone(),
                             tool_name: tool_name.clone(),
                             emitted_started: false,
+                            emitted_input: false,
                             last_output: None,
                         },
                     });
@@ -1296,11 +1355,15 @@ fn process_message_part_event(
                     tool_call_id: tracked_call_id,
                     tool_name: tracked_tool_name,
                     emitted_started,
+                    emitted_input,
                     last_output,
                 } = &mut entry.kind
                 {
                     *tracked_call_id = tool_call_id.clone();
                     *tracked_tool_name = tool_name.clone();
+
+                    let input_has_data = input.is_object()
+                        && input.as_object().map_or(false, |o| !o.is_empty());
 
                     if !*emitted_started {
                         tool_use_to_emit = Some((
@@ -1309,19 +1372,18 @@ fn process_message_part_event(
                             input.clone(),
                         ));
                         *emitted_started = true;
+                        *emitted_input = input_has_data;
                         emitted = true;
-                    } else if tool_name == "question"
-                        && input.is_object()
-                        && input.as_object().map_or(false, |o| o.contains_key("questions"))
-                    {
-                        // Re-emit tool_use with enriched input so the frontend
+                    } else if !*emitted_input && input_has_data {
+                        // Re-emit tool_use with populated input so the frontend
                         // updates its streaming state (the first emit may have had
-                        // empty/placeholder input before the question was registered).
+                        // empty input before the data was available).
                         tool_use_to_emit = Some((
                             tool_call_id.clone(),
                             tool_name.clone(),
                             input.clone(),
                         ));
+                        *emitted_input = true;
                         emitted = true;
                     }
 
@@ -1914,11 +1976,10 @@ pub fn execute_opencode_http(
                 }
             }
             Some("tool") => {
-                let tool_name = part
+                let raw_tool_name = part
                     .get("tool")
                     .and_then(|v| v.as_str())
-                    .unwrap_or("tool")
-                    .to_string();
+                    .unwrap_or("tool");
                 let tool_call_id = part
                     .get("callID")
                     .and_then(|v| v.as_str())
@@ -1929,12 +1990,15 @@ pub fn execute_opencode_http(
                 let mut input = state.get("input").cloned().unwrap_or(serde_json::json!({}));
 
                 // Enrich "question" tool input (same as SSE handler)
-                if tool_name == "question" {
+                if raw_tool_name == "question" {
                     let wd = working_dir.to_string_lossy();
                     if let Some(enriched) = fetch_opencode_question_input(&wd, &tool_call_id) {
                         input = enriched;
                     }
                 }
+
+                // Normalize OpenCode tool names + params to Claude CLI conventions.
+                let tool_name = normalize_opencode_tool(raw_tool_name, &mut input);
 
                 tool_calls.push(ToolCall {
                     id: tool_call_id.clone(),
