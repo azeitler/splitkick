@@ -7,6 +7,7 @@
  */
 
 import { useCallback, useEffect, useRef, useMemo, useState } from 'react'
+import { toast } from 'sonner'
 import { invoke, listen } from '@/lib/transport'
 import { useQueryClient } from '@tanstack/react-query'
 import { logger } from '@/lib/logger'
@@ -209,6 +210,9 @@ function CliLoginModalContent({
         } else if (cliType === 'opencode') {
           queryClient.invalidateQueries({ queryKey: opencodeCliQueryKeys.all })
         }
+
+        // Dismiss any lingering update toast for this CLI type
+        toast.dismiss(`cli-update-${cliType}`)
 
         onClose()
       }

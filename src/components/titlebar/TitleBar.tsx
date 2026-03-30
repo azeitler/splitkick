@@ -76,8 +76,8 @@ export function TitleBar({
         {/* Left Action Buttons */}
         <div
           className={cn(
-            'relative z-10 flex items-center gap-1',
-            native && isMacOS ? 'pl-[68px]' : 'pl-2'
+            'relative z-10 flex items-center gap-1 pt-1',
+            native && isMacOS ? 'pl-[80px]' : 'pl-2'
           )}
         >
           <Tooltip>
@@ -166,7 +166,7 @@ export function TitleBar({
 
       {/* Right side - Version + Windows/Linux window controls */}
       <div
-        className={cn('flex items-center', isMobile && 'pr-2')}
+        className={cn('flex items-center pt-1', isMobile && 'pr-2')}
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       >
         {isMobile && (

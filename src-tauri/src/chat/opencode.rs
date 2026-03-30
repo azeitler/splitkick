@@ -105,6 +105,120 @@ struct SharedSseSubscriber {
     cancelled: Arc<AtomicBool>,
     streamed_any: Arc<AtomicBool>,
     tracked_parts: HashMap<String, TrackedPartState>,
+    /// Ordered list of content blocks accumulated from SSE events.
+    /// Includes intermediate thinking/tool blocks that may not appear in the
+    /// final POST response.
+    accumulated_blocks: Vec<AccumulatedBlock>,
+    accumulated_tool_calls: Vec<ToolCall>,
+}
+
+/// An SSE-accumulated content block, keyed by part_id for updates.
+#[derive(Clone)]
+struct AccumulatedBlock {
+    part_id: String,
+    block: ContentBlock,
+}
+
+impl SharedSseSubscriber {
+    /// Upsert a text block in accumulated_blocks.
+    fn accumulate_text(&mut self, part_id: &str, full_text: &str) {
+        if let Some(ab) = self.accumulated_blocks.iter_mut().find(|ab| ab.part_id == part_id) {
+            ab.block = ContentBlock::Text {
+                text: full_text.to_string(),
+            };
+        } else {
+            self.accumulated_blocks.push(AccumulatedBlock {
+                part_id: part_id.to_string(),
+                block: ContentBlock::Text {
+                    text: full_text.to_string(),
+                },
+            });
+        }
+    }
+
+    /// Upsert a thinking/reasoning block in accumulated_blocks.
+    fn accumulate_thinking(&mut self, part_id: &str, full_text: &str) {
+        if let Some(ab) = self.accumulated_blocks.iter_mut().find(|ab| ab.part_id == part_id) {
+            ab.block = ContentBlock::Thinking {
+                thinking: full_text.to_string(),
+            };
+        } else {
+            self.accumulated_blocks.push(AccumulatedBlock {
+                part_id: part_id.to_string(),
+                block: ContentBlock::Thinking {
+                    thinking: full_text.to_string(),
+                },
+            });
+        }
+    }
+
+    /// Add a tool use block and its tool call entry.
+    fn accumulate_tool(
+        &mut self,
+        part_id: &str,
+        tool_call_id: &str,
+        tool_name: &str,
+        input: serde_json::Value,
+    ) {
+        if self.accumulated_blocks.iter().any(|ab| ab.part_id == part_id) {
+            return; // Already registered
+        }
+        self.accumulated_blocks.push(AccumulatedBlock {
+            part_id: part_id.to_string(),
+            block: ContentBlock::ToolUse {
+                tool_call_id: tool_call_id.to_string(),
+            },
+        });
+        self.accumulated_tool_calls.push(ToolCall {
+            id: tool_call_id.to_string(),
+            name: tool_name.to_string(),
+            input,
+            output: None,
+            parent_tool_use_id: None,
+        });
+    }
+
+    /// Update the output for an accumulated tool call.
+    fn accumulate_tool_output(&mut self, tool_call_id: &str, output: &str) {
+        if let Some(tc) = self.accumulated_tool_calls.iter_mut().find(|t| t.id == tool_call_id) {
+            tc.output = Some(output.to_string());
+        }
+    }
+
+    /// Append a delta to an existing accumulated text block.
+    fn accumulate_text_delta(&mut self, part_id: &str, delta: &str) {
+        if let Some(ab) = self.accumulated_blocks.iter_mut().find(|ab| ab.part_id == part_id) {
+            match &mut ab.block {
+                ContentBlock::Text { text } => text.push_str(delta),
+                _ => {}
+            }
+        } else {
+            self.accumulated_blocks.push(AccumulatedBlock {
+                part_id: part_id.to_string(),
+                block: ContentBlock::Text {
+                    text: delta.to_string(),
+                },
+            });
+        }
+    }
+
+    /// Append a delta to an existing accumulated thinking block.
+    fn accumulate_thinking_delta(&mut self, part_id: &str, delta: &str) {
+        if let Some(ab) = self.accumulated_blocks.iter_mut().find(|ab| ab.part_id == part_id) {
+            match &mut ab.block {
+                ContentBlock::Thinking { thinking } => thinking.push_str(delta),
+                _ => {}
+            }
+        } else {
+            self.accumulated_blocks.push(AccumulatedBlock {
+                part_id: part_id.to_string(),
+                block: ContentBlock::Thinking {
+                    thinking: delta.to_string(),
+                },
+            });
+        }
+    }
+
 }
 
 type SharedSseSubscriberHandle = Arc<Mutex<SharedSseSubscriber>>;
@@ -139,6 +253,7 @@ static SHARED_SSE: Lazy<SharedSseCoordinator> = Lazy::new(SharedSseCoordinator::
 
 struct SharedSseSubscription {
     opencode_session_id: String,
+    handle: SharedSseSubscriberHandle,
 }
 
 impl SharedSseSubscription {
@@ -160,6 +275,8 @@ impl SharedSseSubscription {
             cancelled,
             streamed_any,
             tracked_parts: HashMap::new(),
+            accumulated_blocks: Vec::new(),
+            accumulated_tool_calls: Vec::new(),
         }));
         let lock_start = Instant::now();
         let mut subscribers = lock_recover(&SHARED_SSE.subscribers, "OPENCODE_SSE_SUBSCRIBERS");
@@ -170,12 +287,13 @@ impl SharedSseSubscription {
             lock_wait.as_millis(),
             subscribers.len()
         );
+        let subscriber_for_map = subscriber.clone();
         if subscribers
             .insert(
                 opencode_session_id.clone(),
                 SharedSseSubscriberEntry {
                     working_dir,
-                    handle: subscriber,
+                    handle: subscriber_for_map,
                 },
             )
             .is_some()
@@ -193,6 +311,19 @@ impl SharedSseSubscription {
 
         Self {
             opencode_session_id,
+            handle: subscriber,
+        }
+    }
+
+    /// Extract accumulated content blocks and tool calls from the SSE subscriber.
+    fn take_accumulated(&self) -> (Vec<ContentBlock>, Vec<ToolCall>) {
+        if let Ok(sub) = self.handle.lock() {
+            (
+                sub.accumulated_blocks.iter().map(|ab| ab.block.clone()).collect(),
+                sub.accumulated_tool_calls.clone(),
+            )
+        } else {
+            (Vec::new(), Vec::new())
         }
     }
 }
@@ -908,6 +1039,7 @@ fn process_message_part_event(
     match part_type {
         "text" => {
             let text = part.get("text").and_then(|v| v.as_str()).unwrap_or("");
+            subscriber.accumulate_text(&part_id, text);
             let suffix = match subscriber.tracked_parts.get_mut(&part_id) {
                 Some(TrackedPartState {
                     kind: TrackedPartKind::Text { emitted_len },
@@ -939,6 +1071,7 @@ fn process_message_part_event(
         }
         "reasoning" => {
             let text = part.get("text").and_then(|v| v.as_str()).unwrap_or("");
+            subscriber.accumulate_thinking(&part_id, text);
             let suffix = match subscriber.tracked_parts.get_mut(&part_id) {
                 Some(TrackedPartState {
                     kind: TrackedPartKind::Reasoning { emitted_len },
@@ -1004,6 +1137,7 @@ fn process_message_part_event(
                 .or_else(|| part.get("tool_input"))
                 .cloned()
                 .unwrap_or(serde_json::json!({}));
+            subscriber.accumulate_tool(&part_id, &tool_call_id, &tool_name, input.clone());
             let existing_output = subscriber
                 .tracked_parts
                 .get(&part_id)
@@ -1079,6 +1213,11 @@ fn process_message_part_event(
                 }
             }
 
+            // Accumulate tool output after releasing the tracked_parts borrow
+            if let Some((ref tc_id, ref output)) = tool_result_to_emit {
+                subscriber.accumulate_tool_output(tc_id, output);
+            }
+
             if let Some((tool_call_id, tool_name, input)) = tool_use_to_emit {
                 emit_tool_use_for_subscriber(app, subscriber, &tool_call_id, &tool_name, input);
             }
@@ -1136,22 +1275,29 @@ fn process_message_part_delta_event(
         return Some(false);
     }
 
-    match subscriber.tracked_parts.get_mut(part_id) {
+    // Determine the part kind and extract any emit data, then release tracked_parts borrow
+    enum DeltaAction {
+        Text,
+        Reasoning,
+        ToolOutput { tool_call_id: String, full_output: String },
+        NewText,
+        Untracked,
+    }
+
+    let action = match subscriber.tracked_parts.get_mut(part_id) {
         Some(TrackedPartState {
             kind: TrackedPartKind::Text { emitted_len },
             ..
         }) if field == "text" => {
             *emitted_len += delta.len();
-            emit_chunk_for_subscriber(app, subscriber, delta);
-            Some(true)
+            DeltaAction::Text
         }
         Some(TrackedPartState {
             kind: TrackedPartKind::Reasoning { emitted_len },
             ..
         }) if field == "text" => {
             *emitted_len += delta.len();
-            emit_thinking_for_subscriber(app, subscriber, delta);
-            Some(true)
+            DeltaAction::Reasoning
         }
         Some(TrackedPartState {
             kind:
@@ -1162,42 +1308,61 @@ fn process_message_part_delta_event(
                 },
             ..
         }) if field.contains("output") => {
-            let emit = {
-                let mut next_output = last_output.clone().unwrap_or_default();
-                next_output.push_str(delta);
-                *last_output = Some(next_output.clone());
-                (tool_call_id.clone(), next_output)
-            };
-            emit_tool_result_for_subscriber(app, subscriber, &emit.0, &emit.1);
+            let mut next_output = last_output.clone().unwrap_or_default();
+            next_output.push_str(delta);
+            *last_output = Some(next_output.clone());
+            DeltaAction::ToolOutput {
+                tool_call_id: tool_call_id.clone(),
+                full_output: next_output,
+            }
+        }
+        _ if field == "text" => DeltaAction::NewText,
+        _ if field.contains("output") => {
+            log::trace!(
+                "OpenCode shared SSE: tool output delta for untracked part_id='{part_id}', deferring"
+            );
+            DeltaAction::Untracked
+        }
+        _ => {
+            log::trace!(
+                "OpenCode shared SSE: delta for unknown part part_id='{part_id}' field='{field}'"
+            );
+            DeltaAction::Untracked
+        }
+    };
+
+    // Now dispatch: accumulate + emit with no active tracked_parts borrow
+    match action {
+        DeltaAction::Text => {
+            subscriber.accumulate_text_delta(part_id, delta);
+            emit_chunk_for_subscriber(app, subscriber, delta);
             Some(true)
         }
-        _ => match field {
-            "text" => {
-                subscriber.tracked_parts.insert(
-                    part_id.to_string(),
-                    TrackedPartState {
-                        session_id: delta_session_id.to_string(),
-                        kind: TrackedPartKind::Text {
-                            emitted_len: delta.len(),
-                        },
+        DeltaAction::Reasoning => {
+            subscriber.accumulate_thinking_delta(part_id, delta);
+            emit_thinking_for_subscriber(app, subscriber, delta);
+            Some(true)
+        }
+        DeltaAction::ToolOutput { tool_call_id, full_output } => {
+            subscriber.accumulate_tool_output(&tool_call_id, &full_output);
+            emit_tool_result_for_subscriber(app, subscriber, &tool_call_id, &full_output);
+            Some(true)
+        }
+        DeltaAction::NewText => {
+            subscriber.tracked_parts.insert(
+                part_id.to_string(),
+                TrackedPartState {
+                    session_id: delta_session_id.to_string(),
+                    kind: TrackedPartKind::Text {
+                        emitted_len: delta.len(),
                     },
-                );
-                emit_chunk_for_subscriber(app, subscriber, delta);
-                Some(true)
-            }
-            f if f.contains("output") => {
-                log::trace!(
-                    "OpenCode shared SSE: tool output delta for untracked part_id='{part_id}', deferring"
-                );
-                Some(false)
-            }
-            _ => {
-                log::trace!(
-                    "OpenCode shared SSE: delta for unknown part part_id='{part_id}' field='{field}'"
-                );
-                Some(false)
-            }
-        },
+                },
+            );
+            subscriber.accumulate_text_delta(part_id, delta);
+            emit_chunk_for_subscriber(app, subscriber, delta);
+            Some(true)
+        }
+        DeltaAction::Untracked => Some(false),
     }
 }
 
@@ -1711,14 +1876,28 @@ pub fn execute_opencode_http(
         }
     }
 
+    // If SSE accumulated richer content (intermediate thinking/tool blocks),
+    // prefer that over the POST response which only contains the final turn.
+    let (sse_blocks, sse_tool_calls) = _shared_sse_subscription.take_accumulated();
+    let (final_content_blocks, final_tool_calls) = if sse_blocks.len() > content_blocks.len() {
+        log::info!(
+            "OpenCode: using SSE accumulated blocks ({} blocks, {} tools) over POST response ({} blocks, {} tools)",
+            sse_blocks.len(), sse_tool_calls.len(),
+            content_blocks.len(), tool_calls.len()
+        );
+        (sse_blocks, sse_tool_calls)
+    } else {
+        (content_blocks, tool_calls)
+    };
+
     // Check for cancellation before emitting chat:done — if the user cancelled
     // while we were parsing the response, suppress the done event to avoid stale UI updates.
     if cancelled.load(Ordering::SeqCst) {
         return Ok(OpenCodeResponse {
             content,
             session_id: opencode_session_id,
-            tool_calls,
-            content_blocks,
+            tool_calls: final_tool_calls,
+            content_blocks: final_content_blocks,
             cancelled: true,
             usage,
         });
@@ -1736,8 +1915,8 @@ pub fn execute_opencode_http(
     Ok(OpenCodeResponse {
         content,
         session_id: opencode_session_id,
-        tool_calls,
-        content_blocks,
+        tool_calls: final_tool_calls,
+        content_blocks: final_content_blocks,
         cancelled: false,
         usage,
     })

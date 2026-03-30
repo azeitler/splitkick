@@ -9,6 +9,7 @@
  */
 
 import { useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { useUIStore } from '@/store/ui-store'
 import { claudeCliQueryKeys } from '@/services/claude-cli'
 import { ghCliQueryKeys } from '@/services/gh-cli'
@@ -41,6 +42,9 @@ export function CliUpdateModal() {
       } else if (cliUpdateModalType === 'opencode') {
         queryClient.invalidateQueries({ queryKey: opencodeCliQueryKeys.all })
       }
+
+      // Dismiss any lingering update toast for this CLI type
+      toast.dismiss(`cli-update-${cliUpdateModalType}`)
 
       closeCliUpdateModal()
     }

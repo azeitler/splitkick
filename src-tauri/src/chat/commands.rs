@@ -2484,16 +2484,68 @@ pub async fn send_chat_message(
     // SSE content to the same JSONL file, and writing here would duplicate it.
     if unified_response.backend == Backend::Opencode && !unified_response.cancelled {
         if let Ok(mut file) = std::fs::OpenOptions::new().append(true).open(&output_file) {
-            let synthetic = serde_json::json!({
-                "type": "assistant",
-                "message": {
-                    "content": [{
-                        "type": "text",
-                        "text": unified_response.content
-                    }]
+            if !unified_response.content_blocks.is_empty() {
+                let blocks: Vec<serde_json::Value> = unified_response
+                    .content_blocks
+                    .iter()
+                    .map(|cb| match cb {
+                        super::types::ContentBlock::Text { text } => {
+                            serde_json::json!({"type": "text", "text": text})
+                        }
+                        super::types::ContentBlock::ToolUse { tool_call_id } => {
+                            if let Some(tc) = unified_response
+                                .tool_calls
+                                .iter()
+                                .find(|t| t.id == *tool_call_id)
+                            {
+                                serde_json::json!({
+                                    "type": "tool_use",
+                                    "id": tc.id,
+                                    "name": tc.name,
+                                    "input": tc.input
+                                })
+                            } else {
+                                serde_json::json!({
+                                    "type": "tool_use",
+                                    "id": tool_call_id,
+                                    "name": "",
+                                    "input": null
+                                })
+                            }
+                        }
+                        super::types::ContentBlock::Thinking { thinking } => {
+                            serde_json::json!({"type": "thinking", "thinking": thinking})
+                        }
+                    })
+                    .collect();
+                let synthetic =
+                    serde_json::json!({"type": "assistant", "message": {"content": blocks}});
+                let _ = writeln!(file, "{synthetic}");
+
+                for tc in &unified_response.tool_calls {
+                    if let Some(output) = &tc.output {
+                        let tool_result = serde_json::json!({
+                            "type": "user",
+                            "message": {
+                                "content": [{
+                                    "type": "tool_result",
+                                    "tool_use_id": tc.id,
+                                    "content": output
+                                }]
+                            }
+                        });
+                        let _ = writeln!(file, "{tool_result}");
+                    }
                 }
-            });
-            let _ = writeln!(file, "{synthetic}");
+            } else {
+                let synthetic = serde_json::json!({
+                    "type": "assistant",
+                    "message": {
+                        "content": [{"type": "text", "text": unified_response.content}]
+                    }
+                });
+                let _ = writeln!(file, "{synthetic}");
+            }
             let _ = file.flush();
         }
     }
