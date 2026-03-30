@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
@@ -35,6 +35,8 @@ interface AskUserQuestionProps {
   hasFollowUpMessage?: boolean
   /** Whether the question was explicitly skipped (not answered) */
   isSkipped?: boolean
+  /** Persisted tool output (fallback when Zustand state is lost after reload) */
+  toolOutput?: string
 }
 
 /**
@@ -51,6 +53,7 @@ export function AskUserQuestion({
   introText,
   hasFollowUpMessage = false,
   isSkipped = false,
+  toolOutput,
 }: AskUserQuestionProps) {
   // Local state for answers
   // Structure: answers[questionIndex] = { selectedOptions: [0, 2], customText: 'foo' }
@@ -64,8 +67,42 @@ export function AskUserQuestion({
     QuestionAnswer[] | null
   >(null)
 
-  // Use prop if available, fall back to local state
-  const effectiveAnswers = submittedAnswers ?? localSubmittedAnswers
+  // Reconstruct QuestionAnswer[] from toolOutput by trying JSON parse first,
+  // then matching option labels against the raw output string
+  const answersFromOutput = useMemo(() => {
+    if (!toolOutput) return null
+
+    // Try JSON parse first (our custom format stored at answer time)
+    try {
+      const parsed = JSON.parse(toolOutput)
+      if (Array.isArray(parsed) && parsed.every(a => 'questionIndex' in a && 'selectedOptions' in a)) {
+        return parsed as QuestionAnswer[]
+      }
+    } catch {
+      // Not JSON — try matching raw output against option labels
+    }
+
+    // Match raw tool output against option labels
+    const answers: QuestionAnswer[] = []
+    for (let qIndex = 0; qIndex < questions.length; qIndex++) {
+      const question = questions[qIndex]
+      if (!question) continue
+      const selectedOptions: number[] = []
+      for (let oIndex = 0; oIndex < question.options.length; oIndex++) {
+        const label = question.options[oIndex]?.label
+        if (label && toolOutput.includes(label)) {
+          selectedOptions.push(oIndex)
+        }
+      }
+      if (selectedOptions.length > 0) {
+        answers.push({ questionIndex: qIndex, selectedOptions })
+      }
+    }
+    return answers.length > 0 ? answers : null
+  }, [toolOutput, questions])
+
+  // Use prop if available, fall back to local state, then to reconstructed from output
+  const effectiveAnswers = submittedAnswers ?? localSubmittedAnswers ?? answersFromOutput
 
   // Toggle option selection (checkbox mode)
   const toggleOption = useCallback(

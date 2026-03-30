@@ -436,6 +436,7 @@ export const MessageItem = memo(function MessageItem({
                                   )
                                 : undefined
                             }
+                            toolOutput={item.tool.output ?? undefined}
                           />
                         )
                       }

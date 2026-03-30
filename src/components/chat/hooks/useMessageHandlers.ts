@@ -236,6 +236,7 @@ export function useMessageHandlers({
       // Mark as answered so it becomes read-only (also stores answers for collapsed view)
       const {
         markQuestionAnswered,
+        updateToolCallOutput,
         addSendingSession,
         setSelectedModel,
         setExecutingMode,
@@ -245,6 +246,10 @@ export function useMessageHandlers({
         clearStreamingContentBlocks,
       } = useChatStore.getState()
       markQuestionAnswered(sessionId, toolCallId, answers)
+
+      // Persist answer data as JSON in the tool output so the collapsed view
+      // can reconstruct which options were selected (Zustand state is ephemeral)
+      updateToolCallOutput(sessionId, toolCallId, JSON.stringify(answers))
 
       // Check if this is an OpenCode session early — needed to decide cleanup behavior
       const session = queryClient.getQueryData<Session>(

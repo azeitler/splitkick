@@ -369,6 +369,10 @@ export default function useStreamingEvents({
         const toolCalls = activeToolCalls[session_id] ?? []
         const toolCall = toolCalls.find(tc => tc.id === tool_use_id)
 
+        // For question tools, don't overwrite — we store JSON-encoded answer data
+        // in the output at answer time (see useMessageHandlers handleQuestionAnswer)
+        if (toolCall?.name === 'question' && toolCall?.output) return
+
         // For Read tools, store empty placeholder instead of full content (can be large)
         updateToolCallOutput(
           session_id,
