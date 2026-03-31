@@ -62,6 +62,12 @@ const navigationItems = [
     icon: Settings,
   },
   {
+    id: 'web-access' as const,
+    name: 'Web Access',
+    icon: Globe,
+    desktopOnly: true,
+  },
+  {
     id: 'providers' as const,
     name: 'Providers',
     icon: Blocks,
@@ -102,12 +108,6 @@ const navigationItems = [
     name: 'Experimental',
     icon: FlaskConical,
   },
-  {
-    id: 'web-access' as const,
-    name: 'Web Access (Experimental)',
-    icon: Globe,
-    desktopOnly: true,
-  },
 ]
 
 const getPaneTitle = (pane: PreferencePane): string => {
@@ -131,7 +131,7 @@ const getPaneTitle = (pane: PreferencePane): string => {
     case 'experimental':
       return 'Experimental'
     case 'web-access':
-      return 'Web Access (Experimental)'
+      return 'Web Access'
     default:
       return 'General'
   }
