@@ -1715,6 +1715,9 @@ export function ChatWindow({
     queryClient,
     inputRef,
     preferences,
+    setSessionModel,
+    setSessionBackend,
+    setSessionProvider,
   })
 
   // Wrap push/pull/commit-and-push with remote picker for multi-remote repos
@@ -2042,7 +2045,6 @@ export function ChatWindow({
     handleClearContextApprovalBuild,
     handleWorktreeBuildApproval,
     handleWorktreeYoloApproval,
-    isCodexBackend,
     scrollViewportRef,
     beginKeyboardScroll,
     endKeyboardScroll,
@@ -2511,9 +2513,7 @@ export function ChatWindow({
 
                       {/* Floating scroll buttons */}
                       <FloatingButtons
-                        showApproveButton={
-                          !isCodexBackend && hasPendingPlanApproval
-                        }
+                        showApproveButton={hasPendingPlanApproval}
                         showFindingsButton={!areFindingsVisible}
                         isAtBottom={isAtBottom}
                         approveShortcut={approveShortcut}

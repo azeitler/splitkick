@@ -39,6 +39,16 @@ import {
 } from '@/types/preferences'
 import type { InvestigateOverride } from './useMagicCommands'
 
+interface SessionMutation<T> {
+  mutate: (args: T) => void
+}
+
+interface SessionSettingArgs {
+  sessionId: string
+  worktreeId: string
+  worktreePath: string
+}
+
 interface UseGitOperationsParams {
   activeWorktreeId: string | null | undefined
   activeSessionId: string | null | undefined
@@ -48,6 +58,11 @@ interface UseGitOperationsParams {
   queryClient: QueryClient
   inputRef: React.RefObject<HTMLTextAreaElement | null>
   preferences: AppPreferences | undefined
+  setSessionModel: SessionMutation<SessionSettingArgs & { model: string }>
+  setSessionBackend: SessionMutation<SessionSettingArgs & { backend: string }>
+  setSessionProvider: SessionMutation<
+    SessionSettingArgs & { provider: string | null }
+  >
 }
 
 interface UseGitOperationsReturn {
@@ -68,7 +83,7 @@ interface UseGitOperationsReturn {
   /** Detects existing merge conflicts and opens resolution session */
   handleResolveConflicts: (override?: InvestigateOverride) => Promise<void>
   /** Fetches base branch and merges to create local conflict state for PR conflict resolution */
-  handleResolvePrConflicts: () => Promise<void>
+  handleResolvePrConflicts: (override?: InvestigateOverride) => Promise<void>
   /** Executes the actual merge with specified type */
   executeMerge: (mergeType: MergeType) => Promise<void>
   /** Whether merge dialog is open */
@@ -92,6 +107,9 @@ export function useGitOperations({
   queryClient,
   inputRef,
   preferences,
+  setSessionModel,
+  setSessionBackend,
+  setSessionProvider,
 }: UseGitOperationsParams): UseGitOperationsReturn {
   // Merge dialog state
   const [showMergeDialog, setShowMergeDialog] = useState(false)
@@ -99,7 +117,12 @@ export function useGitOperations({
     useState<Worktree | null>(null)
 
   const applyResolveConflictSessionSelection = useCallback(
-    (sessionId: string, override?: InvestigateOverride) => {
+    (
+      sessionId: string,
+      worktreeId: string,
+      worktreePath: string,
+      override?: InvestigateOverride
+    ) => {
       const defaultBackend =
         (project?.default_backend ?? preferences?.default_backend ?? 'claude') as CliBackend
       const resolvedProvider = resolveMagicPromptProvider(
@@ -154,8 +177,35 @@ export function useGitOperations({
                 selected_provider: provider,
               }
       )
+
+      // Persist to backend so model survives cache invalidations
+      setSessionBackend.mutate({
+        sessionId,
+        worktreeId,
+        worktreePath,
+        backend,
+      })
+      setSessionModel.mutate({
+        sessionId,
+        worktreeId,
+        worktreePath,
+        model,
+      })
+      setSessionProvider.mutate({
+        sessionId,
+        worktreeId,
+        worktreePath,
+        provider,
+      })
     },
-    [preferences, project?.default_backend, queryClient]
+    [
+      preferences,
+      project?.default_backend,
+      queryClient,
+      setSessionBackend,
+      setSessionModel,
+      setSessionProvider,
+    ]
   )
 
   // Handle Commit - creates commit with AI-generated message (no push)
@@ -719,7 +769,12 @@ export function useGitOperations({
 
       // Inherit model/mode/thinking settings from current session
       if (currentSessionId) copySessionSettings(currentSessionId, newSession.id)
-      applyResolveConflictSessionSelection(newSession.id, override)
+      applyResolveConflictSessionSelection(
+        newSession.id,
+        activeWorktreeId,
+        worktree.path,
+        override
+      )
 
       // Set the new session as active
       setActiveSession(activeWorktreeId, newSession.id)
@@ -766,7 +821,7 @@ ${resolveInstructions}`
   ])
 
   // Handle PR Conflicts - fetches base branch, merges locally to create conflict state
-  const handleResolvePrConflicts = useCallback(async () => {
+  const handleResolvePrConflicts = useCallback(async (override?: InvestigateOverride) => {
     if (!activeWorktreeId || !worktree) return
 
     const toastId = toast.loading(
@@ -821,6 +876,12 @@ ${resolveInstructions}`
 
       // Inherit model/mode/thinking settings from current session
       if (currentSessionId) copySessionSettings(currentSessionId, newSession.id)
+      applyResolveConflictSessionSelection(
+        newSession.id,
+        activeWorktreeId,
+        worktree.path,
+        override
+      )
 
       // Set the new session as active
       setActiveSession(activeWorktreeId, newSession.id)
@@ -858,7 +919,7 @@ ${resolveInstructions}`
     } catch (error) {
       toast.error(`Failed to merge base branch: ${error}`, { id: toastId })
     }
-  }, [activeWorktreeId, worktree, project, preferences, queryClient, inputRef])
+  }, [activeWorktreeId, worktree, project, preferences, queryClient, inputRef, applyResolveConflictSessionSelection])
 
   // Execute merge with merge type option
   const executeMerge = useCallback(

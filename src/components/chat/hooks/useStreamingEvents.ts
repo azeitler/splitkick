@@ -479,6 +479,24 @@ export default function useStreamingEvents({
       })
     }
 
+    const enqueueCodexMcpElicitation = (
+      sessionId: string,
+      worktreeId: string,
+      request: CodexMcpElicitationRequestEvent['request']
+    ) => {
+      const { setPendingCodexMcpElicitationRequests, setWaitingForInput } =
+        useChatStore.getState()
+      const current =
+        useChatStore.getState().pendingCodexMcpElicitationRequests[sessionId] ??
+        []
+      const next = [...current, request]
+      setPendingCodexMcpElicitationRequests(sessionId, next)
+      setWaitingForInput(sessionId, true)
+      persistCodexPendingState(sessionId, worktreeId, {
+        pendingCodexMcpElicitationRequests: next,
+      })
+    }
+
     const unlistenCodexPermissionRequest = listen<CodexPermissionRequestEvent>(
       'chat:codex_permission_request',
       event => {
@@ -554,18 +572,25 @@ export default function useStreamingEvents({
       'chat:codex_mcp_elicitation_request',
       event => {
         const { session_id, worktree_id, request } = event.payload
-        const { setPendingCodexMcpElicitationRequests, setWaitingForInput } =
-          useChatStore.getState()
-        const current =
-          useChatStore.getState().pendingCodexMcpElicitationRequests[
-            session_id
-          ] ?? []
-        const next = [...current, request]
-        setPendingCodexMcpElicitationRequests(session_id, next)
-        setWaitingForInput(session_id, true)
-        persistCodexPendingState(session_id, worktree_id, {
-          pendingCodexMcpElicitationRequests: next,
-        })
+        const enabledMcpServers =
+          useChatStore.getState().enabledMcpServers[session_id] ?? []
+
+        if (enabledMcpServers.includes(request.server_name)) {
+          invoke('respond_codex_mcp_elicitation', {
+            sessionId: session_id,
+            rpcId: request.rpc_id,
+            action: 'accept',
+          }).catch(err => {
+            console.error(
+              '[useStreamingEvents] Failed to auto-accept Codex MCP elicitation:',
+              err
+            )
+            enqueueCodexMcpElicitation(session_id, worktree_id, request)
+          })
+          return
+        }
+
+        enqueueCodexMcpElicitation(session_id, worktree_id, request)
       }
     )
 
@@ -866,10 +891,9 @@ export default function useStreamingEvents({
             playNotificationSound(waitingSound)
           }
         }
-      } else if (event.payload.waiting_for_plan && !isCurrentlyViewing) {
+      } else if (event.payload.waiting_for_plan) {
         // Codex/Opencode plan-mode run completed with content — enter plan-waiting state.
         // The backend signals this via the waiting_for_plan field in chat:done.
-        // Skip if user is currently viewing this session — go straight to review instead.
 
         // 1. Add optimistic assistant message to cache
         let planMessageId: string | undefined
@@ -976,7 +1000,7 @@ export default function useStreamingEvents({
           }
         }
 
-        // Play waiting sound if not currently viewing this session
+        // Play waiting sound only if not currently viewing this session
         if (!isCurrentlyViewing) {
           const waitingSound = (preferences?.waiting_sound ??
             'none') as NotificationSound

@@ -86,8 +86,6 @@ interface UseChatWindowEventsParams {
   handleClearContextApprovalBuild: (messageId: string) => void
   handleWorktreeBuildApproval: (messageId: string) => void
   handleWorktreeYoloApproval: (messageId: string) => void
-  /** Whether the active session uses Codex backend (no native approval flow) */
-  isCodexBackend: boolean
   /** Ref to the chat scroll viewport for keyboard scrolling */
   scrollViewportRef: RefObject<HTMLDivElement | null>
   /** Begin a user-initiated keyboard scroll: cancels auto-scroll, blocks handleScroll */
@@ -138,7 +136,6 @@ export function useChatWindowEvents({
   handleClearContextApprovalBuild,
   handleWorktreeBuildApproval,
   handleWorktreeYoloApproval,
-  isCodexBackend,
   scrollViewportRef,
   beginKeyboardScroll,
   endKeyboardScroll,
@@ -460,9 +457,8 @@ export function useChatWindowEvents({
       window.removeEventListener('set-chat-input', handler as EventListener)
   }, [activeSessionId, inputRef])
 
-  // Approve plan keyboard shortcut (no-op for Codex which has no native approval flow)
+  // Approve plan keyboard shortcut
   useEffect(() => {
-    if (isCodexBackend) return
     const handler = () => {
       if (!isModal && useUIStore.getState().sessionChatModalOpen) return
       if (hasPendingPlanApproval && pendingPlanMessage) {
@@ -473,7 +469,6 @@ export function useChatWindowEvents({
     return () => window.removeEventListener('approve-plan', handler)
   }, [
     isModal,
-    isCodexBackend,
     hasPendingPlanApproval,
     pendingPlanMessage,
     handlePlanApproval,
@@ -528,9 +523,8 @@ export function useChatWindowEvents({
     }
   }, [scrollViewportRef, beginKeyboardScroll, endKeyboardScroll])
 
-  // Approve plan yolo keyboard shortcut (no-op for Codex)
+  // Approve plan yolo keyboard shortcut
   useEffect(() => {
-    if (isCodexBackend) return
     const handler = () => {
       if (!isModal && useUIStore.getState().sessionChatModalOpen) return
       if (hasPendingPlanApproval && pendingPlanMessage) {
@@ -541,15 +535,13 @@ export function useChatWindowEvents({
     return () => window.removeEventListener('approve-plan-yolo', handler)
   }, [
     isModal,
-    isCodexBackend,
     hasPendingPlanApproval,
     pendingPlanMessage,
     handlePlanApprovalYolo,
   ])
 
-  // Clear context and yolo keyboard shortcut (no-op for Codex)
+  // Clear context and yolo keyboard shortcut
   useEffect(() => {
-    if (isCodexBackend) return
     const handler = () => {
       if (!isModal && useUIStore.getState().sessionChatModalOpen) return
       if (hasPendingPlanApproval && pendingPlanMessage) {
@@ -561,15 +553,13 @@ export function useChatWindowEvents({
       window.removeEventListener('approve-plan-clear-context', handler)
   }, [
     isModal,
-    isCodexBackend,
     hasPendingPlanApproval,
     pendingPlanMessage,
     handleClearContextApproval,
   ])
 
-  // Clear context and build keyboard shortcut (no-op for Codex)
+  // Clear context and build keyboard shortcut
   useEffect(() => {
-    if (isCodexBackend) return
     const handler = () => {
       if (!isModal && useUIStore.getState().sessionChatModalOpen) return
       if (hasPendingPlanApproval && pendingPlanMessage) {
@@ -581,15 +571,13 @@ export function useChatWindowEvents({
       window.removeEventListener('approve-plan-clear-context-build', handler)
   }, [
     isModal,
-    isCodexBackend,
     hasPendingPlanApproval,
     pendingPlanMessage,
     handleClearContextApprovalBuild,
   ])
 
-  // Worktree build keyboard shortcut (no-op for Codex)
+  // Worktree build keyboard shortcut
   useEffect(() => {
-    if (isCodexBackend) return
     const handler = () => {
       if (!isModal && useUIStore.getState().sessionChatModalOpen) return
       if (hasPendingPlanApproval && pendingPlanMessage) {
@@ -601,15 +589,13 @@ export function useChatWindowEvents({
       window.removeEventListener('approve-plan-worktree-build', handler)
   }, [
     isModal,
-    isCodexBackend,
     hasPendingPlanApproval,
     pendingPlanMessage,
     handleWorktreeBuildApproval,
   ])
 
-  // Worktree yolo keyboard shortcut (no-op for Codex)
+  // Worktree yolo keyboard shortcut
   useEffect(() => {
-    if (isCodexBackend) return
     const handler = () => {
       if (!isModal && useUIStore.getState().sessionChatModalOpen) return
       if (hasPendingPlanApproval && pendingPlanMessage) {
@@ -621,7 +607,6 @@ export function useChatWindowEvents({
       window.removeEventListener('approve-plan-worktree-yolo', handler)
   }, [
     isModal,
-    isCodexBackend,
     hasPendingPlanApproval,
     pendingPlanMessage,
     handleWorktreeYoloApproval,

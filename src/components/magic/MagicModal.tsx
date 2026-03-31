@@ -1105,6 +1105,26 @@ export function MagicModal() {
                     }
             )
 
+            // Persist to backend so model survives cache invalidations
+            invoke('set_session_backend', {
+              worktreeId: selectedWorktreeId,
+              worktreePath: worktree.path,
+              sessionId: newSession.id,
+              backend: resolvedBackend,
+            }).catch(() => undefined)
+            invoke('set_session_model', {
+              worktreeId: selectedWorktreeId,
+              worktreePath: worktree.path,
+              sessionId: newSession.id,
+              model: resolvedModel,
+            }).catch(() => undefined)
+            invoke('set_session_provider', {
+              worktreeId: selectedWorktreeId,
+              worktreePath: worktree.path,
+              sessionId: newSession.id,
+              provider: resolvedSessionProvider,
+            }).catch(() => undefined)
+
             // Open in SessionChatModal on canvas (not full ChatWindow)
             registerWorktreePath(selectedWorktreeId, worktree.path)
             setActiveSession(selectedWorktreeId, newSession.id)

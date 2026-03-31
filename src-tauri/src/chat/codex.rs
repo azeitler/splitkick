@@ -421,6 +421,7 @@ pub fn build_thread_start_params(
     base_instructions_content: Option<&str>,
     multi_agent_enabled: bool,
     max_agent_threads: Option<u32>,
+    has_mcp_servers: bool,
 ) -> serde_json::Value {
     let mut params = serde_json::json!({
         "cwd": working_dir.to_string_lossy(),
@@ -442,9 +443,25 @@ pub fn build_thread_start_params(
     }
 
     // Permission mode mapping
+    //
+    // When MCP servers are enabled, use the granular approval policy to
+    // auto-approve MCP elicitation requests (matching Claude Code's behavior
+    // of auto-accepting MCP tools via --allowedTools).
     match execution_mode.unwrap_or("plan") {
         "build" => {
-            params["approvalPolicy"] = serde_json::json!("untrusted");
+            if has_mcp_servers {
+                log::info!("Using granular approvalPolicy (mcp_elicitations=false) for build mode with MCP servers");
+                params["approvalPolicy"] = serde_json::json!({
+                    "granular": {
+                        "mcp_elicitations": false,
+                        "sandbox_approval": true,
+                        "rules": true,
+                        "request_permissions": true,
+                    }
+                });
+            } else {
+                params["approvalPolicy"] = serde_json::json!("untrusted");
+            }
             params["sandbox"] = serde_json::json!("workspace-write");
         }
         "yolo" => {
@@ -453,6 +470,17 @@ pub fn build_thread_start_params(
         }
         // "plan" or default: read-only sandbox
         _ => {
+            if has_mcp_servers {
+                log::info!("Using granular approvalPolicy (mcp_elicitations=false) for plan mode with MCP servers");
+                params["approvalPolicy"] = serde_json::json!({
+                    "granular": {
+                        "mcp_elicitations": false,
+                        "sandbox_approval": true,
+                        "rules": true,
+                        "request_permissions": true,
+                    }
+                });
+            }
             params["sandbox"] = serde_json::json!("read-only");
         }
     }
@@ -574,6 +602,7 @@ pub fn execute_codex_via_server(
     base_instructions_content: Option<&str>,
     multi_agent_enabled: bool,
     max_agent_threads: Option<u32>,
+    has_mcp_servers: bool,
 ) -> Result<CodexResponse, String> {
     use super::codex_server;
 
@@ -602,6 +631,7 @@ pub fn execute_codex_via_server(
                 base_instructions_content,
                 multi_agent_enabled,
                 max_agent_threads,
+                has_mcp_servers,
             );
             let mut full_params =
                 serde_json::json!({ "threadId": tid, "persistExtendedHistory": true });
@@ -631,6 +661,7 @@ pub fn execute_codex_via_server(
                         base_instructions_content,
                         multi_agent_enabled,
                         max_agent_threads,
+                        has_mcp_servers,
                     )
                 }
             }
@@ -643,6 +674,7 @@ pub fn execute_codex_via_server(
                 base_instructions_content,
                 multi_agent_enabled,
                 max_agent_threads,
+                has_mcp_servers,
             )
         }
     })() {
@@ -721,6 +753,7 @@ fn start_new_thread(
     base_instructions_content: Option<&str>,
     multi_agent_enabled: bool,
     max_agent_threads: Option<u32>,
+    has_mcp_servers: bool,
 ) -> Result<String, String> {
     use super::codex_server;
 
@@ -732,6 +765,7 @@ fn start_new_thread(
         base_instructions_content,
         multi_agent_enabled,
         max_agent_threads,
+        has_mcp_servers,
     );
 
     let result = codex_server::send_request("thread/start", params)?;
@@ -2957,6 +2991,7 @@ mod tests {
             None,
             false,
             None,
+            false,
         );
         assert_eq!(params["model"], "gpt-5.4");
         assert_eq!(params["serviceTier"], "fast");
@@ -2989,9 +3024,76 @@ mod tests {
             None,
             false,
             None,
+            false,
         );
         assert_eq!(params["model"], "gpt-5.3");
         assert!(params.get("serviceTier").is_none());
+    }
+
+    #[test]
+    fn mcp_servers_use_granular_approval_policy_in_build_mode() {
+        let params = build_thread_start_params(
+            std::path::Path::new("/tmp"),
+            Some("gpt-5.4"),
+            Some("build"),
+            false,
+            None,
+            false,
+            None,
+            true,
+        );
+        let policy = &params["approvalPolicy"]["granular"];
+        assert_eq!(policy["mcp_elicitations"], false);
+        assert_eq!(policy["sandbox_approval"], true);
+        assert_eq!(policy["rules"], true);
+        assert_eq!(policy["request_permissions"], true);
+    }
+
+    #[test]
+    fn mcp_servers_use_granular_approval_policy_in_plan_mode() {
+        let params = build_thread_start_params(
+            std::path::Path::new("/tmp"),
+            Some("gpt-5.4"),
+            Some("plan"),
+            false,
+            None,
+            false,
+            None,
+            true,
+        );
+        let policy = &params["approvalPolicy"]["granular"];
+        assert_eq!(policy["mcp_elicitations"], false);
+        assert_eq!(policy["sandbox_approval"], true);
+    }
+
+    #[test]
+    fn no_mcp_servers_uses_string_approval_policy() {
+        let params = build_thread_start_params(
+            std::path::Path::new("/tmp"),
+            Some("gpt-5.4"),
+            Some("build"),
+            false,
+            None,
+            false,
+            None,
+            false,
+        );
+        assert_eq!(params["approvalPolicy"], "untrusted");
+    }
+
+    #[test]
+    fn yolo_mode_ignores_mcp_servers_flag() {
+        let params = build_thread_start_params(
+            std::path::Path::new("/tmp"),
+            Some("gpt-5.4"),
+            Some("yolo"),
+            false,
+            None,
+            false,
+            None,
+            true,
+        );
+        assert_eq!(params["approvalPolicy"], "never");
     }
 
     #[test]

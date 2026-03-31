@@ -673,9 +673,13 @@ export function useCloseSession() {
       // Clear all session-scoped state
       useChatStore.getState().clearSessionState(sessionId)
 
-      // Switch to the new active session so the UI doesn't show a blank screen
+      // Switch to the new active session — but only if the caller hasn't already
+      // picked a neighbor (e.g. SessionChatModal sets it based on visual tab order)
       if (newActiveId) {
-        useChatStore.getState().setActiveSession(worktreeId, newActiveId)
+        const currentActive = useChatStore.getState().activeSessionIds[worktreeId]
+        if (!currentActive || currentActive === sessionId) {
+          useChatStore.getState().setActiveSession(worktreeId, newActiveId)
+        }
       }
     },
     onError: error => {
@@ -732,9 +736,13 @@ export function useArchiveSession() {
       // Clear all session-scoped state
       useChatStore.getState().clearSessionState(sessionId)
 
-      // Switch to the new active session so the UI doesn't show a blank screen
+      // Switch to the new active session — but only if the caller hasn't already
+      // picked a neighbor (e.g. SessionChatModal sets it based on visual tab order)
       if (newActiveId) {
-        useChatStore.getState().setActiveSession(worktreeId, newActiveId)
+        const currentActive = useChatStore.getState().activeSessionIds[worktreeId]
+        if (!currentActive || currentActive === sessionId) {
+          useChatStore.getState().setActiveSession(worktreeId, newActiveId)
+        }
       }
     },
     onError: error => {

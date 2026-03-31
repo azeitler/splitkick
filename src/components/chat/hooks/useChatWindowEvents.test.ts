@@ -88,7 +88,6 @@ describe('useChatWindowEvents worktree approval shortcuts', () => {
       handleClearContextApprovalBuild: vi.fn(),
       handleWorktreeBuildApproval: vi.fn(),
       handleWorktreeYoloApproval: vi.fn(),
-      isCodexBackend: false,
       scrollViewportRef,
       beginKeyboardScroll: vi.fn(),
       endKeyboardScroll: vi.fn(),
@@ -105,6 +104,36 @@ describe('useChatWindowEvents worktree approval shortcuts', () => {
     window.dispatchEvent(new CustomEvent('approve-plan-worktree-build'))
 
     expect(params.handleWorktreeBuildApproval).toHaveBeenCalledWith('msg-1')
+  })
+
+  it('handles plan approval for a pending plan', () => {
+    const params = renderUseChatWindowEvents()
+
+    window.dispatchEvent(new CustomEvent('approve-plan'))
+
+    expect(params.handlePlanApproval).toHaveBeenCalledWith('msg-1')
+  })
+
+  it('handles yolo approval for a pending plan', () => {
+    const params = renderUseChatWindowEvents()
+
+    window.dispatchEvent(new CustomEvent('approve-plan-yolo'))
+
+    expect(params.handlePlanApprovalYolo).toHaveBeenCalledWith('msg-1')
+  })
+
+  it('handles clear-context and worktree approvals for a pending plan', () => {
+    const params = renderUseChatWindowEvents()
+
+    window.dispatchEvent(new CustomEvent('approve-plan-clear-context'))
+    window.dispatchEvent(new CustomEvent('approve-plan-clear-context-build'))
+    window.dispatchEvent(new CustomEvent('approve-plan-worktree-build'))
+    window.dispatchEvent(new CustomEvent('approve-plan-worktree-yolo'))
+
+    expect(params.handleClearContextApproval).toHaveBeenCalledWith('msg-1')
+    expect(params.handleClearContextApprovalBuild).toHaveBeenCalledWith('msg-1')
+    expect(params.handleWorktreeBuildApproval).toHaveBeenCalledWith('msg-1')
+    expect(params.handleWorktreeYoloApproval).toHaveBeenCalledWith('msg-1')
   })
 
   it('ignores worktree yolo approval while plan is still streaming', () => {
