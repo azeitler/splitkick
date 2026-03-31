@@ -11,7 +11,13 @@ import type {
 } from '@/types/chat'
 import { AskUserQuestion } from './AskUserQuestion'
 import { ToolCallInline, TaskCallInline, StackedGroup } from './ToolCallInline'
-import { buildTimeline, findPlanFilePath } from './tool-call-utils'
+import {
+  buildTimeline,
+  findPlanFilePath,
+  getPlanTextBlockIndicesToHide,
+  isDuplicatePlanTextBlock,
+  resolvePlanContent,
+} from './tool-call-utils'
 import { PlanDisplay } from './PlanFileDisplay'
 import { ImageLightbox } from './ImageLightbox'
 import { TextFileLightbox } from './TextFileLightbox'
@@ -43,6 +49,7 @@ import {
   extractSkillPaths,
   stripAllMarkers,
 } from './message-content-utils'
+import { hasQuestionAnswerOutput } from '@/types/chat'
 
 interface MessageItemProps {
   /** The message to render */
@@ -174,7 +181,6 @@ export const MessageItem = memo(function MessageItem({
     message.role === 'user' ? extractSkillPaths(message.content) : []
   const displayContent =
     message.role === 'user' ? stripAllMarkers(message.content) : message.content
-
   // Show content if it's not empty
   const showContent = displayContent.trim()
 
@@ -226,6 +232,16 @@ export const MessageItem = memo(function MessageItem({
   }, [onCopyToInput, message])
 
   // Content for the message box (shared between user and assistant)
+  const resolvedPlan = resolvePlanContent({
+    toolCalls: message.tool_calls ?? [],
+    messageContent: message.content,
+    contentBlocks: message.content_blocks,
+  })
+  const hiddenPlanTextBlockIndices = getPlanTextBlockIndicesToHide(
+    message.content_blocks,
+    resolvedPlan.content
+  )
+
   const messageBoxContent = (
     <>
       {/* Show attached images for user messages */}
@@ -348,6 +364,25 @@ export const MessageItem = memo(function MessageItem({
                           />
                         )
                       case 'text': {
+                        const textBlockIndex = message.content_blocks?.findIndex(
+                          block =>
+                            block.type === 'text' && block.text === item.text
+                        )
+                        if (
+                          textBlockIndex !== undefined &&
+                          textBlockIndex >= 0 &&
+                          hiddenPlanTextBlockIndices.has(textBlockIndex)
+                        ) {
+                          return null
+                        }
+                        if (
+                          isDuplicatePlanTextBlock(
+                            item.text,
+                            resolvedPlan.content
+                          )
+                        ) {
+                          return null
+                        }
                         if (hasReviewFindings(item.text)) {
                           const findings = parseReviewFindings(item.text)
                           const strippedText = stripFindingBlocks(item.text)
@@ -408,22 +443,32 @@ export const MessageItem = memo(function MessageItem({
                         const isAnswered =
                           hasFollowUpMessage ||
                           isQuestionAnswered(message.session_id, item.tool.id) ||
-                          item.tool.output != null
-                        const input = item.tool.input as {
-                          questions: Question[]
+                          hasQuestionAnswerOutput(item.tool.output)
+                        const rawInput = item.tool.input as {
+                          questions: (Question & { multiple?: boolean })[]
                         }
+                        const normalizedQuestions = rawInput.questions.map(
+                          q => ({
+                            ...q,
+                            multiSelect:
+                              q.multiSelect ?? q.multiple === true,
+                          })
+                        )
                         return (
                           <AskUserQuestion
                             toolCallId={item.tool.id}
-                            questions={input.questions}
+                            questions={normalizedQuestions}
                             introText={item.introText}
-                            hasFollowUpMessage={hasFollowUpMessage || item.tool.output != null}
+                            hasFollowUpMessage={
+                              hasFollowUpMessage ||
+                              hasQuestionAnswerOutput(item.tool.output)
+                            }
                             isSkipped={areQuestionsSkipped(message.session_id)}
                             onSubmit={(toolCallId, answers) =>
                               onQuestionAnswer(
                                 toolCallId,
                                 answers,
-                                input.questions
+                                normalizedQuestions
                               )
                             }
                             onSkip={onQuestionSkip}
@@ -449,10 +494,11 @@ export const MessageItem = memo(function MessageItem({
                           />
                         )
                       case 'exitPlanMode': {
-                        const toolInput = item.tool.input as
-                          | { plan?: string }
-                          | undefined
-                        const inlinePlan = toolInput?.plan
+                        const inlinePlan = resolvePlanContent({
+                          toolCalls: [item.tool],
+                          messageContent: message.content,
+                          contentBlocks: message.content_blocks,
+                        }).content
                         if (inlinePlan) {
                           return (
                             <PlanDisplay
@@ -528,8 +574,23 @@ export const MessageItem = memo(function MessageItem({
                 areQuestionsSkipped={areQuestionsSkipped}
               />
             )}
+          {message.role === 'assistant' &&
+            resolvedPlan.content &&
+            (message.tool_calls?.length ?? 0) > 0 &&
+            !skipToolCalls && (
+              <PlanDisplay
+                content={resolvedPlan.content}
+                defaultCollapsed={
+                  message.plan_approved || hasFollowUpMessage
+                }
+              />
+            )}
           {/* Show content after tool calls */}
-          {showContent && (
+          {showContent &&
+            !(
+              message.role === 'assistant' &&
+              isDuplicatePlanTextBlock(displayContent, resolvedPlan.content)
+            ) && (
             <div>
               {message.role === 'assistant' &&
               hasReviewFindings(displayContent) ? (

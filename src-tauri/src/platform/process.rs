@@ -204,8 +204,7 @@ pub fn write_binary_file(path: &std::path::Path, content: &[u8]) -> Result<(), S
     let temp_path = path.with_extension("tmp");
 
     // Write new binary to temp file (always a new inode)
-    std::fs::write(&temp_path, content)
-        .map_err(|e| format!("Failed to write temp file: {e}"))?;
+    std::fs::write(&temp_path, content).map_err(|e| format!("Failed to write temp file: {e}"))?;
 
     #[cfg(windows)]
     {

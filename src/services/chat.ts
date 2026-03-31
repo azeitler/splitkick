@@ -159,6 +159,9 @@ export async function prefetchSessions(
     const executionModeUpdates: Record<string, ExecutionMode> = {}
     const labelUpdates: Record<string, LabelData> = {}
     const reviewResultsUpdates: Record<string, ReviewResponse> = {}
+    const answeredQuestionsUpdates: Record<string, Set<string>> = {}
+    const submittedAnswersUpdates: Record<string, Record<string, QuestionAnswer[]>> =
+      {}
     const fixedFindingsUpdates: Record<string, Set<string>> = {}
     for (const session of sessions.sessions) {
       if (session.is_reviewing) {
@@ -184,6 +187,17 @@ export async function prefetchSessions(
       }
       if (session.review_results) {
         reviewResultsUpdates[session.id] = session.review_results
+      }
+      if (session.answered_questions && session.answered_questions.length > 0) {
+        answeredQuestionsUpdates[session.id] = new Set(
+          session.answered_questions
+        )
+      }
+      if (
+        session.submitted_answers &&
+        Object.keys(session.submitted_answers).length > 0
+      ) {
+        submittedAnswersUpdates[session.id] = session.submitted_answers
       }
       if (session.fixed_findings && session.fixed_findings.length > 0) {
         fixedFindingsUpdates[session.id] = new Set(session.fixed_findings)
@@ -240,6 +254,18 @@ export async function prefetchSessions(
       storeUpdates.reviewResults = {
         ...currentState.reviewResults,
         ...reviewResultsUpdates,
+      }
+    }
+    if (Object.keys(answeredQuestionsUpdates).length > 0) {
+      storeUpdates.answeredQuestions = {
+        ...currentState.answeredQuestions,
+        ...answeredQuestionsUpdates,
+      }
+    }
+    if (Object.keys(submittedAnswersUpdates).length > 0) {
+      storeUpdates.submittedAnswers = {
+        ...currentState.submittedAnswers,
+        ...submittedAnswersUpdates,
       }
     }
     if (Object.keys(fixedFindingsUpdates).length > 0) {
@@ -1290,7 +1316,7 @@ export function useSendMessage() {
 
       return { previous, worktreeId }
     },
-    onSuccess: (response, { sessionId, worktreeId, executionMode }) => {
+    onSuccess: (response, { sessionId, worktreeId }) => {
       console.log(
         `[SendMutation] onSuccess sessionId=${sessionId} cancelled=${response.cancelled}`,
         {
@@ -1308,29 +1334,7 @@ export function useSendMessage() {
         return
       }
 
-      // For Codex plan mode: inject synthetic ExitPlanMode tool call into the response
-      // so the plan approval UI renders (Codex has no native ExitPlanMode tool)
-      const { selectedBackends } = useChatStore.getState()
-      const isCodexPlan =
-        selectedBackends[sessionId] === 'codex' &&
-        executionMode === 'plan' &&
-        !response.cancelled &&
-        response.content.length > 0
-      let finalResponse = response
-      if (isCodexPlan) {
-        const syntheticId = `codex-plan-${sessionId}-${Date.now()}`
-        finalResponse = {
-          ...response,
-          tool_calls: [
-            ...response.tool_calls,
-            { id: syntheticId, name: 'ExitPlanMode', input: {} },
-          ],
-          content_blocks: [
-            ...(response.content_blocks ?? []),
-            { type: 'tool_use' as const, tool_call_id: syntheticId },
-          ],
-        }
-      }
+      const finalResponse = response
 
       // Replace the optimistic assistant message with the complete one from backend
       // This fixes a race condition where chat:done creates an optimistic message

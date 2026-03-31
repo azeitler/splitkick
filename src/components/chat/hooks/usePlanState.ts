@@ -1,11 +1,16 @@
 import { useMemo } from 'react'
-import { isExitPlanMode } from '@/types/chat'
-import type { ToolCall, ChatMessage } from '@/types/chat'
-import { findPlanFilePath, findPlanContent } from '../tool-call-utils'
+import { isPlanToolCall } from '@/types/chat'
+import type { ToolCall, ChatMessage, ContentBlock } from '@/types/chat'
+import {
+  findPlanFilePath,
+  resolvePlanContent,
+} from '../tool-call-utils'
 
 interface UsePlanStateParams {
   sessionMessages: ChatMessage[] | undefined
   currentToolCalls: ToolCall[]
+  currentStreamingContent: string
+  currentStreamingContentBlocks: ContentBlock[]
   isSending: boolean
   activeSessionId: string | null | undefined
   isStreamingPlanApproved: (sessionId: string) => boolean
@@ -17,6 +22,8 @@ interface UsePlanStateParams {
 export function usePlanState({
   sessionMessages,
   currentToolCalls,
+  currentStreamingContent,
+  currentStreamingContentBlocks,
   isSending,
   activeSessionId,
   isStreamingPlanApproved,
@@ -29,7 +36,7 @@ export function usePlanState({
       if (
         m &&
         m.role === 'assistant' &&
-        m.tool_calls?.some(tc => isExitPlanMode(tc))
+        m.tool_calls?.some(tc => isPlanToolCall(tc))
       ) {
         let hasFollowUp = false
         for (let j = i + 1; j < messages.length; j++) {
@@ -50,24 +57,37 @@ export function usePlanState({
   // Check if there's a streaming plan awaiting approval
   const hasStreamingPlan = useMemo(() => {
     if (!isSending || !activeSessionId) return false
-    const hasExitPlanModeTool = currentToolCalls.some(isExitPlanMode)
-    return hasExitPlanModeTool && !isStreamingPlanApproved(activeSessionId)
+    const hasPlanTool = currentToolCalls.some(isPlanToolCall)
+    return hasPlanTool && !isStreamingPlanApproved(activeSessionId)
   }, [isSending, activeSessionId, currentToolCalls, isStreamingPlanApproved])
 
   // Find latest plan content from ExitPlanMode tool calls (primary source)
   const latestPlanContent = useMemo(() => {
-    const streamingPlan = findPlanContent(currentToolCalls)
+    const streamingPlan = resolvePlanContent({
+      toolCalls: currentToolCalls,
+      messageContent: currentStreamingContent,
+      contentBlocks: currentStreamingContentBlocks,
+    }).content
     if (streamingPlan) return streamingPlan
     const msgs = sessionMessages ?? []
     for (let i = msgs.length - 1; i >= 0; i--) {
       const m = msgs[i]
       if (m?.tool_calls) {
-        const content = findPlanContent(m.tool_calls)
+        const content = resolvePlanContent({
+          toolCalls: m.tool_calls,
+          messageContent: m.content,
+          contentBlocks: m.content_blocks,
+        }).content
         if (content) return content
       }
     }
     return null
-  }, [sessionMessages, currentToolCalls])
+  }, [
+    sessionMessages,
+    currentToolCalls,
+    currentStreamingContent,
+    currentStreamingContentBlocks,
+  ])
 
   // Find latest plan file path (fallback for old-style file-based plans)
   const latestPlanFilePath = useMemo(() => {

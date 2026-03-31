@@ -1223,10 +1223,7 @@ pub async fn set_active_session(
 /// (viewing the session acts as acknowledgment).
 /// Returns true if the session was transitioned from waiting to review.
 #[tauri::command]
-pub async fn set_session_last_opened(
-    app: AppHandle,
-    session_id: String,
-) -> Result<bool, String> {
+pub async fn set_session_last_opened(app: AppHandle, session_id: String) -> Result<bool, String> {
     log::trace!("Setting last_opened_at for session: {session_id}");
 
     let mut transitioned = false;
@@ -1249,9 +1246,7 @@ pub async fn set_session_last_opened(
             metadata.is_reviewing = true;
             metadata.pending_plan_message_id = None;
             transitioned = true;
-            log::debug!(
-                "Auto-transitioned session {session_id} from waiting to review"
-            );
+            log::debug!("Auto-transitioned session {session_id} from waiting to review");
         }
 
         save_metadata(&app, &metadata)?;
@@ -2126,8 +2121,8 @@ pub async fn send_chat_message(
                     }
                 };
 
-                // Read the instructions file content to pass inline via developerInstructions
-                let codex_instructions_content: Option<String> =
+                // Read the instructions file content to pass inline via baseInstructions
+                let codex_base_instructions_content: Option<String> =
                     codex_instructions_file.and_then(|path| {
                         std::fs::read_to_string(&path)
                             .map_err(|e| {
@@ -2150,7 +2145,7 @@ pub async fn send_chat_message(
                     thread_codex_search,
                     &codex_add_dirs,
                     &thread_message,
-                    codex_instructions_content.as_deref(),
+                    codex_base_instructions_content.as_deref(),
                     thread_codex_multi_agent,
                     thread_codex_max_threads,
                 ) {
@@ -2444,30 +2439,23 @@ pub async fn send_chat_message(
                     let resume_sid =
                         run_log::extract_session_id_from_jsonl(&app, &session_id, &run_id);
                     let salvage_msg_id = Uuid::new_v4().to_string();
-                    if let Err(complete_err) = run_log_writer.complete(
-                        &salvage_msg_id,
-                        resume_sid.as_deref(),
-                        None,
-                    ) {
+                    if let Err(complete_err) =
+                        run_log_writer.complete(&salvage_msg_id, resume_sid.as_deref(), None)
+                    {
                         log::warn!("Failed to complete salvaged run: {complete_err}");
                     }
                     // Also persist resume ID to session index so --resume works
                     if let Some(ref sid) = resume_sid {
-                        if let Err(save_err) = with_sessions_mut(
-                            &app,
-                            &worktree_path,
-                            &worktree_id,
-                            |sessions| {
-                                if let Some(session) =
-                                    sessions.find_session_mut(&session_id)
-                                {
+                        if let Err(save_err) =
+                            with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
+                                if let Some(session) = sessions.find_session_mut(&session_id) {
                                     session.claude_session_id = Some(sid.clone());
                                     session.is_reviewing = true;
                                     session.waiting_for_input = false;
                                 }
                                 Ok(())
-                            },
-                        ) {
+                            })
+                        {
                             log::warn!(
                                 "Failed to save salvaged resume ID (will recover on restart): {save_err}"
                             );
@@ -2476,9 +2464,7 @@ pub async fn send_chat_message(
                     emit_sessions_cache_invalidation(&app);
                 } else {
                     if let Err(mark_err) = run_log_writer.mark_crashed() {
-                        log::warn!(
-                            "Failed to mark run as crashed after thread error: {mark_err}"
-                        );
+                        log::warn!("Failed to mark run as crashed after thread error: {mark_err}");
                     }
                 }
             }
@@ -2492,8 +2478,7 @@ pub async fn send_chat_message(
                 log::info!(
                     "[SendChat] CLI completed despite thread panic for session={session_id}, salvaging run"
                 );
-                let resume_sid =
-                    run_log::extract_session_id_from_jsonl(&app, &session_id, &run_id);
+                let resume_sid = run_log::extract_session_id_from_jsonl(&app, &session_id, &run_id);
                 let salvage_msg_id = Uuid::new_v4().to_string();
                 if let Err(complete_err) =
                     run_log_writer.complete(&salvage_msg_id, resume_sid.as_deref(), None)
@@ -2694,17 +2679,24 @@ pub async fn send_chat_message(
     // Pre-compute completion state flags before moving unified_response fields
     let has_content = !unified_response.content.is_empty();
     let was_cancelled = unified_response.cancelled;
-    let has_blocking_tool = unified_response
-        .tool_calls
-        .iter()
-        .any(|tc| tc.name == "AskUserQuestion" || tc.name == "ExitPlanMode" || tc.name == "question");
+    let has_blocking_tool = unified_response.tool_calls.iter().any(|tc| {
+        tc.name == "AskUserQuestion"
+            || tc.name == "ExitPlanMode"
+            || tc.name == "CodexPlan"
+            || tc.name == "question"
+    });
     let has_question_tool = unified_response
         .tool_calls
         .iter()
         .any(|tc| tc.name == "AskUserQuestion" || tc.name == "question");
-    let is_plan_mode_with_content = matches!(response_backend, Backend::Codex | Backend::Opencode)
+    let has_plan_tool = unified_response
+        .tool_calls
+        .iter()
+        .any(|tc| tc.name == "ExitPlanMode" || tc.name == "CodexPlan");
+    let is_plan_mode_with_content = matches!(response_backend, Backend::Opencode)
         && execution_mode.as_deref() == Some("plan")
-        && has_content;
+        && has_content
+        && !has_plan_tool;
 
     // Create assistant message with tool calls and content blocks
     let assistant_msg_id = Uuid::new_v4().to_string();
@@ -5655,12 +5647,7 @@ pub async fn answer_opencode_question(
     let app_clone = app.clone();
 
     tokio::task::spawn_blocking(move || {
-        super::opencode::answer_opencode_question(
-            &app_clone,
-            &working_dir,
-            &tool_call_id,
-            answers,
-        )
+        super::opencode::answer_opencode_question(&app_clone, &working_dir, &tool_call_id, answers)
     })
     .await
     .map_err(|e| format!("Task join error: {e}"))?

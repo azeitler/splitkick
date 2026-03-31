@@ -19,7 +19,7 @@ import {
   type SessionDigest,
   type LabelData,
   EXECUTION_MODE_CYCLE,
-  isExitPlanMode,
+  isPlanToolCall,
 } from '@/types/chat'
 import type { ReviewResponse } from '@/types/projects'
 import { invoke } from '@/lib/transport'
@@ -1025,7 +1025,7 @@ export const useChatStore = create<ChatUIState>()(
         )) {
           if (
             state.sessionWorktreeMap[sessionId] === worktreeId &&
-            toolCalls.some(tc => isAskUserQuestion(tc) || isExitPlanMode(tc))
+            toolCalls.some(tc => isAskUserQuestion(tc) || isPlanToolCall(tc))
           ) {
             return true
           }
@@ -1080,8 +1080,8 @@ export const useChatStore = create<ChatUIState>()(
               tc => tc.id === toolCall.id
             )
             if (existingIndex !== -1) {
-              // Already exists — update input if the new one has richer data
-              // (e.g., enriched question data replacing an empty placeholder)
+              // Already exists — update input if the new one has richer or newer data
+              // (e.g., enriched question data or streaming Codex plan deltas)
               const old = existing[existingIndex]!
               const oldEmpty =
                 old.input == null ||
@@ -1091,7 +1091,10 @@ export const useChatStore = create<ChatUIState>()(
                 toolCall.input != null &&
                 typeof toolCall.input === 'object' &&
                 Object.keys(toolCall.input as object).length > 0
-              if (oldEmpty && newHasData) {
+              const inputChanged =
+                JSON.stringify(old.input ?? null) !==
+                JSON.stringify(toolCall.input ?? null)
+              if ((oldEmpty && newHasData) || (newHasData && inputChanged)) {
                 const updated = [...existing]
                 updated[existingIndex] = {
                   ...old,

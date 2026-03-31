@@ -11,7 +11,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
-import { ChevronRight, CheckCircle2 } from 'lucide-react'
+import { ChevronRight, CheckCircle2, Circle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatShortcutDisplay, DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 import type { Question, QuestionAnswer } from '@/types/chat'
@@ -102,7 +102,8 @@ export function AskUserQuestion({
   }, [toolOutput, questions])
 
   // Use prop if available, fall back to local state, then to reconstructed from output
-  const effectiveAnswers = submittedAnswers ?? localSubmittedAnswers ?? answersFromOutput
+  const effectiveAnswers =
+    submittedAnswers ?? localSubmittedAnswers ?? answersFromOutput
 
   // Toggle option selection (checkbox mode)
   const toggleOption = useCallback(
@@ -201,8 +202,8 @@ export function AskUserQuestion({
       // Explicit skip always shows "Skipped"
       if (isSkipped) return 'Skipped'
       // If a follow-up user message exists, the user DID respond — show "Answered"
-      // (specific answer text is unavailable since Zustand state is ephemeral)
-      if (hasFollowUpMessage) return 'Answered'
+      // but details are unavailable.
+      if (hasFollowUpMessage) return 'Answered (details unavailable)'
       return 'Skipped'
     }
 
@@ -222,7 +223,9 @@ export function AskUserQuestion({
       }
     }
 
-    return summaryParts.length > 0 ? summaryParts.join(' | ') : 'Answered'
+    return summaryParts.length > 0
+      ? summaryParts.join(' | ')
+      : 'Answered (details unavailable)'
   }, [effectiveAnswers, questions, isSkipped, hasFollowUpMessage])
 
   // Render collapsed summary for answered questions
@@ -287,31 +290,68 @@ export function AskUserQuestion({
 
               {/* Options - indented section */}
               <div className="ml-3 space-y-3">
-                {question.multiSelect ? (
-                  // Checkbox mode
+                {readOnly ? (
+                  <div className="space-y-2.5">
+                    {question.options.map((option, oIndex) => {
+                      const isSelected =
+                        answer?.selectedOptions.includes(oIndex) ?? false
+                      return (
+                        <div
+                          key={oIndex}
+                          className={cn(
+                            'flex items-start gap-2.5 rounded-md border px-2.5 py-2',
+                            isSelected
+                              ? 'border-green-500/40 bg-green-500/10 text-foreground'
+                              : 'border-transparent bg-muted/25 text-muted-foreground'
+                          )}
+                        >
+                          {isSelected ? (
+                            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
+                          ) : (
+                            <Circle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/60" />
+                          )}
+                          <div className="flex flex-1 flex-col items-start">
+                            <span
+                              className={cn(
+                                'font-medium',
+                                !isSelected && 'text-muted-foreground'
+                              )}
+                            >
+                              <Markdown>{option.label}</Markdown>
+                            </span>
+                            {option.description && (
+                              <span className="mt-1 text-xs text-muted-foreground">
+                                <Markdown>{option.description}</Markdown>
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : question.multiSelect ? (
                   <div className="space-y-2.5">
                     {question.options.map((option, oIndex) => (
-                      <div key={oIndex} className="flex items-start gap-2.5">
+                      <div
+                        key={oIndex}
+                        className={cn(
+                          'flex items-start gap-2.5 rounded-md border px-2.5 py-2 transition-colors',
+                          answer?.selectedOptions.includes(oIndex)
+                            ? 'border-green-500/40 bg-green-500/10'
+                            : 'border-transparent bg-muted/25 hover:bg-muted/40'
+                        )}
+                      >
                         <Checkbox
                           id={`${toolCallId}-q${qIndex}-o${oIndex}`}
                           checked={
                             answer?.selectedOptions.includes(oIndex) ?? false
                           }
-                          onCheckedChange={() =>
-                            !readOnly && toggleOption(qIndex, oIndex)
-                          }
-                          disabled={readOnly}
-                          className={cn(
-                            'mt-0.5',
-                            !readOnly && 'cursor-pointer'
-                          )}
+                          onCheckedChange={() => toggleOption(qIndex, oIndex)}
+                          className="mt-0.5 cursor-pointer"
                         />
                         <Label
                           htmlFor={`${toolCallId}-q${qIndex}-o${oIndex}`}
-                          className={cn(
-                            'flex flex-1 flex-col items-start',
-                            !readOnly && 'cursor-pointer'
-                          )}
+                          className="flex flex-1 cursor-pointer flex-col items-start"
                         >
                           <span className="font-medium">
                             <Markdown>{option.label}</Markdown>
@@ -326,31 +366,31 @@ export function AskUserQuestion({
                     ))}
                   </div>
                 ) : (
-                  // Radio mode
                   <RadioGroup
                     value={answer?.selectedOptions[0]?.toString() ?? ''}
                     onValueChange={value =>
-                      !readOnly && selectOption(qIndex, parseInt(value, 10))
+                      selectOption(qIndex, parseInt(value, 10))
                     }
-                    disabled={readOnly}
                     className="space-y-2.5"
                   >
                     {question.options.map((option, oIndex) => (
-                      <div key={oIndex} className="flex items-start gap-2.5">
+                      <div
+                        key={oIndex}
+                        className={cn(
+                          'flex items-start gap-2.5 rounded-md border px-2.5 py-2 transition-colors',
+                          answer?.selectedOptions.includes(oIndex)
+                            ? 'border-green-500/40 bg-green-500/10'
+                            : 'border-transparent bg-muted/25 hover:bg-muted/40'
+                        )}
+                      >
                         <RadioGroupItem
                           value={oIndex.toString()}
                           id={`${toolCallId}-q${qIndex}-o${oIndex}`}
-                          className={cn(
-                            'mt-0.5',
-                            !readOnly && 'cursor-pointer'
-                          )}
+                          className="mt-0.5 cursor-pointer"
                         />
                         <Label
                           htmlFor={`${toolCallId}-q${qIndex}-o${oIndex}`}
-                          className={cn(
-                            'flex flex-1 flex-col items-start',
-                            !readOnly && 'cursor-pointer'
-                          )}
+                          className="flex flex-1 cursor-pointer flex-col items-start"
                         >
                           <span className="font-medium">
                             <Markdown>{option.label}</Markdown>
@@ -368,11 +408,18 @@ export function AskUserQuestion({
 
                 {/* Show custom text if provided (read-only) or input field (editable) */}
                 {readOnly ? (
-                  answer?.customText && (
-                    <div className="pt-1 text-muted-foreground italic">
-                      &ldquo;{answer.customText}&rdquo;
+                  answer?.customText ? (
+                    <div className="rounded-md border border-green-500/30 bg-green-500/10 px-3 py-2 text-foreground">
+                      <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-green-600 dark:text-green-400">
+                        Custom Answer
+                      </div>
+                      <div className="italic">&ldquo;{answer.customText}&rdquo;</div>
                     </div>
-                  )
+                  ) : !answer ? (
+                    <div className="pt-1 text-sm text-muted-foreground italic">
+                      Answer details unavailable after reload.
+                    </div>
+                  ) : null
                 ) : (
                   <div className="pt-1">
                     <Input
@@ -418,7 +465,7 @@ export function AskUserQuestion({
 
   // Default: render full interactive question form
   return (
-    <div className="my-3 min-w-0 cursor-default rounded border border-primary/30 bg-primary/5 p-4 font-mono text-sm select-none">
+    <div className="my-3 min-w-0 cursor-default rounded border border-muted bg-muted/30 p-4 font-mono text-sm select-none">
       {renderQuestionContent()}
     </div>
   )

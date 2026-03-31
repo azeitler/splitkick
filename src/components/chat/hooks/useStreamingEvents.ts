@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import type { QueryClient } from '@tanstack/react-query'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
-import { chatQueryKeys, persistEnqueue } from '@/services/chat'
+import { chatQueryKeys } from '@/services/chat'
 import { isTauri, saveWorktreePr, projectsQueryKeys } from '@/services/projects'
 import type { Project, Worktree } from '@/types/projects'
 import { preferencesQueryKeys } from '@/services/preferences'
@@ -15,7 +15,7 @@ import {
   type NotificationSound,
 } from '@/types/preferences'
 import { triggerImmediateGitPoll } from '@/services/git-status'
-import { isAskUserQuestion, isExitPlanMode } from '@/types/chat'
+import { isAskUserQuestion, isPlanToolCall } from '@/types/chat'
 import { playNotificationSound } from '@/lib/sounds'
 import { findPlanFilePath } from '@/components/chat/tool-call-utils'
 import { generateId } from '@/lib/uuid'
@@ -67,6 +67,16 @@ function upsertAssistantMessage(
     return updated
   }
   return [...messages, newMsg]
+}
+
+function getTextContentFromBlocks(
+  contentBlocks: Session['messages'][number]['content_blocks'] | undefined
+): string {
+  if (!contentBlocks?.length) return ''
+
+  return contentBlocks
+    .flatMap(block => (block.type === 'text' && block.text ? [block.text] : []))
+    .join('')
 }
 
 /**
@@ -517,9 +527,10 @@ export default function useStreamingEvents({
 
       // Capture streaming state to local variables BEFORE clearing
       // This ensures we have the data for the optimistic message
-      const content = streamingContents[sessionId]
+      const rawContent = streamingContents[sessionId]
       const toolCalls = activeToolCalls[sessionId]
       const contentBlocks = streamingContentBlocks[sessionId]
+      const content = rawContent || getTextContentFromBlocks(contentBlocks)
 
       if (!content && !toolCalls?.length) {
         console.warn(
@@ -528,8 +539,6 @@ export default function useStreamingEvents({
         )
       }
 
-      // Codex has no native plan approval flow — skip synthetic ExitPlanMode injection.
-      // Codex plan completions fall through to the "no blocking tools" path → status = "review".
       const effectiveToolCalls = toolCalls
       const effectiveContentBlocks = contentBlocks
 
@@ -537,7 +546,7 @@ export default function useStreamingEvents({
       // This determines whether to show "waiting" status in the UI
       const hasUnansweredBlockingTool = effectiveToolCalls?.some(
         tc =>
-          (isAskUserQuestion(tc) || isExitPlanMode(tc) || tc.name === 'question') &&
+          (isAskUserQuestion(tc) || isPlanToolCall(tc) || tc.name === 'question') &&
           !isQuestionAnswered(sessionId, tc.id)
       )
 
@@ -559,201 +568,120 @@ export default function useStreamingEvents({
       setTimeout(() => clearBackendPersisting(sessionId), 2000)
 
       if (hasUnansweredBlockingTool) {
-        // YOLO mode auto-continue: automatically answer blocking tools and continue
-        // without showing the question/plan UI. This prevents YOLO mode from getting
-        // stuck when Claude asks questions or proposes plans.
-        const executingMode = useChatStore.getState().executingModes[sessionId]
-        if (executingMode === 'yolo') {
-          console.log(
-            `[chat:done] YOLO auto-continue: session=${sessionId}, auto-answering blocking tools`
+        // Check if there are queued messages AND only plan approval is blocking (not AskUserQuestion)
+        const { messageQueues } = useChatStore.getState()
+        const hasQueuedMessages = (messageQueues[sessionId]?.length ?? 0) > 0
+        const isOnlyPlanApproval =
+          effectiveToolCalls?.every(
+            tc =>
+              (!isAskUserQuestion(tc) && tc.name !== 'question') ||
+              isQuestionAnswered(sessionId, tc.id)
+          ) &&
+          effectiveToolCalls?.some(
+            tc => isPlanToolCall(tc) && !isQuestionAnswered(sessionId, tc.id)
           )
 
-          // Mark all blocking tools as answered
-          const {
-            markQuestionAnswered,
-            worktreePaths,
-            selectedModels,
-            effortLevels,
-          } = useChatStore.getState()
-          for (const tc of effectiveToolCalls ?? []) {
-            if (
-              (isAskUserQuestion(tc) || isExitPlanMode(tc) || tc.name === 'question') &&
-              !isQuestionAnswered(sessionId, tc.id)
-            ) {
-              markQuestionAnswered(sessionId, tc.id, [])
-            }
+        // Add optimistic assistant message BEFORE clearing streaming state.
+        // This ensures the plan/question is visible in MessageList
+        // before StreamingMessage unmounts (isSending becomes false).
+        if (
+          content ||
+          (effectiveToolCalls && effectiveToolCalls.length > 0)
+        ) {
+          const pendingIdKey = `__pendingMessageId_${sessionId}`
+          const preGeneratedId = (window as unknown as Record<string, string>)[
+            pendingIdKey
+          ]
+          const messageId = preGeneratedId ?? generateId()
+          if (preGeneratedId) {
+            // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+            delete (window as unknown as Record<string, string>)[pendingIdKey]
           }
+          // Store the ID for downstream use (plan message persistence)
+          ;(window as unknown as Record<string, string>)[pendingIdKey] =
+            messageId
 
-          // Add optimistic assistant message so the content is preserved in history
-          if (
-            content ||
-            (effectiveToolCalls && effectiveToolCalls.length > 0)
-          ) {
-            queryClient.setQueryData<Session>(
-              chatQueryKeys.session(sessionId),
-              old => {
-                if (!old) return old
-                return {
-                  ...old,
-                  messages: upsertAssistantMessage(old.messages, {
-                    id: generateId(),
-                    session_id: sessionId,
-                    role: 'assistant' as const,
-                    content: content ?? '',
-                    timestamp: Math.floor(Date.now() / 1000),
-                    tool_calls: effectiveToolCalls ?? [],
-                    content_blocks: effectiveContentBlocks ?? [],
-                  }),
-                }
+          queryClient.setQueryData<Session>(
+            chatQueryKeys.session(sessionId),
+            old => {
+              if (!old) return old
+              return {
+                ...old,
+                messages: upsertAssistantMessage(old.messages, {
+                  id: messageId,
+                  session_id: sessionId,
+                  role: 'assistant' as const,
+                  content: content ?? '',
+                  timestamp: Math.floor(Date.now() / 1000),
+                  tool_calls: effectiveToolCalls ?? [],
+                  content_blocks: effectiveContentBlocks ?? [],
+                }),
               }
-            )
-          }
-
-          // Queue a continuation message so the queue processor sends it
-          // after the current send_chat_message completes
-          const autoMessage =
-            'Continue — make your best judgment and proceed autonomously.'
-          const wtPath = worktreePaths[worktreeId]
-          if (wtPath) {
-            const queuedMsg = {
-              id: generateId(),
-              message: autoMessage,
-              pendingImages: [] as never[],
-              pendingFiles: [] as never[],
-              pendingSkills: [] as never[],
-              pendingTextFiles: [] as never[],
-              model: selectedModels[sessionId] ?? 'sonnet',
-              provider: null,
-              executionMode: 'yolo' as const,
-              thinkingLevel: 'off' as const,
-              effortLevel: effortLevels[sessionId],
-              queuedAt: Date.now(),
             }
-            useChatStore.getState().enqueueMessage(sessionId, queuedMsg)
-            persistEnqueue(worktreeId, wtPath, sessionId, queuedMsg)
-          }
+          )
+        }
 
-          // Complete session (clears sending state) — queue processor will pick up the auto-message
+        if (hasQueuedMessages && isOnlyPlanApproval) {
+          // Queued message takes priority over plan approval
+          // Clear tool calls so approval UI doesn't show, let queue processor handle the queued message
+          // Don't set waitingForInput(true) - this allows queue processor to send the queued message
+          // Use completeSession to batch-clear (reviewing=true is fine, queue processor will override)
           completeSession(sessionId)
-
-          // Skip the normal blocking tool handling below
         } else {
-          // Check if there are queued messages AND only ExitPlanMode is blocking (not AskUserQuestion)
-          const { messageQueues } = useChatStore.getState()
-          const hasQueuedMessages = (messageQueues[sessionId]?.length ?? 0) > 0
-          const isOnlyExitPlanMode =
-            effectiveToolCalls?.every(
-              tc =>
-                (!isAskUserQuestion(tc) && tc.name !== 'question') ||
-                isQuestionAnswered(sessionId, tc.id)
-            ) &&
-            effectiveToolCalls?.some(
-              tc => isExitPlanMode(tc) && !isQuestionAnswered(sessionId, tc.id)
-            )
+          // Always stop on blocking tools, including in yolo mode.
+          // Preserve question/plan UI and wait for explicit user action.
+          pauseSession(sessionId)
 
-          // Add optimistic assistant message BEFORE clearing streaming state.
-          // This ensures the plan/question is visible in MessageList
-          // before StreamingMessage unmounts (isSending becomes false).
-          if (
-            content ||
-            (effectiveToolCalls && effectiveToolCalls.length > 0)
-          ) {
-            const pendingIdKey = `__pendingMessageId_${sessionId}`
-            const preGeneratedId = (
-              window as unknown as Record<string, string>
-            )[pendingIdKey]
-            const messageId = preGeneratedId ?? generateId()
-            if (preGeneratedId) {
-              // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-              delete (window as unknown as Record<string, string>)[pendingIdKey]
+          // Persist plan file path and pending message ID for plan approval tools
+          if (effectiveToolCalls) {
+            const planPath = findPlanFilePath(effectiveToolCalls)
+            if (planPath) {
+              useChatStore.getState().setPlanFilePath(sessionId, planPath)
             }
-            // Store the ID for downstream use (plan message persistence)
-            ;(window as unknown as Record<string, string>)[pendingIdKey] =
-              messageId
 
-            queryClient.setQueryData<Session>(
-              chatQueryKeys.session(sessionId),
-              old => {
-                if (!old) return old
-                return {
-                  ...old,
-                  messages: upsertAssistantMessage(old.messages, {
-                    id: messageId,
-                    session_id: sessionId,
-                    role: 'assistant' as const,
-                    content: content ?? '',
-                    timestamp: Math.floor(Date.now() / 1000),
-                    tool_calls: effectiveToolCalls ?? [],
-                    content_blocks: effectiveContentBlocks ?? [],
-                  }),
-                }
-              }
+            // Check if there's a plan tool call - if so, use the message ID
+            // from the optimistic message (already added above) and persist it
+            const hasPlanToolCall = effectiveToolCalls.some(tc =>
+              isPlanToolCall(tc)
             )
+            if (hasPlanToolCall) {
+              const pendingIdKey = `__pendingMessageId_${sessionId}`
+              const pendingMessageId =
+                (window as unknown as Record<string, string>)[pendingIdKey] ??
+                generateId()
+              useChatStore
+                .getState()
+                .setPendingPlanMessageId(sessionId, pendingMessageId)
+
+              // Persist plan file path + pending message ID (non-state metadata).
+              // Completion state (waitingForInput) is persisted by the backend.
+              const { worktreePaths } = useChatStore.getState()
+              const wtPath = worktreePaths[worktreeId]
+              if (wtPath) {
+                invoke('update_session_state', {
+                  worktreeId,
+                  worktreePath: wtPath,
+                  sessionId,
+                  planFilePath: planPath ?? undefined,
+                  pendingPlanMessageId: pendingMessageId,
+                }).catch(err => {
+                  console.error(
+                    '[useStreamingEvents] Failed to persist pending plan state:',
+                    err
+                  )
+                })
+              }
+            }
+            // Question waiting state is persisted by the backend — no frontend persist needed.
           }
 
-          if (hasQueuedMessages && isOnlyExitPlanMode) {
-            // Queued message takes priority over plan approval
-            // Clear tool calls so approval UI doesn't show, let queue processor handle the queued message
-            // Don't set waitingForInput(true) - this allows queue processor to send the queued message
-            // Use completeSession to batch-clear (reviewing=true is fine, queue processor will override)
-            completeSession(sessionId)
-          } else {
-            // Original behavior: show blocking tool UI and wait for user input
-            // Keep tool calls and content blocks so UI shows question/plan
-            // Batch-clear text content, executing mode, sending — set waiting state
-            pauseSession(sessionId)
-
-            // Persist plan file path and pending message ID for ExitPlanMode
-            if (effectiveToolCalls) {
-              const planPath = findPlanFilePath(effectiveToolCalls)
-              if (planPath) {
-                useChatStore.getState().setPlanFilePath(sessionId, planPath)
-              }
-
-              // Check if there's an ExitPlanMode tool call - if so, use the message ID
-              // from the optimistic message (already added above) and persist it
-              const hasExitPlanModeCall = effectiveToolCalls.some(tc =>
-                isExitPlanMode(tc)
-              )
-              if (hasExitPlanModeCall) {
-                const pendingIdKey = `__pendingMessageId_${sessionId}`
-                const pendingMessageId =
-                  (window as unknown as Record<string, string>)[pendingIdKey] ??
-                  generateId()
-                useChatStore
-                  .getState()
-                  .setPendingPlanMessageId(sessionId, pendingMessageId)
-
-                // Persist plan file path + pending message ID (non-state metadata).
-                // Completion state (waitingForInput) is persisted by the backend.
-                const { worktreePaths } = useChatStore.getState()
-                const wtPath = worktreePaths[worktreeId]
-                if (wtPath) {
-                  invoke('update_session_state', {
-                    worktreeId,
-                    worktreePath: wtPath,
-                    sessionId,
-                    planFilePath: planPath ?? undefined,
-                    pendingPlanMessageId: pendingMessageId,
-                  }).catch(err => {
-                    console.error(
-                      '[useStreamingEvents] Failed to persist plan metadata:',
-                      err
-                    )
-                  })
-                }
-              }
-              // Question waiting state is persisted by the backend — no frontend persist needed.
-            }
-
-            // Play waiting sound if not currently viewing this session
-            if (!isCurrentlyViewing) {
-              const waitingSound = (preferences?.waiting_sound ??
-                'none') as NotificationSound
-              playNotificationSound(waitingSound)
-            }
+          // Play waiting sound if not currently viewing this session
+          if (!isCurrentlyViewing) {
+            const waitingSound = (preferences?.waiting_sound ??
+              'none') as NotificationSound
+            playNotificationSound(waitingSound)
           }
-        } // end non-YOLO else
+        }
       } else if (event.payload.waiting_for_plan && !isCurrentlyViewing) {
         // Codex/Opencode plan-mode run completed with content — enter plan-waiting state.
         // The backend signals this via the waiting_for_plan field in chat:done.
@@ -1428,7 +1356,6 @@ export default function useStreamingEvents({
               useChatStore.getState().restoreAttachments(session_id)
               toast.info('Message restored to input')
             } else {
-              toast.info('Request cancelled')
               useChatStore.getState().clearLastSentAttachments(session_id)
             }
             clearLastSentMessage(session_id)
@@ -1448,7 +1375,6 @@ export default function useStreamingEvents({
               }
             )
           } else {
-            toast.info('Request cancelled')
             useChatStore.getState().clearLastSentAttachments(session_id)
           }
         } else {
@@ -1490,7 +1416,6 @@ export default function useStreamingEvents({
               err
             )
           )
-          toast.info('Request cancelled')
         }
 
         // NOW batch-clear all streaming state in a single Zustand set()

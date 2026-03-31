@@ -315,8 +315,7 @@ pub async fn dispatch_command(
         }
         "revert_last_local_commit" => {
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
-            let result =
-                crate::projects::revert_last_local_commit(worktree_path).await?;
+            let result = crate::projects::revert_last_local_commit(worktree_path).await?;
             emit_cache_invalidation(app, &["projects"]);
             to_value(result)
         }
@@ -1886,8 +1885,13 @@ pub async fn dispatch_command(
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
             let tool_call_id: String = field(&args, "toolCallId", "tool_call_id")?;
             let answers: Vec<Vec<String>> = from_field(&args, "answers")?;
-            crate::chat::answer_opencode_question(app.clone(), worktree_path, tool_call_id, answers)
-                .await?;
+            crate::chat::answer_opencode_question(
+                app.clone(),
+                worktree_path,
+                tool_call_id,
+                answers,
+            )
+            .await?;
             Ok(Value::Null)
         }
 

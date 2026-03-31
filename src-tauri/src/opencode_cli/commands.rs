@@ -187,7 +187,12 @@ pub async fn detect_opencode_in_path(app: AppHandle) -> Result<OpenCodePathDetec
     let output = match silent_command(which_cmd).arg("opencode").output() {
         Ok(output) if output.status.success() => {
             // On Windows, `where` can return multiple paths; take only the first line
-            String::from_utf8_lossy(&output.stdout).lines().next().unwrap_or("").trim().to_string()
+            String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_string()
         }
         _ => {
             log::trace!("OpenCode CLI not found in PATH");
@@ -228,21 +233,29 @@ pub async fn detect_opencode_in_path(app: AppHandle) -> Result<OpenCodePathDetec
 
     let version = match silent_command(&found_path).arg("--version").output() {
         Ok(ver_output) if ver_output.status.success() => {
-            let ver_str = String::from_utf8_lossy(&ver_output.stdout).trim().to_string();
+            let ver_str = String::from_utf8_lossy(&ver_output.stdout)
+                .trim()
+                .to_string();
             let cleaned = ver_str
                 .split_whitespace()
                 .last()
                 .unwrap_or(&ver_str)
                 .trim_start_matches('v')
                 .to_string();
-            if cleaned.is_empty() { None } else { Some(cleaned) }
+            if cleaned.is_empty() {
+                None
+            } else {
+                Some(cleaned)
+            }
         }
         _ => None,
     };
 
     let package_manager = crate::platform::detect_package_manager(&found_path);
 
-    log::trace!("Found OpenCode CLI in PATH: {output} (version: {version:?}, pkg_mgr: {package_manager:?})");
+    log::trace!(
+        "Found OpenCode CLI in PATH: {output} (version: {version:?}, pkg_mgr: {package_manager:?})"
+    );
 
     Ok(OpenCodePathDetection {
         found: true,
@@ -421,7 +434,9 @@ fn save_opencode_versions_cache(app: &AppHandle, versions: &[OpenCodeReleaseInfo
 }
 
 fn load_opencode_versions_cache(app: &AppHandle) -> Option<Vec<OpenCodeReleaseInfo>> {
-    let cache_path = super::config::get_cli_dir(app).ok()?.join(OPENCODE_VERSIONS_CACHE_FILE);
+    let cache_path = super::config::get_cli_dir(app)
+        .ok()?
+        .join(OPENCODE_VERSIONS_CACHE_FILE);
     let contents = std::fs::read_to_string(&cache_path).ok()?;
     let cached: CachedOpenCodeVersions = serde_json::from_str(&contents).ok()?;
     if cached.versions.is_empty() {
@@ -444,7 +459,9 @@ fn fallback_opencode_versions() -> Vec<OpenCodeReleaseInfo> {
 ///
 /// Falls back to disk cache or a hardcoded version if the API is unreachable.
 #[tauri::command]
-pub async fn get_available_opencode_versions(app: AppHandle) -> Result<Vec<OpenCodeReleaseInfo>, String> {
+pub async fn get_available_opencode_versions(
+    app: AppHandle,
+) -> Result<Vec<OpenCodeReleaseInfo>, String> {
     match fetch_opencode_versions_from_api().await {
         Ok(versions) if !versions.is_empty() => {
             save_opencode_versions_cache(&app, &versions);

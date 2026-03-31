@@ -15,7 +15,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { WorktreeContextMenu } from './WorktreeContextMenu'
 import { useRenameWorktree } from '@/services/projects'
 import { useSessions } from '@/services/chat'
-import { isAskUserQuestion, isExitPlanMode } from '@/types/chat'
+import { isAskUserQuestion, isPlanToolCall } from '@/types/chat'
 import {
   computeSessionCardData,
   groupCardsByStatus,
@@ -121,7 +121,7 @@ export function WorktreeItem({
       if (sessionWorktreeMap[sessionId] === worktree.id) {
         if (
           toolCalls.some(
-            tc => isExitPlanMode(tc) && !isQuestionAnswered(sessionId, tc.id)
+            tc => isPlanToolCall(tc) && !isQuestionAnswered(sessionId, tc.id)
           )
         ) {
           return true
@@ -172,7 +172,7 @@ export function WorktreeItem({
         const msg = session.messages[i]
         if (msg?.role === 'assistant') {
           if (
-            msg.tool_calls?.some(isExitPlanMode) &&
+            msg.tool_calls?.some(isPlanToolCall) &&
             !msg.plan_approved &&
             !approvedPlanIds.has(msg.id)
           ) {

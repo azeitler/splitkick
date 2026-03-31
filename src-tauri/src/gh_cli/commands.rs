@@ -282,7 +282,9 @@ fn save_gh_versions_cache(app: &AppHandle, versions: &[GhReleaseInfo]) {
 
 /// Load cached versions from disk
 fn load_gh_versions_cache(app: &AppHandle) -> Option<Vec<GhReleaseInfo>> {
-    let cache_path = super::config::get_gh_cli_dir(app).ok()?.join(GH_VERSIONS_CACHE_FILE);
+    let cache_path = super::config::get_gh_cli_dir(app)
+        .ok()?
+        .join(GH_VERSIONS_CACHE_FILE);
     let contents = std::fs::read_to_string(&cache_path).ok()?;
     let cached: CachedGhVersions = serde_json::from_str(&contents).ok()?;
     if cached.versions.is_empty() {
@@ -715,7 +717,12 @@ pub async fn detect_gh_in_path(app: AppHandle) -> Result<GhPathDetection, String
     let output = match silent_command(which_cmd).arg("gh").output() {
         Ok(output) if output.status.success() => {
             // On Windows, `where` can return multiple paths; take only the first line
-            String::from_utf8_lossy(&output.stdout).lines().next().unwrap_or("").trim().to_string()
+            String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_string()
         }
         _ => {
             log::trace!("GitHub CLI not found in PATH");
@@ -757,18 +764,19 @@ pub async fn detect_gh_in_path(app: AppHandle) -> Result<GhPathDetection, String
     // gh --version returns "gh version 2.40.0 (2024-01-15)"
     let version = match silent_command(&found_path).arg("--version").output() {
         Ok(ver_output) if ver_output.status.success() => {
-            let ver_str = String::from_utf8_lossy(&ver_output.stdout).trim().to_string();
-            ver_str
-                .split_whitespace()
-                .nth(2)
-                .map(|s| s.to_string())
+            let ver_str = String::from_utf8_lossy(&ver_output.stdout)
+                .trim()
+                .to_string();
+            ver_str.split_whitespace().nth(2).map(|s| s.to_string())
         }
         _ => None,
     };
 
     let package_manager = crate::platform::detect_package_manager(&found_path);
 
-    log::trace!("Found GitHub CLI in PATH: {output} (version: {version:?}, pkg_mgr: {package_manager:?})");
+    log::trace!(
+        "Found GitHub CLI in PATH: {output} (version: {version:?}, pkg_mgr: {package_manager:?})"
+    );
 
     Ok(GhPathDetection {
         found: true,

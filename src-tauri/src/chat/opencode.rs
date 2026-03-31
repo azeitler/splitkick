@@ -124,7 +124,11 @@ struct AccumulatedBlock {
 impl SharedSseSubscriber {
     /// Upsert a text block in accumulated_blocks.
     fn accumulate_text(&mut self, part_id: &str, full_text: &str) {
-        if let Some(ab) = self.accumulated_blocks.iter_mut().find(|ab| ab.part_id == part_id) {
+        if let Some(ab) = self
+            .accumulated_blocks
+            .iter_mut()
+            .find(|ab| ab.part_id == part_id)
+        {
             ab.block = ContentBlock::Text {
                 text: full_text.to_string(),
             };
@@ -140,7 +144,11 @@ impl SharedSseSubscriber {
 
     /// Upsert a thinking/reasoning block in accumulated_blocks.
     fn accumulate_thinking(&mut self, part_id: &str, full_text: &str) {
-        if let Some(ab) = self.accumulated_blocks.iter_mut().find(|ab| ab.part_id == part_id) {
+        if let Some(ab) = self
+            .accumulated_blocks
+            .iter_mut()
+            .find(|ab| ab.part_id == part_id)
+        {
             ab.block = ContentBlock::Thinking {
                 thinking: full_text.to_string(),
             };
@@ -162,12 +170,21 @@ impl SharedSseSubscriber {
         tool_name: &str,
         input: serde_json::Value,
     ) {
-        if self.accumulated_blocks.iter().any(|ab| ab.part_id == part_id) {
+        if self
+            .accumulated_blocks
+            .iter()
+            .any(|ab| ab.part_id == part_id)
+        {
             // Already registered — but update the input if the new one is richer
             // (e.g., enriched question data replacing an empty/numeric placeholder).
             if input.is_object() && input.as_object().map_or(false, |o| !o.is_empty()) {
-                if let Some(tc) = self.accumulated_tool_calls.iter_mut().find(|t| t.id == tool_call_id) {
-                    if !tc.input.is_object() || tc.input.as_object().map_or(true, |o| o.is_empty()) {
+                if let Some(tc) = self
+                    .accumulated_tool_calls
+                    .iter_mut()
+                    .find(|t| t.id == tool_call_id)
+                {
+                    if !tc.input.is_object() || tc.input.as_object().map_or(true, |o| o.is_empty())
+                    {
                         tc.input = input;
                     }
                 }
@@ -191,14 +208,22 @@ impl SharedSseSubscriber {
 
     /// Update the output for an accumulated tool call.
     fn accumulate_tool_output(&mut self, tool_call_id: &str, output: &str) {
-        if let Some(tc) = self.accumulated_tool_calls.iter_mut().find(|t| t.id == tool_call_id) {
+        if let Some(tc) = self
+            .accumulated_tool_calls
+            .iter_mut()
+            .find(|t| t.id == tool_call_id)
+        {
             tc.output = Some(output.to_string());
         }
     }
 
     /// Append a delta to an existing accumulated text block.
     fn accumulate_text_delta(&mut self, part_id: &str, delta: &str) {
-        if let Some(ab) = self.accumulated_blocks.iter_mut().find(|ab| ab.part_id == part_id) {
+        if let Some(ab) = self
+            .accumulated_blocks
+            .iter_mut()
+            .find(|ab| ab.part_id == part_id)
+        {
             match &mut ab.block {
                 ContentBlock::Text { text } => text.push_str(delta),
                 _ => {}
@@ -215,7 +240,11 @@ impl SharedSseSubscriber {
 
     /// Append a delta to an existing accumulated thinking block.
     fn accumulate_thinking_delta(&mut self, part_id: &str, delta: &str) {
-        if let Some(ab) = self.accumulated_blocks.iter_mut().find(|ab| ab.part_id == part_id) {
+        if let Some(ab) = self
+            .accumulated_blocks
+            .iter_mut()
+            .find(|ab| ab.part_id == part_id)
+        {
             match &mut ab.block {
                 ContentBlock::Thinking { thinking } => thinking.push_str(delta),
                 _ => {}
@@ -229,7 +258,6 @@ impl SharedSseSubscriber {
             });
         }
     }
-
 }
 
 type SharedSseSubscriberHandle = Arc<Mutex<SharedSseSubscriber>>;
@@ -330,7 +358,10 @@ impl SharedSseSubscription {
     fn take_accumulated(&self) -> (Vec<ContentBlock>, Vec<ToolCall>) {
         if let Ok(sub) = self.handle.lock() {
             (
-                sub.accumulated_blocks.iter().map(|ab| ab.block.clone()).collect(),
+                sub.accumulated_blocks
+                    .iter()
+                    .map(|ab| ab.block.clone())
+                    .collect(),
                 sub.accumulated_tool_calls.clone(),
             )
         } else {
@@ -343,9 +374,7 @@ impl Drop for SharedSseSubscription {
     fn drop(&mut self) {
         let lock_start = Instant::now();
         let mut subscribers = lock_recover(&SHARED_SSE.subscribers, "OPENCODE_SSE_SUBSCRIBERS");
-        let removed = subscribers
-            .remove(&self.opencode_session_id)
-            .is_some();
+        let removed = subscribers.remove(&self.opencode_session_id).is_some();
         let lock_wait = lock_start.elapsed();
         if removed {
             log::info!(
@@ -653,10 +682,7 @@ fn fetch_opencode_question_input(
             };
 
             if !resp.status().is_success() {
-                log::warn!(
-                    "OpenCode question list failed: status={}",
-                    resp.status()
-                );
+                log::warn!("OpenCode question list failed: status={}", resp.status());
                 continue;
             }
 
@@ -1123,7 +1149,8 @@ async fn shared_sse_listener_loop(
 
                         if line.is_empty() {
                             if !current_data.is_empty() {
-                                let emitted = process_shared_sse_event(&app, &current_data, &subscribers);
+                                let emitted =
+                                    process_shared_sse_event(&app, &current_data, &subscribers);
                                 if matches!(emitted, Some(true)) {
                                     total_events_emitted += 1;
                                 }
@@ -1150,9 +1177,7 @@ async fn shared_sse_listener_loop(
                     break;
                 }
                 Err(e) => {
-                    log::info!(
-                        "OpenCode shared SSE: read error after {total_chunks} chunks: {e}"
-                    );
+                    log::info!("OpenCode shared SSE: read error after {total_chunks} chunks: {e}");
                     connected.store(false, Ordering::SeqCst);
                     break;
                 }
@@ -1309,9 +1334,7 @@ fn process_message_part_event(
             // question data from the OpenCode Question API so the frontend can
             // render the question UI.
             if raw_tool_name == "question" {
-                if let Some(enriched) =
-                    fetch_opencode_question_input(working_dir, &tool_call_id)
-                {
+                if let Some(enriched) = fetch_opencode_question_input(working_dir, &tool_call_id) {
                     input = enriched;
                 }
             }
@@ -1321,31 +1344,33 @@ fn process_message_part_event(
             let tool_name = normalize_opencode_tool(raw_tool_name, &mut input);
 
             subscriber.accumulate_tool(&part_id, &tool_call_id, &tool_name, input.clone());
-            let existing_output = subscriber
-                .tracked_parts
-                .get(&part_id)
-                .and_then(|state| match &state.kind {
-                    TrackedPartKind::Tool { last_output, .. } => last_output.clone(),
-                    _ => None,
-                });
+            let existing_output =
+                subscriber
+                    .tracked_parts
+                    .get(&part_id)
+                    .and_then(|state| match &state.kind {
+                        TrackedPartKind::Tool { last_output, .. } => last_output.clone(),
+                        _ => None,
+                    });
             let mut emitted = false;
             let mut tool_use_to_emit: Option<(String, String, serde_json::Value)> = None;
             let mut tool_result_to_emit: Option<(String, String)> = None;
 
             {
-                let entry = subscriber
-                    .tracked_parts
-                    .entry(part_id)
-                    .or_insert_with(|| TrackedPartState {
-                        session_id: part_session_id.to_string(),
-                        kind: TrackedPartKind::Tool {
-                            tool_call_id: tool_call_id.clone(),
-                            tool_name: tool_name.clone(),
-                            emitted_started: false,
-                            emitted_input: false,
-                            last_output: None,
-                        },
-                    });
+                let entry =
+                    subscriber
+                        .tracked_parts
+                        .entry(part_id)
+                        .or_insert_with(|| TrackedPartState {
+                            session_id: part_session_id.to_string(),
+                            kind: TrackedPartKind::Tool {
+                                tool_call_id: tool_call_id.clone(),
+                                tool_name: tool_name.clone(),
+                                emitted_started: false,
+                                emitted_input: false,
+                                last_output: None,
+                            },
+                        });
 
                 if entry.session_id != part_session_id {
                     entry.session_id = part_session_id.to_string();
@@ -1362,15 +1387,12 @@ fn process_message_part_event(
                     *tracked_call_id = tool_call_id.clone();
                     *tracked_tool_name = tool_name.clone();
 
-                    let input_has_data = input.is_object()
-                        && input.as_object().map_or(false, |o| !o.is_empty());
+                    let input_has_data =
+                        input.is_object() && input.as_object().map_or(false, |o| !o.is_empty());
 
                     if !*emitted_started {
-                        tool_use_to_emit = Some((
-                            tool_call_id.clone(),
-                            tool_name.clone(),
-                            input.clone(),
-                        ));
+                        tool_use_to_emit =
+                            Some((tool_call_id.clone(), tool_name.clone(), input.clone()));
                         *emitted_started = true;
                         *emitted_input = input_has_data;
                         emitted = true;
@@ -1378,11 +1400,8 @@ fn process_message_part_event(
                         // Re-emit tool_use with populated input so the frontend
                         // updates its streaming state (the first emit may have had
                         // empty input before the data was available).
-                        tool_use_to_emit = Some((
-                            tool_call_id.clone(),
-                            tool_name.clone(),
-                            input.clone(),
-                        ));
+                        tool_use_to_emit =
+                            Some((tool_call_id.clone(), tool_name.clone(), input.clone()));
                         *emitted_input = true;
                         emitted = true;
                     }
@@ -1479,7 +1498,10 @@ fn process_message_part_delta_event(
     enum DeltaAction {
         Text,
         Reasoning,
-        ToolOutput { tool_call_id: String, full_output: String },
+        ToolOutput {
+            tool_call_id: String,
+            full_output: String,
+        },
         NewText,
         Untracked,
     }
@@ -1543,7 +1565,10 @@ fn process_message_part_delta_event(
             emit_thinking_for_subscriber(app, subscriber, delta);
             Some(true)
         }
-        DeltaAction::ToolOutput { tool_call_id, full_output } => {
+        DeltaAction::ToolOutput {
+            tool_call_id,
+            full_output,
+        } => {
             subscriber.accumulate_tool_output(&tool_call_id, &full_output);
             emit_tool_result_for_subscriber(app, subscriber, &tool_call_id, &full_output);
             Some(true)
@@ -1976,10 +2001,7 @@ pub fn execute_opencode_http(
                 }
             }
             Some("tool") => {
-                let raw_tool_name = part
-                    .get("tool")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("tool");
+                let raw_tool_name = part.get("tool").and_then(|v| v.as_str()).unwrap_or("tool");
                 let tool_call_id = part
                     .get("callID")
                     .and_then(|v| v.as_str())
@@ -2474,9 +2496,7 @@ pub fn answer_opencode_question(
         ));
     }
 
-    log::info!(
-        "OpenCode question replied: request_id={request_id}, tool_call_id={tool_call_id}"
-    );
+    log::info!("OpenCode question replied: request_id={request_id}, tool_call_id={tool_call_id}");
 
     Ok(())
 }

@@ -1,8 +1,8 @@
 //! Configuration and path management for the embedded GitHub CLI
 
+use crate::platform::silent_command;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
-use crate::platform::silent_command;
 
 /// Directory name for storing the GitHub CLI binary
 pub const GH_CLI_DIR_NAME: &str = "gh-cli";
@@ -65,7 +65,12 @@ pub fn resolve_gh_binary(app: &AppHandle) -> PathBuf {
         if let Ok(output) = silent_command(which_cmd).arg("gh").output() {
             if output.status.success() {
                 // On Windows, `where` can return multiple paths; take only the first line
-                let path_str = String::from_utf8_lossy(&output.stdout).lines().next().unwrap_or("").trim().to_string();
+                let path_str = String::from_utf8_lossy(&output.stdout)
+                    .lines()
+                    .next()
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
                 if !path_str.is_empty() {
                     let path = PathBuf::from(&path_str);
                     if path.exists() {

@@ -1,6 +1,10 @@
 import { memo, useState, useCallback } from 'react'
 import type { ToolCall, Question, QuestionAnswer } from '@/types/chat'
-import { isAskUserQuestion, isExitPlanMode } from '@/types/chat'
+import {
+  hasQuestionAnswerOutput,
+  isAskUserQuestion,
+  isPlanToolCall,
+} from '@/types/chat'
 import { AskUserQuestion } from './AskUserQuestion'
 
 /**
@@ -61,7 +65,7 @@ interface ToolCallsDisplayProps {
 
 /**
  * Display for tool calls - shows Edit tools prominently, collapses others
- * Note: ExitPlanMode is handled by ExitPlanModeButton component (rendered after content)
+ * Note: plan approval tools are handled by ExitPlanModeButton component (rendered after content)
  * Memoized to prevent re-renders when parent state changes
  */
 export const ToolCallsDisplay = memo(function ToolCallsDisplay({
@@ -84,13 +88,13 @@ export const ToolCallsDisplay = memo(function ToolCallsDisplay({
   }, [])
 
   // Separate special tools from regular tools
-  // Note: ExitPlanMode is handled separately outside this component (after content)
+  // Note: plan approval tools are handled separately outside this component (after content)
   // Note: Edit tools are handled by EditedFilesDisplay at the bottom of the message
   const isQuestionTool = (t: ToolCall) =>
     isAskUserQuestion(t) || t.name === 'question'
   const questionTools = toolCalls.filter(isQuestionTool)
   const otherTools = toolCalls.filter(
-    t => !isQuestionTool(t) && !isExitPlanMode(t)
+    t => !isQuestionTool(t) && !isPlanToolCall(t)
   )
 
   // Merge multiple AskUserQuestion calls into one (Claude sometimes emits duplicates)
@@ -141,7 +145,10 @@ export const ToolCallsDisplay = memo(function ToolCallsDisplay({
           key={mergedToolId}
           toolCallId={mergedToolId}
           questions={mergedQuestions}
-          hasFollowUpMessage={hasFollowUpMessage || questionTools.some(t => t.output != null)}
+          hasFollowUpMessage={
+            hasFollowUpMessage ||
+            questionTools.some(t => hasQuestionAnswerOutput(t.output))
+          }
           isSkipped={areQuestionsSkipped?.(sessionId) ?? false}
           onSubmit={(toolCallId, answers) =>
             onQuestionAnswer?.(toolCallId, answers, mergedQuestions)
@@ -151,16 +158,17 @@ export const ToolCallsDisplay = memo(function ToolCallsDisplay({
             hasFollowUpMessage ||
             isQuestionAnswered(sessionId, mergedToolId) ||
             areQuestionsSkipped?.(sessionId) ||
-            questionTools.some(t => t.output != null)
+            questionTools.some(t => hasQuestionAnswerOutput(t.output))
           }
           submittedAnswers={
             hasFollowUpMessage ||
             isQuestionAnswered(sessionId, mergedToolId) ||
             areQuestionsSkipped?.(sessionId) ||
-            questionTools.some(t => t.output != null)
+            questionTools.some(t => hasQuestionAnswerOutput(t.output))
               ? getSubmittedAnswers(sessionId, mergedToolId)
               : undefined
           }
+          toolOutput={questionTools.find(t => t.id === mergedToolId)?.output}
         />
       )}
     </div>

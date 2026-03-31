@@ -22,7 +22,7 @@ import type {
 import type { ReviewFinding } from '@/types/chat'
 import { formatAnswersAsNaturalLanguage } from '@/services/chat'
 import { parseReviewFindings, getFindingKey } from '../review-finding-utils'
-import { findPlanContent, findPlanFilePath } from '../tool-call-utils'
+import { findPlanFilePath, resolvePlanContent } from '../tool-call-utils'
 import { navigateToApprovedWorktree } from '../worktree-approval-navigation'
 import { getCodexPermissionApprovalMode } from '../permission-approval-utils'
 import { generateId } from '@/lib/uuid'
@@ -250,6 +250,23 @@ export function useMessageHandlers({
       // Persist answer data as JSON in the tool output so the collapsed view
       // can reconstruct which options were selected (Zustand state is ephemeral)
       updateToolCallOutput(sessionId, toolCallId, JSON.stringify(answers))
+
+      // Persist answer state immediately so reload cannot beat the debounced save.
+      const currentState = useChatStore.getState()
+      invoke('update_session_state', {
+        worktreeId,
+        worktreePath,
+        sessionId,
+        answeredQuestions: Array.from(
+          currentState.answeredQuestions[sessionId] ?? []
+        ),
+        submittedAnswers: currentState.submittedAnswers[sessionId] ?? {},
+      }).catch(err => {
+        console.error(
+          '[useMessageHandlers] Failed to persist question answers:',
+          err
+        )
+      })
 
       // Check if this is an OpenCode session early — needed to decide cleanup behavior
       const session = queryClient.getQueryData<Session>(
@@ -962,7 +979,11 @@ export function useMessageHandlers({
       }
 
       // Resolve plan content from tool calls
-      let planContent = findPlanContent(message.tool_calls)
+      let planContent = resolvePlanContent({
+        toolCalls: message.tool_calls,
+        messageContent: message.content,
+        contentBlocks: message.content_blocks,
+      }).content
       if (!planContent) {
         const planFilePath = findPlanFilePath(message.tool_calls)
         if (planFilePath) {
@@ -1208,7 +1229,10 @@ export function useMessageHandlers({
       // Try to get plan content from tool calls first, then from streaming blocks
       let planContent: string | null = null
       if (toolCalls) {
-        planContent = findPlanContent(toolCalls)
+        planContent = resolvePlanContent({
+          toolCalls,
+          contentBlocks,
+        }).content
         if (!planContent) {
           const planFilePath = findPlanFilePath(toolCalls)
           if (planFilePath) {
@@ -1459,7 +1483,11 @@ export function useMessageHandlers({
       }
 
       // Resolve plan content from tool calls
-      let planContent = findPlanContent(message.tool_calls)
+      let planContent = resolvePlanContent({
+        toolCalls: message.tool_calls,
+        messageContent: message.content,
+        contentBlocks: message.content_blocks,
+      }).content
       if (!planContent) {
         const planFilePath = findPlanFilePath(message.tool_calls)
         if (planFilePath) {
@@ -1779,7 +1807,10 @@ export function useMessageHandlers({
 
       let planContent: string | null = null
       if (toolCalls) {
-        planContent = findPlanContent(toolCalls)
+        planContent = resolvePlanContent({
+          toolCalls,
+          contentBlocks,
+        }).content
         if (!planContent) {
           const planFilePath = findPlanFilePath(toolCalls)
           if (planFilePath) {
@@ -2524,7 +2555,6 @@ export function useMessageHandlers({
       clearPendingDenials(sessionId)
       clearDeniedMessageContext(sessionId)
       setWaitingForInput(sessionId, false)
-      toast.info('Request cancelled')
       return
     }
 
@@ -2532,7 +2562,6 @@ export function useMessageHandlers({
     clearDeniedMessageContext(sessionId)
     setWaitingForInput(sessionId, false)
     removeSendingSession(sessionId)
-    toast.info('Request cancelled')
   }, [])
 
   // Handle fixing a review finding

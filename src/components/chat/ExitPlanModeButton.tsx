@@ -1,5 +1,5 @@
 import type { ToolCall } from '@/types/chat'
-import { isAskUserQuestion, isExitPlanMode } from '@/types/chat'
+import { isAskUserQuestion, isPlanToolCall } from '@/types/chat'
 import { usePreferences } from '@/services/preferences'
 import { resolveApprovalLabel } from './approval-label-utils'
 import { SplitButton } from '@/components/ui/split-button'
@@ -56,7 +56,7 @@ export function ExitPlanModeButton({
 
   if (!toolCalls) return null
 
-  const exitPlanTools = toolCalls.filter(isExitPlanMode)
+  const exitPlanTools = toolCalls.filter(isPlanToolCall)
   const tool = exitPlanTools[exitPlanTools.length - 1]
   if (!tool) return null
 

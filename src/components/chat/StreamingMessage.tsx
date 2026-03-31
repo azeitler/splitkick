@@ -9,7 +9,13 @@ import type {
 } from '@/types/chat'
 import { AskUserQuestion } from './AskUserQuestion'
 import { ToolCallInline, TaskCallInline, StackedGroup } from './ToolCallInline'
-import { buildTimeline, findPlanFilePath } from './tool-call-utils'
+import {
+  buildTimeline,
+  findPlanFilePath,
+  getPlanTextBlockIndicesToHide,
+  isDuplicatePlanTextBlock,
+  resolvePlanContent,
+} from './tool-call-utils'
 import { ToolCallsDisplay } from './ToolCallsDisplay'
 import { ExitPlanModeButton } from './ExitPlanModeButton'
 import { PlanDisplay } from './PlanFileDisplay'
@@ -105,6 +111,16 @@ export const StreamingMessage = memo(function StreamingMessage({
   onStreamingWorktreeYoloApproval,
   hideApproveButtons,
 }: StreamingMessageProps) {
+  const resolvedPlan = resolvePlanContent({
+    toolCalls,
+    messageContent: streamingContent,
+    contentBlocks,
+  })
+  const hiddenPlanTextBlockIndices = getPlanTextBlockIndicesToHide(
+    contentBlocks,
+    resolvedPlan.content
+  )
+
   return (
     <div className="text-foreground/90">
       {/* Render streaming content blocks inline if available */}
@@ -169,6 +185,24 @@ export const StreamingMessage = memo(function StreamingMessage({
                               />
                             )
                           case 'text': {
+                            const textBlockIndex = contentBlocks.findIndex(
+                              block =>
+                                block.type === 'text' && block.text === item.text
+                            )
+                            if (
+                              textBlockIndex >= 0 &&
+                              hiddenPlanTextBlockIndices.has(textBlockIndex)
+                            ) {
+                              return null
+                            }
+                            if (
+                              isDuplicatePlanTextBlock(
+                                item.text,
+                                resolvedPlan.content
+                              )
+                            ) {
+                              return null
+                            }
                             // Split at last newline: completed lines → markdown, trailing partial → plain div
                             // This prevents reflow when remend reinterprets incomplete markdown
                             const lastNewline = item.text.lastIndexOf('\n')
@@ -230,9 +264,9 @@ export const StreamingMessage = memo(function StreamingMessage({
                               item.tool.id
                             )
                             const rawInput = item.tool.input as {
-                              questions: Array<
-                                Question & { multiple?: boolean }
-                              >
+                              questions: (Question & {
+                                multiple?: boolean
+                              })[]
                             }
                             // Normalize OpenCode's "multiple" → "multiSelect"
                             const normalizedQuestions = rawInput.questions.map(
@@ -247,6 +281,7 @@ export const StreamingMessage = memo(function StreamingMessage({
                                 toolCallId={item.tool.id}
                                 questions={normalizedQuestions}
                                 introText={item.introText}
+                                hasFollowUpMessage={Boolean(item.tool.output)}
                                 onSubmit={(toolCallId, answers) =>
                                   onQuestionAnswer(
                                     toolCallId,
@@ -264,6 +299,7 @@ export const StreamingMessage = memo(function StreamingMessage({
                                       )
                                     : undefined
                                 }
+                                toolOutput={item.tool.output}
                               />
                             )
                           }
@@ -277,10 +313,11 @@ export const StreamingMessage = memo(function StreamingMessage({
                               />
                             )
                           case 'exitPlanMode': {
-                            const toolInput = item.tool.input as
-                              | { plan?: string }
-                              | undefined
-                            const inlinePlan = toolInput?.plan
+                            const inlinePlan = resolvePlanContent({
+                              toolCalls: [item.tool],
+                              messageContent: streamingContent,
+                              contentBlocks,
+                            }).content
                             const planFilePath = !inlinePlan
                               ? findPlanFilePath(toolCalls)
                               : null
@@ -365,8 +402,31 @@ export const StreamingMessage = memo(function StreamingMessage({
             getSubmittedAnswers={getSubmittedAnswers}
             areQuestionsSkipped={areQuestionsSkipped}
           />
+          {resolvedPlan.content && (
+            <div data-plan-display>
+              <PlanDisplay content={resolvedPlan.content} defaultCollapsed={false} />
+              <ExitPlanModeButton
+                toolCalls={toolCalls}
+                isApproved={isStreamingPlanApproved(sessionId)}
+                onPlanApproval={onStreamingPlanApproval}
+                onPlanApprovalYolo={onStreamingPlanApprovalYolo}
+                onClearContextApproval={onStreamingClearContextApproval}
+                onClearContextBuildApproval={
+                  onStreamingClearContextApprovalBuild
+                }
+                onWorktreeBuildApproval={onStreamingWorktreeBuildApproval}
+                onWorktreeYoloApproval={onStreamingWorktreeYoloApproval}
+                shortcut={approveShortcut}
+                shortcutYolo={approveShortcutYolo}
+                shortcutClearContext={approveShortcutClearContext}
+                shortcutClearContextBuild={approveShortcutClearContextBuild}
+                hideApproveButtons={hideApproveButtons}
+              />
+            </div>
+          )}
           {/* Streaming content */}
-          {streamingContent && (
+          {streamingContent &&
+            !isDuplicatePlanTextBlock(streamingContent, resolvedPlan.content) && (
             <Markdown streaming>{streamingContent}</Markdown>
           )}
         </>

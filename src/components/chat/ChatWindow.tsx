@@ -73,7 +73,7 @@ import type {
   PermissionDenial,
   PendingFile,
 } from '@/types/chat'
-import { isAskUserQuestion, isExitPlanMode } from '@/types/chat'
+import { isAskUserQuestion, isPlanToolCall } from '@/types/chat'
 import { getFilename, normalizePath } from '@/lib/path-utils'
 import { cn } from '@/lib/utils'
 import { PermissionApproval } from './PermissionApproval'
@@ -890,6 +890,8 @@ export function ChatWindow({
   } = usePlanState({
     sessionMessages: session?.messages,
     currentToolCalls,
+    currentStreamingContent: streamingContent,
+    currentStreamingContentBlocks,
     isSending,
     activeSessionId,
     isStreamingPlanApproved,
@@ -2096,7 +2098,7 @@ export function ChatWindow({
       if (
         m &&
         m.role === 'assistant' &&
-        m.tool_calls?.some(tc => isExitPlanMode(tc))
+        m.tool_calls?.some(tc => isPlanToolCall(tc))
       ) {
         return i
       }

@@ -58,6 +58,19 @@ export interface ToolCall {
   parent_tool_use_id?: string
 }
 
+export interface PlanStep {
+  step: string
+  status: 'pending' | 'in_progress' | 'completed'
+}
+
+export interface PlanToolInput {
+  plan?: string
+  plan_preview?: string
+  explanation?: string
+  steps?: PlanStep[]
+  source?: 'claude' | 'codex'
+}
+
 /**
  * A content block in a message - text, tool use, or thinking
  * Used to preserve the order of content in Claude's response
@@ -454,10 +467,64 @@ export function isAskUserQuestion(
 }
 
 /**
+ * True only when persisted question tool output represents a real answer.
+ * Blocking-tool errors can also produce output and must not collapse the UI.
+ */
+export function hasQuestionAnswerOutput(output: string | null | undefined): boolean {
+  if (!output) return false
+
+  const trimmed = output.trim()
+  if (!trimmed) return false
+
+  if (trimmed === 'Answer questions?' || trimmed.startsWith('Error:')) {
+    return false
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed)
+    if (
+      Array.isArray(parsed) &&
+      parsed.every(
+        answer =>
+          typeof answer === 'object' &&
+          answer !== null &&
+          'questionIndex' in answer &&
+          'selectedOptions' in answer
+      )
+    ) {
+      return true
+    }
+  } catch {
+    // Non-JSON outputs can still be valid answer payloads for other backends.
+  }
+
+  return true
+}
+
+/**
  * Type guard to check if a tool call is ExitPlanMode
  */
 export function isExitPlanMode(toolCall: ToolCall): boolean {
   return toolCall.name === 'ExitPlanMode'
+}
+
+/**
+ * Type guard for native Codex planning surfaced through the tool-call model.
+ */
+export function isCodexPlanTool(
+  toolCall: ToolCall
+): toolCall is ToolCall & { input: PlanToolInput } {
+  return toolCall.name === 'CodexPlan'
+}
+
+/**
+ * Type guard for any plan-approval tool representation.
+ * Includes legacy Claude ExitPlanMode and native Codex plans.
+ */
+export function isPlanToolCall(
+  toolCall: ToolCall
+): toolCall is ToolCall & { input: PlanToolInput } {
+  return isExitPlanMode(toolCall) || isCodexPlanTool(toolCall)
 }
 
 // ============================================================================
@@ -515,6 +582,7 @@ export interface CodexAgent {
 /** Names of collab tool calls that should be shown in the AgentWidget, not the timeline */
 const COLLAB_TOOL_NAMES = new Set([
   'SpawnAgent',
+  'ResumeAgent',
   'WaitForAgents',
   'CloseAgent',
   'SendInput',
