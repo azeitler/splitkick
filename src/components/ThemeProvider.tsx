@@ -43,19 +43,23 @@ export function ThemeProvider({
   useEffect(() => {
     const root = window.document.documentElement
 
-    root.classList.remove('light', 'dark')
-
-    if (theme === 'system') {
-      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)')
-        .matches
-        ? 'dark'
-        : 'light'
-
-      root.classList.add(systemTheme)
-      return
+    const applyTheme = (resolvedTheme: 'light' | 'dark') => {
+      root.classList.remove('light', 'dark')
+      root.classList.add(resolvedTheme)
     }
 
-    root.classList.add(theme)
+    if (theme === 'system') {
+      const mql = window.matchMedia('(prefers-color-scheme: dark)')
+      applyTheme(mql.matches ? 'dark' : 'light')
+
+      const handler = (e: MediaQueryListEvent) => {
+        applyTheme(e.matches ? 'dark' : 'light')
+      }
+      mql.addEventListener('change', handler)
+      return () => mql.removeEventListener('change', handler)
+    }
+
+    applyTheme(theme)
   }, [theme])
 
   const stableSetTheme = useCallback(
