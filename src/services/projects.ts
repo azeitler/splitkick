@@ -965,6 +965,10 @@ export function useWorktreeEvents() {
           name: worktree.name,
         })
 
+        // Update cache FIRST, then clear timeout — ensures the safety timeout
+        // survives if the cache update is a no-op (e.g. cache was invalidated
+        // between worktree:creating and worktree:created events).
+        handleWorktreeReady(worktree, queryClient)
         clearPendingTimeout(worktree.id)
 
         const openWorktreeAction = {
@@ -1000,8 +1004,6 @@ export function useWorktreeEvents() {
           id: `worktree-creating-${worktree.id}`,
           action: openWorktreeAction,
         })
-
-        handleWorktreeReady(worktree, queryClient)
       })
     )
 
@@ -1015,12 +1017,16 @@ export function useWorktreeEvents() {
           success: setup_success,
         })
 
-        // Update worktree in query cache with setup results
+        // Update worktree in query cache with setup results.
+        // Also ensure status is 'ready' as a safety net — if the earlier
+        // worktree:created handler failed to transition from 'pending', this
+        // guarantees the loading indicator is cleared.
         const updateWorktree = (worktree: Worktree): Worktree => ({
           ...worktree,
           setup_output,
           setup_script,
           setup_success,
+          status: 'ready' as const,
         })
         queryClient.setQueryData<Worktree[]>(
           projectsQueryKeys.worktrees(project_id),
