@@ -378,6 +378,21 @@ describe('ChatStore', () => {
       expect(blocks[1]).toEqual({ type: 'tool_use', tool_call_id: 'tool-1' })
     })
 
+    it('re-appends existing tool block to preserve latest chronology', () => {
+      const { addTextBlock, addToolBlock, getStreamingContentBlocks } =
+        useChatStore.getState()
+
+      addToolBlock('session-1', 'plan-1')
+      addTextBlock('session-1', 'after')
+      addToolBlock('session-1', 'plan-1')
+
+      const blocks = getStreamingContentBlocks('session-1')
+      expect(blocks).toEqual([
+        { type: 'text', text: 'after' },
+        { type: 'tool_use', tool_call_id: 'plan-1' },
+      ])
+    })
+
     it('adds thinking block', () => {
       const { addThinkingBlock, getStreamingContentBlocks } =
         useChatStore.getState()

@@ -78,20 +78,14 @@ interface UseChatWindowEventsParams {
   // Run scripts
   runScripts: string[]
   // Plan approval (keyboard shortcuts)
-  hasStreamingPlan: boolean
+  hasPendingPlanApproval: boolean
   pendingPlanMessage: { id: string } | null | undefined
-  handleStreamingPlanApproval: () => void
-  handleStreamingPlanApprovalYolo: () => void
   handlePlanApproval: (messageId: string) => void
   handlePlanApprovalYolo: (messageId: string) => void
   handleClearContextApproval: (messageId: string) => void
-  handleStreamingClearContextApproval: () => void
   handleClearContextApprovalBuild: (messageId: string) => void
-  handleStreamingClearContextApprovalBuild: () => void
   handleWorktreeBuildApproval: (messageId: string) => void
-  handleStreamingWorktreeBuildApproval: () => void
   handleWorktreeYoloApproval: (messageId: string) => void
-  handleStreamingWorktreeYoloApproval: () => void
   /** Whether the active session uses Codex backend (no native approval flow) */
   isCodexBackend: boolean
   /** Ref to the chat scroll viewport for keyboard scrolling */
@@ -136,20 +130,14 @@ export function useChatWindowEvents({
   handleSaveContext,
   handleLoadContext,
   runScripts,
-  hasStreamingPlan,
+  hasPendingPlanApproval,
   pendingPlanMessage,
-  handleStreamingPlanApproval,
-  handleStreamingPlanApprovalYolo,
   handlePlanApproval,
   handlePlanApprovalYolo,
   handleClearContextApproval,
-  handleStreamingClearContextApproval,
   handleClearContextApprovalBuild,
-  handleStreamingClearContextApprovalBuild,
   handleWorktreeBuildApproval,
-  handleStreamingWorktreeBuildApproval,
   handleWorktreeYoloApproval,
-  handleStreamingWorktreeYoloApproval,
   isCodexBackend,
   scrollViewportRef,
   beginKeyboardScroll,
@@ -477,11 +465,7 @@ export function useChatWindowEvents({
     if (isCodexBackend) return
     const handler = () => {
       if (!isModal && useUIStore.getState().sessionChatModalOpen) return
-      if (hasStreamingPlan) {
-        handleStreamingPlanApproval()
-        return
-      }
-      if (pendingPlanMessage) {
+      if (hasPendingPlanApproval && pendingPlanMessage) {
         handlePlanApproval(pendingPlanMessage.id)
       }
     }
@@ -490,9 +474,8 @@ export function useChatWindowEvents({
   }, [
     isModal,
     isCodexBackend,
-    hasStreamingPlan,
+    hasPendingPlanApproval,
     pendingPlanMessage,
-    handleStreamingPlanApproval,
     handlePlanApproval,
   ])
 
@@ -550,11 +533,7 @@ export function useChatWindowEvents({
     if (isCodexBackend) return
     const handler = () => {
       if (!isModal && useUIStore.getState().sessionChatModalOpen) return
-      if (hasStreamingPlan) {
-        handleStreamingPlanApprovalYolo()
-        return
-      }
-      if (pendingPlanMessage) {
+      if (hasPendingPlanApproval && pendingPlanMessage) {
         handlePlanApprovalYolo(pendingPlanMessage.id)
       }
     }
@@ -563,9 +542,8 @@ export function useChatWindowEvents({
   }, [
     isModal,
     isCodexBackend,
-    hasStreamingPlan,
+    hasPendingPlanApproval,
     pendingPlanMessage,
-    handleStreamingPlanApprovalYolo,
     handlePlanApprovalYolo,
   ])
 
@@ -574,11 +552,7 @@ export function useChatWindowEvents({
     if (isCodexBackend) return
     const handler = () => {
       if (!isModal && useUIStore.getState().sessionChatModalOpen) return
-      if (hasStreamingPlan) {
-        handleStreamingClearContextApproval()
-        return
-      }
-      if (pendingPlanMessage) {
+      if (hasPendingPlanApproval && pendingPlanMessage) {
         handleClearContextApproval(pendingPlanMessage.id)
       }
     }
@@ -588,9 +562,8 @@ export function useChatWindowEvents({
   }, [
     isModal,
     isCodexBackend,
-    hasStreamingPlan,
+    hasPendingPlanApproval,
     pendingPlanMessage,
-    handleStreamingClearContextApproval,
     handleClearContextApproval,
   ])
 
@@ -599,11 +572,7 @@ export function useChatWindowEvents({
     if (isCodexBackend) return
     const handler = () => {
       if (!isModal && useUIStore.getState().sessionChatModalOpen) return
-      if (hasStreamingPlan) {
-        handleStreamingClearContextApprovalBuild()
-        return
-      }
-      if (pendingPlanMessage) {
+      if (hasPendingPlanApproval && pendingPlanMessage) {
         handleClearContextApprovalBuild(pendingPlanMessage.id)
       }
     }
@@ -613,9 +582,8 @@ export function useChatWindowEvents({
   }, [
     isModal,
     isCodexBackend,
-    hasStreamingPlan,
+    hasPendingPlanApproval,
     pendingPlanMessage,
-    handleStreamingClearContextApprovalBuild,
     handleClearContextApprovalBuild,
   ])
 
@@ -624,11 +592,7 @@ export function useChatWindowEvents({
     if (isCodexBackend) return
     const handler = () => {
       if (!isModal && useUIStore.getState().sessionChatModalOpen) return
-      if (hasStreamingPlan) {
-        handleStreamingWorktreeBuildApproval()
-        return
-      }
-      if (pendingPlanMessage) {
+      if (hasPendingPlanApproval && pendingPlanMessage) {
         handleWorktreeBuildApproval(pendingPlanMessage.id)
       }
     }
@@ -638,9 +602,8 @@ export function useChatWindowEvents({
   }, [
     isModal,
     isCodexBackend,
-    hasStreamingPlan,
+    hasPendingPlanApproval,
     pendingPlanMessage,
-    handleStreamingWorktreeBuildApproval,
     handleWorktreeBuildApproval,
   ])
 
@@ -649,11 +612,7 @@ export function useChatWindowEvents({
     if (isCodexBackend) return
     const handler = () => {
       if (!isModal && useUIStore.getState().sessionChatModalOpen) return
-      if (hasStreamingPlan) {
-        handleStreamingWorktreeYoloApproval()
-        return
-      }
-      if (pendingPlanMessage) {
+      if (hasPendingPlanApproval && pendingPlanMessage) {
         handleWorktreeYoloApproval(pendingPlanMessage.id)
       }
     }
@@ -663,9 +622,8 @@ export function useChatWindowEvents({
   }, [
     isModal,
     isCodexBackend,
-    hasStreamingPlan,
+    hasPendingPlanApproval,
     pendingPlanMessage,
-    handleStreamingWorktreeYoloApproval,
     handleWorktreeYoloApproval,
   ])
 }

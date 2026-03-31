@@ -678,9 +678,8 @@ fn should_inject_synthetic_exit_plan(
     run: &RunEntry,
     assistant_msg: &ChatMessage,
 ) -> bool {
-    // Codex plan events are handled by parse_codex_run_to_message via the
-    // app-server schema (turn/plan/updated, item/plan/delta, etc.), so no
-    // synthetic injection is needed for Codex sessions.
+    // Codex history recovery is handled in parse_codex_run_to_message(), which
+    // now covers both structured plan events and plain-text final answers.
     matches!(backend, Backend::Opencode)
         && run.status == RunStatus::Completed
         && run.execution_mode.as_deref() == Some("plan")

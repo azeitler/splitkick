@@ -5,7 +5,6 @@ import type {
   ContentBlock,
   Question,
   QuestionAnswer,
-  ThinkingLevel,
 } from '@/types/chat'
 import { AskUserQuestion } from './AskUserQuestion'
 import { ToolCallInline, TaskCallInline, StackedGroup } from './ToolCallInline'
@@ -18,7 +17,6 @@ import {
   splitTextAroundPlan,
 } from './tool-call-utils'
 import { ToolCallsDisplay } from './ToolCallsDisplay'
-import { ExitPlanModeButton } from './ExitPlanModeButton'
 import { PlanDisplay } from './PlanFileDisplay'
 import { EditedFilesDisplay } from './EditedFilesDisplay'
 import { ThinkingBlock } from './ThinkingBlock'
@@ -34,16 +32,6 @@ interface StreamingMessageProps {
   toolCalls: ToolCall[]
   /** Raw streaming content (fallback for old format) */
   streamingContent: string
-  /** Current thinking level setting */
-  selectedThinkingLevel: ThinkingLevel
-  /** Keyboard shortcut for approve button */
-  approveShortcut: string
-  /** Keyboard shortcut for approve yolo button */
-  approveShortcutYolo?: string
-  /** Keyboard shortcut for clear context button */
-  approveShortcutClearContext?: string
-  /** Keyboard shortcut for clear context and build button */
-  approveShortcutClearContextBuild?: string
   /** Callback when user answers a question */
   onQuestionAnswer: (
     toolCallId: string,
@@ -65,22 +53,6 @@ interface StreamingMessageProps {
   ) => QuestionAnswer[] | undefined
   /** Check if questions are being skipped for this session */
   areQuestionsSkipped: (sessionId: string) => boolean
-  /** Check if streaming plan has been approved */
-  isStreamingPlanApproved: (sessionId: string) => boolean
-  /** Callback when user approves streaming plan */
-  onStreamingPlanApproval: () => void
-  /** Callback when user approves streaming plan with yolo mode */
-  onStreamingPlanApprovalYolo?: () => void
-  /** Callback for clear context approval during streaming */
-  onStreamingClearContextApproval?: () => void
-  /** Callback for clear context and build approval during streaming */
-  onStreamingClearContextApprovalBuild?: () => void
-  /** Callback for worktree build approval during streaming */
-  onStreamingWorktreeBuildApproval?: () => void
-  /** Callback for worktree yolo approval during streaming */
-  onStreamingWorktreeYoloApproval?: () => void
-  /** Hide approve buttons (e.g. for Codex which has no native approval flow) */
-  hideApproveButtons?: boolean
 }
 
 /**
@@ -92,10 +64,6 @@ export const StreamingMessage = memo(function StreamingMessage({
   contentBlocks,
   toolCalls,
   streamingContent,
-  approveShortcut,
-  approveShortcutYolo,
-  approveShortcutClearContext,
-  approveShortcutClearContextBuild,
   onQuestionAnswer,
   onQuestionSkip,
   onFileClick,
@@ -103,14 +71,6 @@ export const StreamingMessage = memo(function StreamingMessage({
   isQuestionAnswered,
   getSubmittedAnswers,
   areQuestionsSkipped,
-  isStreamingPlanApproved,
-  onStreamingPlanApproval,
-  onStreamingPlanApprovalYolo,
-  onStreamingClearContextApproval,
-  onStreamingClearContextApprovalBuild,
-  onStreamingWorktreeBuildApproval,
-  onStreamingWorktreeYoloApproval,
-  hideApproveButtons,
 }: StreamingMessageProps) {
   const resolvedPlan = resolvePlanContent({
     toolCalls,
@@ -172,19 +132,26 @@ export const StreamingMessage = memo(function StreamingMessage({
             <>
               {/* Build timeline preserving order of text and tools */}
               <div className="space-y-4">
-                {timeline.map((item, index) => {
-                  const isIncomplete = incompleteIndices.has(index)
+                {(() => {
+                  const hasRenderedPlanItem = timeline.some(
+                    item => item.type === 'exitPlanMode'
+                  )
+
                   return (
-                    <ErrorBoundary
-                      key={item.key}
-                      fallback={
-                        <div className="text-xs text-muted-foreground italic border rounded px-2 py-1">
-                          [Failed to render content]
-                        </div>
-                      }
-                    >
-                      {(() => {
-                        switch (item.type) {
+                    <>
+                      {timeline.map((item, index) => {
+                        const isIncomplete = incompleteIndices.has(index)
+                        return (
+                          <ErrorBoundary
+                            key={item.key}
+                            fallback={
+                              <div className="text-xs text-muted-foreground italic border rounded px-2 py-1">
+                                [Failed to render content]
+                              </div>
+                            }
+                          >
+                            {(() => {
+                              switch (item.type) {
                           case 'thinking':
                             return (
                               <ThinkingBlock
@@ -329,51 +296,19 @@ export const StreamingMessage = memo(function StreamingMessage({
                             const planFilePath = !inlinePlan
                               ? findPlanFilePath(toolCalls)
                               : null
-                            const isApproved =
-                              isStreamingPlanApproved(sessionId)
-
                             return (
                               <div data-plan-display>
                                 {inlinePlan ? (
                                   <PlanDisplay
                                     content={inlinePlan}
-                                    defaultCollapsed={isApproved}
+                                    defaultCollapsed={false}
                                   />
                                 ) : planFilePath ? (
                                   <PlanDisplay
                                     filePath={planFilePath}
-                                    defaultCollapsed={isApproved}
+                                    defaultCollapsed={false}
                                   />
                                 ) : null}
-                                <ExitPlanModeButton
-                                  toolCalls={toolCalls}
-                                  isApproved={isApproved}
-                                  onPlanApproval={onStreamingPlanApproval}
-                                  onPlanApprovalYolo={
-                                    onStreamingPlanApprovalYolo
-                                  }
-                                  onClearContextApproval={
-                                    onStreamingClearContextApproval
-                                  }
-                                  onClearContextBuildApproval={
-                                    onStreamingClearContextApprovalBuild
-                                  }
-                                  onWorktreeBuildApproval={
-                                    onStreamingWorktreeBuildApproval
-                                  }
-                                  onWorktreeYoloApproval={
-                                    onStreamingWorktreeYoloApproval
-                                  }
-                                  shortcut={approveShortcut}
-                                  shortcutYolo={approveShortcutYolo}
-                                  shortcutClearContext={
-                                    approveShortcutClearContext
-                                  }
-                                  shortcutClearContextBuild={
-                                    approveShortcutClearContextBuild
-                                  }
-                                  hideApproveButtons={hideApproveButtons}
-                                />
                               </div>
                             )
                           }
@@ -385,13 +320,24 @@ export const StreamingMessage = memo(function StreamingMessage({
                                 bug
                               </div>
                             )
-                          default:
-                            return null
-                        }
-                      })()}
-                    </ErrorBoundary>
+                                default:
+                                  return null
+                              }
+                            })()}
+                          </ErrorBoundary>
+                        )
+                      })}
+                      {resolvedPlan.content && !hasRenderedPlanItem && (
+                        <div data-plan-display>
+                          <PlanDisplay
+                            content={resolvedPlan.content}
+                            defaultCollapsed={false}
+                          />
+                        </div>
+                      )}
+                    </>
                   )
-                })}
+                })()}
               </div>
             </>
           )
@@ -414,23 +360,6 @@ export const StreamingMessage = memo(function StreamingMessage({
           {resolvedPlan.content && (
             <div data-plan-display>
               <PlanDisplay content={resolvedPlan.content} defaultCollapsed={false} />
-              <ExitPlanModeButton
-                toolCalls={toolCalls}
-                isApproved={isStreamingPlanApproved(sessionId)}
-                onPlanApproval={onStreamingPlanApproval}
-                onPlanApprovalYolo={onStreamingPlanApprovalYolo}
-                onClearContextApproval={onStreamingClearContextApproval}
-                onClearContextBuildApproval={
-                  onStreamingClearContextApprovalBuild
-                }
-                onWorktreeBuildApproval={onStreamingWorktreeBuildApproval}
-                onWorktreeYoloApproval={onStreamingWorktreeYoloApproval}
-                shortcut={approveShortcut}
-                shortcutYolo={approveShortcutYolo}
-                shortcutClearContext={approveShortcutClearContext}
-                shortcutClearContextBuild={approveShortcutClearContextBuild}
-                hideApproveButtons={hideApproveButtons}
-              />
             </div>
           )}
           {/* Streaming content */}

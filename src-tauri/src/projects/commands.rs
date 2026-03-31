@@ -5114,11 +5114,7 @@ fn extract_structured_output(output: &str) -> Result<String, String> {
     Err("No structured output found in Claude response".to_string())
 }
 
-fn build_claude_structured_output_args(
-    model: &str,
-    tools: &str,
-    schema: &str,
-) -> Vec<String> {
+fn build_claude_structured_output_args(model: &str, tools: &str, schema: &str) -> Vec<String> {
     vec![
         "--print".to_string(),
         "--verbose".to_string(),
@@ -9225,6 +9221,8 @@ Body
         assert!(args.windows(2).any(|w| w == ["--permission-mode", "plan"]));
         assert!(args.windows(2).any(|w| w == ["--tools", "none"]));
         assert!(args.windows(2).any(|w| w == ["--model", "sonnet"]));
-        assert!(args.windows(2).any(|w| w == ["--json-schema", REVIEW_SCHEMA]));
+        assert!(args
+            .windows(2)
+            .any(|w| w == ["--json-schema", REVIEW_SCHEMA]));
     }
 }

@@ -80,20 +80,14 @@ describe('useChatWindowEvents worktree approval shortcuts', () => {
       handleSaveContext: vi.fn(),
       handleLoadContext: vi.fn(),
       runScripts: [],
-      hasStreamingPlan: false,
+      hasPendingPlanApproval: true,
       pendingPlanMessage: { id: 'msg-1' },
-      handleStreamingPlanApproval: vi.fn(),
-      handleStreamingPlanApprovalYolo: vi.fn(),
       handlePlanApproval: vi.fn(),
       handlePlanApprovalYolo: vi.fn(),
       handleClearContextApproval: vi.fn(),
-      handleStreamingClearContextApproval: vi.fn(),
       handleClearContextApprovalBuild: vi.fn(),
-      handleStreamingClearContextApprovalBuild: vi.fn(),
       handleWorktreeBuildApproval: vi.fn(),
-      handleStreamingWorktreeBuildApproval: vi.fn(),
       handleWorktreeYoloApproval: vi.fn(),
-      handleStreamingWorktreeYoloApproval: vi.fn(),
       isCodexBackend: false,
       scrollViewportRef,
       beginKeyboardScroll: vi.fn(),
@@ -111,18 +105,26 @@ describe('useChatWindowEvents worktree approval shortcuts', () => {
     window.dispatchEvent(new CustomEvent('approve-plan-worktree-build'))
 
     expect(params.handleWorktreeBuildApproval).toHaveBeenCalledWith('msg-1')
-    expect(params.handleStreamingWorktreeBuildApproval).not.toHaveBeenCalled()
   })
 
-  it('handles worktree yolo approval for a streaming plan', () => {
+  it('ignores worktree yolo approval while plan is still streaming', () => {
     const params = renderUseChatWindowEvents({
-      hasStreamingPlan: true,
-      pendingPlanMessage: null,
+      hasPendingPlanApproval: false,
     })
 
     window.dispatchEvent(new CustomEvent('approve-plan-worktree-yolo'))
 
-    expect(params.handleStreamingWorktreeYoloApproval).toHaveBeenCalledTimes(1)
+    expect(params.handleWorktreeYoloApproval).not.toHaveBeenCalled()
+  })
+
+  it('ignores approval shortcuts while plan is still streaming', () => {
+    const params = renderUseChatWindowEvents({
+      hasPendingPlanApproval: false,
+    })
+
+    window.dispatchEvent(new CustomEvent('approve-plan'))
+
+    expect(params.handlePlanApproval).not.toHaveBeenCalled()
     expect(params.handleWorktreeYoloApproval).not.toHaveBeenCalled()
   })
 
@@ -138,8 +140,6 @@ describe('useChatWindowEvents worktree approval shortcuts', () => {
     window.dispatchEvent(new CustomEvent('approve-plan-worktree-yolo'))
 
     expect(params.handleWorktreeBuildApproval).not.toHaveBeenCalled()
-    expect(params.handleStreamingWorktreeBuildApproval).not.toHaveBeenCalled()
     expect(params.handleWorktreeYoloApproval).not.toHaveBeenCalled()
-    expect(params.handleStreamingWorktreeYoloApproval).not.toHaveBeenCalled()
   })
 })

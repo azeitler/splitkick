@@ -291,9 +291,6 @@ export function ChatWindow({
       ? (state.reviewingSessions[activeSessionId] ?? false)
       : false
   )
-  const isStreamingPlanApproved = useChatStore(
-    state => state.isStreamingPlanApproved
-  )
   // Terminal panel visibility (per-worktree)
   const terminalVisible = useTerminalStore(state => state.terminalVisible)
   const terminalPanelOpen = useTerminalStore(state =>
@@ -941,10 +938,10 @@ export function ChatWindow({
     lastAssistantMessage,
   })
 
-  // Plan state: pending plan message, streaming plan, content, file path
+  // Plan state: finished pending plan, content, file path
   const {
     pendingPlanMessage,
-    hasStreamingPlan,
+    hasPendingPlanApproval,
     latestPlanContent,
     latestPlanFilePath,
   } = usePlanState({
@@ -953,8 +950,6 @@ export function ChatWindow({
     currentStreamingContent: streamingContent,
     currentStreamingContentBlocks,
     isSending,
-    activeSessionId,
-    isStreamingPlanApproved,
   })
 
   // State for plan dialog
@@ -1918,16 +1913,10 @@ export function ChatWindow({
     handleSkipQuestion,
     handlePlanApproval,
     handlePlanApprovalYolo,
-    handleStreamingPlanApproval,
-    handleStreamingPlanApprovalYolo,
     handleClearContextApproval,
-    handleStreamingClearContextApproval,
     handleClearContextApprovalBuild,
-    handleStreamingClearContextApprovalBuild,
     handleWorktreeBuildApproval,
-    handleStreamingWorktreeBuildApproval,
     handleWorktreeYoloApproval,
-    handleStreamingWorktreeYoloApproval,
     handlePermissionApproval,
     handlePermissionApprovalYolo,
     handlePermissionDeny,
@@ -2045,20 +2034,14 @@ export function ChatWindow({
     handleSaveContext,
     handleLoadContext,
     runScripts,
-    hasStreamingPlan,
+    hasPendingPlanApproval,
     pendingPlanMessage,
-    handleStreamingPlanApproval,
-    handleStreamingPlanApprovalYolo,
     handlePlanApproval,
     handlePlanApprovalYolo,
     handleClearContextApproval,
-    handleStreamingClearContextApproval,
     handleClearContextApprovalBuild,
-    handleStreamingClearContextApprovalBuild,
     handleWorktreeBuildApproval,
-    handleStreamingWorktreeBuildApproval,
     handleWorktreeYoloApproval,
-    handleStreamingWorktreeYoloApproval,
     isCodexBackend,
     scrollViewportRef,
     beginKeyboardScroll,
@@ -2067,68 +2050,29 @@ export function ChatWindow({
 
   // Combined floating-button approval callbacks (dispatch to streaming or pending variant)
   const floatingApprove = useCallback(() => {
-    if (hasStreamingPlan) handleStreamingPlanApproval()
-    else if (pendingPlanMessage) handlePlanApproval(pendingPlanMessage.id)
-  }, [
-    hasStreamingPlan,
-    handleStreamingPlanApproval,
-    pendingPlanMessage,
-    handlePlanApproval,
-  ])
+    if (pendingPlanMessage) handlePlanApproval(pendingPlanMessage.id)
+  }, [pendingPlanMessage, handlePlanApproval])
 
   const floatingYoloApprove = useCallback(() => {
-    if (hasStreamingPlan) handleStreamingPlanApprovalYolo()
-    else if (pendingPlanMessage) handlePlanApprovalYolo(pendingPlanMessage.id)
-  }, [
-    hasStreamingPlan,
-    handleStreamingPlanApprovalYolo,
-    pendingPlanMessage,
-    handlePlanApprovalYolo,
-  ])
+    if (pendingPlanMessage) handlePlanApprovalYolo(pendingPlanMessage.id)
+  }, [pendingPlanMessage, handlePlanApprovalYolo])
 
   const floatingClearContextBuildApprove = useCallback(() => {
-    if (hasStreamingPlan) handleStreamingClearContextApprovalBuild()
-    else if (pendingPlanMessage)
+    if (pendingPlanMessage)
       handleClearContextApprovalBuild(pendingPlanMessage.id)
-  }, [
-    hasStreamingPlan,
-    handleStreamingClearContextApprovalBuild,
-    pendingPlanMessage,
-    handleClearContextApprovalBuild,
-  ])
+  }, [pendingPlanMessage, handleClearContextApprovalBuild])
 
   const floatingClearContextApprove = useCallback(() => {
-    if (hasStreamingPlan) handleStreamingClearContextApproval()
-    else if (pendingPlanMessage)
-      handleClearContextApproval(pendingPlanMessage.id)
-  }, [
-    hasStreamingPlan,
-    handleStreamingClearContextApproval,
-    pendingPlanMessage,
-    handleClearContextApproval,
-  ])
+    if (pendingPlanMessage) handleClearContextApproval(pendingPlanMessage.id)
+  }, [pendingPlanMessage, handleClearContextApproval])
 
   const floatingWorktreeBuildApprove = useCallback(() => {
-    if (hasStreamingPlan) handleStreamingWorktreeBuildApproval()
-    else if (pendingPlanMessage)
-      handleWorktreeBuildApproval(pendingPlanMessage.id)
-  }, [
-    hasStreamingPlan,
-    handleStreamingWorktreeBuildApproval,
-    pendingPlanMessage,
-    handleWorktreeBuildApproval,
-  ])
+    if (pendingPlanMessage) handleWorktreeBuildApproval(pendingPlanMessage.id)
+  }, [pendingPlanMessage, handleWorktreeBuildApproval])
 
   const floatingWorktreeYoloApprove = useCallback(() => {
-    if (hasStreamingPlan) handleStreamingWorktreeYoloApproval()
-    else if (pendingPlanMessage)
-      handleWorktreeYoloApproval(pendingPlanMessage.id)
-  }, [
-    hasStreamingPlan,
-    handleStreamingWorktreeYoloApproval,
-    pendingPlanMessage,
-    handleWorktreeYoloApproval,
-  ])
+    if (pendingPlanMessage) handleWorktreeYoloApproval(pendingPlanMessage.id)
+  }, [pendingPlanMessage, handleWorktreeYoloApproval])
 
   // Pending attachment removal, slash command execution, queue management
   const {
@@ -2402,56 +2346,20 @@ export function ChatWindow({
                                 {(currentStreamingContentBlocks.length > 0 ||
                                   currentToolCalls.length > 0 ||
                                   streamingContent.trim().length > 0) && (
-                                  <StreamingMessage
-                                    sessionId={activeSessionId}
-                                    contentBlocks={
-                                      currentStreamingContentBlocks
-                                    }
-                                    toolCalls={currentToolCalls}
-                                    streamingContent={streamingContent}
-                                    selectedThinkingLevel={
-                                      selectedThinkingLevel
-                                    }
-                                    approveShortcut={approveShortcut}
-                                    approveShortcutYolo={approveShortcutYolo}
-                                    approveShortcutClearContext={
-                                      approveShortcutClearContext
-                                    }
-                                    approveShortcutClearContextBuild={
-                                      approveShortcutClearContextBuild
-                                    }
-                                    onQuestionAnswer={handleQuestionAnswer}
-                                    onQuestionSkip={handleSkipQuestion}
-                                    onFileClick={setViewingFilePath}
+                                <StreamingMessage
+                                  sessionId={activeSessionId}
+                                  contentBlocks={
+                                    currentStreamingContentBlocks
+                                  }
+                                  toolCalls={currentToolCalls}
+                                  streamingContent={streamingContent}
+                                  onQuestionAnswer={handleQuestionAnswer}
+                                  onQuestionSkip={handleSkipQuestion}
+                                  onFileClick={setViewingFilePath}
                                     onEditedFileClick={setViewingFilePath}
                                     isQuestionAnswered={isQuestionAnswered}
                                     getSubmittedAnswers={getSubmittedAnswers}
                                     areQuestionsSkipped={areQuestionsSkipped}
-                                    isStreamingPlanApproved={
-                                      isStreamingPlanApproved
-                                    }
-                                    onStreamingPlanApproval={
-                                      handleStreamingPlanApproval
-                                    }
-                                    onStreamingPlanApprovalYolo={
-                                      handleStreamingPlanApprovalYolo
-                                    }
-                                    onStreamingClearContextApproval={
-                                      handleStreamingClearContextApproval
-                                    }
-                                    onStreamingClearContextApprovalBuild={
-                                      handleStreamingClearContextApprovalBuild
-                                    }
-                                    onStreamingWorktreeBuildApproval={
-                                      worktree?.project_id
-                                        ? handleStreamingWorktreeBuildApproval
-                                        : undefined
-                                    }
-                                    onStreamingWorktreeYoloApproval={
-                                      worktree?.project_id
-                                        ? handleStreamingWorktreeYoloApproval
-                                        : undefined
-                                    }
                                   />
                                 )}
                                 <StreamingStatusBar
@@ -2604,8 +2512,7 @@ export function ChatWindow({
                       {/* Floating scroll buttons */}
                       <FloatingButtons
                         showApproveButton={
-                          !isCodexBackend &&
-                          (!!pendingPlanMessage || hasStreamingPlan)
+                          !isCodexBackend && hasPendingPlanApproval
                         }
                         showFindingsButton={!areFindingsVisible}
                         isAtBottom={isAtBottom}
@@ -2995,6 +2902,7 @@ export function ChatWindow({
                 setPlanDialogContent(null)
               }}
               editable={true}
+              disabled={isSending}
               approvalContext={
                 activeWorktreeId && activeWorktreePath && activeSessionId
                   ? {
@@ -3028,6 +2936,7 @@ export function ChatWindow({
               isOpen={isPlanDialogOpen}
               onClose={() => setIsPlanDialogOpen(false)}
               editable={true}
+              disabled={isSending}
               approvalContext={
                 activeWorktreeId && activeWorktreePath && activeSessionId
                   ? {

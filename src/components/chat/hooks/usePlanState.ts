@@ -12,8 +12,6 @@ interface UsePlanStateParams {
   currentStreamingContent: string
   currentStreamingContentBlocks: ContentBlock[]
   isSending: boolean
-  activeSessionId: string | null | undefined
-  isStreamingPlanApproved: (sessionId: string) => boolean
 }
 
 /**
@@ -25,8 +23,6 @@ export function usePlanState({
   currentStreamingContent,
   currentStreamingContentBlocks,
   isSending,
-  activeSessionId,
-  isStreamingPlanApproved,
 }: UsePlanStateParams) {
   // Returns the message that has an unapproved plan awaiting action, if any
   const pendingPlanMessage = useMemo(() => {
@@ -54,12 +50,10 @@ export function usePlanState({
     return null
   }, [sessionMessages])
 
-  // Check if there's a streaming plan awaiting approval
-  const hasStreamingPlan = useMemo(() => {
-    if (!isSending || !activeSessionId) return false
-    const hasPlanTool = currentToolCalls.some(isPlanToolCall)
-    return hasPlanTool && !isStreamingPlanApproved(activeSessionId)
-  }, [isSending, activeSessionId, currentToolCalls, isStreamingPlanApproved])
+  const hasPendingPlanApproval = useMemo(
+    () => !!pendingPlanMessage && !isSending,
+    [pendingPlanMessage, isSending]
+  )
 
   // Find latest plan content from ExitPlanMode tool calls (primary source)
   const latestPlanContent = useMemo(() => {
@@ -104,7 +98,7 @@ export function usePlanState({
 
   return {
     pendingPlanMessage,
-    hasStreamingPlan,
+    hasPendingPlanApproval,
     latestPlanContent,
     latestPlanFilePath,
   }

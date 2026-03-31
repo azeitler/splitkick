@@ -53,6 +53,10 @@ import {
   applySessionSettingToSession,
   type SessionSettingKey,
 } from '@/components/chat/hooks/session-setting-sync'
+import {
+  hasMeaningfulAssistantPayload,
+  shouldHydrateCompletedSessionFromBackend,
+} from '@/components/chat/hooks/completion-hydration'
 
 interface UseStreamingEventsParams {
   queryClient: QueryClient
@@ -86,6 +90,34 @@ function getTextContentFromBlocks(
   return contentBlocks
     .flatMap(block => (block.type === 'text' && block.text ? [block.text] : []))
     .join('')
+}
+
+async function hydrateCompletedSessionFromBackend(
+  queryClient: QueryClient,
+  sessionId: string,
+  worktreeId: string
+): Promise<void> {
+  const worktreePath = useChatStore.getState().worktreePaths[worktreeId]
+  if (!worktreePath) {
+    queryClient.invalidateQueries({ queryKey: chatQueryKeys.session(sessionId) })
+    return
+  }
+
+  try {
+    const session = await invoke<Session>('get_session', {
+      sessionId,
+      worktreeId,
+      worktreePath,
+    })
+    queryClient.setQueryData(chatQueryKeys.session(sessionId), session)
+  } catch (error) {
+    console.error(
+      '[useStreamingEvents] Failed to hydrate completed session from backend:',
+      error
+    )
+  } finally {
+    queryClient.invalidateQueries({ queryKey: chatQueryKeys.session(sessionId) })
+  }
 }
 
 /**
@@ -666,11 +698,21 @@ export default function useStreamingEvents({
       const toolCalls = activeToolCalls[sessionId]
       const contentBlocks = streamingContentBlocks[sessionId]
       const content = rawContent || getTextContentFromBlocks(contentBlocks)
+      const hasMeaningfulPayload = hasMeaningfulAssistantPayload(
+        content ?? '',
+        contentBlocks ?? [],
+        toolCalls ?? []
+      )
+      const needsBackendHydration = shouldHydrateCompletedSessionFromBackend(
+        content ?? '',
+        contentBlocks ?? [],
+        toolCalls ?? []
+      )
 
-      if (!content && !toolCalls?.length) {
+      if (needsBackendHydration) {
         console.warn(
           `[chat:done] No streaming content for session=${sessionId}. ` +
-            `Optimistic message will be empty; messages will load from JSONL on refetch.`
+            `Skipping empty optimistic assistant; hydrating from backend.`
         )
       }
 
@@ -721,7 +763,7 @@ export default function useStreamingEvents({
         // Add optimistic assistant message BEFORE clearing streaming state.
         // This ensures the plan/question is visible in MessageList
         // before StreamingMessage unmounts (isSending becomes false).
-        if (content || (effectiveToolCalls && effectiveToolCalls.length > 0)) {
+        if (hasMeaningfulPayload) {
           const pendingIdKey = `__pendingMessageId_${sessionId}`
           const preGeneratedId = (window as unknown as Record<string, string>)[
             pendingIdKey
@@ -765,6 +807,14 @@ export default function useStreamingEvents({
           // Always stop on blocking tools, including in yolo mode.
           // Preserve question/plan UI and wait for explicit user action.
           pauseSession(sessionId)
+
+          if (needsBackendHydration) {
+            void hydrateCompletedSessionFromBackend(
+              queryClient,
+              sessionId,
+              worktreeId
+            )
+          }
 
           // Persist plan file path and pending message ID for plan approval tools
           if (effectiveToolCalls) {
@@ -823,7 +873,7 @@ export default function useStreamingEvents({
 
         // 1. Add optimistic assistant message to cache
         let planMessageId: string | undefined
-        if (content || (effectiveToolCalls && effectiveToolCalls.length > 0)) {
+        if (hasMeaningfulPayload) {
           const pendingIdKey = `__pendingMessageId_${sessionId}`
           const preGeneratedId = (window as unknown as Record<string, string>)[
             pendingIdKey
@@ -893,6 +943,13 @@ export default function useStreamingEvents({
 
         // 3. Transition to waiting state in Zustand
         pauseSession(sessionId)
+        if (needsBackendHydration) {
+          void hydrateCompletedSessionFromBackend(
+            queryClient,
+            sessionId,
+            worktreeId
+          )
+        }
         if (planMessageId) {
           useChatStore
             .getState()
@@ -932,7 +989,7 @@ export default function useStreamingEvents({
         // so MessageList already has the message when StreamingMessage unmounts.
 
         // 1. Add optimistic assistant message to cache
-        if (content || (effectiveToolCalls && effectiveToolCalls.length > 0)) {
+        if (hasMeaningfulPayload) {
           const pendingIdKey = `__pendingMessageId_${sessionId}`
           const preGeneratedId = (window as unknown as Record<string, string>)[
             pendingIdKey
@@ -1010,6 +1067,14 @@ export default function useStreamingEvents({
           ),
         })
         completeSession(sessionId)
+
+        if (needsBackendHydration) {
+          void hydrateCompletedSessionFromBackend(
+            queryClient,
+            sessionId,
+            worktreeId
+          )
+        }
 
         // Reviewing state is persisted by the backend — no frontend persist needed.
 

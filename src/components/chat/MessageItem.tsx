@@ -355,17 +355,22 @@ export const MessageItem = memo(function MessageItem({
                   </div>
                 )
               }
-              return timeline.map(item => (
-                <ErrorBoundary
-                  key={item.key}
-                  fallback={
-                    <div className="text-xs text-muted-foreground italic border rounded px-2 py-1">
-                      [Failed to render content]
-                    </div>
-                  }
-                >
-                  {(() => {
-                    switch (item.type) {
+              const hasRenderedPlanItem = timeline.some(
+                item => item.type === 'exitPlanMode'
+              )
+              return (
+                <>
+                  {timeline.map(item => (
+                    <ErrorBoundary
+                      key={item.key}
+                      fallback={
+                        <div className="text-xs text-muted-foreground italic border rounded px-2 py-1">
+                          [Failed to render content]
+                        </div>
+                      }
+                    >
+                      {(() => {
+                        switch (item.type) {
                       case 'thinking':
                         return (
                           <ThinkingBlock
@@ -539,12 +544,22 @@ export const MessageItem = memo(function MessageItem({
                             — if you see this, please report it as a bug
                           </div>
                         )
-                      default:
-                        return null
-                    }
-                  })()}
-                </ErrorBoundary>
-              ))
+                        default:
+                          return null
+                      }
+                    })()}
+                  </ErrorBoundary>
+                  ))}
+                  {resolvedPlan.content && !hasRenderedPlanItem && (
+                    <PlanDisplay
+                      content={resolvedPlan.content}
+                      defaultCollapsed={
+                        message.plan_approved || hasFollowUpMessage
+                      }
+                    />
+                  )}
+                </>
+              )
             })()}
           </div>
           {/* Show ExitPlanMode button after all content blocks */}

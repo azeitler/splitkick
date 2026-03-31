@@ -195,6 +195,32 @@ describe('MessageItem', () => {
     ).not.toBeInTheDocument()
   })
 
+  it('renders fallback PlanDisplay when Codex plan text exists but timeline lacks a plan tool block', () => {
+    render(
+      <MessageItem
+        {...baseProps}
+        message={{
+          ...baseMessage,
+          content: 'Repo inspected.\n\nPlan:\n- Implement changes\n- Add tests',
+          tool_calls: [
+            {
+              id: 'plan-1',
+              name: 'CodexPlan',
+              input: {
+                explanation: 'Fallback explanation',
+              },
+            },
+          ],
+          content_blocks: [{ type: 'text', text: 'Repo inspected.' }],
+        }}
+      />
+    )
+
+    expect(screen.getByText('Plan:')).toBeVisible()
+    expect(screen.getAllByText('Implement changes')).toHaveLength(1)
+    expect(screen.getAllByText('Add tests')).toHaveLength(1)
+  })
+
   it('renders prose before the fallback plan above tool calls', () => {
     render(
       <MessageItem

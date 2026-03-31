@@ -1250,15 +1250,42 @@ export const useChatStore = create<ChatUIState>()(
 
       addToolBlock: (sessionId, toolCallId) =>
         set(
-          state => ({
-            streamingContentBlocks: {
-              ...state.streamingContentBlocks,
-              [sessionId]: [
-                ...(state.streamingContentBlocks[sessionId] ?? []),
-                { type: 'tool_use', tool_call_id: toolCallId },
-              ],
-            },
-          }),
+          state => {
+            const blocks = state.streamingContentBlocks[sessionId] ?? []
+            const nextBlocks = [
+              ...blocks.filter(
+                block =>
+                  !(
+                    block.type === 'tool_use' &&
+                    block.tool_call_id === toolCallId
+                  )
+              ),
+              { type: 'tool_use' as const, tool_call_id: toolCallId },
+            ]
+
+            const unchanged =
+              nextBlocks.length === blocks.length &&
+              nextBlocks.every((block, index) => {
+                const existing = blocks[index]
+                if (!existing || existing.type !== block.type) return false
+                if (block.type === 'tool_use') {
+                  return (
+                    existing.type === 'tool_use' &&
+                    existing.tool_call_id === block.tool_call_id
+                  )
+                }
+                return false
+              })
+
+            if (unchanged) return state
+
+            return {
+              streamingContentBlocks: {
+                ...state.streamingContentBlocks,
+                [sessionId]: nextBlocks,
+              },
+            }
+          },
           undefined,
           'addToolBlock'
         ),

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import { usePlanState } from './usePlanState'
 import type { ChatMessage, ContentBlock, ToolCall } from '@/types/chat'
@@ -32,12 +32,10 @@ describe('usePlanState', () => {
           'Repo inspected.\n\nPlan:\n- Implement changes\n- Add tests',
         currentStreamingContentBlocks,
         isSending: true,
-        activeSessionId: 'session-1',
-        isStreamingPlanApproved: vi.fn(() => false),
       })
     )
 
-    expect(result.current.hasStreamingPlan).toBe(true)
+    expect(result.current.hasPendingPlanApproval).toBe(false)
     expect(result.current.latestPlanContent).toBe(
       'Plan:\n- Implement changes\n- Add tests'
     )
